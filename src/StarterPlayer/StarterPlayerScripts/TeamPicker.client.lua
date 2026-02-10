@@ -7,8 +7,8 @@ local camera = workspace.CurrentCamera
 
 -- Lock camera to the menu view
 camera.CameraType = Enum.CameraType.Scriptable
-camera.CFrame = CFrame.new(-86.447, 171.093, 128.36)
-	* CFrame.Angles(math.rad(-51.001), math.rad(0.243), math.rad(0))
+camera.CFrame = CFrame.new(-72.447, 171.093, 128.36)
+	* CFrame.Angles(math.rad(-51), math.rad(0.386), math.rad(-0.3))
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "TeamPickerGui"
@@ -114,6 +114,21 @@ local function makeCard(teamName, accentColor, hoverColor, iconText)
 	prompt.Position = UDim2.new(0.2, 0, 0.85, 0)
 	prompt.Parent = card
 
+	-- Player count label (updates dynamically)
+	local countLabel = Instance.new("TextLabel")
+	countLabel.Name = "CountLabel"
+	countLabel.Text = "0"
+	countLabel.Font = Enum.Font.GothamBold
+	countLabel.TextScaled = true
+	countLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+	countLabel.BackgroundTransparency = 1
+	countLabel.Size = UDim2.new(0.3, 0, 0.08, 0)
+	countLabel.Position = UDim2.new(0.35, 0, 0.7, 0)
+	countLabel.Parent = card
+
+	-- Disabled attribute (client-side visual/guard)
+	card:SetAttribute("Disabled", false)
+
 	-- Hover effects
 	card.MouseEnter:Connect(function()
 		card.BackgroundColor3 = hoverColor
@@ -138,15 +153,104 @@ local redCard  = makeCard("Red",  Color3.fromRGB(255, 60, 60),  Color3.fromRGB(5
 ---------------------------------------------------------------------------
 local chooseEvent = ReplicatedStorage:WaitForChild("ChooseTeamEvent")
 
-local function chooseSide(teamName)
-	chooseEvent:FireServer(teamName)
-	screenGui:Destroy()
-	camera.CameraType = Enum.CameraType.Custom
+local chooseResponse = ReplicatedStorage:WaitForChild("ChooseTeamResponse")
+
+local function showError(msg)
+	local existing = screenGui:FindFirstChild("TeamError")
+	if existing then existing:Destroy() end
+	local err = Instance.new("TextLabel")
+	err.Name = "TeamError"
+	err.Text = msg
+	err.Font = Enum.Font.GothamBold
+	err.TextScaled = true
+	err.TextColor3 = Color3.fromRGB(255, 120, 120)
+	err.BackgroundTransparency = 1
+	err.Size = UDim2.new(0.6, 0, 0.06, 0)
+	err.Position = UDim2.new(0.2, 0, 0.28, 0)
+	err.Parent = screenGui
+	delay(2, function()
+		if err then err:Destroy() end
+	end)
 end
+
+local function chooseSide(teamName)
+	-- guard client-side disabled flag (visual)
+	local card = (teamName == "Blue") and blueCard or redCard
+	if card and card:GetAttribute("Disabled") then
+		showError("That team has more players — pick the other side")
+		return
+	end
+
+	chooseEvent:FireServer(teamName)
+end
+
+-- handle server response (success => close UI, failure => show message)
+chooseResponse.OnClientEvent:Connect(function(success, message)
+	if success then
+		screenGui:Destroy()
+		camera.CameraType = Enum.CameraType.Custom
+	else
+		showError(message or "Could not join team")
+	end
+end)
 
 blueCard.MouseButton1Click:Connect(function()
 	chooseSide("Blue")
 end)
+
+-- Player count updating
+local Teams = game:GetService("Teams")
+
+local function updateCounts()
+	local blueCount = 0
+	local redCount = 0
+	for _, p in ipairs(Players:GetPlayers()) do
+		local tname
+		if p.Team then
+			tname = p.Team.Name
+		else
+			tname = p:GetAttribute("Team")
+		end
+		if tname == "Blue" then
+			blueCount = blueCount + 1
+		elseif tname == "Red" then
+			redCount = redCount + 1
+		end
+	end
+
+	local bc = blueCard:FindFirstChild("CountLabel")
+	local rc = redCard:FindFirstChild("CountLabel")
+	if bc then bc.Text = tostring(blueCount) end
+	if rc then rc.Text = tostring(redCount) end
+    
+	-- Disable the side that currently has MORE players than the other
+	if blueCount > redCount then
+		blueCard:SetAttribute("Disabled", true)
+		blueCard.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
+	else
+		blueCard:SetAttribute("Disabled", false)
+		blueCard.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+	end
+
+	if redCount > blueCount then
+		redCard:SetAttribute("Disabled", true)
+		redCard.BackgroundColor3 = Color3.fromRGB(26, 20, 20)
+	else
+		redCard:SetAttribute("Disabled", false)
+		redCard.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+	end
+end
+
+-- Wire up events
+updateCounts()
+for _, p in ipairs(Players:GetPlayers()) do
+	p:GetPropertyChangedSignal("Team"):Connect(updateCounts)
+end
+Players.PlayerAdded:Connect(function(p)
+	p:GetPropertyChangedSignal("Team"):Connect(updateCounts)
+	updateCounts()
+end)
+Players.PlayerRemoving:Connect(updateCounts)
 
 redCard.MouseButton1Click:Connect(function()
 	chooseSide("Red")

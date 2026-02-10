@@ -50,6 +50,14 @@ if not chooseEvent then
 	chooseEvent.Parent = ReplicatedStorage
 end
 
+local CHOOSE_RESPONSE_NAME = "ChooseTeamResponse"
+local chooseResponse = ReplicatedStorage:FindFirstChild(CHOOSE_RESPONSE_NAME)
+if not chooseResponse then
+	chooseResponse = Instance.new("RemoteEvent")
+	chooseResponse.Name = CHOOSE_RESPONSE_NAME
+	chooseResponse.Parent = ReplicatedStorage
+end
+
 -----------------------------------------------------------------------
 -- Helper: find the spawn part for a team
 -----------------------------------------------------------------------
@@ -70,24 +78,81 @@ Players.PlayerAdded:Connect(function(player)
 	player.Team = neutralTeam
 
 	local conn
-	conn = chooseEvent.OnServerEvent:Connect(function(plr, teamName)
+    conn = chooseEvent.OnServerEvent:Connect(function(plr, teamName)
 		if plr ~= player then return end
 		if teamName ~= "Red" and teamName ~= "Blue" then return end
+
+		-- Server-side balance check: compute current counts
+		local blueCount = 0
+		local redCount = 0
+		for _,p in ipairs(Players:GetPlayers()) do
+			if p.Team == blueTeam then
+				blueCount = blueCount + 1
+			elseif p.Team == redTeam then
+				redCount = redCount + 1
+			end
+		end
+
+		if teamName == "Blue" and blueCount > redCount then
+			chooseResponse:FireClient(player, false, "Blue has more players — pick the other side")
+			return
+		end
+		if teamName == "Red" and redCount > blueCount then
+			chooseResponse:FireClient(player, false, "Red has more players — pick the other side")
+			return
+		end
 
 		-- Assign to the chosen team
 		player.Team = teamName == "Red" and redTeam or blueTeam
 		player:SetAttribute("Team", teamName)
 
+		-- Notify client of success
+		chooseResponse:FireClient(player, true, "Joined " .. teamName)
+
 		-- Teleport to spawn once character loads
 		local spawnPart = getSpawnForTeam(teamName)
 
-		local charConn
-		charConn = player.CharacterAdded:Connect(function(char)
-			if spawnPart then
-				local hrp = char:WaitForChild("HumanoidRootPart")
-				hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 3, 0)
+		-- Persistent CharacterAdded handler: first spawn -> main spawnPart,
+		-- subsequent respawns -> team death spawn (RedDeathSpawn/BlueDeathSpawn).
+		local firstSpawn = true
+		local deathSpawnNames = { Red = "RedDeathSpawn", Blue = "BlueDeathSpawn" }
+		player.CharacterAdded:Connect(function(char)
+			local hrp = char:WaitForChild("HumanoidRootPart")
+			if not hrp then return end
+			if firstSpawn then
+				if spawnPart then
+					hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 3, 0)
+				end
+				firstSpawn = false
+			else
+				local deathName = deathSpawnNames[teamName]
+				-- Collect all matching death spawn parts (support multiple with same name)
+				local candidates = {}
+				for _, obj in ipairs(workspace:GetDescendants()) do
+					if obj.Name == deathName and obj:IsA("BasePart") then
+						table.insert(candidates, obj)
+					end
+				end
+				local deathPart = nil
+				if #candidates > 0 then
+					deathPart = candidates[math.random(1, #candidates)]
+				end
+				if deathPart then
+					hrp.CFrame = deathPart.CFrame + Vector3.new(0, 3, 0)
+				elseif spawnPart then
+					hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 3, 0)
+				end
 			end
-			if charConn then charConn:Disconnect() end
+
+			-- Ensure automatic respawn after death (CharacterAutoLoads is false)
+			local humanoid = char:FindFirstChildOfClass("Humanoid")
+			if humanoid then
+				humanoid.Died:Connect(function()
+					-- small delay before respawn to let death animation settle
+					wait(2)
+					pcall(function() player:LoadCharacter() end)
+				end)
+			end
 		end)
 
 		-- Now spawn the character
