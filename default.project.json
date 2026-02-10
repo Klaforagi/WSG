@@ -1,0 +1,40 @@
+{
+  "name": "WSG",
+  "tree": {
+    "$className": "DataModel",
+
+    "ReplicatedStorage": {
+      "$path": "src/ReplicatedStorage",
+      "Skybox": {
+        "$className": "Folder"
+      }
+      ,
+      "Events": {
+        "$className": "Folder",
+        "$path": "src/ReplicatedStorage/Events"
+      }
+      ,
+      "Sounds": {
+        "$className": "Folder"
+      }
+    },
+
+    "ServerScriptService": {
+      "$path": "src/ServerScriptService"
+    },
+
+    "StarterPlayer": {
+      "$className": "StarterPlayer",
+
+      "StarterPlayerScripts": {
+        "$className": "StarterPlayerScripts",
+        "$path": "src/StarterPlayer/StarterPlayerScripts"
+      },
+
+      "StarterCharacterScripts": {
+        "$className": "StarterCharacterScripts",
+        "$path": "src/StarterPlayer/StarterCharacterScripts"
+      }
+    }
+  }
+}
