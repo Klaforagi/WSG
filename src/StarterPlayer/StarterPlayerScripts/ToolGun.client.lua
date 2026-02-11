@@ -58,7 +58,23 @@ local fireHit = ReplicatedStorage:FindFirstChild("ToolGunHit")
 local Debris = game:GetService("Debris")
 
 -- debug tracer toggle: when true, client spawns a short-lived laser part showing the shot
+-- Can be overridden by the Toolgunsettings module via `showTracer` boolean.
 local SHOW_TRACER = true
+if TOOLCFG and type(TOOLCFG.showTracer) == "boolean" then
+    SHOW_TRACER = TOOLCFG.showTracer
+end
+
+local TEAM_TRACER_COLORS = {
+    Blue = Color3.fromRGB(65, 105, 225), -- royal blue
+    Red  = Color3.fromRGB(255, 75, 75),
+}
+local DEFAULT_TRACER_COLOR = Color3.fromRGB(255, 200, 100)
+local function getTracerColor()
+    if player and player.Team then
+        return TEAM_TRACER_COLORS[player.Team.Name] or DEFAULT_TRACER_COLOR
+    end
+    return DEFAULT_TRACER_COLOR
+end
 
 local function spawnTracer(origin, targetPos)
     if not origin or not targetPos then return end
@@ -72,7 +88,7 @@ local function spawnTracer(origin, targetPos)
     beam.Anchored = true
     beam.CanCollide = false
     beam.Material = Enum.Material.Neon
-    beam.Color = Color3.fromRGB(255, 80, 80)
+    beam.Color = getTracerColor()
     beam.Transparency = 0.25
     beam.Parent = workspace
     Debris:AddItem(beam, 0.12)
@@ -220,7 +236,7 @@ local function attachTool(tool)
     -- listen for server ack to play sound and draw the authoritative tracer from the gun
     fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos)
         playFireSound()
-        if gunOrigin and targetPos then
+        if gunOrigin and targetPos and SHOW_TRACER then
             spawnTracer(gunOrigin, targetPos)
         end
     end)

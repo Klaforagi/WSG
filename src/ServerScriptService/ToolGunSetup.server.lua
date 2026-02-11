@@ -11,6 +11,21 @@ if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
 end
 local TOOLCFG = ToolgunModule and ToolgunModule.get() or {}
 
+local SHOW_TRACER = true
+if type(TOOLCFG.showTracer) == "boolean" then SHOW_TRACER = TOOLCFG.showTracer end
+
+local TEAM_TRACER_COLORS = {
+    Blue = Color3.fromRGB(65, 105, 225), -- royal blue
+    Red  = Color3.fromRGB(255, 75, 75),
+}
+local DEFAULT_TRACER_COLOR = Color3.fromRGB(255, 200, 100)
+local function getTracerColor(player)
+    if player and player.Team then
+        return TEAM_TRACER_COLORS[player.Team.Name] or DEFAULT_TRACER_COLOR
+    end
+    return DEFAULT_TRACER_COLOR
+end
+
 -- RemoteEvent for firing
 local FIRE_EVENT_NAME = "ToolGunFire"
 local fireEvent = ReplicatedStorage:FindFirstChild(FIRE_EVENT_NAME)
@@ -196,22 +211,24 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
             parent = parent.Parent
         end
 
-        coroutine.wrap(function()
-            local hitPos = finalHit.Position
-            local gunPos = gunOrigin or camOrigin
-            local beam = Instance.new("Part")
-            beam.Name = "ToolGunServerTracer"
-            local dir = (hitPos - gunPos)
-            local len = dir.Magnitude
-            beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
-            beam.CFrame = CFrame.new(gunPos + dir/2, hitPos)
-            beam.Anchored = true
-            beam.CanCollide = false
-            beam.Material = Enum.Material.Neon
-            beam.Color = Color3.fromRGB(255, 120, 80)
-            beam.Parent = Workspace
-            game:GetService("Debris"):AddItem(beam, 0.12)
-        end)()
+        if SHOW_TRACER then
+            coroutine.wrap(function()
+                local hitPos = finalHit.Position
+                local gunPos = gunOrigin or camOrigin
+                local beam = Instance.new("Part")
+                beam.Name = "ToolGunServerTracer"
+                local dir = (hitPos - gunPos)
+                local len = dir.Magnitude
+                beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
+                beam.CFrame = CFrame.new(gunPos + dir/2, hitPos)
+                beam.Anchored = true
+                beam.CanCollide = false
+                beam.Material = Enum.Material.Neon
+                beam.Color = getTracerColor(player)
+                beam.Parent = Workspace
+                game:GetService("Debris"):AddItem(beam, 0.12)
+            end)()
+        end
 
         pcall(function()
             if fireAck then
@@ -226,21 +243,23 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     local gunObstruction = Workspace:Raycast(gunOrigin, rayDir * RANGE, params)
     if gunObstruction and gunObstruction.Instance then
         -- gun is immediately obstructed; spawn server tracer to obstruction and notify client
-        coroutine.wrap(function()
-            local hitPos = gunObstruction.Position
-            local beam = Instance.new("Part")
-            beam.Name = "ToolGunServerTracer"
-            local dir = (hitPos - gunOrigin)
-            local len = dir.Magnitude
-            beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
-            beam.CFrame = CFrame.new(gunOrigin + dir/2, hitPos)
-            beam.Anchored = true
-            beam.CanCollide = false
-            beam.Material = Enum.Material.Neon
-            beam.Color = Color3.fromRGB(255, 120, 80)
-            beam.Parent = Workspace
-            game:GetService("Debris"):AddItem(beam, 0.12)
-        end)()
+        if SHOW_TRACER then
+            coroutine.wrap(function()
+                local hitPos = gunObstruction.Position
+                local beam = Instance.new("Part")
+                beam.Name = "ToolGunServerTracer"
+                local dir = (hitPos - gunOrigin)
+                local len = dir.Magnitude
+                beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
+                beam.CFrame = CFrame.new(gunOrigin + dir/2, hitPos)
+                beam.Anchored = true
+                beam.CanCollide = false
+                beam.Material = Enum.Material.Neon
+                beam.Color = getTracerColor(player)
+                beam.Parent = Workspace
+                game:GetService("Debris"):AddItem(beam, 0.12)
+            end)()
+        end
         -- notify client of obstruction
         pcall(function()
             if fireAck then

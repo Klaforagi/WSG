@@ -192,6 +192,10 @@ function setupFlagModel(model)
             FlagStatus:FireAllClients("playSound", "Flag_taken")
             -- connect death handler to drop flag
             local function onDied()
+                -- only proceed if this player is still recorded as carrying this flag
+                if not carrying[pl] or carrying[pl].team ~= team then
+                    return
+                end
                 -- drop at HRP position
                 local dropModel = nil
                 local hrp = char:FindFirstChild("HumanoidRootPart")
@@ -202,6 +206,10 @@ function setupFlagModel(model)
                 -- cleanup carried model and state
                 if carrying[pl] and carrying[pl].model then
                     pcall(function() carrying[pl].model:Destroy() end)
+                end
+                -- disconnect any death connection stored on the carrying record
+                if carrying[pl] and carrying[pl].deathConn then
+                    pcall(function() carrying[pl].deathConn:Disconnect() end)
                 end
                 carrying[pl] = nil
                 pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
@@ -312,7 +320,9 @@ function setupFlagModel(model)
                     end)
                 end
             end
-            humanoid.Died:Connect(onDied)
+            local deathConn = humanoid.Died:Connect(onDied)
+            -- store death connection so it can be cleaned up if flag is captured
+            if carrying[pl] then carrying[pl].deathConn = deathConn end
         end
     end)
 end

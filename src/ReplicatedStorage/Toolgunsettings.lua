@@ -9,6 +9,8 @@ local defaults = {
     projectile_lifetime = 10,
     projectile_size = {0.4, 0.4, 0.4}, -- table to serialize Vector3
     bulletdrop = 0, -- studs per second squared (gravity-like pull)
+    showTracer = true, -- whether client shows tracer visuals
+
 }
 
 local function readOverrides()
@@ -17,8 +19,16 @@ local function readOverrides()
     local cfg = {}
     for k, v in pairs(defaults) do
         local obj = folder:FindFirstChild(k)
-        if obj and obj:IsA("NumberValue") then
-            cfg[k] = obj.Value
+        if obj then
+            if obj:IsA("NumberValue") then
+                cfg[k] = obj.Value
+            elseif obj:IsA("BoolValue") then
+                cfg[k] = obj.Value
+            elseif obj:IsA("Color3Value") then
+                cfg[k] = {math.floor(obj.Value.R*255), math.floor(obj.Value.G*255), math.floor(obj.Value.B*255)}
+            else
+                cfg[k] = v
+            end
         else
             cfg[k] = v
         end

@@ -14,28 +14,80 @@ screenGui.Parent = playerGui
 
 local FlagStatus = ReplicatedStorage:WaitForChild("FlagStatus")
 
-local function showMessage(text, playerTeamName, flagTeamName)
-    -- pick colors for player name and flag word
-    local playerTeamColor = Color3.new(1, 1, 1)
-    if playerTeamName == "Blue" then
-        playerTeamColor = Color3.fromRGB(0, 162, 255)
-    elseif playerTeamName == "Red" then
-        playerTeamColor = Color3.fromRGB(255, 75, 75)
-    end
-    local flagTeamColor = Color3.new(1, 1, 1)
-    if flagTeamName == "Blue" then
-        flagTeamColor = Color3.fromRGB(0, 162, 255)
-    elseif flagTeamName == "Red" then
-        flagTeamColor = Color3.fromRGB(255, 75, 75)
-    end
+-- map message types to their sounds so we don't need to pair separate events
+local EVENT_SOUNDS = {
+    pickup = "Flag_taken",
+    returned = "Flag_return",
+    captured = "Flag_capture",
+}
 
-    local function colorToHex(c)
-        return string.format("#%02X%02X%02X", math.floor(c.R*255), math.floor(c.G*255), math.floor(c.B*255))
-    end
+-- queue and state
+local messageQueue = {}
+local processing = false
 
-    local whiteHex = "#FFFFFF"
-    local playerTeamHex = colorToHex(playerTeamColor)
-    local flagTeamHex = colorToHex(flagTeamColor)
+---------------------------------------------------------------------
+-- helpers
+---------------------------------------------------------------------
+local function colorToHex(c)
+    return string.format("#%02X%02X%02X", math.floor(c.R * 255), math.floor(c.G * 255), math.floor(c.B * 255))
+end
+
+local function teamHex(teamName)
+    if teamName == "Blue" then return colorToHex(Color3.fromRGB(0, 162, 255)) end
+    if teamName == "Red"  then return colorToHex(Color3.fromRGB(255, 75, 75)) end
+    return "#FFFFFF"
+end
+
+local function playLocalSound(soundName)
+    if not soundName then return end
+    local sounds = ReplicatedStorage:FindFirstChild("Sounds")
+    if not sounds then return end
+    local flagFolder = sounds:FindFirstChild("Flag")
+    if not flagFolder then return end
+    local s = flagFolder:FindFirstChild(soundName)
+    if not s or not s:IsA("Sound") then return end
+    local cam = workspace.CurrentCamera
+    if not cam then return end
+    local snd = s:Clone()
+    snd.Parent = cam
+    snd:Play()
+    task.delay((snd.TimeLength or 3) + 0.5, function()
+        if snd and snd.Parent then snd:Destroy() end
+    end)
+end
+
+---------------------------------------------------------------------
+-- build RichText for a queue item
+---------------------------------------------------------------------
+local function buildRichText(item)
+    local white = "#FFFFFF"
+    local pHex = teamHex(item.playerTeamName)
+    local fHex = teamHex(item.flagTeamName)
+    local teamWord = item.flagTeamName or ""
+
+    if item.eventType == "pickup" then
+        return string.format(
+            "<font color='%s'>%s</font><font color='%s'> picked up the </font><font color='%s'>%s</font><font color='%s'> Flag!</font>",
+            pHex, item.playerName or "", white, fHex, teamWord, white)
+    elseif item.eventType == "captured" then
+        return string.format(
+            "<font color='%s'>%s</font><font color='%s'> captured the </font><font color='%s'>%s</font><font color='%s'> Flag!</font>",
+            pHex, item.playerName or "", white, fHex, teamWord, white)
+    elseif item.eventType == "returned" then
+        return string.format(
+            "<font color='%s'>The </font><font color='%s'>%s</font><font color='%s'> Flag has been returned!</font>",
+            white, fHex, teamWord, white)
+    end
+    return item.playerName or ""
+end
+
+---------------------------------------------------------------------
+-- show one message for 3 seconds (2.6s visible + 0.4s fade)
+---------------------------------------------------------------------
+local function displayItem(item)
+    -- play associated sound immediately
+    local soundName = EVENT_SOUNDS[item.eventType]
+    if soundName then playLocalSound(soundName) end
 
     local label = Instance.new("TextLabel")
     label.Name = "FlagMsg"
@@ -49,81 +101,50 @@ local function showMessage(text, playerTeamName, flagTeamName)
     label.Font = Enum.Font.SourceSansBold
     label.TextScaled = true
     label.ZIndex = 100
+    label.Text = buildRichText(item)
     label.Parent = screenGui
-    -- set text using incoming string and team color information
-    -- expected `text` forms: "<PlayerName> picked up the <Team> Flag!" or "The <Team> Flag has been returned!"
-    local function makeRichText(msg)
-        -- determine team word (flag team preferred)
-        local teamWord = flagTeamName or playerTeamName or ""
-        -- if message contains ' picked up the ', color player name by playerTeamHex and the team word by flagTeamHex
-        local pickedIdx = string.find(msg, " picked up the ")
-        if pickedIdx then
-            local playerName = string.sub(msg, 1, pickedIdx - 1)
-            return string.format("<font color='%s'>%s</font><font color='%s'> picked up the </font><font color='%s'>%s</font><font color='%s'> Flag!</font>", playerTeamHex, playerName, whiteHex, flagTeamHex, teamWord, whiteHex)
+
+    -- visible for 2.6s then fade over 0.4s = 3s total
+    task.wait(2.6)
+    if label and label.Parent then
+        for i = 1, 8 do
+            label.TextTransparency = i / 8
+            label.TextStrokeTransparency = i / 8
+            task.wait(0.05)
         end
-        -- handle captures using ' captured the '
-        local capIdx = string.find(msg, " captured the ")
-        if capIdx then
-            local playerName = string.sub(msg, 1, capIdx - 1)
-            return string.format("<font color='%s'>%s</font><font color='%s'> captured the </font><font color='%s'>%s</font><font color='%s'> Flag!</font>", playerTeamHex, playerName, whiteHex, flagTeamHex, teamWord, whiteHex)
-        end
-        -- returned message: 'The <Team> Flag has been returned!'
-        local returnedIdx = string.find(msg, "The ")
-        if returnedIdx then
-            return string.format("<font color='%s'>The </font><font color='%s'>%s</font><font color='%s'> Flag has been returned!</font>", whiteHex, flagTeamHex, teamWord, whiteHex)
-        end
-        -- fallback: plain white
-        return string.format("<font color='%s'>%s</font>", whiteHex, msg)
+        if label and label.Parent then label:Destroy() end
     end
+end
 
-    label.Text = makeRichText(text)
-
-    -- fade out after 3 seconds
-    task.delay(3, function()
-        if label and label.Parent then
-            for i = 1, 10 do
-                label.TextTransparency = i / 10
-                label.TextStrokeTransparency = i / 10
-                task.wait(0.05)
-            end
-            if label and label.Parent then
-                label:Destroy()
-            end
+---------------------------------------------------------------------
+-- queue processor — one message at a time, 3s each
+---------------------------------------------------------------------
+local function processQueue()
+    if processing then return end
+    processing = true
+    task.spawn(function()
+        while #messageQueue > 0 do
+            local item = table.remove(messageQueue, 1)
+            displayItem(item)  -- blocks ~3s
         end
+        processing = false
     end)
 end
 
+---------------------------------------------------------------------
+-- listen for events
+---------------------------------------------------------------------
 FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName, flagTeamName)
-    if eventType == "pickup" then
-        -- color player name by their team (playerTeamName), and the flag word by flagTeamName
-        showMessage(playerName .. " picked up the " .. (flagTeamName or "") .. " Flag!", playerTeamName, flagTeamName)
-    elseif eventType == "returned" then
-        showMessage("The " .. (flagTeamName or "") .. " Flag has been returned!", nil, flagTeamName)
-    elseif eventType == "captured" then
-        -- show capture announcement
-        showMessage(playerName .. " captured the " .. (flagTeamName or "") .. " Flag!", playerTeamName, flagTeamName)
-    elseif eventType == "playSound" then
-        local soundName = playerName
-        -- play local sound from ReplicatedStorage.Sounds.Flag
-        local sounds = ReplicatedStorage:FindFirstChild("Sounds")
-        if sounds then
-            local flagFolder = sounds:FindFirstChild("Flag")
-            if flagFolder then
-                local s = flagFolder:FindFirstChild(soundName)
-                if s and s:IsA("Sound") then
-                    local cam = workspace.CurrentCamera
-                    if cam then
-                        local snd = s:Clone()
-                        snd.Parent = cam
-                        snd:Play()
-                        task.delay((snd.TimeLength or 3) + 0.5, function()
-                            if snd and snd.Parent then
-                                snd:Destroy()
-                            end
-                        end)
-                    end
-                end
-            end
-        end
+    -- ignore standalone playSound events; sounds are now driven by the message queue
+    if eventType == "playSound" then return end
+
+    if eventType == "pickup" or eventType == "returned" or eventType == "captured" then
+        table.insert(messageQueue, {
+            eventType = eventType,
+            playerName = playerName,
+            playerTeamName = playerTeamName,
+            flagTeamName = flagTeamName,
+        })
+        processQueue()
     end
 end)
