@@ -104,6 +104,12 @@ local function spawnProjectile(player, origin, initialVelocity)
             while parent and parent ~= Workspace do
                 local humanoid = parent:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then
+                    -- tag humanoid with who last damaged it
+                    pcall(function()
+                        humanoid:SetAttribute("lastDamagerUserId", player and player.UserId or nil)
+                        humanoid:SetAttribute("lastDamagerName", player and player.Name or nil)
+                        humanoid:SetAttribute("lastDamageTime", tick())
+                    end)
                     humanoid:TakeDamage(DAMAGE)
                     -- notify shooter client to play hitmarker
                     pcall(function()
@@ -169,19 +175,24 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         end
 
         -- process finalHit (could be the original camera hit or a closer gun-side obstruction)
-        local inst = finalHit.Instance
+                local inst = finalHit.Instance
         local parent = inst
         while parent and parent ~= Workspace do
-            local humanoid = parent:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                humanoid:TakeDamage(DAMAGE)
-                pcall(function()
-                    if fireHit then
-                        fireHit:FireClient(player)
+                    local humanoid = parent:FindFirstChildOfClass("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        pcall(function()
+                            humanoid:SetAttribute("lastDamagerUserId", player and player.UserId or nil)
+                            humanoid:SetAttribute("lastDamagerName", player and player.Name or nil)
+                            humanoid:SetAttribute("lastDamageTime", tick())
+                        end)
+                        humanoid:TakeDamage(DAMAGE)
+                        pcall(function()
+                            if fireHit then
+                                fireHit:FireClient(player)
+                            end
+                        end)
+                        break
                     end
-                end)
-                break
-            end
             parent = parent.Parent
         end
 
@@ -241,6 +252,11 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         while parent and parent ~= Workspace do
             local humanoid = parent:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health > 0 then
+                pcall(function()
+                    humanoid:SetAttribute("lastDamagerUserId", player and player.UserId or nil)
+                    humanoid:SetAttribute("lastDamagerName", player and player.Name or nil)
+                    humanoid:SetAttribute("lastDamageTime", tick())
+                end)
                 humanoid:TakeDamage(DAMAGE)
                 pcall(function()
                     if fireHit then
