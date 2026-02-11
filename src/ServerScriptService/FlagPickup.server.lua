@@ -10,6 +10,22 @@ local FlagStatus = Instance.new("RemoteEvent")
 FlagStatus.Name = "FlagStatus"
 FlagStatus.Parent = ReplicatedStorage
 
+-- helper: play a sound from ReplicatedStorage.Sounds.Flag at a given part
+local function playFlagSound(soundName, part)
+    if not part then return end
+    local sounds = ReplicatedStorage:FindFirstChild("Sounds")
+    if not sounds then return end
+    local flagFolder = sounds:FindFirstChild("Flag")
+    if not flagFolder then return end
+    local s = flagFolder:FindFirstChild(soundName)
+    if s and s:IsA("Sound") then
+        local snd = s:Clone()
+        snd.Parent = part
+        snd:Play()
+        Debris:AddItem(snd, 5)
+    end
+end
+
 -- Configuration: possible flag model names to look for
 local FLAG_NAMES = {"BlueFlag", "RedFlag", "Blue Flag", "Red Flag"}
 
@@ -19,6 +35,10 @@ local function getFlagTeamFromName(name)
     if string.find(n, "red") then return "Red" end
     return nil
 end
+
+local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=CFrame}
+local carrying = {} -- map player -> data {team, modelClone}
+local captureDebounce = {}
 
 local function makeCarryClone(originalModel, character)
     if not originalModel or not character then return nil end
@@ -96,15 +116,21 @@ local function respawnFlag(team)
     if not info or not info.original then return end
     local spawnModel = info.original:Clone()
     spawnModel.Parent = Workspace
-    if spawnModel.PrimaryPart and info.spawnCFrame then
+    -- ensure PrimaryPart exists so we can position the model correctly
+    if not spawnModel.PrimaryPart then
+        for _, d in ipairs(spawnModel:GetDescendants()) do
+            if d:IsA("BasePart") then
+                spawnModel.PrimaryPart = d
+                break
+            end
+        end
+    end
+    if info.spawnCFrame and spawnModel.PrimaryPart then
         spawnModel:SetPrimaryPartCFrame(info.spawnCFrame)
     end
     setupFlagModel(spawnModel)
     info.model = spawnModel
 end
-
-local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=CFrame}
-local carrying = {} -- map player -> data {team, modelClone}
 
 local function findPickupPart(model)
     if not model or not model:IsA("Model") then return nil end
@@ -159,8 +185,11 @@ function setupFlagModel(model)
         if carried then
             carrying[pl] = {team = team, model = carried}
             pl:SetAttribute("CarryingFlag", team)
-            -- announce pickup to all clients
-            FlagStatus:FireAllClients("pickup", pl.Name, team)
+            -- announce pickup to all clients (send player team and flag team)
+            local playerTeamName = (pl.Team and pl.Team.Name) or nil
+            FlagStatus:FireAllClients("pickup", pl.Name, playerTeamName, team)
+            -- notify clients to play pickup sound locally
+            FlagStatus:FireAllClients("playSound", "Flag_taken")
             -- connect death handler to drop flag
             local function onDied()
                 -- drop at HRP position
@@ -246,8 +275,10 @@ function setupFlagModel(model)
                         local standName = team .. "FlagStand"
                         local stand = Workspace:FindFirstChild(standName, true)
                         if stand and stand:IsA("BasePart") then
+                            -- apply same carried rotation when returning to the stand
+                            local carryRot = CFrame.Angles(math.rad(180), math.rad(180), math.rad(90)) * CFrame.Angles(math.rad(180), 0, 0)
                             if dropModel.PrimaryPart then
-                                dropModel:SetPrimaryPartCFrame(stand.CFrame)
+                                dropModel:SetPrimaryPartCFrame(stand.CFrame * CFrame.new(0, 6, 0) * carryRot)
                             else
                                 for _, d in ipairs(dropModel:GetDescendants()) do
                                     if d:IsA("BasePart") then
@@ -256,15 +287,18 @@ function setupFlagModel(model)
                                     end
                                 end
                                 if dropModel.PrimaryPart then
-                                    dropModel:SetPrimaryPartCFrame(stand.CFrame)
+                                    dropModel:SetPrimaryPartCFrame(stand.CFrame * CFrame.new(0, 6, 0) * carryRot)
                                 end
                             end
                             setupFlagModel(dropModel)
+                            -- notify clients to play return sound locally
+                            FlagStatus:FireAllClients("playSound", "Flag_return")
                             -- announce return to all clients
-                            FlagStatus:FireAllClients("returned", nil, team)
+                            FlagStatus:FireAllClients("returned", nil, nil, team)
                         else
                             respawnFlag(team)
-                            FlagStatus:FireAllClients("returned", nil, team)
+                            FlagStatus:FireAllClients("playSound", "Flag_return")
+                            FlagStatus:FireAllClients("returned", nil, nil, team)
                         end
 
                         if gui then pcall(function() gui:Destroy() end) end
@@ -273,6 +307,8 @@ function setupFlagModel(model)
                     -- ensure original eventually respawns if something went wrong
                     task.delay(8, function()
                         respawnFlag(team)
+                        FlagStatus:FireAllClients("playSound", "Flag_return")
+                        FlagStatus:FireAllClients("returned", nil, nil, team)
                     end)
                 end
             end
@@ -306,6 +342,84 @@ Workspace.ChildAdded:Connect(function(child)
             setupFlagModel(child)
             break
         end
+    end
+end)
+
+-- ensure ScoreUpdate RemoteEvent exists for HUD updates
+local ScoreUpdate = ReplicatedStorage:FindFirstChild("ScoreUpdate")
+if not ScoreUpdate then
+    ScoreUpdate = Instance.new("RemoteEvent")
+    ScoreUpdate.Name = "ScoreUpdate"
+    ScoreUpdate.Parent = ReplicatedStorage
+end
+
+-- helper: award points to a team (fires client HUD update)
+local function awardPoints(teamName, points)
+    if not teamName or type(points) ~= "number" then return end
+    ScoreUpdate:FireAllClients(teamName, points, false)
+end
+
+-- Stand capture detection: when a player carrying an enemy flag touches their own stand
+local function setupStand(standPart)
+    if not standPart or not standPart:IsA("BasePart") then return end
+    local standTeam = getFlagTeamFromName(standPart.Name)
+    if not standTeam then return end
+
+    standPart.Touched:Connect(function(hit)
+        local char = hit and hit:FindFirstAncestorOfClass("Model")
+        if not char then return end
+        local pl = Players:GetPlayerFromCharacter(char)
+        if not pl then return end
+        -- must have a humanoid and be alive
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return end
+        -- player must belong to the stand's team
+        if not pl.Team or pl.Team.Name ~= standTeam then return end
+        -- player must be carrying a flag, and it must be the enemy flag (not their own)
+        local carry = carrying[pl]
+        if not carry then return end
+        local flagTeam = carry.team
+        if flagTeam == standTeam then return end
+
+        -- debounce per player to avoid multiple triggers
+        if captureDebounce[pl] then return end
+        captureDebounce[pl] = true
+        task.delay(1, function() captureDebounce[pl] = nil end)
+
+        -- award points to the player's team
+        local capturingTeamName = pl.Team and pl.Team.Name or nil
+        awardPoints(capturingTeamName, 100)
+
+        -- announce capture to clients
+        local playerTeamName = capturingTeamName
+        FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)
+        FlagStatus:FireAllClients("playSound", "Flag_capture")
+
+        -- cleanup carried model and state
+        if carry.model then
+            pcall(function() carry.model:Destroy() end)
+        end
+        carrying[pl] = nil
+        pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+
+        -- respawn the captured flag back to its stand after a short delay
+        task.delay(5, function()
+            respawnFlag(flagTeam)
+            FlagStatus:FireAllClients("returned", nil, nil, flagTeam)
+            FlagStatus:FireAllClients("playSound", "Flag_return")
+        end)
+    end)
+end
+
+-- wire up existing stands and future additions
+for _, obj in ipairs(Workspace:GetDescendants()) do
+    if obj:IsA("BasePart") and (obj.Name == "BlueFlagStand" or obj.Name == "RedFlagStand") then
+        setupStand(obj)
+    end
+end
+Workspace.DescendantAdded:Connect(function(desc)
+    if desc:IsA("BasePart") and (desc.Name == "BlueFlagStand" or desc.Name == "RedFlagStand") then
+        setupStand(desc)
     end
 end)
 
