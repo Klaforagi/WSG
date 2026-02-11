@@ -28,6 +28,14 @@ if not fireAck then
     fireAck.Parent = ReplicatedStorage
 end
 
+local HIT_EVENT_NAME = "ToolGunHit"
+local fireHit = ReplicatedStorage:FindFirstChild(HIT_EVENT_NAME)
+if not fireHit then
+    fireHit = Instance.new("RemoteEvent")
+    fireHit.Name = HIT_EVENT_NAME
+    fireHit.Parent = ReplicatedStorage
+end
+
 -- Create the tool template in StarterPack if missing
 local TOOL_NAME = "ToolGun"
 local existing = StarterPack:FindFirstChild(TOOL_NAME)
@@ -60,7 +68,7 @@ local psize = TOOLCFG.projectile_size or {0.2, 0.2, 0.2}
 local PROJECTILE_SIZE = Vector3.new(psize[1], psize[2], psize[3])
 local BULLET_DROP = TOOLCFG.bulletdrop or 9.8
 
-local function spawnProjectile(player, origin, direction)
+local function spawnProjectile(player, origin, initialVelocity)
     local params = RaycastParams.new()
     params.FilterDescendantsInstances = {player.Character}
     params.FilterType = Enum.RaycastFilterType.Blacklist
@@ -77,7 +85,7 @@ local function spawnProjectile(player, origin, direction)
     visual.Parent = Workspace
 
     local lastPos = origin
-    local velocity = direction * PROJECTILE_SPEED
+    local velocity = initialVelocity
     local startTime = tick()
     local conn
     conn = RunService.Heartbeat:Connect(function(dt)
@@ -97,6 +105,12 @@ local function spawnProjectile(player, origin, direction)
                 local humanoid = parent:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then
                     humanoid:TakeDamage(DAMAGE)
+                    -- notify shooter client to play hitmarker
+                    pcall(function()
+                        if fireHit then
+                            fireHit:FireClient(player)
+                        end
+                    end)
                     break
                 end
                 parent = parent.Parent
@@ -117,10 +131,10 @@ local function spawnProjectile(player, origin, direction)
     end)
 end
 
-fireEvent.OnServerEvent:Connect(function(player, origin, direction)
+fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOrigin)
     print("[ToolGun.server] OnServerEvent from", player and player.Name)
-    -- basic validation
-    if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then return end
+    -- basic validation of types
+    if typeof(camOrigin) ~= "Vector3" or typeof(camDirection) ~= "Vector3" or typeof(gunOrigin) ~= "Vector3" then return end
     if not player or not player.Character then return end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
@@ -131,13 +145,131 @@ fireEvent.OnServerEvent:Connect(function(player, origin, direction)
     if last and now - last < COOLDOWN_SERVER then return end
     lastFire[player] = now
 
-    -- validate origin near player's camera/character (prevent spoof)
-    if (origin - hrp.Position).Magnitude > 20 then return end
+    -- basic proximity checks (allow some leeway for camera offsets)
+    if (gunOrigin - hrp.Position).Magnitude > 60 then return end
+    if (camOrigin - hrp.Position).Magnitude > 120 then return end
 
-    -- spawn a server-authoritative projectile that moves over time and raycasts each frame
-    spawnProjectile(player, origin, direction)
-    -- notify client to play fire sound/feedback
+    -- perform a server-side hitscan from the camera ray first so shots go where the player's cursor is
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = {player.Character}
+    params.FilterType = Enum.RaycastFilterType.Blacklist
+    params.IgnoreWater = true
+
+    local rayDir = camDirection.Unit
+    local rayResult = Workspace:Raycast(camOrigin, rayDir * RANGE, params)
+    if rayResult and rayResult.Instance then
+        -- camera ray hit something; ensure there's no obstruction between gun muzzle and that hit
+        local camHitPos = rayResult.Position
+        local toCamHit = camHitPos - gunOrigin
+        local gunBlock = Workspace:Raycast(gunOrigin, toCamHit, params)
+        local finalHit = rayResult
+        if gunBlock and gunBlock.Instance then
+            -- there is something between the gun and the camera hit; prefer the closer gun-side hit
+            finalHit = gunBlock
+        end
+
+        -- process finalHit (could be the original camera hit or a closer gun-side obstruction)
+        local inst = finalHit.Instance
+        local parent = inst
+        while parent and parent ~= Workspace do
+            local humanoid = parent:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                humanoid:TakeDamage(DAMAGE)
+                pcall(function()
+                    if fireHit then
+                        fireHit:FireClient(player)
+                    end
+                end)
+                break
+            end
+            parent = parent.Parent
+        end
+
+        coroutine.wrap(function()
+            local hitPos = finalHit.Position
+            local gunPos = gunOrigin or camOrigin
+            local beam = Instance.new("Part")
+            beam.Name = "ToolGunServerTracer"
+            local dir = (hitPos - gunPos)
+            local len = dir.Magnitude
+            beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
+            beam.CFrame = CFrame.new(gunPos + dir/2, hitPos)
+            beam.Anchored = true
+            beam.CanCollide = false
+            beam.Material = Enum.Material.Neon
+            beam.Color = Color3.fromRGB(255, 120, 80)
+            beam.Parent = Workspace
+            game:GetService("Debris"):AddItem(beam, 0.12)
+        end)()
+
+        pcall(function()
+            if fireAck then
+                fireAck:FireClient(player, gunOrigin, finalHit.Position)
+            end
+        end)
+        return
+    end
+
+    -- if the camera ray missed, check if there's an obstruction between the gun and the camera aim direction
+    local aimPos = camOrigin + rayDir * RANGE
+    local gunObstruction = Workspace:Raycast(gunOrigin, rayDir * RANGE, params)
+    if gunObstruction and gunObstruction.Instance then
+        -- gun is immediately obstructed; spawn server tracer to obstruction and notify client
+        coroutine.wrap(function()
+            local hitPos = gunObstruction.Position
+            local beam = Instance.new("Part")
+            beam.Name = "ToolGunServerTracer"
+            local dir = (hitPos - gunOrigin)
+            local len = dir.Magnitude
+            beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
+            beam.CFrame = CFrame.new(gunOrigin + dir/2, hitPos)
+            beam.Anchored = true
+            beam.CanCollide = false
+            beam.Material = Enum.Material.Neon
+            beam.Color = Color3.fromRGB(255, 120, 80)
+            beam.Parent = Workspace
+            game:GetService("Debris"):AddItem(beam, 0.12)
+        end)()
+        -- notify client of obstruction
+        pcall(function()
+            if fireAck then
+                fireAck:FireClient(player, gunOrigin, gunObstruction.Position)
+            end
+        end)
+        -- attempt to apply damage if it's a humanoid
+        local parent = gunObstruction.Instance
+        while parent and parent ~= Workspace do
+            local humanoid = parent:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                humanoid:TakeDamage(DAMAGE)
+                pcall(function()
+                    if fireHit then
+                        fireHit:FireClient(player)
+                    end
+                end)
+                break
+            end
+            parent = parent.Parent
+        end
+        return
+    end
+    local displacement = aimPos - gunOrigin
+    local distance = displacement.Magnitude
+    local initVel
+    if distance <= 0.001 then
+        initVel = hrp.CFrame.LookVector * PROJECTILE_SPEED
+    else
+        local t = distance / PROJECTILE_SPEED
+        if t <= 0 then t = 0.01 end
+        local g = Vector3.new(0, -BULLET_DROP, 0)
+        initVel = (displacement / t) - (0.5 * g * t)
+    end
+    spawnProjectile(player, gunOrigin, initVel)
+    -- notify client with the gun origin and aimed position so the client can spawn a local tracer
     pcall(function()
-        fireAck:FireClient(player)
+        if fireAck then
+            local aimPos = aimPos or (camOrigin + rayDir * RANGE)
+            fireAck:FireClient(player, gunOrigin, aimPos)
+        end
     end)
 end)

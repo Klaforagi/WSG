@@ -8,7 +8,7 @@ local defaults = {
     range = 600,
     projectile_lifetime = 10,
     projectile_size = {0.4, 0.4, 0.4}, -- table to serialize Vector3
-    bulletdrop = 25.8, -- studs per second squared (gravity-like pull)
+    bulletdrop = 0, -- studs per second squared (gravity-like pull)
 }
 
 local function readOverrides()
