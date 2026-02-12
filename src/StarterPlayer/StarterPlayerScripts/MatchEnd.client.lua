@@ -56,6 +56,7 @@ local function showEnd(resultType, winner)
         title.Text = "SUDDEN DEATH"
         title.TextColor3 = Color3.fromRGB(255, 200, 60)
         subtitle.Text = "Next point wins!"
+        pcall(function() playGameSound("SuddenDeath") end)
     elseif resultType == "win" and winner then
         title.Text = string.upper(winner) .. " TEAM WINS!"
         subtitle.Text = "New match starting soon..."
@@ -81,10 +82,55 @@ local function showEnd(resultType, winner)
     end)
 end
 
+-- play a sound from ReplicatedStorage.Sounds.Game (search recursively)
+local function playGameSound(soundName)
+    if not soundName then return end
+    local sounds = ReplicatedStorage:FindFirstChild("Sounds")
+    if not sounds then
+        warn("playGameSound: ReplicatedStorage.Sounds missing")
+        return
+    end
+    local gameFolder = sounds:FindFirstChild("Game")
+    if not gameFolder then
+        warn("playGameSound: Sounds.Game folder missing")
+        return
+    end
+    -- search recursively for the sound name to be more robust
+    local s = gameFolder:FindFirstChild(soundName, true)
+    if not s then
+        warn("playGameSound: sound not found:", soundName)
+        return
+    end
+    -- if the found instance is not a Sound, try to find a Sound descendant
+    local soundInst = nil
+    if s:IsA("Sound") then
+        soundInst = s
+    else
+        soundInst = s:FindFirstChildOfClass("Sound") or s:FindFirstChild("ClockTick")
+    end
+    if not soundInst or not soundInst:IsA("Sound") then
+        warn("playGameSound: no Sound instance for:", soundName)
+        return
+    end
+    local cam = workspace.CurrentCamera
+    local parent = cam or playerGui
+    local snd = soundInst:Clone()
+    snd.Parent = parent
+    snd:Play()
+    task.delay((snd.TimeLength or 2) + 0.2, function()
+        if snd and snd.Parent then snd:Destroy() end
+    end)
+    -- debug
+    print("playGameSound: playing", soundName)
+end
+
 -- listen for MatchEnd
 local matchEndEvent = ReplicatedStorage:WaitForChild("MatchEnd")
 matchEndEvent.OnClientEvent:Connect(function(resultType, winner)
     showEnd(resultType, winner)
+    if resultType == "sudden" then
+        pcall(function() playGameSound("SuddenDeath") end)
+    end
 end)
 
 -- listen for MatchStart to hide the end screen when a new match begins

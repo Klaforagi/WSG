@@ -231,7 +231,25 @@ local function refresh()
     timerLabel.Text = formatTime(remaining)
 end
 
--- Timer loop
+-- play the ticking sound from ReplicatedStorage.Sounds.Game.ClockTick
+local function playTickSound()
+    local sounds = ReplicatedStorage:FindFirstChild("Sounds")
+    if not sounds then return end
+    local gameFolder = sounds:FindFirstChild("Game")
+    if not gameFolder then return end
+    local tick = gameFolder:FindFirstChild("ClockTick")
+    if not tick or not tick:IsA("Sound") then return end
+    local ok, cam = pcall(function() return workspace.CurrentCamera end)
+    local parent = (ok and cam) or playerGui
+    local snd = tick:Clone()
+    snd.Parent = parent
+    snd:Play()
+    task.delay((snd.TimeLength or 0.6) + 0.2, function()
+        if snd and snd.Parent then snd:Destroy() end
+    end)
+end
+
+-- Timer loop (plays tick on 10..1)
 spawn(function()
     while true do
         if running then
@@ -239,6 +257,10 @@ spawn(function()
             if remaining < 0 then
                 running = false
                 remaining = 0
+            end
+            -- play tick when hitting the last 10 seconds (10..1)
+            if remaining <= 10 and remaining > 0 then
+                pcall(playTickSound)
             end
             refresh()
         end
