@@ -107,7 +107,7 @@ local BULLET_DROP = 9.8
 
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
-local function applyDamage(player, humanoid, victimModel, damage, isHeadshot)
+local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos)
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
@@ -116,7 +116,7 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot)
     -- apply damage (server may already have multiplied for headshots)
     humanoid:TakeDamage(damage)
     pcall(function()
-        if fireHit then fireHit:FireClient(player, isHeadshot == true) end
+        if fireHit then fireHit:FireClient(player, damage, isHeadshot == true, hitPart, hitPos) end
     end)
     -- if this was a headshot, increment a simple per-player headshot counter and notify the shooter
     if isHeadshot then
@@ -226,7 +226,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         local mult = (projCfg and projCfg.headshot_multiplier) or 1
                         finalDamage = pDamage * mult
                     end
-                    applyDamage(player, humanoid, parent, finalDamage, isHeadshot)
+                    applyDamage(player, humanoid, parent, finalDamage, isHeadshot, inst, rayResult.Position)
                     -- play sniper headshot sound at victim head when appropriate
                     if isHeadshot then
                         local ok, _ = pcall(function()

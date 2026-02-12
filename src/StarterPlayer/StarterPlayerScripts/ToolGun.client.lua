@@ -274,11 +274,11 @@ end)
 
 -- play hitmarker when server notifies a hit
 if fireHit and fireHit:IsA("RemoteEvent") then
-    fireHit.OnClientEvent:Connect(function(isHeadshot)
+    fireHit.OnClientEvent:Connect(function(damage, isHeadshot, hitPart, hitPos)
         playHitSound()
         -- choose color: red for headshot, black otherwise
         local color = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(0, 0, 0)
-        -- show an X at the cursor briefly
+        -- hitmarker X
         if cursorGui.Parent then
             hitLabel.TextColor3 = color
             hitLabel.Visible = true
@@ -286,7 +286,6 @@ if fireHit and fireHit:IsA("RemoteEvent") then
                 hitLabel.Visible = false
             end)
         else
-            -- fallback: spawn a tiny transient GUI at current mouse position
             local mpos = UserInputService:GetMouseLocation()
             local tempGui = Instance.new("ScreenGui")
             tempGui.IgnoreGuiInset = true
@@ -307,6 +306,57 @@ if fireHit and fireHit:IsA("RemoteEvent") then
                 tempGui:Destroy()
             end)
         end
+
+        -- floating damage number at hit location/part
+        spawn(function()
+            local TweenService = game:GetService("TweenService")
+            local parentPart = nil
+            local createdAnchor = nil
+            if hitPart and typeof(hitPart) == "Instance" and hitPart:IsA("BasePart") then
+                parentPart = hitPart
+            elseif hitPos and typeof(hitPos) == "Vector3" then
+                createdAnchor = Instance.new("Part")
+                createdAnchor.Name = "_DamageAnchor"
+                createdAnchor.Size = Vector3.new(0.2,0.2,0.2)
+                createdAnchor.Transparency = 1
+                createdAnchor.Anchored = true
+                createdAnchor.CanCollide = false
+                createdAnchor.CFrame = CFrame.new(hitPos)
+                createdAnchor.Parent = workspace
+                parentPart = createdAnchor
+            end
+            if not parentPart then return end
+
+            local gui = Instance.new("BillboardGui")
+            gui.Name = "DamagePopup"
+            gui.Size = UDim2.new(0,100,0,40)
+            gui.Adornee = parentPart
+            gui.AlwaysOnTop = true
+            gui.StudsOffset = Vector3.new(0, 2, 0)
+            gui.Parent = parentPart
+
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(1,0,1,0)
+            label.BackgroundTransparency = 1
+            label.Text = tostring(math.floor(damage))
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 24
+            label.TextColor3 = isHeadshot and Color3.fromRGB(255,75,75) or Color3.fromRGB(255,255,255)
+            label.TextStrokeTransparency = 0.5
+            label.Parent = gui
+
+            -- animate upward and fade
+            local goal = {StudsOffset = gui.StudsOffset + Vector3.new(0,1.2,0)}
+            local tween = TweenService:Create(gui, TweenInfo.new(0.9, Enum.EasingStyle.Quad), goal)
+            tween:Play()
+            for i = 0, 1, 0.06 do
+                label.TextTransparency = i
+                task.wait(0.06)
+            end
+            tween:Cancel()
+            gui:Destroy()
+            if createdAnchor and createdAnchor.Parent then createdAnchor:Destroy() end
+        end)
     end)
 end
 
