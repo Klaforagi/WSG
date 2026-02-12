@@ -130,12 +130,19 @@ local function getToolCfgForTool(tool)
     return cfg
 end
 
-local function playFireSound()
+local function playFireSound(toolName)
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     if not soundsFolder then return end
     local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
     if not toolgunFolder then return end
-    local template = toolgunFolder:FindFirstChild("Gun_shoot")
+    local template
+    if toolName and tostring(toolName):lower():find("sniper") then
+        template = toolgunFolder:FindFirstChild("Sniper_shoot") or toolgunFolder:FindFirstChild("Sniper_Shoot")
+    elseif toolName and tostring(toolName):lower():find("pistol") then
+        template = toolgunFolder:FindFirstChild("Pistol_shoot") or toolgunFolder:FindFirstChild("Pistol_Shoot")
+    else
+        template = toolgunFolder:FindFirstChild("Gun_shoot")
+    end
     if not template or not template:IsA("Sound") then return end
     local s = template:Clone()
     s.Parent = workspace.CurrentCamera or workspace
@@ -261,16 +268,19 @@ local function attachTool(tool)
 end
 
 -- single global listener for server fire ack (play sound only; server-side tracer Part handles visuals)
-fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos)
-    playFireSound()
+fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos, toolName)
+    playFireSound(toolName)
 end)
 
 -- play hitmarker when server notifies a hit
 if fireHit and fireHit:IsA("RemoteEvent") then
-    fireHit.OnClientEvent:Connect(function()
+    fireHit.OnClientEvent:Connect(function(isHeadshot)
         playHitSound()
+        -- choose color: red for headshot, black otherwise
+        local color = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(0, 0, 0)
         -- show an X at the cursor briefly
         if cursorGui.Parent then
+            hitLabel.TextColor3 = color
             hitLabel.Visible = true
             task.delay(0.25, function()
                 hitLabel.Visible = false
@@ -290,7 +300,7 @@ if fireHit and fireHit:IsA("RemoteEvent") then
             temp.Text = "X"
             temp.Font = Enum.Font.GothamBold
             temp.TextSize = 14
-            temp.TextColor3 = Color3.fromRGB(0,0,0)
+            temp.TextColor3 = color
             temp.TextTransparency = 0.5
             temp.Parent = tempGui
             task.delay(0.25, function()

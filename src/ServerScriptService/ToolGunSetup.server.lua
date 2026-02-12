@@ -62,6 +62,7 @@ local function ensureEvent(name)
     return ev
 end
 local KillFeedEvent = ensureEvent("KillFeed")
+local HeadshotEvent = ensureEvent("Headshot")
 local KILL_POINTS = 10
 
 -- BindableEvent for score awards (listened to by GameManager)
@@ -106,16 +107,29 @@ local BULLET_DROP = 9.8
 
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
-local function applyDamage(player, humanoid, victimModel, damage)
+local function applyDamage(player, humanoid, victimModel, damage, isHeadshot)
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
         humanoid:SetAttribute("lastDamageTime", tick())
     end)
+    -- apply damage (server may already have multiplied for headshots)
     humanoid:TakeDamage(damage)
     pcall(function()
-        if fireHit then fireHit:FireClient(player) end
+        if fireHit then fireHit:FireClient(player, isHeadshot == true) end
     end)
+    -- if this was a headshot, increment a simple per-player headshot counter and notify the shooter
+    if isHeadshot then
+        pcall(function()
+            if player and player.SetAttribute then
+                local n = player:GetAttribute("headshotCount") or 0
+                player:SetAttribute("headshotCount", n + 1)
+            end
+            if HeadshotEvent then
+                HeadshotEvent:FireClient(player, victimModel and victimModel.Name or "Unknown")
+            end
+        end)
+    end
     if humanoid.Health <= 0 then
         humanoid:SetAttribute("_killCredited", true)
         -- immediate kill credit
@@ -152,7 +166,7 @@ local function applyDamage(player, humanoid, victimModel, damage)
     end
 end
 
-local function spawnProjectile(player, origin, initialVelocity, projCfg)
+local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName)
     -- projCfg contains per-tool overrides: damage, range, bulletdrop, projectile_size, projectile_lifetime
     local pDamage = (projCfg and projCfg.damage) or DAMAGE
     local pRange = (projCfg and projCfg.range) or RANGE
@@ -203,7 +217,51 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg)
             while parent and parent ~= Workspace do
                 local humanoid = parent:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then
-                    applyDamage(player, humanoid, parent, pDamage)
+                    local isHeadshot = false
+                    if inst and inst.Name and tostring(inst.Name):lower():find("head") then
+                        isHeadshot = true
+                    end
+                    local finalDamage = pDamage
+                    if isHeadshot then
+                        local mult = (projCfg and projCfg.headshot_multiplier) or 1
+                        finalDamage = pDamage * mult
+                    end
+                    applyDamage(player, humanoid, parent, finalDamage, isHeadshot)
+                    -- play sniper headshot sound at victim head when appropriate
+                    if isHeadshot then
+                        local ok, _ = pcall(function()
+                            -- determine if this was a sniper by toolName or preset key
+                            local isSniper = false
+                            if toolName and tostring(toolName):lower():find("sniper") then
+                                isSniper = true
+                            else
+                                -- try to detect from projCfg name hints
+                                if projCfg and projCfg.bulletspeed and projCfg.bulletspeed > 1500 then
+                                    isSniper = true
+                                end
+                            end
+                            if isSniper then
+                                local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                                if soundsFolder then
+                                    local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
+                                    if toolgunFolder then
+                                        local template = toolgunFolder:FindFirstChild("Sniper_headshot") or toolgunFolder:FindFirstChild("Sniper_Headshot")
+                                        if template and template:IsA("Sound") then
+                                            local s = template:Clone()
+                                            -- parent to the hit part if possible so it originates from the head
+                                            if inst and inst:IsA("BasePart") then
+                                                s.Parent = inst
+                                            else
+                                                s.Parent = Workspace
+                                            end
+                                            s:Play()
+                                            game:GetService("Debris"):AddItem(s, 4)
+                                        end
+                                    end
+                                end
+                            end
+                        end)
+                    end
                     break
                 end
                 parent = parent.Parent
@@ -304,11 +362,11 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
             initVel = (displacement / t) - (0.5 * g * t)
         end
 
-        spawnProjectile(player, gunOrigin, initVel, tCfg)
+        spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
 
         pcall(function()
             if fireAck then
-                fireAck:FireClient(player, gunOrigin, hitPos)
+                fireAck:FireClient(player, gunOrigin, hitPos, toolName)
             end
         end)
         return
@@ -340,7 +398,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         -- notify client of obstruction
         pcall(function()
             if fireAck then
-                fireAck:FireClient(player, gunOrigin, gunObstruction.Position)
+                fireAck:FireClient(player, gunOrigin, gunObstruction.Position, toolName)
             end
         end)
         -- instead of applying damage immediately, spawn projectile toward the obstruction
@@ -358,7 +416,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
             local g = Vector3.new(0, -tBULLETDROP, 0)
             initVel = (displacement / t) - (0.5 * g * t)
         end
-        spawnProjectile(player, gunOrigin, initVel, tCfg)
+        spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
         return
     end
     local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
@@ -374,12 +432,12 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         local g = Vector3.new(0, -tBULLETDROP, 0)
         initVel = (displacement / t) - (0.5 * g * t)
     end
-    spawnProjectile(player, gunOrigin, initVel, tCfg)
+    spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
     -- notify client with the gun origin and aimed position so the client can spawn a local tracer
     pcall(function()
         if fireAck then
             local aimPos = aimPos or (camOrigin + rayDir * tRANGE)
-            fireAck:FireClient(player, gunOrigin, aimPos)
+            fireAck:FireClient(player, gunOrigin, aimPos, toolName)
         end
     end)
 end)
