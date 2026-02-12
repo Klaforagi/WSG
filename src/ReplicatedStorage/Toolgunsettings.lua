@@ -8,8 +8,8 @@ local presets = {
         bulletspeed = 300,
         range = 450,
         projectile_lifetime = 2,
-        projectile_size = {0.3,0.3,0.3},
-        bulletdrop = 1,
+        projectile_size = {0.3,0.3,0.4},
+        bulletdrop = 0,
         showTracer = false,
     },
     sniper = {

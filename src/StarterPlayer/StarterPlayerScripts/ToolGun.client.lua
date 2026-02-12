@@ -174,19 +174,17 @@ local function attachTool(tool)
     -- continuous fire while holding left mouse
     local mouse = player:GetMouse()
     local holding = false
+    local lastShot = 0
     local function startFiring()
         if holding then return end
         holding = true
         firing[tool] = true
         spawn(function()
             while holding and tool and tool.Parent and firing[tool] do
-                -- basic client-side cooldown to avoid spam
-                if tool:GetAttribute("_canFire") == false then
-                    -- wait a short moment and continue
-                    task.wait(0.05)
-                else
-                    tool:SetAttribute("_canFire", false)
-                    print("[ToolGun.client] Firing (hold) from", tool:GetFullName())
+                local now = tick()
+                if now - lastShot >= (toolCooldown or COOLDOWN) then
+                    lastShot = now
+                    print("[ToolGun.client] Firing (hold) from", tool:GetFullName(), "at", now)
                     local origin
                     if tool:FindFirstChild("Handle") and tool.Handle:IsA("BasePart") then
                         origin = tool.Handle.Position
@@ -206,16 +204,10 @@ local function attachTool(tool)
                     local ray = camera:ScreenPointToRay(mx, my)
                     local camOrigin = ray.Origin
                     local camDir = ray.Direction.Unit
-                    -- send camera origin + direction and the gun origin so the server can hitscan and/or spawn visuals
                     local gunOrigin = origin
                     fireEvent:FireServer(camOrigin, camDir, gunOrigin, tool.Name)
-                    task.delay(toolCooldown, function()
-                        if tool and tool.Parent then
-                            tool:SetAttribute("_canFire", true)
-                        end
-                    end)
                 end
-                task.wait(0.05)
+                task.wait(0.02)
             end
         end)
     end

@@ -180,7 +180,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg)
     visual.CanCollide = false
     visual.Anchored = true
     visual.Material = Enum.Material.Neon
-    visual.Color = Color3.fromRGB(255, 220, 100)
+    visual.Color = getTracerColor(player)
     visual.Parent = Workspace
 
     local lastPos = origin
