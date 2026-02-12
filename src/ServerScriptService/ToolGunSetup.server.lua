@@ -105,6 +105,38 @@ local PROJECTILE_LIFETIME = 5 -- seconds
 local PROJECTILE_SIZE = Vector3.new(0.2, 0.2, 0.2)
 local BULLET_DROP = 9.8
 
+-- Raycast helper that skips Accessory parts so bullets pass through hats/attachments.
+local function raycastSkippingAccessories(origin, direction, rayParams)
+    local maxIter = 10
+    local start = origin
+    local remaining = direction
+    for i = 1, maxIter do
+        if not remaining or remaining.Magnitude <= 0.001 then break end
+        local result = Workspace:Raycast(start, remaining, rayParams)
+        if not result or not result.Instance then
+            return result
+        end
+        local inst = result.Instance
+        local acc = nil
+        if inst and inst.FindFirstAncestorWhichIsA then
+            acc = inst:FindFirstAncestorWhichIsA("Accessory")
+        end
+        if acc then
+            -- skip accessory: continue raycast just past the hit position
+            local hitPos = result.Position
+            local dirUnit = remaining.Unit
+            local traveled = (hitPos - start).Magnitude
+            local remainingLen = math.max(0, remaining.Magnitude - traveled)
+            start = hitPos + dirUnit * 0.02
+            remaining = dirUnit * remainingLen
+            -- try again
+        else
+            return result
+        end
+    end
+    return nil
+end
+
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
 local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos)
@@ -218,8 +250,37 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                 local humanoid = parent:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then
                     local isHeadshot = false
-                    if inst and inst.Name and tostring(inst.Name):lower():find("head") then
-                        isHeadshot = true
+                    -- robust headshot detection that handles accessories (hats/hair):
+                    local headPart = parent:FindFirstChild("Head")
+                    if headPart then
+                        -- 1) direct hit on the Head part
+                        if inst == headPart then
+                            isHeadshot = true
+                        -- 2) hit part name contains 'head' (e.g. HeadMesh)
+                        elseif inst.Name and tostring(inst.Name):lower():find("head") then
+                            isHeadshot = true
+                        -- 3) hit part is a descendant of Head (face decals etc.)
+                        elseif inst:IsDescendantOf(headPart) then
+                            isHeadshot = true
+                        -- 4) hit part belongs to an Accessory attached near the Head
+                        elseif inst:FindFirstAncestorWhichIsA("Accessory") then
+                            local acc = inst:FindFirstAncestorWhichIsA("Accessory")
+                            local handle = acc:FindFirstChild("Handle")
+                            if handle and handle:IsA("BasePart") then
+                                if (handle.Position - headPart.Position).Magnitude <= 3 then
+                                    isHeadshot = true
+                                end
+                            end
+                        end
+                        -- 5) fallback: hit position within generous radius of Head center
+                        if not isHeadshot then
+                            local hitPos = rayResult.Position
+                            if hitPos and headPart.Position then
+                                if (hitPos - headPart.Position).Magnitude <= 2 then
+                                    isHeadshot = true
+                                end
+                            end
+                        end
                     end
                     local finalDamage = pDamage
                     if isHeadshot then
@@ -315,12 +376,12 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     params.IgnoreWater = true
 
     local rayDir = camDirection.Unit
-    local rayResult = Workspace:Raycast(camOrigin, rayDir * tRANGE, params)
+    local rayResult = raycastSkippingAccessories(camOrigin, rayDir * tRANGE, params)
     if rayResult and rayResult.Instance then
         -- camera ray hit something; ensure there's no obstruction between gun muzzle and that hit
         local camHitPos = rayResult.Position
         local toCamHit = camHitPos - gunOrigin
-        local gunBlock = Workspace:Raycast(gunOrigin, toCamHit, params)
+        local gunBlock = raycastSkippingAccessories(gunOrigin, toCamHit, params)
         local finalHit = rayResult
         if gunBlock and gunBlock.Instance then
             -- there is something between the gun and the camera hit; prefer the closer gun-side hit
@@ -374,7 +435,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
 
     -- if the camera ray missed, check if there's an obstruction between the gun and the camera aim direction
     local aimPos = camOrigin + rayDir * tRANGE
-    local gunObstruction = Workspace:Raycast(gunOrigin, rayDir * tRANGE, params)
+    local gunObstruction = raycastSkippingAccessories(gunOrigin, rayDir * tRANGE, params)
     if gunObstruction and gunObstruction.Instance then
         -- gun is immediately obstructed; spawn server tracer to obstruction and notify client
         local showTracerForTool = (tCfg and tCfg.showTracer ~= nil) and tCfg.showTracer or SHOW_TRACER
