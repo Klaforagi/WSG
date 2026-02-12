@@ -9,10 +9,10 @@ local ToolgunModule
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
     ToolgunModule = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
 end
-local TOOLCFG = ToolgunModule and ToolgunModule.get() or {}
+local TOOLCFG = {}
 
-local SHOW_TRACER = true
-if type(TOOLCFG.showTracer) == "boolean" then SHOW_TRACER = TOOLCFG.showTracer end
+-- Default: tracers are disabled unless a preset explicitly enables them
+local SHOW_TRACER = false
 
 local TEAM_TRACER_COLORS = {
     Blue = Color3.fromRGB(65, 105, 225), -- royal blue
@@ -93,16 +93,16 @@ end
 -- Server-side handling + validation (projectile-based)
 local lastFire = {} -- [player] = { [toolName] = tick() }
 
-local DAMAGE = TOOLCFG.damage or 25
-local RANGE = TOOLCFG.range or 300
-local COOLDOWN_SERVER = TOOLCFG.cd or 0.5
+-- Base defaults when no preset supplies values
+local DAMAGE = 25
+local RANGE = 300
+local COOLDOWN_SERVER = 0.5
 
--- Projectile settings
-local PROJECTILE_SPEED = TOOLCFG.bulletspeed or 100 -- studs per second
-local PROJECTILE_LIFETIME = TOOLCFG.projectile_lifetime or 5 -- seconds
-local psize = TOOLCFG.projectile_size or {0.2, 0.2, 0.2}
-local PROJECTILE_SIZE = Vector3.new(psize[1], psize[2], psize[3])
-local BULLET_DROP = TOOLCFG.bulletdrop or 9.8
+-- Projectile settings defaults
+local PROJECTILE_SPEED = 100 -- studs per second
+local PROJECTILE_LIFETIME = 5 -- seconds
+local PROJECTILE_SIZE = Vector3.new(0.2, 0.2, 0.2)
+local BULLET_DROP = 9.8
 
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
@@ -268,27 +268,16 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
             -- there is something between the gun and the camera hit; prefer the closer gun-side hit
             finalHit = gunBlock
         end
-
-        -- process finalHit (could be the original camera hit or a closer gun-side obstruction)
-                local inst = finalHit.Instance
-        local parent = inst
-        while parent and parent ~= Workspace do
-                    local humanoid = parent:FindFirstChildOfClass("Humanoid")
-                    if humanoid and humanoid.Health > 0 then
-                        applyDamage(player, humanoid, parent, tDAMAGE)
-                        break
-                    end
-            parent = parent.Parent
-        end
-
-        if SHOW_TRACER then
+        -- instead of applying damage immediately, spawn a server projectile toward the final hit
+        local hitPos = finalHit.Position
+        local showTracerForTool = (tCfg and tCfg.showTracer ~= nil) and tCfg.showTracer or SHOW_TRACER
+        if showTracerForTool then
             coroutine.wrap(function()
-                local hitPos = finalHit.Position
                 local gunPos = gunOrigin or camOrigin
-                local beam = Instance.new("Part")
-                beam.Name = "ToolGunServerTracer"
                 local dir = (hitPos - gunPos)
                 local len = dir.Magnitude
+                local beam = Instance.new("Part")
+                beam.Name = "ToolGunServerTracer"
                 beam.Size = Vector3.new(0.15, 0.15, math.max(len, 0.1))
                 beam.CFrame = CFrame.new(gunPos + dir/2, hitPos)
                 beam.Anchored = true
@@ -300,9 +289,26 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
             end)()
         end
 
+        -- compute initial velocity toward the hit position using per-tool cfg
+        local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
+        local tBULLETDROP = tCfg.bulletdrop or BULLET_DROP
+        local displacement = hitPos - gunOrigin
+        local distance = displacement.Magnitude
+        local initVel
+        if distance <= 0.001 then
+            initVel = hrp.CFrame.LookVector * tBULLETSPEED
+        else
+            local t = distance / tBULLETSPEED
+            if t <= 0 then t = 0.01 end
+            local g = Vector3.new(0, -tBULLETDROP, 0)
+            initVel = (displacement / t) - (0.5 * g * t)
+        end
+
+        spawnProjectile(player, gunOrigin, initVel, tCfg)
+
         pcall(function()
             if fireAck then
-                fireAck:FireClient(player, gunOrigin, finalHit.Position)
+                fireAck:FireClient(player, gunOrigin, hitPos)
             end
         end)
         return
@@ -313,7 +319,8 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     local gunObstruction = Workspace:Raycast(gunOrigin, rayDir * tRANGE, params)
     if gunObstruction and gunObstruction.Instance then
         -- gun is immediately obstructed; spawn server tracer to obstruction and notify client
-        if SHOW_TRACER then
+        local showTracerForTool = (tCfg and tCfg.showTracer ~= nil) and tCfg.showTracer or SHOW_TRACER
+        if showTracerForTool then
             coroutine.wrap(function()
                 local hitPos = gunObstruction.Position
                 local beam = Instance.new("Part")
@@ -336,16 +343,22 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 fireAck:FireClient(player, gunOrigin, gunObstruction.Position)
             end
         end)
-        -- attempt to apply damage if it's a humanoid
-        local parent = gunObstruction.Instance
-        while parent and parent ~= Workspace do
-            local humanoid = parent:FindFirstChildOfClass("Humanoid")
-            if humanoid and humanoid.Health > 0 then
-                applyDamage(player, humanoid, parent, tDAMAGE)
-                break
-            end
-            parent = parent.Parent
+        -- instead of applying damage immediately, spawn projectile toward the obstruction
+        local hitPos = gunObstruction.Position
+        local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
+        local tBULLETDROP = tCfg.bulletdrop or BULLET_DROP
+        local displacement = hitPos - gunOrigin
+        local distance = displacement.Magnitude
+        local initVel
+        if distance <= 0.001 then
+            initVel = hrp.CFrame.LookVector * tBULLETSPEED
+        else
+            local t = distance / tBULLETSPEED
+            if t <= 0 then t = 0.01 end
+            local g = Vector3.new(0, -tBULLETDROP, 0)
+            initVel = (displacement / t) - (0.5 * g * t)
         end
+        spawnProjectile(player, gunOrigin, initVel, tCfg)
         return
     end
     local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED

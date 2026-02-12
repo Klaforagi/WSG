@@ -44,13 +44,11 @@ local cursorConn = nil
 
 -- read settings from module if present
 local TOOLCFG_MODULE
-local TOOLCFG
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
     TOOLCFG_MODULE = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
-    TOOLCFG = TOOLCFG_MODULE.get()
 end
 
-local COOLDOWN = (TOOLCFG and TOOLCFG.cd) or 0.5
+local COOLDOWN = 0.5
 local firing = {}
 
 local fireAck = ReplicatedStorage:WaitForChild("ToolGunFireAck")
@@ -60,10 +58,8 @@ local Debris = game:GetService("Debris")
 
 -- debug tracer toggle: when true, client spawns a short-lived laser part showing the shot
 -- Can be overridden by the Toolgunsettings module via `showTracer` boolean.
-local SHOW_TRACER = true
-if TOOLCFG and type(TOOLCFG.showTracer) == "boolean" then
-    SHOW_TRACER = TOOLCFG.showTracer
-end
+-- default: tracers are off unless a preset explicitly enables them
+local SHOW_TRACER = false
 
 local TEAM_TRACER_COLORS = {
     Blue = Color3.fromRGB(65, 105, 225), -- royal blue
@@ -110,23 +106,18 @@ end
 -- build per-tool configuration: base defaults -> preset by tool type -> attribute overrides
 local function getToolCfgForTool(tool)
     local cfg = {}
-    -- start from module defaults or existing TOOLCFG
-    if TOOLCFG_MODULE and TOOLCFG_MODULE.defaults then
-        for k, v in pairs(TOOLCFG_MODULE.defaults) do cfg[k] = v end
-    elseif TOOLCFG then
-        for k, v in pairs(TOOLCFG) do cfg[k] = v end
-    end
-
     -- determine tool type: attribute `ToolType` or name suffix (ToolPistol -> pistol)
     local toolType = tool:GetAttribute("ToolType")
     if not toolType then
         local name = tostring(tool.Name)
-        -- expect names like ToolPistol, ToolSniper -> extract suffix and lowercase
         local suffix = name:match("^Tool(.+)")
         if suffix then toolType = suffix:lower() end
     end
-    if TOOLCFG_MODULE and TOOLCFG_MODULE.presets and toolType and TOOLCFG_MODULE.presets[toolType] then
-        for k, v in pairs(TOOLCFG_MODULE.presets[toolType]) do cfg[k] = v end
+    if TOOLCFG_MODULE and TOOLCFG_MODULE.getPreset and toolType then
+        local preset = TOOLCFG_MODULE.getPreset(toolType)
+        if preset then
+            for k, v in pairs(preset) do cfg[k] = v end
+        end
     end
 
     -- attribute overrides
