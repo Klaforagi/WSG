@@ -112,16 +112,33 @@ Players.PlayerAdded:Connect(function(player)
 		-- Teleport to spawn once character loads
 		local spawnPart = getSpawnForTeam(teamName)
 
-		-- Persistent CharacterAdded handler: first spawn -> main spawnPart,
-		-- subsequent respawns -> team death spawn (RedDeathSpawn/BlueDeathSpawn).
+		-- Persistent CharacterAdded handler:
+		--   first spawn OR MatchRestart → main spawnPart (BlueSpawn / RedSpawn)
+		--   death respawn → team death spawn (RedDeathSpawn / BlueDeathSpawn)
+		-- Position is randomised within the spawn part's XZ footprint.
 		local firstSpawn = true
 		local deathSpawnNames = { Red = "RedDeathSpawn", Blue = "BlueDeathSpawn" }
+
+		local function randomPointOnPart(part)
+			local size = part.Size
+			local rx = (math.random() - 0.5) * size.X
+			local rz = (math.random() - 0.5) * size.Z
+			return part.CFrame * CFrame.new(rx, 3, rz)
+		end
+
 		player.CharacterAdded:Connect(function(char)
 			local hrp = char:WaitForChild("HumanoidRootPart")
 			if not hrp then return end
-			if firstSpawn then
+
+			local isRestart = player:GetAttribute("MatchRestart") == true
+			if isRestart then
+				player:SetAttribute("MatchRestart", nil)
+			end
+
+			if firstSpawn or isRestart then
+				-- use the main team spawn
 				if spawnPart then
-					hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 3, 0)
+					hrp.CFrame = randomPointOnPart(spawnPart)
 				end
 				firstSpawn = false
 			else
@@ -138,9 +155,9 @@ Players.PlayerAdded:Connect(function(player)
 					deathPart = candidates[math.random(1, #candidates)]
 				end
 				if deathPart then
-					hrp.CFrame = deathPart.CFrame + Vector3.new(0, 3, 0)
+					hrp.CFrame = randomPointOnPart(deathPart)
 				elseif spawnPart then
-					hrp.CFrame = spawnPart.CFrame + Vector3.new(0, 3, 0)
+					hrp.CFrame = randomPointOnPart(spawnPart)
 				end
 			end
 

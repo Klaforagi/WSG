@@ -74,9 +74,15 @@ local function buildRichText(item)
             "<font color='%s'>%s</font><font color='%s'> captured the </font><font color='%s'>%s</font><font color='%s'> Flag!</font>",
             pHex, item.playerName or "", white, fHex, teamWord, white)
     elseif item.eventType == "returned" then
-        return string.format(
-            "<font color='%s'>The </font><font color='%s'>%s</font><font color='%s'> Flag has been returned!</font>",
-            white, fHex, teamWord, white)
+        if item.playerName and item.playerName ~= "" then
+            return string.format(
+                "<font color='%s'>%s</font><font color='%s'> returned the </font><font color='%s'>%s</font><font color='%s'> Flag!</font>",
+                pHex, item.playerName, white, fHex, teamWord, white)
+        else
+            return string.format(
+                "<font color='%s'>The </font><font color='%s'>%s</font><font color='%s'> Flag has been returned!</font>",
+                white, fHex, teamWord, white)
+        end
     end
     return item.playerName or ""
 end

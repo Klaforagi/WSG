@@ -22,7 +22,15 @@ local function ensureEvent(name)
 end
 
 local KillFeed = ensureEvent("KillFeed")
-local ScoreUpdate = ensureEvent("ScoreUpdate")
+
+-- BindableEvent for score awards (listened to by GameManager)
+local ServerScriptService = game:GetService("ServerScriptService")
+local AddScore = ServerScriptService:FindFirstChild("AddScore")
+if not AddScore then
+    AddScore = Instance.new("BindableEvent")
+    AddScore.Name = "AddScore"
+    AddScore.Parent = ServerScriptService
+end
 
 local KILL_POINTS = 10
 local ATTRIB_TIMEOUT = 5 -- seconds: ignore tags older than this
@@ -65,7 +73,7 @@ local function onHumanoidDied(humanoid, model)
     end
 
     if killer and killer.Team then
-        ScoreUpdate:FireAllClients(killer.Team.Name, KILL_POINTS, false)
+        pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
 end
 

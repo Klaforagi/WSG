@@ -130,6 +130,7 @@ local function respawnFlag(team)
     end
     setupFlagModel(spawnModel)
     info.model = spawnModel
+    info.dropped = false
 end
 
 local function findPickupPart(model)
@@ -170,8 +171,25 @@ function setupFlagModel(model)
         -- ensure character has humanoid
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then return end
-        -- player's team must be opposite of flag team
-        if not pl.Team or pl.Team.Name == team then return end
+        if not pl.Team then return end
+
+        -- Same team: return the flag to its stand if it's been dropped
+        if pl.Team.Name == team then
+            if flags[team] and flags[team].dropped then
+                flags[team].dropped = false
+                -- destroy dropped model (cancels auto-return countdown)
+                if model and model.Parent then
+                    model:Destroy()
+                end
+                -- respawn at stand
+                respawnFlag(team)
+                -- announce with player name
+                FlagStatus:FireAllClients("returned", pl.Name, pl.Team.Name, team)
+                FlagStatus:FireAllClients("playSound", "Flag_return")
+            end
+            return
+        end
+
         -- cannot pick up if already carrying
         if carrying[pl] then return end
 
@@ -221,6 +239,7 @@ function setupFlagModel(model)
                         dropModel:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 0.5, 0) * carryRot)
                     end
                     setupFlagModel(dropModel)
+                    flags[team].dropped = true
 
                     -- create a visible countdown above the dropped flag and return it to the stand
                     -- only if nobody picks it up within 8 seconds
@@ -299,6 +318,7 @@ function setupFlagModel(model)
                                 end
                             end
                             setupFlagModel(dropModel)
+                            flags[team].dropped = false
                             -- notify clients to play return sound locally
                             FlagStatus:FireAllClients("playSound", "Flag_return")
                             -- announce return to all clients
@@ -355,18 +375,18 @@ Workspace.ChildAdded:Connect(function(child)
     end
 end)
 
--- ensure ScoreUpdate RemoteEvent exists for HUD updates
-local ScoreUpdate = ReplicatedStorage:FindFirstChild("ScoreUpdate")
-if not ScoreUpdate then
-    ScoreUpdate = Instance.new("RemoteEvent")
-    ScoreUpdate.Name = "ScoreUpdate"
-    ScoreUpdate.Parent = ReplicatedStorage
+-- BindableEvent for score awards (listened to by GameManager)
+local AddScore = game:GetService("ServerScriptService"):FindFirstChild("AddScore")
+if not AddScore then
+    AddScore = Instance.new("BindableEvent")
+    AddScore.Name = "AddScore"
+    AddScore.Parent = game:GetService("ServerScriptService")
 end
 
--- helper: award points to a team (fires client HUD update)
+-- helper: award points to a team
 local function awardPoints(teamName, points)
     if not teamName or type(points) ~= "number" then return end
-    ScoreUpdate:FireAllClients(teamName, points, false)
+    pcall(function() AddScore:Fire(teamName, points) end)
 end
 
 -- Stand capture detection: when a player carrying an enemy flag touches their own stand
@@ -432,5 +452,53 @@ Workspace.DescendantAdded:Connect(function(desc)
         setupStand(desc)
     end
 end)
+
+---------------------------------------------------------------------
+-- Full flag reset (called by GameManager between matches)
+---------------------------------------------------------------------
+local function resetAllFlags()
+    -- 1) Destroy carried flag models and clear carrying state
+    for pl, data in pairs(carrying) do
+        if data.model then
+            pcall(function() data.model:Destroy() end)
+        end
+        if data.deathConn then
+            pcall(function() data.deathConn:Disconnect() end)
+        end
+        pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+    end
+    carrying = {}
+    captureDebounce = {}
+
+    -- 2) Remove any flag models currently in Workspace (dropped or leftover)
+    for _, child in ipairs(Workspace:GetChildren()) do
+        local team = getFlagTeamFromName(child.Name)
+        if team and child:IsA("Model") then
+            child:Destroy()
+        end
+    end
+
+    -- 3) Respawn both flags at their stands
+    for _, team in ipairs({"Blue", "Red"}) do
+        if flags[team] and flags[team].original then
+            flags[team].dropped = false
+            respawnFlag(team)
+        end
+    end
+
+    -- HUD indicators are cleared by the MatchStart event in MatchHUD,
+    -- so no need to fire "returned" here (which would show unwanted alerts).
+    print("[FlagPickup] All flags reset")
+end
+
+-- Listen for ResetFlags from GameManager
+local ServerScriptService = game:GetService("ServerScriptService")
+local ResetFlags = ServerScriptService:FindFirstChild("ResetFlags")
+if not ResetFlags then
+    ResetFlags = Instance.new("BindableEvent")
+    ResetFlags.Name = "ResetFlags"
+    ResetFlags.Parent = ServerScriptService
+end
+ResetFlags.Event:Connect(resetAllFlags)
 
 return nil

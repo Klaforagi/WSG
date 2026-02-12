@@ -5,7 +5,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Config
-local START_TIME_SECONDS = 3 * 60 -- 20 minutes
+local START_TIME_SECONDS = 1 * 60 -- 20 minutes
 
 -- State
 local blueScore = 0
@@ -266,8 +266,29 @@ local function wireMatchStart(ev)
         else
             remaining = START_TIME_SECONDS
         end
+        blueScore = 0
+        redScore = 0
         running = true
+
+        -- clear all carried-flag HUD indicators
+        setCarriedFlag("Blue", "Blue", false)
+        setCarriedFlag("Blue", "Red", false)
+        setCarriedFlag("Red", "Blue", false)
+        setCarriedFlag("Red", "Red", false)
+
         refresh()
+    end)
+end
+
+local function wireMatchEnd(ev)
+    ev.OnClientEvent:Connect(function(resultType, winner)
+        -- stop the local timer so it doesn't keep counting down
+        running = false
+        if resultType == "sudden" then
+            timerLabel.Text = "SUDDEN"
+        elseif resultType == "win" then
+            timerLabel.Text = "00:00"
+        end
     end)
 end
 
@@ -276,12 +297,16 @@ local scoreEv = ReplicatedStorage:FindFirstChild("ScoreUpdate")
 if scoreEv and scoreEv:IsA("RemoteEvent") then wireScoreEvent(scoreEv) end
 local matchEv = ReplicatedStorage:FindFirstChild("MatchStart")
 if matchEv and matchEv:IsA("RemoteEvent") then wireMatchStart(matchEv) end
+local matchEndEv = ReplicatedStorage:FindFirstChild("MatchEnd")
+if matchEndEv and matchEndEv:IsA("RemoteEvent") then wireMatchEnd(matchEndEv) end
 
 ReplicatedStorage.ChildAdded:Connect(function(child)
     if child.Name == "ScoreUpdate" and child:IsA("RemoteEvent") then
         wireScoreEvent(child)
     elseif child.Name == "MatchStart" and child:IsA("RemoteEvent") then
         wireMatchStart(child)
+    elseif child.Name == "MatchEnd" and child:IsA("RemoteEvent") then
+        wireMatchEnd(child)
     end
 end)
 

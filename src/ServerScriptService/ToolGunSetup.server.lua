@@ -62,8 +62,16 @@ local function ensureEvent(name)
     return ev
 end
 local KillFeedEvent = ensureEvent("KillFeed")
-local ScoreUpdateEvent = ensureEvent("ScoreUpdate")
 local KILL_POINTS = 10
+
+-- BindableEvent for score awards (listened to by GameManager)
+local ServerScriptService = game:GetService("ServerScriptService")
+local AddScore = ServerScriptService:FindFirstChild("AddScore")
+if not AddScore then
+    AddScore = Instance.new("BindableEvent")
+    AddScore.Name = "AddScore"
+    AddScore.Parent = ServerScriptService
+end
 
 -- Tools (ToolPistol, ToolSniper, etc.) are placed manually in StarterPack via Studio.
 -- No auto-creation here.
@@ -117,7 +125,7 @@ local function applyDamage(player, humanoid, victimModel, damage)
         if player.Name ~= victimName then
             pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName) end)
             if player.Team then
-                pcall(function() ScoreUpdateEvent:FireAllClients(player.Team.Name, KILL_POINTS, false) end)
+                pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
             end
         end
         -- if this was a dummy model, perform ragdoll/cleanup immediately so it visibly falls
