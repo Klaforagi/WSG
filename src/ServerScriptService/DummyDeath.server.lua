@@ -8,6 +8,8 @@ local function handleDummyModel(model)
     humanoid:SetAttribute("_dummyDeathConnected", true)
 
     humanoid.Died:Connect(function()
+        -- if already ragdolled by damage code, skip duplicate work
+        if humanoid:GetAttribute("_dummyRagdolled") then return end
         -- ensure humanoid state is dead
         pcall(function()
             humanoid:ChangeState(Enum.HumanoidStateType.Dead)
@@ -42,15 +44,15 @@ local function handleDummyModel(model)
     end)
 end
 
--- scan existing
-for _, child in ipairs(Workspace:GetChildren()) do
+-- scan existing (use GetDescendants to catch dummies inside folders)
+for _, child in ipairs(Workspace:GetDescendants()) do
     if child and child:IsA("Model") and child.Name == "Dummy" then
         handleDummyModel(child)
     end
 end
 
--- watch for new dummies
-Workspace.ChildAdded:Connect(function(child)
+-- watch for new dummies anywhere in workspace
+Workspace.DescendantAdded:Connect(function(child)
     if child and child:IsA("Model") and child.Name == "Dummy" then
         handleDummyModel(child)
     end

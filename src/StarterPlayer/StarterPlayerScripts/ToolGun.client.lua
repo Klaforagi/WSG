@@ -43,10 +43,11 @@ hitLabel.Parent = cursorGui
 local cursorConn = nil
 
 -- read settings from module if present
+local TOOLCFG_MODULE
 local TOOLCFG
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
-    local mod = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
-    TOOLCFG = mod.get()
+    TOOLCFG_MODULE = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
+    TOOLCFG = TOOLCFG_MODULE.get()
 end
 
 local COOLDOWN = (TOOLCFG and TOOLCFG.cd) or 0.5
@@ -83,15 +84,59 @@ local function spawnTracer(origin, targetPos)
     if len <= 0.01 then return end
     local beam = Instance.new("Part")
     beam.Name = "ToolGunTracer"
-    beam.Size = Vector3.new(0.06, 0.06, len)
+    beam.Size = Vector3.new(0.12, 0.12, len)
     beam.CFrame = CFrame.new(origin + dir/2, targetPos)
     beam.Anchored = true
     beam.CanCollide = false
     beam.Material = Enum.Material.Neon
     beam.Color = getTracerColor()
-    beam.Transparency = 0.25
+    beam.Transparency = 0.15
     beam.Parent = workspace
-    Debris:AddItem(beam, 0.12)
+    Debris:AddItem(beam, 0.2)
+end
+
+-- identify if a tool should be treated as a toolgun (accept ToolPistol, ToolSniper, etc.)
+local function isToolGun(tool)
+    if not tool then return false end
+    if tool:GetAttribute("IsToolGun") then return true end
+    local name = tostring(tool.Name)
+    -- accept explicit names: ToolPistol, ToolSniper
+    if name == "ToolPistol" or name == "ToolSniper" then
+        return true
+    end
+    return false
+end
+
+-- build per-tool configuration: base defaults -> preset by tool type -> attribute overrides
+local function getToolCfgForTool(tool)
+    local cfg = {}
+    -- start from module defaults or existing TOOLCFG
+    if TOOLCFG_MODULE and TOOLCFG_MODULE.defaults then
+        for k, v in pairs(TOOLCFG_MODULE.defaults) do cfg[k] = v end
+    elseif TOOLCFG then
+        for k, v in pairs(TOOLCFG) do cfg[k] = v end
+    end
+
+    -- determine tool type: attribute `ToolType` or name suffix (ToolPistol -> pistol)
+    local toolType = tool:GetAttribute("ToolType")
+    if not toolType then
+        local name = tostring(tool.Name)
+        -- expect names like ToolPistol, ToolSniper -> extract suffix and lowercase
+        local suffix = name:match("^Tool(.+)")
+        if suffix then toolType = suffix:lower() end
+    end
+    if TOOLCFG_MODULE and TOOLCFG_MODULE.presets and toolType and TOOLCFG_MODULE.presets[toolType] then
+        for k, v in pairs(TOOLCFG_MODULE.presets[toolType]) do cfg[k] = v end
+    end
+
+    -- attribute overrides
+    local attrs = {"cd","bulletspeed","damage","range","projectile_lifetime","projectile_size","bulletdrop","showTracer"}
+    for _, a in ipairs(attrs) do
+        local val = tool:GetAttribute(a)
+        if val ~= nil then cfg[a] = val end
+    end
+
+    return cfg
 end
 
 local function playFireSound()
@@ -125,8 +170,15 @@ print("[ToolGun.client] script running for", player and player.Name)
 -- Handle firing for a single tool instance
 local function attachTool(tool)
     if not tool or not tool:IsA("Tool") then return end
-    if tool.Name ~= "ToolGun" then return end
+    if not isToolGun(tool) then return end
+    if tool:GetAttribute("_equippedConnected") then return end
+    tool:SetAttribute("_equippedConnected", true)
     print("[ToolGun.client] attachTool called for", tool:GetFullName())
+
+    -- per-tool configuration (overrides defaults/presets)
+    local toolCfg = getToolCfgForTool(tool)
+    local toolCooldown = (toolCfg and toolCfg.cd) or COOLDOWN
+    local toolShowTracer = (toolCfg and toolCfg.showTracer ~= nil) and toolCfg.showTracer or SHOW_TRACER
 
     -- continuous fire while holding left mouse
     local mouse = player:GetMouse()
@@ -163,15 +215,10 @@ local function attachTool(tool)
                     local ray = camera:ScreenPointToRay(mx, my)
                     local camOrigin = ray.Origin
                     local camDir = ray.Direction.Unit
-                    local farPos = camOrigin + camDir * 1000
-                    -- optionally spawn a short tracer from the gun muzzle while waiting for server confirmation
-                    local gunOrigin = origin
-                    if SHOW_TRACER then
-                        spawnTracer(gunOrigin, farPos)
-                    end
                     -- send camera origin + direction and the gun origin so the server can hitscan and/or spawn visuals
-                    fireEvent:FireServer(camOrigin, camDir, gunOrigin)
-                    task.delay(COOLDOWN, function()
+                    local gunOrigin = origin
+                    fireEvent:FireServer(camOrigin, camDir, gunOrigin, tool.Name)
+                    task.delay(toolCooldown, function()
                         if tool and tool.Parent then
                             tool:SetAttribute("_canFire", true)
                         end
@@ -187,11 +234,12 @@ local function attachTool(tool)
         firing[tool] = nil
     end
 
-    -- Bind mouse buttons when tool is equipped
+    -- Bind mouse buttons when tool is equipped; disconnect on unequip
+    local mouseConns = {}
     tool.Equipped:Connect(function()
         if mouse then
-            mouse.Button1Down:Connect(startFiring)
-            mouse.Button1Up:Connect(stopFiring)
+            table.insert(mouseConns, mouse.Button1Down:Connect(startFiring))
+            table.insert(mouseConns, mouse.Button1Up:Connect(stopFiring))
         end
         -- show tiny custom cursor and hide system cursor
         if not cursorGui.Parent then
@@ -208,6 +256,11 @@ local function attachTool(tool)
     end)
 
     tool.Unequipped:Connect(function()
+        -- disconnect mouse bindings so this tool stops firing
+        for _, c in ipairs(mouseConns) do
+            c:Disconnect()
+        end
+        mouseConns = {}
         -- hide custom cursor and restore system cursor
         if cursorConn then cursorConn:Disconnect() end
         cursorConn = nil
@@ -222,26 +275,12 @@ local function attachTool(tool)
     if tool:GetAttribute("_canFire") == nil then
         tool:SetAttribute("_canFire", true)
     end
-
-    -- initialize attribute
-    if tool:GetAttribute("_canFire") == nil then
-        tool:SetAttribute("_canFire", true)
-    end
-
-    -- mark connected (we attach via Equipped for hold behavior)
-    if not tool:GetAttribute("_equippedConnected") then
-        tool:SetAttribute("_equippedConnected", true)
-    end
-
-    -- listen for server ack to play sound and draw the authoritative tracer from the gun
-    fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos)
-        playFireSound()
-        if gunOrigin and targetPos and SHOW_TRACER then
-            spawnTracer(gunOrigin, targetPos)
-        end
-    end)
-    -- hit sound handled globally below
 end
+
+-- single global listener for server fire ack (play sound only; server-side tracer Part handles visuals)
+fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos)
+    playFireSound()
+end)
 
 -- play hitmarker when server notifies a hit
 if fireHit and fireHit:IsA("RemoteEvent") then
@@ -309,7 +348,7 @@ end)
 
 -- Also connect to tools already in StarterPack (they'll be copied to Backpack by Roblox)
 for _, child in ipairs(StarterPack:GetChildren()) do
-    if child:IsA("Tool") and child.Name == "ToolGun" then
+    if child:IsA("Tool") and isToolGun(child) then
         -- nothing to do; it'll be handled when placed in Backpack
     end
 end

@@ -51,26 +51,39 @@ if not fireHit then
     fireHit.Parent = ReplicatedStorage
 end
 
--- Create the tool template in StarterPack if missing
-local TOOL_NAME = "ToolGun"
-local existing = StarterPack:FindFirstChild(TOOL_NAME)
-if not existing then
-    local tool = Instance.new("Tool")
-    tool.Name = TOOL_NAME
-    tool.CanBeDropped = false
+-- Kill credit events (fire kill feed + score directly from damage code)
+local function ensureEvent(name)
+    local ev = ReplicatedStorage:FindFirstChild(name)
+    if not ev then
+        ev = Instance.new("RemoteEvent")
+        ev.Name = name
+        ev.Parent = ReplicatedStorage
+    end
+    return ev
+end
+local KillFeedEvent = ensureEvent("KillFeed")
+local ScoreUpdateEvent = ensureEvent("ScoreUpdate")
+local KILL_POINTS = 10
 
-    local handle = Instance.new("Part")
-    handle.Name = "Handle"
-    handle.Size = Vector3.new(1,1,2)
-    handle.Material = Enum.Material.Metal
-    handle.Color = Color3.fromRGB(50,50,60)
-    handle.Parent = tool
+-- Tools (ToolPistol, ToolSniper, etc.) are placed manually in StarterPack via Studio.
+-- No auto-creation here.
 
-    tool.Parent = StarterPack
+-- Resolve per-tool config from presets
+local function getServerToolCfg(toolName)
+    local cfg = {}
+    for k, v in pairs(TOOLCFG) do cfg[k] = v end
+    if ToolgunModule and ToolgunModule.presets then
+        local suffix = toolName and tostring(toolName):match("^Tool(.+)")
+        local presetKey = suffix and suffix:lower()
+        if presetKey and ToolgunModule.presets[presetKey] then
+            for k, v in pairs(ToolgunModule.presets[presetKey]) do cfg[k] = v end
+        end
+    end
+    return cfg
 end
 
 -- Server-side handling + validation (projectile-based)
-local lastFire = {}
+local lastFire = {} -- [player] = { [toolName] = tick() }
 
 local DAMAGE = TOOLCFG.damage or 25
 local RANGE = TOOLCFG.range or 300
@@ -83,7 +96,70 @@ local psize = TOOLCFG.projectile_size or {0.2, 0.2, 0.2}
 local PROJECTILE_SIZE = Vector3.new(psize[1], psize[2], psize[3])
 local BULLET_DROP = TOOLCFG.bulletdrop or 9.8
 
-local function spawnProjectile(player, origin, initialVelocity)
+-- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
+-- and fires kill credit immediately if the target dies.
+local function applyDamage(player, humanoid, victimModel, damage)
+    pcall(function()
+        humanoid:SetAttribute("lastDamagerUserId", player.UserId)
+        humanoid:SetAttribute("lastDamagerName", player.Name)
+        humanoid:SetAttribute("lastDamageTime", tick())
+    end)
+    humanoid:TakeDamage(damage)
+    pcall(function()
+        if fireHit then fireHit:FireClient(player) end
+    end)
+    if humanoid.Health <= 0 then
+        humanoid:SetAttribute("_killCredited", true)
+        -- immediate kill credit
+        local victimName = (victimModel and victimModel.Name) or "Unknown"
+        local vp = Players:GetPlayerFromCharacter(victimModel)
+        if vp then victimName = vp.Name end
+        if player.Name ~= victimName then
+            pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName) end)
+            if player.Team then
+                pcall(function() ScoreUpdateEvent:FireAllClients(player.Team.Name, KILL_POINTS, false) end)
+            end
+        end
+        -- if this was a dummy model, perform ragdoll/cleanup immediately so it visibly falls
+        if victimModel and victimModel:IsA("Model") and victimModel.Name == "Dummy" then
+            -- mark so DummyDeath doesn't duplicate work
+            pcall(function() humanoid:SetAttribute("_dummyRagdolled", true) end)
+            pcall(function()
+                humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+            end)
+            for _, desc in ipairs(victimModel:GetDescendants()) do
+                if desc:IsA("BasePart") then
+                    desc.Anchored = false
+                    desc.CanCollide = true
+                end
+            end
+            task.wait(0.05)
+            pcall(function() victimModel:BreakJoints() end)
+            task.delay(5, function()
+                if victimModel and victimModel.Parent then
+                    pcall(function() victimModel:Destroy() end)
+                end
+            end)
+        end
+    end
+end
+
+local function spawnProjectile(player, origin, initialVelocity, projCfg)
+    -- projCfg contains per-tool overrides: damage, range, bulletdrop, projectile_size, projectile_lifetime
+    local pDamage = (projCfg and projCfg.damage) or DAMAGE
+    local pRange = (projCfg and projCfg.range) or RANGE
+    local pDrop = (projCfg and projCfg.bulletdrop) or BULLET_DROP
+    local pLifetime = (projCfg and projCfg.projectile_lifetime) or PROJECTILE_LIFETIME
+    local pSize = PROJECTILE_SIZE
+    if projCfg and projCfg.projectile_size then
+        local ps = projCfg.projectile_size
+        if typeof(ps) == "Vector3" then
+            pSize = ps
+        elseif type(ps) == "table" then
+            pSize = Vector3.new(ps[1] or 0.2, ps[2] or 0.2, ps[3] or 0.2)
+        end
+    end
+
     local params = RaycastParams.new()
     params.FilterDescendantsInstances = {player.Character}
     params.FilterType = Enum.RaycastFilterType.Blacklist
@@ -91,7 +167,7 @@ local function spawnProjectile(player, origin, initialVelocity)
 
     local visual = Instance.new("Part")
     visual.Name = "Bullet"
-    visual.Size = PROJECTILE_SIZE
+    visual.Size = pSize
     visual.CFrame = CFrame.new(origin)
     visual.CanCollide = false
     visual.Anchored = true
@@ -109,7 +185,7 @@ local function spawnProjectile(player, origin, initialVelocity)
             return
         end
         -- apply gravity/bullet drop to vertical component of velocity
-        velocity = velocity + Vector3.new(0, -BULLET_DROP * dt, 0)
+        velocity = velocity + Vector3.new(0, -pDrop * dt, 0)
         local nextPos = lastPos + velocity * dt
         local rayResult = Workspace:Raycast(lastPos, (nextPos - lastPos), params)
         if rayResult and rayResult.Instance then
@@ -119,19 +195,7 @@ local function spawnProjectile(player, origin, initialVelocity)
             while parent and parent ~= Workspace do
                 local humanoid = parent:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then
-                    -- tag humanoid with who last damaged it
-                    pcall(function()
-                        humanoid:SetAttribute("lastDamagerUserId", player and player.UserId or nil)
-                        humanoid:SetAttribute("lastDamagerName", player and player.Name or nil)
-                        humanoid:SetAttribute("lastDamageTime", tick())
-                    end)
-                    humanoid:TakeDamage(DAMAGE)
-                    -- notify shooter client to play hitmarker
-                    pcall(function()
-                        if fireHit then
-                            fireHit:FireClient(player)
-                        end
-                    end)
+                    applyDamage(player, humanoid, parent, pDamage)
                     break
                 end
                 parent = parent.Parent
@@ -144,7 +208,7 @@ local function spawnProjectile(player, origin, initialVelocity)
         visual.CFrame = CFrame.new(nextPos, nextPos + velocity.Unit)
         lastPos = nextPos
 
-        if (lastPos - origin).Magnitude > RANGE or tick() - startTime > PROJECTILE_LIFETIME then
+        if (lastPos - origin).Magnitude > pRange or tick() - startTime > pLifetime then
             visual:Destroy()
             conn:Disconnect()
             return
@@ -152,19 +216,27 @@ local function spawnProjectile(player, origin, initialVelocity)
     end)
 end
 
-fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOrigin)
-    print("[ToolGun.server] OnServerEvent from", player and player.Name)
+fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOrigin, toolName)
+    print("[ToolGun.server] OnServerEvent from", player and player.Name, "tool:", toolName)
     -- basic validation of types
     if typeof(camOrigin) ~= "Vector3" or typeof(camDirection) ~= "Vector3" or typeof(gunOrigin) ~= "Vector3" then return end
     if not player or not player.Character then return end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
-    -- rate limit
+    -- resolve per-tool config
+    local tCfg = getServerToolCfg(toolName)
+    local tDAMAGE = tCfg.damage or DAMAGE
+    local tRANGE = tCfg.range or RANGE
+    local tCOOLDOWN = tCfg.cd or COOLDOWN_SERVER
+
+    -- rate limit (per-tool so switching weapons doesn't block shots)
     local now = tick()
-    local last = lastFire[player]
-    if last and now - last < COOLDOWN_SERVER then return end
-    lastFire[player] = now
+    local toolKey = toolName or "_default"
+    if not lastFire[player] then lastFire[player] = {} end
+    local last = lastFire[player][toolKey]
+    if last and now - last < tCOOLDOWN then return end
+    lastFire[player][toolKey] = now
 
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end
@@ -177,7 +249,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     params.IgnoreWater = true
 
     local rayDir = camDirection.Unit
-    local rayResult = Workspace:Raycast(camOrigin, rayDir * RANGE, params)
+    local rayResult = Workspace:Raycast(camOrigin, rayDir * tRANGE, params)
     if rayResult and rayResult.Instance then
         -- camera ray hit something; ensure there's no obstruction between gun muzzle and that hit
         local camHitPos = rayResult.Position
@@ -195,17 +267,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         while parent and parent ~= Workspace do
                     local humanoid = parent:FindFirstChildOfClass("Humanoid")
                     if humanoid and humanoid.Health > 0 then
-                        pcall(function()
-                            humanoid:SetAttribute("lastDamagerUserId", player and player.UserId or nil)
-                            humanoid:SetAttribute("lastDamagerName", player and player.Name or nil)
-                            humanoid:SetAttribute("lastDamageTime", tick())
-                        end)
-                        humanoid:TakeDamage(DAMAGE)
-                        pcall(function()
-                            if fireHit then
-                                fireHit:FireClient(player)
-                            end
-                        end)
+                        applyDamage(player, humanoid, parent, tDAMAGE)
                         break
                     end
             parent = parent.Parent
@@ -219,14 +281,14 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 beam.Name = "ToolGunServerTracer"
                 local dir = (hitPos - gunPos)
                 local len = dir.Magnitude
-                beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
+                beam.Size = Vector3.new(0.15, 0.15, math.max(len, 0.1))
                 beam.CFrame = CFrame.new(gunPos + dir/2, hitPos)
                 beam.Anchored = true
                 beam.CanCollide = false
                 beam.Material = Enum.Material.Neon
                 beam.Color = getTracerColor(player)
                 beam.Parent = Workspace
-                game:GetService("Debris"):AddItem(beam, 0.12)
+                game:GetService("Debris"):AddItem(beam, 0.22)
             end)()
         end
 
@@ -239,8 +301,8 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     end
 
     -- if the camera ray missed, check if there's an obstruction between the gun and the camera aim direction
-    local aimPos = camOrigin + rayDir * RANGE
-    local gunObstruction = Workspace:Raycast(gunOrigin, rayDir * RANGE, params)
+    local aimPos = camOrigin + rayDir * tRANGE
+    local gunObstruction = Workspace:Raycast(gunOrigin, rayDir * tRANGE, params)
     if gunObstruction and gunObstruction.Instance then
         -- gun is immediately obstructed; spawn server tracer to obstruction and notify client
         if SHOW_TRACER then
@@ -250,14 +312,14 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 beam.Name = "ToolGunServerTracer"
                 local dir = (hitPos - gunOrigin)
                 local len = dir.Magnitude
-                beam.Size = Vector3.new(0.08, 0.08, math.max(len, 0.1))
+                beam.Size = Vector3.new(0.15, 0.15, math.max(len, 0.1))
                 beam.CFrame = CFrame.new(gunOrigin + dir/2, hitPos)
                 beam.Anchored = true
                 beam.CanCollide = false
                 beam.Material = Enum.Material.Neon
                 beam.Color = getTracerColor(player)
                 beam.Parent = Workspace
-                game:GetService("Debris"):AddItem(beam, 0.12)
+                game:GetService("Debris"):AddItem(beam, 0.22)
             end)()
         end
         -- notify client of obstruction
@@ -271,40 +333,37 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         while parent and parent ~= Workspace do
             local humanoid = parent:FindFirstChildOfClass("Humanoid")
             if humanoid and humanoid.Health > 0 then
-                pcall(function()
-                    humanoid:SetAttribute("lastDamagerUserId", player and player.UserId or nil)
-                    humanoid:SetAttribute("lastDamagerName", player and player.Name or nil)
-                    humanoid:SetAttribute("lastDamageTime", tick())
-                end)
-                humanoid:TakeDamage(DAMAGE)
-                pcall(function()
-                    if fireHit then
-                        fireHit:FireClient(player)
-                    end
-                end)
+                applyDamage(player, humanoid, parent, tDAMAGE)
                 break
             end
             parent = parent.Parent
         end
         return
     end
+    local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
+    local tBULLETDROP = tCfg.bulletdrop or BULLET_DROP
     local displacement = aimPos - gunOrigin
     local distance = displacement.Magnitude
     local initVel
     if distance <= 0.001 then
-        initVel = hrp.CFrame.LookVector * PROJECTILE_SPEED
+        initVel = hrp.CFrame.LookVector * tBULLETSPEED
     else
-        local t = distance / PROJECTILE_SPEED
+        local t = distance / tBULLETSPEED
         if t <= 0 then t = 0.01 end
-        local g = Vector3.new(0, -BULLET_DROP, 0)
+        local g = Vector3.new(0, -tBULLETDROP, 0)
         initVel = (displacement / t) - (0.5 * g * t)
     end
-    spawnProjectile(player, gunOrigin, initVel)
+    spawnProjectile(player, gunOrigin, initVel, tCfg)
     -- notify client with the gun origin and aimed position so the client can spawn a local tracer
     pcall(function()
         if fireAck then
-            local aimPos = aimPos or (camOrigin + rayDir * RANGE)
+            local aimPos = aimPos or (camOrigin + rayDir * tRANGE)
             fireAck:FireClient(player, gunOrigin, aimPos)
         end
     end)
+end)
+
+-- clean up rate-limit table when players leave
+Players.PlayerRemoving:Connect(function(player)
+    lastFire[player] = nil
 end)

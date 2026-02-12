@@ -5,7 +5,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Config
-local START_TIME_SECONDS = 20 * 60 -- 20 minutes
+local START_TIME_SECONDS = 3 * 60 -- 20 minutes
 
 -- State
 local blueScore = 0
@@ -22,10 +22,15 @@ screenGui.Parent = playerGui
 
 local root = Instance.new("Frame")
 root.AnchorPoint = Vector2.new(0.5, 0)
-root.Position = UDim2.new(0.5, 0, 0, 8)
-root.Size = UDim2.new(0.9, 0, 0, 60)
+root.Position = UDim2.new(0.5, 0, 0.01, 0)
+root.Size = UDim2.new(0.85, 0, 0.055, 0)
 root.BackgroundTransparency = 1
 root.Parent = screenGui
+
+local rootConstraint = Instance.new("UISizeConstraint")
+rootConstraint.MinSize = Vector2.new(200, 28)
+rootConstraint.MaxSize = Vector2.new(math.huge, 60)
+rootConstraint.Parent = root
 
 local uiLayout = Instance.new("UIListLayout")
 uiLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -51,6 +56,113 @@ centerPanel.Size = UDim2.new(0.25, 0, 1, 0)
 centerPanel.Parent = root
 local redPanel = makePanel()
 redPanel.Parent = root
+
+local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
+
+-- makeFlagSlot: creates two square indicators and keeps them responsive to panel size
+local function makeFlagSlot(panel, alignRight)
+    local slot = Instance.new("Frame")
+    slot.Size = UDim2.new(1, 0, 1, 0)
+    slot.BackgroundTransparency = 1
+    slot.ZIndex = 2
+    slot.Parent = panel
+
+    -- carried squares for both flag colors; only shown when that flag is carried by this team
+    local blueCarried = Instance.new("Frame")
+    blueCarried.Name = "BlueCarriedSquare"
+    blueCarried.AnchorPoint = Vector2.new(0, 0)
+    blueCarried.BackgroundTransparency = 0
+    blueCarried.BorderSizePixel = 0
+    blueCarried.Visible = false
+    blueCarried.Parent = slot
+
+    local redCarried = Instance.new("Frame")
+    redCarried.Name = "RedCarriedSquare"
+    redCarried.AnchorPoint = Vector2.new(0, 0)
+    redCarried.BackgroundTransparency = 0
+    redCarried.BorderSizePixel = 0
+    redCarried.Visible = false
+    redCarried.Parent = slot
+
+    local function updateSizes()
+        local abs = slot.AbsoluteSize
+        if abs.X == 0 or abs.Y == 0 then return end
+        local squareSize = math.clamp(math.floor(abs.Y * 0.6), 12, 48)
+        local spacing = math.max(4, math.floor(squareSize * 0.25))
+        local y = math.floor((abs.Y - squareSize) / 2)
+
+        if alignRight then
+            local rightPadding = 8
+            local rightOffset = -rightPadding - squareSize
+            local leftOffset = rightOffset - spacing - squareSize
+            -- if both visible, keep left/right order near the inner edge; if only one, anchor it at the inner edge
+            if blueCarried.Visible and redCarried.Visible then
+                blueCarried.Position = UDim2.new(1, leftOffset, 0, y)
+                redCarried.Position = UDim2.new(1, rightOffset, 0, y)
+            elseif redCarried.Visible then
+                -- red alone: place at inner (right) edge between text and timer
+                redCarried.Position = UDim2.new(1, rightOffset, 0, y)
+                blueCarried.Position = UDim2.new(1, rightOffset, 0, y)
+            elseif blueCarried.Visible then
+                -- blue alone: place at inner edge as well
+                blueCarried.Position = UDim2.new(1, rightOffset, 0, y)
+                redCarried.Position = UDim2.new(1, rightOffset, 0, y)
+            else
+                blueCarried.Position = UDim2.new(1, leftOffset, 0, y)
+                redCarried.Position = UDim2.new(1, rightOffset, 0, y)
+            end
+        else
+            local leftPadding = 8
+            local leftX = leftPadding
+            local rightX = leftX + squareSize + spacing
+            if blueCarried.Visible and redCarried.Visible then
+                blueCarried.Position = UDim2.new(0, leftX, 0, y)
+                redCarried.Position = UDim2.new(0, rightX, 0, y)
+            elseif blueCarried.Visible then
+                blueCarried.Position = UDim2.new(0, leftX, 0, y)
+                redCarried.Position = UDim2.new(0, leftX, 0, y)
+            elseif redCarried.Visible then
+                redCarried.Position = UDim2.new(0, leftX, 0, y)
+                blueCarried.Position = UDim2.new(0, leftX, 0, y)
+            else
+                blueCarried.Position = UDim2.new(0, leftX, 0, y)
+                redCarried.Position = UDim2.new(0, rightX, 0, y)
+            end
+        end
+        blueCarried.Size = UDim2.new(0, squareSize, 0, squareSize)
+        redCarried.Size = UDim2.new(0, squareSize, 0, squareSize)
+    end
+
+    slot:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateSizes)
+    panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateSizes)
+    blueCarried:GetPropertyChangedSignal("Visible"):Connect(updateSizes)
+    redCarried:GetPropertyChangedSignal("Visible"):Connect(updateSizes)
+    -- initial call (may run once layout resolves)
+    spawn(function()
+        wait()
+        updateSizes()
+    end)
+
+    return {slot = slot, blue = blueCarried, red = redCarried}
+end
+
+local blueFlagSlot = makeFlagSlot(bluePanel, true)
+local redFlagSlot = makeFlagSlot(redPanel, false)
+
+-- color the carried squares appropriately
+blueFlagSlot.blue.BackgroundColor3 = Color3.fromRGB(65,105,225)
+blueFlagSlot.red.BackgroundColor3 = Color3.fromRGB(255,75,75)
+redFlagSlot.blue.BackgroundColor3 = Color3.fromRGB(65,105,225)
+redFlagSlot.red.BackgroundColor3 = Color3.fromRGB(255,75,75)
+
+local function setCarriedFlag(teamName, flagTeamName, present)
+    local slot = (teamName == "Blue") and blueFlagSlot or redFlagSlot
+    if flagTeamName == "Blue" then
+        slot.blue.Visible = present
+    elseif flagTeamName == "Red" then
+        slot.red.Visible = present
+    end
+end
 
 -- Blue panel contents
 local blueName = Instance.new("TextLabel")
@@ -175,3 +287,19 @@ end)
 
 -- initial refresh
 refresh()
+
+-- Listen to flag status announcements to update HUD carried-flag squares
+if FlagStatus and FlagStatus:IsA("RemoteEvent") then
+    FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName, flagTeamName)
+        if eventType == "pickup" then
+            if playerTeamName and flagTeamName then setCarriedFlag(playerTeamName, flagTeamName, true) end
+        elseif eventType == "returned" then
+            if flagTeamName then
+                local other = (flagTeamName == "Blue") and "Red" or "Blue"
+                setCarriedFlag(other, flagTeamName, false)
+            end
+        elseif eventType == "captured" then
+            if playerTeamName and flagTeamName then setCarriedFlag(playerTeamName, flagTeamName, false) end
+        end
+    end)
+end

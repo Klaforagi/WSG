@@ -13,6 +13,30 @@ local defaults = {
 
 }
 
+-- Preset configurations for named tool types (keys are lowercase, e.g. 'pistol', 'sniper')
+local presets = {
+    pistol = {
+        damage = 18,
+        cd = 0.18,
+        bulletspeed = 600,
+        range = 450,
+        projectile_lifetime = 2,
+        projectile_size = {0.3,0.3,0.3},
+        bulletdrop = 0,
+        showTracer = true,
+    },
+    sniper = {
+        damage = 120,
+        cd = 1.6,
+        bulletspeed = 2200,
+        range = 5000,
+        projectile_lifetime = 6,
+        projectile_size = {0.2,0.2,0.8},
+        bulletdrop = 0,
+        showTracer = true,
+    }
+}
+
 local function readOverrides()
     local folder = ReplicatedStorage:FindFirstChild("Toolgun")
     if not folder then return nil end
@@ -53,5 +77,9 @@ end
 for k, v in pairs(settings) do
     module[k] = v
 end
+
+-- expose presets and defaults for callers that want per-tool configs
+module.defaults = defaults
+module.presets = presets
 
 return module
