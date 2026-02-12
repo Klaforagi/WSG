@@ -71,7 +71,6 @@ local function onHumanoidDied(humanoid, model)
         -- fallback: find by name
         killer = Players:FindFirstChild(damagerName)
     end
-
     if killer and killer.Team then
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
