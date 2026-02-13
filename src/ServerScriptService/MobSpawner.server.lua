@@ -1,13 +1,13 @@
 local Workspace         = game:GetService("Workspace")
 local ServerStorage     = game:GetService("ServerStorage")
 local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
 local CollectionService = game:GetService("CollectionService")
 
 ---------------------------------------------------------------------------
 -- Configuration
 ---------------------------------------------------------------------------
-local TEMPLATE_NAME      = "Zombie_R6"
+-- list of template names (ServerStorage.Mobs or ServerStorage)
+local TEMPLATE_NAMES     = { "Zombie", "Zack" }
 local PORTAL_GROUP_NAMES = { "DarkPortal1", "DarkPortal2" }
 local PORTAL_PART_NAME   = "PortalPlane"
 local MOB_AREA_PREFIX    = "MobArea"
@@ -17,11 +17,21 @@ local SPAWN_BATCH        = 1
 local MAX_PER_PORTAL     = 4
 local MAX_TOTAL          = 8
 
-local DETECTION_RADIUS   = 40 -- increased aggro range (double)
-local ZOMBIE_WALK_SPEED  = 16
-local ZOMBIE_TAG         = "ZombieNPC"
+-- defaults (overridden per-mob via MobSettings)
+local DEFAULT_DETECTION_RADIUS = 40
+local DEFAULT_WALK_SPEED      = 16
+local DEFAULT_CHASE_SPEED     = 25
+local DEFAULT_ATTACK_RANGE    = 6
+local DEFAULT_AGGRO_DURATION  = 12
+local MOB_TAG                 = "ZombieNPC"
 local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- optional per-mob settings module (put presets keyed by template Name)
+local MobSettings
+if ReplicatedStorage:FindFirstChild("MobSettings") then
+    MobSettings = require(ReplicatedStorage:WaitForChild("MobSettings"))
+end
 
 -- Create ZombieKill remote up front so the client can connect immediately
 local zombieKillEvent = ReplicatedStorage:FindFirstChild("ZombieKill")
@@ -37,19 +47,31 @@ local DEFAULT_WALK_ANIM_ID = "rbxassetid://180426354"
 ---------------------------------------------------------------------------
 -- Find template
 ---------------------------------------------------------------------------
-local function findTemplate()
-    local mobs = ServerStorage:FindFirstChild("Mobs")
-    if mobs then
-        local t = mobs:FindFirstChild(TEMPLATE_NAME)
-        if t then print("[ZombieSpawner] Template found in ServerStorage.Mobs") return t end
+local function findTemplates()
+    local out = {}
+    local mobsFolder = ServerStorage:FindFirstChild("Mobs")
+    for _, name in ipairs(TEMPLATE_NAMES) do
+        local t = nil
+        if mobsFolder then
+            t = mobsFolder:FindFirstChild(name)
+            if t then
+                table.insert(out, t)
+                print("[MobSpawner] Template '" .. name .. "' found in ServerStorage.Mobs")
+                continue
+            end
+        end
+        t = ServerStorage:FindFirstChild(name)
+        if t then
+            table.insert(out, t)
+            print("[MobSpawner] Template '" .. name .. "' found in ServerStorage")
+        else
+            warn("[MobSpawner] Template '" .. name .. "' not found in ServerStorage or ServerStorage.Mobs")
+        end
     end
-    local t = ServerStorage:FindFirstChild(TEMPLATE_NAME)
-    if t then print("[ZombieSpawner] Template found in ServerStorage") return t end
-    warn("[ZombieSpawner] No template '" .. TEMPLATE_NAME .. "' found!")
-    return nil
+    return out
 end
 
-local template = findTemplate()
+local templates = findTemplates()
 
 ---------------------------------------------------------------------------
 -- Portal discovery → { {portal, area, groupName}, … }
@@ -58,17 +80,17 @@ local function findPortals()
     local out = {}
     for idx, groupName in ipairs(PORTAL_GROUP_NAMES) do
         local group = Workspace:FindFirstChild(groupName)
-        if not group then warn("[ZombieSpawner] Missing group: " .. groupName) continue end
+        if not group then warn("[MobSpawner] Missing group: " .. groupName) continue end
         local areaName = MOB_AREA_PREFIX .. tostring(idx)
         local areaPart = Workspace:FindFirstChild(areaName)
-        if not areaPart then warn("[ZombieSpawner] Missing area: " .. areaName) end
+        if not areaPart then warn("[MobSpawner] Missing area: " .. areaName) end
         for _, v in ipairs(group:GetDescendants()) do
             if v:IsA("BasePart") and v.Name == PORTAL_PART_NAME then
                 table.insert(out, { portal = v, area = areaPart, groupName = groupName })
             end
         end
     end
-    print("[ZombieSpawner] Discovered " .. #out .. " portal(s)")
+    print("[MobSpawner] Discovered " .. #out .. " portal(s)")
     return out
 end
 
@@ -84,7 +106,8 @@ local function getRootPart(model)
         or model:FindFirstChildWhichIsA("BasePart")
 end
 
-local function nearestPlayer(pos)
+local function nearestPlayer(pos, detectionRadius)
+    local radius = detectionRadius or DEFAULT_DETECTION_RADIUS
     local best, bestDist, bestRoot
     for _, p in ipairs(Players:GetPlayers()) do
         local ch = p.Character
@@ -94,7 +117,7 @@ local function nearestPlayer(pos)
         local root = ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso")
         if not root then continue end
         local d = (root.Position - pos).Magnitude
-        if d <= DETECTION_RADIUS and (not bestDist or d < bestDist) then
+        if d <= radius and (not bestDist or d < bestDist) then
             best, bestDist, bestRoot = p, d, root
         end
     end
@@ -107,13 +130,21 @@ local function randomPointInArea(areaPart)
 end
 
 ---------------------------------------------------------------------------
--- Spawn one zombie
+-- Spawn one mob
 ---------------------------------------------------------------------------
-local function spawnZombie(portalPart, areaPart)
-    if not template then return nil end
+local function spawnZombie(portalPart, areaPart, tpl)
+    local tplToUse = tpl or templates and templates[1]
+    if not tplToUse then return nil end
 
-    local z = template:Clone()
-    z.Name = "Zombie"
+    -- resolve per-template config early
+    local tplName = tplToUse and tplToUse.Name or "Unknown"
+    local mobCfg = (MobSettings and MobSettings.presets and MobSettings.presets[tplName]) or {}
+
+    local z = tplToUse:Clone()
+    -- name the spawned instance after its template so it matches the source
+    if tplToUse and tplToUse.Name then
+        z.Name = tplToUse.Name
+    end
     z.Parent = Workspace
 
     -- position at bottom of portal
@@ -129,7 +160,8 @@ local function spawnZombie(portalPart, areaPart)
         end
     end)
 
-    CollectionService:AddTag(z, ZOMBIE_TAG)
+    local mobTag = (mobCfg.tag and type(mobCfg.tag) == "string" and mobCfg.tag ~= "") and mobCfg.tag or MOB_TAG
+    CollectionService:AddTag(z, mobTag)
 
     -- unanchor so physics / humanoid work
     for _, d in ipairs(z:GetDescendants()) do
@@ -137,18 +169,23 @@ local function spawnZombie(portalPart, areaPart)
     end
 
     local humanoid = z:FindFirstChildOfClass("Humanoid")
-    if not humanoid then warn("[ZombieSpawner] Zombie has no Humanoid!") return z end
-    humanoid.WalkSpeed  = ZOMBIE_WALK_SPEED
+    if not humanoid then warn("[MobSpawner] Template '" .. (tplToUse and tplToUse.Name or "Unknown") .. "' has no Humanoid!") return z end
+    local MOB_WALK_SPEED = mobCfg.walk_speed or DEFAULT_WALK_SPEED
+    local MOB_CHASE_SPEED = mobCfg.chase_speed or DEFAULT_CHASE_SPEED
+    local MOB_ATTACK_RANGE = mobCfg.attack_range or DEFAULT_ATTACK_RANGE
+    local MOB_DETECTION_RADIUS = mobCfg.detection_radius or DEFAULT_DETECTION_RADIUS
+    local MOB_AGGRO_DURATION = mobCfg.aggro_duration or DEFAULT_AGGRO_DURATION
+    humanoid.WalkSpeed  = MOB_WALK_SPEED
     humanoid.AutoRotate = true
-
-    -- attack setup
-    local ATTACK_DAMAGE = 60
-    local ATTACK_COOLDOWN = 1 -- seconds per target
+    -- attack setup (resolve per-template values if provided)
+    local ATTACK_DAMAGE = mobCfg.attack_damage or 60
+    local ATTACK_COOLDOWN = mobCfg.attack_cooldown or 1 -- seconds per target
     local lastAttackTimes = {}
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     local attackSoundTemplate
     if soundsFolder then
-        attackSoundTemplate = soundsFolder:FindFirstChild("ZombieAttack") or soundsFolder:FindFirstChild("Zombie_Attack")
+        local key = mobCfg.attack_sound or "ZombieAttack"
+        attackSoundTemplate = soundsFolder:FindFirstChild(key) or soundsFolder:FindFirstChild("Zombie_Attack")
     end
 
     -------------------------------------------------------------------
@@ -166,9 +203,10 @@ local function spawnZombie(portalPart, areaPart)
         if a:IsA("Animation") and a.Name:lower():find("walk") then walkAnimObj = a break end
     end
     if not walkAnimObj then
+        local animId = (mobCfg.walk_anim_id and mobCfg.walk_anim_id ~= "") and mobCfg.walk_anim_id or DEFAULT_WALK_ANIM_ID
         walkAnimObj = Instance.new("Animation")
         walkAnimObj.Name        = "Walk_Fallback"
-        walkAnimObj.AnimationId = DEFAULT_WALK_ANIM_ID
+        walkAnimObj.AnimationId = animId
         walkAnimObj.Parent      = z
     end
 
@@ -178,24 +216,23 @@ local function spawnZombie(portalPart, areaPart)
         walkTrack.Priority = Enum.AnimationPriority.Movement
         walkTrack.Looped   = true
     end)
-    if not ok then warn("[ZombieSpawner] Walk anim failed: " .. tostring(err)); walkTrack = nil end
+    if not ok then warn("[MobSpawner] Walk anim failed: " .. tostring(err)); walkTrack = nil end
 
-    -- adjust speed based on health: if health less than max, set to 25, otherwise default
+    -- adjust speed based on health: if health less than max, use chase speed
     local function updateSpeedByHealth(h)
         local maxH = humanoid.MaxHealth or 100
         if h < maxH then
-            humanoid.WalkSpeed = 25
+            humanoid.WalkSpeed = MOB_CHASE_SPEED
         else
-            humanoid.WalkSpeed = ZOMBIE_WALK_SPEED
+            humanoid.WalkSpeed = MOB_WALK_SPEED
         end
     end
 
     -------------------------------------------------------------------
     -- Damage-based aggro: whoever shot us becomes the priority target
     -------------------------------------------------------------------
-    local aggroPlayer = nil   -- Player who last damaged this zombie
+    local aggroPlayer = nil   -- Player who last damaged this mob
     local aggroExpiry = 0     -- os.clock() when aggro expires
-    local AGGRO_DURATION = 12 -- seconds to chase attacker
 
     local prevHealth = humanoid.Health
     -- apply immediately in case template spawns damaged
@@ -211,7 +248,7 @@ local function spawnZombie(portalPart, areaPart)
                     local aHum = attacker.Character:FindFirstChildOfClass("Humanoid")
                     if aHum and aHum.Health > 0 then
                         aggroPlayer = attacker
-                        aggroExpiry = os.clock() + AGGRO_DURATION
+                        aggroExpiry = os.clock() + MOB_AGGRO_DURATION
                     end
                 end
             end
@@ -310,7 +347,7 @@ local function spawnZombie(portalPart, areaPart)
             end
             -- fall back to nearest player within detection radius
             if not targetRoot then
-                local _, nr, nd = nearestPlayer(zroot.Position)
+                local _, nr, nd = nearestPlayer(zroot.Position, MOB_DETECTION_RADIUS)
                 targetRoot = nr
                 dist = nd
             end
@@ -322,8 +359,8 @@ local function spawnZombie(portalPart, areaPart)
                 local dir = (targetRoot.Position - zroot.Position).Unit
                 local overshoot = targetRoot.Position + dir * 10
                 startWalking(overshoot)
-                -- proximity attack (6 studs so it lands even while both are moving)
-                if dist <= 6 then
+                -- proximity attack
+                if dist <= MOB_ATTACK_RANGE then
                     tryDamage(targetRoot)
                 end
             else
@@ -357,7 +394,7 @@ local function spawnZombie(portalPart, areaPart)
     humanoid.Died:Connect(function()
         aiRunning = false
         stopWalking()
-        pcall(function() CollectionService:RemoveTag(z, ZOMBIE_TAG) end)
+        pcall(function() CollectionService:RemoveTag(z, mobTag) end)
         task.delay(10, function() if z and z.Parent then z:Destroy() end end)
     end)
 
@@ -370,12 +407,13 @@ end
 task.spawn(function()
     while true do
         local portals = findPortals()
-        local alive   = #CollectionService:GetTagged(ZOMBIE_TAG)
-        if template and #portals > 0 then
+        local alive   = #CollectionService:GetTagged(MOB_TAG)
+        if templates and #templates > 0 and #portals > 0 then
             for i = 1, SPAWN_BATCH do
                 if alive >= MAX_TOTAL then break end
                 local entry = portals[math.random(1, #portals)]
-                local z = spawnZombie(entry.portal, entry.area)
+                local chosen = templates[math.random(1, #templates)]
+                local z = spawnZombie(entry.portal, entry.area, chosen)
                 if z then alive = alive + 1 end
             end
         end
@@ -383,4 +421,4 @@ task.spawn(function()
     end
 end)
 
-print("[ZombieSpawner] started")
+print("[MobSpawner] started")

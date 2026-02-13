@@ -48,8 +48,22 @@ local function showDGH()
     label:Destroy()
 end
 
--- wait for the ZombieKill remote (no timeout — the server creates it at startup)
-local zombieKillEvent = ReplicatedStorage:WaitForChild("ZombieKill")
-zombieKillEvent.OnClientEvent:Connect(function()
-    showDGH()
-end)
+-- connect to ZombieKill remote when available without blocking
+local zombieKillEvent = ReplicatedStorage:FindFirstChild("ZombieKill")
+local function bindZombieKill(ev)
+    if not ev then return end
+    ev.OnClientEvent:Connect(function()
+        showDGH()
+    end)
+end
+if zombieKillEvent then
+    bindZombieKill(zombieKillEvent)
+else
+    local conn
+    conn = ReplicatedStorage.ChildAdded:Connect(function(child)
+        if child and child.Name == "ZombieKill" and child:IsA("RemoteEvent") then
+            bindZombieKill(child)
+            if conn then conn:Disconnect() end
+        end
+    end)
+end
