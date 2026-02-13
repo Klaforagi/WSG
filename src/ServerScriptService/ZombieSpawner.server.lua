@@ -12,12 +12,12 @@ local PORTAL_GROUP_NAMES = { "DarkPortal1", "DarkPortal2" }
 local PORTAL_PART_NAME   = "PortalPlane"
 local MOB_AREA_PREFIX    = "MobArea"
 
-local SPAWN_INTERVAL     = 30
-local SPAWN_BATCH        = 4
-local MAX_PER_PORTAL     = 8
+local SPAWN_INTERVAL     = 5
+local SPAWN_BATCH        = 1
+local MAX_PER_PORTAL     = 4
 local MAX_TOTAL          = 8
 
-local DETECTION_RADIUS   = 60 -- increased aggro range (double)
+local DETECTION_RADIUS   = 40 -- increased aggro range (double)
 local ZOMBIE_WALK_SPEED  = 16
 local ZOMBIE_TAG         = "ZombieNPC"
 local Debris = game:GetService("Debris")
