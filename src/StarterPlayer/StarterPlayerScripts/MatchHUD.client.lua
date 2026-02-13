@@ -15,6 +15,7 @@ local running = true
 local matchStartTick = nil
 local matchDuration = START_TIME_SECONDS
 local lastIntegerRemaining = nil
+local lastTickSoundTime = 0
 
 -- Create HUD
 local screenGui = Instance.new("ScreenGui")
@@ -256,20 +257,22 @@ end
 spawn(function()
     while true do
         if running and matchStartTick and matchDuration then
-            local elapsed = tick() - matchStartTick
-            local newRemaining = math.max(0, math.floor(matchDuration - elapsed + 0.5))
-            remaining = newRemaining
-            -- play tick when hitting the last 10 seconds (10..1)
-            if remaining <= 10 and remaining > 0 then
-                if lastIntegerRemaining == nil or lastIntegerRemaining ~= remaining then
+            local now = tick()
+            local elapsed = now - matchStartTick
+            -- use floor (not rounding) so integer decreases happen exactly when a full second elapses
+            local newRemaining = math.max(0, math.floor(matchDuration - elapsed))
+            -- play tick once when the integer remaining strictly decreases
+            if newRemaining > 0 and newRemaining <= 9 then
+                if lastIntegerRemaining ~= nil and newRemaining < lastIntegerRemaining then
                     pcall(playTickSound)
                 end
             end
-            lastIntegerRemaining = remaining
+            remaining = newRemaining
+            lastIntegerRemaining = newRemaining
             if remaining <= 0 then running = false end
             refresh()
         end
-        wait(0.25)
+        wait(0.05)
     end
 end)
 
@@ -303,6 +306,7 @@ local function wireMatchStart(ev)
         redScore = 0
         running = true
         lastIntegerRemaining = nil
+        lastTickSoundTime = 0
 
         -- clear all carried-flag HUD indicators
         setCarriedFlag("Blue", "Blue", false)
