@@ -102,10 +102,9 @@ end)
 
 -- Resync on startup by invoking server's GetMatchState (if available)
 spawn(function()
-    local ok, fn = pcall(function() return ReplicatedStorage:WaitForChild("GetMatchState", 2) end)
-    if not ok or not fn or not fn.IsA or not fn:IsA(fn, "RemoteFunction") then
-        return
-    end
+    local ok, fn = pcall(function() return ReplicatedStorage:WaitForChild("GetMatchState", 5) end)
+    if not ok or not fn then return end
+    if not fn:IsA("RemoteFunction") then return end
     local ok2, info = pcall(function() return fn:InvokeServer() end)
     if not ok2 or type(info) ~= "table" then return end
     if info.state == "Game" then

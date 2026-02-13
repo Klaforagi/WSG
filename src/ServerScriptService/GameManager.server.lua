@@ -35,28 +35,6 @@ end
 local ScoreUpdate = ensureRemote("ScoreUpdate")
 local MatchStart  = ensureRemote("MatchStart")
 local MatchEnd    = ensureRemote("MatchEnd")
--- RemoteFunction for clients to request current match state (useful if they miss MatchStart)
-local function ensureFunction(name)
-    local fn = ReplicatedStorage:FindFirstChild(name)
-    if not fn then
-        fn = Instance.new("RemoteFunction")
-        fn.Name = name
-        fn.Parent = ReplicatedStorage
-    end
-    return fn
-end
-local GetMatchState = ensureFunction("GetMatchState")
-
-GetMatchState.OnServerInvoke = function(player)
-    -- return current authoritative match info
-    local info = {
-        state = State,
-        matchStartTick = matchStartTick,
-        matchDuration = MATCH_DURATION,
-        teamScores = { Blue = teamScores.Blue, Red = teamScores.Red },
-    }
-    return info
-end
 
 ---------------------------------------------------------------------
 -- Bindable event  (server script → GameManager)
@@ -69,11 +47,34 @@ if not AddScore then
 end
 
 ---------------------------------------------------------------------
--- State
+-- State  (must be declared BEFORE GetMatchState closure captures them)
 ---------------------------------------------------------------------
 local State = "Idle"   -- Idle | Game | SuddenDeath | EndGame
 local teamScores = { Blue = 0, Red = 0 }
 local matchStartTick = nil
+
+---------------------------------------------------------------------
+-- RemoteFunction for clients to request current match state
+---------------------------------------------------------------------
+local function ensureFunction(name)
+    local fn = ReplicatedStorage:FindFirstChild(name)
+    if not fn then
+        fn = Instance.new("RemoteFunction")
+        fn.Name = name
+        fn.Parent = ReplicatedStorage
+    end
+    return fn
+end
+local GetMatchState = ensureFunction("GetMatchState")
+
+GetMatchState.OnServerInvoke = function(player)
+    return {
+        state = State or "Idle",
+        matchStartTick = matchStartTick,
+        matchDuration = MATCH_DURATION,
+        teamScores = { Blue = teamScores.Blue or 0, Red = teamScores.Red or 0 },
+    }
+end
 
 local function broadcastScore(teamName, value, absolute)
     pcall(function() ScoreUpdate:FireAllClients(teamName, value, absolute) end)
