@@ -95,8 +95,14 @@ local function playGameSound(soundName)
         warn("playGameSound: Sounds.Game folder missing")
         return
     end
-    -- search recursively for the sound name to be more robust
-    local s = gameFolder:FindFirstChild(soundName, true)
+    -- search recursively for the sound name to be more robust (avoid deprecated recursive FindFirstChild)
+    local s = nil
+    for _, v in ipairs(gameFolder:GetDescendants()) do
+        if v.Name == soundName then
+            s = v
+            break
+        end
+    end
     if not s then
         warn("playGameSound: sound not found:", soundName)
         return
