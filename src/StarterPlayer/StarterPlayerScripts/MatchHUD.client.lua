@@ -12,6 +12,9 @@ local blueScore = 0
 local redScore = 0
 local remaining = START_TIME_SECONDS
 local running = true
+local matchStartTick = nil
+local matchDuration = START_TIME_SECONDS
+local lastIntegerRemaining = nil
 
 -- Create HUD
 local screenGui = Instance.new("ScreenGui")
@@ -249,22 +252,24 @@ local function playTickSound()
     end)
 end
 
--- Timer loop (plays tick on 10..1)
+-- Timer loop: compute remaining from server start tick to avoid client-side drift
 spawn(function()
     while true do
-        if running then
-            remaining = remaining - 1
-            if remaining < 0 then
-                running = false
-                remaining = 0
-            end
+        if running and matchStartTick and matchDuration then
+            local elapsed = tick() - matchStartTick
+            local newRemaining = math.max(0, math.floor(matchDuration - elapsed + 0.5))
+            remaining = newRemaining
             -- play tick when hitting the last 10 seconds (10..1)
             if remaining <= 10 and remaining > 0 then
-                pcall(playTickSound)
+                if lastIntegerRemaining == nil or lastIntegerRemaining ~= remaining then
+                    pcall(playTickSound)
+                end
             end
+            lastIntegerRemaining = remaining
+            if remaining <= 0 then running = false end
             refresh()
         end
-        wait(1)
+        wait(0.25)
     end
 end)
 
@@ -282,15 +287,22 @@ local function wireScoreEvent(ev)
 end
 
 local function wireMatchStart(ev)
-    ev.OnClientEvent:Connect(function(durationSeconds)
+    ev.OnClientEvent:Connect(function(durationSeconds, startTick)
         if type(durationSeconds) == "number" then
-            remaining = durationSeconds
+            matchDuration = durationSeconds
         else
-            remaining = START_TIME_SECONDS
+            matchDuration = START_TIME_SECONDS
         end
+        if type(startTick) == "number" then
+            matchStartTick = startTick
+        else
+            matchStartTick = tick()
+        end
+        -- initialize state
         blueScore = 0
         redScore = 0
         running = true
+        lastIntegerRemaining = nil
 
         -- clear all carried-flag HUD indicators
         setCarriedFlag("Blue", "Blue", false)
@@ -334,6 +346,28 @@ end)
 
 -- initial refresh
 refresh()
+
+-- Attempt to resync with server in case we missed the MatchStart event
+spawn(function()
+    local ok, fn = pcall(function() return ReplicatedStorage:WaitForChild("GetMatchState", 2) end)
+    if not ok or not fn or not fn.IsA or not fn:IsA(fn, "RemoteFunction") then
+        return
+    end
+    local ok2, info = pcall(function() return fn:InvokeServer() end)
+    if not ok2 or type(info) ~= "table" then return end
+    if info.state == "Game" and type(info.matchStartTick) == "number" and type(info.matchDuration) == "number" then
+        matchDuration = info.matchDuration
+        matchStartTick = info.matchStartTick
+        running = true
+        lastIntegerRemaining = nil
+        -- also sync scores if provided
+        if info.teamScores and type(info.teamScores) == "table" then
+            blueScore = info.teamScores.Blue or 0
+            redScore = info.teamScores.Red or 0
+        end
+        refresh()
+    end
+end)
 
 -- Listen to flag status announcements to update HUD carried-flag squares
 if FlagStatus and FlagStatus:IsA("RemoteEvent") then

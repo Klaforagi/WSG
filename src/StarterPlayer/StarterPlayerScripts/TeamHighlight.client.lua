@@ -19,8 +19,16 @@ local function addHighlightToModel(model, color)
     h.Adornee = model
     h.FillColor = color
     h.OutlineColor = color
-    h.FillTransparency = 0.6
+    -- hide fill entirely; keep outline visible
+    h.FillTransparency = 1
     h.OutlineTransparency = 0.4
+    -- DepthMode: teammates should render on top; others (enemies/dummies) occluded
+    local pl = Players:GetPlayerFromCharacter(model)
+    if pl and not isEnemy(pl) then
+        h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+    else
+        h.DepthMode = Enum.HighlightDepthMode.Occluded
+    end
     h.Parent = model
 end
 

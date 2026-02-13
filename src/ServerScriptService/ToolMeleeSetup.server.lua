@@ -65,6 +65,14 @@ end
 -- Damage helper (same tag pattern as the gun system so KillTracker works)
 ---------------------------------------------------------------------------
 local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, hitPos)
+    -- prevent friendly fire: if the victim is a player on the same Team, skip damage
+    local victimPlayer = nil
+    if victimModel and Players then
+        victimPlayer = Players:GetPlayerFromCharacter(victimModel)
+    end
+    if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
+        return
+    end
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
@@ -289,11 +297,18 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
     local knockback = cfg.knockback or 0
 
     -- rate limit (small tolerance so network jitter doesn't silently drop held swings)
+    -- Snaps lastSwing to the cadence beat (last + cd) rather than wall-clock
+    -- receipt time, preventing cumulative drift at any cooldown value.
     local now = tick()
     if not lastSwing[player] then lastSwing[player] = {} end
     local last = lastSwing[player][toolName] or 0
     if now - last < cd * 0.85 then return end
-    lastSwing[player][toolName] = now
+    -- snap to expected cadence beat; reset fresh if player hasn't swung recently
+    if last > 0 and (now - last) < cd * 1.5 then
+        lastSwing[player][toolName] = last + cd
+    else
+        lastSwing[player][toolName] = now
+    end
 
     -- use the server-side look direction (from HRP) for safety, blended with the client's
     -- to prevent spoofing while still feeling responsive
@@ -437,13 +452,18 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
                         end
                     end
                     -- knockback
+                    -- knockback (skip for same-team players)
                     if knockback > 0 then
                         local victimRoot = hit.model:FindFirstChild("HumanoidRootPart")
                             or hit.model:FindFirstChild("Torso")
                         if victimRoot then
-                            local dir = (victimRoot.Position - boxCFrame.Position)
-                            if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
-                            applyKnockback(victimRoot, dir, knockback)
+                            local vp = Players:GetPlayerFromCharacter(hit.model)
+                            local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
+                            if not isSameTeam then
+                                local dir = (victimRoot.Position - boxCFrame.Position)
+                                if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
+                                applyKnockback(victimRoot, dir, knockback)
+                            end
                         end
                     end
                 end

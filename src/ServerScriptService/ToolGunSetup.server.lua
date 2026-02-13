@@ -140,6 +140,14 @@ end
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
 local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos)
+    -- prevent friendly fire: if the victim is a player on the same Team, skip damage
+    local victimPlayer = nil
+    if victimModel and Players then
+        victimPlayer = Players:GetPlayerFromCharacter(victimModel)
+    end
+    if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
+        return
+    end
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
@@ -358,12 +366,21 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     local tCOOLDOWN = tCfg.cd or COOLDOWN_SERVER
 
     -- rate limit (per-tool so switching weapons doesn't block shots)
+    -- Uses 90% of cooldown as the check threshold so network jitter can't
+    -- silently drop shots.  Stamps lastFire to the cadence beat (last + cd)
+    -- rather than wall-clock receipt time, preventing cumulative drift that
+    -- causes hiccup/burst patterns at any cooldown value.
     local now = tick()
     local toolKey = toolName or "_default"
     if not lastFire[player] then lastFire[player] = {} end
     local last = lastFire[player][toolKey]
-    if last and now - last < tCOOLDOWN then return end
-    lastFire[player][toolKey] = now
+    if last and now - last < tCOOLDOWN * 0.9 then return end
+    -- snap to expected cadence beat; reset fresh if player hasn't fired recently
+    if last and (now - last) < tCOOLDOWN * 1.5 then
+        lastFire[player][toolKey] = last + tCOOLDOWN
+    else
+        lastFire[player][toolKey] = now
+    end
 
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end

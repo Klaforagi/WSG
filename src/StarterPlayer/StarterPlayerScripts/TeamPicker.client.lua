@@ -223,8 +223,8 @@ local function updateCounts()
 	if bc then bc.Text = tostring(blueCount) end
 	if rc then rc.Text = tostring(redCount) end
     
-	-- Disable the side that currently has MORE players than the other
-	if blueCount > redCount then
+	-- Disable the side only when it's 2 or more players larger than the other
+	if blueCount >= redCount + 2 then
 		blueCard:SetAttribute("Disabled", true)
 		blueCard.BackgroundColor3 = Color3.fromRGB(20, 20, 26)
 	else
@@ -232,7 +232,7 @@ local function updateCounts()
 		blueCard.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
 	end
 
-	if redCount > blueCount then
+	if redCount >= blueCount + 2 then
 		redCard:SetAttribute("Disabled", true)
 		redCard.BackgroundColor3 = Color3.fromRGB(26, 20, 20)
 	else

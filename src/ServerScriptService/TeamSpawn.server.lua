@@ -93,12 +93,14 @@ Players.PlayerAdded:Connect(function(player)
 			end
 		end
 
-		if teamName == "Blue" and blueCount > redCount then
-			chooseResponse:FireClient(player, false, "Blue has more players — pick the other side")
+		-- allow joining if target team has at most one more player than the other
+		-- disallow if the difference is two or more
+		if teamName == "Blue" and blueCount >= redCount + 2 then
+			chooseResponse:FireClient(player, false, "Blue has too many players — pick the other side")
 			return
 		end
-		if teamName == "Red" and redCount > blueCount then
-			chooseResponse:FireClient(player, false, "Red has more players — pick the other side")
+		if teamName == "Red" and redCount >= blueCount + 2 then
+			chooseResponse:FireClient(player, false, "Red has too many players — pick the other side")
 			return
 		end
 
