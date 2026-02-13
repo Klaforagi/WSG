@@ -50,7 +50,7 @@ local function getCfg(tool)
         for k, v in pairs(MeleeCfgModule.presets[key]) do cfg[k] = v end
     end
     -- per-tool attribute overrides
-    for _, a in ipairs({"damage","cd","range","arc","knockback"}) do
+        for _, a in ipairs({"damage","cd","knockback","hitboxSize","hitboxOffset","hitboxDelay","hitboxActive","showHitbox"}) do
         local val = tool:GetAttribute(a)
         if val ~= nil then cfg[a] = val end
     end
@@ -123,6 +123,33 @@ local function showDamagePopup(damage, isHeadshot, hitPart, hitPos)
     tween:Cancel()
     gui:Destroy()
     if anchor and anchor.Parent then anchor:Destroy() end
+end
+
+--------------------------------------------------------------------------------
+-- Debug: show hitbox disk locally for tuning (client-only part)
+--------------------------------------------------------------------------------
+local function showDebugHitbox(originCFrame, boxSize, offset, duration, color)
+    if not originCFrame or not boxSize then return end
+    duration = duration or 0.2
+    color = color or Color3.fromRGB(255, 50, 50)
+
+    local offset = offset or Vector3.new(0, 0, 0)
+    local pos = originCFrame.Position
+        + originCFrame.RightVector * offset.X
+        + originCFrame.UpVector * offset.Y
+        + originCFrame.LookVector * offset.Z
+    local boxCFrame = CFrame.new(pos, pos + originCFrame.LookVector)
+    local part = Instance.new("Part")
+    part.Name = "_MeleeHitboxDebug"
+    part.Anchored = true
+    part.CanCollide = false
+    part.Size = boxSize
+    part.Transparency = 0.6
+    part.Color = color
+    part.Material = Enum.Material.Neon
+    part.CFrame = boxCFrame
+    part.Parent = workspace
+    Debris:AddItem(part, duration)
 end
 
 --------------------------------------------------------------------------------
@@ -200,32 +227,87 @@ local function attachMelee(tool)
     local cfg = getCfg(tool)
     local cooldown = cfg.cd or 0.6
     local lastSwing = 0
+    local swingLock = false
 
     local mouse = player:GetMouse()
     local mouseConns = {}
+    local holding = false
 
     local function doSwing()
+        -- prevent reentry
+        if swingLock then return end
         local now = tick()
         if now - lastSwing < cooldown then return end
+        swingLock = true
         lastSwing = now
 
-        -- play client-side swing visual + sound immediately for responsiveness
-        playSwingVisual(tool)
-        playMeleeSound(cfg.swing_sound)
+        -- (audio/animation now played server-side for authoritative playback)
+        -- debug: optionally show hitbox visual after hitboxDelay
+        local showGlobal = false
+        local globalVal = ReplicatedStorage:FindFirstChild("ToolMeleeShowHitbox")
+        if globalVal and globalVal:IsA("BoolValue") then showGlobal = globalVal.Value end
+        local wantDebug = (cfg.showHitbox == true) or showGlobal
+        if wantDebug then
+            local hd = cfg.hitboxDelay or 0.1
+            local ha = cfg.hitboxActive or 0.2
+            local color = cfg.hitboxColor or Color3.fromRGB(255, 50, 50)
+            spawn(function()
+                task.wait(hd)
+                local char = player.Character
+                local originCFrame = nil
+                if char and char.PrimaryPart then originCFrame = char.PrimaryPart.CFrame end
+                if not originCFrame and char then
+                    originCFrame = (char:FindFirstChild("HumanoidRootPart") and char.HumanoidRootPart.CFrame) or CFrame.new()
+                end
+                if originCFrame then
+                        local boxSize = cfg.hitboxSize or Vector3.new(4,3,7)
+                        local offset = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
+                        showDebugHitbox(originCFrame, boxSize, offset, ha + 0.04, color)
+                end
+            end)
+        end
 
         -- tell the server we swung
         local char = player.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        swingEvent:FireServer(tool.Name, hrp.CFrame.LookVector)
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                swingEvent:FireServer(tool.Name, hrp.CFrame.LookVector)
+            end
+        end
+
+        -- small delay to avoid immediate reentry; actual cooldown enforced by lastSwing
+        task.delay(0.05, function() swingLock = false end)
+    end
+
+    local function startHolding()
+        if holding then return end
+        holding = true
+        -- attempt immediate swing
+        doSwing()
+        spawn(function()
+            while holding and tool and tool.Parent do
+                local now = tick()
+                local nextAllowed = lastSwing + cooldown
+                local waitTime = math.max(0.001, nextAllowed - now)
+                task.wait(waitTime)
+                if not holding then break end
+                doSwing()
+            end
+        end)
+    end
+
+    local function stopHolding()
+        holding = false
     end
 
     tool.Equipped:Connect(function()
-        table.insert(mouseConns, mouse.Button1Down:Connect(doSwing))
+        table.insert(mouseConns, mouse.Button1Down:Connect(startHolding))
+        table.insert(mouseConns, mouse.Button1Up:Connect(stopHolding))
     end)
 
     tool.Unequipped:Connect(function()
+        stopHolding()
         for _, c in ipairs(mouseConns) do c:Disconnect() end
         mouseConns = {}
     end)

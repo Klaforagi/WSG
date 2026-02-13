@@ -10,6 +10,7 @@ local Workspace          = game:GetService("Workspace")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Debris             = game:GetService("Debris")
 local CollectionService  = game:GetService("CollectionService")
+local TweenService       = game:GetService("TweenService")
 
 -- Melee settings module
 local MeleeCfg
@@ -213,6 +214,53 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
 end
 
 ---------------------------------------------------------------------------
+-- Box overlap hit detection: find targets whose root is inside an oriented box
+-- `boxCFrame` is the world CFrame of the box center; `halfSize` is half extents Vector3
+---------------------------------------------------------------------------
+local function getTargetsInBox(playerChar, boxCFrame, halfSize)
+    local results = {}
+    local seenHum = {}
+
+    -- Use GetPartBoundsInBox to detect any parts inside the oriented box.
+    local parts = Workspace:GetPartBoundsInBox(boxCFrame, halfSize * 2)
+    if parts and #parts > 0 then
+        local params = RaycastParams.new()
+        params.FilterDescendantsInstances = { playerChar }
+        params.FilterType = Enum.RaycastFilterType.Exclude
+        params.IgnoreWater = true
+        for _, part in ipairs(parts) do
+            if not part or not part:IsA("BasePart") then continue end
+            -- find ancestor model that has a Humanoid
+            local model = part:FindFirstAncestorOfClass("Model")
+            if not model then continue end
+            if model == playerChar then continue end
+            local hum = model:FindFirstChildOfClass("Humanoid")
+            if not hum or hum.Health <= 0 then continue end
+            if seenHum[hum] then continue end
+
+            -- ensure there's line-of-sight to the hit part (box center → part)
+            local dir = part.Position - boxCFrame.Position
+            if dir.Magnitude <= 0.001 then
+                -- extremely close, accept hit
+                local dist = (part.Position - boxCFrame.Position).Magnitude
+                table.insert(results, { humanoid = hum, model = model, hitPart = part, hitPos = part.Position, dist = dist })
+                seenHum[hum] = true
+            else
+                local ray = Workspace:Raycast(boxCFrame.Position, dir, params)
+                if ray and ray.Instance and (ray.Instance:IsDescendantOf(model) or ray.Instance == part) then
+                    local dist = (part.Position - boxCFrame.Position).Magnitude
+                    table.insert(results, { humanoid = hum, model = model, hitPart = ray.Instance, hitPos = ray.Position, dist = dist })
+                    seenHum[hum] = true
+                end
+            end
+        end
+    end
+
+    table.sort(results, function(a, b) return a.dist < b.dist end)
+    return results
+end
+
+---------------------------------------------------------------------------
 -- Rate limiting
 ---------------------------------------------------------------------------
 local lastSwing = {} -- [player] = { [toolName] = tick() }
@@ -238,15 +286,13 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
     local cfg = getServerMeleeCfg(toolName)
     local damage    = cfg.damage or 30
     local cd        = cfg.cd or 0.5
-    local range     = cfg.range or 7
-    local arc       = cfg.arc or 90
     local knockback = cfg.knockback or 0
 
-    -- rate limit
+    -- rate limit (small tolerance so network jitter doesn't silently drop held swings)
     local now = tick()
     if not lastSwing[player] then lastSwing[player] = {} end
     local last = lastSwing[player][toolName] or 0
-    if now - last < cd * 0.9 then return end -- 0.9 to be lenient with latency
+    if now - last < cd * 0.85 then return end
     lastSwing[player][toolName] = now
 
     -- use the server-side look direction (from HRP) for safety, blended with the client's
@@ -255,45 +301,156 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
     local blended = (serverLook + lookDir.Unit).Unit
     if blended.Magnitude < 0.001 then blended = serverLook end
 
-    -- find targets
-    local origin = hrp.Position + Vector3.new(0, 0.5, 0) -- slightly above feet
-    local targets = getTargetsInCone(player.Character, origin, blended, range, arc)
-
-    -- play hit sound at the weapon for everyone nearby
-    if #targets > 0 then
-        local hitSoundKey = cfg.hit_sound
-        if hitSoundKey and hitSoundKey ~= "" then
-            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-            if soundsFolder then
-                local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
-                if meleeFolder then
-                    local template = meleeFolder:FindFirstChild(hitSoundKey)
-                    if template and template:IsA("Sound") then
-                        local s = template:Clone()
-                        s.Parent = hrp
-                        s:Play()
-                        Debris:AddItem(s, 3)
+    -- server-side audiovisuals: play swing sound and server animation from the character
+    do
+        -- play swing sound at HRP
+        local swingSoundKey = cfg.swing_sound
+        if swingSoundKey and swingSoundKey ~= "" then
+            pcall(function()
+                local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                if soundsFolder then
+                    local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
+                    if meleeFolder then
+                        local template = meleeFolder:FindFirstChild(swingSoundKey)
+                        if template and template:IsA("Sound") then
+                            local s = template:Clone()
+                            s.Parent = hrp
+                            s:Play()
+                            Debris:AddItem(s, 3)
+                        end
                     end
+                end
+            end)
+        end
+
+        -- play swing animation on the server humanoid
+        -- 1) try a custom Animation inside the tool
+        local animObj = nil
+        if tool then
+            for _, d in ipairs(tool:GetDescendants()) do
+                if d:IsA("Animation") and tostring(d.Name):lower():find("swing") then
+                    animObj = d
+                    break
                 end
             end
         end
-    end
+        if not animObj and cfg.swing_anim_id and cfg.swing_anim_id ~= "" then
+            local a = Instance.new("Animation")
+            a.AnimationId = cfg.swing_anim_id
+            animObj = a
+        end
+        if animObj then
+            pcall(function()
+                local animator = hum:FindFirstChildOfClass("Animator")
+                if not animator then
+                    animator = Instance.new("Animator")
+                    animator.Parent = hum
+                end
+                local track = animator:LoadAnimation(animObj)
+                track.Priority = Enum.AnimationPriority.Action
+                track:Play()
+                task.delay(2, function()
+                    pcall(function() track:Stop() end)
+                    if animObj and animObj:IsA("Animation") and animObj.Parent == nil then
+                        pcall(function() animObj:Destroy() end)
+                    end
+                end)
+            end)
+        else
+            -- 2) procedural swing: tween Motor6D on the right arm (replicates to all clients)
+            pcall(function()
+                local char = player.Character
+                if not char then return end
+                local motor = nil
+                local torso = char:FindFirstChild("Torso")
+                if torso then motor = torso:FindFirstChild("Right Shoulder") end
+                if not motor then
+                    local rua = char:FindFirstChild("RightUpperArm")
+                    if rua then motor = rua:FindFirstChild("RightShoulder") end
+                end
+                if not motor or not motor:IsA("Motor6D") then return end
 
-    -- apply damage to all targets in the swing cone
-    for _, hit in ipairs(targets) do
-        applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
+                local originalC1 = motor.C1
+                local raiseGoal = originalC1 * CFrame.Angles(math.rad(-90), 0, 0)
+                local slashGoal = originalC1 * CFrame.Angles(math.rad(90), 0, 0)
 
-        -- knockback
-        if knockback > 0 then
-            local victimRoot = hit.model:FindFirstChild("HumanoidRootPart")
-                or hit.model:FindFirstChild("Torso")
-            if victimRoot then
-                local dir = (victimRoot.Position - origin)
-                if dir.Magnitude < 0.01 then dir = blended end
-                applyKnockback(victimRoot, dir, knockback)
-            end
+                local raiseTI  = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                local slashTI  = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+                local returnTI = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+
+                local raiseTween = TweenService:Create(motor, raiseTI, { C1 = raiseGoal })
+                raiseTween:Play()
+                raiseTween.Completed:Once(function()
+                    local slashTween = TweenService:Create(motor, slashTI, { C1 = slashGoal })
+                    slashTween:Play()
+                    slashTween.Completed:Once(function()
+                        local returnTween = TweenService:Create(motor, returnTI, { C1 = originalC1 })
+                        returnTween:Play()
+                    end)
+                end)
+            end)
         end
     end
+
+    -- delayed/persistent hitbox: wait `hitboxDelay`, then for `hitboxActive` seconds
+    -- repeatedly check the cone and apply damage once per target per swing.
+    local hitboxDelay = cfg.hitboxDelay or 0.1
+    local hitboxActive = cfg.hitboxActive or 0.2
+    task.spawn(function()
+        task.wait(hitboxDelay)
+        local hitAlready = {}
+        local endTime = tick() + hitboxActive
+        while tick() < endTime and player and player.Character and hum and hum.Health > 0 do
+            local curHrp = player.Character:FindFirstChild("HumanoidRootPart")
+            if not curHrp then break end
+            -- compute oriented box CFrame and half extents
+            local boxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
+            local offset = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
+            -- compute world position using HRP local axes so +Z in offset means "in front"
+            local pos = curHrp.Position
+                + curHrp.CFrame.RightVector * offset.X
+                + curHrp.CFrame.UpVector * offset.Y
+                + curHrp.CFrame.LookVector * offset.Z
+            local boxCFrame = CFrame.new(pos, pos + curHrp.CFrame.LookVector)
+            local halfSize = boxSize / 2
+            local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
+            for _, hit in ipairs(targetsNow) do
+                if not hitAlready[hit.humanoid] then
+                    hitAlready[hit.humanoid] = true
+                    -- apply damage
+                    applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
+                    -- hit sound at attacker
+                    local hitSoundKey = cfg.hit_sound
+                    if hitSoundKey and hitSoundKey ~= "" then
+                        local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                        if soundsFolder then
+                            local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
+                            if meleeFolder then
+                                local template = meleeFolder:FindFirstChild(hitSoundKey)
+                                if template and template:IsA("Sound") then
+                                    local s = template:Clone()
+                                    s.Parent = curHrp
+                                    s:Play()
+                                    Debris:AddItem(s, 3)
+                                end
+                            end
+                        end
+                    end
+                    -- knockback
+                    if knockback > 0 then
+                        local victimRoot = hit.model:FindFirstChild("HumanoidRootPart")
+                            or hit.model:FindFirstChild("Torso")
+                        if victimRoot then
+                            local dir = (victimRoot.Position - boxCFrame.Position)
+                            if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
+                            applyKnockback(victimRoot, dir, knockback)
+                        end
+                    end
+                end
+            end
+            task.wait(0.06)
+        end
+    end)
 end)
 
 -- clean up on leave
