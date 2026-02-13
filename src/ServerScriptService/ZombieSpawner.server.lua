@@ -17,9 +17,19 @@ local SPAWN_BATCH        = 4
 local MAX_PER_PORTAL     = 8
 local MAX_TOTAL          = 8
 
-local DETECTION_RADIUS   = 30
-local ZOMBIE_WALK_SPEED  = 10
+local DETECTION_RADIUS   = 60 -- increased aggro range (double)
+local ZOMBIE_WALK_SPEED  = 16
 local ZOMBIE_TAG         = "ZombieNPC"
+local Debris = game:GetService("Debris")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Create ZombieKill remote up front so the client can connect immediately
+local zombieKillEvent = ReplicatedStorage:FindFirstChild("ZombieKill")
+if not zombieKillEvent then
+    zombieKillEvent = Instance.new("RemoteEvent")
+    zombieKillEvent.Name = "ZombieKill"
+    zombieKillEvent.Parent = ReplicatedStorage
+end
 
 -- Default R6 walk animation (used when template has no Walk animation)
 local DEFAULT_WALK_ANIM_ID = "rbxassetid://180426354"
@@ -131,6 +141,16 @@ local function spawnZombie(portalPart, areaPart)
     humanoid.WalkSpeed  = ZOMBIE_WALK_SPEED
     humanoid.AutoRotate = true
 
+    -- attack setup
+    local ATTACK_DAMAGE = 60
+    local ATTACK_COOLDOWN = 1 -- seconds per target
+    local lastAttackTimes = {}
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    local attackSoundTemplate
+    if soundsFolder then
+        attackSoundTemplate = soundsFolder:FindFirstChild("ZombieAttack") or soundsFolder:FindFirstChild("Zombie_Attack")
+    end
+
     -------------------------------------------------------------------
     -- Animator + walk track
     -------------------------------------------------------------------
@@ -160,10 +180,79 @@ local function spawnZombie(portalPart, areaPart)
     end)
     if not ok then warn("[ZombieSpawner] Walk anim failed: " .. tostring(err)); walkTrack = nil end
 
+    -- adjust speed based on health: if health less than max, set to 25, otherwise default
+    local function updateSpeedByHealth(h)
+        local maxH = humanoid.MaxHealth or 100
+        if h < maxH then
+            humanoid.WalkSpeed = 25
+        else
+            humanoid.WalkSpeed = ZOMBIE_WALK_SPEED
+        end
+    end
+
+    -------------------------------------------------------------------
+    -- Damage-based aggro: whoever shot us becomes the priority target
+    -------------------------------------------------------------------
+    local aggroPlayer = nil   -- Player who last damaged this zombie
+    local aggroExpiry = 0     -- os.clock() when aggro expires
+    local AGGRO_DURATION = 12 -- seconds to chase attacker
+
+    local prevHealth = humanoid.Health
+    -- apply immediately in case template spawns damaged
+    updateSpeedByHealth(humanoid.Health)
+    humanoid.HealthChanged:Connect(function(newHealth)
+        updateSpeedByHealth(newHealth)
+        -- detect damage (health went down)
+        if newHealth < prevHealth then
+            local attackerId = humanoid:GetAttribute("lastDamagerUserId")
+            if attackerId then
+                local attacker = Players:GetPlayerByUserId(attackerId)
+                if attacker and attacker.Character then
+                    local aHum = attacker.Character:FindFirstChildOfClass("Humanoid")
+                    if aHum and aHum.Health > 0 then
+                        aggroPlayer = attacker
+                        aggroExpiry = os.clock() + AGGRO_DURATION
+                    end
+                end
+            end
+        end
+        prevHealth = newHealth
+    end)
+
+    -- damage on touch
+    local function tryDamage(otherPart)
+        if not otherPart or not otherPart.Parent then return end
+        local victimHum = otherPart.Parent:FindFirstChildOfClass("Humanoid")
+        if not victimHum or victimHum.Health <= 0 then return end
+        local victimChar = victimHum.Parent
+        local ply = Players:GetPlayerFromCharacter(victimChar)
+        if not ply then return end -- only damage players
+        local now = tick()
+        local last = lastAttackTimes[victimHum] or 0
+        if now - last < ATTACK_COOLDOWN then return end
+        lastAttackTimes[victimHum] = now
+        -- apply damage
+        victimHum:TakeDamage(ATTACK_DAMAGE)
+        -- if this killed the player, fire ZombieKill to the victim for DGH popup
+        if victimHum.Health <= 0 then
+            pcall(function() zombieKillEvent:FireClient(ply) end)
+        end
+        -- play attack sound at victim root or zombie
+        local parentForSound = (victimChar:FindFirstChild("HumanoidRootPart") or victimChar:FindFirstChildWhichIsA("BasePart")) or z
+        if attackSoundTemplate and attackSoundTemplate:IsA("Sound") then
+            local s = attackSoundTemplate:Clone()
+            s.Parent = parentForSound
+            s:Play()
+            Debris:AddItem(s, 4)
+        end
+    end
+    -- (proximity-based attack is handled in the AI loop below — no Touched events needed)
+
     -------------------------------------------------------------------
     -- Movement helpers
     -------------------------------------------------------------------
     local moving = false
+    local chasing = false  -- true while actively chasing a player
 
     local function startWalking(dest)
         humanoid:MoveTo(dest)
@@ -181,7 +270,10 @@ local function spawnZombie(portalPart, areaPart)
     end
 
     humanoid.MoveToFinished:Connect(function()
-        stopWalking()
+        -- don't stop walking while chasing; the AI loop will issue a new MoveTo
+        if not chasing then
+            stopWalking()
+        end
     end)
 
     -------------------------------------------------------------------
@@ -192,44 +284,78 @@ local function spawnZombie(portalPart, areaPart)
     local areaCenter = areaPart and areaPart:IsA("BasePart") and areaPart.Position or nil
     local areaSize   = areaPart and areaPart:IsA("BasePart") and areaPart.Size or nil
 
-    local aiConn
-    aiConn = RunService.Heartbeat:Connect(function()
-        if not z or not z.Parent or not humanoid or humanoid.Health <= 0 then
-            if aiConn then aiConn:Disconnect() end
-            stopWalking()
-            return
-        end
-        local zroot = getRootPart(z)
-        if not zroot then return end
+    -- lightweight AI loop (runs every 0.2s) to reduce server overhead
+    local aiRunning = true
+    task.spawn(function()
+        while aiRunning and z and z.Parent and humanoid and humanoid.Health > 0 do
+            local zroot = getRootPart(z)
+            if not zroot then break end
 
-        -- chase nearby player
-        local _, targetRoot, dist = nearestPlayer(zroot.Position)
-        if targetRoot and dist and dist > 2 then
-            startWalking(targetRoot.Position)
-            return
-        end
-
-        -- wander occasionally; 30 % chance to just idle in place
-        if tick() - lastWander >= wanderCooldown then
-            lastWander    = tick()
-            wanderCooldown = math.random(3, 7)
-            if math.random() < 0.3 then return end
-
-            local dest
-            if areaCenter and areaSize then
-                dest = randomPointInArea(areaPart)
-            else
-                local a = math.random() * math.pi * 2
-                local r = math.random(3, 12)
-                dest = spawnPos + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+            -- resolve aggro target: prioritise the player who shot us
+            local targetRoot, dist
+            if aggroPlayer and os.clock() < aggroExpiry then
+                local ch = aggroPlayer.Character
+                if ch then
+                    local aHum = ch:FindFirstChildOfClass("Humanoid")
+                    local aRoot = ch:FindFirstChild("HumanoidRootPart") or ch:FindFirstChild("Torso")
+                    if aHum and aHum.Health > 0 and aRoot then
+                        targetRoot = aRoot
+                        dist = (aRoot.Position - zroot.Position).Magnitude
+                    else
+                        aggroPlayer = nil -- target dead / invalid
+                    end
+                else
+                    aggroPlayer = nil
+                end
             end
-            startWalking(dest)
+            -- fall back to nearest player within detection radius
+            if not targetRoot then
+                local _, nr, nd = nearestPlayer(zroot.Position)
+                targetRoot = nr
+                dist = nd
+            end
+
+            if targetRoot and dist then
+                chasing = true
+                -- overshoot: move to a point 10 studs PAST the player so the
+                -- humanoid never decelerates near them
+                local dir = (targetRoot.Position - zroot.Position).Unit
+                local overshoot = targetRoot.Position + dir * 10
+                startWalking(overshoot)
+                -- proximity attack (6 studs so it lands even while both are moving)
+                if dist <= 6 then
+                    tryDamage(targetRoot)
+                end
+            else
+                chasing = false
+                -- wander occasionally; 30% chance to idle
+                if tick() - lastWander >= wanderCooldown then
+                    lastWander = tick()
+                    wanderCooldown = math.random(3, 7)
+                    if math.random() < 0.3 then
+                        -- stay idle
+                    else
+                        local dest
+                        if areaCenter and areaSize then
+                            dest = randomPointInArea(areaPart)
+                        else
+                            local a = math.random() * math.pi * 2
+                            local r = math.random(3, 12)
+                            dest = spawnPos + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+                        end
+                        startWalking(dest)
+                    end
+                end
+            end
+
+            task.wait(0.2)
         end
+        aiRunning = false
     end)
 
     -- cleanup on death
     humanoid.Died:Connect(function()
-        if aiConn then aiConn:Disconnect() end
+        aiRunning = false
         stopWalking()
         pcall(function() CollectionService:RemoveTag(z, ZOMBIE_TAG) end)
         task.delay(10, function() if z and z.Parent then z:Destroy() end end)
