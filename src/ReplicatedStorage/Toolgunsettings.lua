@@ -3,9 +3,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Preset configurations for named tool types (keys are lowercase, e.g. 'pistol', 'sniper')
 local presets = {
     pistol = {
-        damage = 5,
-        cd = 1.5,
-        bulletspeed = 300,
+        damage = 12,
+        cd = 0.18,
+        bulletspeed = 400,
         range = 450,
         projectile_lifetime = 2,
         projectile_size = {0.3,0.3,0.4},
