@@ -227,15 +227,79 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     params.FilterType = Enum.RaycastFilterType.Blacklist
     params.IgnoreWater = true
 
-    local visual = Instance.new("Part")
-    visual.Name = "Bullet"
-    visual.Size = pSize
-    visual.CFrame = CFrame.new(origin)
-    visual.CanCollide = false
-    visual.Anchored = true
-    visual.Material = Enum.Material.Neon
-    visual.Color = getTracerColor(player)
-    visual.Parent = Workspace
+    -- Try to obtain a preset projectile (Part or Model) from Toolgunsettings
+    local visual = nil
+    local usingModel = false
+    if ToolgunModule and ToolgunModule.getProjectileForPreset then
+        -- derive preset key from toolName (ToolBow -> bow)
+        local presetKey = nil
+        if toolName then
+            local s = tostring(toolName):match("^Tool(.+)")
+            if s then presetKey = s:lower() end
+        end
+        if presetKey then
+            local ok, proj = pcall(function() return ToolgunModule.getProjectileForPreset(presetKey) end)
+            if ok and proj then
+                visual = proj
+            end
+        end
+    end
+
+    -- Fallback to simple part if no template provided
+    if not visual then
+        visual = Instance.new("Part")
+        visual.Name = "Bullet"
+        visual.Size = pSize
+        visual.Material = Enum.Material.Neon
+        visual.Color = getTracerColor(player)
+        -- keep same behavior as previous implementation
+        visual.CanCollide = false
+        visual.Anchored = true
+        visual.CFrame = CFrame.new(origin)
+        visual.Parent = Workspace
+    else
+        -- If the template is a Model, prepare it for script-driven movement
+        if visual:IsA("Model") then
+            usingModel = true
+            -- ensure model has a PrimaryPart; pick first BasePart if not
+            local primary = visual.PrimaryPart
+            if not primary then
+                for _, d in ipairs(visual:GetDescendants()) do
+                    if d:IsA("BasePart") then
+                        primary = d
+                        break
+                    end
+                end
+                if primary then visual.PrimaryPart = primary end
+            end
+            -- make all parts non-collidable and anchored so we can move the model via CFrame
+            for _, d in ipairs(visual:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    d.CanCollide = false
+                    d.Anchored = true
+                end
+            end
+            visual:SetPrimaryPartCFrame(CFrame.new(origin))
+            visual.Parent = Workspace
+        elseif visual:IsA("BasePart") then
+            visual.CanCollide = false
+            visual.Anchored = true
+            visual.CFrame = CFrame.new(origin)
+            visual.Parent = Workspace
+        else
+            -- unknown type: fallback to simple part
+            local part = Instance.new("Part")
+            part.Name = "Bullet"
+            part.Size = pSize
+            part.Material = Enum.Material.Neon
+            part.Color = getTracerColor(player)
+            part.CanCollide = false
+            part.Anchored = true
+            part.CFrame = CFrame.new(origin)
+            part.Parent = Workspace
+            visual = part
+        end
+    end
 
     local lastPos = origin
     local velocity = initialVelocity
@@ -340,11 +404,17 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             return
         end
 
-        visual.CFrame = CFrame.new(nextPos, nextPos + velocity.Unit)
+        if usingModel and visual:IsA("Model") and visual.PrimaryPart then
+            visual:SetPrimaryPartCFrame(CFrame.new(nextPos, nextPos + velocity.Unit))
+        elseif visual and visual:IsA("BasePart") then
+            visual.CFrame = CFrame.new(nextPos, nextPos + velocity.Unit)
+        end
         lastPos = nextPos
 
         if (lastPos - origin).Magnitude > pRange or tick() - startTime > pLifetime then
-            visual:Destroy()
+                if visual and visual.Parent then
+                    visual:Destroy()
+                end
             conn:Disconnect()
             return
         end

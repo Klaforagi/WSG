@@ -168,7 +168,7 @@ Players.PlayerAdded:Connect(function(player)
 			if humanoid then
 				humanoid.Died:Connect(function()
 					-- small delay before respawn to let death animation settle
-					wait(2)
+					wait(6)
 					pcall(function() player:LoadCharacter() end)
 				end)
 			end

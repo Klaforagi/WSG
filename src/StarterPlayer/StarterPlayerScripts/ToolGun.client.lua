@@ -96,9 +96,17 @@ local function isToolGun(tool)
     if not tool then return false end
     if tool:GetAttribute("IsToolGun") then return true end
     local name = tostring(tool.Name)
-    -- accept explicit names: ToolPistol, ToolSniper
+    -- accept explicit names for backward compatibility
     if name == "ToolPistol" or name == "ToolSniper" then
         return true
+    end
+    -- accept any Tool<suffix> where a preset exists in Toolgunsettings
+    local suffix = name:match("^Tool(.+)")
+    if suffix then
+        local key = suffix:lower()
+        if TOOLCFG_MODULE and TOOLCFG_MODULE.presets and TOOLCFG_MODULE.presets[key] then
+            return true
+        end
     end
     return false
 end
@@ -140,6 +148,8 @@ local function playFireSound(toolName)
         template = toolgunFolder:FindFirstChild("Sniper_shoot") or toolgunFolder:FindFirstChild("Sniper_Shoot")
     elseif toolName and tostring(toolName):lower():find("pistol") then
         template = toolgunFolder:FindFirstChild("Pistol_shoot") or toolgunFolder:FindFirstChild("Pistol_Shoot")
+    elseif toolName and tostring(toolName):lower():find("bow") then
+        template = toolgunFolder:FindFirstChild("Bow_shoot") or toolgunFolder:FindFirstChild("Bow_Shoot")
     else
         template = toolgunFolder:FindFirstChild("Gun_shoot")
     end
