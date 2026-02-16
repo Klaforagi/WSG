@@ -305,6 +305,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local velocity = initialVelocity
     local startTime = tick()
     local conn
+    local lastCFrame = CFrame.new(origin, origin + initialVelocity.Unit)
     conn = RunService.Heartbeat:Connect(function(dt)
         if not visual.Parent then
             conn:Disconnect()
@@ -399,15 +400,280 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                 end
                 parent = parent.Parent
             end
-            visual:Destroy()
-            conn:Disconnect()
+            -- Impact handling: stop simulation, anchor + orient the visual at hit, play impact sound, then destroy after delay
+            local hitPos = rayResult.Position
+            local hitNormal = rayResult.Normal or Vector3.new(0, 1, 0)
+
+            -- stop the heartbeat simulation
+            if conn then
+                conn:Disconnect()
+                conn = nil
+            end
+
+            -- Determine rotation to keep from last frame
+            local rot = nil
+            if lastCFrame then
+                rot = lastCFrame - lastCFrame.Position
+            end
+
+            -- Helper: set safe physics flags on a BasePart
+            -- `anchor` controls whether to Anchor (true) or leave unanchored for welding (false)
+            local function safePartFlags(part, anchor)
+                part.Anchored = (anchor == true)
+                part.CanCollide = false
+                pcall(function() part.CanTouch = false end)
+                pcall(function() part.CanQuery = false end)
+            end
+
+            -- Try to find an Attachment named 'Tip' to align precisely
+            local function findTipAttachment(obj, primary)
+                if not obj then return nil end
+                -- Prefer Attachment named 'Tip' under the PrimaryPart
+                if primary and primary:IsA("BasePart") then
+                    local a = primary:FindFirstChild("Tip")
+                    if a and a:IsA("Attachment") then return a end
+                end
+                -- Otherwise search descendants for Attachment named 'Tip'
+                for _, d in ipairs(obj:GetDescendants()) do
+                    if d:IsA("Attachment") and d.Name == "Tip" then
+                        return d
+                    end
+                end
+                return nil
+            end
+
+            -- Finalize projectile placement: keep rotation, align Tip to hitPos,
+            -- weld to hit BasePart (to follow moving objects) or anchor in world space.
+            if usingModel and visual:IsA("Model") then
+                -- ensure PrimaryPart exists
+                local primary = visual.PrimaryPart
+                if not primary then
+                    for _, d in ipairs(visual:GetDescendants()) do
+                        if d:IsA("BasePart") then
+                            primary = d
+                            visual.PrimaryPart = primary
+                            break
+                        end
+                    end
+                end
+                if primary then
+                    -- determine the BasePart we struck
+                    local hitInstance = rayResult.Instance
+                    local hitPart = nil
+                    if hitInstance and hitInstance:IsA("BasePart") and not hitInstance:IsA("Terrain") then
+                        hitPart = hitInstance
+                    end
+
+                    -- Compute tipOffset: the Tip Attachment's CFrame relative to PrimaryPart.
+                    -- Works even when the Tip lives on a non-primary descendant part.
+                    local tip = findTipAttachment(visual, primary)
+                    local tipOffset = nil
+                    if tip then
+                        if tip.Parent == primary then
+                            tipOffset = tip.CFrame
+                        else
+                            -- tip is on another part; bridge via world CFrames
+                            local tipWorld = tip.Parent.CFrame * tip.CFrame
+                            tipOffset = primary.CFrame:Inverse() * tipWorld
+                        end
+                    end
+
+                    -- Position model so Tip.WorldPosition == hitPos, rotation == rot
+                    if tipOffset and rot then
+                        local newPrimary = CFrame.new(hitPos) * rot * tipOffset:Inverse()
+                        visual:SetPrimaryPartCFrame(newPrimary)
+                    elseif tipOffset then
+                        local newPrimary = CFrame.new(hitPos) * tipOffset:Inverse()
+                        visual:SetPrimaryPartCFrame(newPrimary)
+                    else
+                        if rot then
+                            visual:SetPrimaryPartCFrame(CFrame.new(hitPos) * rot)
+                        else
+                            visual:SetPrimaryPartCFrame(CFrame.new(hitPos))
+                        end
+                    end
+
+                    -- Weld to hitPart (moves with it) or anchor in world space
+                    if hitPart then
+                        -- Determine if the hit part belongs to a character Model with a Humanoid
+                        local char = hitPart:FindFirstAncestorOfClass("Model")
+                        local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+                        if hum then
+                            -- Create a Motor6D joint for character hits
+                            local motor = Instance.new("Motor6D")
+                            motor.Name = "ArrowStickMotor"
+                            motor.Part0 = hitPart
+                            motor.Part1 = visual
+                            motor.C0 = hitPart.CFrame:ToObjectSpace(visual.CFrame)
+                            motor.C1 = CFrame.new()
+                            motor.Parent = hitPart
+
+                            -- Add a callback for when the humanoid dies
+                            hum.Died:Once(function()
+                                task.wait() -- Wait for one heartbeat to ensure joints are broken
+                                if visual and visual.Parent and hitPart and hitPart.Parent then
+                                    local weld = Instance.new("WeldConstraint")
+                                    weld.Name = "ArrowStickPostDeathWeld"
+                                    weld.Part0 = visual
+                                    weld.Part1 = hitPart
+                                    weld.Parent = visual
+                                end
+                            end)
+                        else
+                            -- Create WeldConstraint for non-character hits
+                            local weld = Instance.new("WeldConstraint")
+                            weld.Part0 = visual
+                            weld.Part1 = hitPart
+                            weld.Parent = visual
+                        end
+
+                        -- Set projectile BasePart properties
+                        visual.Anchored = false
+                        visual.Massless = true
+                        visual.CanCollide = false
+                        pcall(function() visual.CanTouch = false end)
+                        pcall(function() visual.CanQuery = false end)
+                        visual.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                        visual.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                        visual:SetNetworkOwner(nil)
+
+                        -- Destroy the projectile after 30 seconds
+                        task.spawn(function()
+                            task.wait(30)
+                            if visual and visual.Parent then
+                                pcall(function() visual:Destroy() end)
+                            end
+                        end)
+                    else
+                        -- Fallback to anchoring in world space
+                        for _, d in ipairs(visual:GetDescendants()) do
+                            if d:IsA("BasePart") then
+                                d.Anchored = true
+                            end
+                        end
+                    end
+
+                    -- Destroy the projectile after 30 seconds
+                    task.spawn(function()
+                        task.wait(30)
+                        if visual and visual.Parent then
+                            pcall(function() visual:Destroy() end)
+                        end
+                    end)
+                end
+            elseif visual and visual:IsA("BasePart") then
+                -- determine the BasePart we struck
+                local hitInstance = rayResult.Instance
+                local hitPart = nil
+                if hitInstance and hitInstance:IsA("BasePart") and not hitInstance:IsA("Terrain") then
+                    hitPart = hitInstance
+                end
+
+                if hitPart then
+                    -- Determine if the hit part belongs to a character Model with a Humanoid
+                    local char = hitPart:FindFirstAncestorOfClass("Model")
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+
+                    if hum then
+                        -- Create a Motor6D joint for character hits
+                        local motor = Instance.new("Motor6D")
+                        motor.Name = "ArrowStickMotor"
+                        motor.Part0 = hitPart
+                        motor.Part1 = visual
+                        motor.C0 = hitPart.CFrame:ToObjectSpace(visual.CFrame)
+                        motor.C1 = CFrame.new()
+                        motor.Parent = hitPart
+
+                        -- Add a callback for when the humanoid dies
+                        hum.Died:Once(function()
+                            task.wait() -- Wait for one heartbeat to ensure joints are broken
+                            if visual and visual.Parent and hitPart and hitPart.Parent then
+                                local weld = Instance.new("WeldConstraint")
+                                weld.Name = "ArrowStickPostDeathWeld"
+                                weld.Part0 = visual
+                                weld.Part1 = hitPart
+                                weld.Parent = visual
+                            end
+                        end)
+                    else
+                        -- Create WeldConstraint for non-character hits
+                        local weld = Instance.new("WeldConstraint")
+                        weld.Part0 = visual
+                        weld.Part1 = hitPart
+                        weld.Parent = visual
+                    end
+
+                    -- Set projectile BasePart properties
+                    visual.Anchored = false
+                    visual.Massless = true
+                    visual.CanCollide = false
+                    pcall(function() visual.CanTouch = false end)
+                    pcall(function() visual.CanQuery = false end)
+                    visual.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+                    visual.AssemblyAngularVelocity = Vector3.new(0, 0, 0)
+                    visual:SetNetworkOwner(nil)
+
+                    -- Destroy the projectile after 30 seconds
+                    task.spawn(function()
+                        task.wait(30)
+                        if visual and visual.Parent then
+                            pcall(function() visual:Destroy() end)
+                        end
+                    end)
+                end
+            end
+
+            -- play projectile hit sound at impact location (parent to a BasePart)
+            pcall(function()
+                local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                if soundsFolder then
+                    local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
+                    if toolgunFolder then
+                        local template = toolgunFolder:FindFirstChild("ProjectileHit")
+                        if template and template:IsA("Sound") then
+                            local s = template:Clone()
+                            if usingModel and visual:IsA("Model") and visual.PrimaryPart then
+                                s.Parent = visual.PrimaryPart
+                            elseif visual and visual:IsA("BasePart") then
+                                s.Parent = visual
+                            else
+                                s.Parent = Workspace
+                            end
+                            s:Play()
+                            game:GetService("Debris"):AddItem(s, 4)
+                        end
+                    end
+                end
+            end)
+
+            -- destroy the projectile after a short delay
+            task.spawn(function()
+                task.wait(30)
+                if visual and visual.Parent then
+                    pcall(function() visual:Destroy() end)
+                end
+            end)
+
             return
         end
 
         if usingModel and visual:IsA("Model") and visual.PrimaryPart then
-            visual:SetPrimaryPartCFrame(CFrame.new(nextPos, nextPos + velocity.Unit))
+            if lastCFrame then
+                local rot = lastCFrame - lastCFrame.Position
+                visual:SetPrimaryPartCFrame(CFrame.new(nextPos) * rot)
+            else
+                visual:SetPrimaryPartCFrame(CFrame.new(nextPos, nextPos + velocity.Unit))
+            end
+            lastCFrame = visual.PrimaryPart and visual.PrimaryPart.CFrame or lastCFrame
         elseif visual and visual:IsA("BasePart") then
-            visual.CFrame = CFrame.new(nextPos, nextPos + velocity.Unit)
+            if lastCFrame then
+                local rot = lastCFrame - lastCFrame.Position
+                visual.CFrame = CFrame.new(nextPos) * rot
+            else
+                visual.CFrame = CFrame.new(nextPos, nextPos + velocity.Unit)
+            end
+            lastCFrame = visual.CFrame
         end
         lastPos = nextPos
 

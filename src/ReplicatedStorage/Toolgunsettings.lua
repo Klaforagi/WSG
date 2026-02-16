@@ -27,7 +27,7 @@ local presets = {
     ,
     bow = {
         damage = 25,
-        cd = 0.55,
+        cd = 0.40,
         bulletspeed = 150,
         range = 1000,
         projectile_lifetime = 4,
