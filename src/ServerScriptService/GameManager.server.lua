@@ -146,7 +146,7 @@ function startMatch()
     teamScores.Blue = 0
     teamScores.Red = 0
     State = "Game"
-    matchStartTick = tick()
+    matchStartTick = workspace:GetServerTimeNow()
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
 

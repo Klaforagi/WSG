@@ -257,7 +257,7 @@ end
 spawn(function()
     while true do
         if running and matchStartTick and matchDuration then
-            local now = tick()
+            local now = workspace:GetServerTimeNow()
             local elapsed = now - matchStartTick
             -- use floor (not rounding) so integer decreases happen exactly when a full second elapses
             local newRemaining = math.max(0, math.floor(matchDuration - elapsed))
@@ -299,7 +299,7 @@ local function wireMatchStart(ev)
         if type(startTick) == "number" then
             matchStartTick = startTick
         else
-            matchStartTick = tick()
+            matchStartTick = workspace:GetServerTimeNow()
         end
         -- initialize state
         blueScore = 0
