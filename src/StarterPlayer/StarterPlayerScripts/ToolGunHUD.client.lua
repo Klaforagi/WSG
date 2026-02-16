@@ -131,7 +131,9 @@ hitLabel.Font = Enum.Font.GothamBold
 hitLabel.TextScaled = false
 hitLabel.TextSize = 14
 hitLabel.TextColor3 = Color3.fromRGB(0,0,0)
-hitLabel.TextTransparency = 0.5
+hitLabel.TextTransparency = 0
+hitLabel.TextStrokeTransparency = 0.5
+hitLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 hitLabel.Visible = false
 hitLabel.Position = centerUD
 hitLabel.Parent = screenGui
@@ -206,12 +208,17 @@ end)
 if fireHit and fireHit:IsA("RemoteEvent") then
     fireHit.OnClientEvent:Connect(function(damage, isHeadshot, hitPart, hitPos)
         playHitSound()
-        local color = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(0, 0, 0)
+        local color = isHeadshot and Color3.fromRGB(243, 255, 16) or Color3.fromRGB(243, 255, 16)
         if screenGui.Enabled then
             hitLabel.TextColor3 = color
+            local hitSize = isHeadshot and 28 or 16
+            hitLabel.TextSize = hitSize
+            hitLabel.TextStrokeTransparency = 0
             hitLabel.Visible = true
             task.delay(0.25, function()
                 hitLabel.Visible = false
+                hitLabel.TextSize = 14
+                hitLabel.TextStrokeTransparency = 0.5
             end)
         else
             -- temporary center hit indicator if HUD not shown
@@ -226,9 +233,12 @@ if fireHit and fireHit:IsA("RemoteEvent") then
             temp.BackgroundTransparency = 1
             temp.Text = "X"
             temp.Font = Enum.Font.GothamBold
-            temp.TextSize = 14
+            local tempSize = isHeadshot and 28 or 16
+            temp.TextSize = tempSize
             temp.TextColor3 = color
-            temp.TextTransparency = 0.5
+            temp.TextTransparency = 0
+            temp.TextStrokeTransparency = 0
+            temp.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
             temp.Parent = tempGui
             task.delay(0.25, function()
                 tempGui:Destroy()
