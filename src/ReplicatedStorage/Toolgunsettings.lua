@@ -26,13 +26,13 @@ local presets = {
     }
     ,
     bow = {
-        damage = 35,
-        cd = 0.8,
-        bulletspeed = 200,
+        damage = 25,
+        cd = 0.55,
+        bulletspeed = 150,
         range = 1000,
         projectile_lifetime = 4,
         projectile_size = {0.2, 0.2, 2.0},
-        bulletdrop = 9.8,
+        bulletdrop = 55,
         showTracer = false,
         headshot_multiplier = 2.0,
         projectile_name = "Arrow",

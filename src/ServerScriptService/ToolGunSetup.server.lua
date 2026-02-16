@@ -313,7 +313,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         -- apply gravity/bullet drop to vertical component of velocity
         velocity = velocity + Vector3.new(0, -pDrop * dt, 0)
         local nextPos = lastPos + velocity * dt
-        local rayResult = Workspace:Raycast(lastPos, (nextPos - lastPos), params)
+        local rayResult = raycastSkippingAccessories(lastPos, (nextPos - lastPos), params)
         if rayResult and rayResult.Instance then
             -- hit detected
             local inst = rayResult.Instance
@@ -463,68 +463,28 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     params.IgnoreWater = true
 
     local rayDir = camDirection.Unit
-    local rayResult = raycastSkippingAccessories(camOrigin, rayDir * tRANGE, params)
-    if rayResult and rayResult.Instance then
-        -- camera ray hit something; ensure there's no obstruction between gun muzzle and that hit
-        local camHitPos = rayResult.Position
-        local toCamHit = camHitPos - gunOrigin
-        local gunBlock = raycastSkippingAccessories(gunOrigin, toCamHit, params)
-        local finalHit = rayResult
-        if gunBlock and gunBlock.Instance then
-            -- there is something between the gun and the camera hit; prefer the closer gun-side hit
-            finalHit = gunBlock
-        end
-        -- instead of applying damage immediately, spawn a server projectile toward the final hit
-        local hitPos = finalHit.Position
-        local showTracerForTool = (tCfg and tCfg.showTracer ~= nil) and tCfg.showTracer or SHOW_TRACER
-        if showTracerForTool then
-            coroutine.wrap(function()
-                local gunPos = gunOrigin or camOrigin
-                local dir = (hitPos - gunPos)
-                local len = dir.Magnitude
-                local beam = Instance.new("Part")
-                beam.Name = "ToolGunServerTracer"
-                beam.Size = Vector3.new(0.15, 0.15, math.max(len, 0.1))
-                beam.CFrame = CFrame.new(gunPos + dir/2, hitPos)
-                beam.Anchored = true
-                beam.CanCollide = false
-                beam.Material = Enum.Material.Neon
-                beam.Color = getTracerColor(player)
-                beam.Parent = Workspace
-                game:GetService("Debris"):AddItem(beam, 0.22)
-            end)()
-        end
+    local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
 
-        -- compute initial velocity toward the hit position using per-tool cfg
-        local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
-        local tBULLETDROP = tCfg.bulletdrop or BULLET_DROP
-        local displacement = hitPos - gunOrigin
-        local distance = displacement.Magnitude
-        local initVel
-        if distance <= 0.001 then
-            initVel = hrp.CFrame.LookVector * tBULLETSPEED
-        else
-            local t = distance / tBULLETSPEED
-            if t <= 0 then t = 0.01 end
-            local g = Vector3.new(0, -tBULLETDROP, 0)
-            initVel = (displacement / t) - (0.5 * g * t)
-        end
-
-        spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
-
-        pcall(function()
-            if fireAck then
-                fireAck:FireClient(player, gunOrigin, hitPos, toolName)
-            end
-        end)
-        return
+    -- Compute an aim point on the camera ray (server-side) so projectiles from the muzzle converge on the crosshair
+    local camHit = raycastSkippingAccessories(camOrigin, rayDir * tRANGE, params)
+    local aimPoint
+    if camHit and camHit.Instance and camHit.Position then
+        aimPoint = camHit.Position
+    else
+        aimPoint = camOrigin + rayDir * tRANGE
     end
 
-    -- if the camera ray missed, check if there's an obstruction between the gun and the camera aim direction
-    local aimPos = camOrigin + rayDir * tRANGE
-    local gunObstruction = raycastSkippingAccessories(gunOrigin, rayDir * tRANGE, params)
+    -- Aim direction from muzzle to the aimPoint (fixes parallax)
+    local aimDir = (aimPoint - gunOrigin)
+    if aimDir.Magnitude <= 0.001 then
+        aimDir = hrp.CFrame.LookVector
+    else
+        aimDir = aimDir.Unit
+    end
+
+    -- muzzle obstruction check along the computed aimDir from gunOrigin
+    local gunObstruction = raycastSkippingAccessories(gunOrigin, aimDir * tRANGE, params)
     if gunObstruction and gunObstruction.Instance then
-        -- gun is immediately obstructed; spawn server tracer to obstruction and notify client
         local showTracerForTool = (tCfg and tCfg.showTracer ~= nil) and tCfg.showTracer or SHOW_TRACER
         if showTracerForTool then
             coroutine.wrap(function()
@@ -543,49 +503,21 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 game:GetService("Debris"):AddItem(beam, 0.22)
             end)()
         end
-        -- notify client of obstruction
         pcall(function()
             if fireAck then
                 fireAck:FireClient(player, gunOrigin, gunObstruction.Position, toolName)
             end
         end)
-        -- instead of applying damage immediately, spawn projectile toward the obstruction
-        local hitPos = gunObstruction.Position
-        local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
-        local tBULLETDROP = tCfg.bulletdrop or BULLET_DROP
-        local displacement = hitPos - gunOrigin
-        local distance = displacement.Magnitude
-        local initVel
-        if distance <= 0.001 then
-            initVel = hrp.CFrame.LookVector * tBULLETSPEED
-        else
-            local t = distance / tBULLETSPEED
-            if t <= 0 then t = 0.01 end
-            local g = Vector3.new(0, -tBULLETDROP, 0)
-            initVel = (displacement / t) - (0.5 * g * t)
-        end
-        spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
-        return
     end
-    local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
-    local tBULLETDROP = tCfg.bulletdrop or BULLET_DROP
-    local displacement = aimPos - gunOrigin
-    local distance = displacement.Magnitude
-    local initVel
-    if distance <= 0.001 then
-        initVel = hrp.CFrame.LookVector * tBULLETSPEED
-    else
-        local t = distance / tBULLETSPEED
-        if t <= 0 then t = 0.01 end
-        local g = Vector3.new(0, -tBULLETDROP, 0)
-        initVel = (displacement / t) - (0.5 * g * t)
-    end
+
+    -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts
+    local initVel = aimDir * tBULLETSPEED
     spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
-    -- notify client with the gun origin and aimed position so the client can spawn a local tracer
+
+    -- notify client with aimed position so client can spawn a local tracer
     pcall(function()
         if fireAck then
-            local aimPos = aimPos or (camOrigin + rayDir * tRANGE)
-            fireAck:FireClient(player, gunOrigin, aimPos, toolName)
+            fireAck:FireClient(player, gunOrigin, aimPoint, toolName)
         end
     end)
 end)

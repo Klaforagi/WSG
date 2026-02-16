@@ -17,7 +17,8 @@ local camera = workspace.CurrentCamera
 
 -- Over-the-shoulder offset applied through Humanoid.CameraOffset
 -- X = right, Y = up, Z = forward (negative = back)
-local SHOULDER_OFFSET = Vector3.new(2, 0.5, 0)
+-- move the camera up 2 studs on the Y axis when equipping weapons
+local SHOULDER_OFFSET = Vector3.new(4, 2, 0)
 
 -- ── state ──────────────────────────────────────────────────────
 local active                = false   -- is the lock currently on?
