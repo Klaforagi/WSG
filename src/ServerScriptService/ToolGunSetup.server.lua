@@ -3,6 +3,7 @@ local StarterPack = game:GetService("StarterPack")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
@@ -24,6 +25,54 @@ local function getTracerColor(player)
         return TEAM_TRACER_COLORS[player.Team.Name] or DEFAULT_TRACER_COLOR
     end
     return DEFAULT_TRACER_COLOR
+end
+
+-- Minimal server-side recoil: nudge the character's right arm up then back down
+local function playServerRecoil(player)
+    if not player or not player.Character then return end
+    local char = player.Character
+    -- find a sensible shoulder Motor6D (R6 or R15)
+    local motor = nil
+    for _, v in ipairs(char:GetDescendants()) do
+        if v:IsA("Motor6D") then
+            local lname = tostring(v.Name):lower()
+            if lname:find("right") and lname:find("shoulder") then
+                motor = v
+                break
+            end
+        end
+    end
+    -- fallback: look for Motor6D whose Part1 name matches common right-arm names
+    if not motor then
+        for _, v in ipairs(char:GetDescendants()) do
+            if v:IsA("Motor6D") and v.Part1 and v.Part1.Name then
+                local p1n = tostring(v.Part1.Name):lower()
+                if p1n == "rightupperarm" or p1n == "right arm" or p1n == "righthand" then
+                    motor = v
+                    break
+                end
+            end
+        end
+    end
+    if not motor then return end
+
+    local ok, orig = pcall(function() return motor.C1 end)
+    if not ok or not orig then return end
+
+    local raiseAngle = math.rad(-8)
+    local raised = orig * CFrame.Angles(raiseAngle, 0, 0)
+
+    local suc, _ = pcall(function()
+        local upTween = TweenService:Create(motor, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {C1 = raised})
+        local downTween = TweenService:Create(motor, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {C1 = orig})
+        upTween:Play()
+        upTween.Completed:Connect(function()
+            if downTween then downTween:Play() end
+        end)
+    end)
+    if not suc then
+        pcall(function() motor.C1 = orig end)
+    end
 end
 
 -- RemoteEvent for firing
@@ -216,6 +265,8 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local pRange = (projCfg and projCfg.range) or RANGE
     local pDrop = (projCfg and projCfg.bulletdrop) or BULLET_DROP
     local pLifetime = (projCfg and projCfg.projectile_lifetime) or PROJECTILE_LIFETIME
+    local leaveProjectile = (projCfg and (projCfg.LeaveProjectile == true or projCfg.leaveProjectile == true))
+    local stickLifetime = (projCfg and (projCfg.projectile_stick_lifetime or projCfg.stick_lifetime)) or 2
     local pSize = PROJECTILE_SIZE
     if projCfg and projCfg.projectile_size then
         local ps = projCfg.projectile_size
@@ -414,6 +465,14 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                 conn = nil
             end
 
+            -- If this projectile should NOT be left in the world, destroy it immediately and return
+            if not leaveProjectile then
+                if visual and visual.Parent then
+                    pcall(function() visual:Destroy() end)
+                end
+                return
+            end
+
             -- Determine rotation to keep from last frame
             local rot = nil
             if lastCFrame then
@@ -559,16 +618,16 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         end)
 
                         -- Single destroy timer for this arrow
-                        task.spawn(function()
-                            task.wait(30)
-                            if followConn then
-                                followConn:Disconnect()
-                                followConn = nil
-                            end
-                            if visual and visual.Parent then
-                                pcall(function() visual:Destroy() end)
-                            end
-                        end)
+                            task.spawn(function()
+                                task.wait(stickLifetime)
+                                if followConn then
+                                    followConn:Disconnect()
+                                    followConn = nil
+                                end
+                                if visual and visual.Parent then
+                                    pcall(function() visual:Destroy() end)
+                                end
+                            end)
                     else
                         -- Fallback to anchoring in world space
                         for _, d in ipairs(visual:GetDescendants()) do
@@ -633,47 +692,49 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                     end)
 
                     -- Single destroy timer for this arrow
-                    task.spawn(function()
-                        task.wait(1.5)
-                        if followConn then
-                            followConn:Disconnect()
-                            followConn = nil
-                        end
-                        if visual and visual.Parent then
-                            pcall(function() visual:Destroy() end)
-                        end
-                    end)
+                        task.spawn(function()
+                            task.wait(stickLifetime)
+                            if followConn then
+                                followConn:Disconnect()
+                                followConn = nil
+                            end
+                            if visual and visual.Parent then
+                                pcall(function() visual:Destroy() end)
+                            end
+                        end)
                 end
             end
 
-            -- play projectile land sound at the impact position on server
-            pcall(function()
-                local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-                if soundsFolder then
-                    local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
-                    if toolgunFolder then
-                        local template = toolgunFolder:FindFirstChild("Projectile_land")
-                        if template and template:IsA("Sound") and hitPos then
-                            -- create a tiny invisible host part at hitPos so the sound is 3D
-                            local host = Instance.new("Part")
-                            host.Name = "_ProjectileSound"
-                            host.Size = Vector3.new(0.2, 0.2, 0.2)
-                            host.Transparency = 1
-                            host.Anchored = true
-                            host.CanCollide = false
-                            pcall(function() host.CanTouch = false end)
-                            pcall(function() host.CanQuery = false end)
-                            host.CFrame = CFrame.new(hitPos)
-                            host.Parent = Workspace
+            -- play projectile land sound at the impact position on server (only if projectile is left)
+            if leaveProjectile then
+                pcall(function()
+                    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                    if soundsFolder then
+                        local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
+                        if toolgunFolder then
+                            local template = toolgunFolder:FindFirstChild("Projectile_land")
+                            if template and template:IsA("Sound") and hitPos then
+                                -- create a tiny invisible host part at hitPos so the sound is 3D
+                                local host = Instance.new("Part")
+                                host.Name = "_ProjectileSound"
+                                host.Size = Vector3.new(0.2, 0.2, 0.2)
+                                host.Transparency = 1
+                                host.Anchored = true
+                                host.CanCollide = false
+                                pcall(function() host.CanTouch = false end)
+                                pcall(function() host.CanQuery = false end)
+                                host.CFrame = CFrame.new(hitPos)
+                                host.Parent = Workspace
 
-                            local s = template:Clone()
-                            s.Parent = host
-                            s:Play()
-                            game:GetService("Debris"):AddItem(host, 4)
+                                local s = template:Clone()
+                                s.Parent = host
+                                s:Play()
+                                game:GetService("Debris"):AddItem(host, 4)
+                            end
                         end
                     end
-                end
-            end)
+                end)
+            end
 
             -- (destroy handled by impact branch above)
 
@@ -801,6 +862,11 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts
     local initVel = aimDir * tBULLETSPEED
     spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
+
+    -- play a minimal server-side recoil animation on the shooter's right arm
+    spawn(function()
+        pcall(function() playServerRecoil(player) end)
+    end)
 
     -- notify client with aimed position so client can spawn a local tracer
     pcall(function()
