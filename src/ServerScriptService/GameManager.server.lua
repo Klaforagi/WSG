@@ -15,7 +15,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 ---------------------------------------------------------------------
 -- Config
 ---------------------------------------------------------------------
-local MATCH_DURATION   = 1 * 60   -- seconds
+local MATCH_DURATION   = 5 * 60   -- seconds
 local END_SCREEN_TIME  = 10       -- seconds the winner screen stays up
 local MIN_PLAYERS      = 0        -- set >0 if you want a lobby phase
 

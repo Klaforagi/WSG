@@ -13,6 +13,9 @@ local presets = {
         bulletdrop = 0,
         showTracer = false,
         headshot_multiplier = 1.5,
+        shoot_sound = "PistolShoot",
+        reload_sound = "PistolReload",
+        hit_sound = "PistolHit",
     },
     sniper = {
         damage = 80,
@@ -25,6 +28,9 @@ local presets = {
         bulletdrop = 0,
         showTracer = false,
         headshot_multiplier = 1.25,
+        shoot_sound = "SniperShoot",
+        reload_sound = "SniperReload",
+        hit_sound = "SniperHit",
     }
     ,
     bow = {
@@ -40,6 +46,8 @@ local presets = {
         showTracer = false,
         headshot_multiplier = 1.2,
         projectile_name = "Arrow",
+        shoot_sound = "BowShoot",
+        hit_sound = "BowHit",
     }
 }
 
