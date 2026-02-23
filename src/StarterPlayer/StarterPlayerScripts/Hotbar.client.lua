@@ -45,7 +45,7 @@ local SLOT_COUNT = #SLOT_DEFS
 -- STYLE  (all sizing is screen-relative)
 --------------------------------------------------------------------------------
 -- Slot height as a fraction of viewport height  (~9% of screen)
-local SLOT_SCALE     = 0.15
+local SLOT_SCALE     = 0.10
 -- Gap between slots as a fraction of viewport width
 local GAP_SCALE      = 0.005
 -- Bottom margin as a fraction of viewport height
@@ -86,14 +86,15 @@ screenGui.Parent          = playerGui
 local container = Instance.new("Frame")
 container.Name                    = "HotbarContainer"
 container.BackgroundTransparency  = 1
-container.AnchorPoint             = Vector2.new(0.5, 1)
-container.Position                = UDim2.new(0.5, 0, 1 - MARGIN_SCALE, 0)
+container.AnchorPoint             = Vector2.new(0, 1)
+-- anchor to the bottom-left, above the XP bar
+container.Position                = UDim2.new(MARGIN_SCALE, 0, 1 - (MARGIN_SCALE + 0.04), 0)
 container.Size                    = UDim2.fromScale(1, SLOT_SCALE) -- full width, height = slot height
 container.Parent                  = screenGui
 
 local layout = Instance.new("UIListLayout")
 layout.FillDirection       = Enum.FillDirection.Horizontal
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 layout.VerticalAlignment   = Enum.VerticalAlignment.Center
 layout.SortOrder           = Enum.SortOrder.LayoutOrder
 layout.Padding             = UDim.new(GAP_SCALE, 0)

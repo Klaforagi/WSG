@@ -4,6 +4,13 @@ local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+-- XP integration
+local XPModule
+pcall(function()
+    XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
+end)
 
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
@@ -233,6 +240,19 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
             pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName) end)
             if player.Team then
                 pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
+            end
+            -- Award XP
+            if XPModule and XPModule.AwardXP then
+                if vp then
+                    pcall(function() XPModule.AwardXP(player, "PlayerKill") end)
+                else
+                    local mobName = victimModel and victimModel.Name or "Unknown"
+                    local mobXP = 3
+                    pcall(function()
+                        if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
+                    end)
+                    pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
+                end
             end
         end
         -- if this was a dummy model, perform ragdoll/cleanup immediately so it visibly falls

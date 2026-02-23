@@ -186,6 +186,11 @@ function setupFlagModel(model)
                 -- announce with player name
                 FlagStatus:FireAllClients("returned", pl.Name, pl.Team.Name, team)
                 FlagStatus:FireAllClients("playSound", "Flag_return")
+
+                -- award XP for returning the flag
+                if XPModule and XPModule.AwardXP then
+                    pcall(function() XPModule.AwardXP(pl, "FlagReturn") end)
+                end
             end
             return
         end
@@ -383,6 +388,12 @@ if not AddScore then
     AddScore.Parent = game:GetService("ServerScriptService")
 end
 
+-- XP integration
+local XPModule
+pcall(function()
+    XPModule = require(game:GetService("ServerScriptService"):WaitForChild("XPServiceModule", 10))
+end)
+
 -- helper: award points to a team
 local function awardPoints(teamName, points)
     if not teamName or type(points) ~= "number" then return end
@@ -414,23 +425,32 @@ local function setupStand(standPart)
         -- debounce per player to avoid multiple triggers
         if captureDebounce[pl] then return end
         captureDebounce[pl] = true
-        task.delay(1, function() captureDebounce[pl] = nil end)
+        task.delay(5, function() captureDebounce[pl] = nil end)
+
+        -- immediately clear carrying state FIRST to prevent re-triggers
+        local carry = carrying[pl]
+        if carry and carry.model then
+            pcall(function() carry.model:Destroy() end)
+        end
+        if carry and carry.deathConn then
+            pcall(function() carry.deathConn:Disconnect() end)
+        end
+        carrying[pl] = nil
+        pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
 
         -- award points to the player's team
         local capturingTeamName = pl.Team and pl.Team.Name or nil
         awardPoints(capturingTeamName, 100)
 
+        -- award XP for flag capture
+        if XPModule and XPModule.AwardXP then
+            pcall(function() XPModule.AwardXP(pl, "FlagCapture") end)
+        end
+
         -- announce capture to clients
         local playerTeamName = capturingTeamName
         FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)
         FlagStatus:FireAllClients("playSound", "Flag_capture")
-
-        -- cleanup carried model and state
-        if carry.model then
-            pcall(function() carry.model:Destroy() end)
-        end
-        carrying[pl] = nil
-        pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
 
         -- respawn the captured flag back to its stand after a short delay
         task.delay(5, function()

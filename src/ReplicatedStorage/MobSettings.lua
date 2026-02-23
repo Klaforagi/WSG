@@ -13,6 +13,7 @@ local presets = {
         aggro_duration   = 12,   -- seconds to chase attacker after being hit
         tag              = "ZombieNPC",
         walk_anim_id     = "",   -- leave empty to use default R6 walk
+        xp_reward        = 3,    -- XP awarded to the player who kills this mob
     },
     Zack = {
         walk_speed       = 16,
@@ -25,6 +26,7 @@ local presets = {
         aggro_duration   = 12,
         tag              = "ZombieNPC",
         walk_anim_id     = "",
+        xp_reward        = 5,    -- XP awarded to the player who kills this mob
     },
 }
 

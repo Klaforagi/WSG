@@ -12,6 +12,12 @@ local Debris             = game:GetService("Debris")
 local CollectionService  = game:GetService("CollectionService")
 local TweenService       = game:GetService("TweenService")
 
+-- XP integration
+local XPModule
+pcall(function()
+    XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
+end)
+
 -- Melee settings module
 local MeleeCfg
 if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
@@ -92,6 +98,19 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
             pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName) end)
             if player.Team then
                 pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
+            end
+            -- Award XP
+            if XPModule and XPModule.AwardXP then
+                if vp then
+                    pcall(function() XPModule.AwardXP(player, "PlayerKill") end)
+                else
+                    local mobName = victimModel and victimModel.Name or "Unknown"
+                    local mobXP = 3
+                    pcall(function()
+                        if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
+                    end)
+                    pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
+                end
             end
         end
         -- ragdoll dummies on melee kill

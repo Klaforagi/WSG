@@ -35,6 +35,13 @@ end
 local KILL_POINTS = 10
 local ATTRIB_TIMEOUT = 5 -- seconds: ignore tags older than this
 
+-- XP integration: require the shared XP module so we can award XP on kills
+local ServerScriptService2 = game:GetService("ServerScriptService")
+local XPModule
+pcall(function()
+    XPModule = require(ServerScriptService2:WaitForChild("XPServiceModule", 10))
+end)
+
 local tracked = {} -- [Humanoid] = true, to avoid double-connecting
 
 local function onHumanoidDied(humanoid, model)
@@ -73,6 +80,25 @@ local function onHumanoidDied(humanoid, model)
     end
     if killer and killer.Team then
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
+    end
+
+    -- Award XP to the killer
+    if killer and XPModule and XPModule.AwardXP then
+        local isPlayerVictim = (victimPlayer ~= nil)
+        if isPlayerVictim then
+            -- PvP kill → use XPConfig.PlayerKill amount
+            pcall(function() XPModule.AwardXP(killer, "PlayerKill") end)
+        else
+            -- Mob kill → look up per-mob XP from MobSettings via XPModule.GetMobXP
+            local mobName = model and model.Name or "Unknown"
+            local mobXP = 3
+            pcall(function()
+                if XPModule.GetMobXP then
+                    mobXP = XPModule.GetMobXP(mobName)
+                end
+            end)
+            pcall(function() XPModule.AwardXP(killer, "MobKill", mobXP) end)
+        end
     end
 end
 
