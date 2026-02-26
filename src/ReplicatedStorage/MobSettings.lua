@@ -4,7 +4,7 @@
 local presets = {
     Zombie = {
         walk_speed       = 16,
-        chase_speed      = 25,   -- speed when damaged / chasing
+        chase_speed      = 16,   -- speed when damaged / chasing
         attack_damage    = 20,
         attack_cooldown  = 1,
         attack_range     = 6,    -- studs; proximity distance to land a hit

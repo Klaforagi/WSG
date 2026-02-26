@@ -297,6 +297,9 @@ equipSlot = function(idx)
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then return end
 
+    -- block equipping while dead / ragdolled
+    if hum.Health <= 0 or char:GetAttribute("_ragdolled") then return end
+
     local tool = getToolForSlot(idx)
     if not tool then
         refreshSlots()

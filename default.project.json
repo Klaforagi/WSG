@@ -19,13 +19,6 @@
       }
     },
 
-    "ServerStorage": {
-      "$className": "ServerStorage",
-      "Tools": {
-        "$path": "src/ServerStorage/Tools"
-      }
-    },
-
     "ServerScriptService": {
       "$path": "src/ServerScriptService"
     },
