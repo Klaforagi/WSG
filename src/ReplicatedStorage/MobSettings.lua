@@ -14,6 +14,7 @@ local presets = {
         tag              = "ZombieNPC",
         walk_anim_id     = "",   -- leave empty to use default R6 walk
         xp_reward        = 3,    -- XP awarded to the player who kills this mob
+        spawn_chance     = 99,   -- weighted chance: higher = more likely to be picked
     },
     Zack = {
         walk_speed       = 16,
@@ -27,6 +28,7 @@ local presets = {
         tag              = "ZombieNPC",
         walk_anim_id     = "",
         xp_reward        = 5,    -- XP awarded to the player who kills this mob
+        spawn_chance     = 1,    -- weighted chance: higher = more likely to be picked
     },
 }
 

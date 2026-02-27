@@ -13,7 +13,7 @@ screenGui.Parent = playerGui
 
 local frame = Instance.new("Frame")
 frame.Name = "GameStateFrame"
-frame.Size = UDim2.new(0.12, 0, 0.08, 0) -- scales with screen
+frame.Size = UDim2.new(0.14, 0, 0.13, 0) -- slightly taller for two rows
 frame.Position = UDim2.new(0.98, 0, 0.10, 0)
 frame.AnchorPoint = Vector2.new(1, 0)
 frame.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
@@ -27,24 +27,42 @@ corner.CornerRadius = UDim.new(0, 8)
 corner.Parent = frame
 
 local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -12, 0.35, 0)
+title.Size = UDim2.new(1, -12, 0.28, 0)
 title.Position = UDim2.new(0, 8, 0, 6)
 title.BackgroundTransparency = 1
 title.Text = "GAME STATE"
 title.Font = Enum.Font.GothamBold
 title.TextScaled = true
 title.TextColor3 = Color3.fromRGB(200, 200, 200)
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextYAlignment = Enum.TextYAlignment.Top
 title.Parent = frame
 
 local stateLabel = Instance.new("TextLabel")
-stateLabel.Size = UDim2.new(1, -16, 0.6, 0)
-stateLabel.Position = UDim2.new(0, 8, 0.35, 6)
+stateLabel.Size = UDim2.new(1, -16, 0.32, 0)
+stateLabel.Position = UDim2.new(0, 8, 0.28, 0)
 stateLabel.BackgroundTransparency = 1
 stateLabel.Font = Enum.Font.GothamBlack
 stateLabel.TextScaled = true
 stateLabel.Text = "IDLE"
 stateLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+stateLabel.TextXAlignment = Enum.TextXAlignment.Left
+stateLabel.TextYAlignment = Enum.TextYAlignment.Center
+stateLabel.ClipsDescendants = true
 stateLabel.Parent = frame
+
+local playerStateLabel = Instance.new("TextLabel")
+playerStateLabel.Size = UDim2.new(1, -16, 0.32, 0)
+playerStateLabel.Position = UDim2.new(0, 8, 0.60, 0)
+playerStateLabel.BackgroundTransparency = 1
+playerStateLabel.Font = Enum.Font.Gotham
+playerStateLabel.TextScaled = true
+playerStateLabel.Text = ""
+playerStateLabel.TextColor3 = Color3.fromRGB(180, 220, 255)
+playerStateLabel.TextXAlignment = Enum.TextXAlignment.Left
+playerStateLabel.TextYAlignment = Enum.TextYAlignment.Center
+playerStateLabel.ClipsDescendants = true
+playerStateLabel.Parent = frame
 
 local function setState(name)
     if not name then name = "Idle" end
@@ -61,8 +79,40 @@ local function setState(name)
     end
 end
 
+
 -- initial state
 setState("Idle")
+playerStateLabel.Text = ""
+
+-- Update player movement state
+local function updatePlayerStateLabel()
+    local char = player.Character
+    if not char then playerStateLabel.Text = "" return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then playerStateLabel.Text = "" return end
+    local state = hum:GetState()
+    local stateName = tostring(state):gsub("Enum.HumanoidStateType.", "")
+    playerStateLabel.Text = "State: " .. stateName
+end
+
+-- Listen for state changes
+local function hookHumanoidState()
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return end
+    hum.StateChanged:Connect(function(_, newState)
+        local stateName = tostring(newState):gsub("Enum.HumanoidStateType.", "")
+        playerStateLabel.Text = "State: " .. stateName
+    end)
+    -- set initial
+    updatePlayerStateLabel()
+end
+
+if player.Character then hookHumanoidState() end
+player.CharacterAdded:Connect(function()
+    hookHumanoidState()
+end)
 
 -- Wire events
 local matchStart = ReplicatedStorage:FindFirstChild("MatchStart")

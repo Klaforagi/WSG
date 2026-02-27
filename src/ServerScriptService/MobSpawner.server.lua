@@ -74,6 +74,33 @@ end
 local templates = findTemplates()
 
 ---------------------------------------------------------------------------
+-- Weighted random selection
+---------------------------------------------------------------------------
+-- Build a flat pool where each template appears N times based on its
+-- spawn_chance value from MobSettings (default 1).  Picking a random
+-- entry from this pool gives exact weighted probability.
+local weightedPool = {}
+
+local function rebuildWeightedPool()
+    table.clear(weightedPool)
+    for _, tpl in ipairs(templates) do
+        local cfg = (MobSettings and MobSettings.presets and MobSettings.presets[tpl.Name]) or {}
+        local weight = math.max(1, math.floor(tonumber(cfg.spawn_chance) or 1))
+        for _ = 1, weight do
+            table.insert(weightedPool, tpl)
+        end
+    end
+    print("[MobSpawner] Weighted pool size: " .. #weightedPool .. " entries across " .. #templates .. " template(s)")
+end
+
+rebuildWeightedPool()
+
+local function pickWeightedTemplate()
+    if #weightedPool == 0 then return templates[1] end
+    return weightedPool[math.random(1, #weightedPool)]
+end
+
+---------------------------------------------------------------------------
 -- Portal discovery → { {portal, area, groupName}, … }
 ---------------------------------------------------------------------------
 local function findPortals()
@@ -412,7 +439,7 @@ task.spawn(function()
             for i = 1, SPAWN_BATCH do
                 if alive >= MAX_TOTAL then break end
                 local entry = portals[math.random(1, #portals)]
-                local chosen = templates[math.random(1, #templates)]
+                local chosen = pickWeightedTemplate()
                 local z = spawnZombie(entry.portal, entry.area, chosen)
                 if z then alive = alive + 1 end
             end
