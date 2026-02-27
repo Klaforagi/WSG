@@ -872,11 +872,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 game:GetService("Debris"):AddItem(beam, 0.22)
             end)()
         end
-        pcall(function()
-            if fireAck then
-                fireAck:FireClient(player, gunOrigin, gunObstruction.Position, toolName)
-            end
-        end)
+        -- (fireAck is fired once at end of handler — no duplicate here)
     end
 
     -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts

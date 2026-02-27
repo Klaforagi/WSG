@@ -198,8 +198,12 @@ local function expandCrosshair(amount)
     end)
 end
 
--- One-time connections
+-- One-time connections (with 30ms dedup guard to prevent double-fire sounds)
+local lastAckTime = 0
 fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos, toolName)
+    local now = os.clock()
+    if now - lastAckTime < 0.030 then return end
+    lastAckTime = now
     expandCrosshair(DEFAULT_RECOIL_AMOUNT)
     playFireSound(toolName)
 end)
@@ -336,6 +340,7 @@ end
 -- Firing logic copied from original ToolGun.client.lua
 local COOLDOWN = 0.5
 local firing = {}
+local attachedTools = {} -- Lua table registry to prevent duplicate connections on clones
 
 local function getToolCfgForTool(tool)
     local cfg = {}
@@ -362,20 +367,23 @@ end
 local function attachTool(tool)
     if not tool or not tool:IsA("Tool") then return end
     if not isToolGun(tool) then return end
-    if tool:GetAttribute("_equippedConnected") then return end
-    tool:SetAttribute("_equippedConnected", true)
+    if attachedTools[tool] then return end
+    attachedTools[tool] = true
 
     local toolCfg = getToolCfgForTool(tool)
     local toolCooldown = (toolCfg and toolCfg.cd) or COOLDOWN
 
     local mouse = player:GetMouse()
     local holding = false
+    local isFiringLoopRunning = false
     local lastShot = 0
     local function startFiring()
         if holding then return end
         holding = true
         firing[tool] = true
-        spawn(function()
+        if isFiringLoopRunning then return end
+        isFiringLoopRunning = true
+        task.spawn(function()
             while holding and tool and tool.Parent and firing[tool] do
                 local now = tick()
                 if now - lastShot >= (toolCooldown or COOLDOWN) then
@@ -403,6 +411,7 @@ local function attachTool(tool)
                 end
                 task.wait(0.02)
             end
+            isFiringLoopRunning = false
         end)
     end
 
@@ -412,24 +421,27 @@ local function attachTool(tool)
     end
 
     local mouseConns = {}
+    local function clearMouseConns()
+        for _, c in ipairs(mouseConns) do c:Disconnect() end
+        mouseConns = {}
+    end
+
     tool.Equipped:Connect(function()
+        clearMouseConns() -- prevent duplicates if Equipped fires twice
         table.insert(mouseConns, mouse.Button1Down:Connect(startFiring))
         table.insert(mouseConns, mouse.Button1Up:Connect(stopFiring))
         onEquippedTool()
     end)
 
     tool.Unequipped:Connect(function()
-        for _, c in ipairs(mouseConns) do c:Disconnect() end
-        mouseConns = {}
+        clearMouseConns()
         stopFiring()
         onUnequippedTool()
     end)
 
-    if tool:GetAttribute("_canFire") == nil then
-        tool:SetAttribute("_canFire", true)
-    end
 end
 
+local scannedContainers = {} -- prevent duplicate ChildAdded on same container
 local function scanContainer(container)
     if not container then return end
     for _, child in ipairs(container:GetChildren()) do
@@ -437,20 +449,21 @@ local function scanContainer(container)
             attachTool(child)
         end
     end
-    container.ChildAdded:Connect(function(child)
-        if child:IsA("Tool") then
-            attachTool(child)
-        end
-    end)
+    if not scannedContainers[container] then
+        scannedContainers[container] = true
+        container.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                attachTool(child)
+            end
+        end)
+    end
 end
 
 -- initial scan & connections
 scanContainer(player.Backpack)
 if player.Character then scanContainer(player.Character) end
-player.Backpack.ChildAdded:Connect(function(child) scanContainer(player.Backpack) end)
 player.CharacterAdded:Connect(function(char)
     scanContainer(char)
-    char.ChildAdded:Connect(function(child) attachTool(child) end)
 end)
 
 -- also scan StarterPack for tools (they get copied to Backpack)
