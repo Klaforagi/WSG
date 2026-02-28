@@ -108,7 +108,7 @@ local function showDamagePopup(damage, isHeadshot, hitPart, hitPos)
     label.Text = tostring(math.floor(damage))
     label.Font = Enum.Font.GothamBold
     label.TextSize = 24
-    label.TextColor3 = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(255, 255, 255)
+    label.TextColor3 = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(255, 215, 80)
     label.TextStrokeTransparency = 0.5
     label.Parent = gui
 

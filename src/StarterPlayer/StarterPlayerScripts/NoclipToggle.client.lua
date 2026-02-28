@@ -12,11 +12,11 @@ local ACTION_NAME = "ToggleNoclipAction"
 local forceEquipRemote = ReplicatedStorage:WaitForChild("ForceEquipTool")
 local requestToolCopy = ReplicatedStorage:WaitForChild("RequestToolCopy")
 
--- Colors for highlight similar to Hotbar
-local DEFAULT_BG = Color3.fromRGB(20,20,24)
-local HIGHLIGHT_BG = Color3.fromRGB(40,40,65)
-local DEFAULT_STROKE = Color3.fromRGB(60,60,60)
-local HIGHLIGHT_STROKE = Color3.fromRGB(140,155,255)
+-- Colors for highlight similar to Hotbar (fantasy theme)
+local DEFAULT_BG = Color3.fromRGB(12,14,28)
+local HIGHLIGHT_BG = Color3.fromRGB(22,26,48)
+local DEFAULT_STROKE = Color3.fromRGB(60,55,35)
+local HIGHLIGHT_STROKE = Color3.fromRGB(255,215,80)
 local requestToolCopy = ReplicatedStorage:FindFirstChild("RequestToolCopy")
 
 local function toggleNoclip()
@@ -96,8 +96,8 @@ local corner = Instance.new("UICorner", slotBtn)
 corner.CornerRadius = UDim.new(0.15, 0)
 
 local stroke = Instance.new("UIStroke", slotBtn)
-stroke.Thickness = 2
-stroke.Color = Color3.fromRGB(60,60,60)
+stroke.Thickness = 2.6
+stroke.Color = DEFAULT_STROKE
 
 -- Ensure perfect square regardless of scaling/layout
 local aspect = Instance.new("UIAspectRatioConstraint", slotBtn)
@@ -186,7 +186,7 @@ local function refreshSlotUI()
             thumb.Image = ""
             thumb.Visible = false
             label.Text = ""
-            stroke.Color = Color3.fromRGB(60,60,60)
+            stroke.Color = DEFAULT_STROKE
             return
         end
 

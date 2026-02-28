@@ -51,6 +51,13 @@ local uiCorner = Instance.new("UICorner")
 uiCorner.CornerRadius = UDim.new(0, 8)
 uiCorner.Parent = frame
 
+-- gold border for minimap
+local frameStroke = Instance.new("UIStroke")
+frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+frameStroke.Thickness = 2
+frameStroke.Color = Color3.fromRGB(255, 215, 80)
+frameStroke.Parent = frame
+
 -- Keep minimap height fixed relative to screen height and compute width from desired aspect
 local DESIRED_ASPECT = 0.45 -- width = DESIRED_ASPECT * height (controls how tall vs wide it is)
 local HEIGHT_SCALE = 0.40   -- fraction of screen height the minimap should occupy

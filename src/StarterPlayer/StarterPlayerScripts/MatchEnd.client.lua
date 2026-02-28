@@ -1,7 +1,13 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- Fantasy PvP theme palette
+local NAVY       = Color3.fromRGB(12, 14, 28)
+local GOLD_TEXT   = Color3.fromRGB(255, 215, 80)
+local WHITE       = GOLD_TEXT
 
 -- create end screen GUI (hidden by default)
 local screen = Instance.new("ScreenGui")
@@ -13,15 +19,22 @@ local frame = Instance.new("Frame")
 frame.AnchorPoint = Vector2.new(0.5, 0)
 frame.Position = UDim2.new(0.5, 0, 0.12, 0)
 frame.Size = UDim2.new(0.45, 0, 0.12, 0)
-frame.BackgroundTransparency = 0.15
-frame.BackgroundColor3 = Color3.fromRGB(20,20,28)
+frame.BackgroundColor3 = NAVY
+frame.BackgroundTransparency = 0.06
 frame.BorderSizePixel = 0
 frame.Visible = false
 frame.Parent = screen
 
 local corner = Instance.new("UICorner")
-corner.CornerRadius = UDim.new(0, 12)
+corner.CornerRadius = UDim.new(0, 4)
 corner.Parent = frame
+
+local frameStroke = Instance.new("UIStroke")
+frameStroke.Color = Color3.fromRGB(80, 65, 20)
+frameStroke.Thickness = 2
+frameStroke.Transparency = 0.2
+frameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+frameStroke.Parent = frame
 
 local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -32, 0.55, 0)
@@ -29,9 +42,15 @@ title.Position = UDim2.new(0, 16, 0, 12)
 title.BackgroundTransparency = 1
 title.Font = Enum.Font.GothamBlack
 title.TextScaled = true
-title.TextColor3 = Color3.fromRGB(255,255,255)
+title.TextColor3 = GOLD_TEXT
 title.Text = ""
 title.Parent = frame
+
+local titleStroke = Instance.new("UIStroke")
+titleStroke.Color = Color3.fromRGB(100, 80, 10)
+titleStroke.Thickness = 1.2
+titleStroke.Transparency = 0.2
+titleStroke.Parent = title
 
 local subtitle = Instance.new("TextLabel")
 subtitle.Size = UDim2.new(1, -32, 0.3, 0)
@@ -39,9 +58,15 @@ subtitle.Position = UDim2.new(0, 16, 0.6, 0)
 subtitle.BackgroundTransparency = 1
 subtitle.Font = Enum.Font.GothamBold
 subtitle.TextScaled = true
-subtitle.TextColor3 = Color3.fromRGB(180, 180, 180)
+subtitle.TextColor3 = Color3.fromRGB(180, 180, 195)
 subtitle.Text = ""
 subtitle.Parent = frame
+
+local subtitleStroke = Instance.new("UIStroke")
+subtitleStroke.Color = Color3.fromRGB(0, 0, 0)
+subtitleStroke.Thickness = 0.8
+subtitleStroke.Transparency = 0.4
+subtitleStroke.Parent = subtitle
 
 local hideThread = nil
 
@@ -53,31 +78,52 @@ local function showEnd(resultType, winner)
     end
 
     if resultType == "sudden" then
-        title.Text = "SUDDEN DEATH"
-        title.TextColor3 = Color3.fromRGB(255, 200, 60)
+        title.Text = "⚔ SUDDEN DEATH ⚔"
+        title.TextColor3 = GOLD_TEXT
         subtitle.Text = "Next point wins!"
         pcall(function() playGameSound("SuddenDeath") end)
     elseif resultType == "win" and winner then
-        title.Text = string.upper(winner) .. " TEAM WINS!"
+        title.Text = "⚔ " .. string.upper(winner) .. " TEAM WINS! ⚔"
         subtitle.Text = "New match starting soon..."
         if winner == "Blue" then
-            title.TextColor3 = Color3.fromRGB(100, 160, 255)
+            title.TextColor3 = Color3.fromRGB(65, 130, 255)
         elseif winner == "Red" then
-            title.TextColor3 = Color3.fromRGB(255, 100, 100)
+            title.TextColor3 = Color3.fromRGB(255, 75, 75)
         else
-            title.TextColor3 = Color3.fromRGB(255, 255, 255)
+            title.TextColor3 = GOLD_TEXT
         end
     else
         title.Text = "MATCH ENDED"
-        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        title.TextColor3 = GOLD_TEXT
         subtitle.Text = ""
     end
     frame.Visible = true
 
-    -- auto-hide after 10 seconds (unless a new event overrides)
+    -- pop-in animation
+    frame.Size = UDim2.new(0.38, 0, 0.10, 0)
+    frame.BackgroundTransparency = 0.5
+    TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Size = UDim2.new(0.45, 0, 0.12, 0),
+        BackgroundTransparency = 0.06,
+    }):Play()
+
+    -- auto-hide after 10 seconds
     hideThread = task.delay(10, function()
+        local fadeOut = TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+            BackgroundTransparency = 1,
+        })
+        TweenService:Create(title, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        TweenService:Create(subtitle, TweenInfo.new(0.4), {TextTransparency = 1}):Play()
+        TweenService:Create(frameStroke, TweenInfo.new(0.4), {Transparency = 1}):Play()
+        fadeOut:Play()
+        fadeOut.Completed:Wait()
         frame.Visible = false
-        title.TextColor3 = Color3.fromRGB(255, 255, 255)
+        -- reset for next use
+        title.TextTransparency = 0
+        subtitle.TextTransparency = 0
+        frameStroke.Transparency = 0.2
+        frame.BackgroundTransparency = 0.06
+        title.TextColor3 = GOLD_TEXT
         hideThread = nil
     end)
 end
@@ -147,5 +193,9 @@ matchStartEvent.OnClientEvent:Connect(function()
         hideThread = nil
     end
     frame.Visible = false
-    title.TextColor3 = Color3.fromRGB(255, 255, 255)
+    title.TextTransparency = 0
+    subtitle.TextTransparency = 0
+    frameStroke.Transparency = 0.2
+    frame.BackgroundTransparency = 0.06
+    title.TextColor3 = GOLD_TEXT
 end)

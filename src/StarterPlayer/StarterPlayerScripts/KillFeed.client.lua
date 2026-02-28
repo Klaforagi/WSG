@@ -1,10 +1,16 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local killFeedEvent = ReplicatedStorage:WaitForChild("KillFeed")
+
+-- Fantasy PvP theme palette
+local NAVY       = Color3.fromRGB(12, 14, 28)
+local GOLD_TEXT   = Color3.fromRGB(255, 215, 80)
+local WHITE       = GOLD_TEXT
 
 -- create UI container in PlayerGui
 local screen = Instance.new("ScreenGui")
@@ -16,10 +22,9 @@ screen.Parent = playerGui
 local frame = Instance.new("Frame")
 frame.Name = "Container"
 frame.AnchorPoint = Vector2.new(1, 0)
--- move down 10% of screen and anchor to right edge
 frame.Position = UDim2.new(1, -16, 0.10, 0)
--- size is proportional to screen (25% width, 25% height)
-frame.Size = UDim2.new(0.25, 0, 0.25, 0)
+frame.Size = UDim2.new(0, 0, 0.30, 0)
+frame.AutomaticSize = Enum.AutomaticSize.X
 frame.BackgroundTransparency = 1
 frame.Parent = screen
 
@@ -28,8 +33,7 @@ uiLayout.Parent = frame
 uiLayout.SortOrder = Enum.SortOrder.LayoutOrder
 uiLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
 uiLayout.VerticalAlignment = Enum.VerticalAlignment.Top
--- padding will be set relative to viewport size below
-uiLayout.Padding = UDim.new(0, 6)
+uiLayout.Padding = UDim.new(0, 4)
 
 local camera = workspace.CurrentCamera
 local function getEntryMetrics()
@@ -37,41 +41,57 @@ local function getEntryMetrics()
     if camera and camera.ViewportSize and camera.ViewportSize.Y then
         vh = camera.ViewportSize.Y
     end
-    local entryHeight = math.clamp(math.floor(vh * 0.035), 12, 36)
-    local padding = math.clamp(math.floor(vh * 0.01), 4, 12)
-    local textSize = math.clamp(math.floor(entryHeight * 0.6), 10, 22)
+    local entryHeight = math.clamp(math.floor(vh * 0.038), 16, 40)
+    local padding = math.clamp(math.floor(vh * 0.008), 3, 10)
+    local textSize = math.clamp(math.floor(entryHeight * 0.55), 10, 20)
     return entryHeight, padding, textSize
 end
 
--- update padding on resize
 if camera then
     camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
         local _, padding = getEntryMetrics()
         uiLayout.Padding = UDim.new(0, padding)
     end)
-    -- initialize padding
     uiLayout.Padding = UDim.new(0, select(2, getEntryMetrics()))
 end
 
 local function getNameColor(name)
-    if not name then return Color3.fromRGB(255,255,255) end
+    if not name then return WHITE end
     local pl = Players:FindFirstChild(name)
-    if pl and pl:IsA("Player") then
-        if pl.Team and pl.Team.TeamColor then
-            return pl.Team.TeamColor.Color
-        else
-            return Color3.fromRGB(255,255,255)
-        end
+    if pl and pl:IsA("Player") and pl.Team and pl.Team.TeamColor then
+        return pl.Team.TeamColor.Color
     end
-    return Color3.fromRGB(255,255,255)
+    return WHITE
 end
 
 local function pushKillText(killer, victim)
     local entryHeight, _, textSize = getEntryMetrics()
+
+    -- dark navy pill with subtle gold border
     local entry = Instance.new("Frame")
-    entry.Size = UDim2.new(1, 0, 0, entryHeight)
-    entry.BackgroundTransparency = 1
+    entry.Size = UDim2.new(0, 0, 0, entryHeight)
+    entry.AutomaticSize = Enum.AutomaticSize.X
+    entry.BackgroundColor3 = NAVY
+    entry.BackgroundTransparency = 0.12
+    entry.BorderSizePixel = 0
+    entry.ClipsDescendants = true
     entry.Parent = frame
+
+    local entryCorner = Instance.new("UICorner")
+    entryCorner.CornerRadius = UDim.new(0, 4)
+    entryCorner.Parent = entry
+
+    local entryStroke = Instance.new("UIStroke")
+    entryStroke.Color = Color3.fromRGB(60, 55, 35)
+    entryStroke.Thickness = 1
+    entryStroke.Transparency = 0.5
+    entryStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    entryStroke.Parent = entry
+
+    local entryPad = Instance.new("UIPadding")
+    entryPad.PaddingLeft = UDim.new(0, 6)
+    entryPad.PaddingRight = UDim.new(0, 6)
+    entryPad.Parent = entry
 
     local hLayout = Instance.new("UIListLayout")
     hLayout.Parent = entry
@@ -85,23 +105,45 @@ local function pushKillText(killer, victim)
         lbl.BackgroundTransparency = 1
         lbl.Text = tostring(txt or "?")
         lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = math.clamp(textSize + 2, 12, 28) -- slightly larger
-        lbl.TextColor3 = color or Color3.fromRGB(255,255,255)
-        lbl.TextStrokeTransparency = 0.6
+        lbl.TextSize = math.clamp(textSize + 1, 11, 22)
+        lbl.TextColor3 = color or WHITE
         lbl.AutomaticSize = Enum.AutomaticSize.X
+        lbl.Size = UDim2.new(0, 0, 1, 0)
         lbl.Parent = entry
+        local lblStroke = Instance.new("UIStroke")
+        lblStroke.Color = Color3.fromRGB(0, 0, 0)
+        lblStroke.Thickness = 0.8
+        lblStroke.Transparency = 0.4
+        lblStroke.Parent = lbl
         return lbl
     end
 
-    -- create labels: killer, verb, victim (right-aligned in the container)
-    local killerLbl = makeLabel(killer, getNameColor(killer))
-    local verbLbl = makeLabel(" killed ", Color3.fromRGB(255,255,255))
-    local victimLbl = makeLabel(victim, getNameColor(victim))
+    makeLabel(killer, getNameColor(killer))
+    makeLabel(" killed ", GOLD_TEXT)
+    makeLabel(victim, getNameColor(victim))
 
-    -- remove after 4 seconds
-    task.delay(4, function()
+    -- pop-in: slide from right + fade
+    entry.Position = UDim2.new(0.15, 0, 0, 0)
+    entry.BackgroundTransparency = 1
+    TweenService:Create(entry, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 0.12,
+    }):Play()
+
+    -- fade out after 4s total
+    task.delay(3.5, function()
         if entry and entry.Parent then
-            entry:Destroy()
+            for _, child in ipairs(entry:GetChildren()) do
+                if child:IsA("TextLabel") then
+                    TweenService:Create(child, TweenInfo.new(0.5), {TextTransparency = 1}):Play()
+                end
+            end
+            local fadeOut = TweenService:Create(entry, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+                BackgroundTransparency = 1,
+            })
+            fadeOut:Play()
+            fadeOut.Completed:Wait()
+            if entry and entry.Parent then entry:Destroy() end
         end
     end)
 end

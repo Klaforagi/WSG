@@ -12,6 +12,7 @@ local Players           = game:GetService("Players")
 local StarterGui        = game:GetService("StarterGui")
 local UserInputService  = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
 
 local player      = Players.LocalPlayer
 local backpack    = player:WaitForChild("Backpack")
@@ -51,15 +52,23 @@ local GAP_SCALE      = 0.005
 -- Bottom margin as a fraction of viewport height
 local MARGIN_SCALE   = 0.012
 
-local COLOR_BG       = Color3.fromRGB(18, 18, 22)
-local COLOR_BG_SEL   = Color3.fromRGB(40, 40, 65)
+-- Fantasy PvP theme palette
+local NAVY        = Color3.fromRGB(12, 14, 28)
+local NAVY_LIGHT  = Color3.fromRGB(22, 26, 48)
+local GOLD_TEXT   = Color3.fromRGB(255, 215, 80)
+local BLUE_GLOW   = Color3.fromRGB(65, 130, 255)
+local RED_GLOW    = Color3.fromRGB(255, 75, 75)
+local MUTED_STROKE = Color3.fromRGB(60, 55, 35)
+
+local COLOR_BG       = NAVY
+local COLOR_BG_SEL   = NAVY_LIGHT
 local COLOR_BG_LOCK  = Color3.fromRGB(35, 12, 12)
-local COLOR_STROKE   = Color3.fromRGB(55, 55, 55)
-local COLOR_STROKE_S = Color3.fromRGB(140, 155, 255)
-local COLOR_STROKE_L = Color3.fromRGB(100, 30, 30)
-local COLOR_TEXT      = Color3.fromRGB(200, 200, 200)
-local COLOR_KEY       = Color3.fromRGB(150, 150, 150)
-local COLOR_LOCK_TXT  = Color3.fromRGB(190, 50, 50)
+local COLOR_STROKE   = MUTED_STROKE
+local COLOR_STROKE_S = GOLD_TEXT
+local COLOR_STROKE_L = COLOR_STROKE
+local COLOR_TEXT     = GOLD_TEXT
+local COLOR_KEY      = Color3.fromRGB(200, 180, 120)
+local COLOR_LOCK_TXT = COLOR_TEXT
 
 --------------------------------------------------------------------------------
 -- STATE
@@ -73,6 +82,24 @@ local slotTools       = {}
 -- SCREEN GUI
 --------------------------------------------------------------------------------
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- Cleanup leftover strokes from previous runs (remove long gold borders)
+local function cleanupHotbarStrokes()
+    local pg = player:FindFirstChild("PlayerGui")
+    if not pg then return end
+    for _, gui in ipairs(pg:GetChildren()) do
+        for _, desc in ipairs(gui:GetDescendants()) do
+            if desc:IsA("Frame") and (desc.Name == "HotbarContainer" or desc.Name == "Hotbar") then
+                for _, child in ipairs(desc:GetChildren()) do
+                    if child:IsA("UIStroke") then
+                        child:Destroy()
+                    end
+                end
+            end
+        end
+    end
+end
+task.defer(cleanupHotbarStrokes)
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name            = "Hotbar"
 screenGui.ResetOnSpawn    = false
@@ -125,11 +152,11 @@ local function buildSlot(def)
     btn.Parent                  = container
 
     local corner = Instance.new("UICorner", btn)
-    corner.CornerRadius = UDim.new(0.12, 0) -- ~12% of slot size
+    corner.CornerRadius = UDim.new(0, 4)
 
     local stroke = Instance.new("UIStroke", btn)
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Thickness       = 1.5
+    stroke.Thickness       = 2
     stroke.Color           = COLOR_STROKE
 
     -- Key number (top-left, scale-based)
@@ -139,7 +166,7 @@ local function buildSlot(def)
     keyLabel.Position              = UDim2.fromScale(0.06, 0.02)
     keyLabel.BackgroundTransparency = 1
     keyLabel.Text                  = tostring(idx)
-    keyLabel.Font                  = Enum.Font.GothamBold
+    keyLabel.Font                  = Enum.Font.GothamBlack
     keyLabel.TextScaled            = true
     keyLabel.TextColor3            = COLOR_KEY
     keyLabel.TextXAlignment        = Enum.TextXAlignment.Left
@@ -165,7 +192,7 @@ local function buildSlot(def)
     nameLabel.Size                  = UDim2.fromScale(0.9, 0.22)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Text                  = ""
-    nameLabel.Font                  = Enum.Font.GothamMedium
+    nameLabel.Font                  = Enum.Font.GothamBold
     nameLabel.TextScaled            = true
     nameLabel.TextColor3            = COLOR_TEXT
     nameLabel.TextTruncate          = Enum.TextTruncate.AtEnd
@@ -253,22 +280,22 @@ local function refreshSlots()
         end
 
         -- colours / text
-        if isLocked then
-            ui.btn.BackgroundColor3 = COLOR_BG_LOCK
-            ui.stroke.Color         = COLOR_STROKE_L
-            ui.nameLabel.Text       = "LOCKED"
-            ui.nameLabel.TextColor3 = COLOR_LOCK_TXT
-        elseif isEquipped then
-            ui.btn.BackgroundColor3 = COLOR_BG_SEL
-            ui.stroke.Color         = COLOR_STROKE_S
-            ui.nameLabel.TextColor3 = COLOR_TEXT
-            ui.nameLabel.Text       = tool and tool.Name or def.label
-        else
-            ui.btn.BackgroundColor3 = COLOR_BG
-            ui.stroke.Color         = COLOR_STROKE
-            ui.nameLabel.TextColor3 = COLOR_TEXT
-            ui.nameLabel.Text       = tool and tool.Name or ""
-        end
+            if isLocked then
+                ui.btn.BackgroundColor3 = COLOR_BG_LOCK
+                ui.stroke.Color         = COLOR_STROKE_L
+                ui.nameLabel.Text       = "LOCKED"
+                ui.nameLabel.TextColor3 = COLOR_LOCK_TXT
+            elseif isEquipped then
+                ui.btn.BackgroundColor3 = COLOR_BG_SEL
+                ui.stroke.Color         = COLOR_STROKE_S
+                ui.nameLabel.TextColor3 = COLOR_TEXT
+                ui.nameLabel.Text       = tool and tool.Name or def.label
+            else
+                ui.btn.BackgroundColor3 = COLOR_BG
+                ui.stroke.Color         = COLOR_STROKE
+                ui.nameLabel.TextColor3 = COLOR_TEXT
+                ui.nameLabel.Text       = tool and tool.Name or ""
+            end
     end
 end
 
@@ -325,11 +352,21 @@ equipSlot = function(idx)
     hum:UnequipTools()
     forceEquipRemote:FireServer(def.category, def.toolName)
 
-    -- Optimistic UI highlight
+    -- Optimistic UI highlight with subtle pop animation
     local ui = slotUI[idx]
     if ui then
         ui.btn.BackgroundColor3 = COLOR_BG_SEL
         ui.stroke.Color         = COLOR_STROKE_S
+        -- pop: briefly brighten background and thicken stroke
+        local popIn = TweenService:Create(ui.btn, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.02})
+        local strokePop = TweenService:Create(ui.stroke, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Thickness = 3.6})
+        popIn:Play(); strokePop:Play()
+        task.delay(0.18, function()
+            if ui and ui.btn and ui.stroke then
+                TweenService:Create(ui.btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.08}):Play()
+                TweenService:Create(ui.stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 2}):Play()
+            end
+        end)
     end
 end
 

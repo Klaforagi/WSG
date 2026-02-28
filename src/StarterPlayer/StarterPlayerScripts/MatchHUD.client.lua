@@ -1,11 +1,22 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- Config
-local START_TIME_SECONDS = 1 * 60 -- 20 minutes
+local START_TIME_SECONDS = 1 * 60
+
+-- Fantasy PvP theme palette
+local NAVY        = Color3.fromRGB(12, 14, 28)
+local NAVY_LIGHT  = Color3.fromRGB(22, 26, 48)
+local GOLD_TEXT    = Color3.fromRGB(255, 215, 80)
+local BLUE_ACCENT  = Color3.fromRGB(65, 130, 255)
+local BLUE_GLOW    = Color3.fromRGB(40, 80, 180)
+local RED_ACCENT   = Color3.fromRGB(255, 75, 75)
+local RED_GLOW     = Color3.fromRGB(180, 40, 40)
+local WHITE        = GOLD_TEXT
 
 -- State
 local blueScore = 0
@@ -27,7 +38,7 @@ screenGui.Parent = playerGui
 local root = Instance.new("Frame")
 root.AnchorPoint = Vector2.new(0.5, 0)
 root.Position = UDim2.new(0.5, 0, 0.01, 0)
-root.Size = UDim2.new(0.85, 0, 0.055, 0)
+root.Size = UDim2.new(0.43, 0, 0.055, 0)
 root.BackgroundTransparency = 1
 root.Parent = screenGui
 
@@ -40,25 +51,34 @@ local uiLayout = Instance.new("UIListLayout")
 uiLayout.FillDirection = Enum.FillDirection.Horizontal
 uiLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 uiLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-uiLayout.Padding = UDim.new(0, 8)
+uiLayout.Padding = UDim.new(0, 2)
 uiLayout.Parent = root
 
-local function makePanel()
+local function makePanel(accentColor)
     local p = Instance.new("Frame")
-    p.Size = UDim2.new(0.3, 0, 1, 0)
-    p.BackgroundTransparency = 0.15
-    p.BackgroundColor3 = Color3.fromRGB(20, 20, 28)
+    p.Size = UDim2.new(0.28, 0, 1, 0)
+    p.BackgroundColor3 = NAVY
+    p.BackgroundTransparency = 0.08
     p.BorderSizePixel = 0
-    local corner = Instance.new("UICorner") corner.CornerRadius = UDim.new(0, 8) corner.Parent = p
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 4)
+    corner.Parent = p
+    -- subtle team-colored glow border
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = accentColor or Color3.fromRGB(60, 60, 80)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.4
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = p
     return p
 end
 
-local bluePanel = makePanel()
+local bluePanel = makePanel(BLUE_GLOW)
 bluePanel.Parent = root
-local centerPanel = makePanel()
-centerPanel.Size = UDim2.new(0.25, 0, 1, 0)
+local centerPanel = makePanel(Color3.fromRGB(80, 70, 40))
+centerPanel.Size = UDim2.new(0.14, 0, 1, 0)
 centerPanel.Parent = root
-local redPanel = makePanel()
+local redPanel = makePanel(RED_GLOW)
 redPanel.Parent = root
 
 local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
@@ -171,55 +191,80 @@ end
 -- Blue panel contents
 local blueName = Instance.new("TextLabel")
 blueName.Text = "BLUE"
-blueName.Font = Enum.Font.GothamBold
+blueName.Font = Enum.Font.GothamBlack
 blueName.TextScaled = true
-blueName.TextColor3 = Color3.fromRGB(170, 200, 255)
+blueName.TextColor3 = GOLD_TEXT
 blueName.BackgroundTransparency = 1
-blueName.Size = UDim2.new(1, -16, 0.5, 0)
+blueName.Size = UDim2.new(1, -16, 0.45, 0)
 blueName.Position = UDim2.new(0, 8, 0, 2)
 blueName.Parent = bluePanel
+local blueNameStroke = Instance.new("UIStroke")
+blueNameStroke.Color = Color3.fromRGB(80, 60, 0)
+blueNameStroke.Thickness = 1
+blueNameStroke.Transparency = 0.3
+blueNameStroke.Parent = blueName
 
 local blueCountLabel = Instance.new("TextLabel")
 blueCountLabel.Text = tostring(blueScore)
 blueCountLabel.Font = Enum.Font.GothamBlack
 blueCountLabel.TextScaled = true
-blueCountLabel.TextColor3 = Color3.fromRGB(220, 240, 255)
+blueCountLabel.TextColor3 = BLUE_ACCENT
 blueCountLabel.BackgroundTransparency = 1
-blueCountLabel.Size = UDim2.new(1, -16, 0.5, -4)
-blueCountLabel.Position = UDim2.new(0, 8, 0.5, 2)
+blueCountLabel.Size = UDim2.new(1, -16, 0.55, -4)
+blueCountLabel.Position = UDim2.new(0, 8, 0.45, 2)
 blueCountLabel.Parent = bluePanel
+local blueCountStroke = Instance.new("UIStroke")
+blueCountStroke.Color = Color3.fromRGB(20, 40, 100)
+blueCountStroke.Thickness = 1.2
+blueCountStroke.Transparency = 0.2
+blueCountStroke.Parent = blueCountLabel
 
 -- Red panel contents
 local redName = Instance.new("TextLabel")
 redName.Text = "RED"
-redName.Font = Enum.Font.GothamBold
+redName.Font = Enum.Font.GothamBlack
 redName.TextScaled = true
-redName.TextColor3 = Color3.fromRGB(255, 150, 150)
+redName.TextColor3 = GOLD_TEXT
 redName.BackgroundTransparency = 1
-redName.Size = UDim2.new(1, -16, 0.5, 0)
+redName.Size = UDim2.new(1, -16, 0.45, 0)
 redName.Position = UDim2.new(0, 8, 0, 2)
 redName.Parent = redPanel
+local redNameStroke = Instance.new("UIStroke")
+redNameStroke.Color = Color3.fromRGB(80, 60, 0)
+redNameStroke.Thickness = 1
+redNameStroke.Transparency = 0.3
+redNameStroke.Parent = redName
 
 local redCountLabel = Instance.new("TextLabel")
 redCountLabel.Text = tostring(redScore)
 redCountLabel.Font = Enum.Font.GothamBlack
 redCountLabel.TextScaled = true
-redCountLabel.TextColor3 = Color3.fromRGB(255, 200, 200)
+redCountLabel.TextColor3 = RED_ACCENT
 redCountLabel.BackgroundTransparency = 1
-redCountLabel.Size = UDim2.new(1, -16, 0.5, -4)
-redCountLabel.Position = UDim2.new(0, 8, 0.5, 2)
+redCountLabel.Size = UDim2.new(1, -16, 0.55, -4)
+redCountLabel.Position = UDim2.new(0, 8, 0.45, 2)
 redCountLabel.Parent = redPanel
+local redCountStroke = Instance.new("UIStroke")
+redCountStroke.Color = Color3.fromRGB(100, 20, 20)
+redCountStroke.Thickness = 1.2
+redCountStroke.Transparency = 0.2
+redCountStroke.Parent = redCountLabel
 
 -- Center timer
 local timerLabel = Instance.new("TextLabel")
 timerLabel.Text = "20:00"
 timerLabel.Font = Enum.Font.GothamBlack
 timerLabel.TextScaled = true
-timerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+timerLabel.TextColor3 = GOLD_TEXT
 timerLabel.BackgroundTransparency = 1
 timerLabel.Size = UDim2.new(1, -16, 1, 0)
 timerLabel.Position = UDim2.new(0, 8, 0, 0)
 timerLabel.Parent = centerPanel
+local timerStroke = Instance.new("UIStroke")
+timerStroke.Color = Color3.fromRGB(100, 80, 10)
+timerStroke.Thickness = 1.2
+timerStroke.Transparency = 0.2
+timerStroke.Parent = timerLabel
 
 -- Helpers
 local function formatTime(sec)

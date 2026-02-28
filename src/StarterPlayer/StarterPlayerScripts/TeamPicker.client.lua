@@ -23,7 +23,7 @@ local title = Instance.new("TextLabel")
 title.Text = "CHOOSE YOUR SIDE"
 title.Font = Enum.Font.GothamBold
 title.TextScaled = true
-title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.TextColor3 = Color3.fromRGB(255, 215, 80)
 title.TextStrokeTransparency = 0.6
 title.BackgroundTransparency = 1
 title.Size = UDim2.new(0.8, 0, 0.06, 0)
@@ -96,7 +96,7 @@ local function makeCard(teamName, accentColor, hoverColor, iconText)
 	label.Text = "JOIN " .. string.upper(teamName)
 	label.Font = Enum.Font.GothamBold
 	label.TextScaled = true
-	label.TextColor3 = Color3.fromRGB(255, 255, 255)
+	label.TextColor3 = Color3.fromRGB(255, 215, 80)
 	label.BackgroundTransparency = 1
 	label.Size = UDim2.new(0.8, 0, 0.12, 0)
 	label.Position = UDim2.new(0.1, 0, 0.45, 0)

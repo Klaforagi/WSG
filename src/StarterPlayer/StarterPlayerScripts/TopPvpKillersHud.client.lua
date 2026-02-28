@@ -60,10 +60,12 @@ local function getViewportWidth()
     return 1280
 end
 
+-- Scale factor: reduce overall UI to ~60% (40% smaller)
+local UI_SCALE = 0.6
 local function computeSlotPx()
     local vw = getViewportWidth()
-    local px = math.floor(vw * 0.05)
-    return math.clamp(px, 36, 80)
+    local px = math.floor(vw * 0.05 * UI_SCALE)
+    return math.clamp(px, 24, 80 * UI_SCALE)
 end
 
 local function updateRootSize(slotPx, visibleCount)
