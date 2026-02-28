@@ -7,29 +7,33 @@ local Players = game:GetService("Players")
 local DEBUG = true
 
 -- Ensure a player's `leaderstats` folder and `PlayerKills` IntValue exist.
-local function ensureLeaderstats(player)
-    local ls = player:FindFirstChild("leaderstats")
-    if not ls then
+-- Use player Attributes for tracking kills so values don't appear on the
+-- in-game leaderboard (which only displays values inside a `leaderstats` folder).
+local function ensurePlayerKillsAttribute(player)
+    if player:GetAttribute("PlayerKills") == nil then
         if DEBUG then
-            print("[PvpKills] creating leaderstats for", player.Name)
+            print("[PvpKills] initializing PlayerKills attribute for", player.Name)
         end
-        ls = Instance.new("Folder")
-        ls.Name = "leaderstats"
-        ls.Parent = player
-    end
-
-    local pk = ls:FindFirstChild("PlayerKills")
-    if not pk then
-        if DEBUG then
-            print("[PvpKills] creating PlayerKills IntValue for", player.Name)
+        -- If an old leaderstats.PlayerKills IntValue exists, migrate its value and remove it
+        local migrated = false
+        local ls = player:FindFirstChild("leaderstats")
+        if ls then
+            local old = ls:FindFirstChild("PlayerKills")
+            if old and old:IsA("IntValue") then
+                local v = old.Value or 0
+                player:SetAttribute("PlayerKills", v)
+                old:Destroy()
+                migrated = true
+                if DEBUG then
+                    print("[PvpKills] migrated leaderstats.PlayerKills for", player.Name, "-> attribute (", v, ")")
+                end
+            end
         end
-        pk = Instance.new("IntValue")
-        pk.Name = "PlayerKills"
-        pk.Value = 0
-        pk.Parent = ls
+        if not migrated then
+            player:SetAttribute("PlayerKills", 0)
+        end
     end
-
-    return pk
+    return player:GetAttribute("PlayerKills")
 end
 
 -- Reusable function to award a PvP kill. Guards against self-kills and missing leaderstats.
@@ -41,10 +45,13 @@ local function AwardPlayerKill(killerPlayer, victimPlayer)
         return
     end
 
-    local pk = ensureLeaderstats(killerPlayer)
-    pk.Value = pk.Value + 1
+    -- increment attribute (server authoritative)
+    ensurePlayerKillsAttribute(killerPlayer)
+    local prev = killerPlayer:GetAttribute("PlayerKills") or 0
+    local now = prev + 1
+    killerPlayer:SetAttribute("PlayerKills", now)
     if DEBUG then
-        print(string.format("[PvpKills] Awarded PvP kill: %s -> %s (new=%d)", killerPlayer.Name, victimPlayer and victimPlayer.Name or "?", pk.Value))
+        print(string.format("[PvpKills] Awarded PvP kill: %s -> %s (new=%d)", killerPlayer.Name, victimPlayer and victimPlayer.Name or "?", now))
     end
 end
 
@@ -120,7 +127,8 @@ end
 
 -- When a player joins, ensure leaderstats and hook CharacterAdded
 local function onPlayerAdded(player)
-    ensureLeaderstats(player)
+    -- Ensure PlayerKills attribute exists (do not touch leaderstats folder)
+    ensurePlayerKillsAttribute(player)
 
     player.CharacterAdded:Connect(function(character)
         -- Guard against double connections by watching each character separately

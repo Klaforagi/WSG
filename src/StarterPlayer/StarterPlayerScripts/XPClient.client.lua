@@ -19,18 +19,18 @@ local XP_LevelUp = remotes:WaitForChild("XP_LevelUp")
 --------------------------------------------------------------------------------
 -- STYLE CONSTANTS
 --------------------------------------------------------------------------------
-local BAR_WIDTH_SCALE   = 0.38          -- % of screen width
+local BAR_WIDTH_SCALE   = 0.34          -- % of screen width (slightly narrower)
 local BAR_HEIGHT        = 14            -- px
 local LABEL_SIZE        = 20            -- px – small level numbers
-local CORNER_RADIUS     = UDim.new(1, 0) -- fully rounded (pill shape)
+local CORNER_RADIUS     = UDim.new(0, 6) -- subtle rounded corners for a sleek look
 
-local COLOR_BAR_BG      = Color3.fromRGB(22, 22, 28)
-local COLOR_BAR_STROKE  = Color3.fromRGB(50, 50, 62)
-local COLOR_FILL_LEFT   = Color3.fromRGB(70, 130, 255)
-local COLOR_FILL_RIGHT  = Color3.fromRGB(140, 90, 255)
-local COLOR_LABEL       = Color3.fromRGB(190, 195, 210)
-local COLOR_POPUP       = Color3.fromRGB(180, 215, 255)
-local COLOR_LEVELUP     = Color3.fromRGB(255, 225, 100)
+local COLOR_BAR_BG      = Color3.fromRGB(12, 14, 28)   -- NAVY base
+local COLOR_BAR_STROKE  = Color3.fromRGB(255, 215, 80) -- GOLD stroke
+local COLOR_FILL_LEFT   = Color3.fromRGB(255, 215, 80) -- gold -> lighter gold gradient
+local COLOR_FILL_RIGHT  = Color3.fromRGB(255, 235, 120)
+local COLOR_LABEL       = Color3.fromRGB(255, 215, 80) -- gold labels
+local COLOR_POPUP       = Color3.fromRGB(255, 215, 80)
+local COLOR_LEVELUP     = Color3.fromRGB(255, 235, 120)
 
 --------------------------------------------------------------------------------
 -- SCREEN GUI
@@ -100,9 +100,9 @@ bgCorner.CornerRadius = CORNER_RADIUS
 
 local bgStroke = Instance.new("UIStroke", barBG)
 bgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-bgStroke.Thickness = 1
+bgStroke.Thickness = 2
 bgStroke.Color = COLOR_BAR_STROKE
-bgStroke.Transparency = 0.4
+bgStroke.Transparency = 0.2
 
 --------------------------------------------------------------------------------
 -- FILL BAR  (gradient-filled, pill-shaped)
@@ -121,7 +121,100 @@ fillCorner.CornerRadius = CORNER_RADIUS
 
 local gradient = Instance.new("UIGradient", fill)
 gradient.Color = ColorSequence.new(COLOR_FILL_LEFT, COLOR_FILL_RIGHT)
-gradient.Rotation = 0
+gradient.Rotation = 90
+
+-- segmented notches inside the fill to give the bar depth (only visible where fill exists)
+local notchesContainer = Instance.new("Frame")
+notchesContainer.Name = "NotchesContainer"
+notchesContainer.Size = UDim2.new(1, 0, 1, 0)
+notchesContainer.Position = UDim2.new(0, 0, 0, 0)
+notchesContainer.BackgroundTransparency = 1
+notchesContainer.BorderSizePixel = 0
+notchesContainer.Parent = fill
+
+local NOTCH_COUNT = 10
+local NOTCH_SPACING = 0.02
+for i = 1, NOTCH_COUNT do
+    local notch = Instance.new("Frame")
+    notch.Name = "Notch" .. tostring(i)
+    local x = (i - 1) * (1 / NOTCH_COUNT)
+    notch.Position = UDim2.new(x + NOTCH_SPACING * 0.5, 0, 0, 0)
+    notch.Size = UDim2.new(1 / NOTCH_COUNT - NOTCH_SPACING, 0, 1, 0)
+    notch.BackgroundColor3 = Color3.fromRGB(200, 160, 40)
+    notch.BackgroundTransparency = 0.12
+    notch.BorderSizePixel = 0
+    notch.ZIndex = 2
+    notch.Parent = notchesContainer
+    local nc = Instance.new("UICorner", notch)
+    nc.CornerRadius = UDim.new(0, 3)
+end
+
+-- Utility: clamp and lighten a color slightly for gradient
+local function clamp01(v)
+    if v < 0 then return 0 end
+    if v > 1 then return 1 end
+    return v
+end
+local function lighterColor(c, amt)
+    return Color3.new(clamp01(c.R + amt), clamp01(c.G + amt), clamp01(c.B + amt))
+end
+
+local function setBarTint(color)
+    if not color then color = COLOR_FILL_LEFT end
+    -- choose a smaller light amount for strongly red tints so the "light" variant isn't too bright
+    local isRed = color.R > color.G and color.R > color.B and color.R > 0.55
+    local lightAmt = isRed and 0.06 or 0.12
+    local light = lighterColor(color, lightAmt)
+    fill.BackgroundColor3 = color
+    gradient.Color = ColorSequence.new(color, light)
+    levelLabel.TextColor3 = color
+    nextLabel.TextColor3 = color
+    bgStroke.Color = color
+    COLOR_POPUP = color
+    -- tint notches (darker variant) and adjust their transparency
+    -- by default make notches a bit darker than fill for contrast
+    local notchAmt = -0.12
+    local notchTrans = 0.12
+    -- For red teams, use a slight lighter notch but not too bright
+    if isRed then
+        notchAmt = 0.06
+        notchTrans = 0.08
+    end
+    local notchColor = lighterColor(color, notchAmt)
+    if notchesContainer then
+        for _, n in ipairs(notchesContainer:GetChildren()) do
+            if n:IsA("Frame") then
+                n.BackgroundColor3 = notchColor
+                n.BackgroundTransparency = notchTrans
+            end
+        end
+    end
+end
+
+-- react when local player's team changes (and set initial tint)
+local function teamColorOrNil(team)
+    if not team then return nil end
+    local name = tostring(team.Name):lower()
+    if string.find(name, "neutral") then return nil end
+    if team.TeamColor then return team.TeamColor.Color end
+    return nil
+end
+
+local initial = teamColorOrNil(player.Team)
+if initial then
+    setBarTint(initial)
+else
+    setBarTint(COLOR_FILL_LEFT)
+end
+
+player:GetPropertyChangedSignal("Team"):Connect(function()
+    local tc = teamColorOrNil(player.Team)
+    if tc then
+        setBarTint(tc)
+    else
+        setBarTint(COLOR_FILL_LEFT)
+    end
+end)
 
 --------------------------------------------------------------------------------
 -- LEVEL-UP INLINE LABEL  (small text centered on XP bar, no separate overlay)
@@ -155,13 +248,13 @@ end
 
 local function createXPPopup(amount)
     local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0, 100, 0, 18)
+    lbl.Size = UDim2.new(0, 110, 0, 20)
     lbl.AnchorPoint = Vector2.new(0.5, 1)
     -- spawn just above the bar
     lbl.Position = UDim2.new(0.5, 0, 1, -28)
     lbl.BackgroundTransparency = 1
     lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 14
+    lbl.TextSize = 15
     lbl.TextColor3 = COLOR_POPUP
     lbl.TextStrokeTransparency = 0.75
     lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
@@ -174,7 +267,7 @@ local function createXPPopup(amount)
         local riseGoal = { Position = lbl.Position + UDim2.new(0, 0, -0.04, 0) }
         local t1 = TweenService:Create(lbl, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), riseGoal)
         t1:Play()
-        task.wait(0.8)
+        task.wait(0.8 + 0.5)
         -- fade out
         local t2 = TweenService:Create(lbl, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             TextTransparency = 1,

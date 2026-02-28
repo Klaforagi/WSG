@@ -4,6 +4,8 @@ local Workspace = game:GetService("Workspace")
 local localPlayer = Players.LocalPlayer
 local HIGHLIGHT_NAME = "WSG_TeamHighlight"
 
+
+
 local function addHighlightToModel(model, color)
     if not model or not model:IsA("Model") then return end
     -- avoid adding to local player's character
@@ -20,11 +22,11 @@ local function addHighlightToModel(model, color)
     h.FillColor = color
     h.OutlineColor = color
     -- hide fill entirely; keep outline visible
-    h.FillTransparency = 1
-    h.OutlineTransparency = 0.4
+    h.FillTransparency = 0.75
+    h.OutlineTransparency = 0
     -- DepthMode: teammates should render on top; others (enemies/dummies) occluded
     local pl = Players:GetPlayerFromCharacter(model)
-    if pl and not isEnemy(pl) then
+    if pl and localPlayer.Team and pl.Team and pl.Team == localPlayer.Team then
         h.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
     else
         h.DepthMode = Enum.HighlightDepthMode.Occluded
@@ -50,16 +52,12 @@ end
 local function handlePlayerCharacter(player)
     local char = player.Character
     if not char then return end
-    -- only highlight enemies
-    if isEnemy(player) then
-        local color = Color3.fromRGB(255,255,255)
-        if player.Team and player.Team.TeamColor then
-            color = player.Team.TeamColor.Color
-        end
-        addHighlightToModel(char, color)
-    else
-        removeHighlightFromModel(char)
+    -- highlight other players (teammates and enemies) — add/remove handled elsewhere
+    local color = Color3.fromRGB(255,255,255)
+    if player.Team and player.Team.TeamColor then
+        color = player.Team.TeamColor.Color
     end
+    addHighlightToModel(char, color)
 end
 
 local function onPlayerAdded(player)

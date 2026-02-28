@@ -193,11 +193,9 @@ end
 -- PlayerKills helper
 ------------------------------------------------------------------------
 local function getPlayerKills(player)
-    local ls = player:FindFirstChild("leaderstats")
-    if not ls then return 0 end
-    local pk = ls:FindFirstChild("PlayerKills")
-    if not pk then return 0 end
-    return pk.Value or 0
+    local v = player:GetAttribute("PlayerKills")
+    if type(v) == "number" then return v end
+    return 0
 end
 
 ------------------------------------------------------------------------
@@ -335,17 +333,20 @@ end
 local playerConns = {}
 
 local function watchPlayer(player)
-    local ls = player:FindFirstChild("leaderstats") or player:WaitForChild("leaderstats", 10)
-    if not ls then return end
-    local pk = ls:FindFirstChild("PlayerKills") or ls:WaitForChild("PlayerKills", 10)
-    if not pk then return end
     -- avoid duplicate connections
     if playerConns[player] then
         playerConns[player]:Disconnect()
+        playerConns[player] = nil
     end
-    playerConns[player] = pk.Changed:Connect(function()
-        updateHud()
-    end)
+    -- listen for attribute changes to PlayerKills
+    if player.GetAttributeChangedSignal then
+        playerConns[player] = player:GetAttributeChangedSignal("PlayerKills"):Connect(function()
+            updateHud()
+        end)
+    else
+        -- fallback: poll periodically (very unlikely on modern clients)
+        playerConns[player] = nil
+    end
     -- refresh immediately so we pick up the current value
     updateHud()
 end

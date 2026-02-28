@@ -119,6 +119,14 @@ function endMatch(winnerTeam)
         if ResetFlags then
             pcall(function() ResetFlags:Fire() end)
         end
+        -- Reset per-match player stats: clear PlayerKills attribute so leaderboard resets
+        for _, pl in ipairs(Players:GetPlayers()) do
+            if pl and pl.SetAttribute then
+                pcall(function()
+                    pl:SetAttribute("PlayerKills", 0)
+                end)
+            end
+        end
 
         -- reset scores
         teamScores.Blue = 0
