@@ -104,7 +104,14 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         local vp = Players:GetPlayerFromCharacter(victimModel)
         if vp then victimName = vp.Name end
         if player.Name ~= victimName then
-            pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName) end)
+            -- determine coin award for this kill and award it before firing the feed
+            local coinAward = 0
+            if not vp and CurrencyService and CurrencyService.AddCoins then
+                pcall(function() CurrencyService:AddCoins(player, 1) end)
+                coinAward = 1
+            end
+
+            pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)
             if player.Team then
                 pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
             end
@@ -120,10 +127,6 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
                     end)
                     pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
                 end
-            end
-            -- Award 1 coin for mob kills
-            if not vp and CurrencyService and CurrencyService.AddCoins then
-                pcall(function() CurrencyService:AddCoins(player, 1) end)
             end
         end
         -- ragdoll dummies on melee kill

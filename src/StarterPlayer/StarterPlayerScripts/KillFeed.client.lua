@@ -7,6 +7,12 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local killFeedEvent = ReplicatedStorage:WaitForChild("KillFeed")
 
+-- try to require AssetCodes for coin image
+local AssetCodes = nil
+pcall(function()
+    AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes", 5))
+end)
+
 -- Fantasy PvP theme palette
 local NAVY       = Color3.fromRGB(12, 14, 28)
 local GOLD_TEXT   = Color3.fromRGB(255, 215, 80)
@@ -64,7 +70,7 @@ local function getNameColor(name)
     return WHITE
 end
 
-local function pushKillText(killer, victim)
+local function pushKillText(killer, victim, coinAmount)
     local entryHeight, _, textSize = getEntryMetrics()
 
     -- dark navy pill with subtle gold border
@@ -121,6 +127,27 @@ local function pushKillText(killer, victim)
     makeLabel(killer, getNameColor(killer))
     makeLabel(" killed ", GOLD_TEXT)
     makeLabel(victim, getNameColor(victim))
+    if coinAmount and type(coinAmount) == "number" and coinAmount > 0 then
+        -- show +N and coin image if available
+        makeLabel(" +" .. tostring(coinAmount), GOLD_TEXT)
+        if AssetCodes and type(AssetCodes.Get) == "function" then
+            local id = nil
+            pcall(function() id = AssetCodes.Get("Coin") end)
+            if id and type(id) == "string" then
+                local img = Instance.new("ImageLabel")
+                img.BackgroundTransparency = 1
+                img.Size = UDim2.new(0, 18, 0, 18)
+                img.Image = id
+                img.ScaleType = Enum.ScaleType.Fit
+                img.Parent = entry
+            else
+                -- fallback to emoji if image not available
+                makeLabel("🪙", GOLD_TEXT)
+            end
+        else
+            makeLabel("🪙", GOLD_TEXT)
+        end
+    end
 
     -- pop-in: slide from right + fade
     entry.Position = UDim2.new(0.15, 0, 0, 0)
@@ -148,9 +175,9 @@ local function pushKillText(killer, victim)
     end)
 end
 
-killFeedEvent.OnClientEvent:Connect(function(killerName, victimName)
+killFeedEvent.OnClientEvent:Connect(function(killerName, victimName, coinAmount)
     pcall(function()
-        pushKillText(killerName, victimName)
+        pushKillText(killerName, victimName, coinAmount)
     end)
 end)
 

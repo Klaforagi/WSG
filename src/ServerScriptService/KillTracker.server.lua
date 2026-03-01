@@ -73,10 +73,7 @@ local function onHumanoidDied(humanoid, model)
     -- don't credit self-kills
     if damagerName == victimName then return end
 
-    -- fire kill feed to all clients
-    KillFeed:FireAllClients(damagerName, victimName)
-
-    -- award points to the killer's team
+    -- determine killer (by user id or name) so we can award points/coins
     local damagerUserId = humanoid:GetAttribute("lastDamagerUserId")
     local killer = nil
     if damagerUserId then
@@ -86,16 +83,23 @@ local function onHumanoidDied(humanoid, model)
         -- fallback: find by name
         killer = Players:FindFirstChild(damagerName)
     end
+
+    -- award points to the killer's team
     if killer and killer.Team then
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
 
     -- Award 1 coin for mob kills (fallback for kills not handled by weapon scripts)
+    local coinAward = 0
     if not victimPlayer and killer then
         if CurrencyService and CurrencyService.AddCoins then
             pcall(function() CurrencyService:AddCoins(killer, 1) end)
+            coinAward = 1
         end
     end
+
+    -- fire kill feed to all clients (include coin amount if any)
+    KillFeed:FireAllClients(damagerName, victimName, coinAward)
 
     -- Award XP to the killer
     if killer and XPModule and XPModule.AwardXP then

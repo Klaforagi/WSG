@@ -245,29 +245,32 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
         local victimName = (victimModel and victimModel.Name) or "Unknown"
         local vp = Players:GetPlayerFromCharacter(victimModel)
         if vp then victimName = vp.Name end
-        if player.Name ~= victimName then
-            pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName) end)
-            if player.Team then
-                pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
-            end
-            -- Award XP
-            if XPModule and XPModule.AwardXP then
-                if vp then
-                    pcall(function() XPModule.AwardXP(player, "PlayerKill") end)
-                else
-                    local mobName = victimModel and victimModel.Name or "Unknown"
-                    local mobXP = 3
-                    pcall(function()
-                        if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
-                    end)
-                    pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
+            if player.Name ~= victimName then
+                -- determine coin award for this kill and award it before firing the feed
+                local coinAward = 0
+                if not vp and CurrencyService and CurrencyService.AddCoins then
+                    pcall(function() CurrencyService:AddCoins(player, 1) end)
+                    coinAward = 1
+                end
+
+                pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)
+                if player.Team then
+                    pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
+                end
+                -- Award XP
+                if XPModule and XPModule.AwardXP then
+                    if vp then
+                        pcall(function() XPModule.AwardXP(player, "PlayerKill") end)
+                    else
+                        local mobName = victimModel and victimModel.Name or "Unknown"
+                        local mobXP = 3
+                        pcall(function()
+                            if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
+                        end)
+                        pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
+                    end
                 end
             end
-            -- Award 1 coin for mob kills
-            if not vp and CurrencyService and CurrencyService.AddCoins then
-                pcall(function() CurrencyService:AddCoins(player, 1) end)
-            end
-        end
         -- if this was a dummy model, perform ragdoll/cleanup immediately so it visibly falls
         if victimModel and victimModel:IsA("Model") and victimModel.Name == "Dummy" then
             -- mark so DummyDeath doesn't duplicate work

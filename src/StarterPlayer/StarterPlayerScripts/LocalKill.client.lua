@@ -8,6 +8,12 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- Listen to the same KillFeed event that the global feed uses
 local killFeedEvent = ReplicatedStorage:WaitForChild("KillFeed")
 
+-- try to require AssetCodes for coin image
+local AssetCodes = nil
+pcall(function()
+    AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes", 5))
+end)
+
 -- Fantasy PvP theme palette
 local NAVY       = Color3.fromRGB(12, 14, 28)
 local GOLD_TEXT   = Color3.fromRGB(255, 215, 80)
@@ -45,7 +51,7 @@ local function getNameColor(name)
     return WHITE
 end
 
-local function showLocalKill(victimName)
+local function showLocalKill(victimName, coinAmount)
     -- dark navy pill
     local entry = Instance.new("Frame")
     entry.Size = UDim2.new(0, 0, 0, 32)
@@ -101,6 +107,25 @@ local function showLocalKill(victimName)
     makeLabel("You", getNameColor(player.Name))
     makeLabel(" killed ", GOLD_TEXT)
     makeLabel(tostring(victimName or "Unknown"), getNameColor(victimName))
+    if coinAmount and type(coinAmount) == "number" and coinAmount > 0 then
+        makeLabel(" +" .. tostring(coinAmount), GOLD_TEXT)
+        if AssetCodes and type(AssetCodes.Get) == "function" then
+            local id = nil
+            pcall(function() id = AssetCodes.Get("Coin") end)
+            if id and type(id) == "string" then
+                local img = Instance.new("ImageLabel")
+                img.BackgroundTransparency = 1
+                img.Size = UDim2.new(0, 20, 0, 20)
+                img.Image = id
+                img.ScaleType = Enum.ScaleType.Fit
+                img.Parent = entry
+            else
+                makeLabel("🪙", GOLD_TEXT)
+            end
+        else
+            makeLabel("🪙", GOLD_TEXT)
+        end
+    end
 
     -- pop-in: fade background and text in
     TweenService:Create(entry, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
@@ -133,9 +158,9 @@ local function showLocalKill(victimName)
 end
 
 -- filter KillFeed for local player kills only
-killFeedEvent.OnClientEvent:Connect(function(killerName, victimName)
+killFeedEvent.OnClientEvent:Connect(function(killerName, victimName, coinAmount)
     if killerName == player.Name then
-        showLocalKill(victimName)
+        showLocalKill(victimName, coinAmount)
     end
 end)
 
