@@ -12,6 +12,15 @@ pcall(function()
     XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
 end)
 
+-- CurrencyService: award coins on mob kills
+local CurrencyService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("CurrencyService")
+    if mod and mod:IsA("ModuleScript") then
+        CurrencyService = require(mod)
+    end
+end)
+
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
@@ -253,6 +262,10 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
                     end)
                     pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
                 end
+            end
+            -- Award 1 coin for mob kills
+            if not vp and CurrencyService and CurrencyService.AddCoins then
+                pcall(function() CurrencyService:AddCoins(player, 1) end)
             end
         end
         -- if this was a dummy model, perform ragdoll/cleanup immediately so it visibly falls

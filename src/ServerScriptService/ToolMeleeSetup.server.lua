@@ -18,6 +18,15 @@ pcall(function()
     XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
 end)
 
+-- CurrencyService: award coins on mob kills
+local CurrencyService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("CurrencyService")
+    if mod and mod:IsA("ModuleScript") then
+        CurrencyService = require(mod)
+    end
+end)
+
 -- Melee settings module
 local MeleeCfg
 if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
@@ -111,6 +120,10 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
                     end)
                     pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
                 end
+            end
+            -- Award 1 coin for mob kills
+            if not vp and CurrencyService and CurrencyService.AddCoins then
+                pcall(function() CurrencyService:AddCoins(player, 1) end)
             end
         end
         -- ragdoll dummies on melee kill

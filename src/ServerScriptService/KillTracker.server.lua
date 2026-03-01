@@ -36,10 +36,18 @@ local KILL_POINTS = 10
 local ATTRIB_TIMEOUT = 5 -- seconds: ignore tags older than this
 
 -- XP integration: require the shared XP module so we can award XP on kills
-local ServerScriptService2 = game:GetService("ServerScriptService")
 local XPModule
 pcall(function()
-    XPModule = require(ServerScriptService2:WaitForChild("XPServiceModule", 10))
+    XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
+end)
+
+-- CurrencyService (optional): award coins for mob kills
+local CurrencyService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("CurrencyService")
+    if mod and mod:IsA("ModuleScript") then
+        CurrencyService = require(mod)
+    end
 end)
 
 local tracked = {} -- [Humanoid] = true, to avoid double-connecting
@@ -82,10 +90,16 @@ local function onHumanoidDied(humanoid, model)
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
 
+    -- Award 1 coin for mob kills (fallback for kills not handled by weapon scripts)
+    if not victimPlayer and killer then
+        if CurrencyService and CurrencyService.AddCoins then
+            pcall(function() CurrencyService:AddCoins(killer, 1) end)
+        end
+    end
+
     -- Award XP to the killer
     if killer and XPModule and XPModule.AwardXP then
-        local isPlayerVictim = (victimPlayer ~= nil)
-        if isPlayerVictim then
+        if victimPlayer then
             -- PvP kill → use XPConfig.PlayerKill amount
             pcall(function() XPModule.AwardXP(killer, "PlayerKill") end)
         else
