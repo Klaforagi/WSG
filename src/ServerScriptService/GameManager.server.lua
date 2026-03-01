@@ -35,6 +35,7 @@ end
 local ScoreUpdate = ensureRemote("ScoreUpdate")
 local MatchStart  = ensureRemote("MatchStart")
 local MatchEnd    = ensureRemote("MatchEnd")
+local AdjustMatchTime = ensureRemote("AdjustMatchTime")
 
 ---------------------------------------------------------------------
 -- Bindable event  (server script → GameManager)
@@ -158,27 +159,26 @@ function startMatch()
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
 
-    -- server-side countdown
+    -- Monitor remaining time; sleeps exactly until 0 so it fires instantly.
+    -- Re-checks after waking in case matchStartTick was adjusted mid-sleep.
     task.spawn(function()
-        local remaining = MATCH_DURATION
-        while remaining > 0 do
-            task.wait(1)
-            remaining = remaining - 1
-            -- if the state changed (e.g. EndGame from sudden-death win) bail out
-            if State ~= "Game" then return end
-        end
-
-        -- timer expired — decide winner or sudden death
-        if State ~= "Game" then return end
-
-        if teamScores.Blue == teamScores.Red then
-            State = "SuddenDeath"
-            print("[GameManager] SUDDEN DEATH — scores tied at", teamScores.Blue)
-            pcall(function() MatchEnd:FireAllClients("sudden") end)
-            -- match stays in SuddenDeath until someone scores
-        else
-            local winner = (teamScores.Blue > teamScores.Red) and "Blue" or "Red"
-            endMatch(winner)
+        while State == "Game" do
+            local now = workspace:GetServerTimeNow()
+            local remaining = MATCH_DURATION - (now - matchStartTick)
+            if remaining <= 1 then
+                if teamScores.Blue == teamScores.Red then
+                    State = "SuddenDeath"
+                    print("[GameManager] SUDDEN DEATH — scores tied at", teamScores.Blue)
+                    pcall(function() MatchEnd:FireAllClients("sudden") end)
+                else
+                    local winner = (teamScores.Blue > teamScores.Red) and "Blue" or "Red"
+                    endMatch(winner)
+                end
+                return
+            end
+            -- Sleep for the lesser of remaining time or 1s, so we wake
+            -- right at 0 but still re-check periodically for adjustments.
+            task.wait(math.min(remaining, 1))
         end
     end)
 end
@@ -209,4 +209,23 @@ Players.PlayerAdded:Connect(function(pl)
             MatchStart:FireClient(pl, MATCH_DURATION, matchStartTick)
         end)
     end
+end)
+
+-- Allow authorized clients (devs/studio or game creator) to adjust remaining match time for testing.
+local RunService = game:GetService("RunService")
+AdjustMatchTime.OnServerEvent:Connect(function(player, deltaSeconds)
+    if type(deltaSeconds) ~= "number" then return end
+    -- allow in Studio or the game's creator only
+    if not (RunService:IsStudio() or (player and player.UserId == game.CreatorId)) then
+        warn("AdjustMatchTime: unauthorized player", player and player.Name)
+        return
+    end
+    if State ~= "Game" or type(matchStartTick) ~= "number" then return end
+    -- apply delta: adding to matchStartTick moves start later and increases remaining time
+    matchStartTick = matchStartTick + deltaSeconds
+    print("[GameManager] AdjustMatchTime by", deltaSeconds, "new matchStartTick", matchStartTick)
+    -- notify all clients to resync (use AdjustMatchTime, NOT MatchStart, to avoid resetting scores)
+    pcall(function() AdjustMatchTime:FireAllClients(matchStartTick) end)
+    -- The match-monitor loop (in startMatch) will detect remaining <= 0 on the
+    -- next iteration (~0.5 s) and resolve the match automatically.
 end)

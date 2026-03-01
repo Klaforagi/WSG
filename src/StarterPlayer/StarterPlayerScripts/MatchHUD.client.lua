@@ -82,6 +82,7 @@ local redPanel = makePanel(RED_GLOW)
 redPanel.Parent = root
 
 local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
+local AdjustMatchTime = ReplicatedStorage:WaitForChild("AdjustMatchTime", 10)
 
 -- makeFlagSlot: creates two square indicators and keeps them responsive to panel size
 local function makeFlagSlot(panel, alignRight)
@@ -257,7 +258,7 @@ timerLabel.Font = Enum.Font.GothamBlack
 timerLabel.TextScaled = true
 timerLabel.TextColor3 = GOLD_TEXT
 timerLabel.BackgroundTransparency = 1
-timerLabel.Size = UDim2.new(1, -16, 1, 0)
+timerLabel.Size = UDim2.new(1, -16, 0.66, 0)
 timerLabel.Position = UDim2.new(0, 8, 0, 0)
 timerLabel.Parent = centerPanel
 local timerStroke = Instance.new("UIStroke")
@@ -266,7 +267,8 @@ timerStroke.Thickness = 1.2
 timerStroke.Transparency = 0.2
 timerStroke.Parent = timerLabel
 
--- Helpers
+
+-- Helpers (must be declared before dev buttons reference them)
 local function formatTime(sec)
     if sec < 0 then sec = 0 end
     local m = math.floor(sec / 60)
@@ -279,6 +281,51 @@ local function refresh()
     redCountLabel.Text = tostring(redScore)
     timerLabel.Text = formatTime(remaining)
 end
+
+-- Developer testing buttons: add/subtract 10 seconds (server-authoritative)
+local btnContainer = Instance.new("Frame")
+btnContainer.AnchorPoint = Vector2.new(0, 0)
+btnContainer.Size = UDim2.new(1, -16, 0, 18)
+btnContainer.Position = UDim2.new(0, 8, 0.72, 2)
+btnContainer.BackgroundTransparency = 1
+btnContainer.Parent = centerPanel
+
+local minusBtn = Instance.new("TextButton")
+minusBtn.Size = UDim2.new(0, 48, 1, 0)
+minusBtn.Position = UDim2.new(0, 0, 0, 0)
+minusBtn.AnchorPoint = Vector2.new(0, 0)
+minusBtn.Font = Enum.Font.Gotham
+minusBtn.Text = "-10s"
+minusBtn.TextSize = 14
+minusBtn.BackgroundColor3 = NAVY_LIGHT
+minusBtn.TextColor3 = GOLD_TEXT
+minusBtn.BorderSizePixel = 0
+minusBtn.AutoButtonColor = true
+minusBtn.Parent = btnContainer
+
+local plusBtn = Instance.new("TextButton")
+plusBtn.Size = UDim2.new(0, 48, 1, 0)
+plusBtn.Position = UDim2.new(1, 0, 0, 0)
+plusBtn.AnchorPoint = Vector2.new(1, 0)
+plusBtn.Font = Enum.Font.Gotham
+plusBtn.Text = "+10s"
+plusBtn.TextSize = 14
+plusBtn.BackgroundColor3 = NAVY_LIGHT
+plusBtn.TextColor3 = GOLD_TEXT
+plusBtn.BorderSizePixel = 0
+plusBtn.AutoButtonColor = true
+plusBtn.Parent = btnContainer
+
+minusBtn.MouseButton1Click:Connect(function()
+    if AdjustMatchTime then
+        AdjustMatchTime:FireServer(-10)
+    end
+end)
+plusBtn.MouseButton1Click:Connect(function()
+    if AdjustMatchTime then
+        AdjustMatchTime:FireServer(10)
+    end
+end)
 
 -- play the ticking sound from ReplicatedStorage.Sounds.Game.ClockTick
 local function playTickSound()
@@ -305,7 +352,8 @@ spawn(function()
             local now = workspace:GetServerTimeNow()
             local elapsed = now - matchStartTick
             -- use floor (not rounding) so integer decreases happen exactly when a full second elapses
-            local newRemaining = math.max(0, math.floor(matchDuration - elapsed))
+            -- clamp at 1 while match is running; server decides at 1s whether to go to 0 (winner) or sudden death
+            local newRemaining = math.max(1, math.floor(matchDuration - elapsed))
             -- play tick once when the integer remaining strictly decreases
             if newRemaining > 0 and newRemaining <= 9 then
                 if lastIntegerRemaining ~= nil and newRemaining < lastIntegerRemaining then
@@ -382,6 +430,15 @@ local matchEv = ReplicatedStorage:FindFirstChild("MatchStart")
 if matchEv and matchEv:IsA("RemoteEvent") then wireMatchStart(matchEv) end
 local matchEndEv = ReplicatedStorage:FindFirstChild("MatchEnd")
 if matchEndEv and matchEndEv:IsA("RemoteEvent") then wireMatchEnd(matchEndEv) end
+
+-- Listen for server time adjustments (dev buttons) — only updates the tick, no score reset
+if AdjustMatchTime and AdjustMatchTime:IsA("RemoteEvent") then
+    AdjustMatchTime.OnClientEvent:Connect(function(newStartTick)
+        if type(newStartTick) == "number" then
+            matchStartTick = newStartTick
+        end
+    end)
+end
 
 ReplicatedStorage.ChildAdded:Connect(function(child)
     if child.Name == "ScoreUpdate" and child:IsA("RemoteEvent") then
