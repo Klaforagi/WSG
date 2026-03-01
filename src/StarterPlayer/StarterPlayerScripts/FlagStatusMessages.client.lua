@@ -141,16 +141,22 @@ local function displayItem(item)
     lblStroke.Transparency = 0.3
     lblStroke.Parent = label
 
-    -- pop-in: scale panel from 90% + fade text
-    panel.Size = UDim2.new(0.45, 0, 0, 38)
+    -- pop-in: measure text bounds and size panel just wider than the text
+    task.wait()
+    local textW = (label.TextBounds and label.TextBounds.X) or 0
+    local textH = (label.TextBounds and label.TextBounds.Y) or 18
+    if textW < 80 then textW = 80 end
+    local padX = 48
+    local targetW = math.ceil(textW + padX)
+    local targetH = math.ceil(textH + 20)
+
+    panel.Size = UDim2.new(0, math.max(120, math.floor(targetW * 0.75)), 0, math.max(38, math.floor(targetH * 0.75)))
     panel.BackgroundTransparency = 0.6
     local popIn = TweenService:Create(panel, TweenInfo.new(0.2, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0.5, 0, 0, 44),
+        Size = UDim2.new(0, targetW, 0, targetH),
         BackgroundTransparency = 0.08,
     })
-    local fadeIn = TweenService:Create(label, TweenInfo.new(0.15), {
-        TextTransparency = 0,
-    })
+    local fadeIn = TweenService:Create(label, TweenInfo.new(0.15), { TextTransparency = 0 })
     popIn:Play()
     fadeIn:Play()
 

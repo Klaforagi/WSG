@@ -99,16 +99,33 @@ local function showEnd(resultType, winner)
     end
     frame.Visible = true
 
-    -- pop-in animation
-    frame.Size = UDim2.new(0.38, 0, 0.10, 0)
+    -- measure text bounds so the frame is only slightly wider than the text
+    -- ensure the UI updates first
+    title.TextTransparency = 0
+    subtitle.TextTransparency = 0
+    task.wait()
+    local maxTextW = 0
+    if title.Text and title.Text ~= "" then maxTextW = math.max(maxTextW, title.TextBounds.X) end
+    if subtitle.Text and subtitle.Text ~= "" then maxTextW = math.max(maxTextW, subtitle.TextBounds.X) end
+    if maxTextW < 120 then maxTextW = 120 end
+    local padX = 48
+    local targetW = math.ceil(maxTextW + padX)
+    -- compute height from title/subtitle bounds with vertical padding
+    local tH = (title.TextBounds.Y ~= 0) and title.TextBounds.Y or 28
+    local sH = (subtitle.TextBounds.Y ~= 0) and subtitle.TextBounds.Y or 18
+    local targetH = math.ceil(tH + sH + 36)
+
+    -- pop-in animation from a compact pixel size to the computed target size
+    frame.Size = UDim2.new(0, math.max(120, math.floor(targetW * 0.75)), 0, math.max(48, math.floor(targetH * 0.75)))
     frame.BackgroundTransparency = 0.5
     TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        Size = UDim2.new(0.45, 0, 0.12, 0),
+        Size = UDim2.new(0, targetW, 0, targetH),
         BackgroundTransparency = 0.06,
     }):Play()
 
-    -- auto-hide after 10 seconds
-    hideThread = task.delay(10, function()
+    -- auto-hide after a duration (shorter for sudden death)
+    local displayTime = (resultType == "sudden") and 3 or 10
+    hideThread = task.delay(displayTime, function()
         local fadeOut = TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             BackgroundTransparency = 1,
         })
