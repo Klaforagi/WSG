@@ -4,9 +4,18 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+print("[SideUI] initializing for", player and player.Name)
+
+-- Scale pixel values proportionally to viewport height (reference: 1080p)
+local function px(base)
+	local cam = workspace.CurrentCamera
+	local screenY = (cam and cam.ViewportSize and cam.ViewportSize.Y) or 1080
+	return math.max(1, math.round(base * screenY / 1080))
+end
 
 -- Try to load AssetCodes safely (may be absent in some environments)
 local AssetCodes = nil
@@ -18,10 +27,17 @@ do
 end
 
 -- Config / constants
--- Panel sizing: compact, scales with screen size
-local PANEL_WIDTH = UDim2.new(0.11, 0, 0, 0) -- width only; height is AutomaticSize (halved)
+-- Panel sizing: narrower on desktop (8%), wider on mobile (16%)
+local PANEL_WIDTH_SCALE = UserInputService.TouchEnabled and 0.16 or 0.11
+local PANEL_WIDTH = UDim2.new(PANEL_WIDTH_SCALE, 0, 0, 0) -- width only; height is AutomaticSize
 local PANEL_ANCHOR = Vector2.new(0, 0.5) -- left side, vertically centered
-local PANEL_POS = UDim2.new(0, 8, 0.5, 0) -- left side, centered vertically
+local PANEL_POS = UDim2.new(0, px(8), 0.5, 0) -- left side, centered vertically
+
+-- Device text scale (smaller on desktop)
+local deviceTextScale = UserInputService.TouchEnabled and 1.0 or 0.75
+local function tpx(base)
+    return math.max(1, math.round(px(base) * deviceTextScale))
+end
 
 local COLORS = {
     panelBg = Color3.fromRGB(12, 14, 28),
@@ -107,7 +123,7 @@ local function CreatePanel(screenGui)
     panel.Parent = screenGui
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
+    corner.CornerRadius = UDim.new(0, px(10))
     corner.Parent = panel
 
     local stroke = Instance.new("UIStroke")
@@ -117,15 +133,15 @@ local function CreatePanel(screenGui)
     stroke.Parent = panel
 
     local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 10)
-    padding.PaddingBottom = UDim.new(0, 10)
-    padding.PaddingLeft = UDim.new(0, 10)
-    padding.PaddingRight = UDim.new(0, 10)
+    padding.PaddingTop = UDim.new(0, px(10))
+    padding.PaddingBottom = UDim.new(0, px(10))
+    padding.PaddingLeft = UDim.new(0, px(10))
+    padding.PaddingRight = UDim.new(0, px(10))
     padding.Parent = panel
 
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 4)
+    layout.Padding = UDim.new(0, px(4))
     layout.Parent = panel
 
     return panel
@@ -144,7 +160,7 @@ local function makeTextButtonBase(text)
     btn.ClipsDescendants = true
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
+    corner.CornerRadius = UDim.new(0, px(8))
     corner.Parent = btn
 
     makeButtonGradient(btn)
@@ -163,7 +179,17 @@ local function CreateShopButton(parent)
     local btn = makeTextButtonBase("SHOP")
     btn.Name = "ShopButton"
     btn.LayoutOrder = 1
-    btn.Size = UDim2.new(1, 0, 0, 48)
+    -- responsive height based on viewport height (keeps proportions on mobile)
+    local function calcShopHeight()
+        local screenY = 720
+        local cam = workspace.CurrentCamera
+        if cam and cam.ViewportSize then
+            screenY = cam.ViewportSize.Y
+        end
+        return math.max(36, math.floor(screenY * 0.07))
+    end
+    local shopH = calcShopHeight()
+    btn.Size = UDim2.new(1, 0, 0, shopH)
     btn.Parent = parent
     -- allow children (icon) to overflow the button bounds for a "pop out" effect
     btn.ClipsDescendants = false
@@ -176,25 +202,36 @@ local function CreateShopButton(parent)
     if shopAsset and type(shopAsset) == "string" then
         icon = Instance.new("ImageLabel")
         icon.Name = "ShopIcon"
-        icon.Size = UDim2.new(0, 96, 0, 96) -- slightly bigger for stronger emphasis
-        icon.Position = UDim2.new(0.5, 0, 0.38, 0)
-        icon.AnchorPoint = Vector2.new(0.5, 0.5)
+        local function updateIconSize()
+            local h = btn.AbsoluteSize.Y > 0 and btn.AbsoluteSize.Y or shopH
+            local s = math.max(70, math.floor(h * 1.6))
+            icon.Size = UDim2.new(0, s, 0, s)
+            icon.Position = UDim2.new(0.5, 0, 0.38, 0)
+            icon.AnchorPoint = Vector2.new(0.5, 0.5)
+        end
+        updateIconSize()
         icon.BackgroundTransparency = 1
         icon.Image = shopAsset
         icon.ScaleType = Enum.ScaleType.Fit
         icon.ZIndex = 1
         icon.Parent = btn
+        -- update when the screen or button resizes
+        btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateIconSize)
+        local cam = workspace.CurrentCamera
+        if cam then
+            cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateIconSize)
+        end
         -- overlay text on top of icon
         local overlay = Instance.new("TextLabel")
         overlay.Name = "ShopOverlayLabel"
         overlay.BackgroundTransparency = 1
-        overlay.Size = UDim2.new(0.9, 0, 0, 18)
-        overlay.Position = UDim2.new(0.5, 0, 1, -2)
+        overlay.Size = UDim2.new(0.9, 0, 0, math.max(12, math.floor(shopH * 0.28)))
+        overlay.Position = UDim2.new(0.5, 0, 1, -px(2))
         overlay.AnchorPoint = Vector2.new(0.5, 1)
         overlay.Font = Enum.Font.GothamBold
         overlay.Text = "SHOP"
         overlay.TextColor3 = COLORS.gold
-        overlay.TextSize = 16
+        overlay.TextSize = math.max(16, math.floor(shopH * 0.44 * deviceTextScale))
         overlay.TextScaled = false
         overlay.TextXAlignment = Enum.TextXAlignment.Center
         overlay.TextYAlignment = Enum.TextYAlignment.Center
@@ -257,8 +294,8 @@ local function CreateMenuGrid(parent)
     gridContainer.Parent = parent
 
     local grid = Instance.new("UIGridLayout")
-    grid.CellSize = UDim2.new(0, 54, 0, 54)
-    grid.CellPadding = UDim2.new(0, 6, 0, 6)
+    grid.CellSize = UDim2.new(0, px(54), 0, px(54))
+    grid.CellPadding = UDim2.new(0, px(6), 0, px(6))
     grid.FillDirection = Enum.FillDirection.Horizontal
     grid.FillDirectionMaxCells = 3
     grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -267,8 +304,8 @@ local function CreateMenuGrid(parent)
     grid.Parent = gridContainer
 
     local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 2)
-    padding.PaddingBottom = UDim.new(0, 6)
+    padding.PaddingTop = UDim.new(0, px(2))
+    padding.PaddingBottom = UDim.new(0, px(6))
     padding.PaddingLeft = UDim.new(0, 0)
     padding.PaddingRight = UDim.new(0, 0)
     padding.Parent = gridContainer
@@ -315,7 +352,7 @@ local function CreateMenuButton(def)
     btn.ClipsDescendants = true
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 8)
+    corner.CornerRadius = UDim.new(0, px(8))
     corner.Parent = btn
 
     makeButtonGradient(btn)
@@ -348,12 +385,12 @@ local function CreateMenuButton(def)
     nameLabel.Name = "NameLabel"
     nameLabel.BackgroundTransparency = 1
     nameLabel.AnchorPoint = Vector2.new(0.5, 1)
-    nameLabel.Position = UDim2.new(0.5, 0, 1, -3)
-    nameLabel.Size = UDim2.new(0.95, 0, 0, 11)
+    nameLabel.Position = UDim2.new(0.5, 0, 1, -px(3))
+    nameLabel.Size = UDim2.new(0.95, 0, 0, px(11))
     nameLabel.Font = Enum.Font.GothamBold
     nameLabel.Text = def.label or def.id
     nameLabel.TextColor3 = COLORS.gold
-    nameLabel.TextSize = 9
+    nameLabel.TextSize = tpx(24)
     nameLabel.TextXAlignment = Enum.TextXAlignment.Center
     nameLabel.Parent = btn
     local nameStroke = Instance.new("UIStroke")
@@ -365,13 +402,13 @@ local function CreateMenuButton(def)
     -- badge (hidden by default)
     local badge = Instance.new("TextLabel")
     badge.Name = "Badge"
-    badge.Size = UDim2.new(0, 16, 0, 16)
+    badge.Size = UDim2.new(0, px(16), 0, px(16))
     badge.AnchorPoint = Vector2.new(1, 0)
-    badge.Position = UDim2.new(1, -2, 0, -2)
+    badge.Position = UDim2.new(1, -px(2), 0, -px(2))
     badge.BackgroundColor3 = COLORS.badgeBg
     badge.Text = "!"
     badge.Font = Enum.Font.GothamBold
-    badge.TextSize = 10
+    badge.TextSize = tpx(24)
     badge.TextColor3 = Color3.new(1, 1, 1)
     badge.Visible = false
     badge.Parent = btn
@@ -412,6 +449,7 @@ else
     -- move the script into this ScreenGui so that script.Parent references remain intuitive
     pcall(function() script.Parent = screenGui end)
 end
+print("[SideUI] screenGui ready; parent =", tostring(screenGui.Parent))
 
 -- Clear existing content in screenGui container area (optional safe-guard: only if it's our MainUICard)
 local existing = screenGui:FindFirstChild("MainUICard")
@@ -419,11 +457,13 @@ if existing then existing:Destroy() end
 
 local panel = CreatePanel(screenGui)
 local shopBtn = CreateShopButton(panel)
+print("[SideUI] panel created; shopBtn =", tostring(shopBtn))
 
 -- Coin row from CoinDisplay module (auto-wires to server remotes)
 local coinRow, coinApi
 if CoinDisplayModule and CoinDisplayModule.Create then
     coinRow, coinApi = CoinDisplayModule.Create(panel, 2)
+    print("[SideUI] CoinDisplay module initialized; coinApi =", tostring(coinApi))
 end
 
 local menuGridContainer = CreateMenuGrid(panel)

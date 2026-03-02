@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local UserInputService = game:GetService("UserInputService")
 
 --------------------------------------------------------------------------------
 -- REMOTES
@@ -20,7 +21,7 @@ local XP_LevelUp = remotes:WaitForChild("XP_LevelUp")
 -- STYLE CONSTANTS
 --------------------------------------------------------------------------------
 local BAR_WIDTH_SCALE   = 0.34          -- % of screen width (slightly narrower)
-local BAR_HEIGHT        = 14            -- px
+local BAR_HEIGHT        = 14            -- base px (may be reduced on mobile)
 local LABEL_SIZE        = 20            -- px – small level numbers
 local CORNER_RADIUS     = UDim.new(0, 6) -- subtle rounded corners for a sleek look
 
@@ -45,11 +46,16 @@ screen.Parent = playerGui
 --------------------------------------------------------------------------------
 -- CONTAINER  – sits at absolute bottom-center
 --------------------------------------------------------------------------------
+-- compute device-aware bar height (smaller on mobile)
+local cam = workspace.CurrentCamera
+local vpY = (cam and cam.ViewportSize and cam.ViewportSize.Y) or 1080
+local barH = UserInputService.TouchEnabled and math.max(8, math.floor(vpY * 0.015)) or BAR_HEIGHT
+
 local container = Instance.new("Frame")
 container.Name = "XPContainer"
 container.AnchorPoint = Vector2.new(0.5, 1)
 container.Position = UDim2.new(0.5, 0, 1, -4)        -- 4 px from bottom edge
-container.Size = UDim2.new(BAR_WIDTH_SCALE, LABEL_SIZE * 2 + 16, 0, LABEL_SIZE)
+container.Size = UDim2.new(BAR_WIDTH_SCALE, LABEL_SIZE * 2 + 16, 0, barH)
 container.BackgroundTransparency = 1
 container.Parent = screen
 
@@ -89,7 +95,7 @@ local barBG = Instance.new("Frame")
 barBG.Name = "BarBG"
 barBG.AnchorPoint = Vector2.new(0.5, 0.5)
 barBG.Position = UDim2.new(0.5, 0, 0.5, 0)
-barBG.Size = UDim2.new(1, -(LABEL_SIZE * 2 + 12), 0, BAR_HEIGHT)
+barBG.Size = UDim2.new(1, -(LABEL_SIZE * 2 + 12), 0, barH)
 barBG.BackgroundColor3 = COLOR_BAR_BG
 barBG.BorderSizePixel = 0
 barBG.ClipsDescendants = true
@@ -115,6 +121,7 @@ fill.Size = UDim2.new(0, 0, 1, 0) -- starts empty
 fill.BackgroundColor3 = COLOR_FILL_LEFT
 fill.BorderSizePixel = 0
 fill.Parent = barBG
+fill.ZIndex = 2
 
 local fillCorner = Instance.new("UICorner", fill)
 fillCorner.CornerRadius = CORNER_RADIUS
@@ -123,31 +130,7 @@ local gradient = Instance.new("UIGradient", fill)
 gradient.Color = ColorSequence.new(COLOR_FILL_LEFT, COLOR_FILL_RIGHT)
 gradient.Rotation = 90
 
--- segmented notches inside the fill to give the bar depth (only visible where fill exists)
-local notchesContainer = Instance.new("Frame")
-notchesContainer.Name = "NotchesContainer"
-notchesContainer.Size = UDim2.new(1, 0, 1, 0)
-notchesContainer.Position = UDim2.new(0, 0, 0, 0)
-notchesContainer.BackgroundTransparency = 1
-notchesContainer.BorderSizePixel = 0
-notchesContainer.Parent = fill
-
-local NOTCH_COUNT = 10
-local NOTCH_SPACING = 0.02
-for i = 1, NOTCH_COUNT do
-    local notch = Instance.new("Frame")
-    notch.Name = "Notch" .. tostring(i)
-    local x = (i - 1) * (1 / NOTCH_COUNT)
-    notch.Position = UDim2.new(x + NOTCH_SPACING * 0.5, 0, 0, 0)
-    notch.Size = UDim2.new(1 / NOTCH_COUNT - NOTCH_SPACING, 0, 1, 0)
-    notch.BackgroundColor3 = Color3.fromRGB(200, 160, 40)
-    notch.BackgroundTransparency = 0.12
-    notch.BorderSizePixel = 0
-    notch.ZIndex = 2
-    notch.Parent = notchesContainer
-    local nc = Instance.new("UICorner", notch)
-    nc.CornerRadius = UDim.new(0, 3)
-end
+-- notches removed per user request
 
 -- Utility: clamp and lighten a color slightly for gradient
 local function clamp01(v)
@@ -165,30 +148,18 @@ local function setBarTint(color)
     local isRed = color.R > color.G and color.R > color.B and color.R > 0.55
     local lightAmt = isRed and 0.06 or 0.12
     local light = lighterColor(color, lightAmt)
-    fill.BackgroundColor3 = color
-    gradient.Color = ColorSequence.new(color, light)
-    levelLabel.TextColor3 = color
-    nextLabel.TextColor3 = color
+    -- compute a slightly darker active fill and a much lighter base fill
+    local activeFillColor = color:Lerp(Color3.new(0,0,0), 0.12)
+    local baseFillColor = lighterColor(color, 0.24)
+    fill.BackgroundColor3 = activeFillColor
+    gradient.Color = ColorSequence.new(activeFillColor, light)
+    -- keep base (underlay) as a fixed dark translucent gray so team tint only affects the active fill
+    -- (do not overwrite baseFill color here)
+    -- keep numeric labels a consistent gold color (do not tint them by team)
+    levelLabel.TextColor3 = COLOR_LABEL
+    nextLabel.TextColor3 = COLOR_LABEL
     bgStroke.Color = color
     COLOR_POPUP = color
-    -- tint notches (darker variant) and adjust their transparency
-    -- by default make notches a bit darker than fill for contrast
-    local notchAmt = -0.12
-    local notchTrans = 0.12
-    -- For red teams, use a slight lighter notch but not too bright
-    if isRed then
-        notchAmt = 0.06
-        notchTrans = 0.08
-    end
-    local notchColor = lighterColor(color, notchAmt)
-    if notchesContainer then
-        for _, n in ipairs(notchesContainer:GetChildren()) do
-            if n:IsA("Frame") then
-                n.BackgroundColor3 = notchColor
-                n.BackgroundTransparency = notchTrans
-            end
-        end
-    end
 end
 
 -- react when local player's team changes (and set initial tint)
@@ -228,8 +199,20 @@ levelUpLabel.BackgroundTransparency = 1
 levelUpLabel.Font = Enum.Font.GothamBold
 levelUpLabel.TextSize = 12
 levelUpLabel.TextColor3 = COLOR_LEVELUP
-levelUpLabel.TextStrokeTransparency = 0.65
-levelUpLabel.TextStrokeColor3 = Color3.fromRGB(80, 60, 0)
+local baseFill = Instance.new("Frame")
+baseFill.Name = "BaseFill"
+baseFill.AnchorPoint = Vector2.new(0, 0.5)
+baseFill.Position = UDim2.new(0, 0, 0.5, 0)
+baseFill.Size = UDim2.new(1, 0, 1, 0)
+baseFill.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+baseFill.BackgroundTransparency = 0.25
+baseFill.BorderSizePixel = 0
+baseFill.ZIndex = 1
+baseFill.Parent = barBG
+
+local baseCorner = Instance.new("UICorner", baseFill)
+baseCorner.CornerRadius = CORNER_RADIUS
+
 levelUpLabel.Text = ""
 levelUpLabel.TextTransparency = 1
 levelUpLabel.ZIndex = 10
@@ -270,9 +253,9 @@ local function createXPPopup(amount)
         task.wait(0.8 + 0.5)
         -- fade out
         local t2 = TweenService:Create(lbl, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            TextTransparency = 1,
-            TextStrokeTransparency = 1,
-            Position = lbl.Position + UDim2.new(0, 0, -0.08, 0),
+                TextTransparency = 1,
+                TextStrokeTransparency = 1,
+                Position = lbl.Position + UDim2.new(0, 0, -0.08, 0),
         })
         t2:Play()
         task.wait(0.5)

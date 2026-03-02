@@ -7,6 +7,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 
 -- Try to load AssetCodes safely
 local AssetCodes = nil
@@ -23,20 +24,42 @@ local COLORS = {
     rowBg = Color3.fromRGB(22, 24, 42),
 }
 
-local CoinDisplay = {}
+-- Scale pixel values proportionally to viewport height (reference: 1080p)
+local function px(base)
+	local cam = workspace.CurrentCamera
+	local screenY = (cam and cam.ViewportSize and cam.ViewportSize.Y) or 1080
+    return math.max(1, math.round(base * screenY / 1080))
+    end
+
+    -- Device text scale (smaller on desktop)
+    local deviceTextScale = UserInputService.TouchEnabled and 1.0 or 0.75
+    local function tpx(base)
+        return math.max(1, math.round(px(base) * deviceTextScale))
+    end
+
+    local CoinDisplay = {}
 
 --- Creates the coin-row Frame, wires it to server remotes, and returns (frame, api).
 --- @param parent Instance  The parent GUI object to place the row inside.
 --- @param layoutOrder number  Optional LayoutOrder for the row frame.
 --- @return Frame, table  The row frame and an api table with SetCoins(amount).
 function CoinDisplay.Create(parent, layoutOrder)
-    -- Row wrapper
+    -- Row wrapper (responsive height)
     local row = Instance.new("Frame")
     row.Name = "CoinRow"
     row.LayoutOrder = layoutOrder or 2
-    row.Size = UDim2.new(1, 0, 0, 36)
     row.BackgroundTransparency = 1
     row.Parent = parent
+
+    local function calcRowHeight()
+        local screenY = 720
+        local cam = workspace.CurrentCamera
+        if cam and cam.ViewportSize then
+            screenY = cam.ViewportSize.Y
+        end
+        return math.max(28, math.floor(screenY * 0.05))
+    end
+    row.Size = UDim2.new(1, 0, 0, calcRowHeight())
 
     -- Inner background (full width, coin icon + value)
     local inner = Instance.new("Frame")
@@ -49,7 +72,7 @@ function CoinDisplay.Create(parent, layoutOrder)
     inner.Parent = row
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
+    corner.CornerRadius = UDim.new(0, px(6))
     corner.Parent = inner
 
     local stroke = Instance.new("UIStroke")
@@ -106,18 +129,24 @@ function CoinDisplay.Create(parent, layoutOrder)
         coinIcon.Name = "CoinIcon"
         coinIcon.BackgroundTransparency = 1
         coinIcon.AnchorPoint = Vector2.new(0, 0.5)
-        coinIcon.Position = UDim2.new(0, 6, 0.5, 0)
-        coinIcon.Size = UDim2.new(0, 24, 0, 24)
+        coinIcon.Position = UDim2.new(0, px(6), 0.5, 0)
+        local function updateCoinIcon()
+            local h = row.AbsoluteSize.Y > 0 and row.AbsoluteSize.Y or calcRowHeight()
+            local s = math.max(18, math.floor(h * 0.7))
+            coinIcon.Size = UDim2.new(0, s, 0, s)
+        end
+        updateCoinIcon()
         coinIcon.Image = coinAsset
         coinIcon.ScaleType = Enum.ScaleType.Fit
         coinIcon.Parent = inner
+        row:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCoinIcon)
     else
         local coinIcon = Instance.new("TextLabel")
         coinIcon.Name = "CoinTextIcon"
         coinIcon.BackgroundTransparency = 1
         coinIcon.AnchorPoint = Vector2.new(0, 0.5)
-        coinIcon.Position = UDim2.new(0, 6, 0.5, 0)
-        coinIcon.Size = UDim2.new(0, 40, 0, 22)
+        coinIcon.Position = UDim2.new(0, px(6), 0.5, 0)
+        coinIcon.Size = UDim2.new(0, px(40), 0, px(22))
         coinIcon.Font = Enum.Font.GothamBold
         coinIcon.Text = "Coins"
         coinIcon.TextColor3 = COLORS.gold
@@ -144,20 +173,27 @@ function CoinDisplay.Create(parent, layoutOrder)
     local plusBtn = Instance.new("TextButton")
     plusBtn.Name = "BuyCoinsBtn"
     plusBtn.AnchorPoint = Vector2.new(1, 0)
-    plusBtn.Position = UDim2.new(1, 12, 0, 6) -- shifted right and down
-    plusBtn.Size = UDim2.new(0, 25, 0, 25)
+    local function updatePlus()
+        local h = row.AbsoluteSize.Y > 0 and row.AbsoluteSize.Y or calcRowHeight()
+        local s = math.max(20, math.floor(h * 0.68))
+        plusBtn.Position = UDim2.new(1, math.max(8, math.floor(s * 0.45)), 0, math.max(4, math.floor((h - s) / 2)))
+        plusBtn.Size = UDim2.new(0, s, 0, s)
+    end
+    updatePlus()
+    row:GetPropertyChangedSignal("AbsoluteSize"):Connect(updatePlus)
     plusBtn.BackgroundColor3 = Color3.fromRGB(30, 160, 60)
     plusBtn.BackgroundTransparency = 0.00
     plusBtn.BorderSizePixel = 0
     plusBtn.Font = Enum.Font.GothamBlack
     plusBtn.Text = "+"
     plusBtn.TextColor3 = COLORS.gold
-    plusBtn.TextSize = 15
+    plusBtn.TextSize = tpx(30)
+    plusBtn.TextScaled = true
     plusBtn.AutoButtonColor = false
     plusBtn.ZIndex = 3
     plusBtn.Parent = inner
     local plusCorner = Instance.new("UICorner")
-    plusCorner.CornerRadius = UDim.new(0, 5)
+    plusCorner.CornerRadius = UDim.new(0, px(5))
     plusCorner.Parent = plusBtn
     plusBtn.MouseButton1Click:Connect(function()
         print("BuyCoins+ clicked")
