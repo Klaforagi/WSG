@@ -101,11 +101,11 @@ local function onHumanoidDied(humanoid, model)
     -- fire kill feed to all clients (include coin amount if any)
     KillFeed:FireAllClients(damagerName, victimName, coinAward)
 
-    -- Award XP to the killer
+    -- Award XP to the killer (include coinAward in metadata so XP popup can show coins)
     if killer and XPModule and XPModule.AwardXP then
         if victimPlayer then
             -- PvP kill → use XPConfig.PlayerKill amount
-            pcall(function() XPModule.AwardXP(killer, "PlayerKill") end)
+            pcall(function() XPModule.AwardXP(killer, "PlayerKill", nil, { coinAward = coinAward }) end)
         else
             -- Mob kill → look up per-mob XP from MobSettings via XPModule.GetMobXP
             local mobName = model and model.Name or "Unknown"
@@ -115,7 +115,7 @@ local function onHumanoidDied(humanoid, model)
                     mobXP = XPModule.GetMobXP(mobName)
                 end
             end)
-            pcall(function() XPModule.AwardXP(killer, "MobKill", mobXP) end)
+            pcall(function() XPModule.AwardXP(killer, "MobKill", mobXP, { coinAward = coinAward }) end)
         end
     end
 end

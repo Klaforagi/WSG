@@ -127,27 +127,7 @@ local function pushKillText(killer, victim, coinAmount)
     makeLabel(killer, getNameColor(killer))
     makeLabel(" killed ", GOLD_TEXT)
     makeLabel(victim, getNameColor(victim))
-    if coinAmount and type(coinAmount) == "number" and coinAmount > 0 then
-        -- show +N and coin image if available
-        makeLabel(" +" .. tostring(coinAmount), GOLD_TEXT)
-        if AssetCodes and type(AssetCodes.Get) == "function" then
-            local id = nil
-            pcall(function() id = AssetCodes.Get("Coin") end)
-            if id and type(id) == "string" then
-                local img = Instance.new("ImageLabel")
-                img.BackgroundTransparency = 1
-                img.Size = UDim2.new(0, 18, 0, 18)
-                img.Image = id
-                img.ScaleType = Enum.ScaleType.Fit
-                img.Parent = entry
-            else
-                -- fallback to emoji if image not available
-                makeLabel("🪙", GOLD_TEXT)
-            end
-        else
-            makeLabel("🪙", GOLD_TEXT)
-        end
-    end
+        -- coin amount moved into XP popup; don't display from killfeed anymore
 
     -- pop-in: slide from right + fade
     entry.Position = UDim2.new(0.15, 0, 0, 0)

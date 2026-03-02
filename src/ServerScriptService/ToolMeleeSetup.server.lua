@@ -118,14 +118,14 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
             -- Award XP
             if XPModule and XPModule.AwardXP then
                 if vp then
-                    pcall(function() XPModule.AwardXP(player, "PlayerKill") end)
+                    pcall(function() XPModule.AwardXP(player, "PlayerKill", nil, { coinAward = coinAward }) end)
                 else
                     local mobName = victimModel and victimModel.Name or "Unknown"
                     local mobXP = 3
                     pcall(function()
                         if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
                     end)
-                    pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
+                    pcall(function() XPModule.AwardXP(player, "MobKill", mobXP, { coinAward = coinAward }) end)
                 end
             end
         end

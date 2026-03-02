@@ -63,7 +63,7 @@ local MUTED_STROKE = Color3.fromRGB(60, 55, 35)
 local COLOR_BG       = NAVY
 local COLOR_BG_SEL   = NAVY_LIGHT
 local COLOR_BG_LOCK  = Color3.fromRGB(35, 12, 12)
-local COLOR_STROKE   = MUTED_STROKE
+local COLOR_STROKE   = GOLD_TEXT
 local COLOR_STROKE_S = GOLD_TEXT
 local COLOR_STROKE_L = COLOR_STROKE
 local COLOR_TEXT     = GOLD_TEXT
@@ -77,6 +77,16 @@ local specialUnlocked = false
 local selectedSlot    = 0
 local slotUI          = {}
 local slotTools       = {}
+-- current cached team tint (Color3 or nil)
+local currentTeamColor = nil
+
+local function teamColorOrNil(team)
+    if not team then return nil end
+    local name = tostring(team.Name):lower()
+    if string.find(name, "neutral") then return nil end
+    if team.TeamColor then return team.TeamColor.Color end
+    return nil
+end
 
 --------------------------------------------------------------------------------
 -- SCREEN GUI
@@ -113,15 +123,15 @@ screenGui.Parent          = playerGui
 local container = Instance.new("Frame")
 container.Name                    = "HotbarContainer"
 container.BackgroundTransparency  = 1
-container.AnchorPoint             = Vector2.new(0, 1)
--- anchor to the bottom-left, above the XP bar
-container.Position                = UDim2.new(MARGIN_SCALE, 0, 1 - (MARGIN_SCALE + 0.04), 0)
+container.AnchorPoint             = Vector2.new(0.5, 1)
+-- anchor to the bottom-center, above the XP bar
+container.Position                = UDim2.new(0.5, 0, 1 - (MARGIN_SCALE + 0.04), 0)
 container.Size                    = UDim2.fromScale(1, SLOT_SCALE) -- full width, height = slot height
 container.Parent                  = screenGui
 
 local layout = Instance.new("UIListLayout")
 layout.FillDirection       = Enum.FillDirection.Horizontal
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 layout.VerticalAlignment   = Enum.VerticalAlignment.Center
 layout.SortOrder           = Enum.SortOrder.LayoutOrder
 layout.Padding             = UDim.new(GAP_SCALE, 0)
@@ -280,22 +290,38 @@ local function refreshSlots()
         end
 
         -- colours / text
-            if isLocked then
-                ui.btn.BackgroundColor3 = COLOR_BG_LOCK
-                ui.stroke.Color         = COLOR_STROKE_L
-                ui.nameLabel.Text       = "LOCKED"
-                ui.nameLabel.TextColor3 = COLOR_LOCK_TXT
-            elseif isEquipped then
-                ui.btn.BackgroundColor3 = COLOR_BG_SEL
-                ui.stroke.Color         = COLOR_STROKE_S
-                ui.nameLabel.TextColor3 = COLOR_TEXT
-                ui.nameLabel.Text       = tool and tool.Name or def.label
-            else
-                ui.btn.BackgroundColor3 = COLOR_BG
-                ui.stroke.Color         = COLOR_STROKE
-                ui.nameLabel.TextColor3 = COLOR_TEXT
-                ui.nameLabel.Text       = tool and tool.Name or ""
-            end
+            -- compute colors, allowing an optional team tint to influence active/selected background
+                    local teamColor = currentTeamColor
+                    local bgColor = COLOR_BG
+                    local selBg = COLOR_BG_SEL
+                    local lockBg = COLOR_BG_LOCK
+                    local strokeColor = COLOR_STROKE
+                    local strokeSel = COLOR_STROKE_S
+                    if teamColor then
+                        -- Unselected background: darker team tint instead of gray
+                        bgColor = teamColor:Lerp(Color3.new(0,0,0), 0.55)
+                        -- Selected background: slightly lighter team tint for contrast
+                        selBg = teamColor:Lerp(Color3.new(1,1,1), 0.12)
+                        -- Selected stroke: brightened team color for a clear outline when equipped
+                        strokeSel = teamColor:Lerp(Color3.new(1,1,1), 0.6)
+                    end
+
+                    if isLocked then
+                        ui.btn.BackgroundColor3 = lockBg
+                        ui.stroke.Color         = COLOR_STROKE_L
+                        ui.nameLabel.Text       = "LOCKED"
+                        ui.nameLabel.TextColor3 = COLOR_LOCK_TXT
+                    elseif isEquipped then
+                        ui.btn.BackgroundColor3 = selBg
+                        ui.stroke.Color         = strokeSel
+                        ui.nameLabel.TextColor3 = COLOR_TEXT
+                        ui.nameLabel.Text       = tool and tool.Name or def.label
+                    else
+                        ui.btn.BackgroundColor3 = bgColor
+                        ui.stroke.Color         = strokeColor
+                        ui.nameLabel.TextColor3 = COLOR_TEXT
+                        ui.nameLabel.Text       = tool and tool.Name or ""
+                    end
     end
 end
 
@@ -351,23 +377,6 @@ equipSlot = function(idx)
     -- Tool only in StarterGear or elsewhere → ask server to handle it
     hum:UnequipTools()
     forceEquipRemote:FireServer(def.category, def.toolName)
-
-    -- Optimistic UI highlight with subtle pop animation
-    local ui = slotUI[idx]
-    if ui then
-        ui.btn.BackgroundColor3 = COLOR_BG_SEL
-        ui.stroke.Color         = COLOR_STROKE_S
-        -- pop: briefly brighten background and thicken stroke
-        local popIn = TweenService:Create(ui.btn, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {BackgroundTransparency = 0.02})
-        local strokePop = TweenService:Create(ui.stroke, TweenInfo.new(0.12, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {Thickness = 3.6})
-        popIn:Play(); strokePop:Play()
-        task.delay(0.18, function()
-            if ui and ui.btn and ui.stroke then
-                TweenService:Create(ui.btn, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundTransparency = 0.08}):Play()
-                TweenService:Create(ui.stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Thickness = 2}):Play()
-            end
-        end)
-    end
 end
 
 --------------------------------------------------------------------------------
@@ -394,6 +403,13 @@ if player.Character then onCharacter(player.Character) end
 player.CharacterAdded:Connect(function(char)
     task.wait(0.3)
     onCharacter(char)
+end)
+
+-- apply initial team color and update when team changes
+currentTeamColor = teamColorOrNil(player.Team)
+player:GetPropertyChangedSignal("Team"):Connect(function()
+    currentTeamColor = teamColorOrNil(player.Team)
+    task.defer(refreshSlots)
 end)
 
 --------------------------------------------------------------------------------

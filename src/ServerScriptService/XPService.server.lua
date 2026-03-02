@@ -212,7 +212,12 @@ local function AwardXP(player, reason, amountOverride, metadata)
     }
     pcall(function()
         XP_Update:FireClient(player, payload)
-        XP_Popup:FireClient(player, { playerUserId = player.UserId, delta = delta, reason = reasonKey })
+        -- include optional coinAward from metadata so client can show coins with XP popup
+        local popup = { playerUserId = player.UserId, delta = delta, reason = reasonKey }
+        if metadata and metadata.coinAward and type(metadata.coinAward) == "number" then
+            popup.coin = metadata.coinAward
+        end
+        XP_Popup:FireClient(player, popup)
     end)
 
     return true

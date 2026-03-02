@@ -257,17 +257,17 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
                 if player.Team then
                     pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
                 end
-                -- Award XP
+                -- Award XP (include coinAward in metadata so XP popup can include coins)
                 if XPModule and XPModule.AwardXP then
                     if vp then
-                        pcall(function() XPModule.AwardXP(player, "PlayerKill") end)
+                        pcall(function() XPModule.AwardXP(player, "PlayerKill", nil, { coinAward = coinAward }) end)
                     else
                         local mobName = victimModel and victimModel.Name or "Unknown"
                         local mobXP = 3
                         pcall(function()
                             if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
                         end)
-                        pcall(function() XPModule.AwardXP(player, "MobKill", mobXP) end)
+                        pcall(function() XPModule.AwardXP(player, "MobKill", mobXP, { coinAward = coinAward }) end)
                     end
                 end
             end

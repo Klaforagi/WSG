@@ -16,6 +16,9 @@ local remotes = ReplicatedStorage:WaitForChild("Remotes")
 local XP_Update  = remotes:WaitForChild("XP_Update")
 local XP_Popup   = remotes:WaitForChild("XP_Popup")
 local XP_LevelUp = remotes:WaitForChild("XP_LevelUp")
+-- optional asset codes for coin image
+local AssetCodes = nil
+pcall(function() AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes", 5)) end)
 
 --------------------------------------------------------------------------------
 -- STYLE CONSTANTS
@@ -199,6 +202,20 @@ levelUpLabel.BackgroundTransparency = 1
 levelUpLabel.Font = Enum.Font.GothamBold
 levelUpLabel.TextSize = 12
 levelUpLabel.TextColor3 = COLOR_LEVELUP
+-- XP counter label (hidden by default) shows currentXP / currentXPToNext when hovered or held
+local xpCountLabel = Instance.new("TextLabel")
+xpCountLabel.Name = "XPCountLabel"
+xpCountLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+xpCountLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+xpCountLabel.Size = UDim2.new(0.6, 0, 1, 0)
+xpCountLabel.BackgroundTransparency = 1
+xpCountLabel.Font = Enum.Font.Gotham
+xpCountLabel.TextSize = 12
+xpCountLabel.TextColor3 = COLOR_LABEL
+xpCountLabel.Text = ""
+xpCountLabel.TextTransparency = 1
+xpCountLabel.ZIndex = 11
+xpCountLabel.Parent = barBG
 local baseFill = Instance.new("Frame")
 baseFill.Name = "BaseFill"
 baseFill.AnchorPoint = Vector2.new(0, 0.5)
@@ -218,6 +235,65 @@ levelUpLabel.TextTransparency = 1
 levelUpLabel.ZIndex = 10
 levelUpLabel.Parent = barBG
 
+-- Helpers to update and show/hide XP counter
+local function updateXPCountText()
+    local cx = currentXP
+    local mx = currentXPToNext
+    -- fallback to player Attributes if server hasn't sent an update yet
+    if (not cx or cx == 0) and player:GetAttribute("XP") then
+        cx = player:GetAttribute("XP")
+    end
+    if (not mx or mx == 0) and player:GetAttribute("XPToNext") then
+        mx = player:GetAttribute("XPToNext")
+    end
+    cx = cx or 0
+    mx = mx or 0
+    xpCountLabel.Text = tostring(cx) .. " / " .. tostring(mx)
+end
+
+local function showXPCount()
+    updateXPCountText()
+    xpCountLabel.TextTransparency = 1
+    xpCountLabel.Visible = true
+    TweenService:Create(xpCountLabel, TweenInfo.new(0.12), { TextTransparency = 0 }):Play()
+end
+
+local function hideXPCount()
+    local t = TweenService:Create(xpCountLabel, TweenInfo.new(0.12), { TextTransparency = 1 })
+    t:Play()
+    t.Completed:Connect(function()
+        xpCountLabel.Visible = false
+    end)
+end
+
+-- Desktop: hover to show; Mobile: press-and-hold
+local holdThreshold = 0.22
+local touchHolding = false
+if not UserInputService.TouchEnabled then
+    barBG.MouseEnter:Connect(showXPCount)
+    barBG.MouseLeave:Connect(hideXPCount)
+else
+    barBG.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            touchHolding = true
+            task.spawn(function()
+                local t = 0
+                while touchHolding and t < holdThreshold do
+                    task.wait(0.05)
+                    t = t + 0.05
+                end
+                if touchHolding then showXPCount() end
+            end)
+        end
+    end)
+    barBG.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch then
+            touchHolding = false
+            hideXPCount()
+        end
+    end)
+end
+
 --------------------------------------------------------------------------------
 -- HELPERS
 --------------------------------------------------------------------------------
@@ -229,37 +305,118 @@ local function tweenFill(fraction, duration)
     return t
 end
 
-local function createXPPopup(amount)
-    local lbl = Instance.new("TextLabel")
-    lbl.Size = UDim2.new(0, 110, 0, 20)
-    lbl.AnchorPoint = Vector2.new(0.5, 1)
-    -- spawn just above the bar
-    lbl.Position = UDim2.new(0.5, 0, 1, -28)
-    lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.GothamBold
-    lbl.TextSize = 15
-    lbl.TextColor3 = COLOR_POPUP
-    lbl.TextStrokeTransparency = 0.75
-    lbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    lbl.Text = "+" .. tostring(amount) .. " XP"
-    lbl.TextTransparency = 0
-    lbl.Parent = screen
+local function createXPPopup(amount, coinAmount)
+    local container = Instance.new("Frame")
+    container.BackgroundTransparency = 1
+    container.Size = UDim2.new(0, 140, 0, 28)
+    container.AnchorPoint = Vector2.new(0.5, 0.5)
+    -- random position around lower-mid center
+    local r = Random.new()
+    local fx = r:NextNumber(0.55, 0.65)
+    local fy = r:NextNumber(0.4, 0.7)
+    container.Position = UDim2.new(fx, 0, fy, 0)
+    container.Parent = screen
+
+    local xpLabel = Instance.new("TextLabel")
+    xpLabel.BackgroundTransparency = 1
+    xpLabel.Font = Enum.Font.GothamBold
+    xpLabel.TextSize = 15
+    xpLabel.TextColor3 = COLOR_POPUP
+    xpLabel.TextStrokeTransparency = 0.75
+    xpLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    xpLabel.AnchorPoint = Vector2.new(0.5, 0)
+    xpLabel.Size = UDim2.new(1, 0, 0.5, 0)
+    xpLabel.Position = UDim2.new(0.5, 0, 0, 0)
+    xpLabel.Text = "+" .. tostring(amount) .. " XP"
+    xpLabel.TextTransparency = 0
+    xpLabel.Parent = container
+    -- thicker outline for XP text to match other UI
+    local xpStroke = Instance.new("UIStroke")
+    xpStroke.Thickness = 1.2
+    xpStroke.Color = Color3.fromRGB(0,0,0)
+    xpStroke.Transparency = 0.4
+    xpStroke.Parent = xpLabel
+
+    if coinAmount and type(coinAmount) == "number" and coinAmount > 0 then
+        local coinRow = Instance.new("Frame")
+        coinRow.BackgroundTransparency = 1
+        coinRow.Size = UDim2.new(1, 0, 0.5, 0)
+        coinRow.Position = UDim2.new(0, 0, 0.5, 0)
+        coinRow.Parent = container
+
+        local hl = Instance.new("UIListLayout")
+        hl.FillDirection = Enum.FillDirection.Horizontal
+        hl.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        hl.VerticalAlignment = Enum.VerticalAlignment.Center
+        hl.SortOrder = Enum.SortOrder.LayoutOrder
+        hl.Padding = UDim.new(0, 6)
+        hl.Parent = coinRow
+
+        -- coin text (matches XP style) — placed before the image so it reads "+X [icon]"
+        local coinText = Instance.new("TextLabel")
+        coinText.BackgroundTransparency = 1
+        coinText.Font = Enum.Font.GothamBold
+        coinText.TextSize = 14
+        coinText.TextColor3 = COLOR_POPUP
+        coinText.Text = "+" .. tostring(coinAmount)
+        coinText.AutomaticSize = Enum.AutomaticSize.X
+        coinText.TextTransparency = 0
+        coinText.LayoutOrder = 1
+        coinText.Parent = coinRow
+        local coinStroke = Instance.new("UIStroke")
+        coinStroke.Thickness = 1.2
+        coinStroke.Color = Color3.fromRGB(0,0,0)
+        coinStroke.Transparency = 0.4
+        coinStroke.Parent = coinText
+
+        -- coin image placed after the text
+        local coinImg = nil
+        if AssetCodes and type(AssetCodes.Get) == "function" then
+            local ok, id = pcall(function() return AssetCodes.Get("Coin") end)
+            if ok and type(id) == "string" and #id > 0 then
+                coinImg = Instance.new("ImageLabel")
+                coinImg.BackgroundTransparency = 1
+                coinImg.Size = UDim2.new(0, 18, 0, 18)
+                coinImg.Image = id
+                coinImg.ScaleType = Enum.ScaleType.Fit
+                coinImg.LayoutOrder = 2
+                coinImg.Parent = coinRow
+            end
+        end
+        if not coinImg then
+            local fallback = Instance.new("TextLabel")
+            fallback.BackgroundTransparency = 1
+            fallback.Font = Enum.Font.GothamBold
+            fallback.TextSize = 14
+            fallback.Text = "🪙"
+            fallback.AutomaticSize = Enum.AutomaticSize.X
+            fallback.LayoutOrder = 2
+            fallback.Parent = coinRow
+        end
+    end
 
     task.spawn(function()
         -- rise upward
-        local riseGoal = { Position = lbl.Position + UDim2.new(0, 0, -0.04, 0) }
-        local t1 = TweenService:Create(lbl, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), riseGoal)
+        local riseGoal = { Position = container.Position + UDim2.new(0, 0, -0.04, 0) }
+        local t1 = TweenService:Create(container, TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), riseGoal)
         t1:Play()
-        task.wait(0.8 + 0.5)
-        -- fade out
-        local t2 = TweenService:Create(lbl, TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-                TextTransparency = 1,
-                TextStrokeTransparency = 1,
-                Position = lbl.Position + UDim2.new(0, 0, -0.08, 0),
+        task.wait(0.8 + 1.5)
+        -- fade out every text label and image inside the container
+        local fadeInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        for _, desc in ipairs(container:GetDescendants()) do
+            if desc:IsA("TextLabel") then
+                TweenService:Create(desc, fadeInfo, {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+            elseif desc:IsA("ImageLabel") then
+                TweenService:Create(desc, fadeInfo, {ImageTransparency = 1}):Play()
+            end
+        end
+        local t2 = TweenService:Create(container, fadeInfo, {
+            BackgroundTransparency = 1,
+            Position = container.Position + UDim2.new(0, 0, -0.08, 0),
         })
         t2:Play()
-        task.wait(0.5)
-        pcall(function() lbl:Destroy() end)
+        t2.Completed:Wait()
+        pcall(function() container:Destroy() end)
     end)
 end
 
@@ -284,6 +441,8 @@ local function onXPUpdate(payload)
     -- cache
     currentXP       = xp
     currentXPToNext = xpToNext
+    -- refresh visible xp count text if the counter is showing
+    updateXPCountText()
 
     -- update level labels
     if newLevel ~= currentLevel then
@@ -297,16 +456,13 @@ local function onXPUpdate(payload)
     if xpToNext > 0 then fraction = math.clamp(xp / xpToNext, 0, 1) end
     tweenFill(fraction, 0.45)
 
-    -- popup
-    if delta and delta > 0 then
-        createXPPopup(delta)
-    end
+    -- popup: handled via dedicated XP_Popup remote to avoid duplicate popups
 end
 
 local function onPopup(payload)
     if not payload then return end
     if payload.delta and payload.delta > 0 then
-        createXPPopup(payload.delta)
+        createXPPopup(payload.delta, payload.coin)
     end
 end
 

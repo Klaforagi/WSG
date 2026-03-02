@@ -29,7 +29,8 @@ screen.Parent = playerGui
 local container = Instance.new("Frame")
 container.Name = "LocalKillContainer"
 container.AnchorPoint = Vector2.new(0.5, 1)
-container.Position = UDim2.new(0.5, 0, 0.85, 0)
+-- slightly raised from previous position so popups sit above other bottom UI
+container.Position = UDim2.new(0.5, 0, 0.82, 0)
 container.Size = UDim2.new(0, 0, 0, 36)
 container.BackgroundTransparency = 1
 container.AutomaticSize = Enum.AutomaticSize.X
@@ -107,25 +108,7 @@ local function showLocalKill(victimName, coinAmount)
     makeLabel("You", getNameColor(player.Name))
     makeLabel(" killed ", GOLD_TEXT)
     makeLabel(tostring(victimName or "Unknown"), getNameColor(victimName))
-    if coinAmount and type(coinAmount) == "number" and coinAmount > 0 then
-        makeLabel(" +" .. tostring(coinAmount), GOLD_TEXT)
-        if AssetCodes and type(AssetCodes.Get) == "function" then
-            local id = nil
-            pcall(function() id = AssetCodes.Get("Coin") end)
-            if id and type(id) == "string" then
-                local img = Instance.new("ImageLabel")
-                img.BackgroundTransparency = 1
-                img.Size = UDim2.new(0, 20, 0, 20)
-                img.Image = id
-                img.ScaleType = Enum.ScaleType.Fit
-                img.Parent = entry
-            else
-                makeLabel("🪙", GOLD_TEXT)
-            end
-        else
-            makeLabel("🪙", GOLD_TEXT)
-        end
-    end
+    -- coin amount moved to XP popup; do not show coins here
 
     -- pop-in: fade background and text in
     TweenService:Create(entry, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
