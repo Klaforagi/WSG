@@ -456,10 +456,12 @@ local function OpenPage(id)
     -- placeholder; integrate your page switching here
 end
 
--- Expose simple handlers on the script so other client scripts can call them (usage: local s = script; s.SetCoins(123))
-script.SetCoins = SetCoins
-script.SetBadge = SetBadge
-script.OpenPage = OpenPage
+-- Expose simple handlers via a small global table so other local scripts can call them
+-- (using _G avoids assigning arbitrary members on the Instance which can error)
+_G.SideUI = _G.SideUI or {}
+_G.SideUI.SetCoins = SetCoins
+_G.SideUI.SetBadge = SetBadge
+_G.SideUI.OpenPage = OpenPage
 
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
 script.OnShop = function()
@@ -469,8 +471,10 @@ script.OnMenuButton = function(id)
     OpenPage(id)
 end
 
--- initial default state
-SetCoins(0)
+-- initial default state: only default to 0 if CoinDisplay failed to initialize
+if not coinApi then
+    SetCoins(0)
+end
 for id,_ in pairs(badgesById) do SetBadge(id, false) end
 
 

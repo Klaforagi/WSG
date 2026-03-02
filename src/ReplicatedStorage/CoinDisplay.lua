@@ -188,11 +188,23 @@ function CoinDisplay.Create(parent, layoutOrder)
         end)
     end
 
-    -- Fetch initial value
+    -- Fetch initial value with a small retry loop to avoid race with server load
     if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
-        local ok, result = pcall(function() return getCoinsFn:InvokeServer() end)
-        if ok and type(result) == "number" then
-            pcall(function() api.SetCoins(result) end)
+        local function tryFetch()
+            local ok, result = pcall(function() return getCoinsFn:InvokeServer() end)
+            if ok and type(result) == "number" then
+                pcall(function() api.SetCoins(result) end)
+                return true
+            end
+            return false
+        end
+        -- try immediately, then a couple more times in case server is still loading the player's data
+        if not tryFetch() then
+            task.delay(0.2, function()
+                if not tryFetch() then
+                    task.delay(0.5, function() pcall(tryFetch) end)
+                end
+            end)
         end
     end
 
