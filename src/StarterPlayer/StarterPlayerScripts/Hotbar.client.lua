@@ -56,8 +56,8 @@ local MARGIN_SCALE   = 0.012
 local NAVY        = Color3.fromRGB(12, 14, 28)
 local NAVY_LIGHT  = Color3.fromRGB(22, 26, 48)
 local GOLD_TEXT   = Color3.fromRGB(255, 215, 80)
-local BLUE_GLOW   = Color3.fromRGB(12, 51, 168)
-local RED_GLOW    = Color3.fromRGB(202, 24, 24)
+local BLUE_GLOW   = Color3.fromRGB(65, 130, 255)
+local RED_GLOW    = Color3.fromRGB(255, 75, 75)
 local MUTED_STROKE = Color3.fromRGB(60, 55, 35)
 
 local COLOR_BG       = NAVY
