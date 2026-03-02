@@ -31,6 +31,48 @@ local COLORS = {
     badgeBg = Color3.fromRGB(220, 40, 40),
 }
 
+-- Team gradient helpers
+local function getTeamGradientSequence()
+    local ok, base = pcall(function()
+        local team = player and player.Team
+        if team and team.TeamColor and team.Name ~= "Neutral" then
+            if team.Name == "Blue" then
+                return Color3.fromRGB(12, 51, 168) -- royal blue (match MatchHUD BLUE_ACCENT)
+            elseif team.Name == "Red" then
+                return Color3.fromRGB(202, 24, 24) -- match MatchHUD RED_ACCENT
+            end
+            return team.TeamColor.Color
+        end
+        return nil
+    end)
+    if not ok or not base then
+        base = Color3.fromRGB(35, 35, 40) -- default: dark gray (toolbar style)
+    else
+        -- slightly darken team colors (blue/red) for stronger contrast
+        base = base:Lerp(Color3.new(0, 0, 0), 0.12)
+    end
+    local dark = base:Lerp(Color3.fromRGB(4, 4, 6), 0.72)
+    local bright = base:Lerp(Color3.new(1, 1, 1), 0.12)
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0, dark),
+        ColorSequenceKeypoint.new(1, bright),
+    })
+end
+
+local function makeButtonGradient(parent)
+    local g = Instance.new("UIGradient")
+    g.Rotation = 135
+    g.Color = getTeamGradientSequence()
+    g.Parent = parent
+    -- Each gradient listens for team changes directly (reliable)
+    player:GetPropertyChangedSignal("Team"):Connect(function()
+        pcall(function()
+            g.Color = getTeamGradientSequence()
+        end)
+    end)
+    return g
+end
+
 local MENU_DEFS = {
     { id = "Missions", label = "QUESTS", iconKey = "Quests" },
     { id = "Upgrade", label = "UPGRADE", iconKey = "Upgrade" },
@@ -83,7 +125,7 @@ local function CreatePanel(screenGui)
 
     local layout = Instance.new("UIListLayout")
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, 8)
+    layout.Padding = UDim.new(0, 4)
     layout.Parent = panel
 
     return panel
@@ -92,8 +134,8 @@ end
 local function makeTextButtonBase(text)
     local btn = Instance.new("TextButton")
     btn.AutoButtonColor = false
-    btn.BackgroundColor3 = COLORS.buttonBg
-    btn.BackgroundTransparency = 0.12
+    btn.BackgroundColor3 = Color3.new(1, 1, 1) -- white so UIGradient colour shows through
+    btn.BackgroundTransparency = 0
     btn.BorderSizePixel = 0
     btn.Font = Enum.Font.GothamBold
     btn.Text = text or ""
@@ -105,10 +147,13 @@ local function makeTextButtonBase(text)
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = btn
 
+    makeButtonGradient(btn)
+
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(40, 36, 28)
-    stroke.Thickness = 1
-    stroke.Transparency = 0.6
+    stroke.Color = COLORS.gold
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.12
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = btn
 
     return btn
@@ -222,7 +267,7 @@ local function CreateMenuGrid(parent)
     grid.Parent = gridContainer
 
     local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, 6)
+    padding.PaddingTop = UDim.new(0, 2)
     padding.PaddingBottom = UDim.new(0, 6)
     padding.PaddingLeft = UDim.new(0, 0)
     padding.PaddingRight = UDim.new(0, 0)
@@ -262,8 +307,8 @@ local function CreateMenuButton(def)
     local btn = Instance.new("TextButton")
     btn.Name = "Btn_" .. tostring(def.id)
     btn.AutoButtonColor = false
-    btn.BackgroundColor3 = COLORS.buttonBg
-    btn.BackgroundTransparency = 0.08
+    btn.BackgroundColor3 = Color3.new(1, 1, 1) -- white so UIGradient colour shows through
+    btn.BackgroundTransparency = 0
     btn.BorderSizePixel = 0
     btn.Size = UDim2.new(1, 0, 1, 0)
     btn.Text = "" -- we use a separate small label for the name
@@ -273,10 +318,13 @@ local function CreateMenuButton(def)
     corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = btn
 
+    makeButtonGradient(btn)
+
     local stroke = Instance.new("UIStroke")
-    stroke.Color = Color3.fromRGB(40, 36, 28)
-    stroke.Thickness = 1
-    stroke.Transparency = 0.5
+    stroke.Color = COLORS.gold
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.12
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = btn
 
     -- Background image (fills the button)

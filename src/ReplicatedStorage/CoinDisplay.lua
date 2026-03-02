@@ -5,6 +5,7 @@
 --   local row, api = CoinDisplay.Create(parentFrame, layoutOrder)
 --   -- api.SetCoins(123)   (manual override, but auto-updates from server)
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Try to load AssetCodes safely
@@ -37,13 +38,14 @@ function CoinDisplay.Create(parent, layoutOrder)
     row.BackgroundTransparency = 1
     row.Parent = parent
 
-    -- Inner background (holds coin icon + value, leaves room for + button)
+    -- Inner background (full width, coin icon + value)
     local inner = Instance.new("Frame")
     inner.Name = "CoinInner"
-    inner.Size = UDim2.new(1, -40, 1, 0) -- leave 40px on right for + button
+    inner.Size = UDim2.new(1, 0, 1, 0) -- full width matching shop button
     inner.BackgroundTransparency = 0
-    inner.BackgroundColor3 = COLORS.rowBg
+    inner.BackgroundColor3 = Color3.new(1, 1, 1) -- white so UIGradient shows through
     inner.BorderSizePixel = 0
+    inner.ClipsDescendants = false
     inner.Parent = row
 
     local corner = Instance.new("UICorner")
@@ -52,9 +54,47 @@ function CoinDisplay.Create(parent, layoutOrder)
 
     local stroke = Instance.new("UIStroke")
     stroke.Color = COLORS.gold
-    stroke.Thickness = 1
-    stroke.Transparency = 0.85
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.12
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = inner
+
+    -- Team-color gradient background
+    local function getTeamSeq()
+        local lp = Players.LocalPlayer
+        local team = lp and lp.Team
+        local base
+        if team and team.Name ~= "Neutral" then
+            if team.Name == "Blue" then
+                base = Color3.fromRGB(12, 51, 168) -- royal blue
+            elseif team.Name == "Red" then
+                base = Color3.fromRGB(202, 24, 24)
+            else
+                base = team.TeamColor.Color
+            end
+            -- darken team color slightly for better contrast
+            base = base:Lerp(Color3.new(0, 0, 0), 0.12)
+        else
+            base = Color3.fromRGB(35, 35, 40) -- default: dark gray (toolbar style)
+        end
+        local dark = base:Lerp(Color3.fromRGB(4, 4, 6), 0.72)
+        return ColorSequence.new({
+            ColorSequenceKeypoint.new(0, dark),
+            ColorSequenceKeypoint.new(1, base:Lerp(Color3.new(1,1,1), 0.12)),
+        })
+    end
+    local coinGradient = Instance.new("UIGradient")
+    coinGradient.Rotation = 135
+    coinGradient.Color = getTeamSeq()
+    coinGradient.Parent = inner
+    local lp = Players.LocalPlayer
+    if lp then
+        lp:GetPropertyChangedSignal("Team"):Connect(function()
+            if coinGradient and coinGradient.Parent then
+                coinGradient.Color = getTeamSeq()
+            end
+        end)
+    end
 
     -- Coin icon (image or fallback text) — positioned absolutely on the left
     local coinAsset = nil
@@ -92,7 +132,7 @@ function CoinDisplay.Create(parent, layoutOrder)
     valueLabel.BackgroundTransparency = 1
     valueLabel.Font = Enum.Font.GothamBlack
     valueLabel.TextScaled = true
-    valueLabel.TextColor3 = COLORS.white
+    valueLabel.TextColor3 = COLORS.gold
     valueLabel.Text = "0"
     valueLabel.AnchorPoint = Vector2.new(0.5, 0.5)
     valueLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -100,29 +140,25 @@ function CoinDisplay.Create(parent, layoutOrder)
     valueLabel.TextXAlignment = Enum.TextXAlignment.Center
     valueLabel.Parent = inner
 
-    -- "+" button on the right
+    -- "+" button — small, sits on the right edge of the coin box
     local plusBtn = Instance.new("TextButton")
     plusBtn.Name = "BuyCoinsBtn"
     plusBtn.AnchorPoint = Vector2.new(1, 0)
-    plusBtn.Position = UDim2.new(1, 0, 0, 0)
-    plusBtn.Size = UDim2.new(0, 36, 1, 0)
+    plusBtn.Position = UDim2.new(1, 12, 0, 6) -- shifted right and down
+    plusBtn.Size = UDim2.new(0, 25, 0, 25)
     plusBtn.BackgroundColor3 = Color3.fromRGB(30, 160, 60)
-    plusBtn.BackgroundTransparency = 0.08
+    plusBtn.BackgroundTransparency = 0.00
     plusBtn.BorderSizePixel = 0
     plusBtn.Font = Enum.Font.GothamBlack
     plusBtn.Text = "+"
-    plusBtn.TextColor3 = Color3.new(1, 1, 1)
-    plusBtn.TextSize = 20
+    plusBtn.TextColor3 = COLORS.gold
+    plusBtn.TextSize = 15
     plusBtn.AutoButtonColor = false
-    plusBtn.Parent = row
+    plusBtn.ZIndex = 3
+    plusBtn.Parent = inner
     local plusCorner = Instance.new("UICorner")
-    plusCorner.CornerRadius = UDim.new(0, 6)
+    plusCorner.CornerRadius = UDim.new(0, 5)
     plusCorner.Parent = plusBtn
-    local plusStroke = Instance.new("UIStroke")
-    plusStroke.Color = Color3.fromRGB(40, 200, 80)
-    plusStroke.Thickness = 1
-    plusStroke.Transparency = 0.5
-    plusStroke.Parent = plusBtn
     plusBtn.MouseButton1Click:Connect(function()
         print("BuyCoins+ clicked")
     end)

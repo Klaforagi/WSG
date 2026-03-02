@@ -23,9 +23,9 @@ local function ensureTeam(name, color)
 end
 
 -- Create teams in the desired leaderboard order (Blue, Red, Neutral)
-local blueTeam    = ensureTeam("Blue",    BrickColor.new("Bright blue"))
-local redTeam     = ensureTeam("Red",     BrickColor.new("Bright red"))
-local neutralTeam = ensureTeam("Neutral", BrickColor.new("Medium stone grey"))
+local blueTeam    = ensureTeam("Blue",    BrickColor.new(Color3.fromRGB(36, 72, 178)))
+local redTeam     = ensureTeam("Red",     BrickColor.new(Color3.fromRGB(182, 34, 34)))
+local neutralTeam = ensureTeam("Neutral", BrickColor.new("Gold"))
 
 -- Re-parent teams in the desired order so the Roblox player list
 -- displays them top-to-bottom as Blue, Red, Neutral.
