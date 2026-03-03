@@ -200,12 +200,18 @@ end
 
 -- One-time connections (with 30ms dedup guard to prevent double-fire sounds)
 local lastAckTime = 0
+local toolCooldowns = {} -- toolName → cd, populated by attachTool, read here for hotbar overlay
 fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos, toolName)
     local now = os.clock()
     if now - lastAckTime < 0.030 then return end
     lastAckTime = now
     expandCrosshair(DEFAULT_RECOIL_AMOUNT)
     playFireSound(toolName)
+    -- trigger hotbar cooldown overlay (slot 2 = Ranged)
+    if _G.HotbarCooldown then
+        local cd = toolCooldowns[toolName] or COOLDOWN
+        _G.HotbarCooldown.start(2, cd)
+    end
 end)
 
 -- Hit event handling: reuse logic from ToolGun.client.lua
@@ -372,6 +378,7 @@ local function attachTool(tool)
 
     local toolCfg = getToolCfgForTool(tool)
     local toolCooldown = (toolCfg and toolCfg.cd) or COOLDOWN
+    toolCooldowns[tool.Name] = toolCooldown   -- store for fireAck handler
 
     local mouse = player:GetMouse()
     local holding = false

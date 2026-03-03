@@ -208,12 +208,30 @@ local function buildSlot(def)
     nameLabel.TextTruncate          = Enum.TextTruncate.AtEnd
     nameLabel.Parent                = btn
 
+    -- Cooldown overlay: dark semi-transparent frame anchored to the bottom.
+    -- Starts at 0 height (ready). On weapon use it jumps to full height (slot dims)
+    -- then tweens height back to 0 (wipes away bottom-to-top) over cooldown duration.
+    local cooldownOverlay = Instance.new("Frame")
+    cooldownOverlay.Name                   = "CooldownOverlay"
+    cooldownOverlay.AnchorPoint            = Vector2.new(0, 0)
+    cooldownOverlay.Position               = UDim2.fromScale(0, 0)
+    cooldownOverlay.Size                   = UDim2.fromScale(1, 0)
+    cooldownOverlay.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+    cooldownOverlay.BackgroundTransparency = 0.45
+    cooldownOverlay.BorderSizePixel        = 0
+    cooldownOverlay.ZIndex                 = 5
+    cooldownOverlay.Parent                 = btn
+
+    local overlayCorner = Instance.new("UICorner", cooldownOverlay)
+    overlayCorner.CornerRadius = UDim.new(0, 4)
+
     slotUI[idx] = {
-        btn       = btn,
-        stroke    = stroke,
-        keyLabel  = keyLabel,
-        nameLabel = nameLabel,
-        thumb     = thumb,
+        btn             = btn,
+        stroke          = stroke,
+        keyLabel        = keyLabel,
+        nameLabel       = nameLabel,
+        thumb           = thumb,
+        cooldownOverlay = cooldownOverlay,
     }
 
     btn.MouseButton1Click:Connect(function()
@@ -223,6 +241,27 @@ end
 
 for _, def in ipairs(SLOT_DEFS) do
     buildSlot(def)
+end
+
+--------------------------------------------------------------------------------
+-- COOLDOWN API  (_G.HotbarCooldown.start(slotIndex, duration))
+-- Called by ToolMelee and ToolGunHUD after an attack fires.
+-- The slot overlay jumps to full height (instant dim) then wipes away
+-- bottom-to-top over `duration` seconds, matching the weapon's cooldown.
+--------------------------------------------------------------------------------
+_G.HotbarCooldown = {}
+_G.HotbarCooldown.start = function(slotIndex, duration)
+    local ui = slotUI[slotIndex]
+    if not ui or not ui.cooldownOverlay then return end
+    local overlay = ui.cooldownOverlay
+    -- Cancel any running tween by setting size directly (interrupts previous tween)
+    overlay.Size = UDim2.fromScale(1, 1)    -- fill slot immediately (dim)
+    -- Wipe from bottom to top over the cooldown duration
+    TweenService:Create(
+        overlay,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear),
+        { Size = UDim2.fromScale(1, 0) }
+    ):Play()
 end
 
 --------------------------------------------------------------------------------

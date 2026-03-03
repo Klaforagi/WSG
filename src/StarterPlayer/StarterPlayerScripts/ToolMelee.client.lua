@@ -276,6 +276,11 @@ local function attachMelee(tool)
             end
         end
 
+        -- trigger hotbar cooldown overlay (slot 1 = Melee)
+        if _G.HotbarCooldown then
+            _G.HotbarCooldown.start(1, cooldown)
+        end
+
         -- small delay to avoid immediate reentry; actual cooldown enforced by lastSwing
         task.delay(0.05, function() swingLock = false end)
     end
