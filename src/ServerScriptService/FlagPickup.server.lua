@@ -247,7 +247,7 @@ function setupFlagModel(model)
                     flags[team].dropped = true
 
                     -- create a visible countdown above the dropped flag and return it to the stand
-                    -- only if nobody picks it up within 8 seconds
+                    -- only if nobody picks it up within 15 seconds
                     -- ensure a PrimaryPart exists for GUI attachment
                     if not dropModel.PrimaryPart then
                         for _, d in ipairs(dropModel:GetDescendants()) do
@@ -288,7 +288,7 @@ function setupFlagModel(model)
                     end
 
                     task.spawn(function()
-                        for i = 8, 1, -1 do
+                        for i = 15, 1, -1 do
                             if not dropModel or dropModel.Parent ~= Workspace then
                                 if gui then pcall(function() gui:Destroy() end) end
                                 return
@@ -336,9 +336,9 @@ function setupFlagModel(model)
 
                         if gui then pcall(function() gui:Destroy() end) end
                     end)
-                else
+                    else
                     -- ensure original eventually respawns if something went wrong
-                    task.delay(8, function()
+                    task.delay(15, function()
                         respawnFlag(team)
                         FlagStatus:FireAllClients("playSound", "Flag_return")
                         FlagStatus:FireAllClients("returned", nil, nil, team)

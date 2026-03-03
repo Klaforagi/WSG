@@ -17,22 +17,6 @@ local presets = {
         reload_sound = "PistolReload",
         hit_sound = "PistolHit",
     },
-    sniper = {
-        damage = 80,
-        cd = 2.5,
-        bulletspeed = 900,
-        range = 5000,
-        projectile_lifetime = 6,
-        LeaveProjectile = false,
-        projectile_size = {0.2,0.2,9.8},
-        bulletdrop = 0,
-        showTracer = false,
-        headshot_multiplier = 1.25,
-        shoot_sound = "SniperShoot",
-        reload_sound = "SniperReload",
-        hit_sound = "SniperHit",
-    }
-    ,
     bow = {
         damage = 25,
         cd = 0.40,

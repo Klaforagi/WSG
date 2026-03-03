@@ -42,6 +42,7 @@ end
 local COLORS = {
     panelBg = Color3.fromRGB(12, 14, 28),
     gold = Color3.fromRGB(255, 215, 80),
+    brown = Color3.fromRGB(122, 85, 46),
     white = Color3.fromRGB(245, 245, 245),
     buttonBg = Color3.fromRGB(18, 20, 36),
     badgeBg = Color3.fromRGB(220, 40, 40),
@@ -231,33 +232,53 @@ local function CreateShopButton(parent)
         overlay.Font = Enum.Font.GothamBold
         overlay.Text = "SHOP"
         overlay.TextColor3 = COLORS.gold
-        overlay.TextSize = math.max(16, math.floor(shopH * 0.44 * deviceTextScale))
+        overlay.TextSize = math.max(16, math.floor(shopH * 0.88 * deviceTextScale))
         overlay.TextScaled = false
         overlay.TextXAlignment = Enum.TextXAlignment.Center
         overlay.TextYAlignment = Enum.TextYAlignment.Center
         overlay.ZIndex = 2
         overlay.Parent = btn
-        local overlayStroke = Instance.new("UIStroke")
-        overlayStroke.Color = Color3.fromRGB(0,0,0)
-        overlayStroke.Transparency = 0.6
-        overlayStroke.Thickness = 1
-        overlayStroke.Parent = overlay
+        -- text outline (brown)
+        overlay.TextStrokeColor3 = COLORS.brown
+        overlay.TextStrokeTransparency = 0
     else
         btn.Text = "SHOP"
         btn.TextXAlignment = Enum.TextXAlignment.Center
+        btn.TextScaled = false
+        btn.TextSize = math.max(16, math.floor(shopH * 0.88 * deviceTextScale))
+        btn.TextColor3 = COLORS.gold
+        -- text outline (brown) for fallback text
+        btn.TextStrokeColor3 = COLORS.brown
+        btn.TextStrokeTransparency = 0
     end
 
-    -- hover & click feedback
+    -- hover & click feedback (more pronounced: background + stroke tweak)
     btn.MouseEnter:Connect(function()
-        tweenInstance(btn, {BackgroundTransparency = 0.02}, TweenInfo.new(0.12))
+        tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.12))
+        local s = btn:FindFirstChildOfClass("UIStroke")
+        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.12)) end
+        -- brighten overlay text if present, or fallback text
+        local overlayLbl = btn:FindFirstChild("ShopOverlayLabel")
+        if overlayLbl then tweenInstance(overlayLbl, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12)) end
+        if not overlayLbl then tweenInstance(btn, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12)) end
     end)
     btn.MouseLeave:Connect(function()
         tweenInstance(btn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
+        local s = btn:FindFirstChildOfClass("UIStroke")
+        if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
+        local overlayLbl = btn:FindFirstChild("ShopOverlayLabel")
+        if overlayLbl then tweenInstance(overlayLbl, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12)) end
+        if not overlayLbl then tweenInstance(btn, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12)) end
     end)
     btn.MouseButton1Click:Connect(function()
-        -- simple click flash
+        -- simple click flash (also highlight stroke briefly)
         tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
-        task.delay(0.09, function() tweenInstance(btn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12)) end)
+        local s = btn:FindFirstChildOfClass("UIStroke")
+        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.06)) end
+        task.delay(0.09, function()
+            tweenInstance(btn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
+            if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
+        end)
         -- action
         if script and script.Parent then
             -- call exposed handler
@@ -416,16 +437,32 @@ local function CreateMenuButton(def)
     badgeCorner.CornerRadius = UDim.new(1, 0)
     badgeCorner.Parent = badge
 
-    -- hover & click feedback (subtle)
+    -- hover & click feedback (more pronounced: background + stroke tweak)
     btn.MouseEnter:Connect(function()
         tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.12))
+        local s = btn:FindFirstChildOfClass("UIStroke")
+        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.12)) end
+        -- brighten label text on hover
+        pcall(function()
+            tweenInstance(nameLabel, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12))
+        end)
     end)
     btn.MouseLeave:Connect(function()
         tweenInstance(btn, {BackgroundTransparency = 0.08}, TweenInfo.new(0.12))
+        local s = btn:FindFirstChildOfClass("UIStroke")
+        if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
+        pcall(function()
+            tweenInstance(nameLabel, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12))
+        end)
     end)
     btn.MouseButton1Click:Connect(function()
         tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.04))
-        task.delay(0.06, function() tweenInstance(btn, {BackgroundTransparency = 0.08}, TweenInfo.new(0.12)) end)
+        local s = btn:FindFirstChildOfClass("UIStroke")
+        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.04)) end
+        task.delay(0.06, function()
+            tweenInstance(btn, {BackgroundTransparency = 0.08}, TweenInfo.new(0.12))
+            if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
+        end)
         if script and script.OnMenuButton and type(script.OnMenuButton) == "function" then
             pcall(script.OnMenuButton, def.id)
         else
