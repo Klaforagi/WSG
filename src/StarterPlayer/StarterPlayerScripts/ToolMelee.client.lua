@@ -34,7 +34,7 @@ local meleeHitEvent = ReplicatedStorage:WaitForChild("MeleeHit")
 local function isMeleeTool(tool)
     if not tool or not tool:IsA("Tool") then return false end
     if tool:GetAttribute("IsMelee") then return true end
-    local suffix = tostring(tool.Name):match("^Tool(.+)")
+    local suffix = tostring(tool.Name):match("^Tool(.+)") or tostring(tool.Name):match("^(.+)$")
     if not suffix then return false end
     if MeleeCfgModule and MeleeCfgModule.presets then
         return MeleeCfgModule.presets[suffix:lower()] ~= nil
@@ -44,7 +44,7 @@ end
 
 local function getCfg(tool)
     local cfg = {}
-    local suffix = tostring(tool.Name):match("^Tool(.+)")
+    local suffix = tostring(tool.Name):match("^Tool(.+)") or tostring(tool.Name):match("^(.+)$")
     local key = suffix and suffix:lower()
     if key and MeleeCfgModule and MeleeCfgModule.presets and MeleeCfgModule.presets[key] then
         for k, v in pairs(MeleeCfgModule.presets[key]) do cfg[k] = v end

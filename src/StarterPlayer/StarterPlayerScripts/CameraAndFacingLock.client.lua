@@ -33,7 +33,25 @@ local renderConn            = nil
 local function isWeapon(tool)
     if not tool or not tool:IsA("Tool") then return false end
     if tool:GetAttribute("IsWeapon") then return true end
-    if tostring(tool.Name):match("^Tool") then return true end
+    local name = tostring(tool.Name)
+    if name:match("^Tool") then return true end
+    -- accept non-prefixed tool names if they match known weapon presets
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local ok, meleeMod = pcall(function()
+        if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
+            return require(ReplicatedStorage:WaitForChild("ToolMeleeSettings"))
+        end
+        return nil
+    end)
+    local ok2, gunMod = pcall(function()
+        if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
+            return require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
+        end
+        return nil
+    end)
+    local key = name:lower()
+    if meleeMod and meleeMod.presets and meleeMod.presets[key] then return true end
+    if gunMod and gunMod.presets and gunMod.presets[key] then return true end
     return false
 end
 

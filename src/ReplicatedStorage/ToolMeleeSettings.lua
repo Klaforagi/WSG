@@ -1,5 +1,6 @@
 -- ToolMeleeSettings  (mirrors Toolgunsettings but for melee weapons)
--- Each key matches the suffix of the tool name:  ToolBat → "bat", ToolSword → "sword"
+-- Each key matches the tool name (or the suffix when tools use a "Tool" prefix):
+-- e.g. ToolBat or Bat → "bat", ToolSword or Sword → "sword"
 
 local presets = {
     bat = {

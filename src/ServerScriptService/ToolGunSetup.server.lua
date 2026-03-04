@@ -147,7 +147,7 @@ local function getServerToolCfg(toolName)
     local cfg = {}
     for k, v in pairs(TOOLCFG) do cfg[k] = v end
     if ToolgunModule and ToolgunModule.presets then
-        local suffix = toolName and tostring(toolName):match("^Tool(.+)")
+        local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
         local presetKey = suffix and suffix:lower()
         if presetKey and ToolgunModule.presets[presetKey] then
             for k, v in pairs(ToolgunModule.presets[presetKey]) do cfg[k] = v end
@@ -322,10 +322,10 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local visual = nil
     local usingModel = false
     if ToolgunModule and ToolgunModule.getProjectileForPreset then
-        -- derive preset key from toolName (ToolBow -> bow)
+        -- derive preset key from toolName (accepts both "ToolBow" and "Bow")
         local presetKey = nil
         if toolName then
-            local s = tostring(toolName):match("^Tool(.+)")
+            local s = tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$")
             if s then presetKey = s:lower() end
         end
         if presetKey then

@@ -318,7 +318,7 @@ local function isToolGun(tool)
     if tool:GetAttribute("IsToolGun") then return true end
     local name = tostring(tool.Name)
     if name == "ToolPistol" or name == "ToolSniper" then return true end
-    local suffix = name:match("^Tool(.+)")
+    local suffix = name:match("^Tool(.+)") or name:match("^(.+)$")
     if suffix then
         local key = suffix:lower()
         if TOOLCFG_MODULE and TOOLCFG_MODULE.presets and TOOLCFG_MODULE.presets[key] then
@@ -353,7 +353,7 @@ local function getToolCfgForTool(tool)
     local toolType = tool:GetAttribute("ToolType")
     if not toolType then
         local name = tostring(tool.Name)
-        local suffix = name:match("^Tool(.+)")
+        local suffix = name:match("^Tool(.+)") or name:match("^(.+)$")
         if suffix then toolType = suffix:lower() end
     end
     if TOOLCFG_MODULE and TOOLCFG_MODULE.getPreset and toolType then

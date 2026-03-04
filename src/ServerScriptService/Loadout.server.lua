@@ -19,12 +19,12 @@ local GAMEPASS_ID = 0 -- ← replace with your real Game Pass ID
 
 -- Which tools to give every player on spawn (path inside ServerStorage.Tools)
 local DEFAULT_LOADOUT = {
-    { folder = "Melee",  toolName = "ToolSword" },
-    { folder = "Ranged", toolName = "ToolBow"   },
+    { folder = "Melee",  toolName = "Sword" },
+    { folder = "Ranged", toolName = "Bow"   },
 }
 
 -- Optional: tool to give when the special slot is unlocked
-local SPECIAL_TOOL = { folder = "Special", toolName = "ToolSpecial" }
+local SPECIAL_TOOL = { folder = "Special", toolName = "Special" }
 
 --------------------------------------------------------------------------------
 -- FOLDERS & REMOTES

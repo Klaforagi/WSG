@@ -67,7 +67,7 @@ local KILL_POINTS = 10
 local function getServerMeleeCfg(toolName)
     local cfg = {}
     if MeleeCfg and MeleeCfg.presets then
-        local suffix = toolName and tostring(toolName):match("^Tool(.+)")
+        local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
         local key = suffix and suffix:lower()
         if key and MeleeCfg.presets[key] then
             for k, v in pairs(MeleeCfg.presets[key]) do cfg[k] = v end
