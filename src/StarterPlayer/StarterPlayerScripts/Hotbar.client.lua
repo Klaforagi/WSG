@@ -36,7 +36,7 @@ local forceEquipRemote     = ReplicatedStorage:WaitForChild("ForceEquipTool")
 --------------------------------------------------------------------------------
 local SLOT_DEFS = {
     { index = 1, key = Enum.KeyCode.One,   category = "Melee",   toolName = "Sword",   label = "1" },
-    { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Bow",     label = "2" },
+    { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Slingshot",     label = "2" },
     { index = 3, key = Enum.KeyCode.Three, category = "Special", toolName = "Special", label = "3" },
 }
 
