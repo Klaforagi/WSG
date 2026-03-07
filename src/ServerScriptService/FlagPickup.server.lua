@@ -40,6 +40,43 @@ local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=C
 local carrying = {} -- map player -> data {team, modelClone}
 local captureDebounce = {}
 
+local function removeScriptsFromModel(model)
+    if not model then return end
+    for _, d in ipairs(model:GetDescendants()) do
+        if d and (d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript")) then
+            pcall(function() d:Destroy() end)
+        end
+    end
+end
+
+local function restoreScriptsFromOriginal(original, target)
+    if not original or not target then return end
+    for _, s in ipairs(original:GetDescendants()) do
+        if s and (s:IsA("Script") or s:IsA("LocalScript") or s:IsA("ModuleScript")) then
+            -- attempt to parent the cloned script under the same-named child in target if it exists
+            local relParent = s.Parent
+            local path = {}
+            while relParent and relParent ~= original do
+                table.insert(path, 1, relParent.Name)
+                relParent = relParent.Parent
+            end
+            local parent = target
+            for _, name in ipairs(path) do
+                local found = parent:FindFirstChild(name)
+                if not found then
+                    -- create a placeholder folder to match structure
+                    found = Instance.new("Folder")
+                    found.Name = name
+                    found.Parent = parent
+                end
+                parent = found
+            end
+            local clone = s:Clone()
+            clone.Parent = parent
+        end
+    end
+end
+
 local function makeCarryClone(originalModel, character)
     if not originalModel or not character then return nil end
     local clone = originalModel:Clone()
@@ -114,6 +151,17 @@ end
 local function respawnFlag(team)
     local info = flags[team]
     if not info or not info.original then return end
+    -- remove any existing flag models in the world (dropped or misplaced) to avoid duplicates
+    for _, child in ipairs(Workspace:GetChildren()) do
+        if child and child:IsA("Model") then
+            local childTeam = getFlagTeamFromName(child.Name)
+            if childTeam == team then
+                pcall(function() child:Destroy() end)
+            end
+        end
+    end
+
+    -- clone the canonical original (keep scripts intact for stand behavior)
     local spawnModel = info.original:Clone()
     spawnModel.Parent = Workspace
     -- ensure PrimaryPart exists so we can position the model correctly
@@ -160,6 +208,15 @@ function setupFlagModel(model)
         flags[team].original = model:Clone()
         flags[team].spawnCFrame = (model.PrimaryPart and model:GetPrimaryPartCFrame()) or model:GetModelCFrame()
         flags[team].original.Parent = ServerStorage
+        -- create a pickup template with scripts removed so carried clones don't include stand-only scripts
+        local pickupTemplate = flags[team].original:Clone()
+        for _, d in ipairs(pickupTemplate:GetDescendants()) do
+            if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
+                pcall(function() d:Destroy() end)
+            end
+        end
+        pickupTemplate.Parent = ServerStorage
+        flags[team].pickupTemplate = pickupTemplate
     end
 
     local conn
@@ -200,11 +257,41 @@ function setupFlagModel(model)
 
         -- pickup: move original to ServerStorage (remove from workspace)
         if model.Parent then
+            -- remove any visible return countdown GUI so it doesn't remain on the player
+            for _, obj in ipairs(model:GetDescendants()) do
+                if obj and obj:IsA("BillboardGui") and obj.Name == "ReturnCountdown" then
+                    pcall(function() obj:Destroy() end)
+                end
+            end
             model.Parent = ServerStorage
+            -- clear dropped state if this was a previously dropped model
+            if flags[team] then
+                flags[team].dropped = false
+                flags[team].dropModel = nil
+                flags[team].model = nil
+            end
+            -- strip any embedded scripts from the stored original so they don't run later
+            for _, d in ipairs(model:GetDescendants()) do
+                if d and (d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript")) then
+                    pcall(function() d:Destroy() end)
+                end
+            end
+            -- ensure a pickup template exists (scriptless) for carried clones
+            if not flags[team].pickupTemplate then
+                local pickupTemplate = (flags[team].original and flags[team].original:Clone()) or model:Clone()
+                for _, d in ipairs(pickupTemplate:GetDescendants()) do
+                    if d and (d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript")) then
+                        pcall(function() d:Destroy() end)
+                    end
+                end
+                pickupTemplate.Parent = ServerStorage
+                flags[team].pickupTemplate = pickupTemplate
+            end
         end
 
         -- attach clone to character
-        local carried = makeCarryClone(flags[team].original, char)
+        local template = (flags[team].pickupTemplate or flags[team].original)
+        local carried = makeCarryClone(template, char)
         if carried then
             carrying[pl] = {team = team, model = carried}
             pl:SetAttribute("CarryingFlag", team)
@@ -245,6 +332,7 @@ function setupFlagModel(model)
                     end
                     setupFlagModel(dropModel)
                     flags[team].dropped = true
+                    flags[team].dropModel = dropModel
 
                     -- create a visible countdown above the dropped flag and return it to the stand
                     -- only if nobody picks it up within 15 seconds
@@ -289,7 +377,8 @@ function setupFlagModel(model)
 
                     task.spawn(function()
                         for i = 15, 1, -1 do
-                            if not dropModel or dropModel.Parent ~= Workspace then
+                            -- if flag is no longer marked as dropped, abort countdown
+                            if not flags[team] or not flags[team].dropped then
                                 if gui then pcall(function() gui:Destroy() end) end
                                 return
                             end
@@ -299,7 +388,8 @@ function setupFlagModel(model)
                             task.wait(1)
                         end
 
-                        if not dropModel or dropModel.Parent ~= Workspace then
+                        -- if flag was picked up in the meantime, abort
+                        if not flags[team] or not flags[team].dropped then
                             if gui then pcall(function() gui:Destroy() end) end
                             return
                         end
@@ -307,29 +397,27 @@ function setupFlagModel(model)
                         local standName = team .. "FlagStand"
                         local stand = Workspace:FindFirstChild(standName, true)
                         if stand and stand:IsA("BasePart") then
-                            -- apply same carried rotation when returning to the stand
                             local carryRot = CFrame.Angles(math.rad(180), math.rad(180), math.rad(90)) * CFrame.Angles(math.rad(180), 0, 0)
-                            if dropModel.PrimaryPart then
-                                dropModel:SetPrimaryPartCFrame(stand.CFrame * CFrame.new(0, 6, 0) * carryRot)
+                            if flags[team] and flags[team].dropModel and flags[team].dropModel.PrimaryPart then
+                                -- remove interfering scripts before moving the model
+                                removeScriptsFromModel(flags[team].dropModel)
+                                flags[team].dropModel:SetPrimaryPartCFrame(stand.CFrame * CFrame.new(0, 6, 0) * carryRot)
+                                -- restore canonical stand scripts from the stored original
+                                if flags[team].original then
+                                    restoreScriptsFromOriginal(flags[team].original, flags[team].dropModel)
+                                end
+                                setupFlagModel(flags[team].dropModel)
                             else
-                                for _, d in ipairs(dropModel:GetDescendants()) do
-                                    if d:IsA("BasePart") then
-                                        dropModel.PrimaryPart = d
-                                        break
-                                    end
-                                end
-                                if dropModel.PrimaryPart then
-                                    dropModel:SetPrimaryPartCFrame(stand.CFrame * CFrame.new(0, 6, 0) * carryRot)
-                                end
+                                respawnFlag(team)
                             end
-                            setupFlagModel(dropModel)
                             flags[team].dropped = false
-                            -- notify clients to play return sound locally
+                            flags[team].dropModel = nil
                             FlagStatus:FireAllClients("playSound", "Flag_return")
-                            -- announce return to all clients
                             FlagStatus:FireAllClients("returned", nil, nil, team)
                         else
                             respawnFlag(team)
+                            flags[team].dropped = false
+                            flags[team].dropModel = nil
                             FlagStatus:FireAllClients("playSound", "Flag_return")
                             FlagStatus:FireAllClients("returned", nil, nil, team)
                         end

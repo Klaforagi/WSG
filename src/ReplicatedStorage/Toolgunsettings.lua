@@ -3,8 +3,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Preset configurations for named tool types (keys are lowercase, e.g. 'pistol', 'sniper')
 local presets = {
     slingshot = {
-        damage = 15,
-        cd = 0.6,
+        damage = 8,
+        cd = 0.3,
         bulletspeed = 150,
         range = 450,
         projectile_lifetime = 4,
