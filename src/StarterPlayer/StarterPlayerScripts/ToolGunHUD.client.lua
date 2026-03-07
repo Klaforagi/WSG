@@ -36,21 +36,56 @@ end
 
 local Debris = game:GetService("Debris")
 
+-- Load tool config module early so playFireSound can use preset shoot_sound
+local TOOLCFG_MODULE
+if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
+    TOOLCFG_MODULE = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
+end
+
 local function playFireSound(toolName)
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     if not soundsFolder then return end
     local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
     if not toolgunFolder then return end
-    local template
-    if toolName and tostring(toolName):lower():find("sniper") then
-        template = toolgunFolder:FindFirstChild("Sniper_shoot") or toolgunFolder:FindFirstChild("Sniper_Shoot")
-    elseif toolName and tostring(toolName):lower():find("pistol") then
-        template = toolgunFolder:FindFirstChild("Pistol_shoot") or toolgunFolder:FindFirstChild("Pistol_Shoot")
-    elseif toolName and tostring(toolName):lower():find("bow") then
-        template = toolgunFolder:FindFirstChild("Bow_shoot") or toolgunFolder:FindFirstChild("Bow_Shoot")
-    else
+
+    local template = nil
+
+    -- 1) Try preset shoot_sound from Toolgunsettings
+    if TOOLCFG_MODULE and TOOLCFG_MODULE.getPreset and toolName then
+        local suffix = tostring(toolName):match("^Tool(.+)") or tostring(toolName)
+        local preset = TOOLCFG_MODULE.getPreset(suffix:lower())
+        if preset and preset.shoot_sound then
+            -- try exact name first, then case-insensitive scan
+            template = toolgunFolder:FindFirstChild(preset.shoot_sound)
+            if not template then
+                local target = preset.shoot_sound:lower()
+                for _, child in ipairs(toolgunFolder:GetChildren()) do
+                    if child:IsA("Sound") and child.Name:lower() == target then
+                        template = child
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2) Fallback: name-based heuristics
+    if not template and toolName then
+        local lower = tostring(toolName):lower()
+        if lower:find("sniper") then
+            template = toolgunFolder:FindFirstChild("Sniper_shoot") or toolgunFolder:FindFirstChild("Sniper_Shoot")
+        elseif lower:find("pistol") then
+            template = toolgunFolder:FindFirstChild("Pistol_shoot") or toolgunFolder:FindFirstChild("Pistol_Shoot")
+        elseif lower:find("bow") then
+            template = toolgunFolder:FindFirstChild("Bow_shoot") or toolgunFolder:FindFirstChild("Bow_Shoot")
+        end
+    end
+
+    -- 3) Last resort
+    if not template then
         template = toolgunFolder:FindFirstChild("Gun_shoot")
     end
+
     if not template or not template:IsA("Sound") then return end
     local s = template:Clone()
     s.Parent = workspace.CurrentCamera or workspace
@@ -308,10 +343,7 @@ if fireHit and fireHit:IsA("RemoteEvent") then
 end
 
 -- Tool detection logic (merge of both scripts)
-local TOOLCFG_MODULE
-if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
-    TOOLCFG_MODULE = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
-end
+-- (TOOLCFG_MODULE already required above)
 
 local function isToolGun(tool)
     if not tool then return false end
