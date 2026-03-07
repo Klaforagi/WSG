@@ -176,121 +176,150 @@ local function makeTextButtonBase(text)
     return btn
 end
 
-local function CreateShopButton(parent)
-    local btn = makeTextButtonBase("SHOP")
-    btn.Name = "ShopButton"
-    btn.LayoutOrder = 1
-    -- responsive height based on viewport height (keeps proportions on mobile)
-    local function calcShopHeight()
-        local screenY = 720
-        local cam = workspace.CurrentCamera
-        if cam and cam.ViewportSize then
-            screenY = cam.ViewportSize.Y
-        end
-        return math.max(36, math.floor(screenY * 0.07))
-    end
-    local shopH = calcShopHeight()
-    btn.Size = UDim2.new(1, 0, 0, shopH)
-    btn.Parent = parent
-    -- allow children (icon) to overflow the button bounds for a "pop out" effect
+-- Helper: create a half-width top button (used for SHOP and INVENTORY)
+local function makeTopHalfButton(label, iconKey, layoutOrder)
+    local btn = makeTextButtonBase(label)
+    btn.Name = label .. "Button"
+    btn.LayoutOrder = layoutOrder or 1
     btn.ClipsDescendants = false
 
-    -- optional shop icon (centered, larger)
-    local icon = nil
-    local shopAsset = (AssetCodes and type(AssetCodes.Get) == "function") and AssetCodes.Get("Shop")
-    -- hide the button's built-in text; we'll draw a smaller overlay above the icon
+    local function calcBtnHeight()
+        local screenY = 720
+        local cam = workspace.CurrentCamera
+        if cam and cam.ViewportSize then screenY = cam.ViewportSize.Y end
+        return math.max(36, math.floor(screenY * 0.07))
+    end
+    local btnH = calcBtnHeight()
+    btn.Size = UDim2.new(1, 0, 0, btnH)
+
+    -- optional icon
+    local assetId = (AssetCodes and type(AssetCodes.Get) == "function") and AssetCodes.Get(iconKey or label)
     btn.Text = ""
-    if shopAsset and type(shopAsset) == "string" then
-        icon = Instance.new("ImageLabel")
-        icon.Name = "ShopIcon"
+    if assetId and type(assetId) == "string" then
+        local icon = Instance.new("ImageLabel")
+        icon.Name = label .. "Icon"
         local function updateIconSize()
-            local h = btn.AbsoluteSize.Y > 0 and btn.AbsoluteSize.Y or shopH
-            local s = math.max(70, math.floor(h * 1.6))
+            local h = btn.AbsoluteSize.Y > 0 and btn.AbsoluteSize.Y or btnH
+            local s = math.max(50, math.floor(h * 1.4))
             icon.Size = UDim2.new(0, s, 0, s)
-            icon.Position = UDim2.new(0.5, 0, 0.38, 0)
+            icon.Position = UDim2.new(0.5, 0, 0.35, 0)
             icon.AnchorPoint = Vector2.new(0.5, 0.5)
         end
         updateIconSize()
         icon.BackgroundTransparency = 1
-        icon.Image = shopAsset
+        icon.Image = assetId
         icon.ScaleType = Enum.ScaleType.Fit
         icon.ZIndex = 1
         icon.Parent = btn
-        -- update when the screen or button resizes
         btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateIconSize)
         local cam = workspace.CurrentCamera
-        if cam then
-            cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateIconSize)
-        end
-        -- overlay text on top of icon
+        if cam then cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateIconSize) end
+
         local overlay = Instance.new("TextLabel")
-        overlay.Name = "ShopOverlayLabel"
+        overlay.Name = label .. "OverlayLabel"
         overlay.BackgroundTransparency = 1
-        overlay.Size = UDim2.new(0.9, 0, 0, math.max(12, math.floor(shopH * 0.28)))
+        overlay.Size = UDim2.new(0.9, 0, 0, math.max(12, math.floor(btnH * 0.28)))
         overlay.Position = UDim2.new(0.5, 0, 1, -px(2))
         overlay.AnchorPoint = Vector2.new(0.5, 1)
         overlay.Font = Enum.Font.GothamBold
-        overlay.Text = "SHOP"
+        overlay.Text = label
         overlay.TextColor3 = COLORS.gold
-        overlay.TextSize = math.max(16, math.floor(shopH * 0.88 * deviceTextScale))
+        overlay.TextSize = math.max(14, math.floor(btnH * 0.78 * deviceTextScale))
         overlay.TextScaled = false
         overlay.TextXAlignment = Enum.TextXAlignment.Center
         overlay.TextYAlignment = Enum.TextYAlignment.Center
         overlay.ZIndex = 2
-        overlay.Parent = btn
-        -- text outline (brown)
         overlay.TextStrokeColor3 = COLORS.brown
         overlay.TextStrokeTransparency = 0
+        overlay.Parent = btn
     else
-        btn.Text = "SHOP"
+        btn.Text = label
         btn.TextXAlignment = Enum.TextXAlignment.Center
         btn.TextScaled = false
-        btn.TextSize = math.max(16, math.floor(shopH * 0.88 * deviceTextScale))
+        btn.TextSize = math.max(14, math.floor(btnH * 0.78 * deviceTextScale))
         btn.TextColor3 = COLORS.gold
-        -- text outline (brown) for fallback text
         btn.TextStrokeColor3 = COLORS.brown
         btn.TextStrokeTransparency = 0
     end
 
-    -- hover & click feedback (more pronounced: background + stroke tweak)
+    -- hover & click feedback
     btn.MouseEnter:Connect(function()
         tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.12))
         local s = btn:FindFirstChildOfClass("UIStroke")
         if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.12)) end
-        -- brighten overlay text if present, or fallback text
-        local overlayLbl = btn:FindFirstChild("ShopOverlayLabel")
-        if overlayLbl then tweenInstance(overlayLbl, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12)) end
-        if not overlayLbl then tweenInstance(btn, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12)) end
+        local lbl = btn:FindFirstChild(label .. "OverlayLabel")
+        if lbl then tweenInstance(lbl, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12))
+        else tweenInstance(btn, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12)) end
     end)
     btn.MouseLeave:Connect(function()
         tweenInstance(btn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
         local s = btn:FindFirstChildOfClass("UIStroke")
         if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
-        local overlayLbl = btn:FindFirstChild("ShopOverlayLabel")
-        if overlayLbl then tweenInstance(overlayLbl, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12)) end
-        if not overlayLbl then tweenInstance(btn, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12)) end
+        local lbl = btn:FindFirstChild(label .. "OverlayLabel")
+        if lbl then tweenInstance(lbl, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12))
+        else tweenInstance(btn, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12)) end
     end)
-    btn.MouseButton1Click:Connect(function()
-        -- simple click flash (also highlight stroke briefly)
-        tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
-        local s = btn:FindFirstChildOfClass("UIStroke")
+
+    return btn, btnH
+end
+
+local function CreateShopAndInventoryRow(parent)
+    -- Container frame: full width, holds two half-width buttons side by side
+    local row = Instance.new("Frame")
+    row.Name = "ShopInventoryRow"
+    row.LayoutOrder = 1
+    row.BackgroundTransparency = 1
+    row.Size = UDim2.new(1, 0, 0, 0)
+    row.AutomaticSize = Enum.AutomaticSize.Y
+    row.Parent = parent
+
+    local rowLayout = Instance.new("UIListLayout")
+    rowLayout.FillDirection = Enum.FillDirection.Horizontal
+    rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rowLayout.Padding = UDim.new(0, px(4))
+    rowLayout.Parent = row
+
+    -- SHOP button (left half)
+    local shopBtn, shopH = makeTopHalfButton("SHOP", "Shop", 1)
+    shopBtn.Size = UDim2.new(0.5, -px(2), 0, shopH)
+    shopBtn.Parent = row
+
+    shopBtn.MouseButton1Click:Connect(function()
+        tweenInstance(shopBtn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
+        local s = shopBtn:FindFirstChildOfClass("UIStroke")
         if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.06)) end
         task.delay(0.09, function()
-            tweenInstance(btn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
+            tweenInstance(shopBtn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
             if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
         end)
-        -- action
-        if script and script.Parent then
-            -- call exposed handler
-            if script.OnShop and type(script.OnShop) == "function" then
-                pcall(script.OnShop)
-            else
-                print("Shop")
-            end
+        if script and script.OnShop and type(script.OnShop) == "function" then
+            pcall(script.OnShop)
+        else
+            print("Shop")
         end
     end)
 
-    return btn
+    -- INVENTORY button (right half)
+    local invBtn, invH = makeTopHalfButton("INVENTORY", "Inventory", 2)
+    invBtn.Size = UDim2.new(0.5, -px(2), 0, invH)
+    invBtn.Parent = row
+
+    invBtn.MouseButton1Click:Connect(function()
+        tweenInstance(invBtn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
+        local s = invBtn:FindFirstChildOfClass("UIStroke")
+        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.06)) end
+        task.delay(0.09, function()
+            tweenInstance(invBtn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
+            if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
+        end)
+        if script and script.OnInventory and type(script.OnInventory) == "function" then
+            pcall(script.OnInventory)
+        else
+            print("Inventory")
+        end
+    end)
+
+    return row, shopBtn, invBtn
 end
 
 -- CoinDisplay module (ReplicatedStorage): creates coin row + wires server remotes
@@ -332,14 +361,15 @@ local function CreateMenuGrid(parent)
     padding.Parent = gridContainer
 
     -- Prefer sizing cells to match the Shop button width so 3 columns always fit.
-    local shopBtn = parent:FindFirstChild("ShopButton")
+    -- Use the ShopInventoryRow (or fallback to grid container width) for cell sizing
+    local shopInvRow = parent:FindFirstChild("ShopInventoryRow")
     local function updateCellSize()
         local cols = grid.FillDirectionMaxCells or 3
         local cellPad = (grid and grid.CellPadding and grid.CellPadding.X) and grid.CellPadding.X.Offset or 6
 
         local sourceW = 0
-        if shopBtn and shopBtn.AbsoluteSize and shopBtn.AbsoluteSize.X and shopBtn.AbsoluteSize.X > 0 then
-            sourceW = shopBtn.AbsoluteSize.X
+        if shopInvRow and shopInvRow.AbsoluteSize and shopInvRow.AbsoluteSize.X > 0 then
+            sourceW = shopInvRow.AbsoluteSize.X
         else
             sourceW = gridContainer.AbsoluteSize.X
         end
@@ -349,8 +379,8 @@ local function CreateMenuGrid(parent)
         grid.CellSize = UDim2.new(0, cellW, 0, cellW)
     end
 
-    if shopBtn then
-        shopBtn:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize)
+    if shopInvRow then
+        shopInvRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize)
     end
     gridContainer:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize)
     if gridContainer.Parent then
@@ -493,8 +523,8 @@ local existing = screenGui:FindFirstChild("MainUICard")
 if existing then existing:Destroy() end
 
 local panel = CreatePanel(screenGui)
-local shopBtn = CreateShopButton(panel)
-print("[SideUI] panel created; shopBtn =", tostring(shopBtn))
+local shopInvRow, shopBtn, invBtn = CreateShopAndInventoryRow(panel)
+print("[SideUI] panel created; shopBtn =", tostring(shopBtn), "invBtn =", tostring(invBtn))
 
 -- Coin row from CoinDisplay module (auto-wires to server remotes)
 local coinRow, coinApi
@@ -543,6 +573,9 @@ _G.SideUI.OpenPage = OpenPage
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
 script.OnShop = function()
     print("Shop")
+end
+script.OnInventory = function()
+    print("Inventory")
 end
 script.OnMenuButton = function(id)
     OpenPage(id)

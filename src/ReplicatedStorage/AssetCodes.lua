@@ -9,6 +9,7 @@ AssetCodes.images = {
     BlueFlag = "rbxassetid://397459040",
     RedFlag = "rbxassetid://2017769589",
     Shop = "rbxassetid://12674129868",
+    Inventory = "rbxassetid://12878997112",
     Options = "rbxassetid://11807310328",
     Quests = "rbxassetid://5750849995",
     Upgrade = "rbxassetid://17368045028",
