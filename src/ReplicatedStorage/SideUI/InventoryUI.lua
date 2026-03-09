@@ -34,6 +34,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     root.AutomaticSize = Enum.AutomaticSize.Y
     root.Parent = parent
 
+    -- ensure root has vertical stacking and padding so content doesn't overlap header
+    local rootLayout = Instance.new("UIListLayout")
+    rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rootLayout.Padding = UDim.new(0, px(6))
+    rootLayout.Parent = root
+
+    local rootPad = Instance.new("UIPadding")
+    rootPad.PaddingTop = UDim.new(0, px(12))
+    rootPad.PaddingBottom = UDim.new(0, px(10))
+    rootPad.PaddingLeft = UDim.new(0, px(8))
+    rootPad.PaddingRight = UDim.new(0, px(8))
+    rootPad.Parent = root
+
     local items = inventoryApi and inventoryApi:GetItems() or {}
     if #items == 0 then
         local lbl = Instance.new("TextLabel")
@@ -56,13 +69,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     grid.Parent = root
 
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.32, 0, 0, px(160))
+    gridLayout.CellSize = UDim2.new(0.28, 0, 0, px(140))
     gridLayout.CellPadding = UDim2.new(0.02, 0, 0, px(10))
     gridLayout.FillDirection = Enum.FillDirection.Horizontal
     gridLayout.FillDirectionMaxCells = 3
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = grid
+
+    grid.LayoutOrder = 2
 
     local AssetCodes = nil
     pcall(function()

@@ -31,6 +31,19 @@ local function makeSection(parent, sectionId, label)
     section.AutomaticSize = Enum.AutomaticSize.Y
     section.Parent = parent
 
+    -- ensure section stacks header + grid vertically
+    local sectionLayout = Instance.new("UIListLayout")
+    sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    sectionLayout.Padding = UDim.new(0, px(6))
+    sectionLayout.Parent = section
+
+    local sectionPad = Instance.new("UIPadding")
+    sectionPad.PaddingTop = UDim.new(0, px(6))
+    sectionPad.PaddingBottom = UDim.new(0, px(10))
+    sectionPad.PaddingLeft = UDim.new(0, px(8))
+    sectionPad.PaddingRight = UDim.new(0, px(8))
+    sectionPad.Parent = section
+
     local header = Instance.new("TextLabel")
     header.Name = "SectionHeader"
     header.BackgroundTransparency = 1
@@ -40,6 +53,7 @@ local function makeSection(parent, sectionId, label)
     header.TextSize = math.max(18, math.floor(px(18)))
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.Size = UDim2.new(1, 0, 0, px(28))
+    header.LayoutOrder = 1
     header.Parent = section
 
     local grid = Instance.new("Frame")
@@ -50,13 +64,15 @@ local function makeSection(parent, sectionId, label)
     grid.Parent = section
 
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.30, 0, 0, px(140)) -- slightly narrower cards
+    gridLayout.CellSize = UDim2.new(0.28, 0, 0, px(140)) -- slightly narrower cards
     gridLayout.CellPadding = UDim2.new(0.02, 0, 0, px(10))
     gridLayout.FillDirection = Enum.FillDirection.Horizontal
     gridLayout.FillDirectionMaxCells = 3
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
     gridLayout.Parent = grid
+
+    grid.LayoutOrder = 2
 
     return section, grid
 end
@@ -295,11 +311,11 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     local specialSection, specialGrid = makeSection(root, "Special", "Special Weapons")
     local coinsSection, coinsGrid = makeSection(root, "Coins", "Coins")
 
-    -- Populate ranged weapons section
+    -- Populate ranged weapons section (Slingshot first since player starts with it)
+    makeItem(rangedGrid, "Slingshot", "Slingshot", 0, "Slingshot", coinApi, inventoryApi)
     makeItem(rangedGrid, "Shortbow", "Shortbow", 20, "Shortbow", coinApi, inventoryApi)
     makeItem(rangedGrid, "Longbow", "Longbow", 30, "Longbow", coinApi, inventoryApi)
     makeItem(rangedGrid, "Xbow", "Xbow", 40, "Xbow", coinApi, inventoryApi)
-    makeItem(rangedGrid, "Slingshot", "Slingshot", 0, "Slingshot", coinApi, inventoryApi)
 
     -- Melee/Special/Coin sections can be populated similarly by calling makeItem on those grids
 

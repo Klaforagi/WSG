@@ -721,6 +721,16 @@ local contentLayout = Instance.new("UIListLayout")
 contentLayout.Padding = UDim.new(0, px(8))
 contentLayout.Parent = contentFrame
 
+-- add top padding so first row of cards is not clipped by fixed header
+local contentPadding = Instance.new("UIPadding")
+contentPadding.PaddingTop = UDim.new(0, px(14))
+contentPadding.PaddingLeft = UDim.new(0, px(10))
+contentPadding.PaddingRight = UDim.new(0, px(10))
+contentPadding.Parent = contentFrame
+
+-- ensure content sits above other UI but behind header elements
+contentFrame.ZIndex = 260
+
 -- Forward-declare coinApi so closures below can reference it
 local coinApi = nil
 
