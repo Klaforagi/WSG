@@ -16,6 +16,8 @@ AssetCodes.images = {
     Boosts = "rbxassetid://138146402871393",
     Trolls = "rbxassetid://4911139003",
     Team = "rbxassetid://12345678",
+    Bow = "rbxassetid://13303448470",
+    Slingshot = "rbxassetid://5830603041",
 }
 
 -- Returns the asset string for a named key, or nil

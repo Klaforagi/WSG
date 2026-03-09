@@ -287,10 +287,24 @@ local function getToolForSlot(idx)
     return scan(player.Character) or scan(backpack) or scan(starterGear)
 end
 
+-- AssetCodes for weapon icons
+local AssetCodes = nil
+pcall(function()
+    local ac = ReplicatedStorage:FindFirstChild("AssetCodes")
+    if ac and ac:IsA("ModuleScript") then AssetCodes = require(ac) end
+end)
+
 local function getToolIcon(tool)
     if not tool then return "" end
+    -- 1) Check for an explicit Icon attribute
     local attr = tool:GetAttribute("Icon")
     if type(attr) == "string" and #attr > 0 then return attr end
+    -- 2) Check AssetCodes by tool name (e.g. "Bow" -> Bow icon)
+    if AssetCodes and type(AssetCodes.Get) == "function" then
+        local acIcon = AssetCodes.Get(tool.Name)
+        if type(acIcon) == "string" and #acIcon > 0 then return acIcon end
+    end
+    -- 3) Fall back to tool TextureId
     local ok, tex = pcall(function() return tool.TextureId end)
     if ok and type(tex) == "string" and #tex > 0 then return tex end
     return ""
@@ -415,7 +429,7 @@ equipSlot = function(idx)
 
     -- Tool only in StarterGear or elsewhere → ask server to handle it
     hum:UnequipTools()
-    forceEquipRemote:FireServer(def.category, def.toolName)
+    forceEquipRemote:FireServer(def.category, tool.Name)
 end
 
 --------------------------------------------------------------------------------

@@ -44,12 +44,14 @@ end
 local requestSpecialUnlock = getOrCreateRemote("RequestSpecialUnlock")
 local specialUnlockGranted = getOrCreateRemote("SpecialUnlockGranted")
 local forceEquipRemote = getOrCreateRemote("ForceEquipTool")
+local setRangedRemote = getOrCreateRemote("SetRangedTool")
 
 --------------------------------------------------------------------------------
 -- STATE
 --------------------------------------------------------------------------------
 local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
+local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 
 --------------------------------------------------------------------------------
 -- HELPERS
@@ -160,9 +162,63 @@ forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
     end
 end)
 
+-- Replace the player's Ranged slot tool (StarterGear + Backpack) without equipping.
+setRangedRemote.OnServerEvent:Connect(function(player, toolName)
+    -- remove existing Ranged tools from StarterGear and Backpack
+    local sg = player:FindFirstChild("StarterGear")
+    local bp = player:FindFirstChildOfClass("Backpack")
+    if sg then
+        for i = #sg:GetChildren(), 1, -1 do
+            local child = sg:GetChildren()[i]
+            if child and child:IsA("Tool") then
+                local attr = child:GetAttribute("HotbarCategory")
+                if type(attr) == "string" and string.lower(attr) == "ranged" then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+    end
+    if bp then
+        for i = #bp:GetChildren(), 1, -1 do
+            local child = bp:GetChildren()[i]
+            if child and child:IsA("Tool") then
+                local attr = child:GetAttribute("HotbarCategory")
+                if type(attr) == "string" and string.lower(attr) == "ranged" then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+    end
+    -- remove ranged tools currently equipped on the character as well
+    if player.Character then
+        for i = #player.Character:GetChildren(), 1, -1 do
+            local child = player.Character:GetChildren()[i]
+            if child and child:IsA("Tool") then
+                local attr = child:GetAttribute("HotbarCategory")
+                if type(attr) == "string" and string.lower(attr) == "ranged" then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+    end
+
+    -- grant the requested ranged tool into StarterGear/Backpack (sets HotbarCategory)
+    if type(toolName) == "string" and #toolName > 0 then
+        chosenRanged[player] = toolName
+        grantTool(player, "Ranged", toolName)
+        ensureBackpackFromStarterGear(player)
+    end
+end)
+
 local function giveLoadout(player)
     for _, entry in ipairs(DEFAULT_LOADOUT) do
-        grantTool(player, entry.folder, entry.toolName)
+        local folder = entry.folder
+        local toolName = entry.toolName
+        -- honour the player's chosen ranged weapon if they swapped it
+        if string.lower(folder) == "ranged" and chosenRanged[player] then
+            toolName = chosenRanged[player]
+        end
+        grantTool(player, folder, toolName)
     end
     -- grant special tool if unlocked and template exists
     if unlockState[player] then
@@ -215,8 +271,9 @@ local function onPlayerAdded(player)
 end
 
 local function onPlayerRemoving(player)
-    unlockState[player]   = nil
+    unlockState[player]    = nil
     promptDebounce[player] = nil
+    chosenRanged[player]   = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

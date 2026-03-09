@@ -516,6 +516,7 @@ else
     -- move the script into this ScreenGui so that script.Parent references remain intuitive
     pcall(function() script.Parent = screenGui end)
 end
+pcall(function() screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
 print("[SideUI] screenGui ready; parent =", tostring(screenGui.Parent))
 
 -- Clear existing content in screenGui container area (optional safe-guard: only if it's our MainUICard)
@@ -526,12 +527,281 @@ local panel = CreatePanel(screenGui)
 local shopInvRow, shopBtn, invBtn = CreateShopAndInventoryRow(panel)
 print("[SideUI] panel created; shopBtn =", tostring(shopBtn), "invBtn =", tostring(invBtn))
 
+-- Simple client-side inventory API
+local Inventory = {}
+do
+    local items = {}
+    local equipped = nil -- track currently equipped item id
+    function Inventory:AddItem(id)
+        if not id then return end
+        for _, v in ipairs(items) do if v == id then return end end
+        table.insert(items, id)
+    end
+    function Inventory:HasItem(id)
+        for _, v in ipairs(items) do if v == id then return true end end
+        return false
+    end
+    function Inventory:GetItems()
+        return table.clone(items)
+    end
+    function Inventory:SetEquipped(id)
+        equipped = id
+    end
+    function Inventory:GetEquipped()
+        return equipped
+    end
+end
+
+-- preload Slingshot into the client inventory so player has ranged start
+pcall(function() Inventory:AddItem("Slingshot") end)
+pcall(function() Inventory:SetEquipped("Slingshot") end)
+
+-- Create centered modal window (hidden by default)
+local modalOverlay = Instance.new("Frame")
+modalOverlay.Name = "ModalOverlay"
+modalOverlay.Size = UDim2.new(1,0,1,0)
+modalOverlay.Position = UDim2.new(0,0,0,0)
+modalOverlay.BackgroundTransparency = 0.5
+modalOverlay.BackgroundColor3 = Color3.fromRGB(10,10,10)
+modalOverlay.Visible = false
+modalOverlay.Parent = screenGui
+
+-- ── Modal window ──────────────────────────────────────────────────────────
+local window = Instance.new("Frame")
+window.Name = "ModalWindow"
+window.Size = UDim2.new(0.65, 0, 0.72, 0)
+window.AnchorPoint = Vector2.new(0.5, 0.5)
+window.Position = UDim2.new(0.5, 0, 0.5, 0)
+window.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+window.Parent = modalOverlay
+local winCorner = Instance.new("UICorner")
+winCorner.CornerRadius = UDim.new(0, px(14))
+winCorner.Parent = window
+local winStroke = Instance.new("UIStroke")
+winStroke.Color = Color3.fromRGB(255, 215, 80)
+winStroke.Thickness = 2
+winStroke.Transparency = 0.15
+winStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+winStroke.Parent = window
+local winPad = Instance.new("UIPadding")
+winPad.PaddingTop = UDim.new(0, px(10))
+winPad.PaddingBottom = UDim.new(0, px(10))
+winPad.PaddingLeft = UDim.new(0, px(14))
+winPad.PaddingRight = UDim.new(0, px(14))
+winPad.Parent = window
+
+-- ── Header bar (title + coin display + close X) ──────────────────────────
+local HEADER_H = 0.10 -- fraction of window height
+local headerBar = Instance.new("Frame")
+headerBar.Name = "HeaderBar"
+headerBar.Size = UDim2.new(1, 0, HEADER_H, 0)
+headerBar.BackgroundTransparency = 1
+headerBar.ZIndex = 10
+headerBar.Parent = window
+
+-- Title pill
+local titlePill = Instance.new("Frame")
+titlePill.Name = "TitlePill"
+titlePill.Size = UDim2.new(0.30, 0, 0.80, 0)
+titlePill.AnchorPoint = Vector2.new(0.5, 0.5)
+titlePill.Position = UDim2.new(0.5, 0, 0.5, 0)
+titlePill.BackgroundColor3 = Color3.fromRGB(22, 40, 80)
+titlePill.ZIndex = 10
+titlePill.Parent = headerBar
+local titlePillCorner = Instance.new("UICorner")
+titlePillCorner.CornerRadius = UDim.new(0, px(8))
+titlePillCorner.Parent = titlePill
+local titlePillStroke = Instance.new("UIStroke")
+titlePillStroke.Color = Color3.fromRGB(80, 140, 220)
+titlePillStroke.Thickness = 1.5
+titlePillStroke.Transparency = 0.3
+titlePillStroke.Parent = titlePill
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name = "TitleLabel"
+titleLabel.Size = UDim2.new(1, 0, 1, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Font = Enum.Font.GothamBlack
+titleLabel.TextScaled = true
+titleLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
+titleLabel.Text = "SHOP"
+titleLabel.ZIndex = 11
+titleLabel.Parent = titlePill
+
+-- Coin display in header (right side)
+local headerCoinFrame = Instance.new("Frame")
+headerCoinFrame.Name = "HeaderCoin"
+headerCoinFrame.Size = UDim2.new(0.28, 0, 0.70, 0)
+headerCoinFrame.AnchorPoint = Vector2.new(1, 0.5)
+headerCoinFrame.Position = UDim2.new(0.92, 0, 0.5, 0)
+headerCoinFrame.BackgroundTransparency = 1
+headerCoinFrame.ZIndex = 10
+headerCoinFrame.Parent = headerBar
+
+local headerCoinLabel = Instance.new("TextLabel")
+headerCoinLabel.Name = "CoinLabel"
+headerCoinLabel.Size = UDim2.new(0.72, 0, 1, 0)
+headerCoinLabel.Position = UDim2.new(0, 0, 0, 0)
+headerCoinLabel.BackgroundTransparency = 1
+headerCoinLabel.Font = Enum.Font.GothamBold
+headerCoinLabel.TextScaled = true
+headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
+headerCoinLabel.TextXAlignment = Enum.TextXAlignment.Right
+headerCoinLabel.Text = "0"
+headerCoinLabel.ZIndex = 11
+headerCoinLabel.Parent = headerCoinFrame
+
+-- Coin icon after text
+local headerCoinIcon = Instance.new("ImageLabel")
+headerCoinIcon.Name = "CoinIcon"
+-- Bigger and centered vertically to match the header label
+headerCoinIcon.Size = UDim2.new(0.70, 0, 0.92, 0)
+headerCoinIcon.Position = UDim2.new(0.75, 0, 0.5, 1.5)
+headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
+headerCoinIcon.BackgroundTransparency = 1
+headerCoinIcon.ScaleType = Enum.ScaleType.Fit
+headerCoinIcon.SizeConstraint = Enum.SizeConstraint.RelativeYY
+headerCoinIcon.ZIndex = 11
+headerCoinIcon.Parent = headerCoinFrame
+pcall(function()
+    if AssetCodes and type(AssetCodes.Get) == "function" then
+        local ci = AssetCodes.Get("Coin")
+        if ci and #ci > 0 then headerCoinIcon.Image = ci end
+    end
+end)
+
+-- Close X (top-right corner of window)
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "Close"
+closeBtn.Text = "X"
+closeBtn.Font = Enum.Font.GothamBlack
+closeBtn.TextScaled = true
+closeBtn.Size = UDim2.new(0.05, 0, HEADER_H * 0.85, 0)
+closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeYY
+closeBtn.AnchorPoint = Vector2.new(1, 0)
+closeBtn.Position = UDim2.new(1, 0, 0, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
+closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.BorderSizePixel = 0
+closeBtn.ZIndex = 50
+closeBtn.Parent = window
+local closeBtnCorner = Instance.new("UICorner")
+closeBtnCorner.CornerRadius = UDim.new(0, px(6))
+closeBtnCorner.Parent = closeBtn
+
+-- ── Content area (below header) ───────────────────────────────────────────
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Name = "ModalContent"
+contentFrame.BackgroundTransparency = 1
+contentFrame.Size = UDim2.new(1, 0, 1 - HEADER_H - 0.02, 0)
+contentFrame.Position = UDim2.new(0, 0, HEADER_H + 0.01, 0)
+contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentFrame.ScrollBarThickness = px(4)
+contentFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 215, 80)
+contentFrame.BorderSizePixel = 0
+contentFrame.ZIndex = 1
+contentFrame.Parent = window
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.Padding = UDim.new(0, px(8))
+contentLayout.Parent = contentFrame
+
+-- Forward-declare coinApi so closures below can reference it
+local coinApi = nil
+
+local function clearContent()
+    for _, c in ipairs(contentFrame:GetChildren()) do
+        if not c:IsA("UIListLayout") and not c:IsA("UIGridLayout") then
+            pcall(function() c:Destroy() end)
+        end
+    end
+end
+local currentModule = nil
+local function hideModal()
+    currentModule = nil
+    modalOverlay.Visible = false
+    clearContent()
+end
+closeBtn.MouseButton1Click:Connect(hideModal)
+
+local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI")
+local shopModule = sideUIFolder:FindFirstChild("ShopUI")
+local invModule = sideUIFolder:FindFirstChild("InventoryUI")
+
+local function updateHeaderCoins()
+    local coins = 0
+    -- Try coinApi first (tracks live value from CoinDisplay)
+    if coinApi and coinApi.GetCoins then
+        local ok, val = pcall(function() return coinApi.GetCoins() end)
+        if ok and type(val) == "number" then coins = val end
+    end
+    -- If still 0, try server
+    if coins == 0 then
+        pcall(function()
+            local getCoinsFn = ReplicatedStorage:FindFirstChild("GetCoins")
+            if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
+                local res = getCoinsFn:InvokeServer()
+                if type(res) == "number" then coins = res end
+            end
+        end)
+    end
+    headerCoinLabel.Text = tostring(math.floor(coins))
+end
+-- Expose so ShopUI can trigger a refresh after purchase
+_G.UpdateShopHeaderCoins = updateHeaderCoins
+
+local function showModule(mod, label)
+    if not mod then return end
+    clearContent()
+    titleLabel.Text = label or "SHOP"
+    -- Show coins only on SHOP page
+    local isShop = (label == "SHOP")
+    headerCoinFrame.Visible = isShop
+    if isShop then updateHeaderCoins() end
+    pcall(function()
+        local ok, loaded = pcall(require, mod)
+        if ok and type(loaded.Create) == "function" then
+            loaded.Create(contentFrame, coinApi, Inventory)
+        end
+    end)
+    modalOverlay.Visible = true
+end
+
+shopBtn.MouseButton1Click:Connect(function()
+    if modalOverlay.Visible and currentModule == shopModule then
+        hideModal()
+    else
+        if shopModule then showModule(shopModule, "SHOP") end
+        currentModule = shopModule
+    end
+end)
+
+invBtn.MouseButton1Click:Connect(function()
+    if modalOverlay.Visible and currentModule == invModule then
+        hideModal()
+    else
+        if invModule then showModule(invModule, "INVENTORY") end
+        currentModule = invModule
+    end
+end)
+
 -- Coin row from CoinDisplay module (auto-wires to server remotes)
-local coinRow, coinApi
+local coinRow
 if CoinDisplayModule and CoinDisplayModule.Create then
     coinRow, coinApi = CoinDisplayModule.Create(panel, 2)
     print("[SideUI] CoinDisplay module initialized; coinApi =", tostring(coinApi))
 end
+
+-- Also listen for server coin updates to keep header in sync
+pcall(function()
+    local coinsEvent = ReplicatedStorage:FindFirstChild("CoinsUpdated")
+    if coinsEvent and coinsEvent:IsA("RemoteEvent") then
+        coinsEvent.OnClientEvent:Connect(function(amount)
+            headerCoinLabel.Text = tostring(math.floor(tonumber(amount) or 0))
+        end)
+    end
+end)
 
 local menuGridContainer = CreateMenuGrid(panel)
 

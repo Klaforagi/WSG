@@ -201,10 +201,16 @@ function CoinDisplay.Create(parent, layoutOrder)
 
     -- API
     local api = {}
+    local currentCoins = 0
 
     function api.SetCoins(amount)
         amount = math.max(0, tonumber(amount) or 0)
-        valueLabel.Text = tostring(math.floor(amount))
+        currentCoins = math.floor(amount)
+        valueLabel.Text = tostring(currentCoins)
+    end
+
+    function api.GetCoins()
+        return currentCoins
     end
 
     -- Wire to server CurrencyService remotes
