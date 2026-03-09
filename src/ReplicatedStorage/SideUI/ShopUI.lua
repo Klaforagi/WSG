@@ -302,6 +302,19 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     root.ZIndex = 240
     root.Parent = parent
 
+    -- stack sections vertically with spacing
+    local rootLayout = Instance.new("UIListLayout")
+    rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rootLayout.Padding = UDim.new(0, px(12))
+    rootLayout.Parent = root
+
+    local rootPad = Instance.new("UIPadding")
+    rootPad.PaddingTop = UDim.new(0, px(8))
+    rootPad.PaddingBottom = UDim.new(0, px(12))
+    rootPad.PaddingLeft = UDim.new(0, px(6))
+    rootPad.PaddingRight = UDim.new(0, px(6))
+    rootPad.Parent = root
+
     -- Ensure we have AssetCodes cached (safe)
     AssetCodes = AssetCodes or safeRequireAssetCodes()
 
@@ -311,11 +324,20 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     local specialSection, specialGrid = makeSection(root, "Special", "Special Weapons")
     local coinsSection, coinsGrid = makeSection(root, "Coins", "Coins")
 
+    -- explicit stacking order for sections
+    rangedSection.LayoutOrder = 1
+    meleeSection.LayoutOrder = 2
+    specialSection.LayoutOrder = 3
+    coinsSection.LayoutOrder = 4
+
     -- Populate ranged weapons section (Slingshot first since player starts with it)
     makeItem(rangedGrid, "Slingshot", "Slingshot", 0, "Slingshot", coinApi, inventoryApi)
     makeItem(rangedGrid, "Shortbow", "Shortbow", 20, "Shortbow", coinApi, inventoryApi)
     makeItem(rangedGrid, "Longbow", "Longbow", 30, "Longbow", coinApi, inventoryApi)
     makeItem(rangedGrid, "Xbow", "Xbow", 40, "Xbow", coinApi, inventoryApi)
+
+    -- Melee items
+    makeItem(meleeGrid, "Sword", "Sword", 10, "Sword", coinApi, inventoryApi)
 
     -- Melee/Special/Coin sections can be populated similarly by calling makeItem on those grids
 
