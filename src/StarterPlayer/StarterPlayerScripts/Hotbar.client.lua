@@ -299,7 +299,7 @@ local function getToolIcon(tool)
     -- 1) Check for an explicit Icon attribute
     local attr = tool:GetAttribute("Icon")
     if type(attr) == "string" and #attr > 0 then return attr end
-    -- 2) Check AssetCodes by tool name (e.g. "Bow" -> Bow icon)
+    -- 2) Check AssetCodes by tool name (e.g. "Shortbow" -> Shortbow icon)
     if AssetCodes and type(AssetCodes.Get) == "function" then
         local acIcon = AssetCodes.Get(tool.Name)
         if type(acIcon) == "string" and #acIcon > 0 then return acIcon end

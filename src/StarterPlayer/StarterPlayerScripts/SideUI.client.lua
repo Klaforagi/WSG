@@ -102,6 +102,8 @@ local MENU_DEFS = {
 -- Internal state tables to expose
 local buttonsById = {}
 local badgesById = {}
+-- Local handlers table (defined early so click handlers can safely reference it)
+local scriptHandlers = {}
 
 -- Helper tween
 local function tweenInstance(inst, props, info)
@@ -292,8 +294,10 @@ local function CreateShopAndInventoryRow(parent)
             tweenInstance(shopBtn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
             if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
         end)
-        if script and script.OnShop and type(script.OnShop) == "function" then
-            pcall(script.OnShop)
+        if _G and _G.SideUI and type(_G.SideUI.OnShop) == "function" then
+            pcall(_G.SideUI.OnShop)
+        elseif type(scriptHandlers.OnShop) == "function" then
+            pcall(scriptHandlers.OnShop)
         else
             print("Shop")
         end
@@ -312,8 +316,10 @@ local function CreateShopAndInventoryRow(parent)
             tweenInstance(invBtn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
             if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
         end)
-        if script and script.OnInventory and type(script.OnInventory) == "function" then
-            pcall(script.OnInventory)
+        if _G and _G.SideUI and type(_G.SideUI.OnInventory) == "function" then
+            pcall(_G.SideUI.OnInventory)
+        elseif type(scriptHandlers.OnInventory) == "function" then
+            pcall(scriptHandlers.OnInventory)
         else
             print("Inventory")
         end
@@ -493,8 +499,10 @@ local function CreateMenuButton(def)
             tweenInstance(btn, {BackgroundTransparency = 0.08}, TweenInfo.new(0.12))
             if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
         end)
-        if script and script.OnMenuButton and type(script.OnMenuButton) == "function" then
-            pcall(script.OnMenuButton, def.id)
+        if _G and _G.SideUI and type(_G.SideUI.OnMenuButton) == "function" then
+            pcall(_G.SideUI.OnMenuButton, def.id)
+        elseif type(scriptHandlers.OnMenuButton) == "function" then
+            pcall(scriptHandlers.OnMenuButton, def.id)
         else
             print("Menu button clicked:", def.id)
         end
@@ -791,6 +799,8 @@ local coinRow
 if CoinDisplayModule and CoinDisplayModule.Create then
     coinRow, coinApi = CoinDisplayModule.Create(panel, 2)
     print("[SideUI] CoinDisplay module initialized; coinApi =", tostring(coinApi))
+    -- Refresh header immediately once the coin API is available so joins show correct value
+    pcall(function() updateHeaderCoins() end)
 end
 
 -- Also listen for server coin updates to keep header in sync
@@ -800,6 +810,8 @@ pcall(function()
         coinsEvent.OnClientEvent:Connect(function(amount)
             headerCoinLabel.Text = tostring(math.floor(tonumber(amount) or 0))
         end)
+        -- ensure header reflects latest value after wiring the event
+        pcall(function() updateHeaderCoins() end)
     end
 end)
 
@@ -841,13 +853,15 @@ _G.SideUI.SetBadge = SetBadge
 _G.SideUI.OpenPage = OpenPage
 
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
-script.OnShop = function()
+-- Use a local handlers table instead of assigning arbitrary fields on the Script Instance
+local scriptHandlers = {}
+scriptHandlers.OnShop = function()
     print("Shop")
 end
-script.OnInventory = function()
+scriptHandlers.OnInventory = function()
     print("Inventory")
 end
-script.OnMenuButton = function(id)
+scriptHandlers.OnMenuButton = function(id)
     OpenPage(id)
 end
 
@@ -859,8 +873,8 @@ for id,_ in pairs(badgesById) do SetBadge(id, false) end
 
 
 -- OPTIONAL: small convenience to return refs (not required, but handy during dev)
-script.buttonsById = buttonsById
-script.badgesById = badgesById
+pcall(function() script.buttonsById = buttonsById end)
+pcall(function() script.badgesById = badgesById end)
 
 -- finished building UI
 return nil

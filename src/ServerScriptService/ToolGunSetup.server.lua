@@ -322,7 +322,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local visual = nil
     local usingModel = false
     if ToolgunModule and ToolgunModule.getProjectileForPreset then
-        -- derive preset key from toolName (accepts both "ToolBow" and "Bow")
+        -- derive preset key from toolName (accepts both "ToolShortbow" and "Shortbow")
         local presetKey = nil
         if toolName then
             local s = tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$")
@@ -396,7 +396,18 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local velocity = initialVelocity
     local startTime = tick()
     local conn
-    local lastCFrame = CFrame.new(origin, origin + initialVelocity.Unit)
+    -- allow presets to request a visual flip for models whose forward faces backwards
+    local visualFlip = (projCfg and projCfg.visual_flip) and true or false
+    local lastCFrame
+    if visualFlip then
+        lastCFrame = CFrame.new(origin, origin - initialVelocity.Unit)
+    else
+        lastCFrame = CFrame.new(origin, origin + initialVelocity.Unit)
+    end
+    -- orient model immediately if it's a Model primary part exists
+    if usingModel and visual and visual.PrimaryPart then
+        pcall(function() visual:SetPrimaryPartCFrame(lastCFrame) end)
+    end
     conn = RunService.Heartbeat:Connect(function(dt)
         if not visual.Parent then
             conn:Disconnect()

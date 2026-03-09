@@ -76,8 +76,12 @@ local function playFireSound(toolName)
             template = toolgunFolder:FindFirstChild("Sniper_shoot") or toolgunFolder:FindFirstChild("Sniper_Shoot")
         elseif lower:find("pistol") then
             template = toolgunFolder:FindFirstChild("Pistol_shoot") or toolgunFolder:FindFirstChild("Pistol_Shoot")
-        elseif lower:find("bow") then
-            template = toolgunFolder:FindFirstChild("Bow_shoot") or toolgunFolder:FindFirstChild("Bow_Shoot")
+        elseif lower:find("shortbow") or lower:find("bow") then
+            -- prefer Shortbow detection but fall back to legacy 'Bow' asset names
+            template = toolgunFolder:FindFirstChild("Shortbow_shoot") or toolgunFolder:FindFirstChild("Shortbow_Shoot")
+            if not template then
+                template = toolgunFolder:FindFirstChild("Bow_shoot") or toolgunFolder:FindFirstChild("Bow_Shoot")
+            end
         end
     end
 

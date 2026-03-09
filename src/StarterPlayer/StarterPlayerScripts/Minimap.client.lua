@@ -283,7 +283,8 @@ end
 ---------------------------------------------------------------------------
 -- Render loop
 ---------------------------------------------------------------------------
-RunService.RenderStepped:Connect(function()
+local minimapRenderConn
+minimapRenderConn = RunService.RenderStepped:Connect(function()
     -- keep minimap size responsive to viewport/aspect
     pcall(updateMinimapSize)
     -- update players
@@ -307,6 +308,16 @@ RunService.RenderStepped:Connect(function()
             ui.Visible = true
         else
             ui.Visible = false
+        end
+    end
+end)
+
+-- Disconnect the render loop if the GUI is removed from the player (cleanup)
+screen.AncestryChanged:Connect(function()
+    if not screen:IsDescendantOf(game) then
+        if minimapRenderConn then
+            minimapRenderConn:Disconnect()
+            minimapRenderConn = nil
         end
     end
 end)

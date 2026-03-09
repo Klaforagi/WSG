@@ -66,10 +66,37 @@ local function getTemplate(folder, toolName)
     end
     local template = categoryFolder:FindFirstChild(toolName)
     if not template then
+        -- Legacy name fallback: map renamed tools (e.g. Shortbow -> Bow)
+        local legacyMap = {
+            Shortbow = "Bow",
+        }
+        local tryName = legacyMap[toolName]
+        if tryName then
+            template = categoryFolder:FindFirstChild(tryName)
+            if template then
+                warn("[Loadout] Using legacy template name for", toolName, "->", tryName)
+                return template
+            end
+        end
         warn("[Loadout] Missing tool ServerStorage.Tools." .. folder .. "." .. toolName)
         return nil
     end
     return template
+end
+
+-- Ensure a tool's physical parts won't collide when equipped/backpacked.
+local function sanitizeTool(tool)
+    if not tool then return end
+    for _, d in ipairs(tool:GetDescendants()) do
+        if d and d:IsA("BasePart") then
+            pcall(function()
+                d.CanCollide = false
+            end)
+            pcall(function() d.CanTouch = false end)
+            pcall(function() d.CanQuery = false end)
+            pcall(function() d.Massless = true end)
+        end
+    end
 end
 
 --- Clone a tool into both StarterGear (respawn persistence) and Backpack.
@@ -86,6 +113,7 @@ local function grantTool(player, folder, toolName)
     if sg and not sg:FindFirstChild(toolName) then
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
+        sanitizeTool(clone)
         clone.Parent = sg
     end
 
@@ -95,6 +123,7 @@ local function grantTool(player, folder, toolName)
     if not inBP and not inChar and bp then
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
+        sanitizeTool(clone)
         clone.Parent = bp
     end
 end

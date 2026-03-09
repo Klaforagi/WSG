@@ -34,7 +34,8 @@ Workspace.DescendantRemoving:Connect(function(desc)
     end
 end)
 
-RunService.RenderStepped:Connect(function()
+local flagCountdownRenderConn
+flagCountdownRenderConn = RunService.RenderStepped:Connect(function()
     local cam = workspace.CurrentCamera
     if not cam then return end
     for gui, label in pairs(tracked) do
@@ -51,6 +52,16 @@ RunService.RenderStepped:Connect(function()
                 label.TextTransparency = alpha
                 label.TextStrokeTransparency = alpha
             end
+        end
+    end
+end)
+
+-- Cleanup: if Workspace is ever removed from the DataModel, stop the render loop
+workspace.AncestryChanged:Connect(function()
+    if not workspace:IsDescendantOf(game) then
+        if flagCountdownRenderConn then
+            flagCountdownRenderConn:Disconnect()
+            flagCountdownRenderConn = nil
         end
     end
 end)

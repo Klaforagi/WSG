@@ -254,7 +254,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     end
 
     ---------------------------------------------------------------------------
-    makeItem("Bow", "Bow", 20, "Bow")
+    makeItem("Shortbow", "Shortbow", 20, "Shortbow")
+    makeItem("Longbow", "Longbow", 30, "Longbow")
+    makeItem("Xbow", "Xbow", 40, "Xbow")
 
     return root
 end

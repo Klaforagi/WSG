@@ -4,7 +4,7 @@
 local AssetCodes = {}
 
 AssetCodes.images = {
-    -- replace these placeholders with real asset IDs later
+    -- UI icons
     Coin = "rbxassetid://6740408107",
     BlueFlag = "rbxassetid://397459040",
     RedFlag = "rbxassetid://2017769589",
@@ -16,8 +16,13 @@ AssetCodes.images = {
     Boosts = "rbxassetid://138146402871393",
     Trolls = "rbxassetid://4911139003",
     Team = "rbxassetid://12345678",
-    Bow = "rbxassetid://13303448470",
+
+    --WEAPON icons
     Slingshot = "rbxassetid://5830603041",
+    Shortbow = "rbxassetid://15950019592",
+    Longbow = "rbxassetid://13303448470",
+    Xbow = "rbxassetid://87445004842826",
+    
 }
 
 -- Returns the asset string for a named key, or nil
