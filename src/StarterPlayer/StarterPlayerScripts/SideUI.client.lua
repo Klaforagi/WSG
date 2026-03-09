@@ -525,6 +525,8 @@ else
     pcall(function() script.Parent = screenGui end)
 end
 pcall(function() screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
+-- Ensure shop ScreenGui renders above other UI (hotbar, HUD). Adjust as needed.
+pcall(function() screenGui.DisplayOrder = 250 end)
 print("[SideUI] screenGui ready; parent =", tostring(screenGui.Parent))
 
 -- Clear existing content in screenGui container area (optional safe-guard: only if it's our MainUICard)
@@ -582,6 +584,7 @@ window.AnchorPoint = Vector2.new(0.5, 0.5)
 window.Position = UDim2.new(0.5, 0, 0.5, 0)
 window.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
 window.Parent = modalOverlay
+window.ZIndex = 260
 local winCorner = Instance.new("UICorner")
 winCorner.CornerRadius = UDim.new(0, px(14))
 winCorner.Parent = window
@@ -606,6 +609,7 @@ headerBar.Size = UDim2.new(1, 0, HEADER_H, 0)
 headerBar.BackgroundTransparency = 1
 headerBar.ZIndex = 10
 headerBar.Parent = window
+headerBar.ZIndex = 270
 
 -- Title pill
 local titlePill = Instance.new("Frame")
@@ -635,6 +639,7 @@ titleLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
 titleLabel.Text = "SHOP"
 titleLabel.ZIndex = 11
 titleLabel.Parent = titlePill
+titleLabel.ZIndex = 275
 
 -- Coin display in header (right side)
 local headerCoinFrame = Instance.new("Frame")
@@ -645,6 +650,7 @@ headerCoinFrame.Position = UDim2.new(0.92, 0, 0.5, 0)
 headerCoinFrame.BackgroundTransparency = 1
 headerCoinFrame.ZIndex = 10
 headerCoinFrame.Parent = headerBar
+headerCoinFrame.ZIndex = 275
 
 local headerCoinLabel = Instance.new("TextLabel")
 headerCoinLabel.Name = "CoinLabel"
@@ -691,7 +697,7 @@ closeBtn.Position = UDim2.new(1, 0, 0, 0)
 closeBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
 closeBtn.TextColor3 = Color3.new(1, 1, 1)
 closeBtn.BorderSizePixel = 0
-closeBtn.ZIndex = 50
+closeBtn.ZIndex = 300
 closeBtn.Parent = window
 local closeBtnCorner = Instance.new("UICorner")
 closeBtnCorner.CornerRadius = UDim.new(0, px(6))
