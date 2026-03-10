@@ -541,7 +541,7 @@ print("[SideUI] panel created; shopBtn =", tostring(shopBtn), "invBtn =", tostri
 local Inventory = {}
 do
     local items = {}
-    local equipped = nil -- track currently equipped item id
+    local equipped = { Melee = nil, Ranged = nil, Special = nil }
     function Inventory:AddItem(id)
         if not id then return end
         for _, v in ipairs(items) do if v == id then return end end
@@ -554,17 +554,25 @@ do
     function Inventory:GetItems()
         return table.clone(items)
     end
-    function Inventory:SetEquipped(id)
-        equipped = id
+    function Inventory:SetEquipped(category, id)
+        if type(category) ~= "string" then return end
+        local k = tostring(category):gsub("%s+", "")
+        if not equipped[k] then equipped[k] = nil end
+        equipped[k] = id
     end
-    function Inventory:GetEquipped()
-        return equipped
+    function Inventory:GetEquipped(category)
+        if type(category) ~= "string" then return nil end
+        local k = tostring(category):gsub("%s+", "")
+        return equipped[k]
     end
 end
 
 -- preload Slingshot into the client inventory so player has ranged start
 pcall(function() Inventory:AddItem("Slingshot") end)
-pcall(function() Inventory:SetEquipped("Slingshot") end)
+pcall(function() Inventory:SetEquipped("Ranged", "Slingshot") end)
+-- preload Sword so player shows it as owned at start
+pcall(function() Inventory:AddItem("Sword") end)
+pcall(function() Inventory:SetEquipped("Melee", "Sword") end)
 
 -- Create centered modal window (hidden by default)
 local modalOverlay = Instance.new("Frame")

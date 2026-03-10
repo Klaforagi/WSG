@@ -324,9 +324,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     local specialSection, specialGrid = makeSection(root, "Special", "Special Weapons")
     local coinsSection, coinsGrid = makeSection(root, "Coins", "Coins")
 
-    -- explicit stacking order for sections
-    rangedSection.LayoutOrder = 1
-    meleeSection.LayoutOrder = 2
+    -- explicit stacking order for sections (Melee first, Ranged second)
+    meleeSection.LayoutOrder = 1
+    rangedSection.LayoutOrder = 2
     specialSection.LayoutOrder = 3
     coinsSection.LayoutOrder = 4
 

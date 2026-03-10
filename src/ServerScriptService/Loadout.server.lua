@@ -45,6 +45,7 @@ local requestSpecialUnlock = getOrCreateRemote("RequestSpecialUnlock")
 local specialUnlockGranted = getOrCreateRemote("SpecialUnlockGranted")
 local forceEquipRemote = getOrCreateRemote("ForceEquipTool")
 local setRangedRemote = getOrCreateRemote("SetRangedTool")
+local setMeleeRemote = getOrCreateRemote("SetMeleeTool")
 
 --------------------------------------------------------------------------------
 -- STATE
@@ -52,6 +53,7 @@ local setRangedRemote = getOrCreateRemote("SetRangedTool")
 local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
+local chosenMelee = {}   -- [player] = toolName override for melee
 
 --------------------------------------------------------------------------------
 -- HELPERS
@@ -239,6 +241,54 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName)
     end
 end)
 
+-- Replace the player's Melee slot tool (StarterGear + Backpack) without equipping.
+setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
+    -- remove existing Melee tools from StarterGear and Backpack
+    local sg = player:FindFirstChild("StarterGear")
+    local bp = player:FindFirstChildOfClass("Backpack")
+    if sg then
+        for i = #sg:GetChildren(), 1, -1 do
+            local child = sg:GetChildren()[i]
+            if child and child:IsA("Tool") then
+                local attr = child:GetAttribute("HotbarCategory")
+                if type(attr) == "string" and string.lower(attr) == "melee" then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+    end
+    if bp then
+        for i = #bp:GetChildren(), 1, -1 do
+            local child = bp:GetChildren()[i]
+            if child and child:IsA("Tool") then
+                local attr = child:GetAttribute("HotbarCategory")
+                if type(attr) == "string" and string.lower(attr) == "melee" then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+    end
+    -- remove melee tools currently equipped on the character as well
+    if player.Character then
+        for i = #player.Character:GetChildren(), 1, -1 do
+            local child = player.Character:GetChildren()[i]
+            if child and child:IsA("Tool") then
+                local attr = child:GetAttribute("HotbarCategory")
+                if type(attr) == "string" and string.lower(attr) == "melee" then
+                    pcall(function() child:Destroy() end)
+                end
+            end
+        end
+    end
+
+    -- grant the requested melee tool into StarterGear/Backpack (sets HotbarCategory)
+    if type(toolName) == "string" and #toolName > 0 then
+        chosenMelee[player] = toolName
+        grantTool(player, "Melee", toolName)
+        ensureBackpackFromStarterGear(player)
+    end
+end)
+
 local function giveLoadout(player)
     for _, entry in ipairs(DEFAULT_LOADOUT) do
         local folder = entry.folder
@@ -246,6 +296,10 @@ local function giveLoadout(player)
         -- honour the player's chosen ranged weapon if they swapped it
         if string.lower(folder) == "ranged" and chosenRanged[player] then
             toolName = chosenRanged[player]
+        end
+        -- honour player's chosen melee weapon if they swapped it
+        if string.lower(folder) == "melee" and chosenMelee[player] then
+            toolName = chosenMelee[player]
         end
         grantTool(player, folder, toolName)
     end
@@ -303,6 +357,7 @@ local function onPlayerRemoving(player)
     unlockState[player]    = nil
     promptDebounce[player] = nil
     chosenRanged[player]   = nil
+    chosenMelee[player]    = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

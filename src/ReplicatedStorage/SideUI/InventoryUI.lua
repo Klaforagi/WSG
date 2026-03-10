@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- InventoryUI.lua  –  Reference-style inventory grid (icon left · name · EQUIP)
+-- InventoryUI.lua  –  Sectioned inventory (Melee · Ranged · Special)
 --------------------------------------------------------------------------------
 local Players = game:GetService("Players")
 
@@ -34,7 +34,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     root.AutomaticSize = Enum.AutomaticSize.Y
     root.Parent = parent
 
-    -- ensure root has vertical stacking and padding so content doesn't overlap header
     local rootLayout = Instance.new("UIListLayout")
     rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
     rootLayout.Padding = UDim.new(0, px(6))
@@ -48,55 +47,103 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     rootPad.Parent = root
 
     local items = inventoryApi and inventoryApi:GetItems() or {}
-    if #items == 0 then
-        local lbl = Instance.new("TextLabel")
-        lbl.Text = "No items owned"
-        lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = px(22)
-        lbl.BackgroundTransparency = 1
-        lbl.TextColor3 = Color3.fromRGB(180, 180, 200)
-        lbl.Size = UDim2.new(1, 0, 0, px(50))
-        lbl.Parent = root
-        return root
-    end
 
-    -- 3-column grid (same sizing as ShopUI)
-    local grid = Instance.new("Frame")
-    grid.Name = "Grid"
-    grid.Size = UDim2.new(1, 0, 0, 0)
-    grid.AutomaticSize = Enum.AutomaticSize.Y
-    grid.BackgroundTransparency = 1
-    grid.Parent = root
-
-    local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.28, 0, 0, px(140))
-    gridLayout.CellPadding = UDim2.new(0.02, 0, 0, px(10))
-    gridLayout.FillDirection = Enum.FillDirection.Horizontal
-    gridLayout.FillDirectionMaxCells = 3
-    gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    gridLayout.Parent = grid
-
-    grid.LayoutOrder = 2
-
+    -- Assets & presets for classification
     local AssetCodes = nil
     pcall(function()
         local ac = game:GetService("ReplicatedStorage"):FindFirstChild("AssetCodes")
         if ac and ac:IsA("ModuleScript") then AssetCodes = require(ac) end
     end)
 
+    local meleePresets = nil
+    pcall(function()
+        local mm = game:GetService("ReplicatedStorage"):FindFirstChild("ToolMeleeSettings")
+        if mm and mm:IsA("ModuleScript") then
+            local ok, mod = pcall(function() return require(mm) end)
+            if ok and type(mod) == "table" then meleePresets = mod.presets end
+        end
+    end)
+    local rangedPresets = nil
+    pcall(function()
+        local rm = game:GetService("ReplicatedStorage"):FindFirstChild("Toolgunsettings")
+        if rm and rm:IsA("ModuleScript") then
+            local ok, mod = pcall(function() return require(rm) end)
+            if ok and type(mod) == "table" and mod.presets then rangedPresets = mod.presets end
+        end
+    end)
+
+    local function classifyItem(name)
+        if not name then return "Ranged" end
+        local key = tostring(name):lower()
+        if meleePresets and meleePresets[key] then return "Melee" end
+        if rangedPresets and rangedPresets[key] then return "Ranged" end
+        return "Ranged"
+    end
+
+    -- Helper: create a section with header + grid
+    local function makeSection(parent, id, label)
+        local section = Instance.new("Frame")
+        section.Name = id .. "_Section"
+        section.BackgroundTransparency = 1
+        section.Size = UDim2.new(1, 0, 0, 0)
+        section.AutomaticSize = Enum.AutomaticSize.Y
+        section.Parent = parent
+
+        local header = Instance.new("TextLabel")
+        header.Name = "SectionHeader"
+        header.BackgroundTransparency = 1
+        header.Font = Enum.Font.GothamBold
+        header.Text = label
+        header.TextColor3 = GOLD
+        header.TextSize = math.max(16, math.floor(px(16)))
+        header.TextXAlignment = Enum.TextXAlignment.Left
+        header.Size = UDim2.new(1, 0, 0, px(24))
+        header.Parent = section
+
+        local grid = Instance.new("Frame")
+        grid.Name = id .. "_Grid"
+        grid.BackgroundTransparency = 1
+        grid.Size = UDim2.new(1, 0, 0, 0)
+        grid.AutomaticSize = Enum.AutomaticSize.Y
+        grid.Parent = section
+
+        local gridLayout = Instance.new("UIGridLayout")
+        gridLayout.CellSize = UDim2.new(0.28, 0, 0, px(140))
+        gridLayout.CellPadding = UDim2.new(0.02, 0, 0, px(10))
+        gridLayout.FillDirection = Enum.FillDirection.Horizontal
+        gridLayout.FillDirectionMaxCells = 3
+        gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        gridLayout.Parent = grid
+
+        return section, grid
+    end
+
+    -- Create sections stacked vertically
+    local meleeSection, meleeGrid = makeSection(root, "Melee", "Melee Weapons")
+    local rangedSection, rangedGrid = makeSection(root, "Ranged", "Ranged Weapons")
+    local specialSection, specialGrid = makeSection(root, "Special", "Special Weapons")
+    meleeSection.LayoutOrder = 1
+    rangedSection.LayoutOrder = 2
+    specialSection.LayoutOrder = 3
+
     local GREEN_BTN = Color3.fromRGB(30, 130, 60)
     local GREEN_BTN_STR = Color3.fromRGB(60, 200, 90)
-    -- Restore equipped state from inventory API if available
-    local equippedId = nil
+    -- Restore equipped state from inventory API if available (per-category)
+    local equippedState = { Melee = nil, Ranged = nil, Special = nil }
     if inventoryApi and inventoryApi.GetEquipped then
-        pcall(function() equippedId = inventoryApi:GetEquipped() end)
+        pcall(function()
+            equippedState.Melee = inventoryApi:GetEquipped("Melee")
+            equippedState.Ranged = inventoryApi:GetEquipped("Ranged")
+            equippedState.Special = inventoryApi:GetEquipped("Special")
+        end)
     end
-    local allEquipBtns = {} -- id -> {btn, stroke}
+    local allEquipBtns = {} -- id -> {btn, stroke, category}
 
     local function refreshAllEquipButtons()
         for itemId, info in pairs(allEquipBtns) do
-            if itemId == equippedId then
+            local cat = info.category or classifyItem(itemId)
+            if equippedState[cat] == itemId then
                 info.btn.Text = "EQUIPPED"
                 info.btn.BackgroundColor3 = GREEN_BTN
                 info.btn.TextColor3 = Color3.fromRGB(200, 255, 200)
@@ -110,11 +157,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
     end
 
-    for _, id in ipairs(items) do
+    -- Helper to create item card inside a specific grid
+    local function createCard(gridParent, id)
         local card = Instance.new("Frame")
         card.Name = "ItemCard_" .. tostring(id)
         card.BackgroundColor3 = CARD_BG
-        card.Parent = grid
+        card.Parent = gridParent
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, px(10))
         corner.Parent = card
@@ -130,11 +178,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         cardPad.PaddingRight = UDim.new(0, px(6))
         cardPad.Parent = card
 
-        -- LEFT half: weapon image
         local leftBox = Instance.new("Frame")
         leftBox.Name = "LeftBox"
         leftBox.Size = UDim2.new(0.48, 0, 1, 0)
-        leftBox.Position = UDim2.new(0, 0, 0, 0)
         leftBox.BackgroundColor3 = ICON_BG
         leftBox.Parent = card
         local lCorner = Instance.new("UICorner")
@@ -156,7 +202,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        -- RIGHT half: name + equip button
         local rightBox = Instance.new("Frame")
         rightBox.Name = "RightBox"
         rightBox.Size = UDim2.new(0.48, 0, 1, 0)
@@ -176,7 +221,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameLabel.Text = tostring(id)
         nameLabel.Parent = rightBox
 
-        -- EQUIP button
         local equipBtn = Instance.new("TextButton")
         equipBtn.Name = "EquipBtn"
         equipBtn.Size = UDim2.new(0.80, 0, 0.30, 0)
@@ -198,25 +242,67 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         btnStroke.Transparency = 0.3
         btnStroke.Parent = equipBtn
 
-        allEquipBtns[id] = { btn = equipBtn, stroke = btnStroke }
+        local cat = classifyItem(id)
+        allEquipBtns[id] = { btn = equipBtn, stroke = btnStroke, category = cat }
 
         equipBtn.MouseButton1Click:Connect(function()
-            local setRanged = game:GetService("ReplicatedStorage"):FindFirstChild("SetRangedTool")
-            if setRanged and setRanged:IsA("RemoteEvent") then
-                pcall(function() setRanged:FireServer(tostring(id)) end)
+            local rs = game:GetService("ReplicatedStorage")
+            local toolName = tostring(id)
+            local category = classifyItem(toolName)
+            if category == "Ranged" then
+                local setRanged = rs:FindFirstChild("SetRangedTool")
+                if setRanged and setRanged:IsA("RemoteEvent") then
+                    pcall(function() setRanged:FireServer(toolName) end)
+                else
+                    local fe = rs:FindFirstChild("ForceEquipTool")
+                    if fe and fe:IsA("RemoteEvent") then
+                        pcall(function() fe:FireServer("Ranged", toolName) end)
+                    end
+                end
             else
-                local fe = game:GetService("ReplicatedStorage"):FindFirstChild("ForceEquipTool")
-                if fe and fe:IsA("RemoteEvent") then
-                    pcall(function() fe:FireServer("Ranged", tostring(id)) end)
+                local setMelee = rs:FindFirstChild("SetMeleeTool")
+                if setMelee and setMelee:IsA("RemoteEvent") then
+                    pcall(function() setMelee:FireServer(toolName) end)
+                else
+                    local fe = rs:FindFirstChild("ForceEquipTool")
+                    if fe and fe:IsA("RemoteEvent") then
+                        pcall(function() fe:FireServer("Melee", toolName) end)
+                    end
                 end
             end
-            equippedId = id
-            -- persist to inventory API so it survives close/reopen
+
+            equippedState[category] = id
             if inventoryApi and inventoryApi.SetEquipped then
-                pcall(function() inventoryApi:SetEquipped(id) end)
+                pcall(function() inventoryApi:SetEquipped(category, id) end)
             end
             refreshAllEquipButtons()
         end)
+
+        return card
+    end
+
+    -- Populate sections with owned items
+    for _, id in ipairs(items) do
+        local cat = classifyItem(id)
+        if cat == "Melee" then
+            createCard(meleeGrid, id)
+        elseif cat == "Ranged" then
+            createCard(rangedGrid, id)
+        else
+            createCard(specialGrid, id)
+        end
+    end
+
+    -- If no items, show friendly message in root
+    if #items == 0 then
+        local lbl = Instance.new("TextLabel")
+        lbl.Text = "No items owned"
+        lbl.Font = Enum.Font.GothamBold
+        lbl.TextSize = px(22)
+        lbl.BackgroundTransparency = 1
+        lbl.TextColor3 = Color3.fromRGB(180, 180, 200)
+        lbl.Size = UDim2.new(1, 0, 0, px(50))
+        lbl.Parent = root
     end
 
     -- Apply initial equipped state visually
