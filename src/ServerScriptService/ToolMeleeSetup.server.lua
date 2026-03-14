@@ -235,7 +235,10 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
             params.FilterType = Enum.RaycastFilterType.Exclude
             params.IgnoreWater = true
             local ray = Workspace:Raycast(origin, (root.Position - origin), params)
-            if ray and ray.Instance then
+            if ray == nil then
+                -- No collider was hit along the ray: assume clear line-of-sight
+                table.insert(results, { humanoid = hum, model = model, hitPart = root, hitPos = root.Position, dist = dist })
+            elseif ray.Instance then
                 -- did we hit something belonging to the target model?
                 if ray.Instance:IsDescendantOf(model) or ray.Instance == root then
                     table.insert(results, {
@@ -290,7 +293,12 @@ local function getTargetsInBox(playerChar, boxCFrame, halfSize)
                 seenHum[hum] = true
             else
                 local ray = Workspace:Raycast(boxCFrame.Position, dir, params)
-                if ray and ray.Instance and (ray.Instance:IsDescendantOf(model) or ray.Instance == part) then
+                if ray == nil then
+                    -- No collider hit: assume clear line-of-sight
+                    local dist = (part.Position - boxCFrame.Position).Magnitude
+                    table.insert(results, { humanoid = hum, model = model, hitPart = part, hitPos = part.Position, dist = dist })
+                    seenHum[hum] = true
+                elseif ray.Instance and (ray.Instance:IsDescendantOf(model) or ray.Instance == part) then
                     local dist = (part.Position - boxCFrame.Position).Magnitude
                     table.insert(results, { humanoid = hum, model = model, hitPart = ray.Instance, hitPos = ray.Position, dist = dist })
                     seenHum[hum] = true

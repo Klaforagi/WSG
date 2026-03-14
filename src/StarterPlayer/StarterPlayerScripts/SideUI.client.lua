@@ -850,6 +850,7 @@ local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI", 10)
 local shopModule = sideUIFolder and sideUIFolder:WaitForChild("ShopUI", 5)
 local invModule = sideUIFolder and sideUIFolder:WaitForChild("InventoryUI", 5)
 local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
+local questsModule = sideUIFolder and sideUIFolder:WaitForChild("DailyQuestsUI", 5)
 if not sideUIFolder then
     warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
 end
@@ -979,6 +980,10 @@ end
 local function OpenPage(id)
     if id == "Options" then
         requestShowModule(optionsModule, "OPTIONS")
+        return
+    end
+    if id == "Missions" then
+        requestShowModule(questsModule, "DAILY QUESTS")
         return
     end
     print("OpenPage:", id)

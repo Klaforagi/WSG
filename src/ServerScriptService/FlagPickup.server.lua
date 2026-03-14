@@ -296,6 +296,9 @@ function setupFlagModel(model)
                 if XPModule and XPModule.AwardXP then
                     pcall(function() XPModule.AwardXP(pl, "FlagReturn") end)
                 end
+
+                -- Fire server-side event so quest system can track the return
+                pcall(function() FlagReturned:Fire(pl) end)
             end
             return
         end
@@ -529,6 +532,12 @@ local XPModule
 pcall(function()
     XPModule = require(game:GetService("ServerScriptService"):WaitForChild("XPServiceModule", 10))
 end)
+
+-- BindableEvent: fired when a player returns their team's dropped flag.
+-- Other server scripts (e.g. QuestServiceInit) listen to this for quest progress.
+local FlagReturned = Instance.new("BindableEvent")
+FlagReturned.Name = "FlagReturned"
+FlagReturned.Parent = game:GetService("ServerScriptService")
 
 -- helper: award points to a team
 local function awardPoints(teamName, points)
