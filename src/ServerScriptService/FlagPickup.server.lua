@@ -203,6 +203,54 @@ function setupFlagModel(model)
     flags[team] = flags[team] or {}
     flags[team].model = model
     flags[team].pickupPart = pickupPart
+    -- attach a team-colored particle trail to the flag's Plane part (follows the model)
+    do
+        local plane = model:FindFirstChild("Plane", true)
+        if plane and plane:IsA("BasePart") then
+            -- choose team color (match Minimap / UI colors)
+            local teamColor = Color3.new(1,1,1)
+            if team == "Blue" then
+                teamColor = Color3.fromRGB(100,160,255)
+            elseif team == "Red" then
+                teamColor = Color3.fromRGB(220,80,80)
+            end
+            if not plane:FindFirstChild("FlagTrail") then
+                -- create two attachments and a Trail to produce a continuous ribbon that fades
+                local att0 = Instance.new("Attachment")
+                att0.Name = "FlagTrail_Att0"
+                
+                att0.Position = Vector3.new(-1.4, -0.5, 0.1)
+                att0.Parent = plane
+
+                local att1 = Instance.new("Attachment")
+                att1.Name = "FlagTrail_Att1"
+                
+                att1.Position = Vector3.new(-1.4, 0.5, 0.1)
+                att1.Parent = plane
+
+                local trail = Instance.new("Trail")
+                trail.Name = "FlagTrail"
+                trail.Attachment0 = att0
+                trail.Attachment1 = att1
+                trail.Enabled = true
+                -- longer lasting trail
+                trail.Lifetime = 2
+                trail.FaceCamera = false
+                trail.LightInfluence = 0.4
+                trail.MinLength = 0
+                -- color and transparency: fade to transparent over the lifetime
+                trail.Color = ColorSequence.new(teamColor)
+                trail.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0),
+                    NumberSequenceKeypoint.new(0.6, 0.25),
+                    NumberSequenceKeypoint.new(1, 1),
+                })
+                -- slightly thicker and tapered
+                trail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.6), NumberSequenceKeypoint.new(1, 0.2)})
+                trail.Parent = plane
+            end
+        end
+    end
     -- store original in ServerStorage for cloning on respawn
     if not flags[team].original then
         flags[team].original = model:Clone()
