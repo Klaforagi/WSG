@@ -4,13 +4,7 @@
 local Players = game:GetService("Players")
 
 -- FallingDown is often reached via Physics/Ragdoll first during torque events.
-local BLOCKED_STATES = {
-	[Enum.HumanoidStateType.FallingDown] = true,
-	[Enum.HumanoidStateType.Physics] = true,
-	[Enum.HumanoidStateType.Ragdoll] = true,
-}
-
-local ENABLE_UPRIGHT_STABILIZER = true
+-- NOTE: Upright stabilizer and blocked-state enforcement removed per request.
 
 local function setNoCollide(part: BasePart)
 	part.CanCollide = false
@@ -37,76 +31,15 @@ local function applyHeadAndAccessoryNoCollide(char: Model)
 	char.ChildAdded:Connect(handleAccessory)
 end
 
-local function lockHumanoidStates(hum: Humanoid)
-	for stateType in pairs(BLOCKED_STATES) do
-		hum:SetStateEnabled(stateType, false)
-	end
-
-	hum.StateChanged:Connect(function(_, newState)
-		if BLOCKED_STATES[newState] then
-			hum.PlatformStand = false
-			if hum.FloorMaterial == Enum.Material.Air then
-				hum:ChangeState(Enum.HumanoidStateType.Freefall)
-			else
-				hum:ChangeState(Enum.HumanoidStateType.Running)
-			end
-		end
-	end)
-end
+-- lockHumanoidStates removed to avoid forcing upright or blocking states
 
 -- Keeps the character upright (resists tipping) but allows free yaw turning.
-local function addUprightStabilizer(char: Model)
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not (hrp and hrp:IsA("BasePart")) then return end
-
-	-- clean duplicates
-	local oldAlign = hrp:FindFirstChild("UprightAlign")
-	if oldAlign then oldAlign:Destroy() end
-	local oldAtt = hrp:FindFirstChild("UprightAttach")
-	if oldAtt then oldAtt:Destroy() end
-
-	local att = Instance.new("Attachment")
-	att.Name = "UprightAttach"
-	att.Parent = hrp
-
-	-- Make the attachment's PRIMARY axis be "up" in HRP local space.
-	-- AlignOrientation will try to align this axis with the target axis in world space.
-	att.Axis = Vector3.new(0, 1, 0)
-
-	local align = Instance.new("AlignOrientation")
-	align.Name = "UprightAlign"
-	align.Attachment0 = att
-	align.Mode = Enum.OrientationAlignmentMode.OneAttachment
-
-	-- This is the key: only align the primary axis (up), allowing yaw freely.
-	align.PrimaryAxisOnly = true
-
-	-- Tuning: higher = more "firm" upright. Too high can feel snappy.
-	align.Responsiveness = 40
-	align.MaxTorque = 250000
-
-	-- Target orientation: we set the TARGET X-axis (RightVector) to world UP.
-	-- Because PrimaryAxisOnly aligns Attachment0.Axis to the target's X-axis.
-	align.CFrame = CFrame.fromMatrix(
-		Vector3.zero,
-		Vector3.new(0, 1, 0),  -- target X axis = world up
-		Vector3.new(0, 0, -1)  -- target Y axis = world -Z (just needs to be orthonormal)
-	)
-
-	align.Parent = hrp
-end
+-- addUprightStabilizer removed to avoid forcing upright alignment
 
 local function applyCharacterSettings(char: Model)
+	-- Keep head/accessory no-collide for safety, but do not force upright or block humanoid states.
 	applyHeadAndAccessoryNoCollide(char)
-
-	local hum = char:FindFirstChildOfClass("Humanoid")
-	if hum then
-		lockHumanoidStates(hum)
-	end
-
-	if ENABLE_UPRIGHT_STABILIZER then
-		addUprightStabilizer(char)
-	end
+	-- Intentionally do not modify humanoid states or add stabilizers here.
 end
 
 local function onPlayerAdded(player: Player)

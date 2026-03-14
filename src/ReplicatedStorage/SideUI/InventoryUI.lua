@@ -6,7 +6,10 @@ local TweenService = game:GetService("TweenService")
 
 local function px(base)
     local cam = workspace.CurrentCamera
-    local screenY = (cam and cam.ViewportSize and cam.ViewportSize.Y) or 1080
+    local screenY = 1080
+    if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
+        screenY = cam.ViewportSize.Y
+    end
     return math.max(1, math.round(base * screenY / 1080))
 end
 

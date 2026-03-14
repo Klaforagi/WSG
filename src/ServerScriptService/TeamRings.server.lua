@@ -64,15 +64,53 @@ local function createRingForCharacter(player, character)
 		end
 	end)
 
+	local humanoidConn
+	local healthConn
+	local childAddedConn
+
 	local function cleanup()
 		if teamConn then
 			teamConn:Disconnect()
 			teamConn = nil
 		end
+		if humanoidConn then
+			humanoidConn:Disconnect()
+			humanoidConn = nil
+		end
+		if healthConn then
+			healthConn:Disconnect()
+			healthConn = nil
+		end
+		if childAddedConn then
+			childAddedConn:Disconnect()
+			childAddedConn = nil
+		end
 		if ring and ring.Parent then
 			ring:Destroy()
 		end
 	end
+
+	local function connectHumanoid(hum)
+		if not hum or humanoidConn then return end
+		humanoidConn = hum.Died:Connect(cleanup)
+		healthConn = hum:GetPropertyChangedSignal("Health"):Connect(function()
+			if hum.Health and hum.Health <= 0 then
+				cleanup()
+			end
+		end)
+	end
+
+	-- connect now if humanoid exists
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		connectHumanoid(humanoid)
+	end
+	-- or listen for it being added later (respawned characters etc.)
+	childAddedConn = character.ChildAdded:Connect(function(child)
+		if child and child:IsA("Humanoid") then
+			connectHumanoid(child)
+		end
+	end)
 
 	character.AncestryChanged:Connect(function(_, parent)
 		if not parent then cleanup() end

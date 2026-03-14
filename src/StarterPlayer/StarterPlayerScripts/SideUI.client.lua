@@ -10,19 +10,49 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 print("[SideUI] initializing for", player and player.Name)
 
+-- In Team Test the camera ViewportSize can be (0,0) until the first frame
+-- renders. Since 0 is truthy in Lua, the old `or 1080` fallback never fired,
+-- causing every px() call to return 1 and making all UI elements invisible.
+-- Wait briefly so all sizing uses the real resolution.
+do
+	local cam = workspace.CurrentCamera
+	if not cam then
+		cam = workspace:WaitForChild("Camera", 5)
+	end
+	if cam then
+		local t = 0
+		while cam.ViewportSize.Y < 2 and t < 3 do
+			t = t + task.wait()
+		end
+	end
+end
+
 -- Scale pixel values proportionally to viewport height (reference: 1080p)
 local function px(base)
 	local cam = workspace.CurrentCamera
-	local screenY = (cam and cam.ViewportSize and cam.ViewportSize.Y) or 1080
+	-- Guard: if ViewportSize.Y is 0, fall back to 1080 so UI is correctly
+	-- proportioned instead of collapsing to 1px (the Team Test root cause).
+	local screenY = 1080
+	if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
+		screenY = cam.ViewportSize.Y
+	end
 	return math.max(1, math.round(base * screenY / 1080))
 end
 
--- Try to load AssetCodes safely (may be absent in some environments)
+-- Load AssetCodes with WaitForChild so it is available in Team Test where
+-- ReplicatedStorage contents may not have replicated when this script starts.
 local AssetCodes = nil
 do
-    local mod = ReplicatedStorage:FindFirstChild("AssetCodes")
+    local mod = ReplicatedStorage:WaitForChild("AssetCodes", 5)
     if mod and mod:IsA("ModuleScript") then
-        pcall(function() AssetCodes = require(mod) end)
+        local ok, result = pcall(require, mod)
+        if ok then
+            AssetCodes = result
+        else
+            warn("[SideUI] AssetCodes failed to load:", tostring(result))
+        end
+    else
+        warn("[SideUI] AssetCodes not found after 5s – button icons may be missing")
     end
 end
 
@@ -328,15 +358,20 @@ local function CreateShopAndInventoryRow(parent)
     return row, shopBtn, invBtn
 end
 
--- CoinDisplay module (ReplicatedStorage): creates coin row + wires server remotes
+-- CoinDisplay module (ReplicatedStorage): creates coin row + wires server remotes.
+-- WaitForChild ensures availability in Team Test (separate server/client processes).
 local CoinDisplayModule = nil
 do
-    local mod = ReplicatedStorage:FindFirstChild("CoinDisplay")
-    if not mod then
-        pcall(function() mod = ReplicatedStorage:WaitForChild("CoinDisplay", 6) end)
-    end
+    local mod = ReplicatedStorage:WaitForChild("CoinDisplay", 10)
     if mod and mod:IsA("ModuleScript") then
-        pcall(function() CoinDisplayModule = require(mod) end)
+        local ok, result = pcall(require, mod)
+        if ok then
+            CoinDisplayModule = result
+        else
+            warn("[SideUI] CoinDisplay failed to load:", tostring(result))
+        end
+    else
+        warn("[SideUI] CoinDisplay not found – coin row will be unavailable")
     end
 end
 
@@ -809,9 +844,15 @@ closeBtn.MouseButton1Click:Connect(function()
     end
 end)
 
-local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI")
-local shopModule = sideUIFolder:FindFirstChild("ShopUI")
-local invModule = sideUIFolder:FindFirstChild("InventoryUI")
+-- WaitForChild for the folder AND its children: in Team Test the folder may
+-- replicate before its child ModuleScripts are available.
+local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI", 10)
+local shopModule = sideUIFolder and sideUIFolder:WaitForChild("ShopUI", 5)
+local invModule = sideUIFolder and sideUIFolder:WaitForChild("InventoryUI", 5)
+local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
+if not sideUIFolder then
+    warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
+end
 
 local function updateHeaderCoins()
     local coins = 0
@@ -887,15 +928,17 @@ if CoinDisplayModule and CoinDisplayModule.Create then
     pcall(function() updateHeaderCoins() end)
 end
 
--- Also listen for server coin updates to keep header in sync
-pcall(function()
-    local coinsEvent = ReplicatedStorage:FindFirstChild("CoinsUpdated")
+-- Listen for server coin updates. Uses task.spawn + WaitForChild so the remote
+-- is found reliably in Team Test without blocking the rest of UI init.
+task.spawn(function()
+    local coinsEvent = ReplicatedStorage:WaitForChild("CoinsUpdated", 10)
     if coinsEvent and coinsEvent:IsA("RemoteEvent") then
         coinsEvent.OnClientEvent:Connect(function(amount)
             headerCoinLabel.Text = tostring(math.floor(tonumber(amount) or 0))
         end)
-        -- ensure header reflects latest value after wiring the event
-        pcall(function() updateHeaderCoins() end)
+        pcall(updateHeaderCoins)
+    else
+        warn("[SideUI] CoinsUpdated remote not found – coin header won't auto-update")
     end
 end)
 
@@ -934,6 +977,10 @@ local function SetBadge(id, enabled)
 end
 
 local function OpenPage(id)
+    if id == "Options" then
+        requestShowModule(optionsModule, "OPTIONS")
+        return
+    end
     print("OpenPage:", id)
     -- placeholder; integrate your page switching here
 end

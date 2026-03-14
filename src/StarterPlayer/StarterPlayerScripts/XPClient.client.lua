@@ -51,7 +51,10 @@ screen.Parent = playerGui
 --------------------------------------------------------------------------------
 -- compute device-aware bar height (smaller on mobile)
 local cam = workspace.CurrentCamera
-local vpY = (cam and cam.ViewportSize and cam.ViewportSize.Y) or 1080
+local vpY = 1080
+if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
+    vpY = cam.ViewportSize.Y
+end
 local barH = UserInputService.TouchEnabled and math.max(8, math.floor(vpY * 0.015)) or BAR_HEIGHT
 
 local container = Instance.new("Frame")

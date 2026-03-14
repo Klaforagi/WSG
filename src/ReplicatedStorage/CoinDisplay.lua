@@ -27,7 +27,12 @@ local COLORS = {
 -- Scale pixel values proportionally to viewport height (reference: 1080p)
 local function px(base)
 	local cam = workspace.CurrentCamera
-	local screenY = (cam and cam.ViewportSize and cam.ViewportSize.Y) or 1080
+	-- Guard: ViewportSize.Y can be 0 during Team Test initial join; since 0 is
+	-- truthy in Lua the old `or 1080` fallback never fired, collapsing all UI.
+	local screenY = 1080
+	if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
+		screenY = cam.ViewportSize.Y
+	end
     return math.max(1, math.round(base * screenY / 1080))
     end
 

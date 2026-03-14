@@ -4,8 +4,10 @@
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+-- Note: RunService was used in an experimental change; not required for minimal network ownership fix.
 
 local function makePartsPhysical(model)
+    -- Restore original behavior: make all BaseParts physical and collidable.
     for _, p in ipairs(model:GetDescendants()) do
         if p:IsA("BasePart") then
             p.CanCollide = true
@@ -40,6 +42,7 @@ local function convertMotorsToConstraints(model)
             bsc.Name = "_rag_bsc_" .. motor.Name
             bsc.Attachment0 = a0
             bsc.Attachment1 = a1
+            -- Revert to original loose joint behavior to match NPC ragdolls.
             bsc.LimitsEnabled = false
             bsc.Parent = model
 
@@ -90,15 +93,34 @@ local function attachAccessories(model)
     end
 end
 
+local function setServerNetworkOwnership(model)
+    -- Ensure the server simulates ragdolls to avoid client-side jitter.
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("BasePart") then
+            pcall(function()
+                d:SetNetworkOwner(nil)
+            end)
+        end
+    end
+end
+
+
 local function ragdollModel(model)
     if not model or not model.Parent then return end
     if model:GetAttribute("_ragdolled") then return end
     model:SetAttribute("_ragdolled", true)
 
+    -- Prepare parts' collision settings to reduce instability (head/torso collide,
+    -- limbs mostly non-collidable). Massless set to false so server simulates.
     makePartsPhysical(model)
     -- first attach accessories so they remain connected
     attachAccessories(model)
+    -- convert motors to constraints (attachments + BallSocketConstraints)
     convertMotorsToConstraints(model)
+
+    -- Force server network ownership so the server simulates the ragdoll instead
+    -- of the client, reducing client-side jitter/drag on player ragdolls.
+    setServerNetworkOwnership(model)
 
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     if humanoid then
@@ -115,6 +137,8 @@ local function ragdollModel(model)
             end
         end
         pcall(function() humanoid.PlatformStand = true end)
+
+        -- Keep original behavior: do not destroy Animator here and do not special-case HRP collision.
     end
 end
 
