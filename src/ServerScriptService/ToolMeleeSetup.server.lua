@@ -389,6 +389,23 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
             a.AnimationId = cfg.swing_anim_id
             animObj = a
         end
+        -- find the right-arm Motor6D so we can restore it after animation/tween
+        local motor = nil
+        do
+            local char = player.Character
+            if char then
+                local torso = char:FindFirstChild("Torso")
+                if torso then motor = torso:FindFirstChild("Right Shoulder") end
+                if not motor then
+                    local rua = char:FindFirstChild("RightUpperArm")
+                    if rua then motor = rua:FindFirstChild("RightShoulder") end
+                end
+                if motor and not motor:IsA("Motor6D") then motor = nil end
+            end
+        end
+
+        local originalC1 = motor and motor.C1 or nil
+
         if animObj then
             pcall(function()
                 local animator = hum:FindFirstChildOfClass("Animator")
@@ -398,11 +415,35 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
                 end
                 local track = animator:LoadAnimation(animObj)
                 track.Priority = Enum.AnimationPriority.Action
+
+                -- attempt to scale animation playback to match melee cooldown `cd`
+                local ok, animLength = pcall(function() return track.Length end)
+                if ok and type(animLength) == "number" and animLength > 0 and cd and type(cd) == "number" and cd > 0 then
+                    local speed = animLength / cd
+                    -- clamp to avoid extreme speeds
+                    if speed < 0.25 then speed = 0.25 end
+                    if speed > 4 then speed = 4 end
+                    pcall(function() track:AdjustSpeed(speed) end)
+                end
+
+                -- ensure we restore motor C1 when the track stops
+                track.Stopped:Connect(function()
+                    if originalC1 and motor and motor.Parent then
+                        pcall(function() motor.C1 = originalC1 end)
+                    end
+                end)
+
                 track:Play()
-                task.delay(2, function()
+                -- stop the track shortly after the cooldown ends (small margin)
+                local stopDelay = math.max((cd or 0.5) * 1.05, 0.15)
+                task.delay(stopDelay, function()
                     pcall(function() track:Stop() end)
                     if animObj and animObj:IsA("Animation") and animObj.Parent == nil then
                         pcall(function() animObj:Destroy() end)
+                    end
+                    -- final restore in case Stop didn't trigger the Stopped event
+                    if originalC1 and motor and motor.Parent then
+                        pcall(function() motor.C1 = originalC1 end)
                     end
                 end)
             end)
@@ -411,22 +452,19 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
             pcall(function()
                 local char = player.Character
                 if not char then return end
-                local motor = nil
-                local torso = char:FindFirstChild("Torso")
-                if torso then motor = torso:FindFirstChild("Right Shoulder") end
-                if not motor then
-                    local rua = char:FindFirstChild("RightUpperArm")
-                    if rua then motor = rua:FindFirstChild("RightShoulder") end
-                end
-                if not motor or not motor:IsA("Motor6D") then return end
+                if not motor then return end
 
-                local originalC1 = motor.C1
                 local raiseGoal = originalC1 * CFrame.Angles(math.rad(-90), 0, 0)
                 local slashGoal = originalC1 * CFrame.Angles(math.rad(90), 0, 0)
 
-                local raiseTI  = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                local slashTI  = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-                local returnTI = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+                -- scale procedural timings to match cooldown `cd`
+                local DEFAULT_PROC_TOTAL = 0.48 -- original total 0.12+0.14+0.22
+                local scale = 1
+                if cd and cd > 0 then scale = cd / DEFAULT_PROC_TOTAL end
+
+                local raiseTI  = TweenInfo.new(0.12 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+                local slashTI  = TweenInfo.new(0.14 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+                local returnTI = TweenInfo.new(0.22 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
 
                 local raiseTween = TweenService:Create(motor, raiseTI, { C1 = raiseGoal })
                 raiseTween:Play()
@@ -436,7 +474,20 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
                     slashTween.Completed:Once(function()
                         local returnTween = TweenService:Create(motor, returnTI, { C1 = originalC1 })
                         returnTween:Play()
+                        -- ensure final restore after the return tween completes
+                        returnTween.Completed:Once(function()
+                            if originalC1 and motor and motor.Parent then
+                                pcall(function() motor.C1 = originalC1 end)
+                            end
+                        end)
                     end)
+                end)
+
+                -- safety fallback: after cooldown + margin, force restore
+                task.delay(math.max((cd or 0.5) * 1.2, 0.5), function()
+                    if originalC1 and motor and motor.Parent then
+                        pcall(function() motor.C1 = originalC1 end)
+                    end
                 end)
             end)
         end

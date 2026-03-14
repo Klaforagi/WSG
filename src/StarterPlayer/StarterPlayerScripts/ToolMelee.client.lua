@@ -198,10 +198,12 @@ local function playSwingVisual(tool)
     if not motor or not motor:IsA("Motor6D") then return end
 
     local originalC1 = motor.C1
-    -- phase 1: raise arm up 90° (negative rotation to lift)
-    local raiseGoal = originalC1 * CFrame.Angles(math.rad(-90), 0, 0)
-    -- phase 2: slash down 180° from raised position (rotate to +90° relative to default)
-    local slashGoal = originalC1 * CFrame.Angles(math.rad(90), 0, 0)
+    -- use slightly less than 90° to avoid ambiguous 180° interpolation that can flip the arm
+    local SWING_ANGLE = 85
+    -- phase 1: raise arm up (negative rotation to lift)
+    local raiseGoal = originalC1 * CFrame.Angles(math.rad(-SWING_ANGLE), 0, 0)
+    -- phase 2: slash down (rotate to +SWING_ANGLE relative to default)
+    local slashGoal = originalC1 * CFrame.Angles(math.rad(SWING_ANGLE), 0, 0)
 
     local raiseTween = TweenService:Create(motor, raiseTweenInfo, { C1 = raiseGoal })
     raiseTween:Play()
@@ -286,20 +288,8 @@ local function attachMelee(tool)
     end
 
     local function startHolding()
-        if holding then return end
-        holding = true
-        -- attempt immediate swing
+        -- single-click behavior: trigger one swing per button down
         doSwing()
-        spawn(function()
-            while holding and tool and tool.Parent do
-                local now = tick()
-                local nextAllowed = lastSwing + cooldown
-                local waitTime = math.max(0.001, nextAllowed - now)
-                task.wait(waitTime)
-                if not holding then break end
-                doSwing()
-            end
-        end)
     end
 
     local function stopHolding()
