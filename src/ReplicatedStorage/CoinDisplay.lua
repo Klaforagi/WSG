@@ -230,7 +230,8 @@ function CoinDisplay.Create(parent, layoutOrder)
         end)
     end
 
-    -- Fetch initial value with a small retry loop to avoid race with server load
+    -- Fetch initial value with a retry loop that covers slow DataStore loads.
+    -- Server LoadForPlayer can take up to ~3-4s with retries, so we poll over ~6s.
     if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
         local function tryFetch()
             local ok, result = pcall(function() return getCoinsFn:InvokeServer() end)
@@ -240,14 +241,15 @@ function CoinDisplay.Create(parent, layoutOrder)
             end
             return false
         end
-        -- try immediately, then a couple more times in case server is still loading the player's data
-        if not tryFetch() then
-            task.delay(0.2, function()
-                if not tryFetch() then
-                    task.delay(0.5, function() pcall(tryFetch) end)
-                end
-            end)
-        end
+        -- Retry schedule: 0s, 0.5s, 1.5s, 3s, 5s  (total window ~5s)
+        task.spawn(function()
+            if tryFetch() and currentCoins > 0 then return end
+            local delays = {0.5, 1.0, 1.5, 2.0}
+            for _, d in ipairs(delays) do
+                task.wait(d)
+                if tryFetch() and currentCoins > 0 then return end
+            end
+        end)
     end
 
     return row, api

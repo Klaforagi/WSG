@@ -2,6 +2,7 @@
 -- InventoryUI.lua  –  Sectioned inventory (Melee · Ranged · Special)
 --------------------------------------------------------------------------------
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local function px(base)
     local cam = workspace.CurrentCamera
@@ -9,13 +10,15 @@ local function px(base)
     return math.max(1, math.round(base * screenY / 1080))
 end
 
-local CARD_BG      = Color3.fromRGB(18, 24, 52)
-local CARD_STROKE  = Color3.fromRGB(50, 80, 160)
-local ICON_BG      = Color3.fromRGB(14, 18, 40)
+-- Use neutral SideUI gray instead of navy blue
+local CARD_BG      = Color3.fromRGB(35, 35, 40)
+local CARD_STROKE  = Color3.fromRGB(60, 60, 64)
+local ICON_BG      = Color3.fromRGB(20, 20, 24)
 local GOLD         = Color3.fromRGB(255, 215, 80)
 local WHITE        = Color3.fromRGB(240, 240, 240)
-local BLUE_BTN     = Color3.fromRGB(30, 70, 160)
-local BLUE_BTN_STR = Color3.fromRGB(80, 140, 220)
+-- Replace blue button accents with neutral grays to match SideUI
+local BLUE_BTN     = Color3.fromRGB(64, 64, 68)
+local BLUE_BTN_STR = Color3.fromRGB(110, 110, 115)
 
 local InventoryUI = {}
 
@@ -36,14 +39,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local rootLayout = Instance.new("UIListLayout")
     rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rootLayout.Padding = UDim.new(0, px(6))
+    rootLayout.Padding = UDim.new(0, px(12))
     rootLayout.Parent = root
 
     local rootPad = Instance.new("UIPadding")
-    rootPad.PaddingTop = UDim.new(0, px(12))
-    rootPad.PaddingBottom = UDim.new(0, px(10))
-    rootPad.PaddingLeft = UDim.new(0, px(8))
-    rootPad.PaddingRight = UDim.new(0, px(8))
+    rootPad.PaddingTop = UDim.new(0, px(8))
+    rootPad.PaddingBottom = UDim.new(0, px(12))
+    rootPad.PaddingLeft = UDim.new(0, px(6))
+    rootPad.PaddingRight = UDim.new(0, px(6))
     rootPad.Parent = root
 
     local items = inventoryApi and inventoryApi:GetItems() or {}
@@ -89,15 +92,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         section.AutomaticSize = Enum.AutomaticSize.Y
         section.Parent = parent
 
+        -- stack header + grid vertically, mirror ShopUI spacing
+        local sectionLayout = Instance.new("UIListLayout")
+        sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        sectionLayout.Padding = UDim.new(0, px(6))
+        sectionLayout.Parent = section
+
+        local sectionPad = Instance.new("UIPadding")
+        sectionPad.PaddingTop = UDim.new(0, px(6))
+        sectionPad.PaddingBottom = UDim.new(0, px(10))
+        sectionPad.PaddingLeft = UDim.new(0, px(8))
+        sectionPad.PaddingRight = UDim.new(0, px(8))
+        sectionPad.Parent = section
+
         local header = Instance.new("TextLabel")
         header.Name = "SectionHeader"
         header.BackgroundTransparency = 1
         header.Font = Enum.Font.GothamBold
         header.Text = label
         header.TextColor3 = GOLD
-        header.TextSize = math.max(16, math.floor(px(16)))
+        header.TextSize = math.max(18, math.floor(px(18)))
         header.TextXAlignment = Enum.TextXAlignment.Left
-        header.Size = UDim2.new(1, 0, 0, px(24))
+        header.Size = UDim2.new(1, 0, 0, px(28))
+        header.LayoutOrder = 1
         header.Parent = section
 
         local grid = Instance.new("Frame")
@@ -105,6 +122,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         grid.BackgroundTransparency = 1
         grid.Size = UDim2.new(1, 0, 0, 0)
         grid.AutomaticSize = Enum.AutomaticSize.Y
+        grid.LayoutOrder = 2
         grid.Parent = section
 
         local gridLayout = Instance.new("UIGridLayout")
@@ -162,6 +180,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local card = Instance.new("Frame")
         card.Name = "ItemCard_" .. tostring(id)
         card.BackgroundColor3 = CARD_BG
+        card.Size = UDim2.new(1, 0, 1, 0)
+        card.AutomaticSize = Enum.AutomaticSize.Y
         card.Parent = gridParent
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, px(10))
@@ -180,8 +200,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local leftBox = Instance.new("Frame")
         leftBox.Name = "LeftBox"
-        leftBox.Size = UDim2.new(0.48, 0, 1, 0)
+        leftBox.Size = UDim2.new(0.45, 0, 1, 0)
+        leftBox.Position = UDim2.new(0, 0, 0, 0)
         leftBox.BackgroundColor3 = ICON_BG
+        leftBox.ZIndex = 251
         leftBox.Parent = card
         local lCorner = Instance.new("UICorner")
         lCorner.CornerRadius = UDim.new(0, px(8))
@@ -189,11 +211,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local thumb = Instance.new("ImageLabel")
         thumb.Name = "Thumb"
-        thumb.Size = UDim2.new(0.85, 0, 0.85, 0)
+        thumb.Size = UDim2.new(0.9, 0, 0.9, 0)
         thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
         thumb.AnchorPoint = Vector2.new(0.5, 0.5)
         thumb.BackgroundTransparency = 1
         thumb.ScaleType = Enum.ScaleType.Fit
+        thumb.ZIndex = 252
         thumb.Parent = leftBox
         pcall(function()
             if AssetCodes and type(AssetCodes.Get) == "function" then
@@ -204,21 +227,23 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local rightBox = Instance.new("Frame")
         rightBox.Name = "RightBox"
-        rightBox.Size = UDim2.new(0.48, 0, 1, 0)
-        rightBox.Position = UDim2.new(0.52, 0, 0, 0)
+        rightBox.Size = UDim2.new(0.52, 0, 1, 0)
+        rightBox.Position = UDim2.new(0.48, 0, 0, 0)
         rightBox.BackgroundTransparency = 1
+        rightBox.ZIndex = 251
         rightBox.Parent = card
 
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Name = "ItemName"
-        nameLabel.Size = UDim2.new(1, 0, 0.40, 0)
-        nameLabel.Position = UDim2.new(0, 0, 0.08, 0)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.TextScaled = true
         nameLabel.TextColor3 = WHITE
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
         nameLabel.Text = tostring(id)
+        -- match ShopUI spacing: smaller header height and centered under thumb
+        nameLabel.Size = UDim2.new(1, 0, 0, px(28))
+        nameLabel.Position = UDim2.new(0, 0, 0.36, 0)
         nameLabel.Parent = rightBox
 
         local equipBtn = Instance.new("TextButton")
@@ -276,6 +301,35 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 pcall(function() inventoryApi:SetEquipped(category, id) end)
             end
             refreshAllEquipButtons()
+            -- play local equip sound if available
+            pcall(function()
+                local soundsFolder = game:GetService("ReplicatedStorage"):FindFirstChild("Sounds")
+                if soundsFolder then
+                    local s = soundsFolder:FindFirstChild("Equip") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Equip"))
+                    if s and s:IsA("Sound") then
+                        local clone = s:Clone()
+                        clone.Parent = equipBtn
+                        clone:Play()
+                        task.delay(clone.TimeLength + 0.1, function()
+                            pcall(function() clone:Destroy() end)
+                        end)
+                    end
+                end
+            end)
+        end)
+
+        -- hover: change gray -> green on hover when actionable
+        equipBtn.MouseEnter:Connect(function()
+            pcall(function()
+                local t = TweenService:Create(equipBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = GREEN_BTN})
+                t:Play()
+            end)
+        end)
+        equipBtn.MouseLeave:Connect(function()
+            pcall(function()
+                local t = TweenService:Create(equipBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = BLUE_BTN})
+                t:Play()
+            end)
         end)
 
         return card

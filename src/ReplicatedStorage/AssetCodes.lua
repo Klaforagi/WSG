@@ -18,6 +18,12 @@ AssetCodes.images = {
     Team = "rbxassetid://12345678",
 
     --WEAPON icons
+    --MELEE
+    Stick = "rbxassetid://12256987794",
+    Dagger = "rbxassetid://949752421",
+    Sword = "rbxassetid://10123421106",
+    Spear = "rbxassetid://139656815",
+    --RANGED
     Slingshot = "rbxassetid://5830603041",
     Shortbow = "rbxassetid://15950019592",
     Longbow = "rbxassetid://13303448470",

@@ -2,6 +2,7 @@
 -- ShopUI.lua  –  Sectioned shop UI (fixed header handled by SideUI)
 --------------------------------------------------------------------------------
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 local function px(base)
     local cam = workspace.CurrentCamera
@@ -10,13 +11,15 @@ local function px(base)
 end
 
 -- palette (matches SideUI navy/gold theme)
-local CARD_BG      = Color3.fromRGB(18, 24, 52)
-local CARD_STROKE  = Color3.fromRGB(50, 80, 160)
-local ICON_BG      = Color3.fromRGB(14, 18, 40)
+-- Use neutral SideUI gray instead of navy blue
+local CARD_BG      = Color3.fromRGB(35, 35, 40)
+local CARD_STROKE  = Color3.fromRGB(60, 60, 64)
+local ICON_BG      = Color3.fromRGB(20, 20, 24)
 local GOLD         = Color3.fromRGB(255, 215, 80)
 local WHITE        = Color3.fromRGB(240, 240, 240)
-local BLUE_BTN     = Color3.fromRGB(30, 70, 160)
-local BLUE_BTN_STR = Color3.fromRGB(80, 140, 220)
+-- Replace blue button accents with neutral grays to match SideUI
+local BLUE_BTN     = Color3.fromRGB(64, 64, 68)
+local BLUE_BTN_STR = Color3.fromRGB(110, 110, 115)
 local GREEN_BTN    = Color3.fromRGB(30, 130, 60)
 local RED_TEXT     = Color3.fromRGB(255, 90, 90)
 
@@ -88,7 +91,8 @@ end
 
 local AssetCodes = safeRequireAssetCodes()
 
-local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, inventoryApi)
+local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, inventoryApi, category)
+    category = category or "Ranged"
     local card = Instance.new("Frame")
     card.Name = "Item_" .. tostring(id)
     card.BackgroundColor3 = CARD_BG
@@ -237,6 +241,24 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
     end
     refresh()
 
+    -- hover: change gray -> green on hover when actionable
+    buyBtn.MouseEnter:Connect(function()
+        if buyBtn.Active then
+            pcall(function()
+                local t = TweenService:Create(buyBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = GREEN_BTN})
+                t:Play()
+            end)
+        end
+    end)
+    buyBtn.MouseLeave:Connect(function()
+        if buyBtn.Active then
+            pcall(function()
+                local t = TweenService:Create(buyBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = BLUE_BTN})
+                t:Play()
+            end)
+        end
+    end)
+
     buyBtn.MouseButton1Click:Connect(function()
         if not buyBtn.Active then return end
         local owned = false
@@ -245,42 +267,64 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
         end
         if owned then return end
 
-        local getCoinsFn = ReplicatedStorage:FindFirstChild("GetCoins")
-        local coins = nil
-        if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
-            local ok, res = pcall(function() return getCoinsFn:InvokeServer() end)
-            if ok and type(res) == "number" then coins = res end
-        end
-        if coins == nil and coinApi and coinApi.GetCoins then
-            pcall(function() coins = coinApi.GetCoins() end)
-        end
-        coins = coins or 0
-
-        if coins < price then
-            buyBtn.Text = "NOT ENOUGH"
-            buyBtn.TextColor3 = RED_TEXT
-            task.delay(1.2, function()
-                buyBtn.TextColor3 = WHITE
-                refresh()
-            end)
+        -- Price-zero items: just grant immediately, no coin check needed
+        if price <= 0 then
+            if inventoryApi and inventoryApi.AddItem then
+                inventoryApi:AddItem(id)
+            end
+            local req = ReplicatedStorage:FindFirstChild("RequestToolCopy")
+            if req and req:IsA("RemoteFunction") then
+                pcall(function() req:InvokeServer(category, id) end)
+            end
+            refresh()
             return
         end
 
-        if coinApi and coinApi.SetCoins then
-            pcall(function() coinApi.SetCoins(math.max(0, math.floor(coins - price))) end)
+        -- Server-authoritative purchase: validates price & deducts coins on the server
+        local purchaseFn = ReplicatedStorage:FindFirstChild("PurchaseTool")
+        if purchaseFn and purchaseFn:IsA("RemoteFunction") then
+            local ok, success, newBalance = pcall(function()
+                return purchaseFn:InvokeServer(category, id)
+            end)
+            if ok and success then
+                -- Server accepted the purchase; update local state
+                if coinApi and coinApi.SetCoins then
+                    pcall(function() coinApi.SetCoins(newBalance) end)
+                end
+                if inventoryApi and inventoryApi.AddItem then
+                    inventoryApi:AddItem(id)
+                end
+                pcall(function()
+                    if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                end)
+                refresh()
+                -- play local purchase sound if available
+                pcall(function()
+                    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                    if soundsFolder then
+                        local s = soundsFolder:FindFirstChild("Buy") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Buy"))
+                        if s and s:IsA("Sound") then
+                            local clone = s:Clone()
+                            clone.Parent = buyBtn
+                            clone:Play()
+                            task.delay(clone.TimeLength + 0.1, function()
+                                pcall(function() clone:Destroy() end)
+                            end)
+                        end
+                    end
+                end)
+            else
+                -- Not enough coins or server error
+                buyBtn.Text = "NOT ENOUGH"
+                buyBtn.TextColor3 = RED_TEXT
+                task.delay(1.2, function()
+                    buyBtn.TextColor3 = WHITE
+                    refresh()
+                end)
+            end
+        else
+            warn("[ShopUI] PurchaseTool remote not found")
         end
-        if inventoryApi and inventoryApi.AddItem then
-            inventoryApi:AddItem(id)
-        end
-        local req = ReplicatedStorage:FindFirstChild("RequestToolCopy")
-        if req and req:IsA("RemoteFunction") then
-            pcall(function() req:InvokeServer("Ranged", id) end)
-        end
-        -- Update header coin display
-        pcall(function()
-            if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
-        end)
-        refresh()
     end)
 
     return card
@@ -330,16 +374,19 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     specialSection.LayoutOrder = 3
     coinsSection.LayoutOrder = 4
 
-    -- Populate ranged weapons section (Slingshot first since player starts with it)
-    makeItem(rangedGrid, "Slingshot", "Slingshot", 0, "Slingshot", coinApi, inventoryApi)
-    makeItem(rangedGrid, "Shortbow", "Shortbow", 20, "Shortbow", coinApi, inventoryApi)
-    makeItem(rangedGrid, "Longbow", "Longbow", 30, "Longbow", coinApi, inventoryApi)
-    makeItem(rangedGrid, "Xbow", "Xbow", 40, "Xbow", coinApi, inventoryApi)
+    -- Populate melee weapons section (Stick is the free starter)
+    makeItem(meleeGrid, "Stick", "Stick", 0, "Stick", coinApi, inventoryApi, "Melee")
+    makeItem(meleeGrid, "Dagger", "Dagger", 30, "Dagger", coinApi, inventoryApi, "Melee")
+    makeItem(meleeGrid, "Sword", "Sword", 30, "Sword", coinApi, inventoryApi, "Melee")
+    makeItem(meleeGrid, "Spear", "Spear", 30, "Spear", coinApi, inventoryApi, "Melee")
 
-    -- Melee items
-    makeItem(meleeGrid, "Sword", "Sword", 10, "Sword", coinApi, inventoryApi)
+    -- Populate ranged weapons section (Slingshot is the free starter)
+    makeItem(rangedGrid, "Slingshot", "Slingshot", 0, "Slingshot", coinApi, inventoryApi, "Ranged")
+    makeItem(rangedGrid, "Shortbow", "Shortbow", 20, "Shortbow", coinApi, inventoryApi, "Ranged")
+    makeItem(rangedGrid, "Longbow", "Longbow", 30, "Longbow", coinApi, inventoryApi, "Ranged")
+    makeItem(rangedGrid, "Xbow", "Xbow", 40, "Xbow", coinApi, inventoryApi, "Ranged")
 
-    -- Melee/Special/Coin sections can be populated similarly by calling makeItem on those grids
+    -- Special/Coin sections can be populated similarly by calling makeItem on those grids
 
     return root
 end

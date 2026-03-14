@@ -19,7 +19,7 @@ local GAMEPASS_ID = 0 -- ← replace with your real Game Pass ID
 
 -- Which tools to give every player on spawn (path inside ServerStorage.Tools)
 local DEFAULT_LOADOUT = {
-    { folder = "Melee",  toolName = "Sword" },
+    { folder = "Melee",  toolName = "Stick" },
     { folder = "Ranged", toolName = "Slingshot"   },
 }
 
@@ -169,6 +169,65 @@ requestToolCopy.OnServerInvoke = function(player, folder, toolName)
     grantTool(player, folder, toolName)
     ensureBackpackFromStarterGear(player)
     return true
+end
+
+--------------------------------------------------------------------------------
+-- SERVER-AUTHORITATIVE PURCHASE
+-- Price table lives here so the client can never cheat.
+--------------------------------------------------------------------------------
+local PRICES = {
+    -- Melee
+    Stick   = 0,
+    Dagger  = 30,
+    Sword   = 30,
+    Spear   = 30,
+    -- Ranged
+    Slingshot = 0,
+    Shortbow  = 20,
+    Longbow   = 30,
+    Xbow      = 40,
+}
+
+-- Lazy-load CurrencyService (same pattern the rest of the codebase uses)
+local CurrencyService = nil
+pcall(function()
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("CurrencyService")
+    if mod and mod:IsA("ModuleScript") then
+        CurrencyService = require(mod)
+    end
+end)
+
+local purchaseTool = getOrCreateRemoteFunction("PurchaseTool")
+
+-- Returns: success (bool), newBalance (number)
+purchaseTool.OnServerInvoke = function(player, category, toolName)
+    if type(toolName) ~= "string" or type(category) ~= "string" then
+        return false, 0
+    end
+
+    local price = PRICES[toolName]
+    if not price then
+        warn("[PurchaseTool] Unknown item:", toolName)
+        return false, 0
+    end
+
+    if not CurrencyService then
+        warn("[PurchaseTool] CurrencyService not available")
+        return false, 0
+    end
+
+    local balance = CurrencyService:GetCoins(player)
+    if balance < price then
+        return false, balance
+    end
+
+    -- Deduct coins and grant the tool
+    CurrencyService:SetCoins(player, balance - price)
+    grantTool(player, category, toolName)
+    ensureBackpackFromStarterGear(player)
+
+    local newBalance = CurrencyService:GetCoins(player)
+    return true, newBalance
 end
 
 -- Force-equip handler: client asks server to equip a tool from their Backpack

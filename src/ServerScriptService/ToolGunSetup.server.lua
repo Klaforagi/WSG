@@ -321,6 +321,15 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     -- Try to obtain a preset projectile (Part or Model) from Toolgunsettings
     local visual = nil
     local usingModel = false
+    -- determine if this projectile should be randomized (slingshot/pebble)
+    local presetKey = nil
+    if toolName then
+        local s = tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$")
+        if s then presetKey = s:lower() end
+    end
+    local isSlingshot = false
+    if presetKey == "slingshot" then isSlingshot = true end
+    if projCfg and projCfg.projectile_name and tostring(projCfg.projectile_name):lower() == "pebble" then isSlingshot = true end
     if ToolgunModule and ToolgunModule.getProjectileForPreset then
         -- derive preset key from toolName (accepts both "ToolShortbow" and "Shortbow")
         local presetKey = nil
@@ -342,7 +351,11 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         visual.Name = "Bullet"
         visual.Size = pSize
         visual.Material = Enum.Material.Neon
-        visual.Color = getTracerColor(player)
+        if isSlingshot then
+            visual.Color = BrickColor.Random().Color
+        else
+            visual.Color = getTracerColor(player)
+        end
         -- keep same behavior as previous implementation
         visual.CanCollide = false
         visual.Anchored = true
@@ -368,6 +381,9 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                 if d:IsA("BasePart") then
                     d.CanCollide = false
                     d.Anchored = true
+                    if isSlingshot then
+                        pcall(function() d.Color = BrickColor.Random().Color end)
+                    end
                 end
             end
             visual:SetPrimaryPartCFrame(CFrame.new(origin))
@@ -376,6 +392,11 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             visual.CanCollide = false
             visual.Anchored = true
             visual.CFrame = CFrame.new(origin)
+            if isSlingshot then
+                pcall(function() visual.Color = BrickColor.Random().Color end)
+            else
+                pcall(function() visual.Color = getTracerColor(player) end)
+            end
             visual.Parent = Workspace
         else
             -- unknown type: fallback to simple part
@@ -383,7 +404,11 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             part.Name = "Bullet"
             part.Size = pSize
             part.Material = Enum.Material.Neon
-            part.Color = getTracerColor(player)
+            if isSlingshot then
+                part.Color = BrickColor.Random().Color
+            else
+                part.Color = getTracerColor(player)
+            end
             part.CanCollide = false
             part.Anchored = true
             part.CFrame = CFrame.new(origin)

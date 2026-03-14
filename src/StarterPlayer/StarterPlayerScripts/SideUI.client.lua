@@ -570,9 +570,9 @@ end
 -- preload Slingshot into the client inventory so player has ranged start
 pcall(function() Inventory:AddItem("Slingshot") end)
 pcall(function() Inventory:SetEquipped("Ranged", "Slingshot") end)
--- preload Sword so player shows it as owned at start
-pcall(function() Inventory:AddItem("Sword") end)
-pcall(function() Inventory:SetEquipped("Melee", "Sword") end)
+-- preload Stick so player shows it as owned at start (free starter melee)
+pcall(function() Inventory:AddItem("Stick") end)
+pcall(function() Inventory:SetEquipped("Melee", "Stick") end)
 
 -- Create centered modal window (hidden by default)
 local modalOverlay = Instance.new("Frame")
@@ -590,7 +590,8 @@ window.Name = "ModalWindow"
 window.Size = UDim2.new(0.65, 0, 0.72, 0)
 window.AnchorPoint = Vector2.new(0.5, 0.5)
 window.Position = UDim2.new(0.5, 0, 0.5, 0)
-window.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+-- Use the neutral SideUI gray for modal background instead of navy
+window.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 window.Parent = modalOverlay
 window.ZIndex = 260
 local winCorner = Instance.new("UICorner")
@@ -625,16 +626,17 @@ titlePill.Name = "TitlePill"
 titlePill.Size = UDim2.new(0.30, 0, 0.80, 0)
 titlePill.AnchorPoint = Vector2.new(0.5, 0.5)
 titlePill.Position = UDim2.new(0.5, 0, 0.5, 0)
-titlePill.BackgroundColor3 = Color3.fromRGB(22, 40, 80)
+    -- Use neutral gray when not on a team (match SideUI neutral)
+    titlePill.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
 titlePill.ZIndex = 10
 titlePill.Parent = headerBar
 local titlePillCorner = Instance.new("UICorner")
 titlePillCorner.CornerRadius = UDim.new(0, px(8))
 titlePillCorner.Parent = titlePill
 local titlePillStroke = Instance.new("UIStroke")
-titlePillStroke.Color = Color3.fromRGB(80, 140, 220)
-titlePillStroke.Thickness = 1.5
-titlePillStroke.Transparency = 0.3
+    titlePillStroke.Color = Color3.fromRGB(90, 90, 96)
+    titlePillStroke.Thickness = 1.5
+    titlePillStroke.Transparency = 0.3
 titlePillStroke.Parent = titlePill
 
 local titleLabel = Instance.new("TextLabel")
@@ -750,12 +752,62 @@ local function clearContent()
     end
 end
 local currentModule = nil
-local function hideModal()
+local isAnimating = false
+local TWEEN_IN_INFO = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TWEEN_OUT_INFO = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+local function clearAndHide()
     currentModule = nil
     modalOverlay.Visible = false
     clearContent()
 end
-closeBtn.MouseButton1Click:Connect(hideModal)
+
+local function tweenWindowIn(done)
+    if isAnimating then return end
+    isAnimating = true
+    modalOverlay.Visible = true
+    -- start above the viewport and tween to center
+    window.Position = UDim2.new(0.5, 0, -0.35, 0)
+    local suc, t = pcall(function() return TweenService:Create(window, TWEEN_IN_INFO, {Position = UDim2.new(0.5, 0, 0.5, 0)}) end)
+    if suc and t then
+        t:Play()
+        t.Completed:Connect(function()
+            isAnimating = false
+            if type(done) == "function" then pcall(done) end
+        end)
+    else
+        -- fallback: immediate
+        window.Position = UDim2.new(0.5, 0, 0.5, 0)
+        isAnimating = false
+        if type(done) == "function" then pcall(done) end
+    end
+end
+
+local function tweenWindowOut(done)
+    if isAnimating then return end
+    isAnimating = true
+    -- tween window up offscreen, then hide overlay and clear
+    local suc, t = pcall(function() return TweenService:Create(window, TWEEN_OUT_INFO, {Position = UDim2.new(0.5, 0, -0.35, 0)}) end)
+    if suc and t then
+        t:Play()
+        t.Completed:Connect(function()
+            clearAndHide()
+            isAnimating = false
+            if type(done) == "function" then pcall(done) end
+        end)
+    else
+        -- fallback: immediate
+        clearAndHide()
+        isAnimating = false
+        if type(done) == "function" then pcall(done) end
+    end
+end
+
+closeBtn.MouseButton1Click:Connect(function()
+    if modalOverlay.Visible then
+        tweenWindowOut()
+    end
+end)
 
 local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI")
 local shopModule = sideUIFolder:FindFirstChild("ShopUI")
@@ -783,11 +835,10 @@ end
 -- Expose so ShopUI can trigger a refresh after purchase
 _G.UpdateShopHeaderCoins = updateHeaderCoins
 
-local function showModule(mod, label)
+local function showModuleImmediate(mod, label)
     if not mod then return end
     clearContent()
     titleLabel.Text = label or "SHOP"
-    -- Show coins only on SHOP page
     local isShop = (label == "SHOP")
     headerCoinFrame.Visible = isShop
     if isShop then updateHeaderCoins() end
@@ -797,25 +848,34 @@ local function showModule(mod, label)
             loaded.Create(contentFrame, coinApi, Inventory)
         end
     end)
-    modalOverlay.Visible = true
+    currentModule = mod
+    -- animate into view
+    tweenWindowIn()
+end
+
+local function requestShowModule(mod, label)
+    if not mod then return end
+    if isAnimating then return end
+    -- If modal open with same module -> close
+    if modalOverlay.Visible and currentModule == mod then
+        tweenWindowOut()
+        return
+    end
+    -- If modal open with a different module -> just close the current modal
+    if modalOverlay.Visible and currentModule and currentModule ~= mod then
+        tweenWindowOut()
+        return
+    end
+    -- modal not visible -> open directly
+    showModuleImmediate(mod, label)
 end
 
 shopBtn.MouseButton1Click:Connect(function()
-    if modalOverlay.Visible and currentModule == shopModule then
-        hideModal()
-    else
-        if shopModule then showModule(shopModule, "SHOP") end
-        currentModule = shopModule
-    end
+    requestShowModule(shopModule, "SHOP")
 end)
 
 invBtn.MouseButton1Click:Connect(function()
-    if modalOverlay.Visible and currentModule == invModule then
-        hideModal()
-    else
-        if invModule then showModule(invModule, "INVENTORY") end
-        currentModule = invModule
-    end
+    requestShowModule(invModule, "INVENTORY")
 end)
 
 -- Coin row from CoinDisplay module (auto-wires to server remotes)
@@ -836,6 +896,15 @@ pcall(function()
         end)
         -- ensure header reflects latest value after wiring the event
         pcall(function() updateHeaderCoins() end)
+    end
+end)
+
+-- Deferred retry to catch slow DataStore loads (same schedule as CoinDisplay)
+task.spawn(function()
+    local delays = {1, 2, 3, 5}
+    for _, d in ipairs(delays) do
+        task.wait(d)
+        pcall(updateHeaderCoins)
     end
 end)
 
@@ -877,8 +946,7 @@ _G.SideUI.SetBadge = SetBadge
 _G.SideUI.OpenPage = OpenPage
 
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
--- Use a local handlers table instead of assigning arbitrary fields on the Script Instance
-local scriptHandlers = {}
+-- Assign to the forward-declared scriptHandlers table (line ~106) so click closures above see these
 scriptHandlers.OnShop = function()
     print("Shop")
 end
