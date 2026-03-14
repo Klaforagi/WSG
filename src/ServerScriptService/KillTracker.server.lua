@@ -89,9 +89,16 @@ local function onHumanoidDied(humanoid, model)
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
 
-    -- Award 1 coin for mob kills (fallback for kills not handled by weapon scripts)
+    -- Award coins: +5 for PvP kills, +1 for mob kills (fallback when weapon scripts didn't credit)
     local coinAward = 0
-    if not victimPlayer and killer then
+    if victimPlayer and killer then
+        -- PvP kill: award 5 coins to the killer
+        if CurrencyService and CurrencyService.AddCoins then
+            pcall(function() CurrencyService:AddCoins(killer, 5) end)
+            coinAward = 5
+        end
+    elseif not victimPlayer and killer then
+        -- Mob kill fallback: award 1 coin
         if CurrencyService and CurrencyService.AddCoins then
             pcall(function() CurrencyService:AddCoins(killer, 1) end)
             coinAward = 1

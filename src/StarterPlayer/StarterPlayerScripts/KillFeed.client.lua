@@ -125,7 +125,7 @@ local function pushKillText(killer, victim, coinAmount)
     end
 
     makeLabel(killer, getNameColor(killer))
-    makeLabel(" killed ", GOLD_TEXT)
+    makeLabel(" eliminated ", GOLD_TEXT)
     makeLabel(victim, getNameColor(victim))
         -- coin amount moved into XP popup; don't display from killfeed anymore
 

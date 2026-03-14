@@ -106,7 +106,7 @@ local function showLocalKill(victimName, coinAmount)
     end
 
     makeLabel("You", getNameColor(player.Name))
-    makeLabel(" killed ", GOLD_TEXT)
+    makeLabel(" eliminated ", GOLD_TEXT)
     makeLabel(tostring(victimName or "Unknown"), getNameColor(victimName))
     -- coin amount moved to XP popup; do not show coins here
 
