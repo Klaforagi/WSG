@@ -104,11 +104,13 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         local vp = Players:GetPlayerFromCharacter(victimModel)
         if vp then victimName = vp.Name end
         if player.Name ~= victimName then
-            -- determine coin award for this kill and award it before firing the feed
+            -- Award coins: +5 PvP, +1 mob. Capture boosted return value for popup.
             local coinAward = 0
-            if not vp and CurrencyService and CurrencyService.AddCoins then
-                pcall(function() CurrencyService:AddCoins(player, 1) end)
-                coinAward = 1
+            if CurrencyService and CurrencyService.AddCoins then
+                local base = vp and 5 or 1
+                local ok, result = pcall(function() return CurrencyService:AddCoins(player, base) end)
+                coinAward = (ok and type(result) == "number") and result or base
+                print("[ToolMeleeSetup] Coin award:", base, "->", coinAward, "for", player.Name)
             end
 
             pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)

@@ -851,6 +851,7 @@ local shopModule = sideUIFolder and sideUIFolder:WaitForChild("ShopUI", 5)
 local invModule = sideUIFolder and sideUIFolder:WaitForChild("InventoryUI", 5)
 local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
 local questsModule = sideUIFolder and sideUIFolder:WaitForChild("DailyQuestsUI", 5)
+local boostsModule = sideUIFolder and sideUIFolder:WaitForChild("BoostsUI", 5)
 if not sideUIFolder then
     warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
 end
@@ -881,9 +882,9 @@ local function showModuleImmediate(mod, label)
     if not mod then return end
     clearContent()
     titleLabel.Text = label or "SHOP"
-    local isShop = (label == "SHOP")
-    headerCoinFrame.Visible = isShop
-    if isShop then updateHeaderCoins() end
+    local showCoins = (label == "SHOP" or label == "BOOSTS")
+    headerCoinFrame.Visible = showCoins
+    if showCoins then updateHeaderCoins() end
     pcall(function()
         local ok, loaded = pcall(require, mod)
         if ok and type(loaded.Create) == "function" then
@@ -952,6 +953,306 @@ task.spawn(function()
     end
 end)
 
+--------------------------------------------------------------------------------
+-- Active Boosts HUD  – Floating Roblox-style buff icons above Shop/Inv row
+-- Each active timed boost gets a rounded-square tile with icon, green active
+-- indicator, and a mm:ss countdown underneath. Hidden when nothing is active.
+--------------------------------------------------------------------------------
+local boostIconTiles  = {} -- [boostId] = { tile, timerLabel, expiresAt }
+local boostHudFrame        -- container frame
+local boostHudConn         -- Heartbeat connection for countdown ticks
+
+do
+    local RunService = game:GetService("RunService")
+
+    -- Load BoostConfig for definitions
+    local BoostConfigHud
+    pcall(function()
+        local mod = ReplicatedStorage:WaitForChild("BoostConfig", 5)
+        if mod and mod:IsA("ModuleScript") then BoostConfigHud = require(mod) end
+    end)
+
+    -- Icon images (prefer real asset ids; fall back to AssetCodes or glyph text)
+    local ICON_ASSETS = {}         -- [boostId] = assetId string (set below)
+    local ICON_GLYPHS = {          -- fallback emoji / text if no image
+        coins_2x = "\u{1F4B0}",
+        quest_2x = "\u{26A1}",
+    }
+    local ICON_TINT = {
+        coins_2x = Color3.fromRGB(255, 215, 80),
+        quest_2x = Color3.fromRGB(100, 180, 255),
+    }
+
+    -- Try to pull asset ids from AssetCodes
+    pcall(function()
+        if AssetCodes and type(AssetCodes.Get) == "function" then
+            local coinId = AssetCodes.Get("Coin")
+            if coinId and #coinId > 0 then ICON_ASSETS["coins_2x"] = coinId end
+            local questId = AssetCodes.Get("Quests")
+            if questId and #questId > 0 then ICON_ASSETS["quest_2x"] = questId end
+        end
+    end)
+
+    -- Tile sizing  (≈2x the original for readability)
+    local TILE_SIZE  = px(88)
+    local TILE_GAP   = px(10)
+    local TIMER_H    = px(18)
+    -- px(36) bottom buffer keeps the whole cluster (icons + timers) clearly above Shop/Inv
+    local TOTAL_H    = TILE_SIZE + px(4) + TIMER_H + px(36)  -- icon + gap + timer + bottom spacing
+
+    -- Container: sits above ShopInvRow via LayoutOrder = 0
+    boostHudFrame = Instance.new("Frame")
+    boostHudFrame.Name = "ActiveBoostIcons"
+    boostHudFrame.LayoutOrder = 0
+    boostHudFrame.BackgroundTransparency = 1
+    boostHudFrame.Size = UDim2.new(1, 0, 0, TOTAL_H)
+    boostHudFrame.Visible = false
+    boostHudFrame.Parent = panel
+
+    -- Horizontal layout so icons sit side by side, centered
+    local iconsRow = Instance.new("Frame")
+    iconsRow.Name = "IconsRow"
+    iconsRow.BackgroundTransparency = 1
+    iconsRow.Size = UDim2.new(1, 0, 1, 0)
+    iconsRow.Parent = boostHudFrame
+
+    local rowLayout = Instance.new("UIListLayout")
+    rowLayout.FillDirection = Enum.FillDirection.Horizontal
+    rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    rowLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+    rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    rowLayout.Padding = UDim.new(0, TILE_GAP)
+    rowLayout.Parent = iconsRow
+
+    ---------------------------------------------------------------------------
+    -- Build a single icon tile for a boost
+    ---------------------------------------------------------------------------
+    local function createBoostTile(boostId, expiresAt)
+        -- Wrapper frame for icon + timer stacked vertically
+        local wrapper = Instance.new("Frame")
+        wrapper.Name = "BoostTile_" .. boostId
+        wrapper.BackgroundTransparency = 1
+        wrapper.Size = UDim2.new(0, TILE_SIZE, 0, TOTAL_H)
+        wrapper.LayoutOrder = (boostId == "coins_2x") and 1 or 2
+        wrapper.Parent = iconsRow
+
+        -- Icon tile (rounded square)
+        local tile = Instance.new("Frame")
+        tile.Name = "Tile"
+        tile.Size = UDim2.new(0, TILE_SIZE, 0, TILE_SIZE)
+        tile.BackgroundColor3 = Color3.fromRGB(18, 20, 34)
+        tile.BackgroundTransparency = 0.1
+        tile.Parent = wrapper
+
+        local tCorner = Instance.new("UICorner")
+        tCorner.CornerRadius = UDim.new(0, px(12))
+        tCorner.Parent = tile
+
+        local tStroke = Instance.new("UIStroke")
+        tStroke.Color = COLORS.gold
+        tStroke.Thickness = 2
+        tStroke.Transparency = 0.12
+        tStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        tStroke.Parent = tile
+
+        -- Icon content (image or text glyph)
+        local assetId = ICON_ASSETS[boostId]
+        if assetId then
+            local img = Instance.new("ImageLabel")
+            img.Name = "Icon"
+            img.BackgroundTransparency = 1
+            img.Size = UDim2.new(0.60, 0, 0.60, 0)
+            img.AnchorPoint = Vector2.new(0.5, 0.5)
+            img.Position = UDim2.new(0.5, 0, 0.48, 0)
+            img.Image = assetId
+            img.ScaleType = Enum.ScaleType.Fit
+            img.ImageColor3 = ICON_TINT[boostId] or Color3.new(1, 1, 1)
+            img.Parent = tile
+        else
+            local glyph = Instance.new("TextLabel")
+            glyph.Name = "Glyph"
+            glyph.BackgroundTransparency = 1
+            glyph.Size = UDim2.new(1, 0, 0.75, 0)
+            glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+            glyph.Position = UDim2.new(0.5, 0, 0.48, 0)
+            glyph.Font = Enum.Font.GothamBold
+            glyph.Text = ICON_GLYPHS[boostId] or "\u{2728}"
+            glyph.TextSize = math.max(24, math.floor(TILE_SIZE * 0.42))
+            glyph.TextColor3 = ICON_TINT[boostId] or COLORS.gold
+            glyph.Parent = tile
+        end
+
+        -- Green active indicator (small checkmark badge, top-right corner)
+        local badge = Instance.new("Frame")
+        badge.Name = "ActiveBadge"
+        badge.Size = UDim2.new(0, px(20), 0, px(20))
+        badge.AnchorPoint = Vector2.new(1, 0)
+        badge.Position = UDim2.new(1, px(4), 0, -px(4))
+        badge.BackgroundColor3 = Color3.fromRGB(40, 180, 60)
+        badge.Parent = tile
+
+        local badgeCorner = Instance.new("UICorner")
+        badgeCorner.CornerRadius = UDim.new(1, 0)
+        badgeCorner.Parent = badge
+
+        local badgeStroke = Instance.new("UIStroke")
+        badgeStroke.Color = Color3.fromRGB(20, 80, 30)
+        badgeStroke.Thickness = 1.5
+        badgeStroke.Parent = badge
+
+        local checkmark = Instance.new("TextLabel")
+        checkmark.Name = "Check"
+        checkmark.BackgroundTransparency = 1
+        checkmark.Size = UDim2.new(1, 0, 1, 0)
+        checkmark.Font = Enum.Font.GothamBold
+        checkmark.Text = "\u{2713}"
+        checkmark.TextSize = math.max(11, math.floor(px(12)))
+        checkmark.TextColor3 = Color3.new(1, 1, 1)
+        checkmark.Parent = badge
+
+        -- Subtle green glow behind the tile (using a slightly larger transparent frame)
+        local glow = Instance.new("Frame")
+        glow.Name = "Glow"
+        glow.Size = UDim2.new(1, px(6), 1, px(6))
+        glow.AnchorPoint = Vector2.new(0.5, 0.5)
+        glow.Position = UDim2.new(0.5, 0, 0.5, 0)
+        glow.BackgroundColor3 = Color3.fromRGB(40, 180, 60)
+        glow.BackgroundTransparency = 0.78
+        glow.ZIndex = 0
+        glow.Parent = tile
+        local glowCorner = Instance.new("UICorner")
+        glowCorner.CornerRadius = UDim.new(0, px(14))
+        glowCorner.Parent = glow
+
+        -- Timer label underneath
+        local timerLabel = Instance.new("TextLabel")
+        timerLabel.Name = "Timer"
+        timerLabel.BackgroundTransparency = 1
+        timerLabel.Size = UDim2.new(1, 0, 0, TIMER_H)
+        timerLabel.Position = UDim2.new(0, 0, 0, TILE_SIZE + px(3))
+        timerLabel.Font = Enum.Font.GothamBold
+        timerLabel.Text = "--:--"
+        timerLabel.TextSize = math.max(13, math.floor(px(14)))
+        timerLabel.TextColor3 = COLORS.gold
+        timerLabel.TextXAlignment = Enum.TextXAlignment.Center
+        timerLabel.Parent = wrapper
+
+        boostIconTiles[boostId] = {
+            tile = wrapper,
+            timerLabel = timerLabel,
+            expiresAt = expiresAt,
+        }
+    end
+
+    ---------------------------------------------------------------------------
+    local function removeTile(boostId)
+        local info = boostIconTiles[boostId]
+        if info and info.tile then
+            pcall(function() info.tile:Destroy() end)
+        end
+        boostIconTiles[boostId] = nil
+    end
+
+    local function refreshVisibility()
+        local any = false
+        for _, info in pairs(boostIconTiles) do
+            if info.tile and info.tile.Parent then any = true; break end
+        end
+        boostHudFrame.Visible = any
+    end
+
+    ---------------------------------------------------------------------------
+    -- Apply full boost state from server
+    ---------------------------------------------------------------------------
+    local function applyBoostStates(states)
+        if type(states) ~= "table" then return end
+        local srvTime = states._serverTime or os.time()
+        local delta = os.time() - srvTime
+        print("[BoostHUD] State update, serverTime offset:", delta)
+
+        local activeIds = {}
+        if BoostConfigHud and BoostConfigHud.Boosts then
+            for _, def in ipairs(BoostConfigHud.Boosts) do
+                if def.Type == "Timed" then
+                    local st = states[def.Id]
+                    if st and st.active then
+                        local localExpire = (st.expiresAt or 0) + delta
+                        if localExpire > os.time() then
+                            activeIds[def.Id] = localExpire
+                        end
+                    end
+                end
+            end
+        end
+
+        for bid, _ in pairs(boostIconTiles) do
+            if not activeIds[bid] then removeTile(bid) end
+        end
+        for bid, expAt in pairs(activeIds) do
+            if boostIconTiles[bid] and boostIconTiles[bid].tile.Parent then
+                boostIconTiles[bid].expiresAt = expAt
+            else
+                createBoostTile(bid, expAt)
+            end
+        end
+        refreshVisibility()
+    end
+
+    ---------------------------------------------------------------------------
+    -- Countdown tick (once per second)
+    ---------------------------------------------------------------------------
+    local lastTick = 0
+    boostHudConn = RunService.Heartbeat:Connect(function()
+        local now = os.time()
+        if now == lastTick then return end
+        lastTick = now
+
+        local changed = false
+        for bid, info in pairs(boostIconTiles) do
+            if info.tile and info.tile.Parent then
+                local remaining = info.expiresAt - now
+                if remaining > 0 then
+                    local mins = math.floor(remaining / 60)
+                    local secs = remaining % 60
+                    info.timerLabel.Text = string.format("%02d:%02d", mins, secs)
+                else
+                    removeTile(bid)
+                    changed = true
+                end
+            end
+        end
+        if changed then refreshVisibility() end
+    end)
+
+    ---------------------------------------------------------------------------
+    -- Remote connections (reuse existing BoostStateUpdated + GetBoostStates)
+    ---------------------------------------------------------------------------
+    task.spawn(function()
+        local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+        if not remotes then return end
+        local stateEv = remotes:WaitForChild("BoostStateUpdated", 10)
+        if not stateEv or not stateEv:IsA("RemoteEvent") then
+            warn("[BoostHUD] BoostStateUpdated remote not found")
+            return
+        end
+        stateEv.OnClientEvent:Connect(function(states) applyBoostStates(states) end)
+        print("[BoostHUD] Listening for BoostStateUpdated")
+    end)
+
+    task.spawn(function()
+        local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+        if not remotes then return end
+        local boostDir = remotes:WaitForChild("Boosts", 5)
+        if not boostDir then return end
+        local getStates = boostDir:FindFirstChild("GetBoostStates")
+        if getStates and getStates:IsA("RemoteFunction") then
+            local ok, states = pcall(function() return getStates:InvokeServer() end)
+            if ok and type(states) == "table" then applyBoostStates(states) end
+        end
+    end)
+end
+--------------------------------------------------------------------------------
+
 local menuGridContainer = CreateMenuGrid(panel)
 
 -- populate menu buttons from definitions
@@ -984,6 +1285,10 @@ local function OpenPage(id)
     end
     if id == "Missions" then
         requestShowModule(questsModule, "DAILY QUESTS")
+        return
+    end
+    if id == "Boosts" then
+        requestShowModule(boostsModule, "BOOSTS")
         return
     end
     print("OpenPage:", id)

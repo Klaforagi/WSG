@@ -210,13 +210,14 @@ local function AwardXP(player, reason, amountOverride, metadata)
         delta = delta,
         reason = reasonKey,
     }
+    -- include optional coinAward from metadata so client can show coins with XP popup
+    local popup = { playerUserId = player.UserId, delta = delta, reason = reasonKey }
+    if metadata and metadata.coinAward and type(metadata.coinAward) == "number" then
+        popup.coin = metadata.coinAward
+    end
+    print("[XPService] Popup payload for", player.Name, "— XP:", delta, "Coin:", popup.coin or 0, "Reason:", reasonKey)
     pcall(function()
         XP_Update:FireClient(player, payload)
-        -- include optional coinAward from metadata so client can show coins with XP popup
-        local popup = { playerUserId = player.UserId, delta = delta, reason = reasonKey }
-        if metadata and metadata.coinAward and type(metadata.coinAward) == "number" then
-            popup.coin = metadata.coinAward
-        end
         XP_Popup:FireClient(player, popup)
     end)
 

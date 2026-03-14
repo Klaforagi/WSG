@@ -355,13 +355,14 @@ local function createXPPopup(amount, coinAmount)
         hl.Padding = UDim.new(0, 6)
         hl.Parent = coinRow
 
-        -- coin text (matches XP style) — placed before the image so it reads "+X [icon]"
+        -- coin text (matches XP style) — placed before the image so it reads "+X Coin(s) [icon]"
+        local coinWord = (coinAmount == 1) and "Coin" or "Coins"
         local coinText = Instance.new("TextLabel")
         coinText.BackgroundTransparency = 1
         coinText.Font = Enum.Font.GothamBold
         coinText.TextSize = 14
         coinText.TextColor3 = COLOR_POPUP
-        coinText.Text = "+" .. tostring(coinAmount)
+        coinText.Text = "+" .. tostring(coinAmount) .. " " .. coinWord
         coinText.AutomaticSize = Enum.AutomaticSize.X
         coinText.TextTransparency = 0
         coinText.LayoutOrder = 1
@@ -465,6 +466,7 @@ end
 local function onPopup(payload)
     if not payload then return end
     if payload.delta and payload.delta > 0 then
+        print("[XPClient] Popup received — XP:", payload.delta, "Coin:", payload.coin or 0, "Reason:", payload.reason or "?")
         createXPPopup(payload.delta, payload.coin)
     end
 end

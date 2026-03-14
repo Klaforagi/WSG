@@ -90,18 +90,19 @@ local function onHumanoidDied(humanoid, model)
     end
 
     -- Award coins: +5 for PvP kills, +1 for mob kills (fallback when weapon scripts didn't credit)
+    -- coinAward captures the FINAL amount after boosts so popups display the real value.
     local coinAward = 0
     if victimPlayer and killer then
         -- PvP kill: award 5 coins to the killer
         if CurrencyService and CurrencyService.AddCoins then
-            pcall(function() CurrencyService:AddCoins(killer, 5) end)
-            coinAward = 5
+            local ok, result = pcall(function() return CurrencyService:AddCoins(killer, 5) end)
+            coinAward = (ok and type(result) == "number") and result or 5
         end
     elseif not victimPlayer and killer then
         -- Mob kill fallback: award 1 coin
         if CurrencyService and CurrencyService.AddCoins then
-            pcall(function() CurrencyService:AddCoins(killer, 1) end)
-            coinAward = 1
+            local ok, result = pcall(function() return CurrencyService:AddCoins(killer, 1) end)
+            coinAward = (ok and type(result) == "number") and result or 1
         end
     end
 
