@@ -2,7 +2,10 @@
   "name": "WSG",
   "tree": {
     "$className": "DataModel",
-
+"StarterGui": {
+  "$className": "StarterGui",
+  "$path": "src/StarterGui"
+},
     "ReplicatedStorage": {
       "$path": "src/ReplicatedStorage",
       "Skybox": {
@@ -16,6 +19,13 @@
       ,
       "Sounds": {
         "$className": "Folder"
+      }
+    },
+
+    "ServerStorage": {
+      "$className": "ServerStorage",
+      "Tools": {
+        "$path": "src/ServerStorage/Tools"
       }
     },
 
