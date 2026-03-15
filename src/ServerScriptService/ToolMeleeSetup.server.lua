@@ -394,10 +394,64 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
                 end
             end
         end
-        if not animObj and cfg.swing_anim_id and cfg.swing_anim_id ~= "" then
+        -- Resolve animation id: cycle through swing_anim_ids if available
+        local resolvedAnimId = nil
+        if cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids > 0 then
+            local validIds = {}
+            for _, id in ipairs(cfg.swing_anim_ids) do
+                if id and tostring(id) ~= "" then table.insert(validIds, tostring(id)) end
+            end
+            if #validIds > 0 then
+                if not lastSwing[player] then lastSwing[player] = {} end
+                local cycleKey = toolName .. "_animIdx"
+                local idx = lastSwing[player][cycleKey] or 1
+                resolvedAnimId = validIds[((idx - 1) % #validIds) + 1]
+                lastSwing[player][cycleKey] = idx + 1
+            end
+        end
+        if (not resolvedAnimId or resolvedAnimId == "") and cfg.swing_anim_id and cfg.swing_anim_id ~= "" then
+            resolvedAnimId = tostring(cfg.swing_anim_id)
+        end
+
+        if not animObj and resolvedAnimId and resolvedAnimId ~= "" then
             local a = Instance.new("Animation")
-            a.AnimationId = cfg.swing_anim_id
+            local animId = resolvedAnimId
+            if not animId:match("^rbxassetid://") then
+                if tonumber(animId) then
+                    animId = "rbxassetid://" .. animId
+                end
+            end
+            a.AnimationId = animId
             animObj = a
+        end
+
+        -- fallback: if no Animation object found yet, try to locate an
+        -- Animation instance placed under ServerStorage.Animations or
+        -- ReplicatedStorage.Animations (useful for authored Animation objects)
+        if not animObj then
+            local function findInFolder(folder)
+                if not folder then return nil end
+                -- if cfg.swing_anim_id is a name, try exact match first
+                if cfg.swing_anim_id and type(cfg.swing_anim_id) == "string" then
+                    local try = folder:FindFirstChild(cfg.swing_anim_id)
+                    if try and try:IsA("Animation") then return try end
+                end
+                -- otherwise, return the first animation with 'swing' in its name
+                for _, child in ipairs(folder:GetChildren()) do
+                    if child:IsA("Animation") and tostring(child.Name):lower():find("swing") then
+                        return child
+                    end
+                end
+                return nil
+            end
+
+            local ss = game:GetService("ServerStorage")
+            local found = findInFolder(ss:FindFirstChild("Animations")) or findInFolder(ReplicatedStorage:FindFirstChild("Animations"))
+            if found and found:IsA("Animation") then
+                -- clone so we don't accidentally reparent the original
+                animObj = found:Clone()
+                -- if cloned animation has no AnimationId but original did, keep name for debug
+            end
         end
         -- find the right-arm Motor6D so we can restore it after animation/tween
         local motor = nil
@@ -423,12 +477,27 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
                     animator = Instance.new("Animator")
                     animator.Parent = hum
                 end
-                local track = animator:LoadAnimation(animObj)
-                track.Priority = Enum.AnimationPriority.Action
+                -- Diagnostic logging: report which animation object is being used
+                pcall(function()
+                    local aniDesc = "nil"
+                    if animObj then
+                        aniDesc = tostring(animObj.Name) .. "/" .. tostring(animObj.AnimationId)
+                    end
+                    print("[ToolMeleeSetup] Anim load: player=", player and player.Name, "tool=", toolName, "anim=", aniDesc)
+                end)
+
+                local okLoad, track = pcall(function() return animator:LoadAnimation(animObj) end)
+                if not okLoad or not track then
+                    print("[ToolMeleeSetup] Failed to LoadAnimation for", player and player.Name, "tool=", toolName)
+                end
+                if track then
+                    track.Priority = Enum.AnimationPriority.Action
+                end
 
                 -- attempt to scale animation playback to match melee cooldown `cd`
-                local ok, animLength = pcall(function() return track.Length end)
-                if ok and type(animLength) == "number" and animLength > 0 and cd and type(cd) == "number" and cd > 0 then
+                local ok, animLength = false, nil
+                if track then ok, animLength = pcall(function() return track.Length end) end
+                if track and ok and type(animLength) == "number" and animLength > 0 and cd and type(cd) == "number" and cd > 0 then
                     local speed = animLength / cd
                     -- clamp to avoid extreme speeds
                     if speed < 0.25 then speed = 0.25 end
@@ -443,11 +512,18 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
                     end
                 end)
 
-                track:Play()
+                if track then
+                    local okPlay, _ = pcall(function() track:Play() end)
+                    if not okPlay then
+                        print("[ToolMeleeSetup] Failed to play animation for", player and player.Name, "tool=", toolName)
+                    else
+                        print("[ToolMeleeSetup] Playing animation for", player and player.Name, "tool=", toolName, "length=", animLength)
+                    end
+                end
                 -- stop the track shortly after the cooldown ends (small margin)
                 local stopDelay = math.max((cd or 0.5) * 1.05, 0.15)
                 task.delay(stopDelay, function()
-                    pcall(function() track:Stop() end)
+                    if track then pcall(function() track:Stop() end) end
                     if animObj and animObj:IsA("Animation") and animObj.Parent == nil then
                         pcall(function() animObj:Destroy() end)
                     end

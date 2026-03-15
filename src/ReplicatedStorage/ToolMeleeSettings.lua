@@ -13,9 +13,14 @@ local presets = {
         hitboxColor     = Color3.fromRGB(255, 100, 50),
         hitboxSize      = Vector3.new(2, 10, 4),
         hitboxOffset    = Vector3.new(1, 1, 3.5),
-        swing_anim_id   = "",    -- optional: custom swing animation asset id
-        swing_sound     = "StickSwing",    -- key in ReplicatedStorage.Sounds.ToolMelee
-        hit_sound       = "StickHit",
+        swing_anim_id   = "140064000206332",    -- fallback: single anim (used if swing_anim_ids is empty)
+        swing_anim_ids  = {                      -- ordered cycle: plays 1 → 2 → 3 → 1 …
+            "140064000206332",  -- swing 1  (replace with your asset ids)
+            "",                 -- swing 2  (fill in)
+            "",                 -- swing 3  (fill in)
+        },
+        swing_sound     = "SwordSwing",    -- key in ReplicatedStorage.Sounds.ToolMelee
+        hit_sound       = "SwordHit",
     },
     dagger = {
         damage          = 6,
@@ -27,8 +32,9 @@ local presets = {
         hitboxColor     = Color3.fromRGB(255, 100, 50),
         hitboxSize      = Vector3.new(2, 3, 2),
         hitboxOffset    = Vector3.new(1, 1, 3.5),
-        swing_anim_id   = "",    -- optional: custom swing animation asset id
-        swing_sound     = "SwordSwing",    -- key in ReplicatedStorage.Sounds.ToolMelee
+        swing_anim_id   = "91239654979526",
+        swing_anim_ids  = { "", "", "" },  -- ordered cycle (fill in asset ids)
+        swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     sword = {
@@ -42,6 +48,7 @@ local presets = {
         hitboxSize      = Vector3.new(2, 8, 4),
         hitboxOffset    = Vector3.new(1, 0, 3.5),
         swing_anim_id   = "",
+        swing_anim_ids  = { "", "", "" },  -- ordered cycle (fill in asset ids)
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -56,6 +63,7 @@ local presets = {
         hitboxSize      = Vector3.new(2, 2, 8),
         hitboxOffset    = Vector3.new(1, 1, 3.5),
         swing_anim_id   = "",
+        swing_anim_ids  = { "", "", "" },  -- ordered cycle (fill in asset ids)
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
