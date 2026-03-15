@@ -153,6 +153,122 @@ local function showDebugHitbox(originCFrame, boxSize, offset, duration, color)
 end
 
 --------------------------------------------------------------------------------
+-- Play configured animation locally (returns true on success)
+-- Supports swing_anim_ids (ordered array) — cycles 1→2→3→1… per tool.
+--------------------------------------------------------------------------------
+local currentSwingTrack = nil -- script-level: previous swing track reference
+local swingCycleIndex = {}    -- [toolName] → next index into swing_anim_ids
+
+local function playLocalCfgAnimation(cfg, toolName)
+    -- Resolve which animation id to use this swing
+    local animId = nil
+    if cfg and cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids > 0 then
+        -- build a filtered list of non-empty ids
+        local validIds = {}
+        for _, id in ipairs(cfg.swing_anim_ids) do
+            if id and tostring(id) ~= "" then table.insert(validIds, tostring(id)) end
+        end
+        if #validIds > 0 then
+            local key = toolName or "_default"
+            local idx = swingCycleIndex[key] or 1
+            animId = validIds[((idx - 1) % #validIds) + 1]
+            swingCycleIndex[key] = idx + 1
+        end
+    end
+    -- fall back to single swing_anim_id
+    if (not animId or animId == "") and cfg and cfg.swing_anim_id and cfg.swing_anim_id ~= "" then
+        animId = tostring(cfg.swing_anim_id)
+    end
+    if not animId or animId == "" then return false end
+
+    local char = player.Character
+    if not char then return false end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return false end
+
+    print("[MeleeAnim] RigType =", tostring(hum.RigType))
+
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = hum
+    end
+
+    -- Stop any previous swing track to avoid overlap/conflicts
+    if currentSwingTrack then
+        pcall(function() currentSwingTrack:Stop(0) end)
+        currentSwingTrack = nil
+    end
+
+    if not animId:match("^rbxassetid://") then
+        if tonumber(animId) then animId = "rbxassetid://" .. animId end
+    end
+    print("[MeleeAnim] Loading animId =", animId)
+
+    local a = Instance.new("Animation")
+    a.AnimationId = animId
+    local ok, track = pcall(function() return animator:LoadAnimation(a) end)
+    if not ok or not track then
+        print("[MeleeAnim] LoadAnimation FAILED")
+        return false
+    end
+
+    -- Use Action4 (highest action priority) so idle/walk/tool anims cannot override
+    track.Priority = Enum.AnimationPriority.Action4
+
+    -- scale speed to match cooldown if provided
+    local cd = cfg.cd or 0.6
+    local okL, length = pcall(function() return track.Length end)
+    if okL and type(length) == "number" and length > 0 and cd and cd > 0 then
+        local speed = length / cd
+        if speed < 0.25 then speed = 0.25 end
+        if speed > 4 then speed = 4 end
+        pcall(function() track:AdjustSpeed(speed) end)
+    end
+
+    local okPlay = pcall(function() track:Play(0) end)
+    if not okPlay then
+        print("[MeleeAnim] track:Play() FAILED")
+        return false
+    end
+
+    currentSwingTrack = track
+    print("[MeleeAnim] track:Play() called for", animId)
+
+    -- wait one frame then verify playback status
+    task.spawn(function()
+        RunService.Heartbeat:Wait()
+        local playing = false
+        pcall(function() playing = track.IsPlaying end)
+        print("[MeleeAnim] After 1 frame: IsPlaying =", tostring(playing))
+
+        -- check length after a short delay (some tracks report 0 initially)
+        task.wait(0.1)
+        local delayedLength = 0
+        pcall(function() delayedLength = track.Length end)
+        print("[MeleeAnim] Track.Length (delayed) =", delayedLength)
+
+        if playing and delayedLength > 0 then
+            -- Animation is playing but may be invisible if authored for wrong rig
+            local rigType = tostring(hum.RigType)
+            if rigType == "Enum.HumanoidRigType.R6" then
+                warn("[MeleeAnim] Character is R6 — if you see no visual, the animation may have been authored for R15.")
+            elseif rigType == "Enum.HumanoidRigType.R15" then
+                warn("[MeleeAnim] Character is R15 — if you see no visual, the animation may have been authored for R6.")
+            end
+        end
+    end)
+
+    -- schedule stop/cleanup
+    task.delay((cd or 0.6) * 1.2 + 0.05, function()
+        if track then pcall(function() track:Stop() end) end
+        if currentSwingTrack == track then currentSwingTrack = nil end
+        if a and a.Parent == nil then pcall(function() a:Destroy() end) end
+    end)
+    return true
+end
+
+--------------------------------------------------------------------------------
 -- Swing animation — procedural CFrame tween on the right arm + tool
 -- Works for both R6 (Right Arm) and R15 (RightHand / RightUpperArm).
 -- If the tool contains an Animation named "Swing*" it uses that instead.
@@ -182,6 +298,8 @@ local function playSwingVisual(tool)
             end
         end
     end
+
+    -- (moved playLocalCfgAnimation to top-level)
 
     -- 2) procedural swing: raise arm up 90°, slash down 180°, return to rest
     -- R6: "Right Shoulder" Motor6D in Torso
@@ -307,6 +425,13 @@ local function attachMelee(tool)
             if hrp then
                 swingEvent:FireServer(tool.Name, hrp.CFrame.LookVector)
             end
+        end
+
+        -- play local configured animation for immediate feedback, fallback to procedural
+        local playedAnim = nil
+        pcall(function() playedAnim = playLocalCfgAnimation(cfg, tool.Name) end)
+        if not playedAnim then
+            playSwingVisual(tool)
         end
 
         -- trigger hotbar cooldown overlay (slot 1 = Melee)
