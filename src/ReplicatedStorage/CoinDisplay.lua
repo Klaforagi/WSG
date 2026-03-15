@@ -9,6 +9,22 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+-- Lazy-load CoinShopUI (loaded on first "+" click to avoid circular requires)
+local CoinShopUI
+local coinShopLoaded = false
+local function ensureCoinShop()
+    if coinShopLoaded then return CoinShopUI end
+    coinShopLoaded = true
+    pcall(function()
+        local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+        local mod = sideUI and sideUI:FindFirstChild("CoinShopUI")
+        if mod and mod:IsA("ModuleScript") then
+            CoinShopUI = require(mod)
+        end
+    end)
+    return CoinShopUI
+end
+
 -- Try to load AssetCodes safely
 local AssetCodes = nil
 do
@@ -200,8 +216,32 @@ function CoinDisplay.Create(parent, layoutOrder)
     local plusCorner = Instance.new("UICorner")
     plusCorner.CornerRadius = UDim.new(0, px(5))
     plusCorner.Parent = plusBtn
+
+    -- Debounced "+" click → toggle the coin shop popup
+    local plusDebounce = false
     plusBtn.MouseButton1Click:Connect(function()
-        print("BuyCoins+ clicked")
+        if plusDebounce then return end
+        plusDebounce = true
+
+        local shop = ensureCoinShop()
+        if shop then
+            -- Walk up to the ScreenGui so the popup can overlay the full screen
+            local screenGui = parent
+            while screenGui and not screenGui:IsA("ScreenGui") do
+                screenGui = screenGui.Parent
+            end
+            if screenGui then
+                shop.Toggle(screenGui)
+            else
+                warn("[CoinDisplay] Could not find parent ScreenGui for coin shop popup")
+            end
+        else
+            warn("[CoinDisplay] CoinShopUI module not available")
+        end
+
+        task.delay(0.3, function()
+            plusDebounce = false
+        end)
     end)
 
     -- API
