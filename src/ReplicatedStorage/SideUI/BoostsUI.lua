@@ -831,18 +831,11 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
             selectBtn.AutoButtonColor = false
             selectBtn.Font = Enum.Font.GothamBold
             selectBtn.TextSize = math.max(11, math.floor(px(12)))
-            selectBtn.Text = "CONFIRM"
-            selectBtn.TextColor3 = WHITE
-            selectBtn.BackgroundColor3 = BTN_BG
-            selectBtn.Size = UDim2.new(0.25, 0, 0, px(28))
-            selectBtn.AnchorPoint = Vector2.new(1, 0.5)
-            selectBtn.Position = UDim2.new(1, 0, 0.5, 0)
-            selectBtn.ZIndex = 354
-            selectBtn.Parent = row
-
-            local selBtnCorner = Instance.new("UICorner")
-            selBtnCorner.CornerRadius = UDim.new(0, px(5))
-            selBtnCorner.Parent = selectBtn
+            selectBtn.Text = "                TweenService:Create(selectBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+            end))
+            trackConn(selectBtn.MouseLeave:Connect(function()
+                TweenService:Create(selectBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+.Parent = selectBtn
 
             local selBtnStroke = Instance.new("UIStroke")
             selBtnStroke.Color = BTN_STROKE_C
@@ -897,24 +890,20 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
         else
             local reasonLabel = Instance.new("TextLabel")
             reasonLabel.BackgroundTransparency = 1
-            reasonLabel.Font = Enum.Font.GothamMedium
-            reasonLabel.Text = reason
-            reasonLabel.TextColor3 = RED_TEXT
-            reasonLabel.TextSize = math.max(10, math.floor(px(11)))
-            reasonLabel.TextXAlignment = Enum.TextXAlignment.Right
-            reasonLabel.Size = UDim2.new(0.3, 0, 1, 0)
-            reasonLabel.AnchorPoint = Vector2.new(1, 0)
-            reasonLabel.Position = UDim2.new(1, 0, 0, 0)
-            reasonLabel.ZIndex = 353
-            reasonLabel.Parent = row
-        end
-    end
+            reasonLabel.Font = Enum.Fo    cancelBtn.Font = Enum.Font.GothamBold
+    cancelBtn.TextSize = math.max(12, math.floor(px(13)))
+    cancelBtn.Text = "CANCEL"
+    cancelBtn.TextColor3 = WHITE
+    cancelBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+    cancelBtn.Size = UDim2.new(0.4, 0, 0, px(30))
+    cancelBtn.LayoutOrder = 100
+    cancelBtn.ZIndex = 352
+    cancelBtn.Parent = selector
 
-    if not anyEligible then
-        local noMsg = mode == "reroll"
-            and "No quests available to reroll."
-            or "No completed quests eligible for bonus."
-        showToast(boostsRoot, noMsg, RED_TEXT, 2.5)
+    local cancelCorner = Instance.new("UICorner")
+    cancelCorner.CornerRadius = UDim.new(0, px(6))
+    cancelCorner.Parent = cancelBtn
+noMsg, RED_TEXT, 2.5)
     end
 
     -- Cancel button
