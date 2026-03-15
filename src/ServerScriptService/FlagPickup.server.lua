@@ -5,6 +5,15 @@ local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
 
+-- CurrencyService (lazy-loaded for objective coin rewards)
+local CurrencyService
+pcall(function()
+	local mod = game:GetService("ServerScriptService"):FindFirstChild("CurrencyService")
+	if mod and mod:IsA("ModuleScript") then
+		CurrencyService = require(mod)
+	end
+end)
+
 -- RemoteEvent for flag status announcements
 local FlagStatus = Instance.new("RemoteEvent")
 FlagStatus.Name = "FlagStatus"
@@ -295,6 +304,11 @@ function setupFlagModel(model)
                 -- award XP for returning the flag
                 if XPModule and XPModule.AwardXP then
                     pcall(function() XPModule.AwardXP(pl, "FlagReturn") end)
+                end
+
+                -- award coins for returning the flag (objective reward)
+                if CurrencyService and CurrencyService.AddCoins then
+                    pcall(function() CurrencyService:AddCoins(pl, 5, "objective") end)
                 end
 
                 -- Fire server-side event so quest system can track the return
@@ -590,6 +604,11 @@ local function setupStand(standPart)
         -- award XP for flag capture
         if XPModule and XPModule.AwardXP then
             pcall(function() XPModule.AwardXP(pl, "FlagCapture") end)
+        end
+
+        -- award coins for flag capture (objective reward)
+        if CurrencyService and CurrencyService.AddCoins then
+            pcall(function() CurrencyService:AddCoins(pl, 10, "objective") end)
         end
 
         -- announce capture to clients

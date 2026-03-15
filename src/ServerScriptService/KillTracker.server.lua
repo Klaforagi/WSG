@@ -95,13 +95,13 @@ local function onHumanoidDied(humanoid, model)
     if victimPlayer and killer then
         -- PvP kill: award 5 coins to the killer
         if CurrencyService and CurrencyService.AddCoins then
-            local ok, result = pcall(function() return CurrencyService:AddCoins(killer, 5) end)
+            local ok, result = pcall(function() return CurrencyService:AddCoins(killer, 5, "elimination") end)
             coinAward = (ok and type(result) == "number") and result or 5
         end
     elseif not victimPlayer and killer then
         -- Mob kill fallback: award 1 coin
         if CurrencyService and CurrencyService.AddCoins then
-            local ok, result = pcall(function() return CurrencyService:AddCoins(killer, 1) end)
+            local ok, result = pcall(function() return CurrencyService:AddCoins(killer, 1, "elimination") end)
             coinAward = (ok and type(result) == "number") and result or 1
         end
     end

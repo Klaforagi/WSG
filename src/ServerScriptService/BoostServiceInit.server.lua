@@ -112,7 +112,8 @@ if CurrencyService then
     --- Wrapped AddCoins: applies coin boost multiplier to positive (reward) amounts.
     --- Returns the final amount actually added (after boost). Callers can use the
     --- return value for accurate UI display (e.g. reward popups).
-    function CurrencyService:AddCoins(player, amount)
+    --- Optional 3rd param `source` is passed through for upstream wrappers.
+    function CurrencyService:AddCoins(player, amount, source)
         amount = math.floor(tonumber(amount) or 0)
         if amount <= 0 then
             -- Deductions (negative amounts) and zero should pass through unchanged

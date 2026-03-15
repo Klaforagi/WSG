@@ -134,7 +134,7 @@ local function processReceipt(receiptInfo)
 	end
 
 	local awardOk, awardErr = pcall(function()
-		CurrencyService:AddCoins(playerObj, coinsToAward)
+		CurrencyService:AddCoins(playerObj, coinsToAward, "purchase")
 	end)
 	if not awardOk then
 		warn("[CoinShopReceipt] AddCoins failed for", playerObj.Name, ":", tostring(awardErr))

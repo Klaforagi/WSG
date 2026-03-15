@@ -151,7 +151,7 @@ function QuestService:ClaimReward(player, questId)
     -- grant reward
     local cs = getCurrencyService()
     if cs and cs.AddCoins then
-        cs:AddCoins(player, def.reward)
+        cs:AddCoins(player, def.reward, "quest")
     end
 
     state.claimed = true

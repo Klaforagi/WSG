@@ -167,8 +167,15 @@ Players.PlayerAdded:Connect(function(player)
 			local humanoid = char:FindFirstChildOfClass("Humanoid")
 			if humanoid then
 				humanoid.Died:Connect(function()
-					-- small delay before respawn to let death animation settle
-					wait(6)
+					-- Respawn delay: use Rapid Recovery upgrade if available
+					local respawnTime = 6
+					if _G.GetRespawnTime then
+						local ok, val = pcall(_G.GetRespawnTime, player)
+						if ok and type(val) == "number" then
+							respawnTime = val
+						end
+					end
+					task.wait(respawnTime)
 					pcall(function() player:LoadCharacter() end)
 				end)
 			end

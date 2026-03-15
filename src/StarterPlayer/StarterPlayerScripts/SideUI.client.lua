@@ -852,6 +852,7 @@ local invModule = sideUIFolder and sideUIFolder:WaitForChild("InventoryUI", 5)
 local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
 local questsModule = sideUIFolder and sideUIFolder:WaitForChild("DailyQuestsUI", 5)
 local boostsModule = sideUIFolder and sideUIFolder:WaitForChild("BoostsUI", 5)
+local upgradesModule = sideUIFolder and sideUIFolder:WaitForChild("UpgradesUI", 5)
 if not sideUIFolder then
     warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
 end
@@ -882,7 +883,7 @@ local function showModuleImmediate(mod, label)
     if not mod then return end
     clearContent()
     titleLabel.Text = label or "SHOP"
-    local showCoins = (label == "SHOP" or label == "BOOSTS")
+    local showCoins = (label == "SHOP" or label == "BOOSTS" or label == "UPGRADES")
     headerCoinFrame.Visible = showCoins
     if showCoins then updateHeaderCoins() end
     pcall(function()
@@ -1289,6 +1290,10 @@ local function OpenPage(id)
     end
     if id == "Boosts" then
         requestShowModule(boostsModule, "BOOSTS")
+        return
+    end
+    if id == "Upgrade" then
+        requestShowModule(upgradesModule, "UPGRADES")
         return
     end
     print("OpenPage:", id)
