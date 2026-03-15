@@ -802,13 +802,485 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     makePlaceholder("Weekly quests coming soon.", 3, weeklyPage)
 
     ---------------------------------------------------------------------------
-    -- ACHIEVEMENTS page (placeholder)
+    -- ACHIEVEMENTS page  (fully functional)
     ---------------------------------------------------------------------------
     local achievPage = makePage("AchievPage", false)
     contentPages["achiev"] = achievPage
 
-    makeHeader("ACHIEVEMENTS", "Track your progress and milestones.", achievPage)
-    makePlaceholder("Achievements coming soon.", 3, achievPage)
+    makeHeader("ACHIEVEMENTS", "Track your progress and earn rewards!", achievPage)
+
+    -- Remotes for achievement system
+    local getAchievRF
+    local claimAchievRF2
+    local achievProgressRE
+
+    pcall(function()
+        local rm = ReplicatedStorage:WaitForChild("Remotes", 5)
+        if rm then
+            getAchievRF     = rm:FindFirstChild("GetAchievements")
+            claimAchievRF2  = rm:FindFirstChild("ClaimAchievement")
+            achievProgressRE = rm:FindFirstChild("AchievementProgress")
+        end
+    end)
+
+    -- Fetch achievement data
+    local achievements = {}
+    if getAchievRF then
+        pcall(function()
+            achievements = getAchievRF:InvokeServer()
+        end)
+    end
+    if type(achievements) ~= "table" then achievements = {} end
+
+    -- Lookup tables for live updates
+    local achProgressBars  = {} -- [id] -> fill Frame
+    local achProgressTexts = {} -- [id] -> TextLabel
+    local achClaimButtons  = {} -- [id] -> TextButton
+    local achGoals         = {} -- [id] -> number
+    local achClaimed       = {} -- [id] -> bool
+    local achCards         = {} -- [id] -> Frame
+    local achCardStrokes   = {} -- [id] -> UIStroke
+
+    if #achievements == 0 then
+        makePlaceholder("Loading achievements...", 3, achievPage)
+    end
+
+    for i, ach in ipairs(achievements) do
+        achGoals[ach.id]   = ach.target
+        achClaimed[ach.id] = ach.claimed
+
+        local card = Instance.new("Frame")
+        card.Name             = "Ach_" .. ach.id
+        card.BackgroundColor3 = ROW_BG
+        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.LayoutOrder      = 10 + i
+        card.Parent           = achievPage
+        achCards[ach.id]      = card
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, px(12))
+        corner.Parent = card
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color        = CARD_STROKE
+        stroke.Thickness    = 1.2
+        stroke.Transparency = 0.35
+        stroke.Parent       = card
+        achCardStrokes[ach.id] = stroke
+
+        local pad = Instance.new("UIPadding")
+        pad.PaddingLeft   = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingTop    = UDim.new(0, px(12))
+        pad.PaddingBottom = UDim.new(0, px(12))
+        pad.Parent        = card
+
+        -- Left accent bar
+        local accentBar = Instance.new("Frame")
+        accentBar.Name                = "StateAccent"
+        accentBar.BackgroundColor3    = GOLD
+        accentBar.BackgroundTransparency = 0.3
+        accentBar.BorderSizePixel     = 0
+        accentBar.Size                = UDim2.new(0, px(3), 0.7, 0)
+        accentBar.AnchorPoint         = Vector2.new(0, 0.5)
+        accentBar.Position            = UDim2.new(0, -px(10), 0.5, 0)
+        local accentCr = Instance.new("UICorner")
+        accentCr.CornerRadius = UDim.new(0.5, 0)
+        accentCr.Parent = accentBar
+        accentBar.Parent = card
+
+        -- Icon glyph (left side)
+        local iconLabel = Instance.new("TextLabel")
+        iconLabel.Name                = "AchIcon"
+        iconLabel.BackgroundTransparency = 1
+        iconLabel.Font                = Enum.Font.GothamBold
+        iconLabel.Text                = ach.icon or "★"
+        iconLabel.TextSize            = math.max(20, math.floor(px(24)))
+        iconLabel.TextColor3          = GOLD
+        iconLabel.Size                = UDim2.new(0, px(32), 0, px(32))
+        iconLabel.Position            = UDim2.new(0, 0, 0, 0)
+        iconLabel.Parent              = card
+
+        -- Title (right of icon)
+        local titleLbl = Instance.new("TextLabel")
+        titleLbl.Name               = "Title"
+        titleLbl.BackgroundTransparency = 1
+        titleLbl.Font               = Enum.Font.GothamBold
+        titleLbl.Text               = ach.title
+        titleLbl.TextColor3         = WHITE
+        titleLbl.TextSize           = math.max(15, math.floor(px(17)))
+        titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+        titleLbl.Size               = UDim2.new(0.50, 0, 0, px(22))
+        titleLbl.Position           = UDim2.new(0, px(38), 0, 0)
+        titleLbl.Parent             = card
+
+        -- Reward badge (right of title)
+        local rewardBadge = Instance.new("Frame")
+        rewardBadge.Name              = "RewardBadge"
+        rewardBadge.BackgroundColor3  = Color3.fromRGB(36, 33, 18)
+        rewardBadge.BackgroundTransparency = 0.3
+        rewardBadge.Size              = UDim2.new(0, px(100), 0, px(26))
+        rewardBadge.AnchorPoint       = Vector2.new(1, 0)
+        rewardBadge.Position          = UDim2.new(1, 0, 0, -px(2))
+        rewardBadge.Parent            = card
+
+        local badgeCr = Instance.new("UICorner")
+        badgeCr.CornerRadius = UDim.new(0, px(8))
+        badgeCr.Parent = rewardBadge
+
+        local badgeStroke = Instance.new("UIStroke")
+        badgeStroke.Color       = CLAIM_GOLD_GLOW
+        badgeStroke.Thickness   = 1
+        badgeStroke.Transparency = 0.55
+        badgeStroke.Parent      = rewardBadge
+
+        local coinSize = px(18)
+        local coinIcon = makeCoinIcon(rewardBadge, coinSize)
+        coinIcon.AnchorPoint = Vector2.new(0, 0.5)
+        coinIcon.Position    = UDim2.new(0, px(8), 0.5, 0)
+
+        local amtLbl = Instance.new("TextLabel")
+        amtLbl.Name                = "Amount"
+        amtLbl.BackgroundTransparency = 1
+        amtLbl.Font                = Enum.Font.GothamBold
+        amtLbl.Text                = tostring(ach.reward)
+        amtLbl.TextColor3          = GOLD
+        amtLbl.TextSize            = math.max(13, math.floor(px(14)))
+        amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
+        amtLbl.Size                = UDim2.new(1, -px(30), 1, 0)
+        amtLbl.AnchorPoint         = Vector2.new(1, 0)
+        amtLbl.Position            = UDim2.new(1, -px(8), 0, 0)
+        amtLbl.Parent              = rewardBadge
+
+        -- Description
+        local descLbl = Instance.new("TextLabel")
+        descLbl.Name               = "Desc"
+        descLbl.BackgroundTransparency = 1
+        descLbl.Font               = Enum.Font.GothamMedium
+        descLbl.Text               = ach.desc
+        descLbl.TextColor3         = DIM_TEXT
+        descLbl.TextSize           = math.max(11, math.floor(px(12)))
+        descLbl.TextXAlignment     = Enum.TextXAlignment.Left
+        descLbl.TextWrapped        = true
+        descLbl.Size               = UDim2.new(0.7, 0, 0, px(18))
+        descLbl.Position           = UDim2.new(0, px(38), 0, px(26))
+        descLbl.Parent             = card
+
+        -- Progress bar track
+        local barY = px(52)
+        local barH = px(16)
+        local track = Instance.new("Frame")
+        track.Name             = "BarTrack"
+        track.BackgroundColor3 = BAR_BG
+        track.Size             = UDim2.new(0.62, 0, 0, barH)
+        track.Position         = UDim2.new(0, 0, 0, barY)
+        track.Parent           = card
+
+        local trackCorner = Instance.new("UICorner")
+        trackCorner.CornerRadius = UDim.new(0, px(6))
+        trackCorner.Parent = track
+
+        local trackStroke = Instance.new("UIStroke")
+        trackStroke.Color        = CARD_STROKE
+        trackStroke.Thickness    = 1
+        trackStroke.Transparency = 0.5
+        trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        trackStroke.Parent       = track
+
+        -- Progress bar fill
+        local pct = (ach.target > 0) and math.clamp(ach.progress / ach.target, 0, 1) or 0
+        local fill = Instance.new("Frame")
+        fill.Name             = "BarFill"
+        fill.BackgroundColor3 = BAR_FILL
+        fill.BackgroundTransparency = 0.1
+        fill.Size             = UDim2.new(pct, 0, 1, 0)
+        fill.Parent           = track
+
+        local fillCorner = Instance.new("UICorner")
+        fillCorner.CornerRadius = UDim.new(0, px(6))
+        fillCorner.Parent = fill
+
+        -- Subtle inner highlight on fill bar
+        local fillHighlight = Instance.new("Frame")
+        fillHighlight.Name = "FillHighlight"
+        fillHighlight.BackgroundColor3 = Color3.fromRGB(255, 245, 180)
+        fillHighlight.BackgroundTransparency = 0.65
+        fillHighlight.BorderSizePixel = 0
+        fillHighlight.Size = UDim2.new(1, 0, 0.35, 0)
+        fillHighlight.Position = UDim2.new(0, 0, 0, 0)
+        fillHighlight.Parent = fill
+
+        local fillHlCr = Instance.new("UICorner")
+        fillHlCr.CornerRadius = UDim.new(0, px(6))
+        fillHlCr.Parent = fillHighlight
+
+        achProgressBars[ach.id] = fill
+
+        -- Progress text
+        local progText = Instance.new("TextLabel")
+        progText.Name               = "ProgressText"
+        progText.BackgroundTransparency = 1
+        progText.Font               = Enum.Font.GothamBold
+        progText.Text               = tostring(ach.progress) .. "/" .. tostring(ach.target)
+        progText.TextColor3         = WHITE
+        progText.TextSize           = math.max(11, math.floor(px(12)))
+        progText.Size               = UDim2.new(1, 0, 1, 0)
+        progText.Parent             = track
+        achProgressTexts[ach.id] = progText
+
+        -- Claim / status button
+        local btnW2 = px(100)
+        local btnH  = px(34)
+        local btn = Instance.new("TextButton")
+        btn.Name            = "ClaimBtn"
+        btn.AutoButtonColor = false
+        btn.Font            = Enum.Font.GothamBold
+        btn.TextSize        = math.max(13, math.floor(px(14)))
+        btn.Size            = UDim2.new(0, btnW2, 0, btnH)
+        btn.AnchorPoint     = Vector2.new(1, 0)
+        btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
+        btn.Parent          = card
+
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, px(10))
+        btnCorner.Parent = btn
+
+        local btnStroke = Instance.new("UIStroke")
+        btnStroke.Color       = BTN_STROKE
+        btnStroke.Thickness   = 1.4
+        btnStroke.Transparency = 0.3
+        btnStroke.Parent      = btn
+
+        achClaimButtons[ach.id] = btn
+
+        -- Card visuals helper
+        local function updateAchCardVisuals(progress, goal, claimed)
+            if claimed then
+                card.BackgroundColor3 = ROW_CLAIMED_BG
+                stroke.Color = GREEN_GLOW
+                stroke.Thickness = 1.8
+                stroke.Transparency = 0.3
+                accentBar.BackgroundColor3 = GREEN_GLOW
+                accentBar.BackgroundTransparency = 0.2
+            elseif progress >= goal then
+                card.BackgroundColor3 = ROW_CLAIMABLE_BG
+                stroke.Color = CLAIM_GOLD_GLOW
+                stroke.Thickness = 2
+                stroke.Transparency = 0.15
+                accentBar.BackgroundColor3 = CLAIM_GOLD_GLOW
+                accentBar.BackgroundTransparency = 0
+            else
+                card.BackgroundColor3 = ROW_BG
+                stroke.Color = CARD_STROKE
+                stroke.Thickness = 1.2
+                stroke.Transparency = 0.35
+                accentBar.BackgroundColor3 = GOLD
+                accentBar.BackgroundTransparency = 0.5
+            end
+        end
+
+        -- Button state helper
+        local function updateAchBtnState(progress, goal, claimed)
+            if claimed then
+                btn.Text             = "\u{2714} CLAIMED"
+                btn.BackgroundColor3 = BTN_CLAIMED
+                btn.TextColor3       = GREEN_GLOW
+                btn.Active           = false
+                btnStroke.Color      = GREEN_GLOW
+                btnStroke.Transparency = 0.5
+            elseif progress >= goal then
+                btn.Text             = "\u{2B50} CLAIM"
+                btn.BackgroundColor3 = BTN_CLAIM
+                btn.TextColor3       = WHITE
+                btn.Active           = true
+                btnStroke.Color      = GREEN_GLOW
+                btnStroke.Transparency = 0.15
+            else
+                btn.Text             = tostring(progress) .. "/" .. tostring(goal)
+                btn.BackgroundColor3 = BTN_LOCKED
+                btn.TextColor3       = DIM_TEXT
+                btn.Active           = false
+                btnStroke.Color      = BTN_STROKE
+                btnStroke.Transparency = 0.4
+            end
+            updateAchCardVisuals(progress, goal, claimed)
+        end
+
+        updateAchBtnState(ach.progress, ach.target, ach.claimed)
+
+        -- Hover
+        trackConn(btn.MouseEnter:Connect(function()
+            if btn.Active then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = Color3.fromRGB(45, 210, 90)}):Play()
+            end
+        end))
+        trackConn(btn.MouseLeave:Connect(function()
+            if btn.Active then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = BTN_CLAIM}):Play()
+            end
+        end))
+
+        -- Claim handler
+        trackConn(btn.MouseButton1Click:Connect(function()
+            if achClaimed[ach.id] then return end
+            if not btn.Active then return end
+
+            btn.Active = false
+            btn.Text   = "..."
+
+            local success = false
+            if claimAchievRF2 then
+                pcall(function()
+                    success = claimAchievRF2:InvokeServer(ach.id)
+                end)
+            end
+
+            if success then
+                achClaimed[ach.id] = true
+                updateAchBtnState(ach.target, ach.target, true)
+                -- Flash gold
+                TweenService:Create(card, TWEEN_QUICK,
+                    {BackgroundColor3 = Color3.fromRGB(60, 55, 25)}):Play()
+                task.delay(0.3, function()
+                    if card and card.Parent then
+                        TweenService:Create(card, TWEEN_QUICK,
+                            {BackgroundColor3 = ROW_CLAIMED_BG}):Play()
+                    end
+                end)
+                if _G.UpdateShopHeaderCoins then
+                    pcall(_G.UpdateShopHeaderCoins)
+                end
+            else
+                updateAchBtnState(ach.progress, ach.target, false)
+            end
+        end))
+    end
+
+    ---------------------------------------------------------------------------
+    -- Live achievement progress updates
+    ---------------------------------------------------------------------------
+    if achievProgressRE then
+        trackConn(achievProgressRE.OnClientEvent:Connect(function(achId, newProgress, completed)
+            if type(achId) ~= "string" then return end
+
+            -- Full refresh: re-fetch and rebuild
+            if achId == "__full_refresh" then
+                if getAchievRF then
+                    local newData = {}
+                    pcall(function() newData = getAchievRF:InvokeServer() end)
+                    if type(newData) == "table" then
+                        for _, a in ipairs(newData) do
+                            achGoals[a.id]   = a.target
+                            achClaimed[a.id] = a.claimed
+                            local fillBar = achProgressBars[a.id]
+                            if fillBar and fillBar.Parent then
+                                local p2 = math.clamp(a.progress / a.target, 0, 1)
+                                TweenService:Create(fillBar, TWEEN_QUICK,
+                                    {Size = UDim2.new(p2, 0, 1, 0)}):Play()
+                            end
+                            local txt = achProgressTexts[a.id]
+                            if txt and txt.Parent then
+                                txt.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                            end
+                            local claimBtn2 = achClaimButtons[a.id]
+                            if claimBtn2 then
+                                local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
+                                if a.claimed then
+                                    claimBtn2.Text = "\u{2714} CLAIMED"
+                                    claimBtn2.BackgroundColor3 = BTN_CLAIMED
+                                    claimBtn2.TextColor3 = GREEN_GLOW
+                                    claimBtn2.Active = false
+                                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
+                                elseif a.progress >= a.target then
+                                    claimBtn2.Text = "\u{2B50} CLAIM"
+                                    claimBtn2.BackgroundColor3 = BTN_CLAIM
+                                    claimBtn2.TextColor3 = WHITE
+                                    claimBtn2.Active = true
+                                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.15 end
+                                else
+                                    claimBtn2.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                                    claimBtn2.BackgroundColor3 = BTN_LOCKED
+                                    claimBtn2.TextColor3 = DIM_TEXT
+                                    claimBtn2.Active = false
+                                    if bStroke then bStroke.Color = BTN_STROKE; bStroke.Transparency = 0.4 end
+                                end
+                            end
+                            -- Update card visuals
+                            local cardFrame = achCards[a.id]
+                            local cardStroke = achCardStrokes[a.id]
+                            if cardFrame and cardFrame.Parent then
+                                local accent = cardFrame:FindFirstChild("StateAccent")
+                                if a.claimed then
+                                    cardFrame.BackgroundColor3 = ROW_CLAIMED_BG
+                                    if cardStroke then cardStroke.Color = GREEN_GLOW; cardStroke.Thickness = 1.8; cardStroke.Transparency = 0.3 end
+                                    if accent then accent.BackgroundColor3 = GREEN_GLOW; accent.BackgroundTransparency = 0.2 end
+                                elseif a.progress >= a.target then
+                                    cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
+                                    if cardStroke then cardStroke.Color = CLAIM_GOLD_GLOW; cardStroke.Thickness = 2; cardStroke.Transparency = 0.15 end
+                                    if accent then accent.BackgroundColor3 = CLAIM_GOLD_GLOW; accent.BackgroundTransparency = 0 end
+                                else
+                                    cardFrame.BackgroundColor3 = ROW_BG
+                                    if cardStroke then cardStroke.Color = CARD_STROKE; cardStroke.Thickness = 1.2; cardStroke.Transparency = 0.35 end
+                                    if accent then accent.BackgroundColor3 = GOLD; accent.BackgroundTransparency = 0.5 end
+                                end
+                            end
+                        end
+                    end
+                end
+                return
+            end
+
+            -- Single achievement update
+            newProgress = tonumber(newProgress) or 0
+            local goal = achGoals[achId]
+            if not goal then return end
+            if achClaimed[achId] then return end
+
+            local pct2 = math.clamp(newProgress / goal, 0, 1)
+
+            local fillBar = achProgressBars[achId]
+            if fillBar and fillBar.Parent then
+                TweenService:Create(fillBar, TWEEN_QUICK,
+                    {Size = UDim2.new(pct2, 0, 1, 0)}):Play()
+            end
+
+            local txt = achProgressTexts[achId]
+            if txt and txt.Parent then
+                txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
+            end
+
+            local claimBtn2 = achClaimButtons[achId]
+            if claimBtn2 and claimBtn2.Parent then
+                local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
+                if newProgress >= goal then
+                    claimBtn2.Text             = "\u{2B50} CLAIM"
+                    claimBtn2.BackgroundColor3 = BTN_CLAIM
+                    claimBtn2.TextColor3       = WHITE
+                    claimBtn2.Active           = true
+                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.15 end
+                end
+            end
+
+            -- Update card visuals
+            local cardFrame = achCards[achId]
+            local cardStroke = achCardStrokes[achId]
+            if cardFrame and cardFrame.Parent then
+                local accent = cardFrame:FindFirstChild("StateAccent")
+                if newProgress >= goal then
+                    cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
+                    if cardStroke then cardStroke.Color = CLAIM_GOLD_GLOW; cardStroke.Thickness = 2; cardStroke.Transparency = 0.15 end
+                    if accent then accent.BackgroundColor3 = CLAIM_GOLD_GLOW; accent.BackgroundTransparency = 0 end
+                end
+            end
+
+            -- Show toast notification when an achievement is newly completed
+            if completed and _G.ShowAchievementToast then
+                pcall(function() _G.ShowAchievementToast(achId) end)
+            end
+        end))
+    end
 
     ---------------------------------------------------------------------------
     -- Activate default tab
