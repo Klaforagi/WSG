@@ -581,6 +581,14 @@ local function setupStand(standPart)
         local flagTeam = carry.team
         if flagTeam == standTeam then return end
 
+        -- Require the player's own flag to be at the stand to allow capture.
+        -- If the team's flag is missing (taken or dropped), disallow capture.
+        local ownFlagInfo = flags[standTeam]
+        local ownFlagPresent = ownFlagInfo and ownFlagInfo.model and (ownFlagInfo.dropped ~= true)
+        if not ownFlagPresent then
+            return
+        end
+
         -- debounce per player to avoid multiple triggers
         if captureDebounce[pl] then return end
         captureDebounce[pl] = true

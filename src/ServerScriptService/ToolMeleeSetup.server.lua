@@ -504,7 +504,9 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
     end
 
     -- delayed/persistent hitbox: wait `hitboxDelay`, then for `hitboxActive` seconds
-    -- repeatedly check the cone and apply damage once per target per swing.
+    -- repeatedly check multiple box samples along the look vector and apply
+    -- damage once per target per swing. This increases frequency and samples
+    -- near/mid/far positions to improve reliability.
     local hitboxDelay = cfg.hitboxDelay or 0.1
     local hitboxActive = cfg.hitboxActive or 0.2
     task.spawn(function()
@@ -514,58 +516,74 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
         while tick() < endTime and player and player.Character and hum and hum.Health > 0 do
             local curHrp = player.Character:FindFirstChild("HumanoidRootPart")
             if not curHrp then break end
-            -- compute oriented box CFrame and half extents
+
             local boxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
             local offset = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
-            -- compute world position using HRP local axes so +Z in offset means "in front"
-            local pos = curHrp.Position
-                + curHrp.CFrame.RightVector * offset.X
-                + curHrp.CFrame.UpVector * offset.Y
-                + curHrp.CFrame.LookVector * offset.Z
-            local boxCFrame = CFrame.new(pos, pos + curHrp.CFrame.LookVector)
-            local halfSize = boxSize / 2
-            local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
-            for _, hit in ipairs(targetsNow) do
-                if not hitAlready[hit.humanoid] then
-                    hitAlready[hit.humanoid] = true
-                    -- apply damage
-                    applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
-                    -- hit sound at attacker
-                    local hitSoundKey = cfg.hit_sound
-                    if hitSoundKey and hitSoundKey ~= "" then
-                        local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-                        if soundsFolder then
-                            local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
-                            if meleeFolder then
-                                local template = meleeFolder:FindFirstChild(hitSoundKey)
-                                if template and template:IsA("Sound") then
-                                    local s = template:Clone()
-                                    s.Parent = curHrp
-                                    s:Play()
-                                    Debris:AddItem(s, 3)
+
+            local rightV = curHrp.CFrame.RightVector
+            local upV = curHrp.CFrame.UpVector
+            local lookV = curHrp.CFrame.LookVector
+
+            -- sample three depths along the look vector: near, center, far
+            local centerZ = offset.Z
+            local spread = boxSize.Z * 0.35
+            local sampleDepths = { centerZ - spread, centerZ, centerZ + spread }
+
+            for _, depth in ipairs(sampleDepths) do
+                local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * depth
+                local boxCFrame = CFrame.new(pos, pos + lookV)
+                local halfSize = boxSize / 2
+
+                -- Debug visuals are handled client-side for smoothness; server
+                -- remains authoritative for hit detection. (Client will optionally
+                -- render a moving hitbox.)
+
+                local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
+                for _, hit in ipairs(targetsNow) do
+                    if not hitAlready[hit.humanoid] then
+                        hitAlready[hit.humanoid] = true
+                        applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
+
+                        -- hit sound at attacker
+                        local hitSoundKey = cfg.hit_sound
+                        if hitSoundKey and hitSoundKey ~= "" then
+                            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                            if soundsFolder then
+                                local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
+                                if meleeFolder then
+                                    local template = meleeFolder:FindFirstChild(hitSoundKey)
+                                    if template and template:IsA("Sound") then
+                                        local s = template:Clone()
+                                        s.Parent = curHrp
+                                        s:Play()
+                                        Debris:AddItem(s, 3)
+                                    end
                                 end
                             end
                         end
-                    end
-                    -- knockback
-                    -- knockback (skip for same-team players)
-                    if knockback > 0 then
-                        local victimRoot = hit.model:FindFirstChild("HumanoidRootPart")
-                            or hit.model:FindFirstChild("Torso")
-                        if victimRoot then
-                            local vp = Players:GetPlayerFromCharacter(hit.model)
-                            local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
-                            if not isSameTeam then
-                                local dir = (victimRoot.Position - boxCFrame.Position)
-                                if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
-                                applyKnockback(victimRoot, dir, knockback)
+
+                        -- knockback (skip for same-team players)
+                        if knockback > 0 then
+                            local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
+                            if victimRoot then
+                                local vp = Players:GetPlayerFromCharacter(hit.model)
+                                local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
+                                if not isSameTeam then
+                                    local dir = (victimRoot.Position - boxCFrame.Position)
+                                    if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
+                                    applyKnockback(victimRoot, dir, knockback)
+                                end
                             end
                         end
+
                     end
                 end
             end
-            task.wait(0.06)
+
+            -- higher-frequency polling for smoother detection
+            task.wait(0.01)
         end
+        -- no server-side debug part to clean up
     end)
 end)
 

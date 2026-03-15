@@ -58,6 +58,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     rootPad.Parent = root
 
     local items = inventoryApi and inventoryApi:GetItems() or {}
+    -- Normalize legacy item IDs to current names so UI shows correct labels
+    if items and type(items) == "table" then
+        local normalized = {}
+        for _, id in ipairs(items) do
+            if type(id) == "string" and tostring(id):lower() == "stick" then
+                table.insert(normalized, "Wooden Sword")
+            else
+                table.insert(normalized, id)
+            end
+        end
+        items = normalized
+    end
 
     -- Assets & presets for classification
     local AssetCodes = nil
@@ -86,6 +98,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function classifyItem(name)
         if not name then return "Ranged" end
         local key = tostring(name):lower()
+        -- legacy alias mapping: treat certain historical IDs as melee
+        local aliasMap = {
+            ["stick"] = "Melee",
+        }
+        if aliasMap[key] then return aliasMap[key] end
         if meleePresets and meleePresets[key] then return "Melee" end
         if rangedPresets and rangedPresets[key] then return "Ranged" end
         return "Ranged"
@@ -180,6 +197,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             equippedState.Melee = inventoryApi:GetEquipped("Melee")
             equippedState.Ranged = inventoryApi:GetEquipped("Ranged")
             equippedState.Special = inventoryApi:GetEquipped("Special")
+            -- normalize legacy equipped references
+            if type(equippedState.Melee) == "string" and equippedState.Melee:lower() == "stick" then
+                equippedState.Melee = "Wooden Sword"
+            end
+            if type(equippedState.Ranged) == "string" and equippedState.Ranged:lower() == "stick" then
+                equippedState.Ranged = "Wooden Sword"
+            end
+            if type(equippedState.Special) == "string" and equippedState.Special:lower() == "stick" then
+                equippedState.Special = "Wooden Sword"
+            end
         end)
     end
     local allEquipBtns = {} -- id -> {btn, stroke, category, card, cardStroke}

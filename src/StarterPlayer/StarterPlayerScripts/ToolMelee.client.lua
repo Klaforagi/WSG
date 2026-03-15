@@ -255,17 +255,48 @@ local function attachMelee(tool)
             local color = cfg.hitboxColor or Color3.fromRGB(255, 50, 50)
             spawn(function()
                 task.wait(hd)
-                local char = player.Character
-                local originCFrame = nil
-                if char and char.PrimaryPart then originCFrame = char.PrimaryPart.CFrame end
-                if not originCFrame and char then
-                    originCFrame = (char:FindFirstChild("HumanoidRootPart") and char.HumanoidRootPart.CFrame) or CFrame.new()
+                local startTime = tick()
+                local boxSize = cfg.hitboxSize or Vector3.new(4,3,7)
+                local offset = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
+
+                -- create a single client-side debug part and update it every frame
+                local part = workspace:FindFirstChild("_MeleeHitboxDebug")
+                if not part or not part:IsA("BasePart") then
+                    part = Instance.new("Part")
+                    part.Name = "_MeleeHitboxDebug"
+                    part.Anchored = true
+                    part.CanCollide = false
+                    part.Transparency = 0.6
+                    part.Size = boxSize
+                    part.Color = color
+                    part.Material = Enum.Material.Neon
+                    part.Parent = workspace
                 end
-                if originCFrame then
-                        local boxSize = cfg.hitboxSize or Vector3.new(4,3,7)
-                        local offset = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
-                        showDebugHitbox(originCFrame, boxSize, offset, ha + 0.04, color)
-                end
+
+                local conn
+                conn = RunService.Heartbeat:Connect(function()
+                    if not part or not part.Parent then
+                        if conn then conn:Disconnect() end
+                        return
+                    end
+                    if tick() - startTime > ha then
+                        if conn then conn:Disconnect() end
+                        if part and part.Parent then part:Destroy() end
+                        return
+                    end
+                    local char = player.Character
+                    if not char then return end
+                    local hrp = char:FindFirstChild("HumanoidRootPart") or char.PrimaryPart
+                    if not hrp then return end
+                    local rightV = hrp.CFrame.RightVector
+                    local upV = hrp.CFrame.UpVector
+                    local lookV = hrp.CFrame.LookVector
+                    local pos = hrp.Position + rightV * offset.X + upV * offset.Y + lookV * offset.Z
+                    local boxCFrame = CFrame.new(pos, pos + lookV)
+                    if part.Size ~= boxSize then part.Size = boxSize end
+                    if part.Color ~= color then part.Color = color end
+                    part.CFrame = boxCFrame
+                end)
             end)
         end
 
