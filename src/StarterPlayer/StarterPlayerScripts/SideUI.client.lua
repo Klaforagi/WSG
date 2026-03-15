@@ -605,9 +605,9 @@ end
 -- preload Slingshot into the client inventory so player has ranged start
 pcall(function() Inventory:AddItem("Slingshot") end)
 pcall(function() Inventory:SetEquipped("Ranged", "Slingshot") end)
--- preload Stick so player shows it as owned at start (free starter melee)
-pcall(function() Inventory:AddItem("Stick") end)
-pcall(function() Inventory:SetEquipped("Melee", "Stick") end)
+-- preload Wooden Sword so it shows as OWNED in the Shop (free starter melee)
+pcall(function() Inventory:AddItem("Wooden Sword") end)
+pcall(function() Inventory:SetEquipped("Melee", "Wooden Sword") end)
 
 -- Create centered modal window (hidden by default)
 local modalOverlay = Instance.new("Frame")
@@ -1341,6 +1341,7 @@ _G.SideUI = _G.SideUI or {}
 _G.SideUI.SetCoins = SetCoins
 _G.SideUI.SetBadge = SetBadge
 _G.SideUI.OpenPage = OpenPage
+_G.SideUI.SetTitle = function(text) titleLabel.Text = text end
 
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
 -- Assign to the forward-declared scriptHandlers table (line ~106) so click closures above see these

@@ -28,6 +28,10 @@ local GREEN_GLOW   = Color3.fromRGB(50, 230, 110)
 local RED_TEXT     = Color3.fromRGB(255, 80, 80)
 local DISABLED_BG  = Color3.fromRGB(35, 38, 52)
 
+-- Tab-specific colors (mirrored from DailyQuestsUI)
+local SIDEBAR_BG    = Color3.fromRGB(18, 20, 34)
+local TAB_ACTIVE_BG = Color3.fromRGB(32, 30, 18)
+
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local ShopUI = {}
@@ -115,6 +119,17 @@ local function safeRequireAssetCodes()
 end
 
 local AssetCodes = safeRequireAssetCodes()
+
+--------------------------------------------------------------------------------
+-- Tab definitions (mirrors DailyQuestsUI TAB_DEFS pattern)
+--------------------------------------------------------------------------------
+local TAB_DEFS = {
+    { id = "weapons", icon = "\u{2694}", label = "Weapons", order = 1 },
+    { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 2 },
+    { id = "trails",  icon = "\u{2727}", label = "Trails",  order = 3 },
+    { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 4 },
+    { id = "effects", icon = "\u{2738}", label = "Effects", order = 5 },
+}
 
 local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, inventoryApi, category)
     category = category or "Ranged"
@@ -415,55 +430,340 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         end
     end
 
-    local root = Instance.new("Frame")
-    root.Name = "ShopUI"
-    root.BackgroundTransparency = 1
-    root.Size = UDim2.new(1, 0, 0, 0)
-    root.AutomaticSize = Enum.AutomaticSize.Y
-    root.ZIndex = 240
-    root.Parent = parent
-
-    -- stack sections vertically with spacing
-    local rootLayout = Instance.new("UIListLayout")
-    rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rootLayout.Padding = UDim.new(0, px(16))
-    rootLayout.Parent = root
-
-    local rootPad = Instance.new("UIPadding")
-    rootPad.PaddingTop = UDim.new(0, px(6))
-    rootPad.PaddingBottom = UDim.new(0, px(16))
-    rootPad.PaddingLeft = UDim.new(0, px(8))
-    rootPad.PaddingRight = UDim.new(0, px(8))
-    rootPad.Parent = root
-
     -- Ensure we have AssetCodes cached (safe)
     AssetCodes = AssetCodes or safeRequireAssetCodes()
 
-    -- Build sections (these live inside the modal's scrolling content provided by SideUI)
-    local rangedSection, rangedGrid = makeSection(root, "Ranged", "Ranged Weapons")
-    local meleeSection, meleeGrid = makeSection(root, "Melee", "Melee Weapons")
-    local specialSection, specialGrid = makeSection(root, "Special", "Special Weapons")
-    local coinsSection, coinsGrid = makeSection(root, "Coins", "Coins")
+    ---------------------------------------------------------------------------
+    -- Layout constants (sidebar dimensions matching DailyQuestsUI)
+    ---------------------------------------------------------------------------
+    local TAB_W   = px(130)
+    local TAB_GAP = px(10)
 
-    -- explicit stacking order for sections (Melee first, Ranged second)
-    meleeSection.LayoutOrder = 1
-    rangedSection.LayoutOrder = 2
+    ---------------------------------------------------------------------------
+    -- Root container (absolute positioning for sidebar + content, like Quests)
+    ---------------------------------------------------------------------------
+    local root = Instance.new("Frame")
+    root.Name                = "ShopRoot"
+    root.BackgroundTransparency = 1
+    root.Size                = UDim2.new(1, 0, 0, px(600))
+    root.ZIndex              = 240
+    root.LayoutOrder         = 1
+    root.ClipsDescendants    = false
+    root.Parent              = parent
+
+    local rootPad = Instance.new("UIPadding")
+    rootPad.PaddingTop    = UDim.new(0, px(6))
+    rootPad.PaddingBottom = UDim.new(0, px(6))
+    rootPad.Parent        = root
+
+    ---------------------------------------------------------------------------
+    -- Left sidebar (vertical tab rail, mirrors DailyQuestsUI TabSidebar)
+    ---------------------------------------------------------------------------
+    local sidebar = Instance.new("Frame")
+    sidebar.Name             = "TabSidebar"
+    sidebar.BackgroundColor3 = SIDEBAR_BG
+    sidebar.BorderSizePixel  = 0
+    sidebar.Size             = UDim2.new(0, TAB_W, 1, 0)
+    sidebar.Position         = UDim2.new(0, 0, 0, 0)
+    sidebar.ClipsDescendants = false
+    sidebar.Parent           = root
+
+    local sideCorner = Instance.new("UICorner")
+    sideCorner.CornerRadius = UDim.new(0, px(10))
+    sideCorner.Parent = sidebar
+
+    local sideStroke = Instance.new("UIStroke")
+    sideStroke.Color        = CARD_STROKE
+    sideStroke.Thickness    = 1.2
+    sideStroke.Transparency = 0.3
+    sideStroke.Parent       = sidebar
+
+    local sideLayout = Instance.new("UIListLayout")
+    sideLayout.SortOrder           = Enum.SortOrder.LayoutOrder
+    sideLayout.Padding             = UDim.new(0, px(3))
+    sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    sideLayout.Parent              = sidebar
+
+    local sidePad = Instance.new("UIPadding")
+    sidePad.PaddingTop    = UDim.new(0, px(10))
+    sidePad.PaddingBottom = UDim.new(0, px(10))
+    sidePad.PaddingLeft   = UDim.new(0, px(6))
+    sidePad.PaddingRight  = UDim.new(0, px(6))
+    sidePad.Parent        = sidebar
+
+    ---------------------------------------------------------------------------
+    -- Build tab buttons (vertical, mirrors DailyQuestsUI makeTabButton)
+    ---------------------------------------------------------------------------
+    local tabButtons   = {}  -- [id] -> TextButton
+    local contentPages = {}  -- [id] -> Frame
+    local currentTab   = "weapons"
+
+    local function makeTabButton(def)
+        local btn = Instance.new("TextButton")
+        btn.Name            = def.label .. "Tab"
+        btn.AutoButtonColor = false
+        btn.BackgroundColor3 = SIDEBAR_BG
+        btn.BorderSizePixel = 0
+        btn.Size            = UDim2.new(1, -px(2), 0, px(62))
+        btn.LayoutOrder     = def.order
+        btn.Text            = ""
+        btn.Parent          = sidebar
+
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, px(10))
+        btnCorner.Parent       = btn
+
+        -- Active indicator bar (left edge, hidden by default)
+        local bar = Instance.new("Frame")
+        bar.Name                   = "ActiveBar"
+        bar.BackgroundColor3       = GOLD
+        bar.BorderSizePixel        = 0
+        bar.Size                   = UDim2.new(0, px(3), 0.6, 0)
+        bar.AnchorPoint            = Vector2.new(0, 0.5)
+        bar.Position               = UDim2.new(0, 0, 0.5, 0)
+        bar.BackgroundTransparency = 1
+        local barCr = Instance.new("UICorner")
+        barCr.CornerRadius = UDim.new(0.5, 0)
+        barCr.Parent = bar
+        bar.Parent = btn
+
+        -- Icon glyph
+        local iconLbl = Instance.new("TextLabel")
+        iconLbl.Name                = "Icon"
+        iconLbl.BackgroundTransparency = 1
+        iconLbl.Font                = Enum.Font.GothamBold
+        iconLbl.Text                = def.icon
+        iconLbl.TextColor3          = DIM_TEXT
+        iconLbl.TextSize            = math.max(16, math.floor(px(18)))
+        iconLbl.Size                = UDim2.new(1, 0, 0, px(24))
+        iconLbl.Position            = UDim2.new(0, 0, 0, px(8))
+        iconLbl.TextXAlignment      = Enum.TextXAlignment.Center
+        iconLbl.Parent              = btn
+
+        -- Text label
+        local textLbl = Instance.new("TextLabel")
+        textLbl.Name                = "Label"
+        textLbl.BackgroundTransparency = 1
+        textLbl.Font                = Enum.Font.GothamBold
+        textLbl.Text                = def.label
+        textLbl.TextColor3          = DIM_TEXT
+        textLbl.TextSize            = math.max(11, math.floor(px(12)))
+        textLbl.Size                = UDim2.new(1, -px(6), 0, px(16))
+        textLbl.Position            = UDim2.new(0, px(3), 0, px(34))
+        textLbl.TextXAlignment      = Enum.TextXAlignment.Center
+        textLbl.TextTruncate        = Enum.TextTruncate.None
+        textLbl.Parent              = btn
+
+        local btnStroke = Instance.new("UIStroke")
+        btnStroke.Color        = CARD_STROKE
+        btnStroke.Thickness    = 1.2
+        btnStroke.Transparency = 0.6
+        btnStroke.Parent       = btn
+
+        return btn
+    end
+
+    for _, def in ipairs(TAB_DEFS) do
+        tabButtons[def.id] = makeTabButton(def)
+    end
+
+    ---------------------------------------------------------------------------
+    -- Active-tab state management (mirrors DailyQuestsUI setActiveTab)
+    ---------------------------------------------------------------------------
+    local function setActiveTab(tabId)
+        currentTab = tabId
+        for id, btn in pairs(tabButtons) do
+            local active = (id == tabId)
+            btn.BackgroundColor3 = active and TAB_ACTIVE_BG or SIDEBAR_BG
+
+            local bar    = btn:FindFirstChild("ActiveBar")
+            local icon   = btn:FindFirstChild("Icon")
+            local label  = btn:FindFirstChild("Label")
+            local stroke = btn:FindFirstChildOfClass("UIStroke")
+
+            if bar    then bar.BackgroundTransparency = active and 0    or 1    end
+            if icon   then icon.TextColor3            = active and GOLD or DIM_TEXT end
+            if label  then label.TextColor3           = active and WHITE or DIM_TEXT end
+            if stroke then stroke.Transparency        = active and 0.2  or 0.6  end
+        end
+        for id, page in pairs(contentPages) do
+            page.Visible = (id == tabId)
+        end
+    end
+
+    ---------------------------------------------------------------------------
+    -- Wire tab button clicks + hover feedback (mirrors DailyQuestsUI)
+    ---------------------------------------------------------------------------
+    for _, def in ipairs(TAB_DEFS) do
+        local id  = def.id
+        local btn = tabButtons[id]
+
+        btn.MouseButton1Click:Connect(function()
+            setActiveTab(id)
+        end)
+        btn.MouseEnter:Connect(function()
+            if currentTab ~= id then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = Color3.fromRGB(28, 26, 18)}):Play()
+            end
+        end)
+        btn.MouseLeave:Connect(function()
+            if currentTab ~= id then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = SIDEBAR_BG}):Play()
+            end
+        end)
+    end
+
+    ---------------------------------------------------------------------------
+    -- Content area (right of sidebar, mirrors DailyQuestsUI ContentArea)
+    ---------------------------------------------------------------------------
+    local contentContainer = Instance.new("Frame")
+    contentContainer.Name                = "ContentArea"
+    contentContainer.BackgroundTransparency = 1
+    contentContainer.Size                = UDim2.new(1, -(TAB_W + TAB_GAP), 0, 0)
+    contentContainer.Position            = UDim2.new(0, TAB_W + TAB_GAP, 0, 0)
+    contentContainer.AutomaticSize       = Enum.AutomaticSize.Y
+    contentContainer.ClipsDescendants    = false
+    contentContainer.Parent              = root
+
+    ---------------------------------------------------------------------------
+    -- WEAPONS content page (all existing shop content, fully preserved)
+    ---------------------------------------------------------------------------
+    local weaponsPage = Instance.new("Frame")
+    weaponsPage.Name                = "WeaponsContent"
+    weaponsPage.BackgroundTransparency = 1
+    weaponsPage.Size                = UDim2.new(1, 0, 0, 0)
+    weaponsPage.AutomaticSize       = Enum.AutomaticSize.Y
+    weaponsPage.Visible             = true
+    weaponsPage.Parent              = contentContainer
+
+    local wpLayout = Instance.new("UIListLayout")
+    wpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    wpLayout.Padding   = UDim.new(0, px(16))
+    wpLayout.Parent    = weaponsPage
+
+    -- Weapon sections (moved from old root into weapons page)
+    local meleeSection, meleeGrid     = makeSection(weaponsPage, "Melee", "Melee Weapons")
+    local rangedSection, rangedGrid   = makeSection(weaponsPage, "Ranged", "Ranged Weapons")
+    local specialSection, specialGrid = makeSection(weaponsPage, "Special", "Special Weapons")
+    local coinsSection, coinsGrid     = makeSection(weaponsPage, "Coins", "Coins")
+
+    meleeSection.LayoutOrder   = 1
+    rangedSection.LayoutOrder  = 2
     specialSection.LayoutOrder = 3
-    coinsSection.LayoutOrder = 4
+    coinsSection.LayoutOrder   = 4
 
-    -- Populate melee weapons section (Wooden Sword is the free starter)
+    -- Populate melee weapons (free starter: Wooden Sword)
     makeItem(meleeGrid, "Wooden Sword", "Wooden Sword", 0, "Wooden Sword", coinApi, inventoryApi, "Melee")
     makeItem(meleeGrid, "Dagger", "Dagger", 30, "Dagger", coinApi, inventoryApi, "Melee")
     makeItem(meleeGrid, "Sword", "Sword", 30, "Sword", coinApi, inventoryApi, "Melee")
     makeItem(meleeGrid, "Spear", "Spear", 30, "Spear", coinApi, inventoryApi, "Melee")
 
-    -- Populate ranged weapons section (Slingshot is the free starter)
+    -- Populate ranged weapons (free starter: Slingshot)
     makeItem(rangedGrid, "Slingshot", "Slingshot", 0, "Slingshot", coinApi, inventoryApi, "Ranged")
     makeItem(rangedGrid, "Shortbow", "Shortbow", 20, "Shortbow", coinApi, inventoryApi, "Ranged")
     makeItem(rangedGrid, "Longbow", "Longbow", 30, "Longbow", coinApi, inventoryApi, "Ranged")
     makeItem(rangedGrid, "Xbow", "Xbow", 40, "Xbow", coinApi, inventoryApi, "Ranged")
 
-    -- Special/Coin sections can be populated similarly by calling makeItem on those grids
+    -- Special/Coin sections can be populated similarly by calling makeItem
+
+    contentPages["weapons"] = weaponsPage
+
+    ---------------------------------------------------------------------------
+    -- Placeholder content pages (Skins, Trails, Emotes, Effects)
+    ---------------------------------------------------------------------------
+    local function makePlaceholderPage(name, tabId, placeholderIcon, message)
+        local page = Instance.new("Frame")
+        page.Name                = name
+        page.BackgroundTransparency = 1
+        page.Size                = UDim2.new(1, 0, 0, px(300))
+        page.Visible             = false
+        page.Parent              = contentContainer
+
+        -- Centered placeholder card
+        local card = Instance.new("Frame")
+        card.Name            = "PlaceholderCard"
+        card.BackgroundColor3 = CARD_BG
+        card.Size            = UDim2.new(0.6, 0, 0, px(180))
+        card.AnchorPoint     = Vector2.new(0.5, 0.5)
+        card.Position        = UDim2.new(0.5, 0, 0.5, 0)
+        card.Parent          = page
+
+        local cardCorner = Instance.new("UICorner")
+        cardCorner.CornerRadius = UDim.new(0, px(16))
+        cardCorner.Parent       = card
+
+        local cardStroke = Instance.new("UIStroke")
+        cardStroke.Color        = CARD_STROKE
+        cardStroke.Thickness    = 1.4
+        cardStroke.Transparency = 0.25
+        cardStroke.Parent       = card
+
+        -- Large icon
+        local pIcon = Instance.new("TextLabel")
+        pIcon.Name                = "PlaceholderIcon"
+        pIcon.BackgroundTransparency = 1
+        pIcon.Font                = Enum.Font.GothamBold
+        pIcon.Text                = placeholderIcon
+        pIcon.TextColor3          = GOLD
+        pIcon.TextSize            = math.max(32, math.floor(px(38)))
+        pIcon.Size                = UDim2.new(1, 0, 0.38, 0)
+        pIcon.Position            = UDim2.new(0, 0, 0.06, 0)
+        pIcon.TextXAlignment      = Enum.TextXAlignment.Center
+        pIcon.TextYAlignment      = Enum.TextYAlignment.Bottom
+        pIcon.Parent              = card
+
+        -- "Coming Soon" heading
+        local msgLbl = Instance.new("TextLabel")
+        msgLbl.Name                = "PlaceholderMsg"
+        msgLbl.BackgroundTransparency = 1
+        msgLbl.Font                = Enum.Font.GothamBold
+        msgLbl.Text                = message
+        msgLbl.TextColor3          = GOLD
+        msgLbl.TextSize            = math.max(16, math.floor(px(18)))
+        msgLbl.Size                = UDim2.new(1, 0, 0, px(28))
+        msgLbl.Position            = UDim2.new(0, 0, 0.48, 0)
+        msgLbl.TextXAlignment      = Enum.TextXAlignment.Center
+        msgLbl.Parent              = card
+
+        -- Subtext
+        local subLbl = Instance.new("TextLabel")
+        subLbl.Name                = "PlaceholderSub"
+        subLbl.BackgroundTransparency = 1
+        subLbl.Font                = Enum.Font.GothamMedium
+        subLbl.Text                = "Check back soon for new items!"
+        subLbl.TextColor3          = DIM_TEXT
+        subLbl.TextSize            = math.max(12, math.floor(px(13)))
+        subLbl.Size                = UDim2.new(1, 0, 0, px(20))
+        subLbl.Position            = UDim2.new(0, 0, 0.66, 0)
+        subLbl.TextXAlignment      = Enum.TextXAlignment.Center
+        subLbl.Parent              = card
+
+        contentPages[tabId] = page
+        return page
+    end
+
+    makePlaceholderPage("SkinsContent",   "skins",   "\u{2726}", "Skins coming soon")
+    makePlaceholderPage("TrailsContent",  "trails",  "\u{2727}", "Trails coming soon")
+    makePlaceholderPage("EmotesContent",  "emotes",  "\u{263A}", "Emotes coming soon")
+    makePlaceholderPage("EffectsContent", "effects", "\u{2738}", "Effects coming soon")
+
+    ---------------------------------------------------------------------------
+    -- Set initial state: Weapons tab active by default
+    ---------------------------------------------------------------------------
+    setActiveTab("weapons")
+
+    ---------------------------------------------------------------------------
+    -- Dynamic root height: keep root tall enough for content (sidebar fills it)
+    ---------------------------------------------------------------------------
+    local function updateRootHeight()
+        local h = contentContainer.AbsoluteSize.Y
+        local minH = px(400)
+        root.Size = UDim2.new(1, 0, 0, math.max(h, minH))
+    end
+    contentContainer:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootHeight)
+    task.defer(updateRootHeight)
 
     return root
 end

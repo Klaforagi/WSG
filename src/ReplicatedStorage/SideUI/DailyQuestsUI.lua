@@ -59,6 +59,8 @@ local questProgressRE
 local getWeeklyRF
 local claimWeeklyRF
 local weeklyProgressRE
+local rerollDailyRF
+local rerollWeeklyRF
 
 local function ensureRemotes()
     if remotesFolder then return true end
@@ -70,7 +72,32 @@ local function ensureRemotes()
     getWeeklyRF     = remotesFolder:FindFirstChild("GetWeeklyQuests")
     claimWeeklyRF   = remotesFolder:FindFirstChild("ClaimWeeklyQuest")
     weeklyProgressRE = remotesFolder:FindFirstChild("WeeklyQuestProgress")
+    -- Reroll remotes now live directly under Remotes (created by QuestServiceInit)
+    rerollDailyRF  = remotesFolder:WaitForChild("RequestRerollQuest", 5)
+    rerollWeeklyRF = remotesFolder:WaitForChild("RequestRerollWeeklyQuest", 5)
+    if rerollDailyRF then
+        print("[QuestReroll] Found reroll daily remote")
+    else
+        warn("[QuestReroll] RequestRerollQuest not found after WaitForChild")
+    end
+    if rerollWeeklyRF then
+        print("[QuestReroll] Found reroll weekly remote")
+    else
+        warn("[QuestReroll] RequestRerollWeeklyQuest not found after WaitForChild")
+    end
     return getQuestsRF ~= nil
+end
+
+-- Lazy re-resolve reroll remotes (in case they weren't ready on first ensureRemotes call)
+local function ensureRerollRemotes()
+    if rerollDailyRF and rerollWeeklyRF then return end
+    if not remotesFolder then return end
+    if not rerollDailyRF then
+        rerollDailyRF = remotesFolder:FindFirstChild("RequestRerollQuest")
+    end
+    if not rerollWeeklyRF then
+        rerollWeeklyRF = remotesFolder:FindFirstChild("RequestRerollWeeklyQuest")
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -125,6 +152,485 @@ local function makeCoinIcon(parentFrame, size)
 
     coin.Parent = parentFrame
     return coin
+end
+
+--------------------------------------------------------------------------------
+-- BoostConfig lazy loader (for reroll cost in the reroll panel)
+--------------------------------------------------------------------------------
+local _boostConfigCacheQUI
+local function getBoostConfigQUI()
+    if _boostConfigCacheQUI then return _boostConfigCacheQUI end
+    pcall(function()
+        local m = ReplicatedStorage:FindFirstChild("BoostConfig")
+        if m and m:IsA("ModuleScript") then
+            local ok, v = pcall(require, m)
+            if ok then _boostConfigCacheQUI = v end
+        end
+    end)
+    return _boostConfigCacheQUI
+end
+
+--------------------------------------------------------------------------------
+-- addRerollPanel  –  Compact Quest Reroll card + inline quest-selection mode
+-- Appended to the bottom of the Daily and Weekly tab content pages.
+-- tabId: "daily" | "weekly"
+-- cardFrames: {[key] = Frame}   – quest card instances (quest.id for daily, questIdx for weekly)
+-- claimedMap: {[key] = bool}    – whether each quest has been claimed
+-- indexMap:   {[key] = number}  – server index to send for reroll
+-- Returns: exitSelectionMode function (for external cleanup, e.g. tab switch)
+--------------------------------------------------------------------------------
+local function addRerollPanel(page, tabId, cachedQuests, cardFrames, claimedMap, indexMap)
+    local REROLL_ACCENT  = Color3.fromRGB(170, 110, 255)
+    local REROLL_BTN_BG  = Color3.fromRGB(80, 55, 120)
+    local CANCEL_BTN_BG  = Color3.fromRGB(120, 40, 40)
+    local GREEN_INT      = Color3.fromRGB(35, 190, 75)
+
+    -- Read reroll cost from BoostConfig (fallback 20)
+    local rerollCost = 20
+    local conf = getBoostConfigQUI()
+    if conf and conf.GetById then
+        local def = conf.GetById("quest_reroll")
+        if def then rerollCost = def.PriceCoins end
+    end
+
+    -- Thin separator line for visual separation
+    local sep = Instance.new("Frame")
+    sep.Name               = "RerollSep"
+    sep.BackgroundColor3   = CARD_STROKE
+    sep.BackgroundTransparency = 0.3
+    sep.Size               = UDim2.new(1, 0, 0, px(1))
+    sep.BorderSizePixel    = 0
+    sep.LayoutOrder        = 490
+    sep.Parent             = page
+
+    -- Reroll card
+    local card = Instance.new("Frame")
+    card.Name              = "RerollCard"
+    card.BackgroundColor3  = Color3.fromRGB(20, 18, 32)
+    card.Size              = UDim2.new(1, 0, 0, px(100))
+    card.LayoutOrder       = 491
+    card.Parent            = page
+
+    local cardCorner = Instance.new("UICorner")
+    cardCorner.CornerRadius = UDim.new(0, px(12))
+    cardCorner.Parent = card
+
+    local cardStrokeR = Instance.new("UIStroke")
+    cardStrokeR.Color        = REROLL_ACCENT
+    cardStrokeR.Thickness    = 1.4
+    cardStrokeR.Transparency = 0.45
+    cardStrokeR.Parent       = card
+
+    local cardPad = Instance.new("UIPadding")
+    cardPad.PaddingLeft   = UDim.new(0, px(14))
+    cardPad.PaddingRight  = UDim.new(0, px(14))
+    cardPad.PaddingTop    = UDim.new(0, px(12))
+    cardPad.PaddingBottom = UDim.new(0, px(12))
+    cardPad.Parent        = card
+
+    -- Icon glow background
+    local iconGlow = Instance.new("Frame")
+    iconGlow.Size                  = UDim2.new(0, px(62), 0, px(62))
+    iconGlow.AnchorPoint           = Vector2.new(0, 0.5)
+    iconGlow.Position              = UDim2.new(0, -px(5), 0.5, 0)
+    iconGlow.BackgroundColor3      = REROLL_ACCENT
+    iconGlow.BackgroundTransparency = 0.82
+    iconGlow.BorderSizePixel       = 0
+    local glowCr = Instance.new("UICorner")
+    glowCr.CornerRadius = UDim.new(0, px(18))
+    glowCr.Parent = iconGlow
+    iconGlow.Parent = card
+
+    -- Icon circle (purple with 🔄)
+    local iconSize = px(52)
+    local iconCircle = Instance.new("Frame")
+    iconCircle.Name             = "RerollIcon"
+    iconCircle.Size             = UDim2.new(0, iconSize, 0, iconSize)
+    iconCircle.AnchorPoint      = Vector2.new(0, 0.5)
+    iconCircle.Position         = UDim2.new(0, 0, 0.5, 0)
+    iconCircle.BackgroundColor3 = REROLL_ACCENT
+    iconCircle.BorderSizePixel  = 0
+    local icCr = Instance.new("UICorner")
+    icCr.CornerRadius = UDim.new(0, px(14))
+    icCr.Parent = iconCircle
+    local icStr = Instance.new("UIStroke")
+    icStr.Color = WHITE
+    icStr.Thickness = 1.5
+    icStr.Transparency = 0.7
+    icStr.Parent = iconCircle
+    local icLbl = Instance.new("TextLabel")
+    icLbl.BackgroundTransparency = 1
+    icLbl.Size       = UDim2.new(1, 0, 1, 0)
+    icLbl.Font       = Enum.Font.GothamBold
+    icLbl.Text       = "\u{1F504}"
+    icLbl.TextSize   = math.max(20, math.floor(iconSize * 0.52))
+    icLbl.TextColor3 = WHITE
+    icLbl.Parent     = iconCircle
+    iconCircle.Parent = card
+
+    -- Title label
+    local nameX = iconSize + px(14)
+    local nameLbl = Instance.new("TextLabel")
+    nameLbl.Name               = "RerollTitle"
+    nameLbl.BackgroundTransparency = 1
+    nameLbl.Font               = Enum.Font.GothamBold
+    nameLbl.Text               = "Quest Reroll"
+    nameLbl.TextColor3         = WHITE
+    nameLbl.TextSize           = math.max(15, math.floor(px(17)))
+    nameLbl.TextXAlignment     = Enum.TextXAlignment.Left
+    nameLbl.Size               = UDim2.new(1, -(nameX + px(92)), 0, px(22))
+    nameLbl.Position           = UDim2.new(0, nameX, 0, 0)
+    nameLbl.Parent             = card
+
+    -- Description label (correct wording per tab)
+    local descText = tabId == "daily"
+        and "Replace one daily quest with a new random quest."
+        or  "Replace one weekly quest with a new random quest."
+    local descLblR = Instance.new("TextLabel")
+    descLblR.Name               = "RerollDesc"
+    descLblR.BackgroundTransparency = 1
+    descLblR.Font               = Enum.Font.GothamMedium
+    descLblR.Text               = descText
+    descLblR.TextColor3         = DIM_TEXT
+    descLblR.TextSize           = math.max(11, math.floor(px(12)))
+    descLblR.TextXAlignment     = Enum.TextXAlignment.Left
+    descLblR.TextWrapped        = true
+    descLblR.Size               = UDim2.new(1, -(nameX + px(92)), 0, px(30))
+    descLblR.Position           = UDim2.new(0, nameX, 0, px(24))
+    descLblR.Parent             = card
+
+    -- Price badge (top-right corner of card)
+    local priceBadgeR = Instance.new("Frame")
+    priceBadgeR.Name              = "PriceBadge"
+    priceBadgeR.BackgroundColor3  = Color3.fromRGB(36, 33, 18)
+    priceBadgeR.BackgroundTransparency = 0.3
+    priceBadgeR.Size              = UDim2.new(0, px(80), 0, px(24))
+    priceBadgeR.AnchorPoint       = Vector2.new(1, 0)
+    priceBadgeR.Position          = UDim2.new(1, 0, 0, 0)
+    priceBadgeR.Parent            = card
+    local pbCr = Instance.new("UICorner")
+    pbCr.CornerRadius = UDim.new(0, px(8))
+    pbCr.Parent = priceBadgeR
+    local pbStr = Instance.new("UIStroke")
+    pbStr.Color = CLAIM_GOLD_GLOW
+    pbStr.Thickness = 1
+    pbStr.Transparency = 0.55
+    pbStr.Parent = priceBadgeR
+    local priceLblR = Instance.new("TextLabel")
+    priceLblR.BackgroundTransparency = 1
+    priceLblR.Font           = Enum.Font.GothamBold
+    priceLblR.TextScaled     = true
+    priceLblR.TextColor3     = GOLD
+    priceLblR.TextXAlignment = Enum.TextXAlignment.Right
+    priceLblR.Text           = tostring(rerollCost)
+    priceLblR.Size           = UDim2.new(0.58, 0, 1, 0)
+    priceLblR.Parent         = priceBadgeR
+    local cIconR = makeCoinIcon(priceBadgeR, px(18))
+    cIconR.AnchorPoint = Vector2.new(0, 0.5)
+    cIconR.Position    = UDim2.new(0.64, 0, 0.5, 0)
+
+    -- USE / CANCEL button (right side, below price badge)
+    local useBtn = Instance.new("TextButton")
+    useBtn.Name             = "RerollUseBtn"
+    useBtn.AutoButtonColor  = false
+    useBtn.Font             = Enum.Font.GothamBold
+    useBtn.TextSize         = math.max(13, math.floor(px(14)))
+    useBtn.Text             = "USE"
+    useBtn.TextColor3       = WHITE
+    useBtn.Size             = UDim2.new(0, px(80), 0, px(36))
+    useBtn.AnchorPoint      = Vector2.new(1, 0)
+    useBtn.Position         = UDim2.new(1, 0, 0, px(30))
+    useBtn.BackgroundColor3 = REROLL_BTN_BG
+    useBtn.Active           = true
+    useBtn.Parent           = card
+    local ubCr = Instance.new("UICorner")
+    ubCr.CornerRadius = UDim.new(0, px(10))
+    ubCr.Parent = useBtn
+    local ubStr = Instance.new("UIStroke")
+    ubStr.Color = REROLL_ACCENT
+    ubStr.Thickness = 1.4
+    ubStr.Transparency = 0.25
+    ubStr.Parent = useBtn
+
+    -- Hint label below USE button
+    local hintLbl = Instance.new("TextLabel")
+    hintLbl.BackgroundTransparency = 1
+    hintLbl.Font           = Enum.Font.GothamMedium
+    hintLbl.Text           = "Select Quest"
+    hintLbl.TextColor3     = DIM_TEXT
+    hintLbl.TextSize       = math.max(10, math.floor(px(11)))
+    hintLbl.TextXAlignment = Enum.TextXAlignment.Center
+    hintLbl.Size           = UDim2.new(0, px(80), 0, px(16))
+    hintLbl.AnchorPoint    = Vector2.new(1, 0)
+    hintLbl.Position       = UDim2.new(1, 0, 0, px(70))
+    hintLbl.Parent         = card
+
+    ---------------------------------------------------------------------------
+    -- Inline reroll-selection mode state
+    ---------------------------------------------------------------------------
+    local selectionActive    = false
+    local selectionOverlays  = {}   -- UI elements to clean up on exit
+
+    local function exitSelectionMode()
+        if not selectionActive then return end
+        selectionActive = false
+
+        -- Restore USE button
+        useBtn.Text             = "USE"
+        useBtn.BackgroundColor3 = REROLL_BTN_BG
+        ubStr.Color             = REROLL_ACCENT
+        hintLbl.Text            = "Select Quest"
+        hintLbl.TextColor3      = DIM_TEXT
+        descLblR.Text           = descText
+        descLblR.TextColor3     = DIM_TEXT
+
+        -- Remove all selection-mode UI elements
+        for _, obj in ipairs(selectionOverlays) do
+            pcall(function() obj:Destroy() end)
+        end
+        selectionOverlays = {}
+    end
+
+    local function enterSelectionMode()
+        if selectionActive then return end
+        selectionActive = true
+
+        -- Transform USE button into CANCEL
+        useBtn.Text             = "CANCEL"
+        useBtn.BackgroundColor3 = CANCEL_BTN_BG
+        ubStr.Color             = Color3.fromRGB(180, 60, 60)
+        hintLbl.Text            = ""
+
+        -- Update description to show instruction
+        local instrText = tabId == "daily"
+            and "\u{1F504} Select a daily quest to reroll"
+            or  "\u{1F504} Select a weekly quest to reroll"
+        descLblR.Text       = instrText
+        descLblR.TextColor3 = REROLL_ACCENT
+
+        -- Instruction banner at top of quest list (LayoutOrder 2, right after header)
+        local banner = Instance.new("Frame")
+        banner.Name                    = "RerollInstruction"
+        banner.BackgroundColor3        = Color3.fromRGB(28, 18, 48)
+        banner.BackgroundTransparency  = 0.15
+        banner.Size                    = UDim2.new(1, 0, 0, px(36))
+        banner.LayoutOrder             = 2
+        banner.Parent                  = page
+
+        local bannerCr = Instance.new("UICorner")
+        bannerCr.CornerRadius = UDim.new(0, px(10))
+        bannerCr.Parent = banner
+
+        local bannerStr = Instance.new("UIStroke")
+        bannerStr.Color        = REROLL_ACCENT
+        bannerStr.Thickness    = 1.5
+        bannerStr.Transparency = 0.2
+        bannerStr.Parent       = banner
+
+        local bannerLbl = Instance.new("TextLabel")
+        bannerLbl.BackgroundTransparency = 1
+        bannerLbl.Font           = Enum.Font.GothamBold
+        bannerLbl.Text           = instrText
+        bannerLbl.TextColor3     = REROLL_ACCENT
+        bannerLbl.TextSize       = math.max(13, math.floor(px(14)))
+        bannerLbl.Size           = UDim2.new(1, -px(20), 1, 0)
+        bannerLbl.Position       = UDim2.new(0, px(10), 0, 0)
+        bannerLbl.TextXAlignment = Enum.TextXAlignment.Left
+        bannerLbl.Parent         = banner
+
+        table.insert(selectionOverlays, banner)
+
+        -- Add clickable highlight overlays to each eligible quest card
+        local anyEligible = false
+        for key, questCard in pairs(cardFrames) do
+            if not claimedMap[key] and questCard and questCard.Parent then
+                anyEligible = true
+                local serverIdx = indexMap[key]
+
+                -- Transparent click overlay that covers the full card
+                -- Compensate for card UIPadding (14 left/right, 12 top/bottom)
+                local clickBtn = Instance.new("TextButton")
+                clickBtn.Name                    = "RerollSelect"
+                clickBtn.Size                    = UDim2.new(1, px(28), 1, px(24))
+                clickBtn.Position                = UDim2.new(0, -px(14), 0, -px(12))
+                clickBtn.BackgroundColor3        = REROLL_ACCENT
+                clickBtn.BackgroundTransparency  = 0.88
+                clickBtn.Text                    = ""
+                clickBtn.AutoButtonColor         = false
+                clickBtn.ZIndex                  = 20
+                clickBtn.Parent                  = questCard
+
+                local clickCr = Instance.new("UICorner")
+                clickCr.CornerRadius = UDim.new(0, px(12))
+                clickCr.Parent = clickBtn
+
+                local clickStr = Instance.new("UIStroke")
+                clickStr.Color        = REROLL_ACCENT
+                clickStr.Thickness    = 2.2
+                clickStr.Transparency = 0.15
+                clickStr.Parent       = clickBtn
+
+                table.insert(selectionOverlays, clickBtn)
+
+                -- Hover feedback
+                trackConn(clickBtn.MouseEnter:Connect(function()
+                    if selectionActive then
+                        TweenService:Create(clickBtn, TWEEN_QUICK,
+                            {BackgroundTransparency = 0.72}):Play()
+                        clickStr.Color        = GOLD
+                        clickStr.Transparency = 0
+                        clickStr.Thickness    = 2.8
+                    end
+                end))
+                trackConn(clickBtn.MouseLeave:Connect(function()
+                    if selectionActive then
+                        TweenService:Create(clickBtn, TWEEN_QUICK,
+                            {BackgroundTransparency = 0.88}):Play()
+                        clickStr.Color        = REROLL_ACCENT
+                        clickStr.Transparency = 0.15
+                        clickStr.Thickness    = 2.2
+                    end
+                end))
+
+                -- Click: perform the reroll
+                trackConn(clickBtn.MouseButton1Click:Connect(function()
+                    if not selectionActive then return end
+
+                    -- Prevent double-click
+                    clickBtn.Active = false
+
+                    -- Re-resolve remotes in case they weren't ready earlier
+                    ensureRerollRemotes()
+
+                    local success, msg = false, "Reroll failed"
+                    local ok, err
+                    if tabId == "daily" then
+                        if rerollDailyRF then
+                            ok, err = pcall(function()
+                                success, msg = rerollDailyRF:InvokeServer(serverIdx)
+                            end)
+                            if not ok then
+                                success, msg = false, "Request error"
+                                warn("[QuestReroll] Daily pcall error:", tostring(err))
+                            end
+                        else
+                            warn("[QuestReroll] rerollDailyRF is nil – remote not found")
+                            msg = "Remote missing"
+                        end
+                    else
+                        if rerollWeeklyRF then
+                            ok, err = pcall(function()
+                                success, msg = rerollWeeklyRF:InvokeServer(serverIdx)
+                            end)
+                            if not ok then
+                                success, msg = false, "Request error"
+                                warn("[QuestReroll] Weekly pcall error:", tostring(err))
+                            end
+                        else
+                            warn("[QuestReroll] rerollWeeklyRF is nil – remote not found")
+                            msg = "Remote missing"
+                        end
+                    end
+
+                    exitSelectionMode()
+
+                    if success then
+                        -- Animated success toast
+                        local toastLbl = Instance.new("TextLabel")
+                        toastLbl.Name                   = "RerollToast"
+                        toastLbl.BackgroundColor3       = Color3.fromRGB(18, 20, 36)
+                        toastLbl.BackgroundTransparency = 1
+                        toastLbl.Size                   = UDim2.new(0.9, 0, 0, px(44))
+                        toastLbl.AnchorPoint            = Vector2.new(0.5, 0)
+                        toastLbl.Position               = UDim2.new(0.5, 0, 0, px(6))
+                        toastLbl.Font                   = Enum.Font.GothamBold
+                        toastLbl.TextSize               = math.max(12, math.floor(px(13)))
+                        toastLbl.TextColor3             = GREEN_INT
+                        toastLbl.Text                   = "\u{2714} Quest rerolled! Reopen this menu to see your new quest."
+                        toastLbl.TextWrapped            = true
+                        toastLbl.TextTransparency       = 1
+                        toastLbl.ZIndex                 = 400
+                        toastLbl.LayoutOrder            = 493
+                        toastLbl.Parent                 = page
+                        local tCr = Instance.new("UICorner")
+                        tCr.CornerRadius = UDim.new(0, px(10))
+                        tCr.Parent = toastLbl
+                        local tSt = Instance.new("UIStroke")
+                        tSt.Color        = GREEN_INT
+                        tSt.Thickness    = 1.2
+                        tSt.Transparency = 0.35
+                        tSt.Parent       = toastLbl
+                        TweenService:Create(toastLbl, TweenInfo.new(0.2),
+                            {BackgroundTransparency = 0.12, TextTransparency = 0}):Play()
+                        task.delay(3.5, function()
+                            if toastLbl and toastLbl.Parent then
+                                local t2 = TweenService:Create(toastLbl, TweenInfo.new(0.3),
+                                    {BackgroundTransparency = 1, TextTransparency = 1})
+                                t2:Play()
+                                t2.Completed:Connect(function()
+                                    pcall(function() toastLbl:Destroy() end)
+                                end)
+                            end
+                        end)
+                        pcall(function()
+                            if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                        end)
+                    else
+                        -- Show error briefly on the USE button
+                        local errText = tostring(msg or "Reroll failed")
+                        if errText:find("Insufficient") then errText = "Not enough coins!" end
+                        useBtn.Text       = errText:sub(1, 14)
+                        useBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+                        task.delay(1.8, function()
+                            if useBtn and useBtn.Parent then
+                                useBtn.Text       = "USE"
+                                useBtn.TextColor3 = WHITE
+                            end
+                        end)
+                    end
+                end))
+            end
+        end
+
+        if not anyEligible then
+            -- No quests to reroll – flash error and exit
+            exitSelectionMode()
+            useBtn.Text       = "No quests"
+            useBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+            task.delay(1.5, function()
+                if useBtn and useBtn.Parent then
+                    useBtn.Text       = "USE"
+                    useBtn.TextColor3 = WHITE
+                end
+            end)
+        end
+    end
+
+    -- Hover feedback on USE / CANCEL button
+    trackConn(useBtn.MouseEnter:Connect(function()
+        if useBtn.Active then
+            local hoverColor = selectionActive and Color3.fromRGB(160, 50, 50) or REROLL_ACCENT
+            TweenService:Create(useBtn, TWEEN_QUICK, {BackgroundColor3 = hoverColor}):Play()
+        end
+    end))
+    trackConn(useBtn.MouseLeave:Connect(function()
+        if useBtn.Active then
+            local restColor = selectionActive and CANCEL_BTN_BG or REROLL_BTN_BG
+            TweenService:Create(useBtn, TWEEN_QUICK, {BackgroundColor3 = restColor}):Play()
+        end
+    end))
+
+    -- USE button click: toggle selection mode
+    trackConn(useBtn.MouseButton1Click:Connect(function()
+        if not useBtn.Active then return end
+        if selectionActive then
+            exitSelectionMode()
+        else
+            enterSelectionMode()
+        end
+    end))
+
+    return exitSelectionMode
 end
 
 --------------------------------------------------------------------------------
@@ -324,9 +830,16 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     -- Active-tab state management
     ---------------------------------------------------------------------------
     local currentTab = "daily"
+    local rerollExitFns = {}   -- populated by addRerollPanel; called on tab switch
 
     local function setActiveTab(tabId)
         currentTab = tabId
+
+        -- Exit any active reroll selection mode when switching tabs
+        for _, exitFn in ipairs(rerollExitFns) do
+            pcall(exitFn)
+        end
+
         for id, btn in pairs(tabButtons) do
             local active = (id == tabId)
 
@@ -344,6 +857,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         end
         for id, page in pairs(contentPages) do
             page.Visible = (id == tabId)
+        end
+        -- Update the modal window title to match the active tab
+        local TAB_TITLES = {
+            daily  = "DAILY QUESTS",
+            weekly = "WEEKLY QUESTS",
+            achiev = "ACHIEVEMENTS",
+        }
+        if _G.SideUI and type(_G.SideUI.SetTitle) == "function" then
+            _G.SideUI.SetTitle(TAB_TITLES[tabId] or "QUESTS")
         end
     end
 
@@ -798,6 +1320,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         end))
     end
 
+    -- Reroll panel at the bottom of the Daily tab
+    local dailyIndexMap = {}
+    for i, quest in ipairs(quests) do
+        dailyIndexMap[quest.id] = i
+    end
+    local dailyRerollExit = addRerollPanel(dailyPage, "daily", quests, questCards, questClaimed, dailyIndexMap)
+    table.insert(rerollExitFns, dailyRerollExit)
+
     ---------------------------------------------------------------------------
     -- WEEKLY page (fully functional – fetches real weekly quest data)
     ---------------------------------------------------------------------------
@@ -1129,6 +1659,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
             end
         end))
     end
+
+    -- Reroll panel at the bottom of the Weekly tab
+    local wkIndexMap = {}
+    for i, wq in ipairs(weeklyQuests) do
+        local idx = wq.index or i
+        wkIndexMap[idx] = idx
+    end
+    local weeklyRerollExit = addRerollPanel(weeklyPage, "weekly", weeklyQuests, wkCards, wkClaimed, wkIndexMap)
+    table.insert(rerollExitFns, weeklyRerollExit)
 
     ---------------------------------------------------------------------------
     -- ACHIEVEMENTS page  (fully functional)
