@@ -89,6 +89,15 @@ local function onHumanoidDied(humanoid, model)
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
 
+    -- Per-player match stats (Eliminations + Score)
+    if killer and killer:IsA("Player") then
+        local prevElims = killer:GetAttribute("Eliminations") or 0
+        killer:SetAttribute("Eliminations", prevElims + 1)
+        local scoreAdd = victimPlayer and 10 or 3
+        local prevScore = killer:GetAttribute("Score") or 0
+        killer:SetAttribute("Score", prevScore + scoreAdd)
+    end
+
     -- Award coins: +5 for PvP kills, +1 for mob kills (fallback when weapon scripts didn't credit)
     -- coinAward captures the FINAL amount after boosts so popups display the real value.
     local coinAward = 0
