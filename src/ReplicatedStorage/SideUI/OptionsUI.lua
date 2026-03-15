@@ -36,23 +36,24 @@ local function px(base)
 end
 
 --------------------------------------------------------------------------------
--- Palette (matches SideUI neutral-gray / gold theme)
+-- Palette (matches BoostsUI / ShopUI / InventoryUI blue-tinted theme)
 --------------------------------------------------------------------------------
-local ROW_BG           = Color3.fromRGB(28, 28, 33)
-local CARD_STROKE      = Color3.fromRGB(60, 60, 64)
-local GOLD             = Color3.fromRGB(255, 215, 80)
-local WHITE            = Color3.fromRGB(240, 240, 240)
-local TOGGLE_ON        = Color3.fromRGB(50, 180, 80)
-local TOGGLE_OFF       = Color3.fromRGB(80, 80, 85)
-local SLIDER_TRACK     = Color3.fromRGB(50, 50, 55)
+local ROW_BG           = Color3.fromRGB(26, 30, 48)
+local CARD_STROKE      = Color3.fromRGB(55, 62, 95)
+local GOLD             = Color3.fromRGB(255, 215, 60)
+local WHITE            = Color3.fromRGB(245, 245, 252)
+local DIM_TEXT         = Color3.fromRGB(145, 150, 175)
+local TOGGLE_ON        = Color3.fromRGB(35, 190, 75)
+local TOGGLE_OFF       = Color3.fromRGB(45, 48, 65)
+local SLIDER_TRACK     = Color3.fromRGB(35, 38, 55)
 local SLIDER_FILL      = GOLD
 local KNOB_COLOR       = Color3.fromRGB(255, 255, 255)
-local CHOICE_ACTIVE    = Color3.fromRGB(255, 215, 80)
-local CHOICE_INACTIVE  = Color3.fromRGB(50, 50, 55)
-local BTN_BG           = Color3.fromRGB(64, 64, 68)
-local BTN_STROKE       = Color3.fromRGB(110, 110, 115)
+local CHOICE_ACTIVE    = Color3.fromRGB(255, 215, 60)
+local CHOICE_INACTIVE  = Color3.fromRGB(48, 55, 82)
+local BTN_BG           = Color3.fromRGB(48, 55, 82)
+local BTN_STROKE       = Color3.fromRGB(90, 100, 140)
 local RED_BTN          = Color3.fromRGB(160, 50, 50)
-local POPUP_BG         = Color3.fromRGB(25, 25, 30)
+local POPUP_BG         = Color3.fromRGB(20, 22, 38)
 
 local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -257,18 +258,35 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	-- HELPER: Section header
 	---------------------------------------------------------------------------
 	local function createSectionHeader(parentFrame, text, layoutOrder)
+		local headerWrap = Instance.new("Frame")
+		headerWrap.Name = text .. "_Header"
+		headerWrap.BackgroundTransparency = 1
+		headerWrap.Size = UDim2.new(1, 0, 0, px(36))
+		headerWrap.LayoutOrder = layoutOrder
+		headerWrap.Parent = parentFrame
+
 		local header = Instance.new("TextLabel")
-		header.Name = text .. "_Header"
+		header.Name = "Title"
 		header.BackgroundTransparency = 1
 		header.Font = Enum.Font.GothamBold
 		header.Text = text
 		header.TextColor3 = GOLD
 		header.TextSize = math.max(16, math.floor(px(18)))
 		header.TextXAlignment = Enum.TextXAlignment.Left
-		header.Size = UDim2.new(1, 0, 0, px(28))
-		header.LayoutOrder = layoutOrder
-		header.Parent = parentFrame
-		return header
+		header.Size = UDim2.new(1, 0, 0, px(26))
+		header.Position = UDim2.new(0, 0, 0, 0)
+		header.Parent = headerWrap
+
+		local accentBar = Instance.new("Frame")
+		accentBar.Name = "AccentBar"
+		accentBar.BackgroundColor3 = GOLD
+		accentBar.BackgroundTransparency = 0.3
+		accentBar.Size = UDim2.new(1, 0, 0, px(2))
+		accentBar.Position = UDim2.new(0, 0, 1, -px(2))
+		accentBar.BorderSizePixel = 0
+		accentBar.Parent = headerWrap
+
+		return headerWrap
 	end
 
 	---------------------------------------------------------------------------
@@ -278,23 +296,31 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		local row = Instance.new("Frame")
 		row.Name = "SettingRow"
 		row.BackgroundColor3 = ROW_BG
-		row.Size = UDim2.new(1, 0, 0, px(38))
+		row.Size = UDim2.new(1, 0, 0, px(42))
 		row.LayoutOrder = layoutOrder
 		row.Parent = parentFrame
 
 		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, px(6))
+		corner.CornerRadius = UDim.new(0, px(10))
 		corner.Parent = row
 
 		local stroke = Instance.new("UIStroke")
 		stroke.Color = CARD_STROKE
-		stroke.Thickness = 1
-		stroke.Transparency = 0.5
+		stroke.Thickness = 1.2
+		stroke.Transparency = 0.4
 		stroke.Parent = row
 
+		local grad = Instance.new("UIGradient")
+		grad.Color = ColorSequence.new(
+			Color3.fromRGB(30, 35, 55),
+			Color3.fromRGB(22, 26, 42)
+		)
+		grad.Rotation = 90
+		grad.Parent = row
+
 		local pad = Instance.new("UIPadding")
-		pad.PaddingLeft = UDim.new(0, px(10))
-		pad.PaddingRight = UDim.new(0, px(10))
+		pad.PaddingLeft = UDim.new(0, px(12))
+		pad.PaddingRight = UDim.new(0, px(12))
 		pad.Parent = row
 
 		return row
@@ -332,7 +358,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		statusLbl.Parent = row
 
 		-- Toggle track
-		local trackW, trackH = px(44), px(22)
+		local trackW, trackH = px(48), px(24)
 		local track = Instance.new("TextButton")
 		track.Name = "ToggleTrack"
 		track.Text = ""
@@ -346,6 +372,12 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		local trackCorner = Instance.new("UICorner")
 		trackCorner.CornerRadius = UDim.new(1, 0)
 		trackCorner.Parent = track
+
+		local trackStroke = Instance.new("UIStroke")
+		trackStroke.Color = CARD_STROKE
+		trackStroke.Thickness = 1
+		trackStroke.Transparency = 0.5
+		trackStroke.Parent = track
 
 		local knobSize = trackH - px(4)
 		local knob = Instance.new("Frame")
@@ -361,15 +393,17 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 
 		local function setVisual(on)
 			local goalTrackColor = on and TOGGLE_ON or TOGGLE_OFF
+			local goalStrokeColor = on and Color3.fromRGB(50, 220, 100) or CARD_STROKE
 			local goalKnobPos = on
 				and UDim2.new(1, -knobSize - px(2), 0.5, 0)
 				or  UDim2.new(0, px(2), 0.5, 0)
 			pcall(function()
 				TweenService:Create(track, TWEEN_QUICK, {BackgroundColor3 = goalTrackColor}):Play()
+				TweenService:Create(trackStroke, TWEEN_QUICK, {Color = goalStrokeColor, Transparency = on and 0.3 or 0.5}):Play()
 				TweenService:Create(knob, TWEEN_QUICK, {Position = goalKnobPos}):Play()
 			end)
 			statusLbl.Text = on and "ON" or "OFF"
-			statusLbl.TextColor3 = on and TOGGLE_ON or TOGGLE_OFF
+			statusLbl.TextColor3 = on and TOGGLE_ON or DIM_TEXT
 		end
 		setVisual(PlayerSettings[settingKey])
 
@@ -389,7 +423,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	local function createSlider(parentFrame, label, settingKey, min, max, step, formatFn, layoutOrder)
 		local row = createRow(parentFrame, layoutOrder)
 		row.Name = "Slider_" .. settingKey
-		row.Size = UDim2.new(1, 0, 0, px(42))
+		row.Size = UDim2.new(1, 0, 0, px(46))
 
 		local lbl = Instance.new("TextLabel")
 		lbl.Name = "Label"
@@ -425,7 +459,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		sliderArea.Parent = row
 
 		-- Track
-		local trackH = px(6)
+		local trackH = px(8)
 		local trackFrame = Instance.new("Frame")
 		trackFrame.Name = "Track"
 		trackFrame.BackgroundColor3 = SLIDER_TRACK
@@ -439,6 +473,12 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		trackCorner.CornerRadius = UDim.new(1, 0)
 		trackCorner.Parent = trackFrame
 
+		local trackStroke = Instance.new("UIStroke")
+		trackStroke.Color = CARD_STROKE
+		trackStroke.Thickness = 1
+		trackStroke.Transparency = 0.5
+		trackStroke.Parent = trackFrame
+
 		-- Fill
 		local fill = Instance.new("Frame")
 		fill.Name = "Fill"
@@ -451,7 +491,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		fillCorner.Parent = fill
 
 		-- Knob (sibling of track so it isn't clipped)
-		local knobSize = px(16)
+		local knobSize = px(18)
 		local sliderKnob = Instance.new("Frame")
 		sliderKnob.Name = "Knob"
 		sliderKnob.BackgroundColor3 = KNOB_COLOR
@@ -466,8 +506,9 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		knobCorner.Parent = sliderKnob
 
 		local knobStroke = Instance.new("UIStroke")
-		knobStroke.Color = CARD_STROKE
-		knobStroke.Thickness = 1
+		knobStroke.Color = GOLD
+		knobStroke.Thickness = 1.5
+		knobStroke.Transparency = 0.3
 		knobStroke.Parent = sliderKnob
 
 		local function updateVisual(value)
@@ -597,8 +638,14 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 			btn.Parent = btnArea
 
 			local c = Instance.new("UICorner")
-			c.CornerRadius = UDim.new(0, px(5))
+			c.CornerRadius = UDim.new(0, px(8))
 			c.Parent = btn
+
+			local btnStroke = Instance.new("UIStroke")
+			btnStroke.Color = CARD_STROKE
+			btnStroke.Thickness = 1
+			btnStroke.Transparency = 0.5
+			btnStroke.Parent = btn
 
 			table.insert(buttons, { btn = btn, value = choice })
 
@@ -630,12 +677,12 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		btn.Text = label
 		btn.TextColor3 = WHITE
 		btn.TextSize = math.max(13, math.floor(px(14)))
-		btn.Size = UDim2.new(0.30, 0, 0, px(34))
+		btn.Size = UDim2.new(0.30, 0, 0, px(36))
 		btn.LayoutOrder = layoutOrder or 0
 		btn.Parent = parentFrame
 
 		local c = Instance.new("UICorner")
-		c.CornerRadius = UDim.new(0, px(6))
+		c.CornerRadius = UDim.new(0, px(10))
 		c.Parent = btn
 
 		local s = Instance.new("UIStroke")
@@ -643,6 +690,14 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		s.Thickness = 1.2
 		s.Transparency = 0.3
 		s.Parent = btn
+
+		local btnGrad = Instance.new("UIGradient")
+		btnGrad.Color = ColorSequence.new(
+			Color3.fromRGB(255, 255, 255),
+			Color3.fromRGB(200, 200, 200)
+		)
+		btnGrad.Rotation = 90
+		btnGrad.Parent = btn
 
 		btn.MouseEnter:Connect(function()
 			pcall(function()
@@ -692,14 +747,22 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		popup.Parent = overlay
 
 		local popCorner = Instance.new("UICorner")
-		popCorner.CornerRadius = UDim.new(0, px(12))
+		popCorner.CornerRadius = UDim.new(0, px(14))
 		popCorner.Parent = popup
 
 		local popStroke = Instance.new("UIStroke")
 		popStroke.Color = GOLD
 		popStroke.Thickness = 1.5
-		popStroke.Transparency = 0.2
+		popStroke.Transparency = 0.25
 		popStroke.Parent = popup
+
+		local popGrad = Instance.new("UIGradient")
+		popGrad.Color = ColorSequence.new(
+			Color3.fromRGB(26, 30, 48),
+			Color3.fromRGB(18, 20, 34)
+		)
+		popGrad.Rotation = 90
+		popGrad.Parent = popup
 
 		-- Title
 		local titleLbl = Instance.new("TextLabel")
@@ -730,7 +793,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		popClose.Parent = popup
 
 		local cbCorner = Instance.new("UICorner")
-		cbCorner.CornerRadius = UDim.new(0, px(6))
+		cbCorner.CornerRadius = UDim.new(0, px(8))
 		cbCorner.Parent = popClose
 
 		popClose.MouseButton1Click:Connect(function()
@@ -791,14 +854,14 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 
 	local rootLayout = Instance.new("UIListLayout")
 	rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	rootLayout.Padding = UDim.new(0, px(8))
+	rootLayout.Padding = UDim.new(0, px(10))
 	rootLayout.Parent = root
 
 	local rootPad = Instance.new("UIPadding")
-	rootPad.PaddingTop = UDim.new(0, px(4))
-	rootPad.PaddingBottom = UDim.new(0, px(12))
-	rootPad.PaddingLeft = UDim.new(0, px(4))
-	rootPad.PaddingRight = UDim.new(0, px(4))
+	rootPad.PaddingTop = UDim.new(0, px(6))
+	rootPad.PaddingBottom = UDim.new(0, px(16))
+	rootPad.PaddingLeft = UDim.new(0, px(8))
+	rootPad.PaddingRight = UDim.new(0, px(8))
 	rootPad.Parent = root
 
 	-- Sequential layout order counter
@@ -845,7 +908,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	---------------------------------------------------------------------------
 	createSectionHeader(root, "UI", nextOrder())
 	createToggle(root, "Show Minimap", "ShowMinimap", nextOrder())
-	createToggle(root, "Show Game State", "ShowGameState", nextOrder())
+	createToggle(root, "Show Scoreboard", "ShowGameState", nextOrder())
 	createChoiceButtons(root, "UI Scale", "UIScale",
 		{ "90%", "100%", "110%" }, nextOrder())
 

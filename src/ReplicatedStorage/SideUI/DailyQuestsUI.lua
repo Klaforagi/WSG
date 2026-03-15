@@ -27,20 +27,25 @@ local function px(base)
 end
 
 --------------------------------------------------------------------------------
--- Palette (matches SideUI neutral-gray / gold theme)
+-- Palette (matches BoostsUI deep-blue / gold theme)
 --------------------------------------------------------------------------------
-local ROW_BG        = Color3.fromRGB(28, 28, 33)
-local SIDEBAR_BG    = Color3.fromRGB(20, 20, 24)
-local TAB_ACTIVE_BG = Color3.fromRGB(36, 33, 18)   -- subtle warm tint for selected tab
-local CARD_STROKE   = Color3.fromRGB(60, 60, 64)
-local GOLD          = Color3.fromRGB(255, 215, 80)
-local WHITE         = Color3.fromRGB(240, 240, 240)
-local DIM_TEXT      = Color3.fromRGB(160, 160, 165)
-local BAR_BG        = Color3.fromRGB(50, 50, 55)
-local BAR_FILL      = GOLD
-local BTN_CLAIM     = Color3.fromRGB(50, 180, 80)
-local BTN_CLAIMED   = Color3.fromRGB(80, 80, 85)
-local BTN_LOCKED    = Color3.fromRGB(64, 64, 68)
+local ROW_BG           = Color3.fromRGB(26, 30, 48)
+local ROW_CLAIMABLE_BG = Color3.fromRGB(36, 33, 18)
+local ROW_CLAIMED_BG   = Color3.fromRGB(22, 38, 34)
+local SIDEBAR_BG       = Color3.fromRGB(18, 20, 34)
+local TAB_ACTIVE_BG    = Color3.fromRGB(32, 30, 18)
+local CARD_STROKE      = Color3.fromRGB(55, 62, 95)
+local GOLD             = Color3.fromRGB(255, 215, 60)
+local WHITE            = Color3.fromRGB(245, 245, 252)
+local DIM_TEXT         = Color3.fromRGB(145, 150, 175)
+local BAR_BG           = Color3.fromRGB(35, 38, 58)
+local BAR_FILL         = GOLD
+local BTN_CLAIM        = Color3.fromRGB(35, 190, 75)
+local BTN_CLAIMED      = Color3.fromRGB(35, 38, 52)
+local BTN_LOCKED       = Color3.fromRGB(48, 55, 82)
+local BTN_STROKE       = Color3.fromRGB(90, 100, 140)
+local GREEN_GLOW       = Color3.fromRGB(50, 230, 110)
+local CLAIM_GOLD_GLOW  = Color3.fromRGB(255, 200, 40)
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -157,10 +162,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     ---------------------------------------------------------------------------
     -- Layout constants
     ---------------------------------------------------------------------------
-    local TAB_W   = px(160)   -- accommodates "Achievements" with comfortable side padding
+    local TAB_W   = px(160)
     local TAB_GAP = px(10)
-    local CARD_H  = px(106)   -- card height + spacing gap
-    local HDR_H   = px(58)    -- header + subheader region
+    local CARD_H  = px(130)   -- taller cards for more breathing room
+    local HDR_H   = px(66)    -- header + subheader + accent bar
 
     local dailyH = HDR_H + math.max(1, #quests) * CARD_H + px(24)
     local rootH  = math.max(dailyH, px(220))
@@ -189,13 +194,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     sidebar.Parent           = root
 
     local sideCorner = Instance.new("UICorner")
-    sideCorner.CornerRadius = UDim.new(0, px(6))
+    sideCorner.CornerRadius = UDim.new(0, px(10))
     sideCorner.Parent = sidebar
 
     local sideStroke = Instance.new("UIStroke")
     sideStroke.Color        = CARD_STROKE
-    sideStroke.Thickness    = 1
-    sideStroke.Transparency = 0.4
+    sideStroke.Thickness    = 1.2
+    sideStroke.Transparency = 0.3
     sideStroke.Parent       = sidebar
 
     local sideLayout = Instance.new("UIListLayout")
@@ -205,10 +210,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     sideLayout.Parent              = sidebar
 
     local sidePad = Instance.new("UIPadding")
-    sidePad.PaddingTop    = UDim.new(0, px(8))
-    sidePad.PaddingBottom = UDim.new(0, px(8))
-    sidePad.PaddingLeft   = UDim.new(0, px(4))
-    sidePad.PaddingRight  = UDim.new(0, px(4))
+    sidePad.PaddingTop    = UDim.new(0, px(10))
+    sidePad.PaddingBottom = UDim.new(0, px(10))
+    sidePad.PaddingLeft   = UDim.new(0, px(6))
+    sidePad.PaddingRight  = UDim.new(0, px(6))
     sidePad.Parent        = sidebar
 
     ---------------------------------------------------------------------------
@@ -243,13 +248,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         btn.AutoButtonColor = false
         btn.BackgroundColor3 = SIDEBAR_BG
         btn.BorderSizePixel = 0
-        btn.Size            = UDim2.new(1, -px(2), 0, px(58))
+        btn.Size            = UDim2.new(1, -px(2), 0, px(62))
         btn.LayoutOrder     = layoutOrder
         btn.Text            = ""
         btn.Parent          = sidebar
 
         local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, px(5))
+        btnCorner.CornerRadius = UDim.new(0, px(10))
         btnCorner.Parent = btn
 
         -- Active indicator bar (left edge, hidden by default)
@@ -257,7 +262,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         bar.Name                 = "ActiveBar"
         bar.BackgroundColor3     = GOLD
         bar.BorderSizePixel      = 0
-        bar.Size                 = UDim2.new(0, px(3), 0.65, 0)
+        bar.Size                 = UDim2.new(0, px(3), 0.6, 0)
         bar.AnchorPoint          = Vector2.new(0, 0.5)
         bar.Position             = UDim2.new(0, 0, 0.5, 0)
         bar.BackgroundTransparency = 1
@@ -273,9 +278,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         iconLbl.Font                = Enum.Font.GothamBold
         iconLbl.Text                = iconChar
         iconLbl.TextColor3          = DIM_TEXT
-        iconLbl.TextSize            = math.max(14, math.floor(px(16)))
-        iconLbl.Size                = UDim2.new(1, 0, 0, px(22))
-        iconLbl.Position            = UDim2.new(0, 0, 0, px(7))
+        iconLbl.TextSize            = math.max(16, math.floor(px(18)))
+        iconLbl.Size                = UDim2.new(1, 0, 0, px(24))
+        iconLbl.Position            = UDim2.new(0, 0, 0, px(8))
         iconLbl.TextXAlignment      = Enum.TextXAlignment.Center
         iconLbl.Parent              = btn
 
@@ -286,17 +291,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         textLbl.Font                = Enum.Font.GothamBold
         textLbl.Text                = labelText
         textLbl.TextColor3          = DIM_TEXT
-        textLbl.TextSize            = math.max(10, math.floor(px(12)))
+        textLbl.TextSize            = math.max(11, math.floor(px(12)))
         textLbl.Size                = UDim2.new(1, -px(6), 0, px(16))
-        textLbl.Position            = UDim2.new(0, px(3), 0, px(30))
+        textLbl.Position            = UDim2.new(0, px(3), 0, px(34))
         textLbl.TextXAlignment      = Enum.TextXAlignment.Center
         textLbl.TextTruncate        = Enum.TextTruncate.None
         textLbl.Parent              = btn
 
         local stroke = Instance.new("UIStroke")
         stroke.Color        = CARD_STROKE
-        stroke.Thickness    = 1
-        stroke.Transparency = 0.7
+        stroke.Thickness    = 1.2
+        stroke.Transparency = 0.6
         stroke.Parent       = btn
 
         return btn
@@ -329,7 +334,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
             if bar    then bar.BackgroundTransparency   = active and 0    or 1    end
             if icon   then icon.TextColor3              = active and GOLD  or DIM_TEXT end
             if label  then label.TextColor3             = active and WHITE or DIM_TEXT end
-            if stroke then stroke.Transparency          = active and 0.35 or 0.7  end
+            if stroke then stroke.Transparency          = active and 0.2  or 0.6  end
         end
         for id, page in pairs(contentPages) do
             page.Visible = (id == tabId)
@@ -349,7 +354,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         trackConn(btn.MouseEnter:Connect(function()
             if currentTab ~= id then
                 TweenService:Create(btn, TWEEN_QUICK,
-                    {BackgroundColor3 = Color3.fromRGB(30, 28, 18)}):Play()
+                    {BackgroundColor3 = Color3.fromRGB(28, 26, 18)}):Play()
             end
         end))
         trackConn(btn.MouseLeave:Connect(function()
@@ -373,7 +378,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
 
         local layout = Instance.new("UIListLayout")
         layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding   = UDim.new(0, px(6))
+        layout.Padding   = UDim.new(0, px(10))
         layout.Parent    = page
 
         page.Parent = contentArea
@@ -384,17 +389,25 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     -- Helper: make a gold section header
     ---------------------------------------------------------------------------
     local function makeHeader(text, subText, parentFrame)
+        -- Wrapper to hold header + subheader + accent bar
+        local hdrWrap = Instance.new("Frame")
+        hdrWrap.Name                = "HeaderWrap"
+        hdrWrap.BackgroundTransparency = 1
+        hdrWrap.Size                = UDim2.new(1, 0, 0, px(58))
+        hdrWrap.LayoutOrder         = 1
+        hdrWrap.Parent              = parentFrame
+
         local hdr = Instance.new("TextLabel")
         hdr.Name                = "SectionHeader"
         hdr.BackgroundTransparency = 1
         hdr.Font                = Enum.Font.GothamBold
         hdr.Text                = text
         hdr.TextColor3          = GOLD
-        hdr.TextSize            = math.max(16, math.floor(px(18)))
+        hdr.TextSize            = math.max(18, math.floor(px(22)))
         hdr.TextXAlignment      = Enum.TextXAlignment.Left
         hdr.Size                = UDim2.new(1, 0, 0, px(28))
-        hdr.LayoutOrder         = 1
-        hdr.Parent              = parentFrame
+        hdr.Position            = UDim2.new(0, 0, 0, 0)
+        hdr.Parent              = hdrWrap
 
         local sub = Instance.new("TextLabel")
         sub.Name                = "SubHeader"
@@ -404,9 +417,19 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         sub.TextColor3          = DIM_TEXT
         sub.TextSize            = math.max(11, math.floor(px(12)))
         sub.TextXAlignment      = Enum.TextXAlignment.Left
-        sub.Size                = UDim2.new(1, 0, 0, px(20))
-        sub.LayoutOrder         = 2
-        sub.Parent              = parentFrame
+        sub.Size                = UDim2.new(1, 0, 0, px(18))
+        sub.Position            = UDim2.new(0, 0, 0, px(30))
+        sub.Parent              = hdrWrap
+
+        -- Gold accent bar under header (matches BoostsUI style)
+        local accentBar = Instance.new("Frame")
+        accentBar.Name                = "AccentBar"
+        accentBar.BackgroundColor3    = GOLD
+        accentBar.BackgroundTransparency = 0.3
+        accentBar.Size                = UDim2.new(1, 0, 0, px(2))
+        accentBar.Position            = UDim2.new(0, 0, 1, -px(2))
+        accentBar.BorderSizePixel     = 0
+        accentBar.Parent              = hdrWrap
     end
 
     ---------------------------------------------------------------------------
@@ -421,13 +444,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         block.Parent            = parentFrame
 
         local bc = Instance.new("UICorner")
-        bc.CornerRadius = UDim.new(0, px(8))
+        bc.CornerRadius = UDim.new(0, px(12))
         bc.Parent = block
 
         local bs = Instance.new("UIStroke")
         bs.Color        = CARD_STROKE
-        bs.Thickness    = 1
-        bs.Transparency = 0.4
+        bs.Thickness    = 1.2
+        bs.Transparency = 0.35
         bs.Parent       = block
 
         local lbl = Instance.new("TextLabel")
@@ -465,6 +488,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     ---------------------------------------------------------------------------
     -- Quest cards (Daily)
     ---------------------------------------------------------------------------
+    local questCardStrokes = {}   -- [questId] = UIStroke (for state glow)
+    local questCards       = {}   -- [questId] = Frame
+
     for i, quest in ipairs(quests) do
         questGoals[quest.id]   = quest.goal
         questClaimed[quest.id] = quest.claimed
@@ -472,26 +498,42 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         local card = Instance.new("Frame")
         card.Name             = "Quest_" .. quest.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, 0, 0, px(100))
+        card.Size             = UDim2.new(1, 0, 0, px(120))
         card.LayoutOrder      = 10 + i
         card.Parent           = dailyPage
+        questCards[quest.id]  = card
 
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, px(8))
+        corner.CornerRadius = UDim.new(0, px(12))
         corner.Parent = card
 
         local stroke = Instance.new("UIStroke")
         stroke.Color        = CARD_STROKE
-        stroke.Thickness    = 1
-        stroke.Transparency = 0.4
+        stroke.Thickness    = 1.2
+        stroke.Transparency = 0.35
         stroke.Parent       = card
+        questCardStrokes[quest.id] = stroke
 
         local pad = Instance.new("UIPadding")
-        pad.PaddingLeft   = UDim.new(0, px(12))
-        pad.PaddingRight  = UDim.new(0, px(12))
-        pad.PaddingTop    = UDim.new(0, px(10))
-        pad.PaddingBottom = UDim.new(0, px(10))
+        pad.PaddingLeft   = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingTop    = UDim.new(0, px(12))
+        pad.PaddingBottom = UDim.new(0, px(12))
         pad.Parent        = card
+
+        -- Left accent bar for visual state
+        local accentBar = Instance.new("Frame")
+        accentBar.Name                = "StateAccent"
+        accentBar.BackgroundColor3    = GOLD
+        accentBar.BackgroundTransparency = 0.3
+        accentBar.BorderSizePixel     = 0
+        accentBar.Size                = UDim2.new(0, px(3), 0.7, 0)
+        accentBar.AnchorPoint         = Vector2.new(0, 0.5)
+        accentBar.Position            = UDim2.new(0, -px(10), 0.5, 0)
+        local accentCr = Instance.new("UICorner")
+        accentCr.CornerRadius = UDim.new(0.5, 0)
+        accentCr.Parent = accentBar
+        accentBar.Parent = card
 
         -- Title
         local titleLbl = Instance.new("TextLabel")
@@ -500,29 +542,37 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         titleLbl.Font               = Enum.Font.GothamBold
         titleLbl.Text               = quest.title
         titleLbl.TextColor3         = WHITE
-        titleLbl.TextSize           = math.max(14, math.floor(px(15)))
+        titleLbl.TextSize           = math.max(15, math.floor(px(17)))
         titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-        titleLbl.Size               = UDim2.new(0.62, 0, 0, px(20))
+        titleLbl.Size               = UDim2.new(0.58, 0, 0, px(22))
         titleLbl.Position           = UDim2.new(0, 0, 0, 0)
         titleLbl.Parent             = card
 
-        -- Reward row (right of title): coin icon + amount
-        local rewardRow = Instance.new("Frame")
-        rewardRow.Name              = "RewardRow"
-        rewardRow.BackgroundTransparency = 1
-        rewardRow.Size              = UDim2.new(0.38, 0, 0, px(20))
-        rewardRow.Position          = UDim2.new(0.62, 0, 0, 0)
-        rewardRow.Parent            = card
+        -- Reward badge (right of title): framed coin icon + amount
+        local rewardBadge = Instance.new("Frame")
+        rewardBadge.Name              = "RewardBadge"
+        rewardBadge.BackgroundColor3  = Color3.fromRGB(36, 33, 18)
+        rewardBadge.BackgroundTransparency = 0.3
+        rewardBadge.Size              = UDim2.new(0, px(100), 0, px(26))
+        rewardBadge.AnchorPoint       = Vector2.new(1, 0)
+        rewardBadge.Position          = UDim2.new(1, 0, 0, -px(2))
+        rewardBadge.Parent            = card
 
-        local coinSize = px(16)
-        local amtW     = px(50)
+        local badgeCr = Instance.new("UICorner")
+        badgeCr.CornerRadius = UDim.new(0, px(8))
+        badgeCr.Parent = rewardBadge
 
-        -- Coin icon (anchored to right side, just left of amount)
-        local coinIcon = makeCoinIcon(rewardRow, coinSize)
-        coinIcon.AnchorPoint = Vector2.new(1, 0.5)
-        coinIcon.Position    = UDim2.new(1, -(amtW + px(3)), 0.5, 0)
+        local badgeStroke = Instance.new("UIStroke")
+        badgeStroke.Color       = CLAIM_GOLD_GLOW
+        badgeStroke.Thickness   = 1
+        badgeStroke.Transparency = 0.55
+        badgeStroke.Parent      = rewardBadge
 
-        -- Amount label
+        local coinSize = px(18)
+        local coinIcon = makeCoinIcon(rewardBadge, coinSize)
+        coinIcon.AnchorPoint = Vector2.new(0, 0.5)
+        coinIcon.Position    = UDim2.new(0, px(8), 0.5, 0)
+
         local amtLbl = Instance.new("TextLabel")
         amtLbl.Name                = "Amount"
         amtLbl.BackgroundTransparency = 1
@@ -531,10 +581,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         amtLbl.TextColor3          = GOLD
         amtLbl.TextSize            = math.max(13, math.floor(px(14)))
         amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
-        amtLbl.Size                = UDim2.new(0, amtW, 1, 0)
+        amtLbl.Size                = UDim2.new(1, -px(30), 1, 0)
         amtLbl.AnchorPoint         = Vector2.new(1, 0)
-        amtLbl.Position            = UDim2.new(1, 0, 0, 0)
-        amtLbl.Parent              = rewardRow
+        amtLbl.Position            = UDim2.new(1, -px(8), 0, 0)
+        amtLbl.Parent              = rewardBadge
 
         -- Description
         local descLbl = Instance.new("TextLabel")
@@ -545,35 +595,58 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         descLbl.TextColor3         = DIM_TEXT
         descLbl.TextSize           = math.max(11, math.floor(px(12)))
         descLbl.TextXAlignment     = Enum.TextXAlignment.Left
-        descLbl.Size               = UDim2.new(1, 0, 0, px(16))
-        descLbl.Position           = UDim2.new(0, 0, 0, px(22))
+        descLbl.TextWrapped        = true
+        descLbl.Size               = UDim2.new(0.7, 0, 0, px(18))
+        descLbl.Position           = UDim2.new(0, 0, 0, px(26))
         descLbl.Parent             = card
 
         -- Progress bar track
-        local barY = px(44)
-        local barH = px(14)
+        local barY = px(52)
+        local barH = px(16)
         local track = Instance.new("Frame")
         track.Name             = "BarTrack"
         track.BackgroundColor3 = BAR_BG
-        track.Size             = UDim2.new(0.65, 0, 0, barH)
+        track.Size             = UDim2.new(0.62, 0, 0, barH)
         track.Position         = UDim2.new(0, 0, 0, barY)
         track.Parent           = card
 
         local trackCorner = Instance.new("UICorner")
-        trackCorner.CornerRadius = UDim.new(0, px(4))
+        trackCorner.CornerRadius = UDim.new(0, px(6))
         trackCorner.Parent = track
+
+        local trackStroke = Instance.new("UIStroke")
+        trackStroke.Color        = CARD_STROKE
+        trackStroke.Thickness    = 1
+        trackStroke.Transparency = 0.5
+        trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        trackStroke.Parent       = track
 
         -- Progress bar fill
         local pct = (quest.goal > 0) and math.clamp(quest.progress / quest.goal, 0, 1) or 0
         local fill = Instance.new("Frame")
         fill.Name             = "BarFill"
         fill.BackgroundColor3 = BAR_FILL
+        fill.BackgroundTransparency = 0.1
         fill.Size             = UDim2.new(pct, 0, 1, 0)
         fill.Parent           = track
 
         local fillCorner = Instance.new("UICorner")
-        fillCorner.CornerRadius = UDim.new(0, px(4))
+        fillCorner.CornerRadius = UDim.new(0, px(6))
         fillCorner.Parent = fill
+
+        -- Subtle inner highlight on fill bar
+        local fillHighlight = Instance.new("Frame")
+        fillHighlight.Name = "FillHighlight"
+        fillHighlight.BackgroundColor3 = Color3.fromRGB(255, 245, 180)
+        fillHighlight.BackgroundTransparency = 0.65
+        fillHighlight.BorderSizePixel = 0
+        fillHighlight.Size = UDim2.new(1, 0, 0.35, 0)
+        fillHighlight.Position = UDim2.new(0, 0, 0, 0)
+        fillHighlight.Parent = fill
+
+        local fillHlCr = Instance.new("UICorner")
+        fillHlCr.CornerRadius = UDim.new(0, px(6))
+        fillHlCr.Parent = fillHighlight
 
         progressBars[quest.id] = fill
 
@@ -591,45 +664,98 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
         progressTexts[quest.id] = progText
 
         -- Claim button
-        local btnW2 = px(90)
-        local btnH  = px(30)
+        local btnW2 = px(100)
+        local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
-        btn.TextSize        = math.max(12, math.floor(px(13)))
+        btn.TextSize        = math.max(13, math.floor(px(14)))
         btn.Size            = UDim2.new(0, btnW2, 0, btnH)
         btn.AnchorPoint     = Vector2.new(1, 0)
         btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
         btn.Parent          = card
 
         local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, px(6))
+        btnCorner.CornerRadius = UDim.new(0, px(10))
         btnCorner.Parent = btn
 
+        local btnStroke = Instance.new("UIStroke")
+        btnStroke.Color       = BTN_STROKE
+        btnStroke.Thickness   = 1.4
+        btnStroke.Transparency = 0.3
+        btnStroke.Parent      = btn
+
         claimButtons[quest.id] = btn
+
+        -- Card state helper: updates card bg, accent, stroke for visual states
+        local function updateCardVisuals(progress, goal, claimed)
+            if claimed then
+                card.BackgroundColor3 = ROW_CLAIMED_BG
+                stroke.Color = GREEN_GLOW
+                stroke.Thickness = 1.8
+                stroke.Transparency = 0.3
+                accentBar.BackgroundColor3 = GREEN_GLOW
+                accentBar.BackgroundTransparency = 0.2
+            elseif progress >= goal then
+                card.BackgroundColor3 = ROW_CLAIMABLE_BG
+                stroke.Color = CLAIM_GOLD_GLOW
+                stroke.Thickness = 2
+                stroke.Transparency = 0.15
+                accentBar.BackgroundColor3 = CLAIM_GOLD_GLOW
+                accentBar.BackgroundTransparency = 0
+            else
+                card.BackgroundColor3 = ROW_BG
+                stroke.Color = CARD_STROKE
+                stroke.Thickness = 1.2
+                stroke.Transparency = 0.35
+                accentBar.BackgroundColor3 = GOLD
+                accentBar.BackgroundTransparency = 0.5
+            end
+        end
 
         -- Button state helper
         local function updateButtonState(progress, goal, claimed)
             if claimed then
-                btn.Text             = "CLAIMED"
+                btn.Text             = "\u{2714} CLAIMED"
                 btn.BackgroundColor3 = BTN_CLAIMED
-                btn.TextColor3       = DIM_TEXT
+                btn.TextColor3       = GREEN_GLOW
                 btn.Active           = false
+                btnStroke.Color      = GREEN_GLOW
+                btnStroke.Transparency = 0.5
             elseif progress >= goal then
-                btn.Text             = "CLAIM"
+                btn.Text             = "\u{2B50} CLAIM"
                 btn.BackgroundColor3 = BTN_CLAIM
                 btn.TextColor3       = WHITE
                 btn.Active           = true
+                btnStroke.Color      = GREEN_GLOW
+                btnStroke.Transparency = 0.15
             else
                 btn.Text             = tostring(progress) .. "/" .. tostring(goal)
                 btn.BackgroundColor3 = BTN_LOCKED
                 btn.TextColor3       = DIM_TEXT
                 btn.Active           = false
+                btnStroke.Color      = BTN_STROKE
+                btnStroke.Transparency = 0.4
             end
+            updateCardVisuals(progress, goal, claimed)
         end
 
         updateButtonState(quest.progress, quest.goal, quest.claimed)
+
+        -- Button hover feedback (matching BoostsUI style)
+        trackConn(btn.MouseEnter:Connect(function()
+            if btn.Active then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = Color3.fromRGB(45, 210, 90)}):Play()
+            end
+        end))
+        trackConn(btn.MouseLeave:Connect(function()
+            if btn.Active then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = BTN_CLAIM}):Play()
+            end
+        end))
 
         -- Claim handler
         trackConn(btn.MouseButton1Click:Connect(function()
@@ -715,16 +841,55 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
 
             local claimBtn = claimButtons[questId]
             if claimBtn and claimBtn.Parent then
+                local btnStrokeRef = claimBtn:FindFirstChildOfClass("UIStroke")
                 if newProgress >= goal then
-                    claimBtn.Text             = "CLAIM"
+                    claimBtn.Text             = "\u{2B50} CLAIM"
                     claimBtn.BackgroundColor3 = BTN_CLAIM
                     claimBtn.TextColor3       = WHITE
                     claimBtn.Active           = true
+                    if btnStrokeRef then
+                        btnStrokeRef.Color = GREEN_GLOW
+                        btnStrokeRef.Transparency = 0.15
+                    end
                 else
                     claimBtn.Text             = tostring(newProgress) .. "/" .. tostring(goal)
                     claimBtn.BackgroundColor3 = BTN_LOCKED
                     claimBtn.TextColor3       = DIM_TEXT
                     claimBtn.Active           = false
+                    if btnStrokeRef then
+                        btnStrokeRef.Color = BTN_STROKE
+                        btnStrokeRef.Transparency = 0.4
+                    end
+                end
+            end
+
+            -- Update card visuals for state change
+            local cardFrame = questCards and questCards[questId]
+            local cardStroke = questCardStrokes and questCardStrokes[questId]
+            if cardFrame and cardFrame.Parent then
+                local accent = cardFrame:FindFirstChild("StateAccent")
+                if newProgress >= goal then
+                    cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
+                    if cardStroke then
+                        cardStroke.Color = CLAIM_GOLD_GLOW
+                        cardStroke.Thickness = 2
+                        cardStroke.Transparency = 0.15
+                    end
+                    if accent then
+                        accent.BackgroundColor3 = CLAIM_GOLD_GLOW
+                        accent.BackgroundTransparency = 0
+                    end
+                else
+                    cardFrame.BackgroundColor3 = ROW_BG
+                    if cardStroke then
+                        cardStroke.Color = CARD_STROKE
+                        cardStroke.Thickness = 1.2
+                        cardStroke.Transparency = 0.35
+                    end
+                    if accent then
+                        accent.BackgroundColor3 = GOLD
+                        accent.BackgroundTransparency = 0.5
+                    end
                 end
             end
         end))

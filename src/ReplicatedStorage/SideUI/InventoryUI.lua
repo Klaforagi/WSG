@@ -13,15 +13,20 @@ local function px(base)
     return math.max(1, math.round(base * screenY / 1080))
 end
 
--- Use neutral SideUI gray instead of navy blue
-local CARD_BG      = Color3.fromRGB(35, 35, 40)
-local CARD_STROKE  = Color3.fromRGB(60, 60, 64)
-local ICON_BG      = Color3.fromRGB(20, 20, 24)
-local GOLD         = Color3.fromRGB(255, 215, 80)
-local WHITE        = Color3.fromRGB(240, 240, 240)
--- Replace blue button accents with neutral grays to match SideUI
-local BLUE_BTN     = Color3.fromRGB(64, 64, 68)
-local BLUE_BTN_STR = Color3.fromRGB(110, 110, 115)
+-- Palette (matches BoostsUI / QuestsUI / ShopUI deep-blue / gold theme)
+local CARD_BG       = Color3.fromRGB(26, 30, 48)
+local CARD_EQUIPPED = Color3.fromRGB(22, 38, 34)
+local CARD_STROKE   = Color3.fromRGB(55, 62, 95)
+local ICON_BG       = Color3.fromRGB(16, 18, 30)
+local GOLD          = Color3.fromRGB(255, 215, 60)
+local WHITE         = Color3.fromRGB(245, 245, 252)
+local DIM_TEXT      = Color3.fromRGB(145, 150, 175)
+local BTN_BG        = Color3.fromRGB(48, 55, 82)
+local BTN_STROKE_C  = Color3.fromRGB(90, 100, 140)
+local GREEN_GLOW    = Color3.fromRGB(50, 230, 110)
+local DISABLED_BG   = Color3.fromRGB(35, 38, 52)
+
+local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local InventoryUI = {}
 
@@ -42,14 +47,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local rootLayout = Instance.new("UIListLayout")
     rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rootLayout.Padding = UDim.new(0, px(12))
+    rootLayout.Padding = UDim.new(0, px(16))
     rootLayout.Parent = root
 
     local rootPad = Instance.new("UIPadding")
-    rootPad.PaddingTop = UDim.new(0, px(8))
-    rootPad.PaddingBottom = UDim.new(0, px(12))
-    rootPad.PaddingLeft = UDim.new(0, px(6))
-    rootPad.PaddingRight = UDim.new(0, px(6))
+    rootPad.PaddingTop = UDim.new(0, px(6))
+    rootPad.PaddingBottom = UDim.new(0, px(16))
+    rootPad.PaddingLeft = UDim.new(0, px(8))
+    rootPad.PaddingRight = UDim.new(0, px(8))
     rootPad.Parent = root
 
     local items = inventoryApi and inventoryApi:GetItems() or {}
@@ -98,15 +103,23 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- stack header + grid vertically, mirror ShopUI spacing
         local sectionLayout = Instance.new("UIListLayout")
         sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        sectionLayout.Padding = UDim.new(0, px(6))
+        sectionLayout.Padding = UDim.new(0, px(10))
         sectionLayout.Parent = section
 
         local sectionPad = Instance.new("UIPadding")
-        sectionPad.PaddingTop = UDim.new(0, px(6))
+        sectionPad.PaddingTop = UDim.new(0, px(4))
         sectionPad.PaddingBottom = UDim.new(0, px(10))
         sectionPad.PaddingLeft = UDim.new(0, px(8))
         sectionPad.PaddingRight = UDim.new(0, px(8))
         sectionPad.Parent = section
+
+        -- Header wrapper with accent bar (matches Boosts/Quests/Shop header style)
+        local headerWrap = Instance.new("Frame")
+        headerWrap.Name = "HeaderWrap"
+        headerWrap.BackgroundTransparency = 1
+        headerWrap.Size = UDim2.new(1, 0, 0, px(40))
+        headerWrap.LayoutOrder = 1
+        headerWrap.Parent = section
 
         local header = Instance.new("TextLabel")
         header.Name = "SectionHeader"
@@ -114,11 +127,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         header.Font = Enum.Font.GothamBold
         header.Text = label
         header.TextColor3 = GOLD
-        header.TextSize = math.max(18, math.floor(px(18)))
+        header.TextSize = math.max(18, math.floor(px(20)))
         header.TextXAlignment = Enum.TextXAlignment.Left
         header.Size = UDim2.new(1, 0, 0, px(28))
-        header.LayoutOrder = 1
-        header.Parent = section
+        header.Position = UDim2.new(0, 0, 0, 0)
+        header.Parent = headerWrap
+
+        -- Gold accent bar under header
+        local accentBar = Instance.new("Frame")
+        accentBar.Name = "AccentBar"
+        accentBar.BackgroundColor3 = GOLD
+        accentBar.BackgroundTransparency = 0.3
+        accentBar.Size = UDim2.new(1, 0, 0, px(2))
+        accentBar.Position = UDim2.new(0, 0, 1, -px(2))
+        accentBar.BorderSizePixel = 0
+        accentBar.Parent = headerWrap
 
         local grid = Instance.new("Frame")
         grid.Name = id .. "_Grid"
@@ -129,8 +152,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         grid.Parent = section
 
         local gridLayout = Instance.new("UIGridLayout")
-        gridLayout.CellSize = UDim2.new(0.28, 0, 0, px(140))
-        gridLayout.CellPadding = UDim2.new(0.02, 0, 0, px(10))
+        gridLayout.CellSize = UDim2.new(0.30, 0, 0, px(160))
+        gridLayout.CellPadding = UDim2.new(0.025, 0, 0, px(12))
         gridLayout.FillDirection = Enum.FillDirection.Horizontal
         gridLayout.FillDirectionMaxCells = 3
         gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -148,8 +171,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     rangedSection.LayoutOrder = 2
     specialSection.LayoutOrder = 3
 
-    local GREEN_BTN = Color3.fromRGB(30, 130, 60)
-    local GREEN_BTN_STR = Color3.fromRGB(60, 200, 90)
+    local GREEN_BTN = Color3.fromRGB(35, 190, 75)
+    local GREEN_BTN_STR = Color3.fromRGB(50, 230, 110)
     -- Restore equipped state from inventory API if available (per-category)
     local equippedState = { Melee = nil, Ranged = nil, Special = nil }
     if inventoryApi and inventoryApi.GetEquipped then
@@ -159,21 +182,41 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             equippedState.Special = inventoryApi:GetEquipped("Special")
         end)
     end
-    local allEquipBtns = {} -- id -> {btn, stroke, category}
+    local allEquipBtns = {} -- id -> {btn, stroke, category, card, cardStroke}
 
     local function refreshAllEquipButtons()
         for itemId, info in pairs(allEquipBtns) do
             local cat = info.category or classifyItem(itemId)
             if equippedState[cat] == itemId then
-                info.btn.Text = "EQUIPPED"
-                info.btn.BackgroundColor3 = GREEN_BTN
-                info.btn.TextColor3 = Color3.fromRGB(200, 255, 200)
-                info.stroke.Color = GREEN_BTN_STR
+                info.btn.Text = "\u{2714} EQUIPPED"
+                info.btn.BackgroundColor3 = DISABLED_BG
+                info.btn.TextColor3 = GREEN_GLOW
+                info.stroke.Color = GREEN_GLOW
+                info.stroke.Transparency = 0.45
+                -- Update card visual for equipped state
+                if info.card then
+                    info.card.BackgroundColor3 = CARD_EQUIPPED
+                end
+                if info.cardStroke then
+                    info.cardStroke.Color = GREEN_GLOW
+                    info.cardStroke.Thickness = 1.8
+                    info.cardStroke.Transparency = 0.3
+                end
             else
                 info.btn.Text = "EQUIP"
-                info.btn.BackgroundColor3 = BLUE_BTN
+                info.btn.BackgroundColor3 = BTN_BG
                 info.btn.TextColor3 = WHITE
-                info.stroke.Color = BLUE_BTN_STR
+                info.stroke.Color = BTN_STROKE_C
+                info.stroke.Transparency = 0.25
+                -- Reset card visual
+                if info.card then
+                    info.card.BackgroundColor3 = CARD_BG
+                end
+                if info.cardStroke then
+                    info.cardStroke.Color = CARD_STROKE
+                    info.cardStroke.Thickness = 1.2
+                    info.cardStroke.Transparency = 0.35
+                end
             end
         end
     end
@@ -187,18 +230,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         card.AutomaticSize = Enum.AutomaticSize.Y
         card.Parent = gridParent
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, px(10))
+        corner.CornerRadius = UDim.new(0, px(12))
         corner.Parent = card
         local stroke = Instance.new("UIStroke")
         stroke.Color = CARD_STROKE
-        stroke.Thickness = 1.5
-        stroke.Transparency = 0.25
+        stroke.Thickness = 1.2
+        stroke.Transparency = 0.35
         stroke.Parent = card
         local cardPad = Instance.new("UIPadding")
-        cardPad.PaddingTop = UDim.new(0, px(6))
-        cardPad.PaddingBottom = UDim.new(0, px(6))
-        cardPad.PaddingLeft = UDim.new(0, px(6))
-        cardPad.PaddingRight = UDim.new(0, px(6))
+        cardPad.PaddingTop = UDim.new(0, px(8))
+        cardPad.PaddingBottom = UDim.new(0, px(8))
+        cardPad.PaddingLeft = UDim.new(0, px(8))
+        cardPad.PaddingRight = UDim.new(0, px(8))
         cardPad.Parent = card
 
         local leftBox = Instance.new("Frame")
@@ -209,12 +252,33 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         leftBox.ZIndex = 251
         leftBox.Parent = card
         local lCorner = Instance.new("UICorner")
-        lCorner.CornerRadius = UDim.new(0, px(8))
+        lCorner.CornerRadius = UDim.new(0, px(10))
         lCorner.Parent = leftBox
+
+        -- Subtle highlight in icon area for depth
+        local iconHighlight = Instance.new("Frame")
+        iconHighlight.Name = "IconHighlight"
+        iconHighlight.Size = UDim2.new(1, 0, 0.35, 0)
+        iconHighlight.Position = UDim2.new(0, 0, 0, 0)
+        iconHighlight.BackgroundColor3 = Color3.fromRGB(30, 35, 55)
+        iconHighlight.BackgroundTransparency = 0.5
+        iconHighlight.BorderSizePixel = 0
+        iconHighlight.ZIndex = 251
+        iconHighlight.Parent = leftBox
+        local hlCr = Instance.new("UICorner")
+        hlCr.CornerRadius = UDim.new(0, px(10))
+        hlCr.Parent = iconHighlight
+
+        -- Subtle stroke on icon area
+        local iconStroke = Instance.new("UIStroke")
+        iconStroke.Color = CARD_STROKE
+        iconStroke.Thickness = 1
+        iconStroke.Transparency = 0.5
+        iconStroke.Parent = leftBox
 
         local thumb = Instance.new("ImageLabel")
         thumb.Name = "Thumb"
-        thumb.Size = UDim2.new(0.9, 0, 0.9, 0)
+        thumb.Size = UDim2.new(0.85, 0, 0.85, 0)
         thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
         thumb.AnchorPoint = Vector2.new(0.5, 0.5)
         thumb.BackgroundTransparency = 1
@@ -244,17 +308,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameLabel.TextColor3 = WHITE
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
         nameLabel.Text = tostring(id)
-        -- match ShopUI spacing: smaller header height and centered under thumb
         nameLabel.Size = UDim2.new(1, 0, 0, px(28))
-        nameLabel.Position = UDim2.new(0, 0, 0.36, 0)
+        nameLabel.Position = UDim2.new(0, 0, 0.34, 0)
         nameLabel.Parent = rightBox
 
         local equipBtn = Instance.new("TextButton")
         equipBtn.Name = "EquipBtn"
-        equipBtn.Size = UDim2.new(0.80, 0, 0.30, 0)
+        equipBtn.Size = UDim2.new(0.85, 0, 0.24, 0)
         equipBtn.AnchorPoint = Vector2.new(0.5, 1)
-        equipBtn.Position = UDim2.new(0.5, 0, 1, 0)
-        equipBtn.BackgroundColor3 = BLUE_BTN
+        equipBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+        equipBtn.BackgroundColor3 = BTN_BG
         equipBtn.Font = Enum.Font.GothamBold
         equipBtn.TextScaled = true
         equipBtn.TextColor3 = WHITE
@@ -262,16 +325,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         equipBtn.AutoButtonColor = false
         equipBtn.Parent = rightBox
         local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, px(6))
+        btnCorner.CornerRadius = UDim.new(0, px(10))
         btnCorner.Parent = equipBtn
         local btnStroke = Instance.new("UIStroke")
-        btnStroke.Color = BLUE_BTN_STR
-        btnStroke.Thickness = 1.2
-        btnStroke.Transparency = 0.3
+        btnStroke.Color = BTN_STROKE_C
+        btnStroke.Thickness = 1.4
+        btnStroke.Transparency = 0.25
         btnStroke.Parent = equipBtn
 
         local cat = classifyItem(id)
-        allEquipBtns[id] = { btn = equipBtn, stroke = btnStroke, category = cat }
+        allEquipBtns[id] = { btn = equipBtn, stroke = btnStroke, category = cat, card = card, cardStroke = stroke }
 
         equipBtn.MouseButton1Click:Connect(function()
             local rs = game:GetService("ReplicatedStorage")
@@ -321,18 +384,24 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end)
         end)
 
-        -- hover: change gray -> green on hover when actionable
+        -- hover: highlight on hover (matches Boosts/Quests/Shop style)
         equipBtn.MouseEnter:Connect(function()
-            pcall(function()
-                local t = TweenService:Create(equipBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = GREEN_BTN})
-                t:Play()
-            end)
+            local info = allEquipBtns[id]
+            local isEquipped = info and equippedState[info.category] == id
+            if not isEquipped then
+                pcall(function()
+                    TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+                end)
+            end
         end)
         equipBtn.MouseLeave:Connect(function()
-            pcall(function()
-                local t = TweenService:Create(equipBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = BLUE_BTN})
-                t:Play()
-            end)
+            local info = allEquipBtns[id]
+            local isEquipped = info and equippedState[info.category] == id
+            if not isEquipped then
+                pcall(function()
+                    TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+                end)
+            end
         end)
 
         return card
@@ -352,14 +421,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     -- If no items, show friendly message in root
     if #items == 0 then
+        local emptyCard = Instance.new("Frame")
+        emptyCard.Name = "EmptyState"
+        emptyCard.BackgroundColor3 = CARD_BG
+        emptyCard.Size = UDim2.new(1, 0, 0, px(110))
+        emptyCard.Parent = root
+        local emptyCr = Instance.new("UICorner")
+        emptyCr.CornerRadius = UDim.new(0, px(12))
+        emptyCr.Parent = emptyCard
+        local emptyStroke = Instance.new("UIStroke")
+        emptyStroke.Color = CARD_STROKE
+        emptyStroke.Thickness = 1.2
+        emptyStroke.Transparency = 0.35
+        emptyStroke.Parent = emptyCard
         local lbl = Instance.new("TextLabel")
         lbl.Text = "No items owned"
-        lbl.Font = Enum.Font.GothamBold
-        lbl.TextSize = px(22)
+        lbl.Font = Enum.Font.GothamMedium
+        lbl.TextSize = px(16)
         lbl.BackgroundTransparency = 1
-        lbl.TextColor3 = Color3.fromRGB(180, 180, 200)
-        lbl.Size = UDim2.new(1, 0, 0, px(50))
-        lbl.Parent = root
+        lbl.TextColor3 = DIM_TEXT
+        lbl.Size = UDim2.new(1, 0, 1, 0)
+        lbl.TextXAlignment = Enum.TextXAlignment.Center
+        lbl.Parent = emptyCard
     end
 
     -- Apply initial equipped state visually

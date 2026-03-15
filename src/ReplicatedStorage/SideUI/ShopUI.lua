@@ -13,18 +13,22 @@ local function px(base)
     return math.max(1, math.round(base * screenY / 1080))
 end
 
--- palette (matches SideUI navy/gold theme)
--- Use neutral SideUI gray instead of navy blue
-local CARD_BG      = Color3.fromRGB(35, 35, 40)
-local CARD_STROKE  = Color3.fromRGB(60, 60, 64)
-local ICON_BG      = Color3.fromRGB(20, 20, 24)
-local GOLD         = Color3.fromRGB(255, 215, 80)
-local WHITE        = Color3.fromRGB(240, 240, 240)
--- Replace blue button accents with neutral grays to match SideUI
-local BLUE_BTN     = Color3.fromRGB(64, 64, 68)
-local BLUE_BTN_STR = Color3.fromRGB(110, 110, 115)
-local GREEN_BTN    = Color3.fromRGB(30, 130, 60)
-local RED_TEXT     = Color3.fromRGB(255, 90, 90)
+-- palette (matches BoostsUI / QuestsUI deep-blue / gold theme)
+local CARD_BG      = Color3.fromRGB(26, 30, 48)
+local CARD_OWNED   = Color3.fromRGB(22, 38, 34)
+local CARD_STROKE  = Color3.fromRGB(55, 62, 95)
+local ICON_BG      = Color3.fromRGB(16, 18, 30)
+local GOLD         = Color3.fromRGB(255, 215, 60)
+local WHITE        = Color3.fromRGB(245, 245, 252)
+local DIM_TEXT     = Color3.fromRGB(145, 150, 175)
+local BTN_BUY      = Color3.fromRGB(48, 55, 82)
+local BTN_STROKE_C = Color3.fromRGB(90, 100, 140)
+local GREEN_BTN    = Color3.fromRGB(35, 190, 75)
+local GREEN_GLOW   = Color3.fromRGB(50, 230, 110)
+local RED_TEXT     = Color3.fromRGB(255, 80, 80)
+local DISABLED_BG  = Color3.fromRGB(35, 38, 52)
+
+local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local ShopUI = {}
 
@@ -40,15 +44,23 @@ local function makeSection(parent, sectionId, label)
     -- ensure section stacks header + grid vertically
     local sectionLayout = Instance.new("UIListLayout")
     sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    sectionLayout.Padding = UDim.new(0, px(6))
+    sectionLayout.Padding = UDim.new(0, px(10))
     sectionLayout.Parent = section
 
     local sectionPad = Instance.new("UIPadding")
-    sectionPad.PaddingTop = UDim.new(0, px(6))
+    sectionPad.PaddingTop = UDim.new(0, px(4))
     sectionPad.PaddingBottom = UDim.new(0, px(10))
     sectionPad.PaddingLeft = UDim.new(0, px(8))
     sectionPad.PaddingRight = UDim.new(0, px(8))
     sectionPad.Parent = section
+
+    -- Header wrapper with accent bar (matches Boosts/Quests header style)
+    local headerWrap = Instance.new("Frame")
+    headerWrap.Name = "HeaderWrap"
+    headerWrap.BackgroundTransparency = 1
+    headerWrap.Size = UDim2.new(1, 0, 0, px(40))
+    headerWrap.LayoutOrder = 1
+    headerWrap.Parent = section
 
     local header = Instance.new("TextLabel")
     header.Name = "SectionHeader"
@@ -56,11 +68,21 @@ local function makeSection(parent, sectionId, label)
     header.Font = Enum.Font.GothamBold
     header.Text = label
     header.TextColor3 = GOLD
-    header.TextSize = math.max(18, math.floor(px(18)))
+    header.TextSize = math.max(18, math.floor(px(20)))
     header.TextXAlignment = Enum.TextXAlignment.Left
     header.Size = UDim2.new(1, 0, 0, px(28))
-    header.LayoutOrder = 1
-    header.Parent = section
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.Parent = headerWrap
+
+    -- Gold accent bar under header
+    local accentBar = Instance.new("Frame")
+    accentBar.Name = "AccentBar"
+    accentBar.BackgroundColor3 = GOLD
+    accentBar.BackgroundTransparency = 0.3
+    accentBar.Size = UDim2.new(1, 0, 0, px(2))
+    accentBar.Position = UDim2.new(0, 0, 1, -px(2))
+    accentBar.BorderSizePixel = 0
+    accentBar.Parent = headerWrap
 
     local grid = Instance.new("Frame")
     grid.Name = sectionId .. "_Grid"
@@ -70,8 +92,8 @@ local function makeSection(parent, sectionId, label)
     grid.Parent = section
 
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize = UDim2.new(0.28, 0, 0, px(140)) -- slightly narrower cards
-    gridLayout.CellPadding = UDim2.new(0.02, 0, 0, px(10))
+    gridLayout.CellSize = UDim2.new(0.30, 0, 0, px(160))
+    gridLayout.CellPadding = UDim2.new(0.025, 0, 0, px(12))
     gridLayout.FillDirection = Enum.FillDirection.Horizontal
     gridLayout.FillDirectionMaxCells = 3
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
@@ -105,18 +127,18 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
     card.Parent = gridParent
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, px(10))
+    corner.CornerRadius = UDim.new(0, px(12))
     corner.Parent = card
     local stroke = Instance.new("UIStroke")
     stroke.Color = CARD_STROKE
-    stroke.Thickness = 1.5
-    stroke.Transparency = 0.25
+    stroke.Thickness = 1.2
+    stroke.Transparency = 0.35
     stroke.Parent = card
     local cardPad = Instance.new("UIPadding")
-    cardPad.PaddingTop = UDim.new(0, px(6))
-    cardPad.PaddingBottom = UDim.new(0, px(6))
-    cardPad.PaddingLeft = UDim.new(0, px(6))
-    cardPad.PaddingRight = UDim.new(0, px(6))
+    cardPad.PaddingTop = UDim.new(0, px(8))
+    cardPad.PaddingBottom = UDim.new(0, px(8))
+    cardPad.PaddingLeft = UDim.new(0, px(8))
+    cardPad.PaddingRight = UDim.new(0, px(8))
     cardPad.Parent = card
 
     -- LEFT half: weapon image
@@ -128,12 +150,33 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
     leftBox.ZIndex = 251
     leftBox.Parent = card
     local lCorner = Instance.new("UICorner")
-    lCorner.CornerRadius = UDim.new(0, px(8))
+    lCorner.CornerRadius = UDim.new(0, px(10))
     lCorner.Parent = leftBox
+
+    -- Subtle highlight in icon area for depth
+    local iconHighlight = Instance.new("Frame")
+    iconHighlight.Name = "IconHighlight"
+    iconHighlight.Size = UDim2.new(1, 0, 0.35, 0)
+    iconHighlight.Position = UDim2.new(0, 0, 0, 0)
+    iconHighlight.BackgroundColor3 = Color3.fromRGB(30, 35, 55)
+    iconHighlight.BackgroundTransparency = 0.5
+    iconHighlight.BorderSizePixel = 0
+    iconHighlight.ZIndex = 251
+    iconHighlight.Parent = leftBox
+    local hlCr = Instance.new("UICorner")
+    hlCr.CornerRadius = UDim.new(0, px(10))
+    hlCr.Parent = iconHighlight
+
+    -- Subtle stroke on icon area
+    local iconStroke = Instance.new("UIStroke")
+    iconStroke.Color = CARD_STROKE
+    iconStroke.Thickness = 1
+    iconStroke.Transparency = 0.5
+    iconStroke.Parent = leftBox
 
     local thumb = Instance.new("ImageLabel")
     thumb.Name = "Thumb"
-    thumb.Size = UDim2.new(0.9, 0, 0.9, 0)
+    thumb.Size = UDim2.new(0.85, 0, 0.85, 0)
     thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
     thumb.AnchorPoint = Vector2.new(0.5, 0.5)
     thumb.BackgroundTransparency = 1
@@ -157,35 +200,48 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
     rightBox.ZIndex = 251
     rightBox.Parent = card
 
-    local priceRow = Instance.new("Frame")
-    priceRow.Name = "PriceRow"
-    priceRow.Size = UDim2.new(1, 0, 0.28, 0)
-    priceRow.Position = UDim2.new(0, 0, 0.04, 0)
-    priceRow.BackgroundTransparency = 1
-    priceRow.Parent = rightBox
+    -- Price badge (framed, matches Quests reward badge style)
+    local priceBadge = Instance.new("Frame")
+    priceBadge.Name = "PriceBadge"
+    priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
+    priceBadge.BackgroundTransparency = 0.3
+    priceBadge.Size = UDim2.new(0.85, 0, 0, px(24))
+    priceBadge.AnchorPoint = Vector2.new(0.5, 0)
+    priceBadge.Position = UDim2.new(0.5, 0, 0.04, 0)
+    priceBadge.ZIndex = 252
+    priceBadge.Parent = rightBox
+    local badgeCr = Instance.new("UICorner")
+    badgeCr.CornerRadius = UDim.new(0, px(8))
+    badgeCr.Parent = priceBadge
+    local badgeStroke = Instance.new("UIStroke")
+    badgeStroke.Color = Color3.fromRGB(255, 200, 40)
+    badgeStroke.Thickness = 1
+    badgeStroke.Transparency = 0.55
+    badgeStroke.Parent = priceBadge
 
     local priceLabel = Instance.new("TextLabel")
     priceLabel.Name = "Price"
-    priceLabel.Size = UDim2.new(0.62, 0, 1, 0)
+    priceLabel.Size = UDim2.new(0.58, 0, 1, 0)
     priceLabel.Position = UDim2.new(0, 0, 0, 0)
     priceLabel.BackgroundTransparency = 1
     priceLabel.Font = Enum.Font.GothamBold
     priceLabel.TextScaled = true
     priceLabel.TextColor3 = GOLD
     priceLabel.TextXAlignment = Enum.TextXAlignment.Right
-    priceLabel.Text = tostring(price)
-    priceLabel.ZIndex = 252
-    priceLabel.Parent = priceRow
+    priceLabel.Text = (price > 0) and tostring(price) or "FREE"
+    priceLabel.ZIndex = 253
+    priceLabel.Parent = priceBadge
 
     local coinIcon = Instance.new("ImageLabel")
     coinIcon.Name = "CoinIcon"
-    coinIcon.Size = UDim2.new(0.28, 0, 0.80, 0)
-    coinIcon.Position = UDim2.new(0.66, 0, 0.5, 0)
+    coinIcon.Size = UDim2.new(0.26, 0, 0.80, 0)
+    coinIcon.Position = UDim2.new(0.64, 0, 0.5, 0)
     coinIcon.AnchorPoint = Vector2.new(0, 0.5)
     coinIcon.BackgroundTransparency = 1
     coinIcon.ScaleType = Enum.ScaleType.Fit
-    coinIcon.ZIndex = 252
-    coinIcon.Parent = priceRow
+    coinIcon.ZIndex = 253
+    coinIcon.Parent = priceBadge
+    coinIcon.Visible = (price > 0)
     pcall(function()
         if AssetCodes and type(AssetCodes.Get) == "function" then
             local ci = AssetCodes.Get("Coin")
@@ -196,7 +252,7 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "ItemName"
     nameLabel.Size = UDim2.new(1, 0, 0.22, 0)
-    nameLabel.Position = UDim2.new(0, 0, 0.36, 0)
+    nameLabel.Position = UDim2.new(0, 0, 0.34, 0)
     nameLabel.BackgroundTransparency = 1
     nameLabel.Font = Enum.Font.GothamBold
     nameLabel.TextScaled = true
@@ -208,10 +264,10 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
 
     local buyBtn = Instance.new("TextButton")
     buyBtn.Name = "BuyBtn"
-    buyBtn.Size = UDim2.new(0.80, 0, 0.24, 0)
+    buyBtn.Size = UDim2.new(0.85, 0, 0.24, 0)
     buyBtn.AnchorPoint = Vector2.new(0.5, 1)
-    buyBtn.Position = UDim2.new(0.5, 0, 1, 0)
-    buyBtn.BackgroundColor3 = BLUE_BTN
+    buyBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+    buyBtn.BackgroundColor3 = BTN_BUY
     buyBtn.Font = Enum.Font.GothamBold
     buyBtn.TextScaled = true
     buyBtn.TextColor3 = WHITE
@@ -219,12 +275,12 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
     buyBtn.ZIndex = 253
     buyBtn.Parent = rightBox
     local btnCorner = Instance.new("UICorner")
-    btnCorner.CornerRadius = UDim.new(0, px(6))
+    btnCorner.CornerRadius = UDim.new(0, px(10))
     btnCorner.Parent = buyBtn
     local btnStroke = Instance.new("UIStroke")
-    btnStroke.Color = BLUE_BTN_STR
-    btnStroke.Thickness = 1.2
-    btnStroke.Transparency = 0.3
+    btnStroke.Color = BTN_STROKE_C
+    btnStroke.Thickness = 1.4
+    btnStroke.Transparency = 0.25
     btnStroke.Parent = buyBtn
 
     local function refresh()
@@ -233,31 +289,45 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
             pcall(function() owned = inventoryApi:HasItem(id) end)
         end
         if owned then
-            buyBtn.Text = "OWNED"
+            buyBtn.Text = "\u{2714} OWNED"
             buyBtn.Active = false
-            buyBtn.BackgroundColor3 = GREEN_BTN
+            buyBtn.BackgroundColor3 = DISABLED_BG
+            buyBtn.TextColor3 = GREEN_GLOW
+            btnStroke.Color = GREEN_GLOW
+            btnStroke.Transparency = 0.45
+            -- Update card visual for owned state
+            card.BackgroundColor3 = CARD_OWNED
+            stroke.Color = GREEN_GLOW
+            stroke.Thickness = 1.6
+            stroke.Transparency = 0.35
         else
             buyBtn.Text = "BUY"
             buyBtn.Active = true
-            buyBtn.BackgroundColor3 = BLUE_BTN
+            buyBtn.BackgroundColor3 = BTN_BUY
+            buyBtn.TextColor3 = WHITE
+            btnStroke.Color = BTN_STROKE_C
+            btnStroke.Transparency = 0.25
+            -- Reset card visual for purchasable state
+            card.BackgroundColor3 = CARD_BG
+            stroke.Color = CARD_STROKE
+            stroke.Thickness = 1.2
+            stroke.Transparency = 0.35
         end
     end
     refresh()
 
-    -- hover: change gray -> green on hover when actionable
+    -- hover: highlight on hover when actionable (matches Boosts/Quests style)
     buyBtn.MouseEnter:Connect(function()
         if buyBtn.Active then
             pcall(function()
-                local t = TweenService:Create(buyBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = GREEN_BTN})
-                t:Play()
+                TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
             end)
         end
     end)
     buyBtn.MouseLeave:Connect(function()
         if buyBtn.Active then
             pcall(function()
-                local t = TweenService:Create(buyBtn, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {BackgroundColor3 = BLUE_BTN})
-                t:Play()
+                TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BUY}):Play()
             end)
         end
     end)
@@ -320,8 +390,12 @@ local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, in
                 -- Not enough coins or server error
                 buyBtn.Text = "NOT ENOUGH"
                 buyBtn.TextColor3 = RED_TEXT
+                btnStroke.Color = RED_TEXT
+                btnStroke.Transparency = 0.3
                 task.delay(1.2, function()
                     buyBtn.TextColor3 = WHITE
+                    btnStroke.Color = BTN_STROKE_C
+                    btnStroke.Transparency = 0.25
                     refresh()
                 end)
             end
@@ -352,14 +426,14 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     -- stack sections vertically with spacing
     local rootLayout = Instance.new("UIListLayout")
     rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rootLayout.Padding = UDim.new(0, px(12))
+    rootLayout.Padding = UDim.new(0, px(16))
     rootLayout.Parent = root
 
     local rootPad = Instance.new("UIPadding")
-    rootPad.PaddingTop = UDim.new(0, px(8))
-    rootPad.PaddingBottom = UDim.new(0, px(12))
-    rootPad.PaddingLeft = UDim.new(0, px(6))
-    rootPad.PaddingRight = UDim.new(0, px(6))
+    rootPad.PaddingTop = UDim.new(0, px(6))
+    rootPad.PaddingBottom = UDim.new(0, px(16))
+    rootPad.PaddingLeft = UDim.new(0, px(8))
+    rootPad.PaddingRight = UDim.new(0, px(8))
     rootPad.Parent = root
 
     -- Ensure we have AssetCodes cached (safe)

@@ -29,19 +29,27 @@ end
 --------------------------------------------------------------------------------
 -- Palette (matches SideUI neutral-gray / gold theme)
 --------------------------------------------------------------------------------
-local CARD_BG       = Color3.fromRGB(28, 28, 33)
-local CARD_STROKE   = Color3.fromRGB(60, 60, 64)
-local ICON_BG       = Color3.fromRGB(20, 20, 24)
-local GOLD          = Color3.fromRGB(255, 215, 80)
-local WHITE         = Color3.fromRGB(240, 240, 240)
-local DIM_TEXT      = Color3.fromRGB(160, 160, 165)
-local BTN_BG        = Color3.fromRGB(64, 64, 68)
-local BTN_STROKE_C  = Color3.fromRGB(110, 110, 115)
-local GREEN_BTN     = Color3.fromRGB(50, 180, 80)
-local RED_TEXT      = Color3.fromRGB(255, 90, 90)
-local ACTIVE_GLOW   = Color3.fromRGB(80, 200, 100)
-local DISABLED_BG   = Color3.fromRGB(45, 45, 50)
-local POPUP_BG      = Color3.fromRGB(25, 25, 30)
+local CARD_BG       = Color3.fromRGB(26, 30, 48)
+local CARD_ACTIVE_BG= Color3.fromRGB(22, 38, 34)
+local CARD_STROKE   = Color3.fromRGB(55, 62, 95)
+local ICON_BG       = Color3.fromRGB(16, 18, 30)
+local GOLD          = Color3.fromRGB(255, 215, 60)
+local WHITE         = Color3.fromRGB(245, 245, 252)
+local DIM_TEXT      = Color3.fromRGB(145, 150, 175)
+local BTN_BG        = Color3.fromRGB(48, 55, 82)
+local BTN_STROKE_C  = Color3.fromRGB(90, 100, 140)
+local GREEN_BTN     = Color3.fromRGB(35, 190, 75)
+local RED_TEXT      = Color3.fromRGB(255, 80, 80)
+local ACTIVE_GLOW   = Color3.fromRGB(50, 230, 110)
+local DISABLED_BG   = Color3.fromRGB(35, 38, 52)
+local POPUP_BG      = Color3.fromRGB(20, 22, 38)
+
+local ACCENT_COLORS = {
+    coins_2x     = Color3.fromRGB(255, 200, 40),
+    quest_2x     = Color3.fromRGB(80, 165, 255),
+    quest_reroll = Color3.fromRGB(170, 110, 255),
+    bonus_claim  = Color3.fromRGB(255, 120, 65),
+}
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -107,13 +115,13 @@ local function showToast(parent, message, color, duration)
     duration = duration or 2.5
     local toast = Instance.new("TextLabel")
     toast.Name                = "Toast"
-    toast.BackgroundColor3    = Color3.fromRGB(20, 20, 24)
-    toast.BackgroundTransparency = 0.15
-    toast.Size                = UDim2.new(0.8, 0, 0, px(36))
+    toast.BackgroundColor3    = Color3.fromRGB(18, 20, 36)
+    toast.BackgroundTransparency = 0.08
+    toast.Size                = UDim2.new(0.85, 0, 0, px(40))
     toast.AnchorPoint         = Vector2.new(0.5, 0)
-    toast.Position            = UDim2.new(0.5, 0, 0, px(4))
+    toast.Position            = UDim2.new(0.5, 0, 0, px(6))
     toast.Font                = Enum.Font.GothamBold
-    toast.TextSize            = math.max(12, math.floor(px(13)))
+    toast.TextSize            = math.max(13, math.floor(px(14)))
     toast.TextColor3          = color
     toast.Text                = message
     toast.TextWrapped         = true
@@ -121,13 +129,13 @@ local function showToast(parent, message, color, duration)
     toast.Parent              = parent
 
     local cr = Instance.new("UICorner")
-    cr.CornerRadius = UDim.new(0, px(6))
+    cr.CornerRadius = UDim.new(0, px(10))
     cr.Parent = toast
 
     local st = Instance.new("UIStroke")
     st.Color = color
-    st.Thickness = 1
-    st.Transparency = 0.5
+    st.Thickness = 1.2
+    st.Transparency = 0.35
     st.Parent = toast
 
     -- Animate in
@@ -189,9 +197,9 @@ local BOOST_GLYPHS = {
 -- Fallback colors for icon circles
 local BOOST_ICON_COLORS = {
     coins_2x     = Color3.fromRGB(255, 200, 40),
-    quest_2x     = Color3.fromRGB(100, 180, 255),
-    quest_reroll = Color3.fromRGB(180, 120, 255),
-    bonus_claim  = Color3.fromRGB(255, 130, 80),
+    quest_2x     = Color3.fromRGB(80, 165, 255),
+    quest_reroll = Color3.fromRGB(170, 110, 255),
+    bonus_claim  = Color3.fromRGB(255, 120, 65),
 }
 
 local function makeBoostIcon(parent, boostId, size)
@@ -201,14 +209,19 @@ local function makeBoostIcon(parent, boostId, size)
     frame.BackgroundColor3 = BOOST_ICON_COLORS[boostId] or Color3.fromRGB(80, 80, 90)
     frame.BorderSizePixel = 0
     local cr = Instance.new("UICorner")
-    cr.CornerRadius = UDim.new(0, px(8))
+    cr.CornerRadius = UDim.new(0, px(14))
     cr.Parent = frame
+    local iconStroke = Instance.new("UIStroke")
+    iconStroke.Color = Color3.fromRGB(255, 255, 255)
+    iconStroke.Thickness = 1.5
+    iconStroke.Transparency = 0.7
+    iconStroke.Parent = frame
     local lbl = Instance.new("TextLabel")
     lbl.BackgroundTransparency = 1
     lbl.Size = UDim2.new(1, 0, 1, 0)
     lbl.Font = Enum.Font.GothamBold
     lbl.Text = BOOST_GLYPHS[boostId] or "?"
-    lbl.TextSize = math.max(16, math.floor(size * 0.55))
+    lbl.TextSize = math.max(18, math.floor(size * 0.52))
     lbl.TextColor3 = WHITE
     lbl.Parent = frame
     frame.Parent = parent
@@ -278,30 +291,37 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
 
     local rootLayout = Instance.new("UIListLayout")
     rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rootLayout.Padding = UDim.new(0, px(8))
+    rootLayout.Padding = UDim.new(0, px(10))
     rootLayout.Parent = root
 
     local rootPad = Instance.new("UIPadding")
-    rootPad.PaddingTop = UDim.new(0, px(4))
-    rootPad.PaddingBottom = UDim.new(0, px(12))
-    rootPad.PaddingLeft = UDim.new(0, px(6))
-    rootPad.PaddingRight = UDim.new(0, px(6))
+    rootPad.PaddingTop = UDim.new(0, px(6))
+    rootPad.PaddingBottom = UDim.new(0, px(16))
+    rootPad.PaddingLeft = UDim.new(0, px(8))
+    rootPad.PaddingRight = UDim.new(0, px(8))
     rootPad.Parent = root
 
     ---------------------------------------------------------------------------
     -- Header
     ---------------------------------------------------------------------------
+    local headerWrap = Instance.new("Frame")
+    headerWrap.Name = "HeaderWrap"
+    headerWrap.BackgroundTransparency = 1
+    headerWrap.Size = UDim2.new(1, 0, 0, px(54))
+    headerWrap.LayoutOrder = 1
+    headerWrap.Parent = root
+
     local header = Instance.new("TextLabel")
     header.Name = "Header"
     header.BackgroundTransparency = 1
     header.Font = Enum.Font.GothamBold
-    header.Text = "BOOSTS"
+    header.Text = "\u{26A1} BOOSTS"
     header.TextColor3 = GOLD
-    header.TextSize = math.max(18, math.floor(px(20)))
+    header.TextSize = math.max(20, math.floor(px(24)))
     header.TextXAlignment = Enum.TextXAlignment.Left
-    header.Size = UDim2.new(1, 0, 0, px(28))
-    header.LayoutOrder = 1
-    header.Parent = root
+    header.Size = UDim2.new(1, 0, 0, px(30))
+    header.Position = UDim2.new(0, 0, 0, 0)
+    header.Parent = headerWrap
 
     local subHeader = Instance.new("TextLabel")
     subHeader.Name = "SubHeader"
@@ -311,21 +331,31 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
     subHeader.TextColor3 = DIM_TEXT
     subHeader.TextSize = math.max(11, math.floor(px(12)))
     subHeader.TextXAlignment = Enum.TextXAlignment.Left
-    subHeader.Size = UDim2.new(1, 0, 0, px(18))
-    subHeader.LayoutOrder = 2
-    subHeader.Parent = root
+    subHeader.Size = UDim2.new(1, 0, 0, px(16))
+    subHeader.Position = UDim2.new(0, 0, 0, px(30))
+    subHeader.Parent = headerWrap
+
+    -- Gold accent bar under header
+    local accentBar = Instance.new("Frame")
+    accentBar.Name = "AccentBar"
+    accentBar.BackgroundColor3 = GOLD
+    accentBar.BackgroundTransparency = 0.3
+    accentBar.Size = UDim2.new(1, 0, 0, px(2))
+    accentBar.Position = UDim2.new(0, 0, 1, -px(2))
+    accentBar.BorderSizePixel = 0
+    accentBar.Parent = headerWrap
 
     local helperNote = Instance.new("TextLabel")
     helperNote.Name = "HelperNote"
     helperNote.BackgroundTransparency = 1
     helperNote.Font = Enum.Font.GothamMedium
     helperNote.RichText = true
-    helperNote.Text = '<font color="#aaa">Timed boosts activate immediately and do not stack.</font>'
+    helperNote.Text = '<font color="#9096af">Timed boosts activate immediately and do not stack.</font>'
     helperNote.TextColor3 = DIM_TEXT
     helperNote.TextSize = math.max(10, math.floor(px(11)))
     helperNote.TextXAlignment = Enum.TextXAlignment.Left
     helperNote.Size = UDim2.new(1, 0, 0, px(14))
-    helperNote.LayoutOrder = 3
+    helperNote.LayoutOrder = 2
     helperNote.Parent = root
 
     ---------------------------------------------------------------------------
@@ -351,30 +381,44 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
         local card = Instance.new("Frame")
         card.Name = "Boost_" .. def.Id
         card.BackgroundColor3 = CARD_BG
-        card.Size = UDim2.new(1, 0, 0, px(100))
+        card.Size = UDim2.new(1, 0, 0, px(120))
         card.LayoutOrder = 10 + i
         card.Parent = root
 
         local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0, px(8))
+        corner.CornerRadius = UDim.new(0, px(12))
         corner.Parent = card
 
         local stroke = Instance.new("UIStroke")
         stroke.Color = isActive and ACTIVE_GLOW or CARD_STROKE
-        stroke.Thickness = isActive and 2 or 1
-        stroke.Transparency = 0.3
+        stroke.Thickness = isActive and 2.5 or 1.2
+        stroke.Transparency = isActive and 0.1 or 0.35
         stroke.Parent = card
         cardBorders[def.Id] = stroke
 
         local pad = Instance.new("UIPadding")
-        pad.PaddingLeft   = UDim.new(0, px(10))
-        pad.PaddingRight  = UDim.new(0, px(10))
-        pad.PaddingTop    = UDim.new(0, px(8))
-        pad.PaddingBottom = UDim.new(0, px(8))
+        pad.PaddingLeft   = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingTop    = UDim.new(0, px(12))
+        pad.PaddingBottom = UDim.new(0, px(12))
         pad.Parent = card
 
+        -- Subtle accent glow behind icon area
+        local iconSize = px(60)
+        local iconGlow = Instance.new("Frame")
+        iconGlow.Name = "IconGlow"
+        iconGlow.Size = UDim2.new(0, iconSize + px(10), 0, iconSize + px(10))
+        iconGlow.AnchorPoint = Vector2.new(0, 0.5)
+        iconGlow.Position = UDim2.new(0, -px(5), 0.5, 0)
+        iconGlow.BackgroundColor3 = ACCENT_COLORS[def.Id] or CARD_STROKE
+        iconGlow.BackgroundTransparency = 0.82
+        iconGlow.BorderSizePixel = 0
+        local glowCr = Instance.new("UICorner")
+        glowCr.CornerRadius = UDim.new(0, px(18))
+        glowCr.Parent = iconGlow
+        iconGlow.Parent = card
+
         -- Left: icon
-        local iconSize = px(50)
         local iconFrame = makeBoostIcon(card, def.Id, iconSize)
         iconFrame.Position = UDim2.new(0, 0, 0.5, 0)
         iconFrame.AnchorPoint = Vector2.new(0, 0.5)
@@ -386,10 +430,10 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.Text = def.DisplayName
         nameLabel.TextColor3 = WHITE
-        nameLabel.TextSize = math.max(14, math.floor(px(15)))
+        nameLabel.TextSize = math.max(15, math.floor(px(17)))
         nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.Size = UDim2.new(0.52, 0, 0, px(20))
-        nameLabel.Position = UDim2.new(0, iconSize + px(10), 0, 0)
+        nameLabel.Size = UDim2.new(0.50, 0, 0, px(22))
+        nameLabel.Position = UDim2.new(0, iconSize + px(14), 0, 0)
         nameLabel.Parent = card
 
         -- Middle: description
@@ -399,11 +443,11 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
         descLabel.Font = Enum.Font.GothamMedium
         descLabel.Text = def.Description
         descLabel.TextColor3 = DIM_TEXT
-        descLabel.TextSize = math.max(10, math.floor(px(11)))
+        descLabel.TextSize = math.max(11, math.floor(px(12)))
         descLabel.TextXAlignment = Enum.TextXAlignment.Left
         descLabel.TextWrapped = true
-        descLabel.Size = UDim2.new(0.52, 0, 0, px(24))
-        descLabel.Position = UDim2.new(0, iconSize + px(10), 0, px(20))
+        descLabel.Size = UDim2.new(0.50, 0, 0, px(28))
+        descLabel.Position = UDim2.new(0, iconSize + px(14), 0, px(23))
         descLabel.Parent = card
 
         -- Duration label (for timed boosts)
@@ -412,12 +456,13 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
             durationLabel.Name = "Duration"
             durationLabel.BackgroundTransparency = 1
             durationLabel.Font = Enum.Font.GothamMedium
-            durationLabel.Text = "Duration: " .. math.floor(def.DurationSeconds / 60) .. " min"
+            durationLabel.RichText = true
+            durationLabel.Text = '<font color="#9096af">\u{23F1}</font>  ' .. math.floor(def.DurationSeconds / 60) .. " min"
             durationLabel.TextColor3 = DIM_TEXT
-            durationLabel.TextSize = math.max(9, math.floor(px(10)))
+            durationLabel.TextSize = math.max(10, math.floor(px(11)))
             durationLabel.TextXAlignment = Enum.TextXAlignment.Left
-            durationLabel.Size = UDim2.new(0.52, 0, 0, px(14))
-            durationLabel.Position = UDim2.new(0, iconSize + px(10), 0, px(46))
+            durationLabel.Size = UDim2.new(0.50, 0, 0, px(16))
+            durationLabel.Position = UDim2.new(0, iconSize + px(14), 0, px(53))
             durationLabel.Parent = card
         end
 
@@ -428,7 +473,7 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
         local priceRow = Instance.new("Frame")
         priceRow.Name = "PriceRow"
         priceRow.BackgroundTransparency = 1
-        priceRow.Size = UDim2.new(0.26, 0, 0, px(20))
+        priceRow.Size = UDim2.new(0.28, 0, 0, px(22))
         priceRow.AnchorPoint = Vector2.new(1, 0)
         priceRow.Position = UDim2.new(1, 0, 0, 0)
         priceRow.Parent = card
@@ -441,35 +486,35 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
         priceLabel.TextColor3 = GOLD
         priceLabel.TextXAlignment = Enum.TextXAlignment.Right
         priceLabel.Text = tostring(def.PriceCoins)
-        priceLabel.Size = UDim2.new(0.62, 0, 1, 0)
+        priceLabel.Size = UDim2.new(0.60, 0, 1, 0)
         priceLabel.Parent = priceRow
 
-        local coinIconSize = px(16)
+        local coinIconSize = px(18)
         local cIcon = makeCoinIcon(priceRow, coinIconSize)
         cIcon.AnchorPoint = Vector2.new(0, 0.5)
-        cIcon.Position = UDim2.new(0.68, 0, 0.5, 0)
+        cIcon.Position = UDim2.new(0.66, 0, 0.5, 0)
 
         -- Action button
         local btn = Instance.new("TextButton")
         btn.Name = "ActionBtn"
         btn.AutoButtonColor = false
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = math.max(12, math.floor(px(13)))
+        btn.TextSize = math.max(13, math.floor(px(14)))
         btn.TextColor3 = WHITE
-        btn.Size = UDim2.new(0.26, 0, 0, px(30))
+        btn.Size = UDim2.new(0.28, 0, 0, px(36))
         btn.AnchorPoint = Vector2.new(1, 0)
-        btn.Position = UDim2.new(1, 0, 0, px(26))
+        btn.Position = UDim2.new(1, 0, 0, px(28))
         btn.BackgroundColor3 = BTN_BG
         btn.Parent = card
 
         local btnCorner = Instance.new("UICorner")
-        btnCorner.CornerRadius = UDim.new(0, px(6))
+        btnCorner.CornerRadius = UDim.new(0, px(10))
         btnCorner.Parent = btn
 
         local btnStroke = Instance.new("UIStroke")
         btnStroke.Color = BTN_STROKE_C
-        btnStroke.Thickness = 1.2
-        btnStroke.Transparency = 0.3
+        btnStroke.Thickness = 1.4
+        btnStroke.Transparency = 0.25
         btnStroke.Parent = btn
 
         cardButtons[def.Id] = btn
@@ -478,13 +523,13 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
         local statusLabel = Instance.new("TextLabel")
         statusLabel.Name = "Status"
         statusLabel.BackgroundTransparency = 1
-        statusLabel.Font = Enum.Font.GothamMedium
-        statusLabel.TextSize = math.max(10, math.floor(px(11)))
+        statusLabel.Font = Enum.Font.GothamBold
+        statusLabel.TextSize = math.max(11, math.floor(px(12)))
         statusLabel.TextColor3 = DIM_TEXT
         statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-        statusLabel.Size = UDim2.new(0.26, 0, 0, px(16))
+        statusLabel.Size = UDim2.new(0.28, 0, 0, px(18))
         statusLabel.AnchorPoint = Vector2.new(1, 0)
-        statusLabel.Position = UDim2.new(1, 0, 0, px(58))
+        statusLabel.Position = UDim2.new(1, 0, 0, px(67))
         statusLabel.Parent = card
         cardStatusLabels[def.Id] = statusLabel
 
@@ -497,7 +542,9 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
                     btn.Active = false
                     statusLabel.TextColor3 = ACTIVE_GLOW
                     stroke.Color = ACTIVE_GLOW
-                    stroke.Thickness = 2
+                    stroke.Thickness = 2.5
+                    stroke.Transparency = 0.1
+                    card.BackgroundColor3 = CARD_ACTIVE_BG
 
                     -- Store timer info
                     timerLabels[def.Id] = { label = statusLabel, expiresAt = expAt }
@@ -508,7 +555,9 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
                     statusLabel.Text = "Ready"
                     statusLabel.TextColor3 = DIM_TEXT
                     stroke.Color = CARD_STROKE
-                    stroke.Thickness = 1
+                    stroke.Thickness = 1.2
+                    stroke.Transparency = 0.35
+                    card.BackgroundColor3 = CARD_BG
                     timerLabels[def.Id] = nil
                 end
             else
@@ -616,7 +665,8 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
                     local border = cardBorders[boostId]
                     if border then
                         border.Color = CARD_STROKE
-                        border.Thickness = 1
+                        border.Thickness = 1.2
+                        border.Transparency = 0.35
                     end
                 end
             end
@@ -655,7 +705,8 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
                             end
                             if border then
                                 border.Color = ACTIVE_GLOW
-                                border.Thickness = 2
+                                border.Thickness = 2.5
+                                border.Transparency = 0.1
                             end
                             timerLabels[def.Id] = { label = statusLbl, expiresAt = expAt }
                         else
@@ -670,7 +721,8 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
                             end
                             if border then
                                 border.Color = CARD_STROKE
-                                border.Thickness = 1
+                                border.Thickness = 1.2
+                                border.Transparency = 0.35
                             end
                             timerLabels[def.Id] = nil
                         end
@@ -716,7 +768,7 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
     local selector = Instance.new("Frame")
     selector.Name = "QuestSelector"
     selector.BackgroundColor3 = POPUP_BG
-    selector.BackgroundTransparency = 0.05
+    selector.BackgroundTransparency = 0.02
     selector.Size = UDim2.new(1, 0, 0, 0)
     selector.AutomaticSize = Enum.AutomaticSize.Y
     selector.LayoutOrder = 999
@@ -724,25 +776,25 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
     selector.Parent = boostsRoot
 
     local selCorner = Instance.new("UICorner")
-    selCorner.CornerRadius = UDim.new(0, px(8))
+    selCorner.CornerRadius = UDim.new(0, px(12))
     selCorner.Parent = selector
 
     local selStroke = Instance.new("UIStroke")
     selStroke.Color = GOLD
-    selStroke.Thickness = 1.5
-    selStroke.Transparency = 0.3
+    selStroke.Thickness = 1.8
+    selStroke.Transparency = 0.2
     selStroke.Parent = selector
 
     local selPad = Instance.new("UIPadding")
-    selPad.PaddingTop    = UDim.new(0, px(10))
-    selPad.PaddingBottom = UDim.new(0, px(10))
-    selPad.PaddingLeft   = UDim.new(0, px(10))
-    selPad.PaddingRight  = UDim.new(0, px(10))
+    selPad.PaddingTop    = UDim.new(0, px(14))
+    selPad.PaddingBottom = UDim.new(0, px(14))
+    selPad.PaddingLeft   = UDim.new(0, px(14))
+    selPad.PaddingRight  = UDim.new(0, px(14))
     selPad.Parent = selector
 
     local selLayout = Instance.new("UIListLayout")
     selLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    selLayout.Padding = UDim.new(0, px(6))
+    selLayout.Padding = UDim.new(0, px(8))
     selLayout.Parent = selector
 
     -- Title
@@ -752,10 +804,10 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
     selTitle.Font = Enum.Font.GothamBold
     selTitle.Text = titleText
     selTitle.TextColor3 = GOLD
-    selTitle.TextSize = math.max(13, math.floor(px(14)))
+    selTitle.TextSize = math.max(14, math.floor(px(16)))
     selTitle.TextXAlignment = Enum.TextXAlignment.Left
     selTitle.TextWrapped = true
-    selTitle.Size = UDim2.new(1, 0, 0, px(22))
+    selTitle.Size = UDim2.new(1, 0, 0, px(26))
     selTitle.LayoutOrder = 1
     selTitle.ZIndex = 351
     selTitle.Parent = selector
@@ -787,18 +839,24 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
         local row = Instance.new("Frame")
         row.Name = "QuestRow_" .. idx
         row.BackgroundColor3 = eligible and CARD_BG or DISABLED_BG
-        row.Size = UDim2.new(1, 0, 0, px(50))
+        row.Size = UDim2.new(1, 0, 0, px(56))
         row.LayoutOrder = 10 + idx
         row.ZIndex = 352
         row.Parent = selector
 
         local rowCorner = Instance.new("UICorner")
-        rowCorner.CornerRadius = UDim.new(0, px(6))
+        rowCorner.CornerRadius = UDim.new(0, px(10))
         rowCorner.Parent = row
 
+        local rowStroke = Instance.new("UIStroke")
+        rowStroke.Color = eligible and CARD_STROKE or DISABLED_BG
+        rowStroke.Thickness = 1
+        rowStroke.Transparency = 0.5
+        rowStroke.Parent = row
+
         local rowPad = Instance.new("UIPadding")
-        rowPad.PaddingLeft = UDim.new(0, px(8))
-        rowPad.PaddingRight = UDim.new(0, px(8))
+        rowPad.PaddingLeft = UDim.new(0, px(12))
+        rowPad.PaddingRight = UDim.new(0, px(10))
         rowPad.Parent = row
 
         local questTitle = Instance.new("TextLabel")
@@ -830,24 +888,24 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
             selectBtn.Name = "SelectBtn"
             selectBtn.AutoButtonColor = false
             selectBtn.Font = Enum.Font.GothamBold
-            selectBtn.TextSize = math.max(11, math.floor(px(12)))
+            selectBtn.TextSize = math.max(12, math.floor(px(13)))
             selectBtn.Text = "CONFIRM"
             selectBtn.TextColor3 = WHITE
             selectBtn.BackgroundColor3 = BTN_BG
-            selectBtn.Size = UDim2.new(0.25, 0, 0, px(28))
+            selectBtn.Size = UDim2.new(0.28, 0, 0, px(32))
             selectBtn.AnchorPoint = Vector2.new(1, 0.5)
             selectBtn.Position = UDim2.new(1, 0, 0.5, 0)
             selectBtn.ZIndex = 354
             selectBtn.Parent = row
 
             local selBtnCorner = Instance.new("UICorner")
-            selBtnCorner.CornerRadius = UDim.new(0, px(5))
+            selBtnCorner.CornerRadius = UDim.new(0, px(8))
             selBtnCorner.Parent = selectBtn
 
             local selBtnStroke = Instance.new("UIStroke")
             selBtnStroke.Color = BTN_STROKE_C
-            selBtnStroke.Thickness = 1
-            selBtnStroke.Transparency = 0.3
+            selBtnStroke.Thickness = 1.2
+            selBtnStroke.Transparency = 0.25
             selBtnStroke.Parent = selectBtn
 
             -- Hover
@@ -922,18 +980,24 @@ function showQuestSelector(boostsRoot, modalParent, mode, boostDef, updateCardSt
     cancelBtn.Name = "CancelBtn"
     cancelBtn.AutoButtonColor = false
     cancelBtn.Font = Enum.Font.GothamBold
-    cancelBtn.TextSize = math.max(12, math.floor(px(13)))
+    cancelBtn.TextSize = math.max(13, math.floor(px(14)))
     cancelBtn.Text = "CANCEL"
     cancelBtn.TextColor3 = WHITE
-    cancelBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-    cancelBtn.Size = UDim2.new(0.4, 0, 0, px(30))
+    cancelBtn.BackgroundColor3 = Color3.fromRGB(140, 45, 45)
+    cancelBtn.Size = UDim2.new(0.45, 0, 0, px(34))
     cancelBtn.LayoutOrder = 100
     cancelBtn.ZIndex = 352
     cancelBtn.Parent = selector
 
     local cancelCorner = Instance.new("UICorner")
-    cancelCorner.CornerRadius = UDim.new(0, px(6))
+    cancelCorner.CornerRadius = UDim.new(0, px(8))
     cancelCorner.Parent = cancelBtn
+
+    local cancelStroke = Instance.new("UIStroke")
+    cancelStroke.Color = Color3.fromRGB(180, 60, 60)
+    cancelStroke.Thickness = 1.2
+    cancelStroke.Transparency = 0.3
+    cancelStroke.Parent = cancelBtn
 
     trackConn(cancelBtn.MouseButton1Click:Connect(function()
         pcall(function() selector:Destroy() end)
