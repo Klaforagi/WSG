@@ -19,17 +19,21 @@ local GAMEPASS_ID = 0 -- ← replace with your real Game Pass ID
 
 -- Which tools to give every player on spawn (path inside ServerStorage.Tools)
 local DEFAULT_LOADOUT = {
-    { folder = "Melee",  toolName = "Stick" },
-    { folder = "Ranged", toolName = "Slingshot"   },
+    { folder = "Melee",  toolName = "ToolSword" },
+    { folder = "Ranged", toolName = "ToolBow"   },
 }
 
 -- Optional: tool to give when the special slot is unlocked
-local SPECIAL_TOOL = { folder = "Special", toolName = "Special" }
+local SPECIAL_TOOL = { folder = "Special", toolName = "ToolSpecial" }
 
 --------------------------------------------------------------------------------
 -- FOLDERS & REMOTES
 --------------------------------------------------------------------------------
-local toolsRoot = ServerStorage:WaitForChild("Tools")
+local toolsRoot = ServerStorage:WaitForChild("Tools", 5)
+if not toolsRoot then
+	warn("[Loadout] ServerStorage.Tools missing — loadout will not run.")
+	return
+end
 
 -- Create remotes from server code so they always exist
 local function getOrCreateRemote(name)
@@ -44,16 +48,12 @@ end
 local requestSpecialUnlock = getOrCreateRemote("RequestSpecialUnlock")
 local specialUnlockGranted = getOrCreateRemote("SpecialUnlockGranted")
 local forceEquipRemote = getOrCreateRemote("ForceEquipTool")
-local setRangedRemote = getOrCreateRemote("SetRangedTool")
-local setMeleeRemote = getOrCreateRemote("SetMeleeTool")
 
 --------------------------------------------------------------------------------
 -- STATE
 --------------------------------------------------------------------------------
 local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
-local chosenRanged = {}  -- [player] = toolName override (nil = use default)
-local chosenMelee = {}   -- [player] = toolName override for melee
 
 --------------------------------------------------------------------------------
 -- HELPERS
@@ -68,37 +68,10 @@ local function getTemplate(folder, toolName)
     end
     local template = categoryFolder:FindFirstChild(toolName)
     if not template then
-        -- Legacy name fallback: map renamed tools (e.g. Shortbow -> Bow)
-        local legacyMap = {
-            Shortbow = "Bow",
-        }
-        local tryName = legacyMap[toolName]
-        if tryName then
-            template = categoryFolder:FindFirstChild(tryName)
-            if template then
-                warn("[Loadout] Using legacy template name for", toolName, "->", tryName)
-                return template
-            end
-        end
         warn("[Loadout] Missing tool ServerStorage.Tools." .. folder .. "." .. toolName)
         return nil
     end
     return template
-end
-
--- Ensure a tool's physical parts won't collide when equipped/backpacked.
-local function sanitizeTool(tool)
-    if not tool then return end
-    for _, d in ipairs(tool:GetDescendants()) do
-        if d and d:IsA("BasePart") then
-            pcall(function()
-                d.CanCollide = false
-            end)
-            pcall(function() d.CanTouch = false end)
-            pcall(function() d.CanQuery = false end)
-            pcall(function() d.Massless = true end)
-        end
-    end
 end
 
 --- Clone a tool into both StarterGear (respawn persistence) and Backpack.
@@ -115,7 +88,6 @@ local function grantTool(player, folder, toolName)
     if sg and not sg:FindFirstChild(toolName) then
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
-        sanitizeTool(clone)
         clone.Parent = sg
     end
 
@@ -125,7 +97,6 @@ local function grantTool(player, folder, toolName)
     if not inBP and not inChar and bp then
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
-        sanitizeTool(clone)
         clone.Parent = bp
     end
 end
@@ -171,65 +142,6 @@ requestToolCopy.OnServerInvoke = function(player, folder, toolName)
     return true
 end
 
---------------------------------------------------------------------------------
--- SERVER-AUTHORITATIVE PURCHASE
--- Price table lives here so the client can never cheat.
---------------------------------------------------------------------------------
-local PRICES = {
-    -- Melee
-    Stick   = 0,
-    Dagger  = 30,
-    Sword   = 30,
-    Spear   = 30,
-    -- Ranged
-    Slingshot = 0,
-    Shortbow  = 20,
-    Longbow   = 30,
-    Xbow      = 40,
-}
-
--- Lazy-load CurrencyService (same pattern the rest of the codebase uses)
-local CurrencyService = nil
-pcall(function()
-    local mod = game:GetService("ServerScriptService"):FindFirstChild("CurrencyService")
-    if mod and mod:IsA("ModuleScript") then
-        CurrencyService = require(mod)
-    end
-end)
-
-local purchaseTool = getOrCreateRemoteFunction("PurchaseTool")
-
--- Returns: success (bool), newBalance (number)
-purchaseTool.OnServerInvoke = function(player, category, toolName)
-    if type(toolName) ~= "string" or type(category) ~= "string" then
-        return false, 0
-    end
-
-    local price = PRICES[toolName]
-    if not price then
-        warn("[PurchaseTool] Unknown item:", toolName)
-        return false, 0
-    end
-
-    if not CurrencyService then
-        warn("[PurchaseTool] CurrencyService not available")
-        return false, 0
-    end
-
-    local balance = CurrencyService:GetCoins(player)
-    if balance < price then
-        return false, balance
-    end
-
-    -- Deduct coins and grant the tool
-    CurrencyService:SetCoins(player, balance - price)
-    grantTool(player, category, toolName)
-    ensureBackpackFromStarterGear(player)
-
-    local newBalance = CurrencyService:GetCoins(player)
-    return true, newBalance
-end
-
 -- Force-equip handler: client asks server to equip a tool from their Backpack
 forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
     local bp = player:FindFirstChildOfClass("Backpack")
@@ -252,115 +164,9 @@ forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
     end
 end)
 
--- Replace the player's Ranged slot tool (StarterGear + Backpack) without equipping.
-setRangedRemote.OnServerEvent:Connect(function(player, toolName)
-    -- remove existing Ranged tools from StarterGear and Backpack
-    local sg = player:FindFirstChild("StarterGear")
-    local bp = player:FindFirstChildOfClass("Backpack")
-    if sg then
-        for i = #sg:GetChildren(), 1, -1 do
-            local child = sg:GetChildren()[i]
-            if child and child:IsA("Tool") then
-                local attr = child:GetAttribute("HotbarCategory")
-                if type(attr) == "string" and string.lower(attr) == "ranged" then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end
-    end
-    if bp then
-        for i = #bp:GetChildren(), 1, -1 do
-            local child = bp:GetChildren()[i]
-            if child and child:IsA("Tool") then
-                local attr = child:GetAttribute("HotbarCategory")
-                if type(attr) == "string" and string.lower(attr) == "ranged" then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end
-    end
-    -- remove ranged tools currently equipped on the character as well
-    if player.Character then
-        for i = #player.Character:GetChildren(), 1, -1 do
-            local child = player.Character:GetChildren()[i]
-            if child and child:IsA("Tool") then
-                local attr = child:GetAttribute("HotbarCategory")
-                if type(attr) == "string" and string.lower(attr) == "ranged" then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end
-    end
-
-    -- grant the requested ranged tool into StarterGear/Backpack (sets HotbarCategory)
-    if type(toolName) == "string" and #toolName > 0 then
-        chosenRanged[player] = toolName
-        grantTool(player, "Ranged", toolName)
-        ensureBackpackFromStarterGear(player)
-    end
-end)
-
--- Replace the player's Melee slot tool (StarterGear + Backpack) without equipping.
-setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
-    -- remove existing Melee tools from StarterGear and Backpack
-    local sg = player:FindFirstChild("StarterGear")
-    local bp = player:FindFirstChildOfClass("Backpack")
-    if sg then
-        for i = #sg:GetChildren(), 1, -1 do
-            local child = sg:GetChildren()[i]
-            if child and child:IsA("Tool") then
-                local attr = child:GetAttribute("HotbarCategory")
-                if type(attr) == "string" and string.lower(attr) == "melee" then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end
-    end
-    if bp then
-        for i = #bp:GetChildren(), 1, -1 do
-            local child = bp:GetChildren()[i]
-            if child and child:IsA("Tool") then
-                local attr = child:GetAttribute("HotbarCategory")
-                if type(attr) == "string" and string.lower(attr) == "melee" then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end
-    end
-    -- remove melee tools currently equipped on the character as well
-    if player.Character then
-        for i = #player.Character:GetChildren(), 1, -1 do
-            local child = player.Character:GetChildren()[i]
-            if child and child:IsA("Tool") then
-                local attr = child:GetAttribute("HotbarCategory")
-                if type(attr) == "string" and string.lower(attr) == "melee" then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end
-    end
-
-    -- grant the requested melee tool into StarterGear/Backpack (sets HotbarCategory)
-    if type(toolName) == "string" and #toolName > 0 then
-        chosenMelee[player] = toolName
-        grantTool(player, "Melee", toolName)
-        ensureBackpackFromStarterGear(player)
-    end
-end)
-
 local function giveLoadout(player)
     for _, entry in ipairs(DEFAULT_LOADOUT) do
-        local folder = entry.folder
-        local toolName = entry.toolName
-        -- honour the player's chosen ranged weapon if they swapped it
-        if string.lower(folder) == "ranged" and chosenRanged[player] then
-            toolName = chosenRanged[player]
-        end
-        -- honour player's chosen melee weapon if they swapped it
-        if string.lower(folder) == "melee" and chosenMelee[player] then
-            toolName = chosenMelee[player]
-        end
-        grantTool(player, folder, toolName)
+        grantTool(player, entry.folder, entry.toolName)
     end
     -- grant special tool if unlocked and template exists
     if unlockState[player] then
@@ -413,10 +219,8 @@ local function onPlayerAdded(player)
 end
 
 local function onPlayerRemoving(player)
-    unlockState[player]    = nil
+    unlockState[player]   = nil
     promptDebounce[player] = nil
-    chosenRanged[player]   = nil
-    chosenMelee[player]    = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

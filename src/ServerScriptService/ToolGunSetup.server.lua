@@ -12,7 +12,7 @@ pcall(function()
     XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
 end)
 
--- CurrencyService: award coins on mob kills
+-- CurrencyService: award coins on kills (wrapped by BoostServiceInit for boost multiplier)
 local CurrencyService
 pcall(function()
     local mod = ServerScriptService:FindFirstChild("CurrencyService")
@@ -147,7 +147,7 @@ local function getServerToolCfg(toolName)
     local cfg = {}
     for k, v in pairs(TOOLCFG) do cfg[k] = v end
     if ToolgunModule and ToolgunModule.presets then
-        local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
+        local suffix = toolName and tostring(toolName):match("^Tool(.+)")
         local presetKey = suffix and suffix:lower()
         if presetKey and ToolgunModule.presets[presetKey] then
             for k, v in pairs(ToolgunModule.presets[presetKey]) do cfg[k] = v end
@@ -245,32 +245,34 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
         local victimName = (victimModel and victimModel.Name) or "Unknown"
         local vp = Players:GetPlayerFromCharacter(victimModel)
         if vp then victimName = vp.Name end
-            if player.Name ~= victimName then
-                -- determine coin award for this kill and award it before firing the feed
-                local coinAward = 0
-                if not vp and CurrencyService and CurrencyService.AddCoins then
-                    pcall(function() CurrencyService:AddCoins(player, 1) end)
-                    coinAward = 1
-                end
+        if player.Name ~= victimName then
+            -- Award coins: +5 PvP, +1 mob. Capture boosted return value for popup.
+            local coinAward = 0
+            if CurrencyService and CurrencyService.AddCoins then
+                local base = vp and 5 or 1
+                local ok, result = pcall(function() return CurrencyService:AddCoins(player, base) end)
+                coinAward = (ok and type(result) == "number") and result or base
+                print("[ToolGunSetup] Coin award:", base, "->", coinAward, "for", player.Name, "(source:", vp and "PvP" or "Mob", ")")
+            end
 
-                pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)
-                if player.Team then
-                    pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
-                end
-                -- Award XP (include coinAward in metadata so XP popup can include coins)
-                if XPModule and XPModule.AwardXP then
-                    if vp then
-                        pcall(function() XPModule.AwardXP(player, "PlayerKill", nil, { coinAward = coinAward }) end)
-                    else
-                        local mobName = victimModel and victimModel.Name or "Unknown"
-                        local mobXP = 3
-                        pcall(function()
-                            if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
-                        end)
-                        pcall(function() XPModule.AwardXP(player, "MobKill", mobXP, { coinAward = coinAward }) end)
-                    end
+            pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)
+            if player.Team then
+                pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
+            end
+            -- Award XP (pass coinAward in metadata so popup shows correct amount)
+            if XPModule and XPModule.AwardXP then
+                if vp then
+                    pcall(function() XPModule.AwardXP(player, "PlayerKill", nil, { coinAward = coinAward }) end)
+                else
+                    local mobName = victimModel and victimModel.Name or "Unknown"
+                    local mobXP = 3
+                    pcall(function()
+                        if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
+                    end)
+                    pcall(function() XPModule.AwardXP(player, "MobKill", mobXP, { coinAward = coinAward }) end)
                 end
             end
+        end
         -- if this was a dummy model, perform ragdoll/cleanup immediately so it visibly falls
         if victimModel and victimModel:IsA("Model") and victimModel.Name == "Dummy" then
             -- mark so DummyDeath doesn't duplicate work
@@ -321,20 +323,11 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     -- Try to obtain a preset projectile (Part or Model) from Toolgunsettings
     local visual = nil
     local usingModel = false
-    -- determine if this projectile should be randomized (slingshot/pebble)
-    local presetKey = nil
-    if toolName then
-        local s = tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$")
-        if s then presetKey = s:lower() end
-    end
-    local isSlingshot = false
-    if presetKey == "slingshot" then isSlingshot = true end
-    if projCfg and projCfg.projectile_name and tostring(projCfg.projectile_name):lower() == "pebble" then isSlingshot = true end
     if ToolgunModule and ToolgunModule.getProjectileForPreset then
-        -- derive preset key from toolName (accepts both "ToolShortbow" and "Shortbow")
+        -- derive preset key from toolName (ToolBow -> bow)
         local presetKey = nil
         if toolName then
-            local s = tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$")
+            local s = tostring(toolName):match("^Tool(.+)")
             if s then presetKey = s:lower() end
         end
         if presetKey then
@@ -351,11 +344,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         visual.Name = "Bullet"
         visual.Size = pSize
         visual.Material = Enum.Material.Neon
-        if isSlingshot then
-            visual.Color = BrickColor.Random().Color
-        else
-            visual.Color = getTracerColor(player)
-        end
+        visual.Color = getTracerColor(player)
         -- keep same behavior as previous implementation
         visual.CanCollide = false
         visual.Anchored = true
@@ -381,9 +370,6 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                 if d:IsA("BasePart") then
                     d.CanCollide = false
                     d.Anchored = true
-                    if isSlingshot then
-                        pcall(function() d.Color = BrickColor.Random().Color end)
-                    end
                 end
             end
             visual:SetPrimaryPartCFrame(CFrame.new(origin))
@@ -392,11 +378,6 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             visual.CanCollide = false
             visual.Anchored = true
             visual.CFrame = CFrame.new(origin)
-            if isSlingshot then
-                pcall(function() visual.Color = BrickColor.Random().Color end)
-            else
-                pcall(function() visual.Color = getTracerColor(player) end)
-            end
             visual.Parent = Workspace
         else
             -- unknown type: fallback to simple part
@@ -404,11 +385,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             part.Name = "Bullet"
             part.Size = pSize
             part.Material = Enum.Material.Neon
-            if isSlingshot then
-                part.Color = BrickColor.Random().Color
-            else
-                part.Color = getTracerColor(player)
-            end
+            part.Color = getTracerColor(player)
             part.CanCollide = false
             part.Anchored = true
             part.CFrame = CFrame.new(origin)
@@ -421,18 +398,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local velocity = initialVelocity
     local startTime = tick()
     local conn
-    -- allow presets to request a visual flip for models whose forward faces backwards
-    local visualFlip = (projCfg and projCfg.visual_flip) and true or false
-    local lastCFrame
-    if visualFlip then
-        lastCFrame = CFrame.new(origin, origin - initialVelocity.Unit)
-    else
-        lastCFrame = CFrame.new(origin, origin + initialVelocity.Unit)
-    end
-    -- orient model immediately if it's a Model primary part exists
-    if usingModel and visual and visual.PrimaryPart then
-        pcall(function() visual:SetPrimaryPartCFrame(lastCFrame) end)
-    end
+    local lastCFrame = CFrame.new(origin, origin + initialVelocity.Unit)
     conn = RunService.Heartbeat:Connect(function(dt)
         if not visual.Parent then
             conn:Disconnect()
@@ -924,7 +890,11 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 game:GetService("Debris"):AddItem(beam, 0.22)
             end)()
         end
-        -- (fireAck is fired once at end of handler — no duplicate here)
+        pcall(function()
+            if fireAck then
+                fireAck:FireClient(player, gunOrigin, gunObstruction.Position, toolName)
+            end
+        end)
     end
 
     -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts
