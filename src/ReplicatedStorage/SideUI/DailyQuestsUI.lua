@@ -56,6 +56,9 @@ local remotesFolder
 local getQuestsRF
 local claimQuestRF
 local questProgressRE
+local getWeeklyRF
+local claimWeeklyRF
+local weeklyProgressRE
 
 local function ensureRemotes()
     if remotesFolder then return true end
@@ -64,6 +67,9 @@ local function ensureRemotes()
     getQuestsRF     = remotesFolder:WaitForChild("GetQuests", 5)
     claimQuestRF    = remotesFolder:WaitForChild("ClaimQuest", 5)
     questProgressRE = remotesFolder:WaitForChild("QuestProgress", 5)
+    getWeeklyRF     = remotesFolder:FindFirstChild("GetWeeklyQuests")
+    claimWeeklyRF   = remotesFolder:FindFirstChild("ClaimWeeklyQuest")
+    weeklyProgressRE = remotesFolder:FindFirstChild("WeeklyQuestProgress")
     return getQuestsRF ~= nil
 end
 
@@ -793,13 +799,336 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     end
 
     ---------------------------------------------------------------------------
-    -- WEEKLY page (placeholder – ready for full data when implemented)
+    -- WEEKLY page (fully functional – fetches real weekly quest data)
     ---------------------------------------------------------------------------
     local weeklyPage = makePage("WeeklyPage", false)
     contentPages["weekly"] = weeklyPage
 
-    makeHeader("WEEKLY QUESTS", "Larger challenges – resets every Monday!", weeklyPage)
-    makePlaceholder("Weekly quests coming soon.", 3, weeklyPage)
+    makeHeader("WEEKLY QUESTS", "Larger challenges \u{2013} resets every Monday!", weeklyPage)
+
+    -- Fetch weekly quest data from server
+    local weeklyQuests = {}
+    if getWeeklyRF then
+        pcall(function()
+            weeklyQuests = getWeeklyRF:InvokeServer()
+        end)
+    end
+    if type(weeklyQuests) ~= "table" then weeklyQuests = {} end
+
+    if #weeklyQuests == 0 then
+        makePlaceholder("No weekly quests available.", 3, weeklyPage)
+    end
+
+    -- Lookup tables for weekly live updates
+    local wkProgressBars  = {}
+    local wkProgressTexts = {}
+    local wkClaimButtons  = {}
+    local wkGoals         = {}
+    local wkClaimed       = {}
+    local wkCards         = {}
+    local wkCardStrokes   = {}
+
+    for i, wq in ipairs(weeklyQuests) do
+        local questIdx       = wq.index or i
+        wkGoals[questIdx]    = wq.goal
+        wkClaimed[questIdx]  = wq.claimed
+
+        local card = Instance.new("Frame")
+        card.Name             = "WeeklyQuest_" .. questIdx
+        card.BackgroundColor3 = ROW_BG
+        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.LayoutOrder      = 10 + i
+        card.Parent           = weeklyPage
+        wkCards[questIdx]     = card
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, px(12))
+        corner.Parent = card
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color        = CARD_STROKE
+        stroke.Thickness    = 1.2
+        stroke.Transparency = 0.35
+        stroke.Parent       = card
+        wkCardStrokes[questIdx] = stroke
+
+        local pad = Instance.new("UIPadding")
+        pad.PaddingLeft   = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingTop    = UDim.new(0, px(12))
+        pad.PaddingBottom = UDim.new(0, px(12))
+        pad.Parent        = card
+
+        -- Left accent bar
+        local accentBar = Instance.new("Frame")
+        accentBar.Name                = "StateAccent"
+        accentBar.BackgroundColor3    = GOLD
+        accentBar.BackgroundTransparency = 0.3
+        accentBar.BorderSizePixel     = 0
+        accentBar.Size                = UDim2.new(0, px(3), 0.7, 0)
+        accentBar.AnchorPoint         = Vector2.new(0, 0.5)
+        accentBar.Position            = UDim2.new(0, -px(10), 0.5, 0)
+        local accentCr = Instance.new("UICorner")
+        accentCr.CornerRadius = UDim.new(0.5, 0)
+        accentCr.Parent = accentBar
+        accentBar.Parent = card
+
+        -- Title
+        local titleLbl = Instance.new("TextLabel")
+        titleLbl.Name               = "Title"
+        titleLbl.BackgroundTransparency = 1
+        titleLbl.Font               = Enum.Font.GothamBold
+        titleLbl.Text               = wq.title
+        titleLbl.TextColor3         = WHITE
+        titleLbl.TextSize           = math.max(15, math.floor(px(17)))
+        titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
+        titleLbl.Size               = UDim2.new(0.58, 0, 0, px(22))
+        titleLbl.Position           = UDim2.new(0, 0, 0, 0)
+        titleLbl.Parent             = card
+
+        -- Reward badge
+        local rewardBadge = Instance.new("Frame")
+        rewardBadge.Name              = "RewardBadge"
+        rewardBadge.BackgroundColor3  = Color3.fromRGB(36, 33, 18)
+        rewardBadge.BackgroundTransparency = 0.3
+        rewardBadge.Size              = UDim2.new(0, px(100), 0, px(26))
+        rewardBadge.AnchorPoint       = Vector2.new(1, 0)
+        rewardBadge.Position          = UDim2.new(1, 0, 0, -px(2))
+        rewardBadge.Parent            = card
+
+        local badgeCr = Instance.new("UICorner")
+        badgeCr.CornerRadius = UDim.new(0, px(8))
+        badgeCr.Parent = rewardBadge
+
+        local badgeStroke = Instance.new("UIStroke")
+        badgeStroke.Color       = CLAIM_GOLD_GLOW
+        badgeStroke.Thickness   = 1
+        badgeStroke.Transparency = 0.55
+        badgeStroke.Parent      = rewardBadge
+
+        local coinSize = px(18)
+        local coinIcon = makeCoinIcon(rewardBadge, coinSize)
+        coinIcon.AnchorPoint = Vector2.new(0, 0.5)
+        coinIcon.Position    = UDim2.new(0, px(8), 0.5, 0)
+
+        local amtLbl = Instance.new("TextLabel")
+        amtLbl.Name                = "Amount"
+        amtLbl.BackgroundTransparency = 1
+        amtLbl.Font                = Enum.Font.GothamBold
+        amtLbl.Text                = tostring(wq.reward)
+        amtLbl.TextColor3          = GOLD
+        amtLbl.TextSize            = math.max(13, math.floor(px(14)))
+        amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
+        amtLbl.Size                = UDim2.new(1, -px(30), 1, 0)
+        amtLbl.AnchorPoint         = Vector2.new(1, 0)
+        amtLbl.Position            = UDim2.new(1, -px(8), 0, 0)
+        amtLbl.Parent              = rewardBadge
+
+        -- Description
+        local descLbl = Instance.new("TextLabel")
+        descLbl.Name               = "Desc"
+        descLbl.BackgroundTransparency = 1
+        descLbl.Font               = Enum.Font.GothamMedium
+        descLbl.Text               = wq.desc
+        descLbl.TextColor3         = DIM_TEXT
+        descLbl.TextSize           = math.max(11, math.floor(px(12)))
+        descLbl.TextXAlignment     = Enum.TextXAlignment.Left
+        descLbl.TextWrapped        = true
+        descLbl.Size               = UDim2.new(0.7, 0, 0, px(18))
+        descLbl.Position           = UDim2.new(0, 0, 0, px(26))
+        descLbl.Parent             = card
+
+        -- Progress bar track
+        local barY = px(52)
+        local barH = px(16)
+        local track = Instance.new("Frame")
+        track.Name             = "BarTrack"
+        track.BackgroundColor3 = BAR_BG
+        track.Size             = UDim2.new(0.62, 0, 0, barH)
+        track.Position         = UDim2.new(0, 0, 0, barY)
+        track.Parent           = card
+
+        local trackCorner = Instance.new("UICorner")
+        trackCorner.CornerRadius = UDim.new(0, px(6))
+        trackCorner.Parent = track
+
+        local trackStroke = Instance.new("UIStroke")
+        trackStroke.Color        = CARD_STROKE
+        trackStroke.Thickness    = 1
+        trackStroke.Transparency = 0.5
+        trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        trackStroke.Parent       = track
+
+        -- Progress bar fill
+        local pctW = (wq.goal > 0) and math.clamp(wq.progress / wq.goal, 0, 1) or 0
+        local fill = Instance.new("Frame")
+        fill.Name             = "BarFill"
+        fill.BackgroundColor3 = BAR_FILL
+        fill.BackgroundTransparency = 0.1
+        fill.Size             = UDim2.new(pctW, 0, 1, 0)
+        fill.Parent           = track
+
+        local fillCorner = Instance.new("UICorner")
+        fillCorner.CornerRadius = UDim.new(0, px(6))
+        fillCorner.Parent = fill
+
+        local fillHighlight = Instance.new("Frame")
+        fillHighlight.Name = "FillHighlight"
+        fillHighlight.BackgroundColor3 = Color3.fromRGB(255, 245, 180)
+        fillHighlight.BackgroundTransparency = 0.65
+        fillHighlight.BorderSizePixel = 0
+        fillHighlight.Size = UDim2.new(1, 0, 0.35, 0)
+        fillHighlight.Position = UDim2.new(0, 0, 0, 0)
+        fillHighlight.Parent = fill
+
+        local fillHlCr = Instance.new("UICorner")
+        fillHlCr.CornerRadius = UDim.new(0, px(6))
+        fillHlCr.Parent = fillHighlight
+
+        wkProgressBars[questIdx] = fill
+
+        -- Progress text
+        local progText = Instance.new("TextLabel")
+        progText.Name               = "ProgressText"
+        progText.BackgroundTransparency = 1
+        progText.Font               = Enum.Font.GothamBold
+        progText.Text               = tostring(wq.progress) .. "/" .. tostring(wq.goal)
+        progText.TextColor3         = WHITE
+        progText.TextSize           = math.max(11, math.floor(px(12)))
+        progText.Size               = UDim2.new(1, 0, 1, 0)
+        progText.Parent             = track
+
+        wkProgressTexts[questIdx] = progText
+
+        -- Claim button
+        local btnW2 = px(100)
+        local btnH  = px(34)
+        local btn = Instance.new("TextButton")
+        btn.Name            = "ClaimBtn"
+        btn.AutoButtonColor = false
+        btn.Font            = Enum.Font.GothamBold
+        btn.TextSize        = math.max(13, math.floor(px(14)))
+        btn.Size            = UDim2.new(0, btnW2, 0, btnH)
+        btn.AnchorPoint     = Vector2.new(1, 0)
+        btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
+        btn.Parent          = card
+
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, px(10))
+        btnCorner.Parent = btn
+
+        local btnStroke = Instance.new("UIStroke")
+        btnStroke.Color       = BTN_STROKE
+        btnStroke.Thickness   = 1.4
+        btnStroke.Transparency = 0.3
+        btnStroke.Parent      = btn
+
+        wkClaimButtons[questIdx] = btn
+
+        -- Card + button state helpers (identical pattern to daily)
+        local function updateWkCardVisuals(progress, goal, claimed)
+            if claimed then
+                card.BackgroundColor3 = ROW_CLAIMED_BG
+                stroke.Color = GREEN_GLOW
+                stroke.Thickness = 1.8
+                stroke.Transparency = 0.3
+                accentBar.BackgroundColor3 = GREEN_GLOW
+                accentBar.BackgroundTransparency = 0.2
+            elseif progress >= goal then
+                card.BackgroundColor3 = ROW_CLAIMABLE_BG
+                stroke.Color = CLAIM_GOLD_GLOW
+                stroke.Thickness = 2
+                stroke.Transparency = 0.15
+                accentBar.BackgroundColor3 = CLAIM_GOLD_GLOW
+                accentBar.BackgroundTransparency = 0
+            else
+                card.BackgroundColor3 = ROW_BG
+                stroke.Color = CARD_STROKE
+                stroke.Thickness = 1.2
+                stroke.Transparency = 0.35
+                accentBar.BackgroundColor3 = GOLD
+                accentBar.BackgroundTransparency = 0.5
+            end
+        end
+
+        local function updateWkBtnState(progress, goal, claimed)
+            if claimed then
+                btn.Text             = "\u{2714} CLAIMED"
+                btn.BackgroundColor3 = BTN_CLAIMED
+                btn.TextColor3       = GREEN_GLOW
+                btn.Active           = false
+                btnStroke.Color      = GREEN_GLOW
+                btnStroke.Transparency = 0.5
+            elseif progress >= goal then
+                btn.Text             = "\u{2B50} CLAIM"
+                btn.BackgroundColor3 = BTN_CLAIM
+                btn.TextColor3       = WHITE
+                btn.Active           = true
+                btnStroke.Color      = GREEN_GLOW
+                btnStroke.Transparency = 0.15
+            else
+                btn.Text             = tostring(progress) .. "/" .. tostring(goal)
+                btn.BackgroundColor3 = BTN_LOCKED
+                btn.TextColor3       = DIM_TEXT
+                btn.Active           = false
+                btnStroke.Color      = BTN_STROKE
+                btnStroke.Transparency = 0.4
+            end
+            updateWkCardVisuals(progress, goal, claimed)
+        end
+
+        updateWkBtnState(wq.progress, wq.goal, wq.claimed)
+
+        -- Hover feedback
+        trackConn(btn.MouseEnter:Connect(function()
+            if btn.Active then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = Color3.fromRGB(45, 210, 90)}):Play()
+            end
+        end))
+        trackConn(btn.MouseLeave:Connect(function()
+            if btn.Active then
+                TweenService:Create(btn, TWEEN_QUICK,
+                    {BackgroundColor3 = BTN_CLAIM}):Play()
+            end
+        end))
+
+        -- Claim handler
+        trackConn(btn.MouseButton1Click:Connect(function()
+            if wkClaimed[questIdx] then return end
+            if not btn.Active then return end
+
+            btn.Active = false
+            btn.Text   = "..."
+
+            local success = false
+            if claimWeeklyRF then
+                pcall(function()
+                    success = claimWeeklyRF:InvokeServer(questIdx)
+                end)
+            end
+
+            if success then
+                wkClaimed[questIdx] = true
+                updateWkBtnState(wq.goal, wq.goal, true)
+                -- Flash gold
+                local origColor2 = card.BackgroundColor3
+                TweenService:Create(card, TWEEN_QUICK,
+                    {BackgroundColor3 = Color3.fromRGB(60, 55, 25)}):Play()
+                task.delay(0.3, function()
+                    if card and card.Parent then
+                        TweenService:Create(card, TWEEN_QUICK,
+                            {BackgroundColor3 = origColor2}):Play()
+                    end
+                end)
+                if _G.UpdateShopHeaderCoins then
+                    pcall(_G.UpdateShopHeaderCoins)
+                end
+            else
+                updateWkBtnState(wq.progress, wq.goal, false)
+            end
+        end))
+    end
 
     ---------------------------------------------------------------------------
     -- ACHIEVEMENTS page  (fully functional)
@@ -1288,7 +1617,68 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi)
     setActiveTab("daily")
 
     ---------------------------------------------------------------------------
-    -- Live progress updates from server
+    -- Live weekly quest progress updates from server
+    ---------------------------------------------------------------------------
+    if weeklyProgressRE then
+        trackConn(weeklyProgressRE.OnClientEvent:Connect(function(questIdx, newProgress)
+            questIdx = tonumber(questIdx)
+            if not questIdx then return end
+            newProgress = tonumber(newProgress) or 0
+            local goal = wkGoals[questIdx]
+            if not goal then return end
+            if wkClaimed[questIdx] then return end
+
+            local pctW2 = math.clamp(newProgress / goal, 0, 1)
+
+            local fillBar = wkProgressBars[questIdx]
+            if fillBar and fillBar.Parent then
+                TweenService:Create(fillBar, TWEEN_QUICK,
+                    {Size = UDim2.new(pctW2, 0, 1, 0)}):Play()
+            end
+
+            local txt = wkProgressTexts[questIdx]
+            if txt and txt.Parent then
+                txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
+            end
+
+            local claimBtn3 = wkClaimButtons[questIdx]
+            if claimBtn3 and claimBtn3.Parent then
+                local bStr = claimBtn3:FindFirstChildOfClass("UIStroke")
+                if newProgress >= goal then
+                    claimBtn3.Text             = "\u{2B50} CLAIM"
+                    claimBtn3.BackgroundColor3 = BTN_CLAIM
+                    claimBtn3.TextColor3       = WHITE
+                    claimBtn3.Active           = true
+                    if bStr then bStr.Color = GREEN_GLOW; bStr.Transparency = 0.15 end
+                else
+                    claimBtn3.Text             = tostring(newProgress) .. "/" .. tostring(goal)
+                    claimBtn3.BackgroundColor3 = BTN_LOCKED
+                    claimBtn3.TextColor3       = DIM_TEXT
+                    claimBtn3.Active           = false
+                    if bStr then bStr.Color = BTN_STROKE; bStr.Transparency = 0.4 end
+                end
+            end
+
+            -- Update card visuals
+            local cardFrame2 = wkCards[questIdx]
+            local cardStroke2 = wkCardStrokes[questIdx]
+            if cardFrame2 and cardFrame2.Parent then
+                local accent2 = cardFrame2:FindFirstChild("StateAccent")
+                if newProgress >= goal then
+                    cardFrame2.BackgroundColor3 = ROW_CLAIMABLE_BG
+                    if cardStroke2 then cardStroke2.Color = CLAIM_GOLD_GLOW; cardStroke2.Thickness = 2; cardStroke2.Transparency = 0.15 end
+                    if accent2 then accent2.BackgroundColor3 = CLAIM_GOLD_GLOW; accent2.BackgroundTransparency = 0 end
+                else
+                    cardFrame2.BackgroundColor3 = ROW_BG
+                    if cardStroke2 then cardStroke2.Color = CARD_STROKE; cardStroke2.Thickness = 1.2; cardStroke2.Transparency = 0.35 end
+                    if accent2 then accent2.BackgroundColor3 = GOLD; accent2.BackgroundTransparency = 0.5 end
+                end
+            end
+        end))
+    end
+
+    ---------------------------------------------------------------------------
+    -- Live daily quest progress updates from server
     ---------------------------------------------------------------------------
     if questProgressRE then
         trackConn(questProgressRE.OnClientEvent:Connect(function(questId, newProgress)

@@ -47,6 +47,15 @@ if not AddScore then
     AddScore.Parent = ServerScriptService
 end
 
+-- BindableEvents for other server scripts (e.g. WeeklyQuestServiceInit)
+local MatchStartedBE = Instance.new("BindableEvent")
+MatchStartedBE.Name = "MatchStarted"
+MatchStartedBE.Parent = ServerScriptService
+
+local MatchEndedBE = Instance.new("BindableEvent")
+MatchEndedBE.Name = "MatchEnded"
+MatchEndedBE.Parent = ServerScriptService
+
 ---------------------------------------------------------------------
 -- State  (must be declared BEFORE GetMatchState closure captures them)
 ---------------------------------------------------------------------
@@ -113,6 +122,7 @@ function endMatch(winnerTeam)
     State = "EndGame"
     print("[GameManager] END — winner:", winnerTeam, "  Blue:", teamScores.Blue, " Red:", teamScores.Red)
     pcall(function() MatchEnd:FireAllClients("win", winnerTeam) end)
+    pcall(function() MatchEndedBE:Fire(winnerTeam) end)
 
     task.delay(END_SCREEN_TIME, function()
         -- reset flags before respawning players
@@ -163,6 +173,7 @@ function startMatch()
     matchStartTick = workspace:GetServerTimeNow()
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
+    pcall(function() MatchStartedBE:Fire() end)
 
     -- Monitor remaining time; sleeps exactly until 0 so it fires instantly.
     -- Re-checks after waking in case matchStartTick was adjusted mid-sleep.

@@ -41,12 +41,14 @@ local MID_LINE_COLOR  = Color3.fromRGB(85, 85, 72)
 local BASE_ZONE_DARK  = Color3.fromRGB(28, 32, 22)
 
 -- Player marker settings
-local PLAYER_SIZE_LOCAL = 10
-local PLAYER_SIZE_OTHER = 7
-local PLAYER_COLOR_BLUE = Color3.fromRGB(100, 160, 255)
-local PLAYER_COLOR_RED  = Color3.fromRGB(220, 80, 80)
-local PLAYER_COLOR_NONE = Color3.fromRGB(180, 180, 180)
-local PLAYER_OUTLINE    = Color3.fromRGB(0, 0, 0)
+local PLAYER_SIZE_LOCAL  = 10
+local PLAYER_SIZE_OTHER  = 7
+local PLAYER_COLOR_LOCAL = Color3.fromRGB(255, 225, 0)    -- bright yellow for the local player
+local PLAYER_COLOR_BLUE  = Color3.fromRGB(100, 160, 255)
+local PLAYER_COLOR_RED   = Color3.fromRGB(220, 80, 80)
+local PLAYER_COLOR_NONE  = Color3.fromRGB(180, 180, 180)
+local PLAYER_OUTLINE     = Color3.fromRGB(0, 0, 0)
+local PLAYER_OUTLINE_LOCAL = Color3.fromRGB(180, 130, 0) -- amber-gold outline for local player
 
 -- Base marker settings
 local BASE_SIZE         = 14
@@ -301,7 +303,8 @@ end
 ---------------------------------------------------------------------------
 
 -- Player marker: small circle with subtle dark outline
-local function makePlayerDot(color, size, zindex)
+-- outlineColor / outlineThickness are optional overrides for the local player
+local function makePlayerDot(color, size, zindex, outlineColor, outlineThickness)
     local dot = Instance.new("Frame")
     dot.Size = UDim2.new(0, size, 0, size)
     dot.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -315,9 +318,9 @@ local function makePlayerDot(color, size, zindex)
 
     local outline = Instance.new("UIStroke")
     outline.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    outline.Thickness = 1
-    outline.Color = PLAYER_OUTLINE
-    outline.Transparency = 0.35
+    outline.Thickness = outlineThickness or 1
+    outline.Color = outlineColor or PLAYER_OUTLINE
+    outline.Transparency = outlineColor and 0 or 0.35
     outline.Parent = dot
 
     dot.Parent = markerLayer
@@ -412,22 +415,26 @@ end)
 local playerDots = {}
 
 local function getTeamColor(pl)
-    if pl.Team and pl.Team.Name == "Red" then
+    if pl == LocalPlayer then
+        return PLAYER_COLOR_LOCAL  -- local player is always yellow
+    elseif pl.Team and pl.Team.Name == "Red" then
         return PLAYER_COLOR_RED
     elseif pl.Team and pl.Team.Name == "Blue" then
         return PLAYER_COLOR_BLUE
     else
-        return (pl == LocalPlayer) and PLAYER_COLOR_BLUE or PLAYER_COLOR_NONE
+        return PLAYER_COLOR_NONE
     end
 end
 
 local function addPlayerDot(p)
     if playerDots[p] then return end
-    local isLocal = (p == LocalPlayer)
-    local size   = isLocal and PLAYER_SIZE_LOCAL or PLAYER_SIZE_OTHER
-    local zindex = isLocal and 3 or 2
+    local isLocal          = (p == LocalPlayer)
+    local size             = isLocal and PLAYER_SIZE_LOCAL or PLAYER_SIZE_OTHER
+    local zindex           = isLocal and 3 or 2
+    local outlineColor     = isLocal and PLAYER_OUTLINE_LOCAL or nil
+    local outlineThickness = isLocal and 1.5 or nil
 
-    playerDots[p] = makePlayerDot(getTeamColor(p), size, zindex)
+    playerDots[p] = makePlayerDot(getTeamColor(p), size, zindex, outlineColor, outlineThickness)
     playerDots[p].Name = p.Name
 
     p:GetPropertyChangedSignal("Team"):Connect(function()
