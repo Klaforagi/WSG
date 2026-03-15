@@ -729,7 +729,11 @@ pcall(function()
     end
 end)
 
--- Close X (top-right corner of window)
+-- Close X (top-right corner of window) — dark + gold style
+local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
+local CLOSE_HOVER   = Color3.fromRGB(55, 30, 38)
+local CLOSE_PRESS   = Color3.fromRGB(18, 20, 32)
+
 local closeBtn = Instance.new("TextButton")
 closeBtn.Name = "Close"
 closeBtn.Text = "X"
@@ -739,14 +743,39 @@ closeBtn.Size = UDim2.new(0.05, 0, HEADER_H * 0.85, 0)
 closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeYY
 closeBtn.AnchorPoint = Vector2.new(1, 0)
 closeBtn.Position = UDim2.new(1, 0, 0, 0)
-closeBtn.BackgroundColor3 = Color3.fromRGB(160, 50, 50)
-closeBtn.TextColor3 = Color3.new(1, 1, 1)
+closeBtn.BackgroundColor3 = CLOSE_DEFAULT
+closeBtn.TextColor3 = COLORS.gold
+closeBtn.AutoButtonColor = false
 closeBtn.BorderSizePixel = 0
 closeBtn.ZIndex = 300
 closeBtn.Parent = window
+
 local closeBtnCorner = Instance.new("UICorner")
-closeBtnCorner.CornerRadius = UDim.new(0, px(6))
+closeBtnCorner.CornerRadius = UDim.new(0, px(8))
 closeBtnCorner.Parent = closeBtn
+
+local closeBtnStroke = Instance.new("UIStroke")
+closeBtnStroke.Color = COLORS.gold
+closeBtnStroke.Thickness = 1.2
+closeBtnStroke.Transparency = 0.4
+closeBtnStroke.Parent = closeBtn
+
+-- Hover / press feedback
+local closeFeedbackInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+closeBtn.MouseEnter:Connect(function()
+    TweenService:Create(closeBtn, closeFeedbackInfo, {BackgroundColor3 = CLOSE_HOVER}):Play()
+    TweenService:Create(closeBtn, closeFeedbackInfo, {TextColor3 = Color3.new(1, 1, 1)}):Play()
+end)
+closeBtn.MouseLeave:Connect(function()
+    TweenService:Create(closeBtn, closeFeedbackInfo, {BackgroundColor3 = CLOSE_DEFAULT}):Play()
+    TweenService:Create(closeBtn, closeFeedbackInfo, {TextColor3 = COLORS.gold}):Play()
+end)
+closeBtn.MouseButton1Down:Connect(function()
+    TweenService:Create(closeBtn, closeFeedbackInfo, {BackgroundColor3 = CLOSE_PRESS}):Play()
+end)
+closeBtn.MouseButton1Up:Connect(function()
+    TweenService:Create(closeBtn, closeFeedbackInfo, {BackgroundColor3 = CLOSE_HOVER}):Play()
+end)
 
 -- ── Content area (below header) ───────────────────────────────────────────
 local contentFrame = Instance.new("ScrollingFrame")
