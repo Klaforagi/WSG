@@ -1296,6 +1296,12 @@ local function OpenPage(id)
         requestShowModule(upgradesModule, "UPGRADES")
         return
     end
+    if id == "Team" then
+        if type(_G.TeamStatsToggle) == "function" then
+            pcall(_G.TeamStatsToggle)
+        end
+        return
+    end
     print("OpenPage:", id)
     -- placeholder; integrate your page switching here
 end

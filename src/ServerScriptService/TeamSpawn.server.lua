@@ -137,14 +137,21 @@ Players.PlayerAdded:Connect(function(player)
 				player:SetAttribute("MatchRestart", nil)
 			end
 
+			-- Use the player's current team so mid-game switches spawn correctly
+			local curTeam = player:GetAttribute("Team") or teamName
+			local curSpawnPart = workspace:FindFirstChild(
+				curTeam == "Red" and "RedSpawn" or "BlueSpawn"
+			)
+
 			if firstSpawn or isRestart then
 				-- use the main team spawn
-				if spawnPart then
-					hrp.CFrame = randomPointOnPart(spawnPart)
+				local sp = curSpawnPart or spawnPart
+				if sp then
+					hrp.CFrame = randomPointOnPart(sp)
 				end
 				firstSpawn = false
 			else
-				local deathName = deathSpawnNames[teamName]
+				local deathName = deathSpawnNames[curTeam]
 				-- Collect all matching death spawn parts (support multiple with same name)
 				local candidates = {}
 				for _, obj in ipairs(workspace:GetDescendants()) do
@@ -158,8 +165,8 @@ Players.PlayerAdded:Connect(function(player)
 				end
 				if deathPart then
 					hrp.CFrame = randomPointOnPart(deathPart)
-				elseif spawnPart then
-					hrp.CFrame = randomPointOnPart(spawnPart)
+				elseif curSpawnPart or spawnPart then
+					hrp.CFrame = randomPointOnPart(curSpawnPart or spawnPart)
 				end
 			end
 

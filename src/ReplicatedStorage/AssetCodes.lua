@@ -19,7 +19,7 @@ AssetCodes.images = {
 
     --WEAPON icons
     --MELEE
-    Stick = "rbxassetid://12256987794",
+    ["Wooden Sword"] = "rbxassetid://42901975",
     Dagger = "rbxassetid://949752421",
     Sword = "rbxassetid://10123421106",
     Spear = "rbxassetid://139656815",

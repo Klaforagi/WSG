@@ -313,6 +313,12 @@ function setupFlagModel(model)
 
                 -- Fire server-side event so quest system can track the return
                 pcall(function() FlagReturned:Fire(pl) end)
+
+                -- Per-player match stats
+                local prevReturns = pl:GetAttribute("FlagReturns") or 0
+                pl:SetAttribute("FlagReturns", prevReturns + 1)
+                local prevScoreR = pl:GetAttribute("Score") or 0
+                pl:SetAttribute("Score", prevScoreR + 20)
             end
             return
         end
@@ -553,6 +559,10 @@ local FlagReturned = Instance.new("BindableEvent")
 FlagReturned.Name = "FlagReturned"
 FlagReturned.Parent = game:GetService("ServerScriptService")
 
+local FlagCaptured = Instance.new("BindableEvent")
+FlagCaptured.Name = "FlagCaptured"
+FlagCaptured.Parent = game:GetService("ServerScriptService")
+
 -- helper: award points to a team
 local function awardPoints(teamName, points)
     if not teamName or type(points) ~= "number" then return end
@@ -580,6 +590,14 @@ local function setupStand(standPart)
         if not carry then return end
         local flagTeam = carry.team
         if flagTeam == standTeam then return end
+
+        -- Require the player's own flag to be at the stand to allow capture.
+        -- If the team's flag is missing (taken or dropped), disallow capture.
+        local ownFlagInfo = flags[standTeam]
+        local ownFlagPresent = ownFlagInfo and ownFlagInfo.model and (ownFlagInfo.dropped ~= true)
+        if not ownFlagPresent then
+            return
+        end
 
         -- debounce per player to avoid multiple triggers
         if captureDebounce[pl] then return end
@@ -610,6 +628,13 @@ local function setupStand(standPart)
         if CurrencyService and CurrencyService.AddCoins then
             pcall(function() CurrencyService:AddCoins(pl, 10, "objective") end)
         end
+
+        -- Per-player match stats
+        local prevCaps = pl:GetAttribute("FlagCaptures") or 0
+        pl:SetAttribute("FlagCaptures", prevCaps + 1)
+        local prevScoreC = pl:GetAttribute("Score") or 0
+        pl:SetAttribute("Score", prevScoreC + 100)
+        pcall(function() FlagCaptured:Fire(pl) end)
 
         -- announce capture to clients
         local playerTeamName = capturingTeamName

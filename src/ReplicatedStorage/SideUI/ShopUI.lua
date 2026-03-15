@@ -451,8 +451,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     specialSection.LayoutOrder = 3
     coinsSection.LayoutOrder = 4
 
-    -- Populate melee weapons section (Stick is the free starter)
-    makeItem(meleeGrid, "Stick", "Stick", 0, "Stick", coinApi, inventoryApi, "Melee")
+    -- Populate melee weapons section (Wooden Sword is the free starter)
+    makeItem(meleeGrid, "Wooden Sword", "Wooden Sword", 0, "Wooden Sword", coinApi, inventoryApi, "Melee")
     makeItem(meleeGrid, "Dagger", "Dagger", 30, "Dagger", coinApi, inventoryApi, "Melee")
     makeItem(meleeGrid, "Sword", "Sword", 30, "Sword", coinApi, inventoryApi, "Melee")
     makeItem(meleeGrid, "Spear", "Spear", 30, "Spear", coinApi, inventoryApi, "Melee")

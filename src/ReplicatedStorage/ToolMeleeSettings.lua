@@ -3,15 +3,15 @@
 -- e.g. ToolBat or Bat → "bat", ToolSword or Sword → "sword"
 
 local presets = {
-    stick = {
+    ["wooden sword"] = {
         damage          = 15,
         cd              = 0.6,   -- seconds between swings
         knockback       = 15,    -- impulse applied to the victim
-        hitboxDelay     = 0.3,   -- seconds before hitbox becomes active (animation sync)
-        hitboxActive    = 0.8,   -- seconds the hitbox remains active
+        hitboxDelay     = 0.4,   -- seconds before hitbox becomes active (animation sync)
+        hitboxActive    = 0.1,   -- seconds the hitbox remains active
         showHitbox      = true, -- debug: show hitbox locally when swinging
         hitboxColor     = Color3.fromRGB(255, 100, 50),
-        hitboxSize      = Vector3.new(2, 5, 4),
+        hitboxSize      = Vector3.new(2, 10, 4),
         hitboxOffset    = Vector3.new(1, 1, 3.5),
         swing_anim_id   = "",    -- optional: custom swing animation asset id
         swing_sound     = "StickSwing",    -- key in ReplicatedStorage.Sounds.ToolMelee
@@ -39,8 +39,8 @@ local presets = {
         hitboxActive    = 0.3,
         showHitbox      = false,
         hitboxColor     = Color3.fromRGB(180, 180, 255),
-        hitboxSize      = Vector3.new(2, 5.5, 4),
-        hitboxOffset    = Vector3.new(1, 1, 3.5),
+        hitboxSize      = Vector3.new(2, 8, 4),
+        hitboxOffset    = Vector3.new(1, 0, 3.5),
         swing_anim_id   = "",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",

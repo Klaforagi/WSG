@@ -1,0 +1,881 @@
+-- TeamStatsUI.client.lua
+-- Custom Team Stats overlay for KingsGround.
+-- Shows per-player stats organized by Blue/Red team.
+-- Toggle: Teams button (SideUI) or press Tab.
+
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+-- Wait for viewport to be ready (same pattern as SideUI / MatchHUD)
+do
+	local cam = workspace.CurrentCamera or workspace:WaitForChild("Camera", 5)
+	if cam then
+		local t = 0
+		while cam.ViewportSize.Y < 2 and t < 3 do t = t + task.wait() end
+	end
+end
+
+local function px(base)
+	local cam = workspace.CurrentCamera
+	local screenY = 1080
+	if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
+		screenY = cam.ViewportSize.Y
+	end
+	return math.max(1, math.round(base * screenY / 1080))
+end
+
+---------------------------------------------------------------------------
+-- Color palette (matches KingsGround MatchHUD / SideUI)
+---------------------------------------------------------------------------
+local NAVY         = Color3.fromRGB(12, 14, 28)
+local NAVY_LIGHT   = Color3.fromRGB(22, 26, 48)
+local GOLD         = Color3.fromRGB(255, 215, 80)
+local GOLD_DIM     = Color3.fromRGB(180, 150, 50)
+local BLUE_ACCENT  = Color3.fromRGB(65, 105, 225)
+local BLUE_BG      = Color3.fromRGB(16, 24, 56)
+local RED_ACCENT   = Color3.fromRGB(255, 75, 75)
+local RED_BG       = Color3.fromRGB(56, 16, 20)
+local WHITE        = Color3.fromRGB(235, 235, 240)
+local GRAY         = Color3.fromRGB(140, 140, 155)
+
+---------------------------------------------------------------------------
+-- Column definitions
+---------------------------------------------------------------------------
+local COLUMNS = {
+	{ key = "Level",        label = "Level",          width = 0.07 },
+	{ key = "Name",         label = "Player",         width = 0.27 },
+	{ key = "Score",        label = "Score",          width = 0.10 },
+	{ key = "Eliminations", label = "Eliminations",   width = 0.14 },
+	{ key = "Deaths",       label = "Deaths",         width = 0.10 },
+	{ key = "FlagCaptures", label = "Flag Captures",  width = 0.16 },
+	{ key = "FlagReturns",  label = "Flag Returns",   width = 0.16 },
+}
+
+local AVATAR_SIZE        = 46
+local ROW_HEIGHT         = 56
+local TEAM_HEADER_HEIGHT = 46
+
+---------------------------------------------------------------------------
+-- State
+---------------------------------------------------------------------------
+local isVisible = false
+local isPinned  = false   -- true when open (from either Teams button or Tab)
+
+---------------------------------------------------------------------------
+-- ScreenGui
+---------------------------------------------------------------------------
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name            = "TeamStatsUI"
+screenGui.ResetOnSpawn    = false
+screenGui.IgnoreGuiInset  = true
+screenGui.DisplayOrder    = 100
+screenGui.Parent          = playerGui
+
+---------------------------------------------------------------------------
+-- Drop shadow behind panel
+---------------------------------------------------------------------------
+local shadow = Instance.new("Frame")
+shadow.Name                 = "PanelShadow"
+shadow.AnchorPoint          = Vector2.new(0.5, 0.5)
+shadow.Position             = UDim2.new(0.5, 0, 0.5, 3)
+shadow.Size                 = UDim2.new(0.74, 8, 0.84, 8)
+shadow.BackgroundColor3     = Color3.fromRGB(0, 0, 0)
+shadow.BackgroundTransparency = 0.68
+shadow.BorderSizePixel      = 0
+shadow.Visible              = false
+shadow.ZIndex               = 0
+shadow.Parent               = screenGui
+Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, px(14))
+
+---------------------------------------------------------------------------
+-- Main panel
+---------------------------------------------------------------------------
+local panel = Instance.new("Frame")
+panel.Name                 = "TeamStatsPanel"
+panel.AnchorPoint          = Vector2.new(0.5, 0.5)
+panel.Position             = UDim2.new(0.5, 0, 0.5, 0)
+panel.Size                 = UDim2.new(0.72, 0, 0.82, 0)
+panel.BackgroundColor3     = NAVY
+panel.BackgroundTransparency = 0.04
+panel.Visible              = false
+panel.ClipsDescendants     = true
+panel.ZIndex               = 1
+panel.Parent               = screenGui
+
+do
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, px(12))
+
+	local s = Instance.new("UIStroke")
+	s.Color            = GOLD_DIM
+	s.Thickness        = 1.5
+	s.Transparency     = 0.15
+	s.ApplyStrokeMode  = Enum.ApplyStrokeMode.Border
+	s.Parent           = panel
+
+	local g = Instance.new("UIGradient")
+	g.Color    = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 195)),
+	})
+	g.Rotation = 90
+	g.Parent   = panel
+
+	local sc = Instance.new("UISizeConstraint")
+	sc.MinSize = Vector2.new(740, 480)
+	sc.MaxSize = Vector2.new(1600, 1050)
+	sc.Parent  = panel
+end
+
+local panelPad = Instance.new("UIPadding")
+panelPad.PaddingTop    = UDim.new(0, px(18))
+panelPad.PaddingBottom = UDim.new(0, px(16))
+panelPad.PaddingLeft   = UDim.new(0, px(28))
+panelPad.PaddingRight  = UDim.new(0, px(28))
+panelPad.Parent        = panel
+
+---------------------------------------------------------------------------
+-- Header
+---------------------------------------------------------------------------
+local HEADER_H = px(58)
+
+local header = Instance.new("Frame")
+header.Name                 = "Header"
+header.Size                 = UDim2.new(1, 0, 0, HEADER_H)
+header.BackgroundTransparency = 1
+header.Parent               = panel
+
+local titleLabel = Instance.new("TextLabel")
+titleLabel.Name                 = "Title"
+titleLabel.Size                 = UDim2.new(1, 0, 1, 0)
+titleLabel.BackgroundTransparency = 1
+titleLabel.Font                 = Enum.Font.GothamBlack
+titleLabel.Text                 = "TEAM STATS"
+titleLabel.TextSize             = px(40)
+titleLabel.TextColor3           = GOLD
+titleLabel.TextXAlignment       = Enum.TextXAlignment.Center
+titleLabel.Parent               = header
+
+do
+	local ts = Instance.new("UIStroke")
+	ts.Color        = Color3.fromRGB(120, 100, 30)
+	ts.Thickness    = 1.5
+	ts.Transparency = 0.4
+	ts.Parent       = titleLabel
+end
+
+do
+	local sep = Instance.new("Frame")
+	sep.Size                 = UDim2.new(1, 0, 0, 1)
+	sep.Position             = UDim2.new(0, 0, 1, px(2))
+	sep.BackgroundColor3     = GOLD_DIM
+	sep.BackgroundTransparency = 0.55
+	sep.BorderSizePixel      = 0
+	sep.Parent               = header
+end
+
+---------------------------------------------------------------------------
+-- Column headers
+---------------------------------------------------------------------------
+local COL_H_Y = HEADER_H + px(10)
+local COL_H_H = px(38)
+
+local colHeaderRow = Instance.new("Frame")
+colHeaderRow.Name                 = "ColumnHeaders"
+colHeaderRow.Size                 = UDim2.new(1, 0, 0, COL_H_H)
+colHeaderRow.Position             = UDim2.new(0, 0, 0, COL_H_Y)
+colHeaderRow.BackgroundTransparency = 1
+colHeaderRow.Parent               = panel
+
+for i, col in ipairs(COLUMNS) do
+	local xOff = 0
+	for j = 1, i - 1 do xOff = xOff + COLUMNS[j].width end
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Name                 = "ColH_" .. col.key
+	lbl.BackgroundTransparency = 1
+	lbl.Font                 = Enum.Font.GothamBold
+	lbl.TextSize             = px(20)
+	lbl.TextColor3           = GRAY
+	lbl.Text                 = col.label
+	lbl.TextXAlignment       = (col.key == "Name") and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+
+	if col.key == "Name" then
+		lbl.Position = UDim2.new(xOff, px(AVATAR_SIZE + 16), 0, 0)
+		lbl.Size     = UDim2.new(col.width, -px(AVATAR_SIZE + 16), 1, 0)
+	else
+		lbl.Position = UDim2.new(xOff, 0, 0, 0)
+		lbl.Size     = UDim2.new(col.width, 0, 1, 0)
+	end
+	lbl.Parent = colHeaderRow
+end
+
+do
+	local sep = Instance.new("Frame")
+	sep.Size                 = UDim2.new(1, 0, 0, 1)
+	sep.Position             = UDim2.new(0, 0, 1, px(1))
+	sep.BackgroundColor3     = GOLD_DIM
+	sep.BackgroundTransparency = 0.70
+	sep.BorderSizePixel      = 0
+	sep.Parent               = colHeaderRow
+end
+
+---------------------------------------------------------------------------
+-- Footer sizing constants
+---------------------------------------------------------------------------
+local FOOTER_BTN_H     = px(44)
+local FOOTER_PAD       = px(10)
+local FOOTER_SEP       = 1
+local FOOTER_TEAM_H    = px(46)
+local FOOTER_COLLAPSED  = FOOTER_SEP + FOOTER_PAD + FOOTER_BTN_H + FOOTER_PAD
+local FOOTER_EXPANDED   = FOOTER_COLLAPSED + FOOTER_TEAM_H + FOOTER_PAD
+
+local currentFooterH = FOOTER_COLLAPSED
+
+---------------------------------------------------------------------------
+-- Scrolling content  (leaves room for footer)
+---------------------------------------------------------------------------
+local CONTENT_TOP = COL_H_Y + COL_H_H + px(4)
+
+local contentScroll = Instance.new("ScrollingFrame")
+contentScroll.Name                    = "Content"
+contentScroll.Position                = UDim2.new(0, 0, 0, CONTENT_TOP)
+contentScroll.Size                    = UDim2.new(1, 0, 1, -CONTENT_TOP - currentFooterH)
+contentScroll.BackgroundTransparency  = 1
+contentScroll.ScrollBarThickness      = px(5)
+contentScroll.ScrollBarImageColor3    = GOLD_DIM
+contentScroll.ScrollBarImageTransparency = 0.3
+contentScroll.CanvasSize              = UDim2.new(0, 0, 0, 0)
+contentScroll.AutomaticCanvasSize     = Enum.AutomaticSize.Y
+contentScroll.BorderSizePixel         = 0
+contentScroll.Parent                  = panel
+
+local contentLayout = Instance.new("UIListLayout")
+contentLayout.SortOrder = Enum.SortOrder.LayoutOrder
+contentLayout.Padding   = UDim.new(0, px(12))
+contentLayout.Parent    = contentScroll
+
+---------------------------------------------------------------------------
+-- Footer: Change Team section
+---------------------------------------------------------------------------
+local footer = Instance.new("Frame")
+footer.Name                 = "ChangeTeamFooter"
+footer.Size                 = UDim2.new(1, 0, 0, currentFooterH)
+footer.Position             = UDim2.new(0, 0, 1, -currentFooterH)
+footer.BackgroundTransparency = 1
+footer.ClipsDescendants     = true
+footer.Parent               = panel
+
+-- Separator
+do
+	local sep = Instance.new("Frame")
+	sep.Name                 = "FooterSep"
+	sep.Size                 = UDim2.new(1, 0, 0, FOOTER_SEP)
+	sep.Position             = UDim2.new(0, 0, 0, 0)
+	sep.BackgroundColor3     = GOLD_DIM
+	sep.BackgroundTransparency = 0.55
+	sep.BorderSizePixel      = 0
+	sep.Parent               = footer
+end
+
+-- "CHANGE TEAM" button
+local changeTeamBtn = Instance.new("TextButton")
+changeTeamBtn.Name                 = "ChangeTeamBtn"
+changeTeamBtn.Size                 = UDim2.new(0, px(240), 0, FOOTER_BTN_H)
+changeTeamBtn.Position             = UDim2.new(0.5, 0, 0, FOOTER_SEP + FOOTER_PAD)
+changeTeamBtn.AnchorPoint          = Vector2.new(0.5, 0)
+changeTeamBtn.BackgroundColor3     = NAVY_LIGHT
+changeTeamBtn.BackgroundTransparency = 0.05
+changeTeamBtn.Font                 = Enum.Font.GothamBold
+changeTeamBtn.Text                 = "CHANGE TEAM"
+changeTeamBtn.TextSize             = px(18)
+changeTeamBtn.TextColor3           = GOLD
+changeTeamBtn.AutoButtonColor      = true
+changeTeamBtn.Parent               = footer
+Instance.new("UICorner", changeTeamBtn).CornerRadius = UDim.new(0, px(8))
+do
+	local s = Instance.new("UIStroke")
+	s.Color           = GOLD_DIM
+	s.Thickness       = 1.5
+	s.Transparency    = 0.15
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent          = changeTeamBtn
+end
+
+-- Team picker row (hidden initially)
+local teamPicker = Instance.new("Frame")
+teamPicker.Name                 = "TeamPicker"
+teamPicker.Size                 = UDim2.new(1, 0, 0, FOOTER_TEAM_H)
+teamPicker.Position             = UDim2.new(0, 0, 0, FOOTER_SEP + FOOTER_PAD + FOOTER_BTN_H + FOOTER_PAD)
+teamPicker.BackgroundTransparency = 1
+teamPicker.Visible              = false
+teamPicker.Parent               = footer
+
+do
+	local lay = Instance.new("UIListLayout")
+	lay.FillDirection       = Enum.FillDirection.Horizontal
+	lay.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	lay.VerticalAlignment   = Enum.VerticalAlignment.Center
+	lay.Padding             = UDim.new(0, px(24))
+	lay.Parent              = teamPicker
+end
+
+local function makeTeamButton(name, accentColor, bgColor)
+	local btn = Instance.new("TextButton")
+	btn.Name                 = "Join" .. name .. "Btn"
+	btn.Size                 = UDim2.new(0, px(210), 0, FOOTER_TEAM_H)
+	btn.BackgroundColor3     = bgColor
+	btn.BackgroundTransparency = 0.12
+	btn.Font                 = Enum.Font.GothamBold
+	btn.Text                 = "JOIN " .. string.upper(name) .. " TEAM"
+	btn.TextSize             = px(17)
+	btn.TextColor3           = WHITE
+	btn.AutoButtonColor      = true
+	btn.Parent               = teamPicker
+	Instance.new("UICorner", btn).CornerRadius = UDim.new(0, px(8))
+	local s = Instance.new("UIStroke")
+	s.Color           = accentColor
+	s.Thickness       = 1.5
+	s.Transparency    = 0.15
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent          = btn
+	return btn
+end
+
+local joinBlueBtn = makeTeamButton("Blue", BLUE_ACCENT, BLUE_BG)
+local joinRedBtn  = makeTeamButton("Red",  RED_ACCENT,  RED_BG)
+
+-- Track team picker expanded state
+local teamPickerOpen = false
+
+local function setFooterHeight(h)
+	currentFooterH = h
+	footer.Size     = UDim2.new(1, 0, 0, h)
+	footer.Position = UDim2.new(0, 0, 1, -h)
+	contentScroll.Size = UDim2.new(1, 0, 1, -CONTENT_TOP - h)
+end
+
+local function refreshTeamButtons()
+	local currentTeamName = player.Team and player.Team.Name or ""
+	if currentTeamName == "Blue" then
+		joinBlueBtn.Text            = "CURRENT TEAM"
+		joinBlueBtn.TextColor3      = GRAY
+		joinBlueBtn.AutoButtonColor = false
+		joinBlueBtn.BackgroundTransparency = 0.45
+		joinRedBtn.Text             = "JOIN RED TEAM"
+		joinRedBtn.TextColor3       = WHITE
+		joinRedBtn.AutoButtonColor  = true
+		joinRedBtn.BackgroundTransparency = 0.12
+	elseif currentTeamName == "Red" then
+		joinRedBtn.Text             = "CURRENT TEAM"
+		joinRedBtn.TextColor3       = GRAY
+		joinRedBtn.AutoButtonColor  = false
+		joinRedBtn.BackgroundTransparency = 0.45
+		joinBlueBtn.Text            = "JOIN BLUE TEAM"
+		joinBlueBtn.TextColor3      = WHITE
+		joinBlueBtn.AutoButtonColor = true
+		joinBlueBtn.BackgroundTransparency = 0.12
+	else
+		joinBlueBtn.Text            = "JOIN BLUE TEAM"
+		joinBlueBtn.TextColor3      = WHITE
+		joinBlueBtn.AutoButtonColor = true
+		joinBlueBtn.BackgroundTransparency = 0.12
+		joinRedBtn.Text             = "JOIN RED TEAM"
+		joinRedBtn.TextColor3       = WHITE
+		joinRedBtn.AutoButtonColor  = true
+		joinRedBtn.BackgroundTransparency = 0.12
+	end
+end
+
+local function toggleTeamPicker()
+	teamPickerOpen = not teamPickerOpen
+	teamPicker.Visible = teamPickerOpen
+	if teamPickerOpen then
+		refreshTeamButtons()
+		changeTeamBtn.Text = "CANCEL"
+		setFooterHeight(FOOTER_EXPANDED)
+	else
+		changeTeamBtn.Text = "CHANGE TEAM"
+		setFooterHeight(FOOTER_COLLAPSED)
+	end
+end
+
+local function collapseTeamPicker()
+	if teamPickerOpen then
+		teamPickerOpen = false
+		teamPicker.Visible = false
+		changeTeamBtn.Text = "CHANGE TEAM"
+		setFooterHeight(FOOTER_COLLAPSED)
+	end
+end
+
+changeTeamBtn.MouseButton1Click:Connect(toggleTeamPicker)
+
+-- Fire team change requests
+local changeTeamRequest  = nil  -- resolved lazily
+local changeTeamResponse = nil
+
+local function getChangeRemotes()
+	if not changeTeamRequest then
+		changeTeamRequest  = ReplicatedStorage:WaitForChild("ChangeTeamRequest", 10)
+		changeTeamResponse = ReplicatedStorage:WaitForChild("ChangeTeamResponse", 10)
+	end
+	return changeTeamRequest, changeTeamResponse
+end
+
+joinBlueBtn.MouseButton1Click:Connect(function()
+	if player.Team and player.Team.Name == "Blue" then return end
+	local req = getChangeRemotes()
+	if req then req:FireServer("Blue") end
+end)
+
+joinRedBtn.MouseButton1Click:Connect(function()
+	if player.Team and player.Team.Name == "Red" then return end
+	local req = getChangeRemotes()
+	if req then req:FireServer("Red") end
+end)
+
+-- Listen for server response
+task.spawn(function()
+	local _, resp = getChangeRemotes()
+	if resp then
+		resp.OnClientEvent:Connect(function(success, _msg)
+			if success then
+				collapseTeamPicker()
+				-- Rebuild stats after short delay to let team switch propagate
+				task.wait(0.4)
+				if isVisible then rebuildAll() end
+			end
+		end)
+	end
+end)
+
+-- Refresh buttons when local player team changes
+player:GetPropertyChangedSignal("Team"):Connect(refreshTeamButtons)
+
+---------------------------------------------------------------------------
+-- Team section builder
+---------------------------------------------------------------------------
+local function createTeamSection(teamName, layoutOrder)
+	local teamColor = (teamName == "Blue") and BLUE_ACCENT or RED_ACCENT
+	local teamBg    = (teamName == "Blue") and BLUE_BG or RED_BG
+
+	local section = Instance.new("Frame")
+	section.Name                 = teamName .. "Section"
+	section.Size                 = UDim2.new(1, 0, 0, 0)
+	section.AutomaticSize        = Enum.AutomaticSize.Y
+	section.BackgroundTransparency = 1
+	section.LayoutOrder          = layoutOrder
+	section.Parent               = contentScroll
+
+	local secLayout = Instance.new("UIListLayout")
+	secLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	secLayout.Padding   = UDim.new(0, px(4))
+	secLayout.Parent    = section
+
+	-- Team header bar
+	local teamHeader = Instance.new("Frame")
+	teamHeader.Name                 = "TeamHeader"
+	teamHeader.Size                 = UDim2.new(1, 0, 0, px(TEAM_HEADER_HEIGHT))
+	teamHeader.BackgroundColor3     = teamBg
+	teamHeader.BackgroundTransparency = 0.25
+	teamHeader.LayoutOrder          = 0
+	teamHeader.Parent               = section
+	Instance.new("UICorner", teamHeader).CornerRadius = UDim.new(0, px(6))
+
+	-- Colored accent bar
+	local accent = Instance.new("Frame")
+	accent.Name            = "AccentBar"
+	accent.Size            = UDim2.new(0, px(5), 0.55, 0)
+	accent.Position        = UDim2.new(0, px(8), 0.225, 0)
+	accent.BackgroundColor3 = teamColor
+	accent.BorderSizePixel = 0
+	accent.Parent          = teamHeader
+	Instance.new("UICorner", accent).CornerRadius = UDim.new(0, px(3))
+
+	-- Team label with player count
+	local teamLabel = Instance.new("TextLabel")
+	teamLabel.Name                 = "TeamLabel"
+	teamLabel.Size                 = UDim2.new(1, -px(28), 1, 0)
+	teamLabel.Position             = UDim2.new(0, px(22), 0, 0)
+	teamLabel.BackgroundTransparency = 1
+	teamLabel.Font                 = Enum.Font.GothamBold
+	teamLabel.TextSize             = px(22)
+	teamLabel.TextColor3           = teamColor
+	teamLabel.TextXAlignment       = Enum.TextXAlignment.Left
+	teamLabel.Parent               = teamHeader
+
+	-- Update label text with player count
+	local function updateTeamLabel()
+		local count = 0
+		for _, plr in ipairs(Players:GetPlayers()) do
+			if plr.Team and plr.Team.Name == teamName then count = count + 1 end
+		end
+		teamLabel.Text = string.upper(teamName) .. " TEAM  (" .. count .. ")"
+	end
+	updateTeamLabel()
+
+	return section, updateTeamLabel
+end
+
+---------------------------------------------------------------------------
+-- Avatar cache
+---------------------------------------------------------------------------
+local avatarCache = {}
+
+local function fetchAvatar(userId, callback)
+	if avatarCache[userId] then
+		callback(avatarCache[userId])
+		return
+	end
+	task.spawn(function()
+		local ok, url = pcall(function()
+			return Players:GetUserThumbnailAsync(
+				userId,
+				Enum.ThumbnailType.HeadShot,
+				Enum.ThumbnailSize.Size48x48
+			)
+		end)
+		if ok and url then
+			avatarCache[userId] = url
+			callback(url)
+		end
+	end)
+end
+
+---------------------------------------------------------------------------
+-- Stat helpers
+---------------------------------------------------------------------------
+local function getPlayerStat(plr, key)
+	if key == "Level" then
+		local ls = plr:FindFirstChild("leaderstats")
+		if ls then
+			local lv = ls:FindFirstChild("Level")
+			if lv then return lv.Value end
+		end
+		return plr:GetAttribute("Level") or 1
+	end
+	return plr:GetAttribute(key) or 0
+end
+
+---------------------------------------------------------------------------
+-- Player row builder
+---------------------------------------------------------------------------
+local function createPlayerRow(plr, teamName, order)
+	local isLocal = (plr == player)
+
+	local row = Instance.new("Frame")
+	row.Name                 = "Row_" .. plr.Name
+	row.Size                 = UDim2.new(1, 0, 0, px(ROW_HEIGHT))
+	row.BackgroundColor3     = isLocal and Color3.fromRGB(30, 34, 58) or NAVY_LIGHT
+	row.BackgroundTransparency = isLocal and 0.05 or 0.30
+	row.LayoutOrder          = order
+	Instance.new("UICorner", row).CornerRadius = UDim.new(0, px(6))
+
+	local rowPad = Instance.new("UIPadding")
+	rowPad.PaddingLeft  = UDim.new(0, px(8))
+	rowPad.PaddingRight = UDim.new(0, px(8))
+	rowPad.Parent       = row
+
+	if isLocal then
+		local hs = Instance.new("UIStroke")
+		hs.Color           = GOLD_DIM
+		hs.Thickness       = 1.5
+		hs.Transparency    = 0.30
+		hs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		hs.Parent          = row
+	end
+
+	local cells = {}
+
+	for i, col in ipairs(COLUMNS) do
+		local xOff = 0
+		for j = 1, i - 1 do xOff = xOff + COLUMNS[j].width end
+
+		if col.key == "Name" then
+			-- Avatar
+			local avatarImg = Instance.new("ImageLabel")
+			avatarImg.Name                 = "Avatar"
+			avatarImg.Size                 = UDim2.new(0, px(AVATAR_SIZE), 0, px(AVATAR_SIZE))
+			avatarImg.Position             = UDim2.new(xOff, px(8), 0.5, 0)
+			avatarImg.AnchorPoint          = Vector2.new(0, 0.5)
+			avatarImg.BackgroundColor3     = Color3.fromRGB(40, 40, 52)
+			avatarImg.BackgroundTransparency = 0.25
+			avatarImg.Parent               = row
+			Instance.new("UICorner", avatarImg).CornerRadius = UDim.new(1, 0)
+
+			do
+				local avStroke = Instance.new("UIStroke")
+				avStroke.Color        = Color3.fromRGB(70, 70, 90)
+				avStroke.Thickness    = 1.5
+				avStroke.Transparency = 0.3
+				avStroke.Parent       = avatarImg
+			end
+
+			fetchAvatar(plr.UserId, function(url)
+				if avatarImg and avatarImg.Parent then avatarImg.Image = url end
+			end)
+
+			-- Player name
+			local nameLabel = Instance.new("TextLabel")
+			nameLabel.Name                 = "CellName"
+			nameLabel.BackgroundTransparency = 1
+			nameLabel.Position             = UDim2.new(xOff, px(AVATAR_SIZE + 16), 0, 0)
+			nameLabel.Size                 = UDim2.new(col.width, -px(AVATAR_SIZE + 22), 1, 0)
+			nameLabel.Font                 = Enum.Font.GothamBold
+			nameLabel.TextSize             = px(22)
+			nameLabel.TextColor3           = isLocal and GOLD or WHITE
+			nameLabel.TextXAlignment       = Enum.TextXAlignment.Left
+			nameLabel.TextTruncate         = Enum.TextTruncate.AtEnd
+			nameLabel.Text                 = plr.DisplayName
+			nameLabel.Parent               = row
+			cells["Name"] = nameLabel
+		else
+			local cell = Instance.new("TextLabel")
+			cell.Name                 = "Cell_" .. col.key
+			cell.BackgroundTransparency = 1
+			cell.Position             = UDim2.new(xOff, 0, 0, 0)
+			cell.Size                 = UDim2.new(col.width, 0, 1, 0)
+			cell.Font                 = (col.key == "Score") and Enum.Font.GothamBlack or Enum.Font.GothamBold
+			cell.TextSize             = px(22)
+			cell.TextColor3           = (col.key == "Score") and GOLD or WHITE
+			cell.TextXAlignment       = Enum.TextXAlignment.Center
+			cell.Text                 = tostring(getPlayerStat(plr, col.key))
+			cell.Parent               = row
+			cells[col.key] = cell
+		end
+	end
+
+	return row, cells
+end
+
+---------------------------------------------------------------------------
+-- Data management
+---------------------------------------------------------------------------
+local playerRows = {}  -- plr -> { row, cells, connections }
+
+local blueSection, updateBlueLabel = createTeamSection("Blue", 1)
+local redSection,  updateRedLabel  = createTeamSection("Red", 2)
+
+local function updateRow(plr)
+	local info = playerRows[plr]
+	if not info then return end
+	for _, col in ipairs(COLUMNS) do
+		if col.key ~= "Name" and info.cells[col.key] then
+			info.cells[col.key].Text = tostring(getPlayerStat(plr, col.key))
+		end
+	end
+end
+
+local function sortTeamSection(section, teamName)
+	local teamPlayers = {}
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr.Team and plr.Team.Name == teamName and playerRows[plr] then
+			table.insert(teamPlayers, plr)
+		end
+	end
+	table.sort(teamPlayers, function(a, b)
+		local sa, sb = getPlayerStat(a, "Score"), getPlayerStat(b, "Score")
+		if sa ~= sb then return sa > sb end
+		return getPlayerStat(a, "Eliminations") > getPlayerStat(b, "Eliminations")
+	end)
+	for i, plr in ipairs(teamPlayers) do
+		playerRows[plr].row.LayoutOrder = i
+	end
+end
+
+local function cleanupPlayerRow(plr)
+	local info = playerRows[plr]
+	if not info then return end
+	if info.row then pcall(function() info.row:Destroy() end) end
+	for _, conn in ipairs(info.connections or {}) do
+		pcall(function() conn:Disconnect() end)
+	end
+	playerRows[plr] = nil
+end
+
+local function addPlayerRow(plr)
+	if playerRows[plr] then return end
+	local teamName = plr.Team and plr.Team.Name
+	if teamName ~= "Blue" and teamName ~= "Red" then return end
+
+	local section = (teamName == "Blue") and blueSection or redSection
+	local row, cells = createPlayerRow(plr, teamName, 999)
+	row.Parent = section
+
+	local connections = {}
+
+	-- Listen for attribute stat changes
+	for _, key in ipairs({"Score", "Eliminations", "Deaths", "FlagCaptures", "FlagReturns", "Level"}) do
+		table.insert(connections, plr:GetAttributeChangedSignal(key):Connect(function()
+			updateRow(plr)
+			sortTeamSection(section, teamName)
+		end))
+	end
+
+	-- leaderstats.Level
+	task.spawn(function()
+		local ls = plr:WaitForChild("leaderstats", 5)
+		if not ls then return end
+		local lv = ls:WaitForChild("Level", 3)
+		if lv and lv:IsA("IntValue") then
+			table.insert(connections, lv.Changed:Connect(function()
+				if cells["Level"] then cells["Level"].Text = tostring(lv.Value) end
+			end))
+		end
+	end)
+
+	playerRows[plr] = { row = row, cells = cells, connections = connections }
+	sortTeamSection(section, teamName)
+end
+
+local function rebuildAll()
+	-- Clear previous rows
+	for plr, _ in pairs(playerRows) do
+		cleanupPlayerRow(plr)
+	end
+	-- Rebuild
+	for _, plr in ipairs(Players:GetPlayers()) do
+		addPlayerRow(plr)
+	end
+	updateBlueLabel()
+	updateRedLabel()
+end
+
+---------------------------------------------------------------------------
+-- Player lifecycle + team changes
+---------------------------------------------------------------------------
+local teamConns = {}
+
+local function watchPlayer(plr)
+	if teamConns[plr] then pcall(function() teamConns[plr]:Disconnect() end) end
+	teamConns[plr] = plr:GetPropertyChangedSignal("Team"):Connect(function()
+		cleanupPlayerRow(plr)
+		if isVisible then
+			task.wait(0.1)
+			addPlayerRow(plr)
+			updateBlueLabel()
+			updateRedLabel()
+		end
+	end)
+	if isVisible then addPlayerRow(plr) end
+end
+
+local function unwatchPlayer(plr)
+	if teamConns[plr] then pcall(function() teamConns[plr]:Disconnect() end) end
+	teamConns[plr] = nil
+	cleanupPlayerRow(plr)
+	if isVisible then
+		updateBlueLabel()
+		updateRedLabel()
+	end
+end
+
+for _, plr in ipairs(Players:GetPlayers()) do watchPlayer(plr) end
+Players.PlayerAdded:Connect(function(plr) watchPlayer(plr) end)
+Players.PlayerRemoving:Connect(function(plr) unwatchPlayer(plr) end)
+
+---------------------------------------------------------------------------
+-- Show / Hide with tween
+---------------------------------------------------------------------------
+local TWEEN_IN  = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TWEEN_OUT = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+local function show()
+	if isVisible then return end
+	isVisible = true
+	collapseTeamPicker()
+	refreshTeamButtons()
+	rebuildAll()
+	panel.Visible  = true
+	shadow.Visible = true
+
+	-- Slide in from above
+	panel.Position  = UDim2.new(0.5, 0, -0.35, 0)
+	shadow.Position = UDim2.new(0.5, 0, -0.35, 3)
+
+	TweenService:Create(panel,  TWEEN_IN, { Position = UDim2.new(0.5, 0, 0.5, 0) }):Play()
+	TweenService:Create(shadow, TWEEN_IN, { Position = UDim2.new(0.5, 0, 0.5, 3) }):Play()
+end
+
+local function hide()
+	if not isVisible then return end
+	isVisible = false
+	collapseTeamPicker()
+
+	local tw = TweenService:Create(panel, TWEEN_OUT, { Position = UDim2.new(0.5, 0, -0.35, 0) })
+	TweenService:Create(shadow, TWEEN_OUT, { Position = UDim2.new(0.5, 0, -0.35, 3) }):Play()
+	tw:Play()
+	tw.Completed:Connect(function()
+		if not isVisible then
+			panel.Visible  = false
+			shadow.Visible = false
+		end
+	end)
+end
+
+---------------------------------------------------------------------------
+-- Toggle (shared by Teams button and Tab)
+---------------------------------------------------------------------------
+local function toggle()
+	if isVisible then
+		isPinned = false
+		print("[TeamStatsUI] Team Stats board toggled CLOSED")
+		hide()
+	else
+		isPinned = true
+		print("[TeamStatsUI] Team Stats board toggled OPEN")
+		show()
+	end
+end
+
+_G.TeamStatsToggle = toggle
+
+---------------------------------------------------------------------------
+-- Tab press-to-toggle
+-- We intentionally do NOT check gameProcessed for Tab because Roblox's
+-- core playerlist CoreScript always consumes it, which would block us.
+-- Instead we only guard against typing in a TextBox.
+---------------------------------------------------------------------------
+UserInputService.InputBegan:Connect(function(input, _gameProcessed)
+	if input.KeyCode ~= Enum.KeyCode.Tab then return end
+	print("[TeamStatsUI] Tab callback fired")
+	if UserInputService:GetFocusedTextBox() then
+		print("[TeamStatsUI] Toggle skipped — TextBox focused")
+		return
+	end
+	toggle()
+end)
+print("[TeamStatsUI] Tab input listener connected via UserInputService")
+
+-- Escape closes panel
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.Escape then
+		if isVisible then
+			isPinned = false
+			hide()
+		end
+	end
+end)
+
+---------------------------------------------------------------------------
+-- Match restart: refresh when stats reset
+---------------------------------------------------------------------------
+task.spawn(function()
+	local matchStart = ReplicatedStorage:WaitForChild("MatchStart", 15)
+	if matchStart and matchStart:IsA("RemoteEvent") then
+		matchStart.OnClientEvent:Connect(function()
+			if isVisible then
+				task.wait(0.3)
+				rebuildAll()
+			end
+		end)
+	end
+end)
+
+return nil
