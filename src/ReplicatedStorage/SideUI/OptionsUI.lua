@@ -777,17 +777,22 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		titleLbl.ZIndex = 520
 		titleLbl.Parent = popup
 
-		-- Close button
+		-- Close button — dark + gold style
+		local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
+		local CLOSE_HOVER   = Color3.fromRGB(55, 30, 38)
+		local CLOSE_PRESS   = Color3.fromRGB(18, 20, 32)
+
 		local popClose = Instance.new("TextButton")
 		popClose.Name = "PopupClose"
 		popClose.Text = "X"
 		popClose.Font = Enum.Font.GothamBlack
 		popClose.TextScaled = true
-		popClose.Size = UDim2.new(0, px(28), 0, px(28))
+		popClose.Size = UDim2.new(0, px(30), 0, px(30))
 		popClose.AnchorPoint = Vector2.new(1, 0)
 		popClose.Position = UDim2.new(1, -px(6), 0, px(6))
-		popClose.BackgroundColor3 = RED_BTN
-		popClose.TextColor3 = Color3.new(1, 1, 1)
+		popClose.BackgroundColor3 = CLOSE_DEFAULT
+		popClose.TextColor3 = GOLD
+		popClose.AutoButtonColor = false
 		popClose.BorderSizePixel = 0
 		popClose.ZIndex = 530
 		popClose.Parent = popup
@@ -795,6 +800,29 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		local cbCorner = Instance.new("UICorner")
 		cbCorner.CornerRadius = UDim.new(0, px(8))
 		cbCorner.Parent = popClose
+
+		local cbStroke = Instance.new("UIStroke")
+		cbStroke.Color = GOLD
+		cbStroke.Thickness = 1.2
+		cbStroke.Transparency = 0.4
+		cbStroke.Parent = popClose
+
+		-- Hover / press feedback
+		local closeFeedback = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		popClose.MouseEnter:Connect(function()
+			TweenService:Create(popClose, closeFeedback, {BackgroundColor3 = CLOSE_HOVER}):Play()
+			TweenService:Create(popClose, closeFeedback, {TextColor3 = WHITE}):Play()
+		end)
+		popClose.MouseLeave:Connect(function()
+			TweenService:Create(popClose, closeFeedback, {BackgroundColor3 = CLOSE_DEFAULT}):Play()
+			TweenService:Create(popClose, closeFeedback, {TextColor3 = GOLD}):Play()
+		end)
+		popClose.MouseButton1Down:Connect(function()
+			TweenService:Create(popClose, closeFeedback, {BackgroundColor3 = CLOSE_PRESS}):Play()
+		end)
+		popClose.MouseButton1Up:Connect(function()
+			TweenService:Create(popClose, closeFeedback, {BackgroundColor3 = CLOSE_HOVER}):Play()
+		end)
 
 		popClose.MouseButton1Click:Connect(function()
 			closePopup()

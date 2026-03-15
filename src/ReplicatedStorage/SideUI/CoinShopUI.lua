@@ -160,25 +160,52 @@ local function buildPopup(screenGui)
 	titleLabel.TextXAlignment = Enum.TextXAlignment.Left
 	titleLabel.Parent = titleRow
 
-	-- Close X button
+	-- Close X button — dark + gold style
+	local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
+	local CLOSE_HOVER   = Color3.fromRGB(55, 30, 38)
+	local CLOSE_PRESS   = Color3.fromRGB(18, 20, 32)
+
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Name = "CloseBtn"
 	closeBtn.Size = UDim2.new(0, px(44), 0, px(44))
 	closeBtn.AnchorPoint = Vector2.new(1, 0.5)
 	closeBtn.Position = UDim2.new(1, 0, 0.5, 0)
-	closeBtn.BackgroundColor3 = RED_BTN
+	closeBtn.BackgroundColor3 = CLOSE_DEFAULT
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Font = Enum.Font.GothamBlack
 	closeBtn.Text = "X"
-	closeBtn.TextColor3 = WHITE
+	closeBtn.TextColor3 = GOLD
 	closeBtn.TextSize = tpx(26)
 	closeBtn.AutoButtonColor = false
 	closeBtn.ZIndex = 520
 	closeBtn.Parent = titleRow
 
 	local closeBtnCorner = Instance.new("UICorner")
-	closeBtnCorner.CornerRadius = UDim.new(0, px(6))
+	closeBtnCorner.CornerRadius = UDim.new(0, px(8))
 	closeBtnCorner.Parent = closeBtn
+
+	local closeBtnStroke = Instance.new("UIStroke")
+	closeBtnStroke.Color = GOLD
+	closeBtnStroke.Thickness = 1.2
+	closeBtnStroke.Transparency = 0.4
+	closeBtnStroke.Parent = closeBtn
+
+	-- Hover / press feedback
+	local closeFeedback = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	closeBtn.MouseEnter:Connect(function()
+		TweenService:Create(closeBtn, closeFeedback, {BackgroundColor3 = CLOSE_HOVER}):Play()
+		TweenService:Create(closeBtn, closeFeedback, {TextColor3 = WHITE}):Play()
+	end)
+	closeBtn.MouseLeave:Connect(function()
+		TweenService:Create(closeBtn, closeFeedback, {BackgroundColor3 = CLOSE_DEFAULT}):Play()
+		TweenService:Create(closeBtn, closeFeedback, {TextColor3 = GOLD}):Play()
+	end)
+	closeBtn.MouseButton1Down:Connect(function()
+		TweenService:Create(closeBtn, closeFeedback, {BackgroundColor3 = CLOSE_PRESS}):Play()
+	end)
+	closeBtn.MouseButton1Up:Connect(function()
+		TweenService:Create(closeBtn, closeFeedback, {BackgroundColor3 = CLOSE_HOVER}):Play()
+	end)
 
 	closeBtn.MouseButton1Click:Connect(function()
 		CoinShopUI.Hide()
