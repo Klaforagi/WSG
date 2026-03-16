@@ -72,6 +72,33 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 6
 screenGui.Parent = playerGui
 
+-- Damage flash overlay (full-screen subtle red flash on taking damage)
+local damageFlash = Instance.new("Frame")
+damageFlash.Name = "DamageFlash"
+damageFlash.Size = UDim2.new(1, 0, 1, 0)
+damageFlash.Position = UDim2.new(0, 0, 0, 0)
+damageFlash.AnchorPoint = Vector2.new(0, 0)
+damageFlash.BackgroundColor3 = Color3.fromRGB(255, 80, 80)
+damageFlash.BackgroundTransparency = 1
+damageFlash.BorderSizePixel = 0
+damageFlash.ZIndex = 50
+damageFlash.Parent = screenGui
+
+local flashTween: Tween? = nil
+local FLASH_IN_TIME = 0.06
+local FLASH_OUT_TIME = 0.35
+
+local function flashDamage(intensity)
+	intensity = intensity or 0.6
+	intensity = math.clamp(intensity, 0.15, 0.9)
+	-- Cancel running tween
+	if flashTween then pcall(function() flashTween:Cancel() end) end
+	-- Quick fade-in to a semi-transparent red, then fade out
+	damageFlash.BackgroundTransparency = 1 - intensity
+	flashTween = TweenService:Create(damageFlash, TweenInfo.new(FLASH_OUT_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundTransparency = 1 })
+	flashTween:Play()
+end
+
 --------------------------------------------------------------------------------
 -- BUILD UI ELEMENTS (prominent bottom-left HUD bar)
 --------------------------------------------------------------------------------
@@ -253,10 +280,30 @@ local function connectToCharacter(character)
 
 	-- Initial update
 	updateBar(humanoid.Health, humanoid.MaxHealth)
+	local lastHealth = humanoid.Health
 
-	-- Listen for health changes
+	-- Listen for health changes and flash on damage
 	healthConn = humanoid:GetPropertyChangedSignal("Health"):Connect(function()
-		updateBar(humanoid.Health, humanoid.MaxHealth)
+		local newHealth = humanoid.Health
+		local maxH = humanoid.MaxHealth > 0 and humanoid.MaxHealth or 1
+		if newHealth < lastHealth then
+			local dmg = lastHealth - newHealth
+			-- map absolute damage to intensity: 5 -> min, 50+ -> max
+			local minD, maxD = 5, 50
+			local minI, maxI = 0.15, 0.9
+			local intensity = minI
+			if dmg <= minD then
+				intensity = minI
+			elseif dmg >= maxD then
+				intensity = maxI
+			else
+				intensity = minI + ((dmg - minD) / (maxD - minD)) * (maxI - minI)
+			end
+			intensity = math.clamp(intensity, minI, maxI)
+			flashDamage(intensity)
+		end
+		lastHealth = newHealth
+		updateBar(newHealth, humanoid.MaxHealth)
 	end)
 
 	-- Listen for max health changes (e.g. upgrades, buffs)
