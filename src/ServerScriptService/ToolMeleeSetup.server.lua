@@ -27,12 +27,6 @@ pcall(function()
     end
 end)
 
--- Centralized stat/event tracking (single source of truth for quests/achievements/scoreboard)
-local StatService
-pcall(function()
-    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
-end)
-
 -- Melee settings module
 local MeleeCfg
 if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
@@ -109,22 +103,6 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         local victimName = (victimModel and victimModel.Name) or "Unknown"
         local vp = Players:GetPlayerFromCharacter(victimModel)
         if vp then victimName = vp.Name end
-
-        -- Route kill through centralized StatService (feeds quests/achievements/scoreboard)
-        if StatService then
-            if vp then
-                StatService:RegisterElimination(player, vp)
-                if StatService.DEBUG then
-                    print(string.format("[ToolMeleeSetup] PvP elimination: %s killed %s → StatService", player.Name, victimName))
-                end
-            else
-                StatService:RegisterMobKill(player, victimName)
-                if StatService.DEBUG then
-                    print(string.format("[ToolMeleeSetup] Zombie elimination: %s killed %s → StatService", player.Name, victimName))
-                end
-            end
-        end
-
         if player.Name ~= victimName then
             -- Award coins: +5 PvP, +1 mob. Capture boosted return value for popup.
             local coinAward = 0
@@ -339,6 +317,7 @@ end
 -- Rate limiting
 ---------------------------------------------------------------------------
 local lastSwing = {} -- [player] = { [toolName] = tick() }
+local slowState = {} -- [player] = { count = n, base = number, factors = {..} }
 
 ---------------------------------------------------------------------------
 -- Handle incoming swing
@@ -377,19 +356,57 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
         lastSwing[player][toolName] = now
     end
 
-    -- slow the player by 50% for the duration of the swing cooldown
+    -- apply a stacked, robust slowdown that ensures WalkSpeed is restored
     do
-        -- allow per-weapon config to control how much speed is retained while
-        -- swinging. `slow_factor` is multiplier applied to WalkSpeed (0.75 = 75%).
         local slowFactor = 0.75
         if cfg.slow_factor and type(cfg.slow_factor) == "number" then
             slowFactor = math.clamp(cfg.slow_factor, 0.1, 1)
         end
-        local originalSpeed = hum.WalkSpeed
-        hum.WalkSpeed = originalSpeed * slowFactor
-        task.delay(cd, function()
-            if hum and hum.Parent and hum.Health > 0 then
-                hum.WalkSpeed = originalSpeed
+        local slowDuration = math.max((cd or 0) * 0.95, 0.01)
+
+        -- initialize per-player slow state
+        if not slowState[player] then
+            slowState[player] = { count = 0, base = nil, factors = {} }
+        end
+        local st = slowState[player]
+        if st.count == 0 then
+            st.base = hum and hum.WalkSpeed or 16
+        end
+        st.count = st.count + 1
+        table.insert(st.factors, slowFactor)
+
+        -- apply the most restrictive factor (lowest multiplier)
+        local minFactor = 1
+        for _, f in ipairs(st.factors) do minFactor = math.min(minFactor, f) end
+        if hum and hum.Parent then
+            pcall(function() hum.WalkSpeed = math.max((st.base or 16) * minFactor, 0.1) end)
+        end
+
+        -- schedule restore for this slow instance
+        task.delay(slowDuration, function()
+            local s = slowState[player]
+            if not s then return end
+            s.count = math.max(s.count - 1, 0)
+            -- remove one occurrence of this factor (first match)
+            for i, v in ipairs(s.factors) do
+                if v == slowFactor then
+                    table.remove(s.factors, i)
+                    break
+                end
+            end
+            if s.count <= 0 then
+                -- restore base speed
+                if s.base and hum and hum.Parent then
+                    pcall(function() hum.WalkSpeed = s.base end)
+                end
+                slowState[player] = nil
+            else
+                -- reapply the most restrictive remaining factor
+                local mf = 1
+                for _, f in ipairs(s.factors) do mf = math.min(mf, f) end
+                if hum and hum.Parent then
+                    pcall(function() hum.WalkSpeed = math.max((s.base or 16) * mf, 0.1) end)
+                end
             end
         end)
     end
@@ -668,6 +685,18 @@ end)
 -- clean up on leave
 Players.PlayerRemoving:Connect(function(player)
     lastSwing[player] = nil
+    if slowState[player] then
+        -- attempt to restore WalkSpeed if possible
+        local st = slowState[player]
+        local char = player.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and st.base then
+                pcall(function() hum.WalkSpeed = st.base end)
+            end
+        end
+        slowState[player] = nil
+    end
 end)
 
 print("[ToolMeleeSetup] server ready")

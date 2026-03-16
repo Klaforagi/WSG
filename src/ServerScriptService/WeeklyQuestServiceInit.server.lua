@@ -15,6 +15,23 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local WeeklyQuestService = require(ServerScriptService:WaitForChild("WeeklyQuestService", 10))
 local StatService         = require(ServerScriptService:WaitForChild("StatService", 10))
+local BoostService        = require(ServerScriptService:WaitForChild("BoostService", 10))
+
+local function ensureInstance(parent, className, name)
+    local existing = parent:FindFirstChild(name)
+    if existing and not existing:IsA(className) then
+        existing:Destroy()
+        existing = nil
+    end
+    if existing then
+        return existing
+    end
+
+    local instance = Instance.new(className)
+    instance.Name = name
+    instance.Parent = parent
+    return instance
+end
 
 --------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
@@ -26,17 +43,15 @@ if not remotesFolder then
     remotesFolder.Parent = ReplicatedStorage
 end
 
-local getWeeklyRF = Instance.new("RemoteFunction")
-getWeeklyRF.Name = "GetWeeklyQuests"
-getWeeklyRF.Parent = remotesFolder
+local questsFolder = ensureInstance(remotesFolder, "Folder", "Quests")
 
-local claimWeeklyRF = Instance.new("RemoteFunction")
-claimWeeklyRF.Name = "ClaimWeeklyQuest"
-claimWeeklyRF.Parent = remotesFolder
+local getWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "GetWeeklyQuests")
 
-local weeklyProgressRE = Instance.new("RemoteEvent")
-weeklyProgressRE.Name = "WeeklyQuestProgress"
-weeklyProgressRE.Parent = remotesFolder
+local claimWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "ClaimWeeklyQuest")
+
+local weeklyProgressRE = ensureInstance(questsFolder, "RemoteEvent", "WeeklyQuestProgress")
+
+local rerollWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "RequestRerollWeeklyQuest")
 
 --------------------------------------------------------------------------------
 -- Remote handlers
@@ -48,6 +63,13 @@ end
 claimWeeklyRF.OnServerInvoke = function(player, questIndex)
     if type(questIndex) ~= "number" then return false end
     return WeeklyQuestService:ClaimReward(player, questIndex)
+end
+
+rerollWeeklyRF.OnServerInvoke = function(player, questIndex)
+    if type(questIndex) ~= "number" then
+        return false, "Invalid"
+    end
+    return BoostService:RerollQuest(player, "weekly", questIndex)
 end
 
 --------------------------------------------------------------------------------

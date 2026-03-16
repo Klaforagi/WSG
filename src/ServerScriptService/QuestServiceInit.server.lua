@@ -12,6 +12,23 @@ local ServerScriptService = game:GetService("ServerScriptService")
 -- Require modules
 local QuestService = require(ServerScriptService:WaitForChild("QuestService", 10))
 local StatService  = require(ServerScriptService:WaitForChild("StatService", 10))
+local BoostService = require(ServerScriptService:WaitForChild("BoostService", 10))
+
+local function ensureInstance(parent, className, name)
+    local existing = parent:FindFirstChild(name)
+    if existing and not existing:IsA(className) then
+        existing:Destroy()
+        existing = nil
+    end
+    if existing then
+        return existing
+    end
+
+    local instance = Instance.new(className)
+    instance.Name = name
+    instance.Parent = parent
+    return instance
+end
 
 --------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
@@ -23,20 +40,19 @@ if not remotesFolder then
     remotesFolder.Parent = ReplicatedStorage
 end
 
+local questsFolder = ensureInstance(remotesFolder, "Folder", "Quests")
+
 -- GetQuests: client asks for the full quest list
-local getQuestsRF = Instance.new("RemoteFunction")
-getQuestsRF.Name = "GetQuests"
-getQuestsRF.Parent = remotesFolder
+local getQuestsRF = ensureInstance(questsFolder, "RemoteFunction", "GetQuests")
 
 -- QuestProgress: server pushes live progress updates to client
-local questProgressRE = Instance.new("RemoteEvent")
-questProgressRE.Name = "QuestProgress"
-questProgressRE.Parent = remotesFolder
+local questProgressRE = ensureInstance(questsFolder, "RemoteEvent", "QuestProgress")
 
 -- ClaimQuest: client requests reward claim
-local claimQuestRF = Instance.new("RemoteFunction")
-claimQuestRF.Name = "ClaimQuest"
-claimQuestRF.Parent = remotesFolder
+local claimQuestRF = ensureInstance(questsFolder, "RemoteFunction", "ClaimQuest")
+
+-- RequestRerollDailyQuest: client requests a daily quest reroll (passes quest index)
+local rerollDailyRF = ensureInstance(questsFolder, "RemoteFunction", "RequestRerollDailyQuest")
 
 --------------------------------------------------------------------------------
 -- Remote handlers
@@ -50,6 +66,13 @@ claimQuestRF.OnServerInvoke = function(player, questId)
     return QuestService:ClaimReward(player, questId)
 end
 
+rerollDailyRF.OnServerInvoke = function(player, questIndex)
+    if type(questIndex) ~= "number" then
+        return false, "Invalid"
+    end
+    return BoostService:RerollQuest(player, "daily", questIndex)
+end
+
 --------------------------------------------------------------------------------
 -- Player lifecycle
 --------------------------------------------------------------------------------
@@ -61,9 +84,9 @@ end)
 -- Subscribe to centralized stat events  (replaces ALL legacy hooks)
 --
 -- Mapping:
---   MobKill      → zombie_hunter  daily quest
---   Elimination  → battle_ready   daily quest
---   FlagReturn   → team_defender  daily quest
+--   MobKill      → zombies_eliminated daily quest track
+--   Elimination  → players_eliminated daily quest track
+--   FlagReturn   → flag_returns daily quest track
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
@@ -73,19 +96,19 @@ StatService:OnStatEvent(function(payload)
     if not player or not player:IsA("Player") then return end
 
     if action == Actions.MobKill then
-        QuestService:IncrementQuest(player, "zombie_hunter", 1)
+        QuestService:IncrementByType(player, "zombies_eliminated", 1)
         if StatService.DEBUG then
-            print(string.format("[QuestService] Progressed zombie_hunter for %s via %s", player.Name, action))
+            print(string.format("[QuestService] Progressed daily zombie quests for %s via %s", player.Name, action))
         end
     elseif action == Actions.Elimination then
-        QuestService:IncrementQuest(player, "battle_ready", 1)
+        QuestService:IncrementByType(player, "players_eliminated", 1)
         if StatService.DEBUG then
-            print(string.format("[QuestService] Progressed battle_ready for %s via %s", player.Name, action))
+            print(string.format("[QuestService] Progressed daily player-elimination quests for %s via %s", player.Name, action))
         end
     elseif action == Actions.FlagReturn then
-        QuestService:IncrementQuest(player, "team_defender", 1)
+        QuestService:IncrementByType(player, "flag_returns", 1)
         if StatService.DEBUG then
-            print(string.format("[QuestService] Progressed team_defender for %s via %s", player.Name, action))
+            print(string.format("[QuestService] Progressed daily flag-return quests for %s via %s", player.Name, action))
         end
     end
 end)

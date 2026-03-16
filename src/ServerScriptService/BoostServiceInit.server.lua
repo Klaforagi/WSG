@@ -23,6 +23,22 @@ pcall(function()
     QuestService = require(ServerScriptService:WaitForChild("QuestService", 10))
 end)
 
+local function ensureInstance(parent, className, name)
+    local existing = parent:FindFirstChild(name)
+    if existing and not existing:IsA(className) then
+        existing:Destroy()
+        existing = nil
+    end
+    if existing then
+        return existing
+    end
+
+    local instance = Instance.new(className)
+    instance.Name = name
+    instance.Parent = parent
+    return instance
+end
+
 --------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
 --------------------------------------------------------------------------------
@@ -42,29 +58,16 @@ if not boostFolder then
 end
 
 -- RequestBuyOrUseBoost: client requests purchase/activation of a timed boost
-local buyBoostRF = Instance.new("RemoteFunction")
-buyBoostRF.Name = "RequestBuyOrUseBoost"
-buyBoostRF.Parent = boostFolder
-
--- RequestRerollQuest: client requests a reroll (passes quest index)
-local rerollRF = Instance.new("RemoteFunction")
-rerollRF.Name = "RequestRerollQuest"
-rerollRF.Parent = boostFolder
+local buyBoostRF = ensureInstance(boostFolder, "RemoteFunction", "RequestBuyOrUseBoost")
 
 -- RequestBonusClaim: client requests bonus claim (passes quest id)
-local bonusClaimRF = Instance.new("RemoteFunction")
-bonusClaimRF.Name = "RequestBonusClaim"
-bonusClaimRF.Parent = boostFolder
+local bonusClaimRF = ensureInstance(boostFolder, "RemoteFunction", "RequestBonusClaim")
 
 -- GetBoostStates: client requests current boost states
-local getStatesRF = Instance.new("RemoteFunction")
-getStatesRF.Name = "GetBoostStates"
-getStatesRF.Parent = boostFolder
+local getStatesRF = ensureInstance(boostFolder, "RemoteFunction", "GetBoostStates")
 
 -- BoostStateUpdated: server pushes state changes to client
-local stateUpdatedRE = Instance.new("RemoteEvent")
-stateUpdatedRE.Name = "BoostStateUpdated"
-stateUpdatedRE.Parent = remotesFolder   -- placed at Remotes level for easy access
+local stateUpdatedRE = ensureInstance(remotesFolder, "RemoteEvent", "BoostStateUpdated")
 
 --------------------------------------------------------------------------------
 -- Init BoostService (passes remote references)
@@ -78,11 +81,6 @@ BoostService:Init()
 buyBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
     return BoostService:BuyAndActivate(player, boostId)
-end
-
-rerollRF.OnServerInvoke = function(player, questIndex)
-    if type(questIndex) ~= "number" then return false, "Invalid" end
-    return BoostService:RerollQuest(player, questIndex)
 end
 
 bonusClaimRF.OnServerInvoke = function(player, questId)
@@ -136,6 +134,7 @@ end
 --------------------------------------------------------------------------------
 if QuestService then
     local _originalIncrement = QuestService.IncrementQuest
+    local _originalIncrementByType = QuestService.IncrementByType
 
     function QuestService:IncrementQuest(player, questId, amount)
         amount = tonumber(amount) or 1
@@ -144,7 +143,14 @@ if QuestService then
         _originalIncrement(self, player, questId, boosted)
     end
 
-    print("[BoostServiceInit] QuestService.IncrementQuest wrapped with boost multiplier")
+    function QuestService:IncrementByType(player, trackType, amount)
+        amount = tonumber(amount) or 1
+        local multiplier = BoostService:GetQuestProgressMultiplier(player)
+        local boosted = math.floor(amount * multiplier)
+        _originalIncrementByType(self, player, trackType, boosted)
+    end
+
+    print("[BoostServiceInit] QuestService increment functions wrapped with boost multiplier")
 end
 
 print("[BoostServiceInit] Boost system initialized")

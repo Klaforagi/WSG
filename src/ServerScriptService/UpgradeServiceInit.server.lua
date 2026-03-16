@@ -195,6 +195,7 @@ end
 --------------------------------------------------------------------------------
 if QuestService then
 	local _previousIncrement = QuestService.IncrementQuest
+	local _previousIncrementByType = QuestService.IncrementByType
 
 	function QuestService:IncrementQuest(player, questId, amount)
 		amount = tonumber(amount) or 1
@@ -207,7 +208,17 @@ if QuestService then
 		_previousIncrement(self, player, questId, modified)
 	end
 
-	print("[UpgradeServiceInit] QuestService.IncrementQuest wrapped with upgrade multiplier")
+	function QuestService:IncrementByType(player, trackType, amount)
+		amount = tonumber(amount) or 1
+
+		local questMult = UpgradeService:GetQuestProgressMultiplier(player)
+		local modified = math.floor(amount * questMult)
+		if modified < 1 then modified = 1 end
+
+		_previousIncrementByType(self, player, trackType, modified)
+	end
+
+	print("[UpgradeServiceInit] QuestService increment functions wrapped with upgrade multiplier")
 end
 
 --------------------------------------------------------------------------------

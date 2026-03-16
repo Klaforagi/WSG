@@ -9,7 +9,7 @@
 -- Public API (used by BoostServiceInit.server.lua):
 --   BoostService:Init()
 --   BoostService:BuyAndActivate(player, boostId) -> bool, string
---   BoostService:RerollQuest(player, questIndex) -> bool, string
+--   BoostService:RerollQuest(player, questType, questIndex) -> bool, string, updatedQuests
 --   BoostService:BonusClaim(player, questId) -> bool, string
 --   BoostService:HasActiveBoost(player, boostId) -> bool
 --   BoostService:GetCoinMultiplier(player) -> number
@@ -60,6 +60,18 @@ local function getQuestService()
     return QuestService
 end
 
+local WeeklyQuestService
+local function getWeeklyQuestService()
+    if WeeklyQuestService then return WeeklyQuestService end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("WeeklyQuestService")
+        if mod and mod:IsA("ModuleScript") then
+            WeeklyQuestService = require(mod)
+        end
+    end)
+    return WeeklyQuestService
+end
+
 ----------------------------------------------------------------------------
 -- Module
 ----------------------------------------------------------------------------
@@ -103,6 +115,7 @@ function BoostService:Init()
     getBoostConfig()
     getCurrencyService()
     getQuestService()
+    getWeeklyQuestService()
 
     -- resolve or create the remote event used to push state to clients
     local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
@@ -163,8 +176,8 @@ end
 ----------------------------------------------------------------------------
 -- Reroll Quest
 ----------------------------------------------------------------------------
-function BoostService:RerollQuest(player, questIndex)
-    if not player or type(questIndex) ~= "number" then
+function BoostService:RerollQuest(player, questType, questIndex)
+    if not player or type(questType) ~= "string" or type(questIndex) ~= "number" then
         return false, "Invalid request"
     end
 
@@ -180,11 +193,20 @@ function BoostService:RerollQuest(player, questIndex)
         return false, "Insufficient coins"
     end
 
-    local qs = getQuestService()
-    if not qs then return false, "Quest system unavailable" end
+    local service
+    local quests
+    if questType == "daily" then
+        service = getQuestService()
+        if not service then return false, "Quest system unavailable" end
+        quests = service:GetQuestsForPlayer(player)
+    elseif questType == "weekly" then
+        service = getWeeklyQuestService()
+        if not service then return false, "Weekly quest system unavailable" end
+        quests = service:GetWeeklyQuests(player)
+    else
+        return false, "Invalid quest type"
+    end
 
-    -- Get current quests
-    local quests = qs:GetQuestsForPlayer(player)
     if not quests or questIndex < 1 or questIndex > #quests then
         return false, "Invalid quest index"
     end
@@ -194,17 +216,16 @@ function BoostService:RerollQuest(player, questIndex)
         return false, "Quest already claimed"
     end
 
-    -- Attempt reroll (delegate to QuestService)
-    local success, msg = qs:RerollQuest(player, questIndex)
+    local success, msg, updatedQuests = service:RerollQuest(player, questIndex)
     if not success then
         return false, msg or "Reroll failed"
     end
 
     -- Deduct coins only after successful reroll
     cs:AddCoins(player, -def.PriceCoins)
-    print(("[BoostService] %s rerolled quest index %d"):format(player.Name, questIndex))
+    print(("[BoostService] %s rerolled %s quest index %d"):format(player.Name, questType, questIndex))
 
-    return true, "Quest rerolled"
+    return true, "Quest rerolled", updatedQuests
 end
 
 ----------------------------------------------------------------------------

@@ -2,71 +2,160 @@
 -- QuestService.lua  –  Server-side Daily Quest tracking
 -- ModuleScript in ServerScriptService.
 --
--- Tracks per-player quest progress in memory.  Progress resets each
--- calendar day (UTC).  Rewards are granted through CurrencyService.
+-- Tracks per-player quest progress in memory. Progress resets each
+-- calendar day (UTC). Rewards are granted through CurrencyService.
 --
 -- Public API used by QuestServiceInit.server.lua:
---   QuestService:GetQuestsForPlayer(player)  -> { {id, title, desc, goal, progress, reward, claimed} , ... }
+--   QuestService:GetQuestsForPlayer(player) -> { {id, title, desc, goal, progress, reward, claimed}, ... }
 --   QuestService:IncrementQuest(player, questId, amount)
+--   QuestService:IncrementByType(player, trackType, amount)
 --   QuestService:ClaimReward(player, questId) -> bool success
+--   QuestService:RerollQuest(player, questIndex) -> bool, string, updatedQuests
 --------------------------------------------------------------------------------
 
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local QuestService = {}
 
 --------------------------------------------------------------------------------
--- Quest definitions  (easy to extend – just add another entry)
+-- Quest definitions
 --------------------------------------------------------------------------------
 local QUEST_DEFS = {
     {
-        id       = "zombie_hunter",
-        title    = "Zombie Hunter",
-        desc     = "Defeat 5 Zombies",
-        goal     = 5,
-        reward   = 10,   -- coins
+        id = "zombie_hunter",
+        title = "Zombie Hunter",
+        desc = "Defeat 5 Zombies",
+        goal = 5,
+        reward = 10,
+        trackType = "zombies_eliminated",
     },
     {
-        id       = "battle_ready",
-        title    = "Battle Ready",
-        desc     = "Eliminate 5 Players",
-        goal     = 5,
-        reward   = 15,
+        id = "zombie_slayer",
+        title = "Zombie Slayer",
+        desc = "Defeat 10 Zombies",
+        goal = 10,
+        reward = 18,
+        trackType = "zombies_eliminated",
     },
     {
-        id       = "team_defender",
-        title    = "Team Defender",
-        desc     = "Return the Flag 1 Time",
-        goal     = 1,
-        reward   = 20,
+        id = "battle_ready",
+        title = "Battle Ready",
+        desc = "Eliminate 5 Players",
+        goal = 5,
+        reward = 15,
+        trackType = "players_eliminated",
+    },
+    {
+        id = "headhunter",
+        title = "Headhunter",
+        desc = "Eliminate 8 Players",
+        goal = 8,
+        reward = 22,
+        trackType = "players_eliminated",
+    },
+    {
+        id = "team_defender",
+        title = "Team Defender",
+        desc = "Return the Flag 1 Time",
+        goal = 1,
+        reward = 20,
+        trackType = "flag_returns",
+    },
+    {
+        id = "frontline_guard",
+        title = "Frontline Guard",
+        desc = "Return the Flag 2 Times",
+        goal = 2,
+        reward = 28,
+        trackType = "flag_returns",
     },
 }
 
+local QUEST_DEF_BY_ID = {}
+local QUEST_DEFS_BY_TRACK = {}
+for _, def in ipairs(QUEST_DEFS) do
+    QUEST_DEF_BY_ID[def.id] = def
+    QUEST_DEFS_BY_TRACK[def.trackType] = QUEST_DEFS_BY_TRACK[def.trackType] or {}
+    table.insert(QUEST_DEFS_BY_TRACK[def.trackType], def)
+end
+
+local DEFAULT_TRACK_ORDER = {
+    "zombies_eliminated",
+    "players_eliminated",
+    "flag_returns",
+}
+
 --------------------------------------------------------------------------------
--- Per-player state:  playerData[player] = { day = "2025-01-15", quests = { [questId] = {progress, claimed} } }
+-- Per-player state:
+-- playerData[player] = {
+--     day = "2026-03-16",
+--     questOrder = { "zombie_hunter", "battle_ready", "team_defender" },
+--     quests = { [questId] = { progress, claimed } },
+-- }
 --------------------------------------------------------------------------------
 local playerData = {}
 
 local function todayKey()
-    return os.date("!%Y-%m-%d")   -- UTC date string
+    return os.date("!%Y-%m-%d")
+end
+
+local function shuffleInPlace(items)
+    for i = #items, 2, -1 do
+        local j = math.random(1, i)
+        items[i], items[j] = items[j], items[i]
+    end
+end
+
+local function assignQuestOrder()
+    local order = {}
+    local usedQuestIds = {}
+
+    for _, trackType in ipairs(DEFAULT_TRACK_ORDER) do
+        local pool = QUEST_DEFS_BY_TRACK[trackType]
+        if pool and #pool > 0 then
+            local candidates = table.clone(pool)
+            shuffleInPlace(candidates)
+            for _, def in ipairs(candidates) do
+                if not usedQuestIds[def.id] then
+                    usedQuestIds[def.id] = true
+                    table.insert(order, def.id)
+                    break
+                end
+            end
+        end
+    end
+
+    return order
+end
+
+local function buildQuestState(order)
+    local quests = {}
+    for _, questId in ipairs(order) do
+        quests[questId] = { progress = 0, claimed = false }
+    end
+    return quests
 end
 
 local function ensurePlayerData(player)
     local today = todayKey()
     local pd = playerData[player]
-    if pd and pd.day == today then return pd end
-
-    -- first access today (or new day) → reset progress
-    pd = { day = today, quests = {} }
-    for _, def in ipairs(QUEST_DEFS) do
-        pd.quests[def.id] = { progress = 0, claimed = false }
+    if pd and pd.day == today then
+        return pd
     end
+
+    local order = assignQuestOrder()
+    pd = {
+        day = today,
+        questOrder = order,
+        quests = buildQuestState(order),
+    }
     playerData[player] = pd
     return pd
 end
 
 --------------------------------------------------------------------------------
--- CurrencyService  (loaded lazily so require order doesn't matter)
+-- CurrencyService (loaded lazily so require order doesn't matter)
 --------------------------------------------------------------------------------
 local CurrencyService
 local function getCurrencyService()
@@ -80,75 +169,91 @@ local function getCurrencyService()
     return CurrencyService
 end
 
+local function getQuestRemotesFolder()
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    if not remotes then return nil end
+    return remotes:FindFirstChild("Quests")
+end
+
+local function fireQuestProgress(player, questId, newProgress)
+    local questRemotes = getQuestRemotesFolder()
+    if not questRemotes then return end
+
+    local ev = questRemotes:FindFirstChild("QuestProgress")
+    if ev and ev:IsA("RemoteEvent") then
+        pcall(function()
+            ev:FireClient(player, questId, newProgress)
+        end)
+    end
+end
+
+local function getQuestSnapshot(pd, questId)
+    local def = QUEST_DEF_BY_ID[questId]
+    local state = pd.quests[questId]
+    if not def or not state then return nil end
+
+    return {
+        id = def.id,
+        title = def.title,
+        desc = def.desc,
+        goal = def.goal,
+        progress = math.min(state.progress, def.goal),
+        reward = def.reward,
+        claimed = state.claimed,
+    }
+end
+
 --------------------------------------------------------------------------------
 -- Public API
 --------------------------------------------------------------------------------
 
---- Returns an array of quest snapshots suitable for sending to the client.
 function QuestService:GetQuestsForPlayer(player)
     local pd = ensurePlayerData(player)
     local out = {}
-    for _, def in ipairs(QUEST_DEFS) do
-        local state = pd.quests[def.id]
-        table.insert(out, {
-            id       = def.id,
-            title    = def.title,
-            desc     = def.desc,
-            goal     = def.goal,
-            progress = math.min(state.progress, def.goal),
-            reward   = def.reward,
-            claimed  = state.claimed,
-        })
+
+    for _, questId in ipairs(pd.questOrder) do
+        local snapshot = getQuestSnapshot(pd, questId)
+        if snapshot then
+            table.insert(out, snapshot)
+        end
     end
+
     return out
 end
 
---- Increment a quest's progress by `amount` (default 1).
---- Fires the QuestProgress RemoteEvent if it exists so the client can live-update.
 function QuestService:IncrementQuest(player, questId, amount)
     amount = tonumber(amount) or 1
+
     local pd = ensurePlayerData(player)
     local state = pd.quests[questId]
-    if not state then return end
-    if state.claimed then return end -- already done
+    local def = QUEST_DEF_BY_ID[questId]
+    if not state or not def then return end
+    if state.claimed then return end
 
-    -- find goal
-    local goal = 0
-    for _, def in ipairs(QUEST_DEFS) do
-        if def.id == questId then goal = def.goal break end
-    end
+    state.progress = math.min(state.progress + amount, def.goal)
+    fireQuestProgress(player, questId, state.progress)
+end
 
-    state.progress = math.min(state.progress + amount, goal)
+function QuestService:IncrementByType(player, trackType, amount)
+    amount = tonumber(amount) or 1
 
-    -- fire live update remote (created by init script)
-    local remote = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-    if remote then
-        local ev = remote:FindFirstChild("QuestProgress")
-        if ev and ev:IsA("RemoteEvent") then
-            pcall(function()
-                ev:FireClient(player, questId, state.progress)
-            end)
+    local pd = ensurePlayerData(player)
+    for _, questId in ipairs(pd.questOrder) do
+        local def = QUEST_DEF_BY_ID[questId]
+        if def and def.trackType == trackType then
+            self:IncrementQuest(player, questId, amount)
         end
     end
 end
 
---- Attempt to claim the reward for a completed quest.  Returns true on success.
 function QuestService:ClaimReward(player, questId)
     local pd = ensurePlayerData(player)
     local state = pd.quests[questId]
-    if not state then return false end
+    local def = QUEST_DEF_BY_ID[questId]
+    if not state or not def then return false end
     if state.claimed then return false end
-
-    -- find definition
-    local def
-    for _, d in ipairs(QUEST_DEFS) do
-        if d.id == questId then def = d break end
-    end
-    if not def then return false end
-
     if state.progress < def.goal then return false end
 
-    -- grant reward
     local cs = getCurrencyService()
     if cs and cs.AddCoins then
         cs:AddCoins(player, def.reward, "quest")
@@ -158,53 +263,43 @@ function QuestService:ClaimReward(player, questId)
     return true
 end
 
---------------------------------------------------------------------------------
--- Reroll: replace the quest at `questIndex` with a different template.
--- Returns true/false + message.
---------------------------------------------------------------------------------
 function QuestService:RerollQuest(player, questIndex)
-    local pd = ensurePlayerData(player)
-
-    -- Determine current quest order for this player
-    local currentOrder = {}
-    if pd.questOrder then
-        for i, qid in ipairs(pd.questOrder) do
-            currentOrder[i] = qid
-        end
-    else
-        for i, def in ipairs(QUEST_DEFS) do
-            currentOrder[i] = def.id
-        end
-    end
-
-    if questIndex < 1 or questIndex > #currentOrder then
+    questIndex = tonumber(questIndex)
+    if not questIndex then
         return false, "Invalid quest index"
     end
 
-    local oldId = currentOrder[questIndex]
-    local state = pd.quests[oldId]
-    if state and state.claimed then
+    local pd = ensurePlayerData(player)
+    if questIndex < 1 or questIndex > #pd.questOrder then
+        return false, "Invalid quest index"
+    end
+
+    local oldQuestId = pd.questOrder[questIndex]
+    local oldState = pd.quests[oldQuestId]
+    local oldDef = QUEST_DEF_BY_ID[oldQuestId]
+    if not oldState or not oldDef then
+        return false, "Quest unavailable"
+    end
+    if oldState.claimed then
         return false, "Quest already claimed"
     end
 
-    -- Build set of currently assigned quest ids (so we don't duplicate)
-    local assignedSet = {}
-    for _, qid in ipairs(currentOrder) do
-        assignedSet[qid] = true
+    local assignedIds = {}
+    for _, questId in ipairs(pd.questOrder) do
+        assignedIds[questId] = true
     end
 
-    -- Build alternatives: any QUEST_DEF not currently assigned AND not the old quest
     local alternatives = {}
-    for _, def in ipairs(QUEST_DEFS) do
-        if def.id ~= oldId and not assignedSet[def.id] then
+    local sameTrackPool = QUEST_DEFS_BY_TRACK[oldDef.trackType] or {}
+    for _, def in ipairs(sameTrackPool) do
+        if def.id ~= oldQuestId and not assignedIds[def.id] then
             table.insert(alternatives, def)
         end
     end
 
-    -- If no truly unique alternatives, fall back to any different quest
     if #alternatives == 0 then
         for _, def in ipairs(QUEST_DEFS) do
-            if def.id ~= oldId then
+            if def.id ~= oldQuestId and not assignedIds[def.id] then
                 table.insert(alternatives, def)
             end
         end
@@ -214,74 +309,14 @@ function QuestService:RerollQuest(player, questIndex)
         return false, "No alternative quests available"
     end
 
-    local newDef = alternatives[math.random(#alternatives)]
-
-    -- Swap the quest in player state
-    pd.quests[oldId] = nil
+    local newDef = alternatives[math.random(1, #alternatives)]
+    pd.quests[oldQuestId] = nil
+    pd.questOrder[questIndex] = newDef.id
     pd.quests[newDef.id] = { progress = 0, claimed = false }
 
-    -- Update per-player quest order
-    if not pd.questOrder then
-        pd.questOrder = {}
-        for i, def in ipairs(QUEST_DEFS) do
-            pd.questOrder[i] = def.id
-        end
-    end
-    pd.questOrder[questIndex] = newDef.id
-
-    -- Fire live update to client so UI refreshes
-    local remote = game:GetService("ReplicatedStorage"):FindFirstChild("Remotes")
-    if remote then
-        local ev = remote:FindFirstChild("QuestProgress")
-        if ev and ev:IsA("RemoteEvent") then
-            pcall(function()
-                ev:FireClient(player, "__reroll", 0)
-            end)
-        end
-    end
-
-    return true, "Rerolled"
+    return true, "Quest rerolled", self:GetQuestsForPlayer(player)
 end
 
---------------------------------------------------------------------------------
--- Override GetQuestsForPlayer to respect per-player quest order (after rerolls)
---------------------------------------------------------------------------------
-local _baseGetQuests = QuestService.GetQuestsForPlayer
-
-function QuestService:GetQuestsForPlayer(player)
-    local pd = ensurePlayerData(player)
-    if not pd.questOrder then
-        -- No rerolls happened, use default order
-        return _baseGetQuests(self, player)
-    end
-
-    -- Build quests from per-player order
-    local out = {}
-    local defMap = {}
-    for _, def in ipairs(QUEST_DEFS) do
-        defMap[def.id] = def
-    end
-    for _, qid in ipairs(pd.questOrder) do
-        local def = defMap[qid]
-        if def then
-            local state = pd.quests[qid]
-            if state then
-                table.insert(out, {
-                    id       = def.id,
-                    title    = def.title,
-                    desc     = def.desc,
-                    goal     = def.goal,
-                    progress = math.min(state.progress, def.goal),
-                    reward   = def.reward,
-                    claimed  = state.claimed,
-                })
-            end
-        end
-    end
-    return out
-end
-
---- Cleanup when a player leaves.
 function QuestService:ClearPlayer(player)
     playerData[player] = nil
 end
