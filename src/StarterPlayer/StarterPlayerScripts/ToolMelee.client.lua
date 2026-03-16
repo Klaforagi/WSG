@@ -338,6 +338,56 @@ local function attachMelee(tool)
     if tool:GetAttribute("_meleeConnected") then return end
     tool:SetAttribute("_meleeConnected", true)
 
+    -- detect a Trail named "SwordTrail" inside the tool (if present)
+    local swordTrail = nil
+    local trailRunning = false
+    do
+        local ok, t = pcall(function() return tool:FindFirstChild("SwordTrail", true) end)
+        if ok and t and t:IsA("Trail") then
+            swordTrail = t
+            pcall(function() swordTrail.Enabled = false end)
+        end
+    end
+
+    -- schedule the SwordTrail to be enabled only during a specific swing window
+    -- defaults target the downswing: 0.22s -> 0.36s (relative to swing start)
+    local function triggerSwordTrailWindow(startOffset, endOffset)
+        if not swordTrail then return end
+        if not startOffset then startOffset = 0.22 end
+        if not endOffset then endOffset = 0.36 end
+        if endOffset <= startOffset then
+            -- fallback short pulse
+            startOffset = 0
+            endOffset = math.min(0.28, startOffset + 0.28)
+        end
+
+        local duration = endOffset - startOffset
+        -- configure subtle white/gray transparent trail appearance
+        pcall(function()
+            swordTrail.Color = ColorSequence.new({
+                ColorSequenceKeypoint.new(0, Color3.fromRGB(240,240,240)),
+                ColorSequenceKeypoint.new(1, Color3.fromRGB(190,190,190)),
+            })
+            swordTrail.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.75),
+                NumberSequenceKeypoint.new(1, 0.95),
+            })
+            swordTrail.Lifetime = math.max(0.12, duration)
+            swordTrail.MinLength = 0
+            swordTrail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.0), NumberSequenceKeypoint.new(1, 0.25)})
+            swordTrail.FaceCamera = false
+            swordTrail.LightInfluence = 0
+        end)
+
+        -- schedule enable/disable relative to swing start
+        spawn(function()
+            task.wait(startOffset)
+            pcall(function() swordTrail.Enabled = true end)
+            task.wait(duration)
+            pcall(function() swordTrail.Enabled = false end)
+        end)
+    end
+
     local cfg = getCfg(tool)
     local cooldown = cfg.cd or 0.6
     local lastSwing = 0
@@ -411,6 +461,11 @@ local function attachMelee(tool)
                 end)
             end)
         end
+
+        -- trigger sword trail (downswing window). These defaults are 0.22→0.36s.
+        local startOffset = cfg.trail_start or 0.22
+        local endOffset = cfg.trail_end or 0.36
+        pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
 
         -- tell the server we swung
         local char = player.Character
