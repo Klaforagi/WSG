@@ -36,6 +36,108 @@ local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirect
 
 local ShopUI = {}
 
+local BoostConfig = nil
+local AssetCodes = nil
+local boostRemotes = nil
+
+local function safeRequireBoostConfig()
+    local ok, mod = pcall(function() return ReplicatedStorage:FindFirstChild("BoostConfig") end)
+    if ok and mod and mod:IsA("ModuleScript") then
+        local suc, result = pcall(function() return require(mod) end)
+        if suc and type(result) == "table" then return result end
+    end
+    return nil
+end
+
+local function safeRequireAssetCodes()
+    local ok, mod = pcall(function() return ReplicatedStorage:FindFirstChild("AssetCodes") end)
+    if ok and mod and mod:IsA("ModuleScript") then
+        local suc, result = pcall(function() return require(mod) end)
+        if suc and type(result) == "table" then return result end
+    end
+    return nil
+end
+
+local function getBoostIconImage(def)
+    if type(def) ~= "table" then return nil end
+    if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then
+        return def.IconAssetId
+    end
+    local key = def.IconKey
+    if AssetCodes and type(AssetCodes.Get) == "function" and key then
+        local image = AssetCodes.Get(key)
+        if type(image) == "string" and #image > 0 then
+            return image
+        end
+    end
+    return nil
+end
+
+local function ensureBoostRemotes()
+    if boostRemotes then return boostRemotes end
+
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 10)
+    if not remotesFolder then return nil end
+
+    local boostFolder = remotesFolder:FindFirstChild("Boosts") or remotesFolder:WaitForChild("Boosts", 5)
+    if not boostFolder then return nil end
+
+    local purchaseRF = boostFolder:FindFirstChild("PurchaseBoost") or boostFolder:FindFirstChild("RequestBuyOrUseBoost")
+    local getStatesRF = boostFolder:FindFirstChild("GetBoostStates")
+    local stateUpdatedRE = remotesFolder:FindFirstChild("BoostStateUpdated")
+    if not purchaseRF or not getStatesRF or not stateUpdatedRE then
+        return nil
+    end
+
+    boostRemotes = {
+        purchase = purchaseRF,
+        getStates = getStatesRF,
+        stateUpdated = stateUpdatedRE,
+    }
+    return boostRemotes
+end
+
+local function showToast(parent, message, color, duration)
+    local toast = Instance.new("TextLabel")
+    toast.Name = "Toast"
+    toast.BackgroundColor3 = Color3.fromRGB(18, 20, 36)
+    toast.BackgroundTransparency = 0.08
+    toast.Size = UDim2.new(0.85, 0, 0, px(40))
+    toast.AnchorPoint = Vector2.new(0.5, 0)
+    toast.Position = UDim2.new(0.5, 0, 0, px(6))
+    toast.Font = Enum.Font.GothamBold
+    toast.TextSize = math.max(13, math.floor(px(14)))
+    toast.TextColor3 = color or GOLD
+    toast.Text = message
+    toast.TextWrapped = true
+    toast.ZIndex = 400
+    toast.Parent = parent
+
+    local cr = Instance.new("UICorner")
+    cr.CornerRadius = UDim.new(0, px(10))
+    cr.Parent = toast
+
+    local st = Instance.new("UIStroke")
+    st.Color = color or GOLD
+    st.Thickness = 1.2
+    st.Transparency = 0.35
+    st.Parent = toast
+
+    toast.BackgroundTransparency = 1
+    toast.TextTransparency = 1
+    TweenService:Create(toast, TweenInfo.new(0.2), {BackgroundTransparency = 0.15, TextTransparency = 0}):Play()
+
+    task.delay(duration or 2.2, function()
+        if toast and toast.Parent then
+            local tween = TweenService:Create(toast, TweenInfo.new(0.25), {BackgroundTransparency = 1, TextTransparency = 1})
+            tween:Play()
+            tween.Completed:Connect(function()
+                pcall(function() toast:Destroy() end)
+            end)
+        end
+    end)
+end
+
 -- Helper: create a titled section with an inner grid for item cards
 local function makeSection(parent, sectionId, label)
     local section = Instance.new("Frame")
@@ -109,26 +211,22 @@ local function makeSection(parent, sectionId, label)
     return section, grid
 end
 
-local function safeRequireAssetCodes()
-    local ok, mod = pcall(function() return ReplicatedStorage:FindFirstChild("AssetCodes") end)
-    if ok and mod and mod:IsA("ModuleScript") then
-        local suc, t = pcall(function() return require(mod) end)
-        if suc and type(t) == "table" then return t end
-    end
-    return nil
-end
-
-local AssetCodes = safeRequireAssetCodes()
+-- NOTE: safeRequireAssetCodes is already defined above (line ~52).
+-- A duplicate declaration + `local AssetCodes = ...` here previously
+-- shadowed the module-level AssetCodes that getBoostIconImage captures,
+-- causing boost icons to always fall back to glyphs in Shop.
+-- Removed to keep a single AssetCodes variable for the whole module.
 
 --------------------------------------------------------------------------------
 -- Tab definitions (mirrors DailyQuestsUI TAB_DEFS pattern)
 --------------------------------------------------------------------------------
 local TAB_DEFS = {
     { id = "weapons", icon = "\u{2694}", label = "Weapons", order = 1 },
-    { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 2 },
-    { id = "trails",  icon = "\u{2727}", label = "Trails",  order = 3 },
-    { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 4 },
-    { id = "effects", icon = "\u{2738}", label = "Effects", order = 5 },
+    { id = "boosts",  icon = "\u{26A1}", label = "Boosts",  order = 2 },
+    { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 3 },
+    { id = "trails",  icon = "\u{2727}", label = "Trails",  order = 4 },
+    { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 5 },
+    { id = "effects", icon = "\u{2738}", label = "Effects", order = 6 },
 }
 
 local function makeItem(gridParent, id, displayName, price, iconKey, coinApi, inventoryApi, category)
@@ -432,6 +530,19 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
     -- Ensure we have AssetCodes cached (safe)
     AssetCodes = AssetCodes or safeRequireAssetCodes()
+    BoostConfig = BoostConfig or safeRequireBoostConfig()
+    AssetCodes = AssetCodes or safeRequireAssetCodes()
+
+    local cleanupConnections = {}
+    local function trackConn(conn)
+        table.insert(cleanupConnections, conn)
+    end
+    local function cleanup()
+        for _, conn in ipairs(cleanupConnections) do
+            pcall(function() conn:Disconnect() end)
+        end
+        table.clear(cleanupConnections)
+    end
 
     ---------------------------------------------------------------------------
     -- Layout constants (sidebar dimensions matching DailyQuestsUI)
@@ -671,6 +782,353 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     contentPages["weapons"] = weaponsPage
 
     ---------------------------------------------------------------------------
+    -- BOOSTS content page (purchase adds to owned inventory only)
+    ---------------------------------------------------------------------------
+    local boostsPage = Instance.new("Frame")
+    boostsPage.Name = "BoostsContent"
+    boostsPage.BackgroundTransparency = 1
+    boostsPage.Size = UDim2.new(1, 0, 0, 0)
+    boostsPage.AutomaticSize = Enum.AutomaticSize.Y
+    boostsPage.Visible = false
+    boostsPage.Parent = contentContainer
+
+    local boostsLayout = Instance.new("UIListLayout")
+    boostsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    boostsLayout.Padding = UDim.new(0, px(12))
+    boostsLayout.Parent = boostsPage
+
+    local boostsPad = Instance.new("UIPadding")
+    boostsPad.PaddingTop = UDim.new(0, px(6))
+    boostsPad.PaddingBottom = UDim.new(0, px(12))
+    boostsPad.PaddingLeft = UDim.new(0, px(8))
+    boostsPad.PaddingRight = UDim.new(0, px(8))
+    boostsPad.Parent = boostsPage
+
+    local boostsHeader = Instance.new("Frame")
+    boostsHeader.Name = "BoostsHeader"
+    boostsHeader.BackgroundTransparency = 1
+    boostsHeader.Size = UDim2.new(1, 0, 0, px(54))
+    boostsHeader.LayoutOrder = 1
+    boostsHeader.Parent = boostsPage
+
+    local boostsTitle = Instance.new("TextLabel")
+    boostsTitle.BackgroundTransparency = 1
+    boostsTitle.Font = Enum.Font.GothamBold
+    boostsTitle.Text = "BOOSTS"
+    boostsTitle.TextColor3 = GOLD
+    boostsTitle.TextSize = math.max(20, math.floor(px(24)))
+    boostsTitle.TextXAlignment = Enum.TextXAlignment.Left
+    boostsTitle.Size = UDim2.new(1, 0, 0, px(30))
+    boostsTitle.Parent = boostsHeader
+
+    local boostsSubtitle = Instance.new("TextLabel")
+    boostsSubtitle.BackgroundTransparency = 1
+    boostsSubtitle.Font = Enum.Font.GothamMedium
+    boostsSubtitle.Text = "Buy boosts here, then activate them later from Inventory > Boosts."
+    boostsSubtitle.TextColor3 = DIM_TEXT
+    boostsSubtitle.TextSize = math.max(11, math.floor(px(12)))
+    boostsSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+    boostsSubtitle.Size = UDim2.new(1, 0, 0, px(16))
+    boostsSubtitle.Position = UDim2.new(0, 0, 0, px(30))
+    boostsSubtitle.Parent = boostsHeader
+
+    local boostsAccent = Instance.new("Frame")
+    boostsAccent.BackgroundColor3 = GOLD
+    boostsAccent.BackgroundTransparency = 0.3
+    boostsAccent.BorderSizePixel = 0
+    boostsAccent.Size = UDim2.new(1, 0, 0, px(2))
+    boostsAccent.Position = UDim2.new(0, 0, 1, -px(2))
+    boostsAccent.Parent = boostsHeader
+
+    local helperNote = Instance.new("TextLabel")
+    helperNote.BackgroundTransparency = 1
+    helperNote.Font = Enum.Font.GothamMedium
+    helperNote.Text = "Purchases add to your inventory only. Active effects still use the existing timer system."
+    helperNote.TextColor3 = DIM_TEXT
+    helperNote.TextSize = math.max(10, math.floor(px(11)))
+    helperNote.TextXAlignment = Enum.TextXAlignment.Left
+    helperNote.Size = UDim2.new(1, 0, 0, px(14))
+    helperNote.LayoutOrder = 2
+    helperNote.Parent = boostsPage
+
+    local boostStates = {}
+    local boostCards = {}
+    local shopBoostDefs = {}
+
+    if BoostConfig and BoostConfig.Boosts then
+        for _, def in ipairs(BoostConfig.Boosts) do
+            if not def.InstantUse then
+                table.insert(shopBoostDefs, def)
+            end
+        end
+        table.sort(shopBoostDefs, function(a, b)
+            return (a.SortOrder or 0) < (b.SortOrder or 0)
+        end)
+    end
+
+    local remotes = ensureBoostRemotes()
+    if remotes and remotes.getStates then
+        pcall(function()
+            local states = remotes.getStates:InvokeServer()
+            if type(states) == "table" then
+                boostStates = states
+            end
+        end)
+    end
+
+    local function formatDuration(seconds)
+        seconds = math.max(0, math.floor(tonumber(seconds) or 0))
+        local mins = math.floor(seconds / 60)
+        if mins > 0 then
+            return string.format("%d min", mins)
+        end
+        return string.format("%d sec", seconds)
+    end
+
+    local function refreshBoostCards(states)
+        if type(states) == "table" then
+            boostStates = states
+        end
+        for _, def in ipairs(shopBoostDefs) do
+            local refs = boostCards[def.Id]
+            local state = boostStates[def.Id] or {}
+            if refs then
+                local owned = math.max(0, math.floor(tonumber(state.owned) or 0))
+                refs.owned.Text = string.format("Owned: %d", owned)
+                refs.status.Text = state.active and "Active now" or "Inactive"
+                refs.status.TextColor3 = state.active and GREEN_GLOW or DIM_TEXT
+            end
+        end
+    end
+
+    if #shopBoostDefs == 0 or not remotes then
+        local unavailable = Instance.new("TextLabel")
+        unavailable.BackgroundTransparency = 1
+        unavailable.Font = Enum.Font.GothamMedium
+        unavailable.Text = "Boost purchases are currently unavailable."
+        unavailable.TextColor3 = DIM_TEXT
+        unavailable.TextSize = math.max(14, math.floor(px(15)))
+        unavailable.Size = UDim2.new(1, 0, 0, px(50))
+        unavailable.LayoutOrder = 10
+        unavailable.Parent = boostsPage
+    else
+        for index, def in ipairs(shopBoostDefs) do
+            local card = Instance.new("Frame")
+            card.Name = "Boost_" .. def.Id
+            card.BackgroundColor3 = CARD_BG
+            card.Size = UDim2.new(1, 0, 0, px(122))
+            card.LayoutOrder = 10 + index
+            card.Parent = boostsPage
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, px(12))
+            corner.Parent = card
+
+            local stroke = Instance.new("UIStroke")
+            stroke.Color = CARD_STROKE
+            stroke.Thickness = 1.2
+            stroke.Transparency = 0.35
+            stroke.Parent = card
+
+            local pad = Instance.new("UIPadding")
+            pad.PaddingTop = UDim.new(0, px(12))
+            pad.PaddingBottom = UDim.new(0, px(12))
+            pad.PaddingLeft = UDim.new(0, px(14))
+            pad.PaddingRight = UDim.new(0, px(14))
+            pad.Parent = card
+
+            local iconColor = GOLD
+            if type(def.IconColor) == "table" and #def.IconColor >= 3 then
+                iconColor = Color3.fromRGB(def.IconColor[1], def.IconColor[2], def.IconColor[3])
+            end
+
+            local iconFrame = Instance.new("Frame")
+            iconFrame.Name = "BoostIcon"
+            iconFrame.Size = UDim2.new(0, px(60), 0, px(60))
+            iconFrame.Position = UDim2.new(0, 0, 0.5, 0)
+            iconFrame.AnchorPoint = Vector2.new(0, 0.5)
+            iconFrame.BackgroundColor3 = iconColor
+            iconFrame.BorderSizePixel = 0
+            iconFrame.Parent = card
+
+            local iconCorner = Instance.new("UICorner")
+            iconCorner.CornerRadius = UDim.new(0, px(8))
+            iconCorner.Parent = iconFrame
+
+            local iconStroke = Instance.new("UIStroke")
+            iconStroke.Color = WHITE
+            iconStroke.Thickness = 1.2
+            iconStroke.Transparency = 0.75
+            iconStroke.Parent = iconFrame
+
+            local iconImage = Instance.new("ImageLabel")
+            iconImage.Name = "BoostIconImage"
+            iconImage.BackgroundTransparency = 1
+            iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+            iconImage.Size = UDim2.new(0.72, 0, 0.72, 0)
+            iconImage.ScaleType = Enum.ScaleType.Fit
+            iconImage.Image = getBoostIconImage(def) or ""
+            iconImage.Visible = iconImage.Image ~= ""
+            iconImage.Parent = iconFrame
+
+            -- [BoostIconDebug] Verify icon asset matches between Shop and Inventory
+            print(string.format("[BoostIconDebug][Shop] %s -> %s  (visible=%s)",
+                tostring(def.Id), tostring(iconImage.Image), tostring(iconImage.Visible)))
+
+            local iconGlyph = Instance.new("TextLabel")
+            iconGlyph.Name = "BoostIconGlyph"
+            iconGlyph.BackgroundTransparency = 1
+            iconGlyph.Size = UDim2.new(1, 0, 1, 0)
+            iconGlyph.Font = Enum.Font.GothamBold
+            iconGlyph.Text = def.IconGlyph or "?"
+            iconGlyph.TextSize = math.max(16, math.floor(px(33)))
+            iconGlyph.TextColor3 = WHITE
+            iconGlyph.Visible = not iconImage.Visible
+            iconGlyph.Parent = iconFrame
+
+            local title = Instance.new("TextLabel")
+            title.BackgroundTransparency = 1
+            title.Font = Enum.Font.GothamBold
+            title.Text = def.DisplayName
+            title.TextColor3 = WHITE
+            title.TextSize = math.max(16, math.floor(px(18)))
+            title.TextXAlignment = Enum.TextXAlignment.Left
+            title.Size = UDim2.new(0.58, -px(74), 0, px(24))
+            title.Position = UDim2.new(0, px(74), 0, 0)
+            title.Parent = card
+
+            local desc = Instance.new("TextLabel")
+            desc.BackgroundTransparency = 1
+            desc.Font = Enum.Font.GothamMedium
+            desc.Text = def.Description
+            desc.TextColor3 = DIM_TEXT
+            desc.TextSize = math.max(11, math.floor(px(12)))
+            desc.TextWrapped = true
+            desc.TextXAlignment = Enum.TextXAlignment.Left
+            desc.TextYAlignment = Enum.TextYAlignment.Top
+            desc.Size = UDim2.new(0.58, -px(74), 0, px(42))
+            desc.Position = UDim2.new(0, px(74), 0, px(28))
+            desc.Parent = card
+
+            local price = Instance.new("TextLabel")
+            price.BackgroundTransparency = 1
+            price.Font = Enum.Font.GothamBold
+            price.Text = string.format("Cost: %d Coins", def.PriceCoins or 0)
+            price.TextColor3 = GOLD
+            price.TextSize = math.max(12, math.floor(px(13)))
+            price.TextXAlignment = Enum.TextXAlignment.Left
+            price.Size = UDim2.new(0.45, -px(74), 0, px(18))
+            price.Position = UDim2.new(0, px(74), 1, -px(22))
+            price.Parent = card
+
+            local duration = Instance.new("TextLabel")
+            duration.BackgroundTransparency = 1
+            duration.Font = Enum.Font.GothamMedium
+            duration.Text = string.format("Duration: %s", formatDuration(def.DurationSeconds))
+            duration.TextColor3 = DIM_TEXT
+            duration.TextSize = math.max(10, math.floor(px(11)))
+            duration.TextXAlignment = Enum.TextXAlignment.Left
+            duration.Size = UDim2.new(0.45, -px(74), 0, px(16))
+            duration.Position = UDim2.new(0, px(74), 1, -px(40))
+            duration.Parent = card
+
+            local owned = Instance.new("TextLabel")
+            owned.BackgroundTransparency = 1
+            owned.Font = Enum.Font.GothamBold
+            owned.Text = "Owned: 0"
+            owned.TextColor3 = WHITE
+            owned.TextSize = math.max(11, math.floor(px(12)))
+            owned.TextXAlignment = Enum.TextXAlignment.Right
+            owned.Size = UDim2.new(0.34, 0, 0, px(18))
+            owned.Position = UDim2.new(0.66, 0, 0, px(12))
+            owned.Parent = card
+
+            local status = Instance.new("TextLabel")
+            status.BackgroundTransparency = 1
+            status.Font = Enum.Font.GothamMedium
+            status.Text = "Inactive"
+            status.TextColor3 = DIM_TEXT
+            status.TextSize = math.max(10, math.floor(px(11)))
+            status.TextXAlignment = Enum.TextXAlignment.Right
+            status.Size = UDim2.new(0.34, 0, 0, px(16))
+            status.Position = UDim2.new(0.66, 0, 0, px(34))
+            status.Parent = card
+
+            local buyBtn = Instance.new("TextButton")
+            buyBtn.Name = "BuyBtn"
+            buyBtn.AutoButtonColor = false
+            buyBtn.BackgroundColor3 = BTN_BUY
+            buyBtn.Font = Enum.Font.GothamBold
+            buyBtn.Text = "BUY"
+            buyBtn.TextColor3 = WHITE
+            buyBtn.TextSize = math.max(12, math.floor(px(13)))
+            buyBtn.Size = UDim2.new(0, px(120), 0, px(36))
+            buyBtn.AnchorPoint = Vector2.new(1, 1)
+            buyBtn.Position = UDim2.new(1, 0, 1, 0)
+            buyBtn.Parent = card
+
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, px(10))
+            btnCorner.Parent = buyBtn
+
+            local btnStroke = Instance.new("UIStroke")
+            btnStroke.Color = BTN_STROKE_C
+            btnStroke.Thickness = 1.3
+            btnStroke.Transparency = 0.25
+            btnStroke.Parent = buyBtn
+
+            buyBtn.MouseEnter:Connect(function()
+                TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+            end)
+            buyBtn.MouseLeave:Connect(function()
+                TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BUY}):Play()
+            end)
+
+            buyBtn.MouseButton1Click:Connect(function()
+                local ok, success, message, states = pcall(function()
+                    return remotes.purchase:InvokeServer(def.Id)
+                end)
+                if ok and success then
+                    refreshBoostCards(states)
+                    pcall(function()
+                        if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                    end)
+                    buyBtn.Text = "BOUGHT"
+                    showToast(boostsPage, (message or "Purchased") .. " - stored in Inventory > Boosts.", GREEN_GLOW, 2.4)
+                    task.delay(0.9, function()
+                        if buyBtn and buyBtn.Parent then
+                            buyBtn.Text = "BUY"
+                        end
+                    end)
+                else
+                    local reason = ok and message or "Purchase failed"
+                    buyBtn.Text = "ERROR"
+                    showToast(boostsPage, tostring(reason), RED_TEXT, 2.4)
+                    task.delay(0.9, function()
+                        if buyBtn and buyBtn.Parent then
+                            buyBtn.Text = "BUY"
+                        end
+                    end)
+                end
+            end)
+
+            boostCards[def.Id] = {
+                owned = owned,
+                status = status,
+            }
+        end
+
+        refreshBoostCards(boostStates)
+
+        trackConn(remotes.stateUpdated.OnClientEvent:Connect(function(states)
+            refreshBoostCards(states)
+        end))
+    end
+
+    contentPages["boosts"] = boostsPage
+
+    ---------------------------------------------------------------------------
     -- Placeholder content pages (Skins, Trails, Emotes, Effects)
     ---------------------------------------------------------------------------
     local function makePlaceholderPage(name, tabId, placeholderIcon, message)
@@ -764,6 +1222,12 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     end
     contentContainer:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootHeight)
     task.defer(updateRootHeight)
+
+    root.AncestryChanged:Connect(function(_, newParent)
+        if not newParent then
+            cleanup()
+        end
+    end)
 
     return root
 end

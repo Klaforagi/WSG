@@ -8,18 +8,30 @@
 --
 -- Public API (used by BoostServiceInit.server.lua):
 --   BoostService:Init()
---   BoostService:BuyAndActivate(player, boostId) -> bool, string
+--   BoostService:PurchaseOwnedBoost(player, boostId) -> bool, string, states
+--   BoostService:ActivateOwnedBoost(player, boostId) -> bool, string, states
+--   BoostService:BuyAndActivate(player, boostId) -> bool, string, states  -- legacy alias
 --   BoostService:RerollQuest(player, questType, questIndex) -> bool, string, updatedQuests
 --   BoostService:BonusClaim(player, questId) -> bool, string
 --   BoostService:HasActiveBoost(player, boostId) -> bool
 --   BoostService:GetCoinMultiplier(player) -> number
 --   BoostService:GetQuestProgressMultiplier(player) -> number
---   BoostService:GetPlayerBoostStates(player) -> { [boostId] = { active, expiresAt } }
+--   BoostService:GetPlayerBoostStates(player) -> { [boostId] = { active, expiresAt, owned } }
+--   BoostService:LoadForPlayer(player) -> bool
+--   BoostService:SaveForPlayer(player) -> bool
 --   BoostService:ClearPlayer(player)
 --------------------------------------------------------------------------------
 
+local DataStoreService    = game:GetService("DataStoreService")
+local Players             = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
+
+local DATASTORE_NAME = "Boosts_v2"
+local RETRIES = 3
+local RETRY_DELAY = 0.5
+
+local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 
 ----------------------------------------------------------------------------
 -- Lazy-require dependencies so load order doesn't matter
@@ -79,17 +91,122 @@ local BoostService = {}
 
 -- Per-player state.
 -- playerBoosts[player] = {
---     timed = { [boostId] = { expiresAt = os.time() + duration } },
---     bonusClaimed = { [questId] = true },   -- tracks which quests received a bonus
+--     inventory = { [boostId] = ownedCount },
+--     active = { [boostId] = { expiresAt = os.time() + duration } },
+--     bonusClaimed = { [questId] = true },
 -- }
 local playerBoosts = {}
 
+local function getKey(player)
+    return "User_" .. tostring(player.UserId)
+end
+
+local function makeEmptyState()
+    local state = {
+        inventory = {},
+        active = {},
+        bonusClaimed = {},
+    }
+
+    local config = getBoostConfig()
+    if config and config.Boosts then
+        for _, def in ipairs(config.Boosts) do
+            if not def.InstantUse then
+                state.inventory[def.Id] = 0
+                state.active[def.Id] = { expiresAt = 0 }
+            end
+        end
+    end
+
+    return state
+end
+
+local function normalizePlayerState(raw)
+    local state = makeEmptyState()
+    raw = type(raw) == "table" and raw or {}
+
+    if type(raw.inventory) == "table" then
+        for boostId, count in pairs(raw.inventory) do
+            state.inventory[boostId] = math.max(0, math.floor(tonumber(count) or 0))
+        end
+    end
+
+    if type(raw.active) == "table" then
+        for boostId, entry in pairs(raw.active) do
+            local expiresAt = 0
+            if type(entry) == "table" then
+                expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
+            end
+            state.active[boostId] = { expiresAt = expiresAt }
+        end
+    elseif type(raw.timed) == "table" then
+        for boostId, entry in pairs(raw.timed) do
+            local expiresAt = 0
+            if type(entry) == "table" then
+                expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
+            end
+            state.active[boostId] = { expiresAt = expiresAt }
+        end
+    end
+
+    if type(raw.bonusClaimed) == "table" then
+        for questId, claimed in pairs(raw.bonusClaimed) do
+            if claimed then
+                state.bonusClaimed[questId] = true
+            end
+        end
+    end
+
+    return state
+end
+
+local function clearExpiredBoosts(player)
+    local pd = playerBoosts[player]
+    if not pd then return end
+
+    local now = os.time()
+    for boostId, entry in pairs(pd.active) do
+        if type(entry) ~= "table" or (entry.expiresAt or 0) <= now then
+            pd.active[boostId] = { expiresAt = 0 }
+        end
+    end
+end
+
+local function serializePlayerState(pd)
+    local payload = {
+        inventory = {},
+        active = {},
+        bonusClaimed = {},
+    }
+
+    local now = os.time()
+
+    for boostId, count in pairs(pd.inventory) do
+        payload.inventory[boostId] = math.max(0, math.floor(tonumber(count) or 0))
+    end
+
+    for boostId, entry in pairs(pd.active) do
+        local expiresAt = 0
+        if type(entry) == "table" then
+            expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
+        end
+        if expiresAt > now then
+            payload.active[boostId] = { expiresAt = expiresAt }
+        end
+    end
+
+    for questId, claimed in pairs(pd.bonusClaimed) do
+        if claimed then
+            payload.bonusClaimed[questId] = true
+        end
+    end
+
+    return payload
+end
+
 local function ensurePlayerData(player)
     if not playerBoosts[player] then
-        playerBoosts[player] = {
-            timed = {},
-            bonusClaimed = {},
-        }
+        playerBoosts[player] = makeEmptyState()
     end
     return playerBoosts[player]
 end
@@ -125,9 +242,69 @@ function BoostService:Init()
 end
 
 ----------------------------------------------------------------------------
--- Buy & Activate (timed boosts)
+-- Persistence helpers
 ----------------------------------------------------------------------------
-function BoostService:BuyAndActivate(player, boostId)
+function BoostService:LoadForPlayer(player)
+    if not player then return false end
+
+    local key = getKey(player)
+    local success, result
+    for i = 1, RETRIES do
+        success, result = pcall(function()
+            return ds:GetAsync(key)
+        end)
+        if success then break end
+        warn("[BoostService] GetAsync failed (attempt", i, "):", tostring(result))
+        task.wait(RETRY_DELAY * i)
+    end
+
+    if success then
+        playerBoosts[player] = normalizePlayerState(result)
+    else
+        warn("[BoostService] Failed to load boost data for", player.Name, "- using defaults")
+        playerBoosts[player] = makeEmptyState()
+    end
+
+    clearExpiredBoosts(player)
+    pushBoostState(player)
+    return success
+end
+
+function BoostService:SaveForPlayer(player)
+    local pd = playerBoosts[player]
+    if not player or not pd then return false end
+
+    clearExpiredBoosts(player)
+
+    local key = getKey(player)
+    local payload = serializePlayerState(pd)
+    local success, err
+    for i = 1, RETRIES do
+        success, err = pcall(function()
+            ds:SetAsync(key, payload)
+        end)
+        if success then break end
+        warn("[BoostService] SetAsync failed (attempt", i, "):", tostring(err))
+        task.wait(RETRY_DELAY * i)
+    end
+
+    if not success then
+        warn("[BoostService] Failed to save boost data for", player.Name)
+    end
+
+    return success
+end
+
+function BoostService:SaveAll()
+    for _, player in ipairs(Players:GetPlayers()) do
+        self:SaveForPlayer(player)
+    end
+end
+
+----------------------------------------------------------------------------
+-- Purchase / activation
+----------------------------------------------------------------------------
+function BoostService:PurchaseOwnedBoost(player, boostId)
     if not player or type(boostId) ~= "string" then
         return false, "Invalid request"
     end
@@ -137,22 +314,12 @@ function BoostService:BuyAndActivate(player, boostId)
     local def = config.GetById(boostId)
     if not def then return false, "Unknown boost" end
 
-    -- Instant-use boosts are not purchased through this path
     if def.InstantUse then
         return false, "Use the dedicated action for this boost"
     end
 
     local pd = ensurePlayerData(player)
 
-    -- Non-stackable: reject if already active
-    if not def.Stackable then
-        local existing = pd.timed[boostId]
-        if existing and existing.expiresAt > os.time() then
-            return false, "Already active"
-        end
-    end
-
-    -- Check coins
     local cs = getCurrencyService()
     if not cs then return false, "Currency system unavailable" end
 
@@ -161,16 +328,54 @@ function BoostService:BuyAndActivate(player, boostId)
         return false, "Insufficient coins"
     end
 
-    -- Deduct coins
     cs:AddCoins(player, -def.PriceCoins)
 
-    -- Activate
-    pd.timed[boostId] = { expiresAt = os.time() + def.DurationSeconds }
-    print(("[BoostService] %s activated '%s' (expires in %ds)"):format(
-        player.Name, boostId, def.DurationSeconds))
+    pd.inventory[boostId] = math.max(0, math.floor(tonumber(pd.inventory[boostId]) or 0)) + 1
+    print(("[BoostService] %s purchased '%s' (owned=%d)"):format(
+        player.Name, boostId, pd.inventory[boostId]))
 
     pushBoostState(player)
-    return true, "Activated"
+    return true, "Purchased", self:GetPlayerBoostStates(player)
+end
+
+function BoostService:ActivateOwnedBoost(player, boostId)
+    if not player or type(boostId) ~= "string" then
+        return false, "Invalid request"
+    end
+
+    local config = getBoostConfig()
+    if not config then return false, "Config unavailable" end
+    local def = config.GetById(boostId)
+    if not def then return false, "Unknown boost" end
+    if def.InstantUse then
+        return false, "Use the dedicated action for this boost"
+    end
+
+    local pd = ensurePlayerData(player)
+    clearExpiredBoosts(player)
+
+    local owned = math.max(0, math.floor(tonumber(pd.inventory[boostId]) or 0))
+    if owned < 1 then
+        return false, "Not owned", self:GetPlayerBoostStates(player)
+    end
+
+    local activeEntry = pd.active[boostId]
+    if not def.Stackable and activeEntry and (activeEntry.expiresAt or 0) > os.time() then
+        return false, "Already active", self:GetPlayerBoostStates(player)
+    end
+
+    pd.inventory[boostId] = owned - 1
+    pd.active[boostId] = { expiresAt = os.time() + def.DurationSeconds }
+
+    print(("[BoostService] %s activated '%s' from inventory (remaining=%d)"):format(
+        player.Name, boostId, pd.inventory[boostId]))
+
+    pushBoostState(player)
+    return true, "Activated", self:GetPlayerBoostStates(player)
+end
+
+function BoostService:BuyAndActivate(player, boostId)
+    return self:PurchaseOwnedBoost(player, boostId)
 end
 
 ----------------------------------------------------------------------------
@@ -290,15 +495,12 @@ end
 ----------------------------------------------------------------------------
 
 function BoostService:HasActiveBoost(player, boostId)
+    clearExpiredBoosts(player)
     local pd = playerBoosts[player]
     if not pd then return false end
-    local entry = pd.timed[boostId]
+    local entry = pd.active[boostId]
     if not entry then return false end
-    if entry.expiresAt <= os.time() then
-        pd.timed[boostId] = nil
-        return false
-    end
-    return true
+    return (entry.expiresAt or 0) > os.time()
 end
 
 function BoostService:GetCoinMultiplier(player)
@@ -320,7 +522,8 @@ end
 --- Returns a table of boost states for the client UI.
 --- { [boostId] = { active = bool, expiresAt = number, bonusClaimed = { [questId]=true } } }
 function BoostService:GetPlayerBoostStates(player)
-    local pd = playerBoosts[player]
+    local pd = ensurePlayerData(player)
+    clearExpiredBoosts(player)
     local states = {}
     local config = getBoostConfig()
     if not config then return states end
@@ -330,25 +533,21 @@ function BoostService:GetPlayerBoostStates(player)
         local entry = {
             active = false,
             expiresAt = 0,
+            owned = 0,
         }
-        if pd then
-            local timed = pd.timed[def.Id]
-            if timed and timed.expiresAt > now then
+        if not def.InstantUse then
+            entry.owned = math.max(0, math.floor(tonumber(pd.inventory[def.Id]) or 0))
+            local active = pd.active[def.Id]
+            if active and (active.expiresAt or 0) > now then
                 entry.active = true
-                entry.expiresAt = timed.expiresAt
+                entry.expiresAt = active.expiresAt
             end
         end
         states[def.Id] = entry
     end
 
-    -- Attach bonus claimed set so client can grey out quests
-    if pd then
-        states._bonusClaimed = pd.bonusClaimed
-    else
-        states._bonusClaimed = {}
-    end
+    states._bonusClaimed = pd.bonusClaimed
 
-    -- Include server time so client can compute remaining seconds accurately
     states._serverTime = now
 
     return states

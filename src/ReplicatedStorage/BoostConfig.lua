@@ -24,6 +24,9 @@ BoostConfig.Boosts = {
         Stackable     = false,
         InstantUse    = false,
         Multiplier    = 2,       -- coin multiplier while active
+        IconKey       = "Coin",
+        IconGlyph     = "\u{1F4B0}",
+        IconColor     = {255, 200, 40},
         IconAssetId   = "",      -- placeholder; set a Roblox decal id later
         SortOrder     = 1,
         -- TODO: Add PriceRobux field when Robux purchases are implemented
@@ -38,6 +41,9 @@ BoostConfig.Boosts = {
         Stackable     = false,
         InstantUse    = false,
         Multiplier    = 2,
+        IconKey       = "Boosts",
+        IconGlyph     = "\u{26A1}",
+        IconColor     = {100, 180, 255},
         IconAssetId   = "",
         SortOrder     = 2,
     },

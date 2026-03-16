@@ -57,8 +57,14 @@ if not boostFolder then
     boostFolder.Parent = remotesFolder
 end
 
--- RequestBuyOrUseBoost: client requests purchase/activation of a timed boost
+-- Legacy purchase alias kept for compatibility with older clients.
 local buyBoostRF = ensureInstance(boostFolder, "RemoteFunction", "RequestBuyOrUseBoost")
+
+-- Primary purchase remote for Shop > Boosts.
+local purchaseBoostRF = ensureInstance(boostFolder, "RemoteFunction", "PurchaseBoost")
+
+-- Activation remote for Inventory > Boosts.
+local activateBoostRF = ensureInstance(boostFolder, "RemoteFunction", "ActivateInventoryBoost")
 
 -- RequestBonusClaim: client requests bonus claim (passes quest id)
 local bonusClaimRF = ensureInstance(boostFolder, "RemoteFunction", "RequestBonusClaim")
@@ -80,7 +86,17 @@ BoostService:Init()
 
 buyBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
-    return BoostService:BuyAndActivate(player, boostId)
+    return BoostService:PurchaseOwnedBoost(player, boostId)
+end
+
+purchaseBoostRF.OnServerInvoke = function(player, boostId)
+    if type(boostId) ~= "string" then return false, "Invalid" end
+    return BoostService:PurchaseOwnedBoost(player, boostId)
+end
+
+activateBoostRF.OnServerInvoke = function(player, boostId)
+    if type(boostId) ~= "string" then return false, "Invalid" end
+    return BoostService:ActivateOwnedBoost(player, boostId)
 end
 
 bonusClaimRF.OnServerInvoke = function(player, questId)
@@ -96,7 +112,22 @@ end
 -- Player lifecycle
 --------------------------------------------------------------------------------
 Players.PlayerRemoving:Connect(function(player)
+    BoostService:SaveForPlayer(player)
     BoostService:ClearPlayer(player)
+end)
+
+Players.PlayerAdded:Connect(function(player)
+    BoostService:LoadForPlayer(player)
+end)
+
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(function()
+        BoostService:LoadForPlayer(player)
+    end)
+end
+
+game:BindToClose(function()
+    BoostService:SaveAll()
 end)
 
 --------------------------------------------------------------------------------
