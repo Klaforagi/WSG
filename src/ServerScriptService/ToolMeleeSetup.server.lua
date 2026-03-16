@@ -342,6 +342,26 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
     local cd        = cfg.cd or 0.5
     local knockback = cfg.knockback or 0
 
+    -- Server-side SwordTrail: enable only during the downswing window.
+    -- Trail visual props are already set by sanitizeTool in Loadout; we just toggle.
+    do
+        local ok, trail = pcall(function() return tool:FindFirstChild("SwordTrail", true) end)
+        if ok and trail and trail:IsA("Trail") then
+            -- Always make sure it's off before scheduling the window
+            pcall(function() trail.Enabled = false end)
+            local startDelay = cfg.trail_start or 0.22
+            local endTime    = cfg.trail_end   or 0.36
+            if endTime <= startDelay then endTime = startDelay + 0.14 end
+            local activeDur = math.max(0.01, endTime - startDelay)
+            task.spawn(function()
+                task.wait(startDelay)
+                pcall(function() trail.Enabled = true end)
+                task.wait(activeDur)
+                pcall(function() trail.Enabled = false end)
+            end)
+        end
+    end
+
     -- rate limit (small tolerance so network jitter doesn't silently drop held swings)
     -- Snaps lastSwing to the cadence beat (last + cd) rather than wall-clock
     -- receipt time, preventing cumulative drift at any cooldown value.
