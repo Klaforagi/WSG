@@ -6,6 +6,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 print("[SideUI] initializing for", player and player.Name)
@@ -123,10 +124,7 @@ end
 local MENU_DEFS = {
     { id = "Missions", label = "QUESTS", iconKey = "Quests" },
     { id = "Upgrade", label = "UPGRADE", iconKey = "Upgrade" },
-    { id = "Boosts", label = "BOOSTS", iconKey = "Boosts" },
-    { id = "Trolls", label = "TROLLS", iconKey = "Trolls" },
     { id = "Team", label = "TEAM", iconKey = "Team" },
-    { id = "Options", label = "OPTIONS", iconKey = "Options" },
 }
 
 -- Internal state tables to expose
@@ -213,7 +211,17 @@ local function makeTopHalfButton(label, iconKey, layoutOrder)
     local btn = makeTextButtonBase(label)
     btn.Name = label .. "Button"
     btn.LayoutOrder = layoutOrder or 1
-    btn.ClipsDescendants = false
+    btn.ClipsDescendants = true
+
+    local labelTextScale = 1
+    local labelWidthScale = 0.92
+    if label == "SHOP" then
+        labelTextScale = 1.0
+        labelWidthScale = 0.92
+    elseif label == "INVENTORY" then
+        labelTextScale = 0.90
+        labelWidthScale = 0.92
+    end
 
     local function calcBtnHeight()
         local screenY = 720
@@ -232,9 +240,9 @@ local function makeTopHalfButton(label, iconKey, layoutOrder)
         icon.Name = label .. "Icon"
         local function updateIconSize()
             local h = btn.AbsoluteSize.Y > 0 and btn.AbsoluteSize.Y or btnH
-            local s = math.max(50, math.floor(h * 1.4))
+            local s = math.max(28, math.floor(h * 0.78))
             icon.Size = UDim2.new(0, s, 0, s)
-            icon.Position = UDim2.new(0.5, 0, 0.35, 0)
+            icon.Position = UDim2.new(0.5, 0, 0.44, 0)
             icon.AnchorPoint = Vector2.new(0.5, 0.5)
         end
         updateIconSize()
@@ -250,14 +258,15 @@ local function makeTopHalfButton(label, iconKey, layoutOrder)
         local overlay = Instance.new("TextLabel")
         overlay.Name = label .. "OverlayLabel"
         overlay.BackgroundTransparency = 1
-        overlay.Size = UDim2.new(0.9, 0, 0, math.max(12, math.floor(btnH * 0.28)))
-        overlay.Position = UDim2.new(0.5, 0, 1, -px(2))
+        overlay.Size = UDim2.new(labelWidthScale, 0, 0, math.max(12, math.floor(btnH * 0.32)))
+        overlay.Position = UDim2.new(0.5, 0, 1, -px(5))
         overlay.AnchorPoint = Vector2.new(0.5, 1)
         overlay.Font = Enum.Font.GothamBold
         overlay.Text = label
         overlay.TextColor3 = COLORS.gold
-        overlay.TextSize = math.max(14, math.floor(btnH * 0.78 * deviceTextScale))
+        overlay.TextSize = math.max(11, math.floor(btnH * 0.55 * deviceTextScale * labelTextScale))
         overlay.TextScaled = false
+        overlay.TextWrapped = false
         overlay.TextXAlignment = Enum.TextXAlignment.Center
         overlay.TextYAlignment = Enum.TextYAlignment.Center
         overlay.ZIndex = 2
@@ -268,7 +277,7 @@ local function makeTopHalfButton(label, iconKey, layoutOrder)
         btn.Text = label
         btn.TextXAlignment = Enum.TextXAlignment.Center
         btn.TextScaled = false
-        btn.TextSize = math.max(14, math.floor(btnH * 0.78 * deviceTextScale))
+        btn.TextSize = math.max(11, math.floor(btnH * 0.55 * deviceTextScale * labelTextScale))
         btn.TextColor3 = COLORS.gold
         btn.TextStrokeColor3 = COLORS.brown
         btn.TextStrokeTransparency = 0
@@ -380,7 +389,6 @@ local function CreateMenuGrid(parent)
     gridContainer.Name = "MenuGridContainer"
     gridContainer.LayoutOrder = 3
     gridContainer.Size = UDim2.new(1, 0, 0, 0)
-    gridContainer.AutomaticSize = Enum.AutomaticSize.Y
     gridContainer.BackgroundTransparency = 1
     gridContainer.Parent = parent
 
@@ -401,6 +409,12 @@ local function CreateMenuGrid(parent)
     padding.PaddingRight = UDim.new(0, 0)
     padding.Parent = gridContainer
 
+    local function updateContainerHeight()
+        local contentHeight = grid.AbsoluteContentSize.Y
+        local paddedHeight = contentHeight + padding.PaddingTop.Offset + padding.PaddingBottom.Offset
+        gridContainer.Size = UDim2.new(1, 0, 0, paddedHeight)
+    end
+
     -- Prefer sizing cells to match the Shop button width so 3 columns always fit.
     -- Use the ShopInventoryRow (or fallback to grid container width) for cell sizing
     local shopInvRow = parent:FindFirstChild("ShopInventoryRow")
@@ -418,6 +432,7 @@ local function CreateMenuGrid(parent)
         if sourceW <= 0 then return end
         local cellW = math.max(20, math.floor((sourceW - (cellPad * (cols - 1))) / cols))
         grid.CellSize = UDim2.new(0, cellW, 0, cellW)
+        updateContainerHeight()
     end
 
     if shopInvRow then
@@ -427,6 +442,7 @@ local function CreateMenuGrid(parent)
     if gridContainer.Parent then
         gridContainer.Parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize)
     end
+    grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateContainerHeight)
     task.defer(updateCellSize)
 
     return gridContainer
@@ -544,6 +560,155 @@ local function CreateMenuButton(def)
     end)
 
     return btn, badge
+end
+
+-- Create a compact, top-right utility button for opening Options.
+local function CreateHudOptionsButton(onActivated)
+    local existingHudGui = playerGui:FindFirstChild("OptionsHudGui")
+    if existingHudGui then
+        existingHudGui:Destroy()
+    end
+
+    local hudGui = Instance.new("ScreenGui")
+    hudGui.Name = "OptionsHudGui"
+    hudGui.ResetOnSpawn = false
+    hudGui.IgnoreGuiInset = true
+    hudGui.DisplayOrder = 305
+    hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    hudGui.Parent = playerGui
+
+    local container = Instance.new("Frame")
+    container.Name = "HudControls"
+    container.AnchorPoint = Vector2.new(1, 0)
+    container.BackgroundTransparency = 1
+    container.Parent = hudGui
+
+    local button = Instance.new("ImageButton")
+    button.Name = "OptionsButton"
+    button.AnchorPoint = Vector2.new(0.5, 0.5)
+    button.Position = UDim2.fromScale(0.5, 0.5)
+    button.Size = UDim2.fromScale(1, 1)
+    button.BackgroundColor3 = Color3.fromRGB(20, 24, 34)
+    button.BackgroundTransparency = 0.3
+    button.AutoButtonColor = false
+    button.Active = true
+    button.BorderSizePixel = 0
+    button.Image = ""
+    button.ZIndex = 305
+    button.Parent = container
+
+    local buttonCorner = Instance.new("UICorner")
+    buttonCorner.CornerRadius = UDim.new(0, px(9))
+    buttonCorner.Parent = button
+
+    local buttonStroke = Instance.new("UIStroke")
+    buttonStroke.Color = Color3.fromRGB(255, 255, 255)
+    buttonStroke.Thickness = 1
+    buttonStroke.Transparency = 0.84
+    buttonStroke.Parent = button
+
+    local buttonScale = Instance.new("UIScale")
+    buttonScale.Parent = button
+
+    local icon = Instance.new("ImageLabel")
+    icon.Name = "Icon"
+    icon.AnchorPoint = Vector2.new(0.5, 0.5)
+    icon.Position = UDim2.fromScale(0.5, 0.5)
+    icon.Size = UDim2.fromScale(0.58, 0.58)
+    icon.BackgroundTransparency = 1
+    icon.Image = (AssetCodes and type(AssetCodes.Get) == "function" and AssetCodes.Get("Options")) or ""
+    icon.ImageColor3 = Color3.fromRGB(242, 245, 250)
+    icon.ScaleType = Enum.ScaleType.Fit
+    icon.ZIndex = 306
+    icon.Parent = button
+
+    local idleBgTransparency = 0.3
+    local hoverBgTransparency = 0.18
+    local pressedBgTransparency = 0.08
+    local idleIconColor = Color3.fromRGB(232, 236, 244)
+    local activeIconColor = Color3.fromRGB(255, 255, 255)
+    local isHovering = false
+
+    local function tweenButtonVisuals(backgroundTransparency, imageColor, scaleValue)
+        tweenInstance(button, { BackgroundTransparency = backgroundTransparency }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(icon, { ImageColor3 = imageColor }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(buttonScale, { Scale = scaleValue }, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end
+
+    local function updateLayout()
+        local buttonSize = UserInputService.TouchEnabled
+            and math.clamp(px(40), 38, 46)
+            or math.clamp(px(34), 32, 38)
+
+        container.Size = UDim2.new(0, buttonSize, 0, buttonSize)
+        container.Position = UDim2.new(1, -px(12), 0, px(10))
+        buttonCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
+    end
+
+    local cameraViewportConn
+    local cameraChangedConn
+
+    local function bindViewportListener()
+        if cameraViewportConn then
+            cameraViewportConn:Disconnect()
+            cameraViewportConn = nil
+        end
+
+        local camera = workspace.CurrentCamera
+        if camera then
+            cameraViewportConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateLayout)
+        end
+    end
+
+    cameraChangedConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        bindViewportListener()
+        task.defer(updateLayout)
+    end)
+
+    button.MouseEnter:Connect(function()
+        isHovering = true
+        tweenButtonVisuals(hoverBgTransparency, activeIconColor, 1)
+    end)
+
+    button.MouseLeave:Connect(function()
+        isHovering = false
+        tweenButtonVisuals(idleBgTransparency, idleIconColor, 1)
+    end)
+
+    button.MouseButton1Down:Connect(function()
+        tweenButtonVisuals(pressedBgTransparency, activeIconColor, 0.94)
+    end)
+
+    button.MouseButton1Up:Connect(function()
+        if isHovering then
+            tweenButtonVisuals(hoverBgTransparency, activeIconColor, 1)
+        else
+            tweenButtonVisuals(idleBgTransparency, idleIconColor, 1)
+        end
+    end)
+
+    button.Activated:Connect(function()
+        if type(onActivated) == "function" then
+            onActivated()
+        end
+    end)
+
+    hudGui.Destroying:Connect(function()
+        if cameraViewportConn then
+            cameraViewportConn:Disconnect()
+            cameraViewportConn = nil
+        end
+        if cameraChangedConn then
+            cameraChangedConn:Disconnect()
+            cameraChangedConn = nil
+        end
+    end)
+
+    bindViewportListener()
+    tweenButtonVisuals(idleBgTransparency, idleIconColor, 1)
+    task.defer(updateLayout)
+
+    return hudGui, button
 end
 
 -- Build UI (create ScreenGui if script not already parented to one)
@@ -951,6 +1116,13 @@ invBtn.MouseButton1Click:Connect(function()
     requestShowModule(invModule, "INVENTORY")
 end)
 
+-- Options HUD button (must be placed AFTER requestShowModule is defined)
+local function toggleOptionsMenu()
+    requestShowModule(optionsModule, "OPTIONS")
+end
+
+local optionsHudGui, optionsHudButton = CreateHudOptionsButton(toggleOptionsMenu)
+
 -- Coin row from CoinDisplay module (auto-wires to server remotes)
 local coinRow
 if CoinDisplayModule and CoinDisplayModule.Create then
@@ -1286,9 +1458,9 @@ end
 local menuGridContainer = CreateMenuGrid(panel)
 
 -- populate menu buttons from definitions
-for _, def in ipairs(MENU_DEFS) do
+for index, def in ipairs(MENU_DEFS) do
     local btn, badge = CreateMenuButton(def)
-    btn.LayoutOrder = #buttonsById + 1
+    btn.LayoutOrder = index
     btn.Parent = menuGridContainer
     buttonsById[def.id] = btn
     badgesById[def.id] = badge
@@ -1310,15 +1482,11 @@ end
 
 local function OpenPage(id)
     if id == "Options" then
-        requestShowModule(optionsModule, "OPTIONS")
+        toggleOptionsMenu()
         return
     end
     if id == "Missions" then
         requestShowModule(questsModule, "DAILY QUESTS")
-        return
-    end
-    if id == "Boosts" then
-        requestShowModule(boostsModule, "BOOSTS")
         return
     end
     if id == "Upgrade" then
@@ -1341,6 +1509,7 @@ _G.SideUI = _G.SideUI or {}
 _G.SideUI.SetCoins = SetCoins
 _G.SideUI.SetBadge = SetBadge
 _G.SideUI.OpenPage = OpenPage
+_G.SideUI.OpenOptions = toggleOptionsMenu
 _G.SideUI.SetTitle = function(text) titleLabel.Text = text end
 
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
