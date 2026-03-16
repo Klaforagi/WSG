@@ -37,6 +37,12 @@ local MatchStart  = ensureRemote("MatchStart")
 local MatchEnd    = ensureRemote("MatchEnd")
 local AdjustMatchTime = ensureRemote("AdjustMatchTime")
 
+-- Centralized stat service (single source of truth for all stats & events)
+local StatService
+pcall(function()
+    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
+end)
+
 ---------------------------------------------------------------------
 -- Bindable event  (server script → GameManager)
 ---------------------------------------------------------------------
@@ -130,18 +136,26 @@ function endMatch(winnerTeam)
         if ResetFlags then
             pcall(function() ResetFlags:Fire() end)
         end
-        -- Reset per-match player stats
-        for _, pl in ipairs(Players:GetPlayers()) do
-            if pl and pl.SetAttribute then
+
+        -- Fire match completion events through StatService BEFORE resetting stats
+        if StatService then
+            for _, pl in ipairs(Players:GetPlayers()) do
                 pcall(function()
-                    pl:SetAttribute("PlayerKills", 0)
-                    pl:SetAttribute("Score", 0)
-                    pl:SetAttribute("Eliminations", 0)
-                    pl:SetAttribute("Deaths", 0)
-                    pl:SetAttribute("FlagCaptures", 0)
-                    pl:SetAttribute("FlagReturns", 0)
+                    StatService:RegisterMatchPlayed(pl)
+                    if winnerTeam and pl.Team and pl.Team.Name == winnerTeam then
+                        StatService:RegisterMatchWon(pl)
+                    end
                 end)
             end
+        end
+
+        -- Reset per-match player stats via StatService (single source of truth)
+        for _, pl in ipairs(Players:GetPlayers()) do
+            pcall(function()
+                if StatService then
+                    StatService:ResetMatchStats(pl)
+                end
+            end)
         end
 
         -- reset scores

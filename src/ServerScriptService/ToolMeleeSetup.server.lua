@@ -27,6 +27,12 @@ pcall(function()
     end
 end)
 
+-- Centralized stat/event tracking (single source of truth for quests/achievements/scoreboard)
+local StatService
+pcall(function()
+    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
+end)
+
 -- Melee settings module
 local MeleeCfg
 if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
@@ -103,6 +109,22 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         local victimName = (victimModel and victimModel.Name) or "Unknown"
         local vp = Players:GetPlayerFromCharacter(victimModel)
         if vp then victimName = vp.Name end
+
+        -- Route kill through centralized StatService (feeds quests/achievements/scoreboard)
+        if StatService then
+            if vp then
+                StatService:RegisterElimination(player, vp)
+                if StatService.DEBUG then
+                    print(string.format("[ToolMeleeSetup] PvP elimination: %s killed %s → StatService", player.Name, victimName))
+                end
+            else
+                StatService:RegisterMobKill(player, victimName)
+                if StatService.DEBUG then
+                    print(string.format("[ToolMeleeSetup] Zombie elimination: %s killed %s → StatService", player.Name, victimName))
+                end
+            end
+        end
+
         if player.Name ~= victimName then
             -- Award coins: +5 PvP, +1 mob. Capture boosted return value for popup.
             local coinAward = 0
@@ -355,6 +377,23 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
         lastSwing[player][toolName] = now
     end
 
+    -- slow the player by 50% for the duration of the swing cooldown
+    do
+        -- allow per-weapon config to control how much speed is retained while
+        -- swinging. `slow_factor` is multiplier applied to WalkSpeed (0.75 = 75%).
+        local slowFactor = 0.75
+        if cfg.slow_factor and type(cfg.slow_factor) == "number" then
+            slowFactor = math.clamp(cfg.slow_factor, 0.1, 1)
+        end
+        local originalSpeed = hum.WalkSpeed
+        hum.WalkSpeed = originalSpeed * slowFactor
+        task.delay(cd, function()
+            if hum and hum.Parent and hum.Health > 0 then
+                hum.WalkSpeed = originalSpeed
+            end
+        end)
+    end
+
     -- use the server-side look direction (from HRP) for safety, blended with the client's
     -- to prevent spoofing while still feeling responsive
     local serverLook = hrp.CFrame.LookVector
@@ -383,17 +422,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
             end)
         end
 
-        -- play swing animation on the server humanoid
-        -- 1) try a custom Animation inside the tool
+        -- play swing animation on the server humanoid (module config only)
         local animObj = nil
-        if tool then
-            for _, d in ipairs(tool:GetDescendants()) do
-                if d:IsA("Animation") and tostring(d.Name):lower():find("swing") then
-                    animObj = d
-                    break
-                end
-            end
-        end
         -- Resolve animation id: cycle through swing_anim_ids if available
         local resolvedAnimId = nil
         if cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids > 0 then
@@ -425,34 +455,6 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
             animObj = a
         end
 
-        -- fallback: if no Animation object found yet, try to locate an
-        -- Animation instance placed under ServerStorage.Animations or
-        -- ReplicatedStorage.Animations (useful for authored Animation objects)
-        if not animObj then
-            local function findInFolder(folder)
-                if not folder then return nil end
-                -- if cfg.swing_anim_id is a name, try exact match first
-                if cfg.swing_anim_id and type(cfg.swing_anim_id) == "string" then
-                    local try = folder:FindFirstChild(cfg.swing_anim_id)
-                    if try and try:IsA("Animation") then return try end
-                end
-                -- otherwise, return the first animation with 'swing' in its name
-                for _, child in ipairs(folder:GetChildren()) do
-                    if child:IsA("Animation") and tostring(child.Name):lower():find("swing") then
-                        return child
-                    end
-                end
-                return nil
-            end
-
-            local ss = game:GetService("ServerStorage")
-            local found = findInFolder(ss:FindFirstChild("Animations")) or findInFolder(ReplicatedStorage:FindFirstChild("Animations"))
-            if found and found:IsA("Animation") then
-                -- clone so we don't accidentally reparent the original
-                animObj = found:Clone()
-                -- if cloned animation has no AnimationId but original did, keep name for debug
-            end
-        end
         -- find the right-arm Motor6D so we can restore it after animation/tween
         local motor = nil
         do

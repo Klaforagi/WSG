@@ -21,6 +21,12 @@ pcall(function()
     end
 end)
 
+-- Centralized stat/event tracking (single source of truth for quests/achievements/scoreboard)
+local StatService
+pcall(function()
+    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
+end)
+
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
@@ -245,6 +251,22 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
         local victimName = (victimModel and victimModel.Name) or "Unknown"
         local vp = Players:GetPlayerFromCharacter(victimModel)
         if vp then victimName = vp.Name end
+
+            -- Route kill through centralized StatService (feeds quests/achievements/scoreboard)
+            if StatService then
+                if vp then
+                    StatService:RegisterElimination(player, vp)
+                    if StatService.DEBUG then
+                        print(string.format("[ToolGunSetup] PvP elimination: %s killed %s → StatService", player.Name, victimName))
+                    end
+                else
+                    StatService:RegisterMobKill(player, victimName)
+                    if StatService.DEBUG then
+                        print(string.format("[ToolGunSetup] Zombie elimination: %s killed %s → StatService", player.Name, victimName))
+                    end
+                end
+            end
+
             if player.Name ~= victimName then
                 -- determine coin award for this kill and award it before firing the feed
                 local coinAward = 0

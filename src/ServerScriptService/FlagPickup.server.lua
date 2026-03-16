@@ -14,6 +14,12 @@ pcall(function()
 	end
 end)
 
+-- Centralized stat service (single source of truth for all stats & events)
+local StatService
+pcall(function()
+	StatService = require(game:GetService("ServerScriptService"):WaitForChild("StatService", 10))
+end)
+
 -- RemoteEvent for flag status announcements
 local FlagStatus = Instance.new("RemoteEvent")
 FlagStatus.Name = "FlagStatus"
@@ -311,14 +317,10 @@ function setupFlagModel(model)
                     pcall(function() CurrencyService:AddCoins(pl, 5, "objective") end)
                 end
 
-                -- Fire server-side event so quest system can track the return
-                pcall(function() FlagReturned:Fire(pl) end)
-
-                -- Per-player match stats
-                local prevReturns = pl:GetAttribute("FlagReturns") or 0
-                pl:SetAttribute("FlagReturns", prevReturns + 1)
-                local prevScoreR = pl:GetAttribute("Score") or 0
-                pl:SetAttribute("Score", prevScoreR + 20)
+                -- Centralized stat tracking (updates attributes, fires events for quests/achievements)
+                if StatService then
+                    StatService:RegisterFlagReturn(pl)
+                end
             end
             return
         end
@@ -629,12 +631,10 @@ local function setupStand(standPart)
             pcall(function() CurrencyService:AddCoins(pl, 10, "objective") end)
         end
 
-        -- Per-player match stats
-        local prevCaps = pl:GetAttribute("FlagCaptures") or 0
-        pl:SetAttribute("FlagCaptures", prevCaps + 1)
-        local prevScoreC = pl:GetAttribute("Score") or 0
-        pl:SetAttribute("Score", prevScoreC + 100)
-        pcall(function() FlagCaptured:Fire(pl) end)
+        -- Centralized stat tracking (updates attributes, fires events for quests/achievements)
+        if StatService then
+            StatService:RegisterFlagCapture(pl)
+        end
 
         -- announce capture to clients
         local playerTeamName = capturingTeamName
