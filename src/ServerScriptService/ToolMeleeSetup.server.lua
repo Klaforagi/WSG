@@ -317,6 +317,7 @@ end
 -- Rate limiting
 ---------------------------------------------------------------------------
 local lastSwing = {} -- [player] = { [toolName] = tick() }
+local slowState = {} -- [player] = { count = n, base = number, factors = {..} }
 
 ---------------------------------------------------------------------------
 -- Handle incoming swing
@@ -355,6 +356,61 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
         lastSwing[player][toolName] = now
     end
 
+    -- apply a stacked, robust slowdown that ensures WalkSpeed is restored
+    do
+        local slowFactor = 0.75
+        if cfg.slow_factor and type(cfg.slow_factor) == "number" then
+            slowFactor = math.clamp(cfg.slow_factor, 0.1, 1)
+        end
+        local slowDuration = math.max((cd or 0) * 0.95, 0.01)
+
+        -- initialize per-player slow state
+        if not slowState[player] then
+            slowState[player] = { count = 0, base = nil, factors = {} }
+        end
+        local st = slowState[player]
+        if st.count == 0 then
+            st.base = hum and hum.WalkSpeed or 16
+        end
+        st.count = st.count + 1
+        table.insert(st.factors, slowFactor)
+
+        -- apply the most restrictive factor (lowest multiplier)
+        local minFactor = 1
+        for _, f in ipairs(st.factors) do minFactor = math.min(minFactor, f) end
+        if hum and hum.Parent then
+            pcall(function() hum.WalkSpeed = math.max((st.base or 16) * minFactor, 0.1) end)
+        end
+
+        -- schedule restore for this slow instance
+        task.delay(slowDuration, function()
+            local s = slowState[player]
+            if not s then return end
+            s.count = math.max(s.count - 1, 0)
+            -- remove one occurrence of this factor (first match)
+            for i, v in ipairs(s.factors) do
+                if v == slowFactor then
+                    table.remove(s.factors, i)
+                    break
+                end
+            end
+            if s.count <= 0 then
+                -- restore base speed
+                if s.base and hum and hum.Parent then
+                    pcall(function() hum.WalkSpeed = s.base end)
+                end
+                slowState[player] = nil
+            else
+                -- reapply the most restrictive remaining factor
+                local mf = 1
+                for _, f in ipairs(s.factors) do mf = math.min(mf, f) end
+                if hum and hum.Parent then
+                    pcall(function() hum.WalkSpeed = math.max((s.base or 16) * mf, 0.1) end)
+                end
+            end
+        end)
+    end
+
     -- use the server-side look direction (from HRP) for safety, blended with the client's
     -- to prevent spoofing while still feeling responsive
     local serverLook = hrp.CFrame.LookVector
@@ -383,17 +439,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
             end)
         end
 
-        -- play swing animation on the server humanoid
-        -- 1) try a custom Animation inside the tool
+        -- play swing animation on the server humanoid (module config only)
         local animObj = nil
-        if tool then
-            for _, d in ipairs(tool:GetDescendants()) do
-                if d:IsA("Animation") and tostring(d.Name):lower():find("swing") then
-                    animObj = d
-                    break
-                end
-            end
-        end
         -- Resolve animation id: cycle through swing_anim_ids if available
         local resolvedAnimId = nil
         if cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids > 0 then
@@ -425,34 +472,6 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
             animObj = a
         end
 
-        -- fallback: if no Animation object found yet, try to locate an
-        -- Animation instance placed under ServerStorage.Animations or
-        -- ReplicatedStorage.Animations (useful for authored Animation objects)
-        if not animObj then
-            local function findInFolder(folder)
-                if not folder then return nil end
-                -- if cfg.swing_anim_id is a name, try exact match first
-                if cfg.swing_anim_id and type(cfg.swing_anim_id) == "string" then
-                    local try = folder:FindFirstChild(cfg.swing_anim_id)
-                    if try and try:IsA("Animation") then return try end
-                end
-                -- otherwise, return the first animation with 'swing' in its name
-                for _, child in ipairs(folder:GetChildren()) do
-                    if child:IsA("Animation") and tostring(child.Name):lower():find("swing") then
-                        return child
-                    end
-                end
-                return nil
-            end
-
-            local ss = game:GetService("ServerStorage")
-            local found = findInFolder(ss:FindFirstChild("Animations")) or findInFolder(ReplicatedStorage:FindFirstChild("Animations"))
-            if found and found:IsA("Animation") then
-                -- clone so we don't accidentally reparent the original
-                animObj = found:Clone()
-                -- if cloned animation has no AnimationId but original did, keep name for debug
-            end
-        end
         -- find the right-arm Motor6D so we can restore it after animation/tween
         local motor = nil
         do
@@ -666,6 +685,18 @@ end)
 -- clean up on leave
 Players.PlayerRemoving:Connect(function(player)
     lastSwing[player] = nil
+    if slowState[player] then
+        -- attempt to restore WalkSpeed if possible
+        local st = slowState[player]
+        local char = player.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum and st.base then
+                pcall(function() hum.WalkSpeed = st.base end)
+            end
+        end
+        slowState[player] = nil
+    end
 end)
 
 print("[ToolMeleeSetup] server ready")

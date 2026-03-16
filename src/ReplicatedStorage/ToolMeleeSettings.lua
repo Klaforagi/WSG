@@ -7,17 +7,17 @@ local presets = {
         damage          = 15,
         cd              = 0.6,   -- seconds between swings
         knockback       = 15,    -- impulse applied to the victim
-        hitboxDelay     = 0.4,   -- seconds before hitbox becomes active (animation sync)
+        hitboxDelay     = 0.27,   -- seconds before hitbox becomes active (animation sync)
         hitboxActive    = 0.1,   -- seconds the hitbox remains active
-        showHitbox      = true, -- debug: show hitbox locally when swinging
+        showHitbox      = false, -- debug: show hitbox locally when swinging
         hitboxColor     = Color3.fromRGB(255, 100, 50),
-        hitboxSize      = Vector3.new(2, 10, 4),
-        hitboxOffset    = Vector3.new(1, 1, 3.5),
-        swing_anim_id   = "140064000206332",    -- fallback: single anim (used if swing_anim_ids is empty)
+        hitboxSize      = Vector3.new(4, 10, 4),
+        hitboxOffset    = Vector3.new(1, 0, 3.5),
+        swing_anim_id   = "135263926933355",    -- fallback: single anim (used if swing_anim_ids is empty)
         swing_anim_ids  = {                      -- ordered cycle: plays 1 → 2 → 3 → 1 …
-            "140064000206332",  -- swing 1  (replace with your asset ids)
-            "",                 -- swing 2  (fill in)
-            "",                 -- swing 3  (fill in)
+            "135263926933355",  -- swing 1  (replace with your asset ids)
+            "84391444206704",                 -- swing 2  (fill in)
+            "138752532534641 ",                -- swing 3  (fill in)
         },
         swing_sound     = "SwordSwing",    -- key in ReplicatedStorage.Sounds.ToolMelee
         hit_sound       = "SwordHit",
@@ -33,7 +33,11 @@ local presets = {
         hitboxSize      = Vector3.new(2, 3, 2),
         hitboxOffset    = Vector3.new(1, 1, 3.5),
         swing_anim_id   = "91239654979526",
-        swing_anim_ids  = { "", "", "" },  -- ordered cycle (fill in asset ids)
+        swing_anim_ids  = {
+            "135263926933355",
+            "84391444206704",
+            "138752532534641",
+        },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -48,7 +52,11 @@ local presets = {
         hitboxSize      = Vector3.new(2, 8, 4),
         hitboxOffset    = Vector3.new(1, 0, 3.5),
         swing_anim_id   = "",
-        swing_anim_ids  = { "", "", "" },  -- ordered cycle (fill in asset ids)
+        swing_anim_ids  = {
+            "135263926933355",
+            "84391444206704",
+            "138752532534641",
+        },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -63,7 +71,11 @@ local presets = {
         hitboxSize      = Vector3.new(2, 2, 8),
         hitboxOffset    = Vector3.new(1, 1, 3.5),
         swing_anim_id   = "",
-        swing_anim_ids  = { "", "", "" },  -- ordered cycle (fill in asset ids)
+        swing_anim_ids  = {
+            "135263926933355",
+            "84391444206704",
+            "138752532534641",
+        },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },

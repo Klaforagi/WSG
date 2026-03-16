@@ -17,11 +17,7 @@ if not (TEMPLATE_IS_MODEL or TEMPLATE_IS_PART) then
 	return
 end
 
--- Debug info to help troubleshoot Ring template
-warn("TeamRings.server: Found Ring template ->", RING_TEMPLATE:GetFullName(), "Class=", RING_TEMPLATE.ClassName)
-for _, child in ipairs(RING_TEMPLATE:GetChildren()) do
-	warn("TeamRings.server: Ring child ->", child.Name, "Class=", child.ClassName)
-end
+-- (Removed debug output listing template children)
 
 local RING_SIZE = Vector3.new(4, 0.2, 4)
 local RING_OFFSET_Y = -3.15

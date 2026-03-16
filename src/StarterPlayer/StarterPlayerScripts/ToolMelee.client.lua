@@ -249,13 +249,7 @@ local function playLocalCfgAnimation(cfg, toolName)
         print("[MeleeAnim] Track.Length (delayed) =", delayedLength)
 
         if playing and delayedLength > 0 then
-            -- Animation is playing but may be invisible if authored for wrong rig
-            local rigType = tostring(hum.RigType)
-            if rigType == "Enum.HumanoidRigType.R6" then
-                warn("[MeleeAnim] Character is R6 — if you see no visual, the animation may have been authored for R15.")
-            elseif rigType == "Enum.HumanoidRigType.R15" then
-                warn("[MeleeAnim] Character is R15 — if you see no visual, the animation may have been authored for R6.")
-            end
+            -- Animation is playing; no rig debug warnings emitted.
         end
     end)
 
