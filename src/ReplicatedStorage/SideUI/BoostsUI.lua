@@ -69,6 +69,7 @@ end)
 --------------------------------------------------------------------------------
 local remotesFolder
 local boostFolder
+local questFolder
 local buyBoostRF
 local rerollRF
 local bonusClaimRF
@@ -81,11 +82,12 @@ local function ensureRemotes()
     remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 10)
     if not remotesFolder then return false end
     boostFolder     = remotesFolder:WaitForChild("Boosts", 5)
+    questFolder     = remotesFolder:WaitForChild("Quests", 5)
     stateUpdatedRE  = remotesFolder:WaitForChild("BoostStateUpdated", 5)
-    getQuestsRF     = remotesFolder:FindFirstChild("GetQuests")
-    if not boostFolder then return false end
+    getQuestsRF     = questFolder and questFolder:FindFirstChild("GetQuests")
+    if not boostFolder or not questFolder then return false end
     buyBoostRF      = boostFolder:WaitForChild("RequestBuyOrUseBoost", 5)
-    rerollRF        = boostFolder:WaitForChild("RequestRerollQuest", 5)
+    rerollRF        = questFolder:WaitForChild("RequestRerollDailyQuest", 5)
     bonusClaimRF    = boostFolder:WaitForChild("RequestBonusClaim", 5)
     getStatesRF     = boostFolder:WaitForChild("GetBoostStates", 5)
     return buyBoostRF ~= nil

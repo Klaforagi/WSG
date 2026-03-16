@@ -1,19 +1,19 @@
 --------------------------------------------------------------------------------
 -- AchievementServiceInit.server.lua
--- Wires AchievementService into the game:
+-- Wires AchievementService into the centralized StatService event pipeline:
 --   • Creates remotes for client communication
 --   • Loads/saves achievement data on player join/leave
---   • Hooks into existing kill, flag, match, and coin systems
---   • Tracks: totalElims, zombieElims, playerElims,
---             totalCoinsEarned, flagActions, matchesPlayed
+--   • Subscribes to StatService events to track:
+--     totalElims, zombieElims, playerElims, flagActions, matchesPlayed
+--   • Wraps CurrencyService.AddCoins for totalCoinsEarned
 --------------------------------------------------------------------------------
 
 local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local CollectionService   = game:GetService("CollectionService")
 
 local AchievementService = require(ServerScriptService:WaitForChild("AchievementService", 10))
+local StatService         = require(ServerScriptService:WaitForChild("StatService", 10))
 
 --------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
@@ -79,165 +79,58 @@ end
 Players.PlayerAdded:Connect(onPlayerAdded)
 
 --------------------------------------------------------------------------------
--- Hook: Zombie kills  (CollectionService tag "ZombieNPC")
--- Same approach as QuestServiceInit — watch tagged NPCs for deaths.
--- Increments both "totalElims" and "zombieElims".
+-- Subscribe to centralized stat events  (replaces ALL legacy hooks)
+--
+-- Mapping:
+--   Elimination  → totalElims + playerElims
+--   MobKill      → totalElims + zombieElims
+--   FlagCapture  → flagActions
+--   FlagReturn   → flagActions
+--   MatchPlayed  → matchesPlayed
 --------------------------------------------------------------------------------
-local MOB_TAG = "ZombieNPC"
+local Actions = StatService.Actions
 
-local function hookMobForAchievements(mob)
-    if not mob:IsA("Model") then return end
-    local humanoid = mob:FindFirstChildOfClass("Humanoid")
-    if not humanoid then
-        humanoid = mob:WaitForChild("Humanoid", 3)
-    end
-    if not humanoid then return end
+StatService:OnStatEvent(function(payload)
+    local player = payload.player
+    local action = payload.action
+    if not player or not player:IsA("Player") then return end
 
-    local hooked = false
-    humanoid.Died:Connect(function()
-        if hooked then return end
-        hooked = true
-
-        local damagerUserId = humanoid:GetAttribute("lastDamagerUserId")
-        local damagerName   = humanoid:GetAttribute("lastDamagerName")
-        if not damagerName then return end
-
-        local killer
-        if damagerUserId then
-            killer = Players:GetPlayerByUserId(damagerUserId)
+    if action == Actions.Elimination then
+        AchievementService:IncrementStat(player, "totalElims", 1)
+        AchievementService:IncrementStat(player, "playerElims", 1)
+        if StatService.DEBUG then
+            print(string.format("[AchievementService] %s: totalElims/playerElims +1 for %s", action, player.Name))
         end
-        if not killer then
-            killer = Players:FindFirstChild(damagerName)
+    elseif action == Actions.MobKill then
+        AchievementService:IncrementStat(player, "totalElims", 1)
+        AchievementService:IncrementStat(player, "zombieElims", 1)
+        if StatService.DEBUG then
+            print(string.format("[AchievementService] %s: totalElims/zombieElims +1 for %s", action, player.Name))
         end
-        if killer then
-            AchievementService:IncrementStat(killer, "totalElims", 1)
-            AchievementService:IncrementStat(killer, "zombieElims", 1)
+    elseif action == Actions.FlagCapture then
+        AchievementService:IncrementStat(player, "flagActions", 1)
+        if StatService.DEBUG then
+            print(string.format("[AchievementService] %s: flagActions +1 for %s", action, player.Name))
         end
-    end)
-end
-
-for _, mob in ipairs(CollectionService:GetTagged(MOB_TAG)) do
-    task.spawn(hookMobForAchievements, mob)
-end
-CollectionService:GetInstanceAddedSignal(MOB_TAG):Connect(function(mob)
-    task.spawn(hookMobForAchievements, mob)
-end)
-
---------------------------------------------------------------------------------
--- Hook: PvP kills  (wrap _G.AwardPlayerKill)
--- Increments both "totalElims" and "playerElims".
--- We wrap on top of whatever QuestServiceInit already wrapped.
---------------------------------------------------------------------------------
-task.spawn(function()
-    local tries = 0
-    while not _G.AwardPlayerKill and tries < 20 do
-        task.wait(0.25)
-        tries = tries + 1
-    end
-
-    local previousAward = _G.AwardPlayerKill
-    if type(previousAward) == "function" then
-        _G.AwardPlayerKill = function(killerPlayer, victimPlayer)
-            previousAward(killerPlayer, victimPlayer)
-            if typeof(killerPlayer) == "Instance" and killerPlayer:IsA("Player") then
-                AchievementService:IncrementStat(killerPlayer, "totalElims", 1)
-                AchievementService:IncrementStat(killerPlayer, "playerElims", 1)
-            end
+    elseif action == Actions.FlagReturn then
+        AchievementService:IncrementStat(player, "flagActions", 1)
+        if StatService.DEBUG then
+            print(string.format("[AchievementService] %s: flagActions +1 for %s", action, player.Name))
         end
-        print("[AchievementServiceInit] _G.AwardPlayerKill wrapped for achievements")
-    else
-        warn("[AchievementServiceInit] _G.AwardPlayerKill not found – PvP achievement tracking limited")
-    end
-
-    -- Also hook player character deaths for attribute-based PvP detection
-    -- (same pattern as QuestServiceInit for edge cases)
-    local function hookPlayerCharForAchievements(player)
-        player.CharacterAdded:Connect(function(char)
-            local hum = char:WaitForChild("Humanoid", 5)
-            if not hum then return end
-            local awarded = false
-            hum.Died:Connect(function()
-                if awarded then return end
-                awarded = true
-                local damagerName   = hum:GetAttribute("lastDamagerName")
-                local damagerUserId = hum:GetAttribute("lastDamagerUserId")
-                if not damagerName then return end
-                if damagerName == player.Name then return end
-
-                local killer
-                if damagerUserId then
-                    killer = Players:GetPlayerByUserId(damagerUserId)
-                end
-                if not killer then
-                    killer = Players:FindFirstChild(damagerName)
-                end
-                if killer and killer:IsA("Player") then
-                    AchievementService:IncrementStat(killer, "totalElims", 1)
-                    AchievementService:IncrementStat(killer, "playerElims", 1)
-                end
-            end)
-        end)
-    end
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(hookPlayerCharForAchievements, p)
-    end
-    Players.PlayerAdded:Connect(function(p)
-        hookPlayerCharForAchievements(p)
-    end)
-end)
-
---------------------------------------------------------------------------------
--- Hook: Flag actions  (FlagReturned BindableEvent from FlagPickup.server.lua)
--- Covers both returns and captures that fire through FlagReturned.
---------------------------------------------------------------------------------
-task.spawn(function()
-    local flagReturnedEvent = ServerScriptService:WaitForChild("FlagReturned", 15)
-    if not flagReturnedEvent or not flagReturnedEvent:IsA("BindableEvent") then
-        warn("[AchievementServiceInit] FlagReturned BindableEvent not found – flag achievement won't track")
-        return
-    end
-
-    flagReturnedEvent.Event:Connect(function(player)
-        if typeof(player) == "Instance" and player:IsA("Player") then
-            AchievementService:IncrementStat(player, "flagActions", 1)
-        end
-    end)
-    print("[AchievementServiceInit] FlagReturned hook connected")
-end)
-
---------------------------------------------------------------------------------
--- Hook: Matches played  (MatchStart RemoteEvent from GameManager)
--- Every time a new match starts, increment matchesPlayed for all online players.
---------------------------------------------------------------------------------
-task.spawn(function()
-    local matchStart = ReplicatedStorage:WaitForChild("MatchStart", 15)
-    if not matchStart or not matchStart:IsA("RemoteEvent") then
-        warn("[AchievementServiceInit] MatchStart remote not found – match achievement won't track")
-        return
-    end
-
-    -- MatchStart is server→client, so we can't listen OnServerEvent.
-    -- Instead, hook via a BindableEvent bridge. We create a small BindableEvent
-    -- that GameManager can fire, OR we watch for the match state change.
-    -- Simplest: watch the remote's FireAllClients by wrapping it.
-    local _originalFire = matchStart.FireAllClients
-    matchStart.FireAllClients = function(self2, ...)
-        _originalFire(self2, ...)
-        -- Award "matchesPlayed" to all players
-        for _, p in ipairs(Players:GetPlayers()) do
-            task.spawn(function()
-                AchievementService:IncrementStat(p, "matchesPlayed", 1)
-            end)
+    elseif action == Actions.MatchPlayed then
+        AchievementService:IncrementStat(player, "matchesPlayed", 1)
+        if StatService.DEBUG then
+            print(string.format("[AchievementService] %s: matchesPlayed +1 for %s", action, player.Name))
         end
     end
-    print("[AchievementServiceInit] MatchStart hook connected (wrapping FireAllClients)")
 end)
 
 --------------------------------------------------------------------------------
 -- Hook: Coins earned  (wrap CurrencyService.AddCoins at the outermost layer)
 -- This wraps on top of any existing wrappers (Boost, Upgrade) so we see the
 -- final boosted amount.  Only positive amounts count as "earned".
+-- NOTE: This is kept separate from StatService because coin tracking is
+-- achievement-specific and wraps the reward pipeline, not the stat pipeline.
 --------------------------------------------------------------------------------
 task.spawn(function()
     task.wait(2) -- Wait for BoostServiceInit and UpgradeServiceInit to wrap first
@@ -275,4 +168,4 @@ task.spawn(function()
     end
 end)
 
-print("[AchievementServiceInit] Achievement system initialized")
+print("[AchievementServiceInit] Achievement system initialized (via StatService)")

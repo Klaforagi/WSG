@@ -50,18 +50,45 @@ pcall(function()
     end
 end)
 
+-- Centralized stat service (single source of truth for all stats & events)
+local StatService
+pcall(function()
+    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
+end)
+
 local tracked = {} -- [Humanoid] = true, to avoid double-connecting
 
 local function onHumanoidDied(humanoid, model)
-    -- skip if already credited directly by the damage code
+    -- skip if already credited by another script
     if humanoid:GetAttribute("_killCredited") then return end
 
+    -- === Kill Attribution (two detection paths) ===
+    local killer = nil
     local damagerName = humanoid:GetAttribute("lastDamagerName")
     local damagerTime = humanoid:GetAttribute("lastDamageTime")
+    local damagerUserId = humanoid:GetAttribute("lastDamagerUserId")
 
-    -- only credit if the tag is recent
-    if not damagerName or not damagerTime then return end
-    if (tick() - damagerTime) > ATTRIB_TIMEOUT then return end
+    -- Path 1: attribute-based (set by gun/melee hit scripts)
+    if damagerName and damagerTime and (tick() - damagerTime) <= ATTRIB_TIMEOUT then
+        if damagerUserId then
+            killer = Players:GetPlayerByUserId(damagerUserId)
+        end
+        if not killer then
+            killer = Players:FindFirstChild(damagerName)
+        end
+    end
+
+    -- Path 2: "creator" ObjectValue fallback (standard Roblox weapon pattern)
+    if not killer then
+        local creator = humanoid:FindFirstChild("creator")
+        if creator and creator:IsA("ObjectValue") and creator.Value
+            and typeof(creator.Value) == "Instance" and creator.Value:IsA("Player") then
+            killer = creator.Value
+            damagerName = killer.Name
+        end
+    end
+
+    if not killer then return end
 
     -- figure out victim name
     local victimName = model.Name or "Unknown"
@@ -71,31 +98,25 @@ local function onHumanoidDied(humanoid, model)
     end
 
     -- don't credit self-kills
-    if damagerName == victimName then return end
+    if killer == victimPlayer then return end
+    if damagerName and damagerName == victimName then return end
 
-    -- determine killer (by user id or name) so we can award points/coins
-    local damagerUserId = humanoid:GetAttribute("lastDamagerUserId")
-    local killer = nil
-    if damagerUserId then
-        killer = Players:GetPlayerByUserId(damagerUserId)
-    end
-    if not killer then
-        -- fallback: find by name
-        killer = Players:FindFirstChild(damagerName)
-    end
+    -- Mark as credited to prevent double-counting by other scripts
+    humanoid:SetAttribute("_killCredited", true)
 
     -- award points to the killer's team
-    if killer and killer.Team then
+    if killer.Team then
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
 
-    -- Per-player match stats (Eliminations + Score)
-    if killer and killer:IsA("Player") then
-        local prevElims = killer:GetAttribute("Eliminations") or 0
-        killer:SetAttribute("Eliminations", prevElims + 1)
-        local scoreAdd = victimPlayer and 10 or 3
-        local prevScore = killer:GetAttribute("Score") or 0
-        killer:SetAttribute("Score", prevScore + scoreAdd)
+    -- Centralized stat tracking via StatService
+    -- (updates scoreboard attributes, fires events for quests/achievements)
+    if StatService and killer:IsA("Player") then
+        if victimPlayer then
+            StatService:RegisterElimination(killer, victimPlayer)
+        else
+            StatService:RegisterMobKill(killer, victimName)
+        end
     end
 
     -- Award coins: +5 for PvP kills, +1 for mob kills (fallback when weapon scripts didn't credit)

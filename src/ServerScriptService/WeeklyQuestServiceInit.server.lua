@@ -1,19 +1,37 @@
 --------------------------------------------------------------------------------
 -- WeeklyQuestServiceInit.server.lua
--- Creates remotes and hooks weekly quest progress into existing game systems:
---   • Matches Played  → MatchEnded BindableEvent (from GameManager)
---   • Matches Won     → MatchEnded BindableEvent (winner team check)
---   • Time Played     → 60-second heartbeat during active matches
---   • Zombies Elim.   → CollectionService "ZombieNPC" death hook
---   • Players Elim.   → _G.AwardPlayerKill wrap + attribute fallback
+-- Creates remotes and hooks weekly quest progress into the centralized
+-- StatService event pipeline:
+--   • Matches Played  → StatService MatchPlayed event
+--   • Matches Won     → StatService MatchWon event
+--   • Time Played     → 60-second heartbeat during active matches (kept as-is)
+--   • Zombies Elim.   → StatService MobKill event
+--   • Players Elim.   → StatService Elimination event
 --------------------------------------------------------------------------------
 
 local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
-local CollectionService   = game:GetService("CollectionService")
 
 local WeeklyQuestService = require(ServerScriptService:WaitForChild("WeeklyQuestService", 10))
+local StatService         = require(ServerScriptService:WaitForChild("StatService", 10))
+local BoostService        = require(ServerScriptService:WaitForChild("BoostService", 10))
+
+local function ensureInstance(parent, className, name)
+    local existing = parent:FindFirstChild(name)
+    if existing and not existing:IsA(className) then
+        existing:Destroy()
+        existing = nil
+    end
+    if existing then
+        return existing
+    end
+
+    local instance = Instance.new(className)
+    instance.Name = name
+    instance.Parent = parent
+    return instance
+end
 
 --------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
@@ -25,17 +43,15 @@ if not remotesFolder then
     remotesFolder.Parent = ReplicatedStorage
 end
 
-local getWeeklyRF = Instance.new("RemoteFunction")
-getWeeklyRF.Name = "GetWeeklyQuests"
-getWeeklyRF.Parent = remotesFolder
+local questsFolder = ensureInstance(remotesFolder, "Folder", "Quests")
 
-local claimWeeklyRF = Instance.new("RemoteFunction")
-claimWeeklyRF.Name = "ClaimWeeklyQuest"
-claimWeeklyRF.Parent = remotesFolder
+local getWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "GetWeeklyQuests")
 
-local weeklyProgressRE = Instance.new("RemoteEvent")
-weeklyProgressRE.Name = "WeeklyQuestProgress"
-weeklyProgressRE.Parent = remotesFolder
+local claimWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "ClaimWeeklyQuest")
+
+local weeklyProgressRE = ensureInstance(questsFolder, "RemoteEvent", "WeeklyQuestProgress")
+
+local rerollWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "RequestRerollWeeklyQuest")
 
 --------------------------------------------------------------------------------
 -- Remote handlers
@@ -47,6 +63,13 @@ end
 claimWeeklyRF.OnServerInvoke = function(player, questIndex)
     if type(questIndex) ~= "number" then return false end
     return WeeklyQuestService:ClaimReward(player, questIndex)
+end
+
+rerollWeeklyRF.OnServerInvoke = function(player, questIndex)
+    if type(questIndex) ~= "number" then
+        return false, "Invalid"
+    end
+    return BoostService:RerollQuest(player, "weekly", questIndex)
 end
 
 --------------------------------------------------------------------------------
@@ -69,38 +92,48 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
 
 --------------------------------------------------------------------------------
--- Hook: Matches Played & Matches Won (MatchEnded BindableEvent from GameManager)
--- GameManager fires: MatchEnded:Fire(winnerTeam)
+-- Subscribe to centralized stat events  (replaces ALL legacy hooks)
+--
+-- Mapping:
+--   Elimination  → players_eliminated weekly quest trackType
+--   MobKill      → zombies_eliminated weekly quest trackType
+--   MatchPlayed  → matches_played     weekly quest trackType
+--   MatchWon     → matches_won        weekly quest trackType
 --------------------------------------------------------------------------------
-task.spawn(function()
-    -- Wait for or create the BindableEvent
-    local matchEndedBE = ServerScriptService:WaitForChild("MatchEnded", 30)
-    if not matchEndedBE or not matchEndedBE:IsA("BindableEvent") then
-        warn("[WeeklyQuestServiceInit] MatchEnded BindableEvent not found – match quests won't auto-track")
-        return
-    end
+local Actions = StatService.Actions
 
-    matchEndedBE.Event:Connect(function(winnerTeam)
-        for _, player in ipairs(Players:GetPlayers()) do
-            -- All players in the server completed a match
-            WeeklyQuestService:IncrementByType(player, "matches_played", 1)
+StatService:OnStatEvent(function(payload)
+    local player = payload.player
+    local action = payload.action
+    if not player or not player:IsA("Player") then return end
 
-            -- Check if player was on the winning team
-            if winnerTeam and type(winnerTeam) == "string" then
-                pcall(function()
-                    if player.Team and player.Team.Name == winnerTeam then
-                        WeeklyQuestService:IncrementByType(player, "matches_won", 1)
-                    end
-                end)
-            end
+    if action == Actions.Elimination then
+        WeeklyQuestService:IncrementByType(player, "players_eliminated", 1)
+        if StatService.DEBUG then
+            print(string.format("[WeeklyQuestService] %s: players_eliminated +1 for %s", action, player.Name))
         end
-    end)
-    print("[WeeklyQuestServiceInit] MatchEnded hook connected")
+    elseif action == Actions.MobKill then
+        WeeklyQuestService:IncrementByType(player, "zombies_eliminated", 1)
+        if StatService.DEBUG then
+            print(string.format("[WeeklyQuestService] %s: zombies_eliminated +1 for %s", action, player.Name))
+        end
+    elseif action == Actions.MatchPlayed then
+        WeeklyQuestService:IncrementByType(player, "matches_played", 1)
+        if StatService.DEBUG then
+            print(string.format("[WeeklyQuestService] %s: matches_played +1 for %s", action, player.Name))
+        end
+    elseif action == Actions.MatchWon then
+        WeeklyQuestService:IncrementByType(player, "matches_won", 1)
+        if StatService.DEBUG then
+            print(string.format("[WeeklyQuestService] %s: matches_won +1 for %s", action, player.Name))
+        end
+    end
 end)
 
 --------------------------------------------------------------------------------
 -- Hook: Time Played (heartbeat every 60 seconds during active matches)
 -- Uses MatchStarted/MatchEnded BindableEvents to track match state.
+-- NOTE: Time tracking stays here because it's timer-based, not event-based.
 --------------------------------------------------------------------------------
 task.spawn(function()
     local matchActive = false
@@ -133,105 +166,4 @@ task.spawn(function()
     end
 end)
 
---------------------------------------------------------------------------------
--- Hook: Zombies Eliminated (CollectionService "ZombieNPC" death)
--- Same pattern as QuestServiceInit but routes to weekly quest system.
---------------------------------------------------------------------------------
-local MOB_TAG = "ZombieNPC"
-
-local function hookMobForWeeklyQuest(mob)
-    if not mob:IsA("Model") then return end
-    local humanoid = mob:FindFirstChildOfClass("Humanoid")
-    if not humanoid then
-        humanoid = mob:WaitForChild("Humanoid", 3)
-    end
-    if not humanoid then return end
-
-    local hooked = false
-    humanoid.Died:Connect(function()
-        if hooked then return end
-        hooked = true
-
-        local damagerUserId = humanoid:GetAttribute("lastDamagerUserId")
-        local damagerName   = humanoid:GetAttribute("lastDamagerName")
-        if not damagerName then return end
-
-        local killer
-        if damagerUserId then
-            killer = Players:GetPlayerByUserId(damagerUserId)
-        end
-        if not killer then
-            killer = Players:FindFirstChild(damagerName)
-        end
-        if killer then
-            WeeklyQuestService:IncrementByType(killer, "zombies_eliminated", 1)
-        end
-    end)
-end
-
-for _, mob in ipairs(CollectionService:GetTagged(MOB_TAG)) do
-    task.spawn(hookMobForWeeklyQuest, mob)
-end
-CollectionService:GetInstanceAddedSignal(MOB_TAG):Connect(function(mob)
-    task.spawn(hookMobForWeeklyQuest, mob)
-end)
-
---------------------------------------------------------------------------------
--- Hook: Players Eliminated (wrap _G.AwardPlayerKill + attribute fallback)
--- Same pattern as QuestServiceInit but routes to weekly quest system.
---------------------------------------------------------------------------------
-task.spawn(function()
-    -- Wait briefly for PvpKills.server.lua to set up _G.AwardPlayerKill
-    -- and for QuestServiceInit to wrap it first.
-    task.wait(6)
-
-    local currentAward = _G.AwardPlayerKill
-    if type(currentAward) == "function" then
-        _G.AwardPlayerKill = function(killerPlayer, victimPlayer)
-            currentAward(killerPlayer, victimPlayer)
-            if typeof(killerPlayer) == "Instance" and killerPlayer:IsA("Player") then
-                WeeklyQuestService:IncrementByType(killerPlayer, "players_eliminated", 1)
-            end
-        end
-    else
-        warn("[WeeklyQuestServiceInit] _G.AwardPlayerKill not found – PvP weekly quest won't auto-track via global")
-    end
-
-    -- Attribute-based fallback: hook player character deaths
-    local function hookPlayerCharForWeeklyPvp(player)
-        player.CharacterAdded:Connect(function(char)
-            local hum = char:WaitForChild("Humanoid", 5)
-            if not hum then return end
-            local awarded = false
-            hum.Died:Connect(function()
-                if awarded then return end
-                awarded = true
-
-                local damagerName   = hum:GetAttribute("lastDamagerName")
-                local damagerUserId = hum:GetAttribute("lastDamagerUserId")
-                if not damagerName then return end
-                if damagerName == player.Name then return end
-
-                local killer
-                if damagerUserId then
-                    killer = Players:GetPlayerByUserId(damagerUserId)
-                end
-                if not killer then
-                    killer = Players:FindFirstChild(damagerName)
-                end
-                if killer and killer:IsA("Player") then
-                    WeeklyQuestService:IncrementByType(killer, "players_eliminated", 1)
-                end
-            end)
-        end)
-    end
-
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(hookPlayerCharForWeeklyPvp, p)
-    end
-    Players.PlayerAdded:Connect(function(p)
-        hookPlayerCharForWeeklyPvp(p)
-    end)
-end)
-
-print("[WeeklyQuestServiceInit] Weekly quest system initialized")
+print("[WeeklyQuestServiceInit] Weekly quest system initialized (via StatService)")

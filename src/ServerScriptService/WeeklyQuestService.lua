@@ -186,7 +186,9 @@ end
 local function fireProgressUpdate(player, questIndex, newProgress)
     local remote = ReplicatedStorage:FindFirstChild("Remotes")
     if not remote then return end
-    local ev = remote:FindFirstChild("WeeklyQuestProgress")
+    local questRemotes = remote:FindFirstChild("Quests")
+    if not questRemotes then return end
+    local ev = questRemotes:FindFirstChild("WeeklyQuestProgress")
     if ev and ev:IsA("RemoteEvent") then
         pcall(function()
             ev:FireClient(player, questIndex, newProgress)
@@ -317,6 +319,70 @@ function WeeklyQuestService:ClaimReward(player, questIndex)
     task.spawn(saveToStore, player, data)
 
     return true
+end
+
+--- Replace the weekly quest at the given index with a different valid quest.
+--- Returns success, message, updated weekly quest snapshots.
+function WeeklyQuestService:RerollQuest(player, questIndex)
+    questIndex = tonumber(questIndex)
+    if not questIndex then
+        return false, "Invalid quest index"
+    end
+
+    local data = playerWeekly[player]
+    if not data then
+        return false, "Weekly quests unavailable"
+    end
+
+    local current = data.quests[questIndex]
+    if not current then
+        return false, "Invalid quest index"
+    end
+    if current.claimed then
+        return false, "Quest already claimed"
+    end
+
+    local currentDef = WeeklyQuestDefs.ById[current.defId]
+    if not currentDef then
+        return false, "Quest unavailable"
+    end
+
+    local assignedIds = {}
+    for _, quest in ipairs(data.quests) do
+        assignedIds[quest.defId] = true
+    end
+
+    local alternatives = {}
+    local sameTrackPool = WeeklyQuestDefs.ByTrackType[currentDef.trackType] or {}
+    for _, def in ipairs(sameTrackPool) do
+        if def.id ~= current.defId and not assignedIds[def.id] then
+            table.insert(alternatives, def)
+        end
+    end
+
+    if #alternatives == 0 then
+        for _, def in ipairs(WeeklyQuestDefs.Pool) do
+            if def.id ~= current.defId and not assignedIds[def.id] then
+                table.insert(alternatives, def)
+            end
+        end
+    end
+
+    if #alternatives == 0 then
+        return false, "No alternative quests available"
+    end
+
+    local newDef = alternatives[math.random(1, #alternatives)]
+    data.quests[questIndex] = {
+        defId = newDef.id,
+        progress = 0,
+        claimed = false,
+    }
+
+    markDirty(player)
+    task.spawn(saveToStore, player, data)
+
+    return true, "Quest rerolled", self:GetWeeklyQuests(player)
 end
 
 --- Cleanup when player leaves. Save first, then clear memory.
