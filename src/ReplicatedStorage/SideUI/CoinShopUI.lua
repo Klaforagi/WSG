@@ -51,17 +51,23 @@ local function tpx(base)
 end
 
 --------------------------------------------------------------------------------
--- Palette (matches SideUI deep-blue / gold theme)
+-- Palette (sourced from shared UITheme – Team menu visual language)
 --------------------------------------------------------------------------------
-local POPUP_BG     = Color3.fromRGB(20, 22, 38)
-local CARD_BG      = Color3.fromRGB(26, 30, 48)
-local CARD_STROKE  = Color3.fromRGB(55, 62, 95)
-local GOLD         = Color3.fromRGB(255, 215, 60)
-local WHITE        = Color3.fromRGB(245, 245, 252)
-local DIM_TEXT     = Color3.fromRGB(145, 150, 175)
-local GREEN_BTN    = Color3.fromRGB(35, 190, 75)
-local RED_BTN      = Color3.fromRGB(160, 50, 50)
-local OVERLAY_CLR  = Color3.fromRGB(10, 10, 10)
+local UITheme
+do
+	local ok, result = pcall(function() return require(script.Parent.UITheme) end)
+	if ok then UITheme = result end
+end
+
+local POPUP_BG     = UITheme and UITheme.POPUP_BG or Color3.fromRGB(16, 18, 32)
+local CARD_BG      = UITheme and UITheme.CARD_BG or Color3.fromRGB(26, 30, 48)
+local CARD_STROKE  = UITheme and UITheme.CARD_STROKE or Color3.fromRGB(55, 62, 95)
+local GOLD         = UITheme and UITheme.GOLD or Color3.fromRGB(255, 215, 80)
+local WHITE        = UITheme and UITheme.WHITE or Color3.fromRGB(245, 245, 252)
+local DIM_TEXT     = UITheme and UITheme.DIM_TEXT or Color3.fromRGB(145, 150, 175)
+local GREEN_BTN    = UITheme and UITheme.GREEN_BTN or Color3.fromRGB(35, 190, 75)
+local RED_BTN      = UITheme and UITheme.RED_BTN or Color3.fromRGB(160, 50, 50)
+local OVERLAY_CLR  = UITheme and UITheme.OVERLAY_CLR or Color3.fromRGB(10, 10, 10)
 
 local TWEEN_IN     = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local TWEEN_OUT    = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -120,11 +126,20 @@ local function buildPopup(screenGui)
 	popupCorner.Parent = popup
 
 	local popupStroke = Instance.new("UIStroke")
-	popupStroke.Color = GOLD
-	popupStroke.Thickness = 2
+	popupStroke.Color = UITheme and UITheme.GOLD_DIM or Color3.fromRGB(180, 150, 50)
+	popupStroke.Thickness = 1.5
 	popupStroke.Transparency = 0.15
 	popupStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	popupStroke.Parent = popup
+
+	-- Subtle vertical gradient matching Team menu panel
+	local popupGrad = Instance.new("UIGradient")
+	popupGrad.Color = UITheme and UITheme.PANEL_GRADIENT or ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 195)),
+	})
+	popupGrad.Rotation = 90
+	popupGrad.Parent = popup
 
 	local popupPad = Instance.new("UIPadding")
 	popupPad.PaddingTop = UDim.new(0, px(30))

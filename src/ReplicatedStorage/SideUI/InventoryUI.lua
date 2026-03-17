@@ -6,6 +6,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
+local UITheme = require(script.Parent.UITheme)
+
 local function px(base)
     local cam = workspace.CurrentCamera
     local screenY = 1080
@@ -15,20 +17,20 @@ local function px(base)
     return math.max(1, math.round(base * screenY / 1080))
 end
 
--- Palette (matches BoostsUI / QuestsUI / ShopUI deep-blue / gold theme)
-local CARD_BG       = Color3.fromRGB(26, 30, 48)
-local CARD_EQUIPPED = Color3.fromRGB(22, 38, 34)
-local CARD_STROKE   = Color3.fromRGB(55, 62, 95)
-local ICON_BG       = Color3.fromRGB(16, 18, 30)
-local GOLD          = Color3.fromRGB(255, 215, 60)
-local WHITE         = Color3.fromRGB(245, 245, 252)
-local DIM_TEXT      = Color3.fromRGB(145, 150, 175)
-local BTN_BG        = Color3.fromRGB(48, 55, 82)
-local BTN_STROKE_C  = Color3.fromRGB(90, 100, 140)
-local GREEN_GLOW    = Color3.fromRGB(50, 230, 110)
-local DISABLED_BG   = Color3.fromRGB(35, 38, 52)
-local SIDEBAR_BG    = Color3.fromRGB(18, 20, 34)
-local TAB_ACTIVE_BG = Color3.fromRGB(32, 30, 18)
+-- Palette (sourced from shared UITheme – Team menu visual language)
+local CARD_BG       = UITheme.CARD_BG
+local CARD_EQUIPPED = UITheme.CARD_OWNED
+local CARD_STROKE   = UITheme.CARD_STROKE
+local ICON_BG       = UITheme.ICON_BG
+local GOLD          = UITheme.GOLD
+local WHITE         = UITheme.WHITE
+local DIM_TEXT      = UITheme.DIM_TEXT
+local BTN_BG        = UITheme.BTN_BG
+local BTN_STROKE_C  = UITheme.BTN_STROKE
+local GREEN_GLOW    = UITheme.GREEN_GLOW
+local DISABLED_BG   = UITheme.DISABLED_BG
+local SIDEBAR_BG    = UITheme.SIDEBAR_BG
+local TAB_ACTIVE_BG = UITheme.TAB_ACTIVE
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 

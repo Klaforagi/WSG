@@ -11,6 +11,8 @@ local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local UITheme = require(script.Parent.UITheme)
+
 local player = Players.LocalPlayer
 
 --------------------------------------------------------------------------------
@@ -26,23 +28,23 @@ local function px(base)
 end
 
 --------------------------------------------------------------------------------
--- Palette (matches SideUI neutral-gray / gold theme)
+-- Palette (sourced from shared UITheme – Team menu visual language)
 --------------------------------------------------------------------------------
-local CARD_BG       = Color3.fromRGB(26, 30, 48)
-local CARD_STROKE   = Color3.fromRGB(55, 62, 95)
-local ICON_BG       = Color3.fromRGB(16, 18, 30)
-local GOLD          = Color3.fromRGB(255, 215, 60)
-local WHITE         = Color3.fromRGB(245, 245, 252)
-local DIM_TEXT      = Color3.fromRGB(145, 150, 175)
-local BTN_BG        = Color3.fromRGB(48, 55, 82)
-local BTN_STROKE_C  = Color3.fromRGB(90, 100, 140)
-local GREEN_BTN     = Color3.fromRGB(35, 190, 75)
-local RED_TEXT       = Color3.fromRGB(255, 80, 80)
-local MAXED_COLOR   = Color3.fromRGB(50, 230, 110)
-local DISABLED_BG   = Color3.fromRGB(35, 38, 52)
-local PIP_ACTIVE    = Color3.fromRGB(255, 215, 60)
-local PIP_INACTIVE  = Color3.fromRGB(50, 54, 72)
-local SUCCESS_FLASH = Color3.fromRGB(50, 230, 110)
+local CARD_BG       = UITheme.CARD_BG
+local CARD_STROKE   = UITheme.CARD_STROKE
+local ICON_BG       = UITheme.ICON_BG
+local GOLD          = UITheme.GOLD
+local WHITE         = UITheme.WHITE
+local DIM_TEXT      = UITheme.DIM_TEXT
+local BTN_BG        = UITheme.BTN_BG
+local BTN_STROKE_C  = UITheme.BTN_STROKE
+local GREEN_BTN     = UITheme.GREEN_BTN
+local RED_TEXT       = UITheme.RED_TEXT
+local MAXED_COLOR   = UITheme.GREEN_GLOW
+local DISABLED_BG   = UITheme.DISABLED_BG
+local PIP_ACTIVE    = UITheme.PIP_ACTIVE
+local PIP_INACTIVE  = UITheme.PIP_INACTIVE
+local SUCCESS_FLASH = UITheme.GREEN_GLOW
 
 local ACCENT_COLORS = {
 	coin_mastery         = Color3.fromRGB(255, 200, 40),

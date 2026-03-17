@@ -20,6 +20,8 @@ local Lighting           = game:GetService("Lighting")
 local UserInputService   = game:GetService("UserInputService")
 local TweenService       = game:GetService("TweenService")
 
+local UITheme = require(script.Parent.UITheme)
+
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -36,24 +38,24 @@ local function px(base)
 end
 
 --------------------------------------------------------------------------------
--- Palette (matches BoostsUI / ShopUI / InventoryUI blue-tinted theme)
+-- Palette (sourced from shared UITheme – Team menu visual language)
 --------------------------------------------------------------------------------
-local ROW_BG           = Color3.fromRGB(26, 30, 48)
-local CARD_STROKE      = Color3.fromRGB(55, 62, 95)
-local GOLD             = Color3.fromRGB(255, 215, 60)
-local WHITE            = Color3.fromRGB(245, 245, 252)
-local DIM_TEXT         = Color3.fromRGB(145, 150, 175)
-local TOGGLE_ON        = Color3.fromRGB(35, 190, 75)
-local TOGGLE_OFF       = Color3.fromRGB(45, 48, 65)
-local SLIDER_TRACK     = Color3.fromRGB(35, 38, 55)
-local SLIDER_FILL      = GOLD
-local KNOB_COLOR       = Color3.fromRGB(255, 255, 255)
-local CHOICE_ACTIVE    = Color3.fromRGB(255, 215, 60)
-local CHOICE_INACTIVE  = Color3.fromRGB(48, 55, 82)
-local BTN_BG           = Color3.fromRGB(48, 55, 82)
-local BTN_STROKE       = Color3.fromRGB(90, 100, 140)
-local RED_BTN          = Color3.fromRGB(160, 50, 50)
-local POPUP_BG         = Color3.fromRGB(20, 22, 38)
+local ROW_BG           = UITheme.CARD_BG
+local CARD_STROKE      = UITheme.CARD_STROKE
+local GOLD             = UITheme.GOLD
+local WHITE            = UITheme.WHITE
+local DIM_TEXT         = UITheme.DIM_TEXT
+local TOGGLE_ON        = UITheme.TOGGLE_ON
+local TOGGLE_OFF       = UITheme.TOGGLE_OFF
+local SLIDER_TRACK     = UITheme.SLIDER_TRACK
+local SLIDER_FILL      = UITheme.GOLD
+local KNOB_COLOR       = UITheme.KNOB_COLOR
+local CHOICE_ACTIVE    = UITheme.GOLD
+local CHOICE_INACTIVE  = UITheme.BTN_BG
+local BTN_BG           = UITheme.BTN_BG
+local BTN_STROKE       = UITheme.BTN_STROKE
+local RED_BTN          = UITheme.RED_BTN
+local POPUP_BG         = UITheme.POPUP_BG
 
 local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -311,10 +313,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		stroke.Parent = row
 
 		local grad = Instance.new("UIGradient")
-		grad.Color = ColorSequence.new(
-			Color3.fromRGB(30, 35, 55),
-			Color3.fromRGB(22, 26, 42)
-		)
+		grad.Color = UITheme.ROW_GRADIENT
 		grad.Rotation = 90
 		grad.Parent = row
 
@@ -751,17 +750,15 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		popCorner.Parent = popup
 
 		local popStroke = Instance.new("UIStroke")
-		popStroke.Color = GOLD
+		popStroke.Color = UITheme.GOLD_DIM
 		popStroke.Thickness = 1.5
-		popStroke.Transparency = 0.25
+		popStroke.Transparency = 0.15
+		popStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		popStroke.Parent = popup
 
 		local popGrad = Instance.new("UIGradient")
-		popGrad.Color = ColorSequence.new(
-			Color3.fromRGB(26, 30, 48),
-			Color3.fromRGB(18, 20, 34)
-		)
-		popGrad.Rotation = 90
+		popGrad.Color = UITheme.PANEL_GRADIENT
+		popGrad.Rotation = UITheme.PANEL_GRADIENT_ROTATION
 		popGrad.Parent = popup
 
 		-- Title

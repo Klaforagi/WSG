@@ -94,7 +94,7 @@ local function getTeamGradientSequence()
         return nil
     end)
     if not ok or not base then
-        base = Color3.fromRGB(35, 35, 40) -- default: dark gray (toolbar style)
+        base = Color3.fromRGB(18, 22, 48) -- default: dark navy (match Team menu)
     else
         -- slightly darken team colors (blue/red) for stronger contrast
         base = base:Lerp(Color3.new(0, 0, 0), 0.12)
@@ -790,19 +790,28 @@ window.Name = "ModalWindow"
 window.Size = UDim2.new(0.65, 0, 0.72, 0)
 window.AnchorPoint = Vector2.new(0.5, 0.5)
 window.Position = UDim2.new(0.5, 0, 0.5, 0)
--- Use the neutral SideUI gray for modal background instead of navy
-window.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+-- Deep navy background matching Team menu
+window.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+window.BackgroundTransparency = 0.04
 window.Parent = modalOverlay
 window.ZIndex = 260
 local winCorner = Instance.new("UICorner")
 winCorner.CornerRadius = UDim.new(0, px(14))
 winCorner.Parent = window
 local winStroke = Instance.new("UIStroke")
-winStroke.Color = Color3.fromRGB(255, 215, 80)
-winStroke.Thickness = 2
+winStroke.Color = Color3.fromRGB(180, 150, 50)
+winStroke.Thickness = 1.5
 winStroke.Transparency = 0.15
 winStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 winStroke.Parent = window
+-- Subtle vertical gradient matching Team menu panel
+local winGradient = Instance.new("UIGradient")
+winGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(185, 185, 195)),
+})
+winGradient.Rotation = 90
+winGradient.Parent = window
 local winPad = Instance.new("UIPadding")
 winPad.PaddingTop = UDim.new(0, px(10))
 winPad.PaddingBottom = UDim.new(0, px(10))
@@ -820,23 +829,22 @@ headerBar.ZIndex = 10
 headerBar.Parent = window
 headerBar.ZIndex = 270
 
--- Title pill
+-- Title pill (matches Team menu title bar)
 local titlePill = Instance.new("Frame")
 titlePill.Name = "TitlePill"
 titlePill.Size = UDim2.new(0.30, 0, 0.80, 0)
 titlePill.AnchorPoint = Vector2.new(0.5, 0.5)
 titlePill.Position = UDim2.new(0.5, 0, 0.5, 0)
-    -- Use neutral gray when not on a team (match SideUI neutral)
-    titlePill.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+titlePill.BackgroundColor3 = Color3.fromRGB(22, 26, 48)
 titlePill.ZIndex = 10
 titlePill.Parent = headerBar
 local titlePillCorner = Instance.new("UICorner")
 titlePillCorner.CornerRadius = UDim.new(0, px(8))
 titlePillCorner.Parent = titlePill
 local titlePillStroke = Instance.new("UIStroke")
-    titlePillStroke.Color = Color3.fromRGB(90, 90, 96)
-    titlePillStroke.Thickness = 1.5
-    titlePillStroke.Transparency = 0.3
+titlePillStroke.Color = Color3.fromRGB(180, 150, 50)
+titlePillStroke.Thickness = 1.5
+titlePillStroke.Transparency = 0.25
 titlePillStroke.Parent = titlePill
 
 local titleLabel = Instance.new("TextLabel")
@@ -951,7 +959,7 @@ contentFrame.Position = UDim2.new(0, 0, HEADER_H + 0.01, 0)
 contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 contentFrame.ScrollBarThickness = px(4)
-contentFrame.ScrollBarImageColor3 = Color3.fromRGB(255, 215, 80)
+contentFrame.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
 contentFrame.BorderSizePixel = 0
 contentFrame.ZIndex = 1
 contentFrame.Parent = window

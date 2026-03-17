@@ -12,6 +12,8 @@ local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local UITheme = require(script.Parent.UITheme)
+
 local player = Players.LocalPlayer
 
 --------------------------------------------------------------------------------
@@ -27,25 +29,25 @@ local function px(base)
 end
 
 --------------------------------------------------------------------------------
--- Palette (matches BoostsUI deep-blue / gold theme)
+-- Palette (sourced from shared UITheme – Team menu visual language)
 --------------------------------------------------------------------------------
-local ROW_BG           = Color3.fromRGB(26, 30, 48)
-local ROW_CLAIMABLE_BG = Color3.fromRGB(36, 33, 18)
-local ROW_CLAIMED_BG   = Color3.fromRGB(22, 38, 34)
-local SIDEBAR_BG       = Color3.fromRGB(18, 20, 34)
-local TAB_ACTIVE_BG    = Color3.fromRGB(32, 30, 18)
-local CARD_STROKE      = Color3.fromRGB(55, 62, 95)
-local GOLD             = Color3.fromRGB(255, 215, 60)
-local WHITE            = Color3.fromRGB(245, 245, 252)
-local DIM_TEXT         = Color3.fromRGB(145, 150, 175)
-local BAR_BG           = Color3.fromRGB(35, 38, 58)
-local BAR_FILL         = GOLD
-local BTN_CLAIM        = Color3.fromRGB(35, 190, 75)
-local BTN_CLAIMED      = Color3.fromRGB(35, 38, 52)
-local BTN_LOCKED       = Color3.fromRGB(48, 55, 82)
-local BTN_STROKE       = Color3.fromRGB(90, 100, 140)
-local GREEN_GLOW       = Color3.fromRGB(50, 230, 110)
-local CLAIM_GOLD_GLOW  = Color3.fromRGB(255, 200, 40)
+local ROW_BG           = UITheme.CARD_BG
+local ROW_CLAIMABLE_BG = UITheme.CARD_HIGHLIGHT
+local ROW_CLAIMED_BG   = UITheme.CARD_OWNED
+local SIDEBAR_BG       = UITheme.SIDEBAR_BG
+local TAB_ACTIVE_BG    = UITheme.TAB_ACTIVE
+local CARD_STROKE      = UITheme.CARD_STROKE
+local GOLD             = UITheme.GOLD
+local WHITE            = UITheme.WHITE
+local DIM_TEXT         = UITheme.DIM_TEXT
+local BAR_BG           = UITheme.BAR_BG
+local BAR_FILL         = UITheme.GOLD
+local BTN_CLAIM        = UITheme.GREEN_BTN
+local BTN_CLAIMED      = UITheme.DISABLED_BG
+local BTN_LOCKED       = UITheme.BTN_BG
+local BTN_STROKE       = UITheme.BTN_STROKE
+local GREEN_GLOW       = UITheme.GREEN_GLOW
+local CLAIM_GOLD_GLOW  = UITheme.GOLD_WARM
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local DEBUG_QUEST_UI = false

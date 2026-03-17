@@ -28,19 +28,22 @@ end
 --------------------------------------------------------------------------------
 -- Palette (matches SideUI neutral-gray / gold theme)
 --------------------------------------------------------------------------------
-local CARD_BG       = Color3.fromRGB(26, 30, 48)
-local CARD_ACTIVE_BG= Color3.fromRGB(22, 38, 34)
-local CARD_STROKE   = Color3.fromRGB(55, 62, 95)
-local ICON_BG       = Color3.fromRGB(16, 18, 30)
-local GOLD          = Color3.fromRGB(255, 215, 60)
-local WHITE         = Color3.fromRGB(245, 245, 252)
-local DIM_TEXT      = Color3.fromRGB(145, 150, 175)
-local BTN_BG        = Color3.fromRGB(48, 55, 82)
-local BTN_STROKE_C  = Color3.fromRGB(90, 100, 140)
-local GREEN_BTN     = Color3.fromRGB(35, 190, 75)
-local RED_TEXT      = Color3.fromRGB(255, 80, 80)
-local ACTIVE_GLOW   = Color3.fromRGB(50, 230, 110)
-local DISABLED_BG   = Color3.fromRGB(35, 38, 52)
+-- Outer palette (sourced from shared UITheme – Team menu visual language)
+local _UITheme
+pcall(function() _UITheme = require(script.Parent.UITheme) end)
+local CARD_BG       = _UITheme and _UITheme.CARD_BG or Color3.fromRGB(26, 30, 48)
+local CARD_ACTIVE_BG= _UITheme and _UITheme.CARD_OWNED or Color3.fromRGB(22, 38, 34)
+local CARD_STROKE   = _UITheme and _UITheme.CARD_STROKE or Color3.fromRGB(55, 62, 95)
+local ICON_BG       = _UITheme and _UITheme.ICON_BG or Color3.fromRGB(16, 18, 30)
+local GOLD          = _UITheme and _UITheme.GOLD or Color3.fromRGB(255, 215, 80)
+local WHITE         = _UITheme and _UITheme.WHITE or Color3.fromRGB(245, 245, 252)
+local DIM_TEXT      = _UITheme and _UITheme.DIM_TEXT or Color3.fromRGB(145, 150, 175)
+local BTN_BG        = _UITheme and _UITheme.BTN_BG or Color3.fromRGB(48, 55, 82)
+local BTN_STROKE_C  = _UITheme and _UITheme.BTN_STROKE or Color3.fromRGB(90, 100, 140)
+local GREEN_BTN     = _UITheme and _UITheme.GREEN_BTN or Color3.fromRGB(35, 190, 75)
+local RED_TEXT      = _UITheme and _UITheme.RED_TEXT or Color3.fromRGB(255, 80, 80)
+local ACTIVE_GLOW   = _UITheme and _UITheme.GREEN_GLOW or Color3.fromRGB(50, 230, 110)
+local DISABLED_BG   = _UITheme and _UITheme.DISABLED_BG or Color3.fromRGB(35, 38, 52)
 
 local ACCENT_COLORS = {
     coins_2x     = Color3.fromRGB(255, 200, 40),
@@ -74,13 +77,13 @@ pcall(function()
             return math.max(1, math.round(base * screenY / 1080))
         end
 
-        local CARD_BG = Color3.fromRGB(26, 30, 48)
-        local CARD_ACTIVE_BG = Color3.fromRGB(22, 38, 34)
-        local CARD_STROKE = Color3.fromRGB(55, 62, 95)
-        local GOLD = Color3.fromRGB(255, 215, 60)
-        local WHITE = Color3.fromRGB(245, 245, 252)
-        local DIM_TEXT = Color3.fromRGB(145, 150, 175)
-        local GREEN_GLOW = Color3.fromRGB(50, 230, 110)
+        local CARD_BG = _UITheme and _UITheme.CARD_BG or Color3.fromRGB(26, 30, 48)
+        local CARD_ACTIVE_BG = _UITheme and _UITheme.CARD_OWNED or Color3.fromRGB(22, 38, 34)
+        local CARD_STROKE = _UITheme and _UITheme.CARD_STROKE or Color3.fromRGB(55, 62, 95)
+        local GOLD = _UITheme and _UITheme.GOLD or Color3.fromRGB(255, 215, 80)
+        local WHITE = _UITheme and _UITheme.WHITE or Color3.fromRGB(245, 245, 252)
+        local DIM_TEXT = _UITheme and _UITheme.DIM_TEXT or Color3.fromRGB(145, 150, 175)
+        local GREEN_GLOW = _UITheme and _UITheme.GREEN_GLOW or Color3.fromRGB(50, 230, 110)
 
         local BoostsUI = {}
 
