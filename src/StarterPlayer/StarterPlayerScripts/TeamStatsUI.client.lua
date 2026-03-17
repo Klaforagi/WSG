@@ -1,7 +1,9 @@
 -- TeamStatsUI.client.lua
 -- Custom Team Stats overlay for KingsGround.
 -- Shows per-player stats organized by Blue/Red team.
--- Toggle: Teams button (SideUI) or press Tab.
+-- Toggle: Teams button (SideUI), press Tab, or MenuController.
+-- Now managed through the shared MenuController so it participates in
+-- the same open/close system as Shop, Inventory, Quests, etc.
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -10,6 +12,24 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- MenuController: centralized menu management (loaded from ReplicatedStorage.SideUI)
+local MenuController = nil
+do
+	local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI", 10)
+	if sideUIFolder then
+		local mcMod = sideUIFolder:WaitForChild("MenuController", 5)
+		if mcMod and mcMod:IsA("ModuleScript") then
+			local ok, result = pcall(require, mcMod)
+			if ok then
+				MenuController = result
+				print("[TeamStatsUI] MenuController loaded")
+			else
+				warn("[TeamStatsUI] MenuController failed:", tostring(result))
+			end
+		end
+	end
+end
 
 -- Wait for viewport to be ready (same pattern as SideUI / MatchHUD)
 do
@@ -166,6 +186,59 @@ do
 	ts.Thickness    = 1.5
 	ts.Transparency = 0.4
 	ts.Parent       = titleLabel
+end
+
+---------------------------------------------------------------------------
+-- Close X button (top-right, matches SideUI modal style)
+---------------------------------------------------------------------------
+local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
+local CLOSE_HOVER   = Color3.fromRGB(55, 30, 38)
+local CLOSE_PRESS   = Color3.fromRGB(18, 20, 32)
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name                 = "Close"
+closeBtn.Text                 = "X"
+closeBtn.Font                 = Enum.Font.GothamBlack
+closeBtn.TextScaled           = true
+closeBtn.Size                 = UDim2.new(0, px(40), 0, px(40))
+closeBtn.AnchorPoint          = Vector2.new(1, 0)
+closeBtn.Position             = UDim2.new(1, 0, 0, 0)
+closeBtn.BackgroundColor3     = CLOSE_DEFAULT
+closeBtn.TextColor3           = GOLD
+closeBtn.AutoButtonColor      = false
+closeBtn.BorderSizePixel      = 0
+closeBtn.ZIndex               = 10
+closeBtn.Parent               = header
+
+do
+	local cc = Instance.new("UICorner")
+	cc.CornerRadius = UDim.new(0, px(8))
+	cc.Parent       = closeBtn
+end
+do
+	local cs = Instance.new("UIStroke")
+	cs.Color        = GOLD
+	cs.Thickness    = 1.2
+	cs.Transparency = 0.4
+	cs.Parent       = closeBtn
+end
+
+do
+	local fi = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	closeBtn.MouseEnter:Connect(function()
+		TweenService:Create(closeBtn, fi, {BackgroundColor3 = CLOSE_HOVER}):Play()
+		TweenService:Create(closeBtn, fi, {TextColor3 = Color3.new(1, 1, 1)}):Play()
+	end)
+	closeBtn.MouseLeave:Connect(function()
+		TweenService:Create(closeBtn, fi, {BackgroundColor3 = CLOSE_DEFAULT}):Play()
+		TweenService:Create(closeBtn, fi, {TextColor3 = GOLD}):Play()
+	end)
+	closeBtn.MouseButton1Down:Connect(function()
+		TweenService:Create(closeBtn, fi, {BackgroundColor3 = CLOSE_PRESS}):Play()
+	end)
+	closeBtn.MouseButton1Up:Connect(function()
+		TweenService:Create(closeBtn, fi, {BackgroundColor3 = CLOSE_HOVER}):Play()
+	end)
 end
 
 do
@@ -819,21 +892,68 @@ local function hide()
 end
 
 ---------------------------------------------------------------------------
--- Toggle (shared by Teams button and Tab)
+-- Instant hide (no animation). Used by MenuController when switching menus.
+---------------------------------------------------------------------------
+local function hideInstant()
+	isVisible = false
+	isPinned  = false
+	collapseTeamPicker()
+	panel.Visible  = false
+	shadow.Visible = false
+end
+
+---------------------------------------------------------------------------
+-- Register "Team" with the shared MenuController
+---------------------------------------------------------------------------
+if MenuController then
+	MenuController.RegisterMenu("Team", {
+		group = "team",  -- own group (not modal)
+		open = function(_sameGroup)
+			show()
+		end,
+		close = function()
+			hide()
+		end,
+		closeInstant = function()
+			hideInstant()
+		end,
+		isOpen = function()
+			return isVisible
+		end,
+	})
+end
+
+---------------------------------------------------------------------------
+-- Toggle (shared by Teams button, Tab, and MenuController)
 ---------------------------------------------------------------------------
 local function toggle()
-	if isVisible then
-		isPinned = false
-		print("[TeamStatsUI] Team Stats board toggled CLOSED")
-		hide()
+	if MenuController then
+		MenuController.ToggleMenu("Team")
 	else
-		isPinned = true
-		print("[TeamStatsUI] Team Stats board toggled OPEN")
-		show()
+		-- Fallback if MenuController unavailable
+		if isVisible then
+			isPinned = false
+			print("[TeamStatsUI] Team Stats board toggled CLOSED")
+			hide()
+		else
+			isPinned = true
+			print("[TeamStatsUI] Team Stats board toggled OPEN")
+			show()
+		end
 	end
 end
 
+-- Keep legacy global for backward compatibility
 _G.TeamStatsToggle = toggle
+
+-- X button closes Team (routes through MenuController)
+closeBtn.MouseButton1Click:Connect(function()
+	if MenuController then
+		MenuController.CloseMenu("Team")
+	else
+		if isVisible then isPinned = false; hide() end
+	end
+end)
 
 ---------------------------------------------------------------------------
 -- Tab press-to-toggle
@@ -857,8 +977,12 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.Escape then
 		if isVisible then
-			isPinned = false
-			hide()
+			if MenuController then
+				MenuController.CloseMenu("Team")
+			else
+				isPinned = false
+				hide()
+			end
 		end
 	end
 end)

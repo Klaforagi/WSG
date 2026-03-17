@@ -1033,7 +1033,9 @@ local function tweenWindowOut(done)
 end
 
 closeBtn.MouseButton1Click:Connect(function()
-    if modalOverlay.Visible then
+    if MenuController then
+        MenuController.CloseAllMenus()
+    elseif modalOverlay.Visible then
         tweenWindowOut()
     end
 end)
@@ -1049,6 +1051,23 @@ local boostsModule = sideUIFolder and sideUIFolder:WaitForChild("BoostsUI", 5)
 local upgradesModule = sideUIFolder and sideUIFolder:WaitForChild("UpgradesUI", 5)
 if not sideUIFolder then
     warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
+end
+
+-- MenuController: centralized menu management (shared by all menus including Team)
+local MenuController = nil
+do
+    local mcMod = sideUIFolder and sideUIFolder:WaitForChild("MenuController", 5)
+    if mcMod and mcMod:IsA("ModuleScript") then
+        local ok, result = pcall(require, mcMod)
+        if ok then
+            MenuController = result
+            print("[SideUI] MenuController loaded")
+        else
+            warn("[SideUI] MenuController failed to load:", tostring(result))
+        end
+    else
+        warn("[SideUI] MenuController not found – falling back to standalone menu logic")
+    end
 end
 
 local function updateHeaderCoins()
@@ -1073,7 +1092,8 @@ end
 -- Expose so ShopUI can trigger a refresh after purchase
 _G.UpdateShopHeaderCoins = updateHeaderCoins
 
-local function showModuleImmediate(mod, label)
+-- Populate modal content without animation (used by MenuController open callbacks)
+local function populateModalContent(mod, label)
     if not mod then return end
     clearContent()
     titleLabel.Text = label or "SHOP"
@@ -1087,38 +1107,80 @@ local function showModuleImmediate(mod, label)
         end
     end)
     currentModule = mod
-    -- animate into view
-    tweenWindowIn()
 end
 
+-- Instant-close the modal (no animation). Used when switching menus.
+local function modalCloseInstant()
+    isAnimating = false
+    currentModule = nil
+    clearAndHide()
+end
+
+-- Register a modal-based menu (Shop, Inventory, etc.) with the MenuController.
+-- All modal menus share the same overlay/window; they form a "modal" group so
+-- switching between them swaps content in-place without a full close/open cycle.
+local function registerModalMenu(name, mod, label)
+    if not MenuController then return end
+    MenuController.RegisterMenu(name, {
+        group = "modal",
+        open = function(sameGroup)
+            populateModalContent(mod, label)
+            isAnimating = false
+            if sameGroup then
+                -- Switching within the modal group: overlay already visible, just swap content
+                modalOverlay.Visible = true
+                window.Position = UDim2.new(0.5, 0, 0.5, 0)
+            else
+                tweenWindowIn()
+            end
+        end,
+        close = function()
+            tweenWindowOut()
+        end,
+        closeInstant = function()
+            modalCloseInstant()
+        end,
+        isOpen = function()
+            return modalOverlay.Visible and currentModule == mod
+        end,
+    })
+end
+
+-- Register every modal page
+if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
+if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
+if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
+if questsModule then registerModalMenu("Quests", questsModule, "DAILY QUESTS") end
+if upgradesModule then registerModalMenu("Upgrades", upgradesModule, "UPGRADES") end
+
+-- Legacy helper kept for any external code that may still reference it
 local function requestShowModule(mod, label)
     if not mod then return end
-    if isAnimating then return end
-    -- If modal open with same module -> close
-    if modalOverlay.Visible and currentModule == mod then
-        tweenWindowOut()
-        return
+    -- Map module ref → MenuController name and delegate
+    local nameMap = {
+        [shopModule]     = "Shop",
+        [invModule]      = "Inventory",
+        [optionsModule]  = "Options",
+        [questsModule]   = "Quests",
+        [upgradesModule] = "Upgrades",
+    }
+    local menuName = nameMap[mod]
+    if MenuController and menuName then
+        MenuController.ToggleMenu(menuName)
     end
-    -- If modal open with a different module -> just close the current modal
-    if modalOverlay.Visible and currentModule and currentModule ~= mod then
-        tweenWindowOut()
-        return
-    end
-    -- modal not visible -> open directly
-    showModuleImmediate(mod, label)
 end
 
 shopBtn.MouseButton1Click:Connect(function()
-    requestShowModule(shopModule, "SHOP")
+    if MenuController then MenuController.ToggleMenu("Shop") else requestShowModule(shopModule, "SHOP") end
 end)
 
 invBtn.MouseButton1Click:Connect(function()
-    requestShowModule(invModule, "INVENTORY")
+    if MenuController then MenuController.ToggleMenu("Inventory") else requestShowModule(invModule, "INVENTORY") end
 end)
 
--- Options HUD button (must be placed AFTER requestShowModule is defined)
+-- Options HUD button (must be placed AFTER menu registration)
 local function toggleOptionsMenu()
-    requestShowModule(optionsModule, "OPTIONS")
+    if MenuController then MenuController.ToggleMenu("Options") else requestShowModule(optionsModule, "OPTIONS") end
 end
 
 local optionsHudGui, optionsHudButton = CreateHudOptionsButton(toggleOptionsMenu)
@@ -1481,26 +1543,30 @@ local function SetBadge(id, enabled)
 end
 
 local function OpenPage(id)
-    if id == "Options" then
-        toggleOptionsMenu()
-        return
-    end
-    if id == "Missions" then
-        requestShowModule(questsModule, "DAILY QUESTS")
-        return
-    end
-    if id == "Upgrade" then
-        requestShowModule(upgradesModule, "UPGRADES")
-        return
-    end
-    if id == "Team" then
-        if type(_G.TeamStatsToggle) == "function" then
-            pcall(_G.TeamStatsToggle)
+    -- Route all menu opens through MenuController for unified one-click switching
+    if MenuController then
+        local idToMenu = {
+            Options  = "Options",
+            Missions = "Quests",
+            Upgrade  = "Upgrades",
+            Team     = "Team",
+        }
+        local menuName = idToMenu[id]
+        if menuName then
+            MenuController.ToggleMenu(menuName)
+            return
         end
-        return
+    else
+        -- Fallback if MenuController failed to load
+        if id == "Options" then toggleOptionsMenu(); return end
+        if id == "Missions" then requestShowModule(questsModule, "DAILY QUESTS"); return end
+        if id == "Upgrade" then requestShowModule(upgradesModule, "UPGRADES"); return end
+        if id == "Team" then
+            if type(_G.TeamStatsToggle) == "function" then pcall(_G.TeamStatsToggle) end
+            return
+        end
     end
     print("OpenPage:", id)
-    -- placeholder; integrate your page switching here
 end
 
 -- Expose simple handlers via a small global table so other local scripts can call them
@@ -1511,6 +1577,7 @@ _G.SideUI.SetBadge = SetBadge
 _G.SideUI.OpenPage = OpenPage
 _G.SideUI.OpenOptions = toggleOptionsMenu
 _G.SideUI.SetTitle = function(text) titleLabel.Text = text end
+_G.SideUI.MenuController = MenuController  -- expose for other scripts
 
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
 -- Assign to the forward-declared scriptHandlers table (line ~106) so click closures above see these
