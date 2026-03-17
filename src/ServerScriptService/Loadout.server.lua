@@ -98,6 +98,26 @@ local function sanitizeTool(tool)
             pcall(function() d.CanQuery = false end)
             pcall(function() d.Massless = true end)
         end
+        -- Disable any SwordTrail by default so it only shows during swings
+        if d and d:IsA("Trail") and d.Name == "SwordTrail" then
+            pcall(function()
+                d.Enabled = false
+                -- Set the intended white/gray transparent look so every clone matches
+                d.Color = ColorSequence.new({
+                    ColorSequenceKeypoint.new(0, Color3.fromRGB(240, 240, 240)),
+                    ColorSequenceKeypoint.new(1, Color3.fromRGB(190, 190, 190)),
+                })
+                d.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.75),
+                    NumberSequenceKeypoint.new(1, 0.95),
+                })
+                d.Lifetime = 0.14
+                d.MinLength = 0
+                d.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.0), NumberSequenceKeypoint.new(1, 0.25)})
+                d.FaceCamera = false
+                d.LightInfluence = 0
+            end)
+        end
     end
 end
 
