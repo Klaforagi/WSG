@@ -2,12 +2,20 @@ local Workspace         = game:GetService("Workspace")
 local ServerStorage     = game:GetService("ServerStorage")
 local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
+local PhysicsService    = game:GetService("PhysicsService")
+
+---------------------------------------------------------------------------
+-- Collision group: mobs don't collide with each other
+---------------------------------------------------------------------------
+local MOB_COLLISION_GROUP = "Mobs"
+pcall(function() PhysicsService:RegisterCollisionGroup(MOB_COLLISION_GROUP) end)
+pcall(function() PhysicsService:CollisionGroupSetCollidable(MOB_COLLISION_GROUP, MOB_COLLISION_GROUP, false) end)
 
 ---------------------------------------------------------------------------
 -- Configuration
 ---------------------------------------------------------------------------
 -- list of template names (ServerStorage.Mobs or ServerStorage)
-local TEMPLATE_NAMES     = { "Zombie", "Zack" }
+local TEMPLATE_NAMES     = { "Zombie", "Zack", "Orc" }
 local PORTAL_GROUP_NAMES = { "DarkPortal1", "DarkPortal2" }
 local PORTAL_PART_NAME   = "PortalPlane"
 local MOB_AREA_PREFIX    = "MobArea"
@@ -83,20 +91,26 @@ local weightedPool = {}
 
 local function rebuildWeightedPool()
     table.clear(weightedPool)
+    local disabledCount = 0
     for _, tpl in ipairs(templates) do
         local cfg = (MobSettings and MobSettings.presets and MobSettings.presets[tpl.Name]) or {}
-        local weight = math.max(1, math.floor(tonumber(cfg.spawn_chance) or 1))
-        for _ = 1, weight do
-            table.insert(weightedPool, tpl)
+        local weight = math.floor(tonumber(cfg.spawn_chance) or 1)
+        if weight > 0 then
+            for _ = 1, weight do
+                table.insert(weightedPool, tpl)
+            end
+        else
+            disabledCount = disabledCount + 1
+            print("[MobSpawner] Template '" .. tostring(tpl.Name) .. "' disabled (spawn_chance=" .. tostring(cfg.spawn_chance) .. ")")
         end
     end
-    print("[MobSpawner] Weighted pool size: " .. #weightedPool .. " entries across " .. #templates .. " template(s)")
+    print("[MobSpawner] Weighted pool size: " .. #weightedPool .. " entries across " .. #templates .. " template(s)" .. (disabledCount > 0 and (" (" .. disabledCount .. " disabled)") or ""))
 end
 
 rebuildWeightedPool()
 
 local function pickWeightedTemplate()
-    if #weightedPool == 0 then return templates[1] end
+    if #weightedPool == 0 then return nil end
     return weightedPool[math.random(1, #weightedPool)]
 end
 
@@ -190,15 +204,48 @@ local function spawnZombie(portalPart, areaPart, tpl)
     local mobTag = (mobCfg.tag and type(mobCfg.tag) == "string" and mobCfg.tag ~= "") and mobCfg.tag or MOB_TAG
     CollectionService:AddTag(z, mobTag)
 
-    -- unanchor so physics / humanoid work
+    -- unanchor so physics / humanoid work; assign mob collision group
     for _, d in ipairs(z:GetDescendants()) do
-        if d:IsA("BasePart") then d.Anchored = false; d.CanCollide = true end
+        if d:IsA("BasePart") then
+            d.Anchored = false
+            d.CanCollide = true
+            d.CollisionGroup = MOB_COLLISION_GROUP
+        end
+    end
+
+    -- Special-case: ensure Orcs' Axe weapon parts don't collide or fire Touched events
+    if z.Name == "Orc" then
+        for _, d in ipairs(z:GetDescendants()) do
+            if d and d:IsA("BasePart") and d.Name == "Axe" then
+                pcall(function()
+                    d.CanCollide = false
+                    d.CanTouch = false
+                    d.CanQuery = false
+                    d.Massless = true
+                end)
+            end
+            if d and d:IsA("Tool") and d.Name == "Axe" then
+                for _, p in ipairs(d:GetDescendants()) do
+                    if p and p:IsA("BasePart") then
+                        pcall(function()
+                            p.CanCollide = false
+                            p.CanTouch = false
+                            p.CanQuery = false
+                            p.Massless = true
+                        end)
+                    end
+                end
+            end
+        end
     end
 
     local humanoid = z:FindFirstChildOfClass("Humanoid")
     if not humanoid then warn("[MobSpawner] Template '" .. (tplToUse and tplToUse.Name or "Unknown") .. "' has no Humanoid!") return z end
     local MOB_WALK_SPEED = mobCfg.walk_speed or DEFAULT_WALK_SPEED
     local MOB_CHASE_SPEED = mobCfg.chase_speed or DEFAULT_CHASE_SPEED
+    local MOB_ENRAGED_SPEED = mobCfg.enraged_speed or MOB_CHASE_SPEED
+    local ENRAGED_ENABLED = (mobCfg.enraged == true)
+    local isEnraged = false  -- permanently set once damaged (if enraged enabled)
     local MOB_ATTACK_RANGE = mobCfg.attack_range or DEFAULT_ATTACK_RANGE
     local MOB_DETECTION_RADIUS = mobCfg.detection_radius or DEFAULT_DETECTION_RADIUS
     local MOB_AGGRO_DURATION = mobCfg.aggro_duration or DEFAULT_AGGRO_DURATION
@@ -216,7 +263,7 @@ local function spawnZombie(portalPart, areaPart, tpl)
     end
 
     -------------------------------------------------------------------
-    -- Animator + walk track
+    -- Animator + walk/run tracks
     -------------------------------------------------------------------
     local animator = humanoid:FindFirstChildOfClass("Animator")
     if not animator then
@@ -224,31 +271,60 @@ local function spawnZombie(portalPart, areaPart, tpl)
         animator.Parent = humanoid
     end
 
-    -- find a walk Animation in the template, or create fallback
-    local walkAnimObj
-    for _, a in ipairs(z:GetDescendants()) do
-        if a:IsA("Animation") and a.Name:lower():find("walk") then walkAnimObj = a break end
-    end
-    if not walkAnimObj then
-        local animId = (mobCfg.walk_anim_id and mobCfg.walk_anim_id ~= "") and mobCfg.walk_anim_id or DEFAULT_WALK_ANIM_ID
-        walkAnimObj = Instance.new("Animation")
-        walkAnimObj.Name        = "Walk_Fallback"
-        walkAnimObj.AnimationId = animId
-        walkAnimObj.Parent      = z
+    -- Build walk animation object
+    local walkAnimId = (mobCfg.walk_anim_id and mobCfg.walk_anim_id ~= "") and mobCfg.walk_anim_id or DEFAULT_WALK_ANIM_ID
+    local walkAnimObj = Instance.new("Animation")
+    walkAnimObj.Name        = "Walk_Mob"
+    walkAnimObj.AnimationId = walkAnimId
+    walkAnimObj.Parent      = z
+
+    -- Build run animation object (falls back to walk if not set)
+    local runAnimId = (mobCfg.run_anim_id and mobCfg.run_anim_id ~= "") and mobCfg.run_anim_id or walkAnimId
+    local runAnimObj = Instance.new("Animation")
+    runAnimObj.Name        = "Run_Mob"
+    runAnimObj.AnimationId = runAnimId
+    runAnimObj.Parent      = z
+
+    -- Build idle animation object (optional)
+    local idleTrack = nil
+    if mobCfg.idle_anim_id and mobCfg.idle_anim_id ~= "" then
+        local idleAnimObj = Instance.new("Animation")
+        idleAnimObj.Name        = "Idle_Mob"
+        idleAnimObj.AnimationId = mobCfg.idle_anim_id
+        idleAnimObj.Parent      = z
+        pcall(function()
+            idleTrack          = animator:LoadAnimation(idleAnimObj)
+            idleTrack.Priority = Enum.AnimationPriority.Idle
+            idleTrack.Looped   = true
+        end)
     end
 
-    local walkTrack
+    local walkTrack, runTrack
     local ok, err = pcall(function()
-        walkTrack        = animator:LoadAnimation(walkAnimObj)
+        walkTrack          = animator:LoadAnimation(walkAnimObj)
         walkTrack.Priority = Enum.AnimationPriority.Movement
         walkTrack.Looped   = true
+        runTrack           = animator:LoadAnimation(runAnimObj)
+        runTrack.Priority  = Enum.AnimationPriority.Movement
+        runTrack.Looped    = true
     end)
-    if not ok then warn("[MobSpawner] Walk anim failed: " .. tostring(err)); walkTrack = nil end
+    if not ok then warn("[MobSpawner] Anim load failed: " .. tostring(err)); walkTrack = nil; runTrack = nil end
 
-    -- adjust speed based on health: if health less than max, use chase speed
+    -- play idle on spawn so the mob isn't T-posing
+    if idleTrack then
+        pcall(function() idleTrack:Play() end)
+    end
+
+    -- activeTrack points to whichever track is currently playing
+    local activeTrack = nil
+
+    -- adjust speed based on enraged/aggro state
     local function updateSpeedByHealth(h)
         local maxH = humanoid.MaxHealth or 100
-        if h < maxH then
+        if ENRAGED_ENABLED and h < maxH then
+            isEnraged = true
+            humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+        elseif aggroPlayer then
             humanoid.WalkSpeed = MOB_CHASE_SPEED
         else
             humanoid.WalkSpeed = MOB_WALK_SPEED
@@ -265,9 +341,12 @@ local function spawnZombie(portalPart, areaPart, tpl)
     -- apply immediately in case template spawns damaged
     updateSpeedByHealth(humanoid.Health)
     humanoid.HealthChanged:Connect(function(newHealth)
-        updateSpeedByHealth(newHealth)
         -- detect damage (health went down)
         if newHealth < prevHealth then
+            -- mark enraged permanently if enabled
+            if ENRAGED_ENABLED then
+                isEnraged = true
+            end
             local attackerId = humanoid:GetAttribute("lastDamagerUserId")
             if attackerId then
                 local attacker = Players:GetPlayerByUserId(attackerId)
@@ -280,6 +359,7 @@ local function spawnZombie(portalPart, areaPart, tpl)
                 end
             end
         end
+        updateSpeedByHealth(newHealth)
         prevHealth = newHealth
     end)
 
@@ -319,22 +399,42 @@ local function spawnZombie(portalPart, areaPart, tpl)
     local chasing = false  -- true while actively chasing a player
     local stationaryTicks = 0  -- consecutive AI ticks with near-zero velocity
 
-    local function startWalking(dest)
-        humanoid:MoveTo(dest)
-        -- always check actual track state so animation restarts if it stopped
-        if walkTrack and not walkTrack.IsPlaying then
-            pcall(function() walkTrack:Play() end)
+    -- Switch to the correct animation track based on chasing state
+    local function switchTrack(wantRun)
+        local desired = wantRun and runTrack or walkTrack
+        if not desired then return end
+        -- always restart if track stopped unexpectedly
+        if activeTrack == desired and desired.IsPlaying then return end
+        -- stop previous track
+        if activeTrack and activeTrack ~= desired and activeTrack.IsPlaying then
+            pcall(function() activeTrack:Stop(0.15) end)
         end
+        -- stop idle if playing
+        if idleTrack and idleTrack.IsPlaying then
+            pcall(function() idleTrack:Stop(0.15) end)
+        end
+        pcall(function() desired:Play(0.15) end)
+        activeTrack = desired
+    end
+
+    local function startWalking(dest, useRun)
+        humanoid:MoveTo(dest)
+        switchTrack(useRun)
         moving = true
         stationaryTicks = 0
     end
 
     local function stopWalking()
-        if walkTrack and walkTrack.IsPlaying then
-            pcall(function() walkTrack:Stop() end)
+        if activeTrack and activeTrack.IsPlaying then
+            pcall(function() activeTrack:Stop() end)
         end
+        activeTrack = nil
         moving = false
         stationaryTicks = 0
+        -- play idle animation if available
+        if idleTrack and not idleTrack.IsPlaying then
+            pcall(function() idleTrack:Play(0.2) end)
+        end
     end
 
     humanoid.MoveToFinished:Connect(function()
@@ -385,20 +485,43 @@ local function spawnZombie(portalPart, areaPart, tpl)
 
             if targetRoot and dist then
                 chasing = true
+                -- set appropriate speed: enraged > chase
+                if isEnraged then
+                    humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+                else
+                    humanoid.WalkSpeed = MOB_CHASE_SPEED
+                end
                 -- overshoot: move to a point 10 studs PAST the player so the
                 -- humanoid never decelerates near them
                 local dir = (targetRoot.Position - zroot.Position).Unit
                 local overshoot = targetRoot.Position + dir * 10
-                startWalking(overshoot)
+                startWalking(overshoot, true)  -- true = use run animation
                 -- proximity attack
                 if dist <= MOB_ATTACK_RANGE then
                     tryDamage(targetRoot)
                 end
             else
-                -- was chasing but lost target → stop animation immediately
+                -- was chasing but lost target → immediately transition to wander
                 if chasing then
                     chasing = false
-                    stopWalking()
+                    -- force an immediate wander so there's no animation gap
+                    local dest
+                    if areaCenter and areaSize then
+                        dest = randomPointInArea(areaPart)
+                    else
+                        local a = math.random() * math.pi * 2
+                        local r = math.random(3, 12)
+                        dest = spawnPos + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+                    end
+                    startWalking(dest, false)  -- walk animation kicks in immediately
+                    lastWander = tick()
+                    wanderCooldown = math.random(3, 7)
+                end
+                -- set idle/walk speed (unless enraged)
+                if isEnraged then
+                    humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+                else
+                    humanoid.WalkSpeed = MOB_WALK_SPEED
                 end
                 -- wander occasionally; 30% chance to idle
                 if tick() - lastWander >= wanderCooldown then
@@ -415,20 +538,24 @@ local function spawnZombie(portalPart, areaPart, tpl)
                             local r = math.random(3, 12)
                             dest = spawnPos + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
                         end
-                        startWalking(dest)
+                        startWalking(dest, false)  -- false = use walk animation
                     end
                 else
                     -- safety: if stationary for several consecutive ticks, stop anim
                     if moving and zroot:IsA("BasePart") then
                         local vel = zroot.AssemblyLinearVelocity or zroot.Velocity
                         local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-                        if hSpeed < 0.5 then
+                        if hSpeed < 0.3 then
                             stationaryTicks = stationaryTicks + 1
-                            if stationaryTicks >= 3 then -- ~0.6s stationary before stopping
+                            if stationaryTicks >= 5 then -- ~1s stationary before stopping
                                 stopWalking()
                             end
                         else
                             stationaryTicks = 0
+                            -- ensure animation is playing while actually moving
+                            if activeTrack and not activeTrack.IsPlaying then
+                                pcall(function() activeTrack:Play(0.1) end)
+                            end
                         end
                     end
                 end
@@ -462,6 +589,10 @@ task.spawn(function()
                 if alive >= MAX_TOTAL then break end
                 local entry = portals[math.random(1, #portals)]
                 local chosen = pickWeightedTemplate()
+                if not chosen then
+                    warn("[MobSpawner] No enabled templates in weighted pool; skipping spawn")
+                    continue
+                end
                 local z = spawnZombie(entry.portal, entry.area, chosen)
                 if z then alive = alive + 1 end
             end
