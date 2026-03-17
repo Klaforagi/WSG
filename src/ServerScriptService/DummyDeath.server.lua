@@ -27,20 +27,8 @@ local function handleDummyModel(model)
             end
         end
 
-        -- short delay to let physics settle, then break joints to allow ragdoll-like collapse
-        task.wait(0.05)
-        pcall(function()
-            model:BreakJoints()
-        end)
-
-        -- delete the dummy after 5 seconds to clean up
-        task.delay(5, function()
-            if model and model.Parent then
-                pcall(function()
-                    model:Destroy()
-                end)
-            end
-        end)
+        -- MobDeathFade handles the fade-out and Destroy.
+        -- Skip BreakJoints so tweens on child parts still work.
     end)
 end
 

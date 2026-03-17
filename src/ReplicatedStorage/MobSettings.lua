@@ -3,14 +3,14 @@
 
 local presets = {
     Zombie = {
-        walk_speed       = 16,
-        chase_speed      = 16,   -- speed when damaged / chasing
+        walk_speed       = 12,
+        chase_speed      = 12,   -- speed when damaged / chasing
         attack_damage    = 5,
         attack_cooldown  = 1,
-        attack_range     = 6,    -- studs; proximity distance to land a hit
+        attack_range     = 3,    -- studs; proximity distance to land a hit
         attack_sound     = "ZombieAttack",
-        detection_radius = 40,   -- aggro range in studs
-        aggro_duration   = 12,   -- seconds to chase attacker after being hit
+        detection_radius = 15,   -- aggro range in studs
+        aggro_duration   = 5,   -- seconds to chase attacker after being hit
         tag              = "ZombieNPC",
         walk_anim_id     = "",   -- leave empty to use default R6 walk
         xp_reward        = 3,    -- XP awarded to the player who kills this mob

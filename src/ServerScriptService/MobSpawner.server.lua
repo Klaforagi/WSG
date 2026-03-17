@@ -317,20 +317,24 @@ local function spawnZombie(portalPart, areaPart, tpl)
     -------------------------------------------------------------------
     local moving = false
     local chasing = false  -- true while actively chasing a player
+    local stationaryTicks = 0  -- consecutive AI ticks with near-zero velocity
 
     local function startWalking(dest)
         humanoid:MoveTo(dest)
-        if not moving and walkTrack then
+        -- always check actual track state so animation restarts if it stopped
+        if walkTrack and not walkTrack.IsPlaying then
             pcall(function() walkTrack:Play() end)
-            moving = true
         end
+        moving = true
+        stationaryTicks = 0
     end
 
     local function stopWalking()
-        if moving and walkTrack then
+        if walkTrack and walkTrack.IsPlaying then
             pcall(function() walkTrack:Stop() end)
         end
         moving = false
+        stationaryTicks = 0
     end
 
     humanoid.MoveToFinished:Connect(function()
@@ -391,13 +395,17 @@ local function spawnZombie(portalPart, areaPart, tpl)
                     tryDamage(targetRoot)
                 end
             else
-                chasing = false
+                -- was chasing but lost target → stop animation immediately
+                if chasing then
+                    chasing = false
+                    stopWalking()
+                end
                 -- wander occasionally; 30% chance to idle
                 if tick() - lastWander >= wanderCooldown then
                     lastWander = tick()
                     wanderCooldown = math.random(3, 7)
                     if math.random() < 0.3 then
-                        -- stay idle
+                        stopWalking() -- explicitly stop in case still animating
                     else
                         local dest
                         if areaCenter and areaSize then
@@ -408,6 +416,20 @@ local function spawnZombie(portalPart, areaPart, tpl)
                             dest = spawnPos + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
                         end
                         startWalking(dest)
+                    end
+                else
+                    -- safety: if stationary for several consecutive ticks, stop anim
+                    if moving and zroot:IsA("BasePart") then
+                        local vel = zroot.AssemblyLinearVelocity or zroot.Velocity
+                        local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+                        if hSpeed < 0.5 then
+                            stationaryTicks = stationaryTicks + 1
+                            if stationaryTicks >= 3 then -- ~0.6s stationary before stopping
+                                stopWalking()
+                            end
+                        else
+                            stationaryTicks = 0
+                        end
                     end
                 end
             end

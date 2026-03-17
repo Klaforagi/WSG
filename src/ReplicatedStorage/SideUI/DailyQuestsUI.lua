@@ -54,6 +54,11 @@ local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirect
 local DEBUG_QUEST_UI = false
 local DEBUG_REROLL_TOOLTIP = true
 
+-- Small shared layout safety margins for right-side quest controls.
+local QUEST_CONTENT_RIGHT_INSET = 8
+local QUEST_CARD_RIGHT_PADDING = 16
+local QUEST_CLAIM_BTN_W = 108
+
 local function debugLog(prefix, message)
     if DEBUG_QUEST_UI then
         print(string.format("[%s] %s", prefix, message))
@@ -827,6 +832,7 @@ end
 --------------------------------------------------------------------------------
 local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, isComplete, refreshQuests)
     local btnSize = px(36)
+    local claimBtnW = px(QUEST_CLAIM_BTN_W)
     local rerollBtn = Instance.new("TextButton")
     rerollBtn.Name = "RerollBtn"
     rerollBtn.AutoButtonColor = false
@@ -838,10 +844,10 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     rerollBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
     rerollBtn.AnchorPoint = Vector2.new(1, 0)
     -- Place to the left of the claim button, vertically aligned with it
-    -- Claim button: size px(100) x px(34), at y = px(52) - px(2) = px(50)
+    -- Claim button: size claimBtnW x px(34), at y = px(52) - px(2) = px(50)
     local barYRef = px(52)
     local claimBtnH = px(34)
-    rerollBtn.Position = UDim2.new(1, -(px(100) + px(12)), 0, barYRef - px(2) + math.floor((claimBtnH - btnSize) / 2))
+    rerollBtn.Position = UDim2.new(1, -(claimBtnW + px(12)), 0, barYRef - px(2) + math.floor((claimBtnH - btnSize) / 2))
     rerollBtn.ZIndex = 5
     rerollBtn.Parent = card
 
@@ -1025,7 +1031,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local contentArea = Instance.new("Frame")
     contentArea.Name                = "ContentArea"
     contentArea.BackgroundTransparency = 1
-    contentArea.Size                = UDim2.new(1, -(TAB_W + TAB_GAP), 1, 0)
+    contentArea.Size                = UDim2.new(1, -(TAB_W + TAB_GAP + px(QUEST_CONTENT_RIGHT_INSET)), 1, 0)
     contentArea.Position            = UDim2.new(0, TAB_W + TAB_GAP, 0, 0)
     contentArea.ClipsDescendants    = false
     contentArea.Parent              = root
@@ -1333,7 +1339,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         local pad = Instance.new("UIPadding")
         pad.PaddingLeft   = UDim.new(0, px(14))
-        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(QUEST_CARD_RIGHT_PADDING))
         pad.PaddingTop    = UDim.new(0, px(12))
         pad.PaddingBottom = UDim.new(0, px(12))
         pad.Parent        = card
@@ -1481,7 +1487,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progressTexts[quest.id] = progText
 
         -- Claim button
-        local btnW2 = px(100)
+        local btnW2 = px(QUEST_CLAIM_BTN_W)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
@@ -1678,7 +1684,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         local pad = Instance.new("UIPadding")
         pad.PaddingLeft   = UDim.new(0, px(14))
-        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(QUEST_CARD_RIGHT_PADDING))
         pad.PaddingTop    = UDim.new(0, px(12))
         pad.PaddingBottom = UDim.new(0, px(12))
         pad.Parent        = card
@@ -1825,7 +1831,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         wkProgressTexts[questIdx] = progText
 
         -- Claim button
-        local btnW2 = px(100)
+        local btnW2 = px(QUEST_CLAIM_BTN_W)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
@@ -2036,7 +2042,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         local pad = Instance.new("UIPadding")
         pad.PaddingLeft   = UDim.new(0, px(14))
-        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(QUEST_CARD_RIGHT_PADDING))
         pad.PaddingTop    = UDim.new(0, px(12))
         pad.PaddingBottom = UDim.new(0, px(12))
         pad.Parent        = card
@@ -2195,7 +2201,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         achProgressTexts[ach.id] = progText
 
         -- Claim / status button
-        local btnW2 = px(100)
+        local btnW2 = px(QUEST_CLAIM_BTN_W)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
