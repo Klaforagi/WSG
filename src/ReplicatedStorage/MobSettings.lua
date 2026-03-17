@@ -3,22 +3,28 @@
 
 local presets = {
     Zombie = {
-        walk_speed       = 16,
-        chase_speed      = 16,   -- speed when damaged / chasing
+        walk_speed       = 12,
+        chase_speed      = 12,   -- speed when chasing/aggroed
+        enraged_speed    = 16,   -- speed when damaged (health < max)
+        enraged          = false, -- true = use enraged_speed when damaged
         attack_damage    = 5,
         attack_cooldown  = 1,
-        attack_range     = 6,    -- studs; proximity distance to land a hit
+        attack_range     = 3,    -- studs; proximity distance to land a hit
         attack_sound     = "ZombieAttack",
-        detection_radius = 40,   -- aggro range in studs
-        aggro_duration   = 12,   -- seconds to chase attacker after being hit
+        detection_radius = 15,   -- aggro range in studs
+        aggro_duration   = 5,   -- seconds to chase attacker after being hit
         tag              = "ZombieNPC",
-        walk_anim_id     = "",   -- leave empty to use default R6 walk
+        walk_anim_id     = "",   -- animation when wandering (empty = default R6 walk)
+        run_anim_id      = "",   -- animation when aggroed/chasing (empty = uses walk_anim_id)
+        idle_anim_id     = "",   -- animation when standing still (empty = none)
         xp_reward        = 3,    -- XP awarded to the player who kills this mob
-        spawn_chance     = 99,   -- weighted chance: higher = more likely to be picked
+        spawn_chance     = 0,   -- weighted chance: higher = more likely to be picked
     },
     Zack = {
         walk_speed       = 16,
         chase_speed      = 16,
+        enraged_speed    = 20,
+        enraged          = false,
         attack_damage    = 20,
         attack_cooldown  = 1.2,
         attack_range     = 6,
@@ -26,9 +32,29 @@ local presets = {
         detection_radius = 40,
         aggro_duration   = 12,
         tag              = "ZombieNPC",
-        walk_anim_id     = "",
+        walk_anim_id     = "",   -- animation when wandering
+        run_anim_id      = "",   -- animation when aggroed/chasing
+        idle_anim_id     = "",   -- animation when standing still
         xp_reward        = 5,    -- XP awarded to the player who kills this mob
-        spawn_chance     = 1,    -- weighted chance: higher = more likely to be picked
+        spawn_chance     = 0,    -- weighted chance: higher = more likely to be picked
+    },
+    Orc = {
+        walk_speed       = 8,
+        chase_speed      = 16,   -- faster when aggroed
+        enraged_speed    = 16,
+        enraged          = false,
+        attack_damage    = 12,
+        attack_cooldown  = 1,
+        attack_range     = 4,
+        attack_sound     = "OrcAttack",
+        detection_radius = 20,
+        aggro_duration   = 8,
+        tag              = "ZombieNPC",
+        walk_anim_id     = "rbxassetid://657552124",                         -- R15 walk animation when wandering
+        run_anim_id      = "rbxassetid://507767714",   -- R15 run animation when aggroed/chasing
+        idle_anim_id     = "rbxassetid://507766388",   -- R15 idle animation when standing still
+        xp_reward        = 8,
+        spawn_chance     = 5,
     },
 }
 

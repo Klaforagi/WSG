@@ -11,6 +11,7 @@
 local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextService       = game:GetService("TextService")
 
 local UITheme = require(script.Parent.UITheme)
 
@@ -51,6 +52,7 @@ local CLAIM_GOLD_GLOW  = UITheme.GOLD_WARM
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local DEBUG_QUEST_UI = false
+local DEBUG_REROLL_TOOLTIP = true
 
 local function debugLog(prefix, message)
     if DEBUG_QUEST_UI then
@@ -127,6 +129,10 @@ local activeRerollHostGui = nil
 local previousHostZIndexBehavior = nil
 local rerollModalOpen = false
 local rerollModalSelection = nil
+local rerollTooltipLayer = nil
+local rerollTooltipPanel = nil
+local rerollTooltipLabel = nil
+local hideRerollTooltip = function() end
 
 local function trackConn(conn)
     table.insert(activeConnections, conn)
@@ -137,6 +143,7 @@ local function cleanupConnections()
         pcall(function() conn:Disconnect() end)
     end
     activeConnections = {}
+    hideRerollTooltip()
     -- Close any open reroll confirmation popup
     if activeRerollPopup then
         print("[QuestReroll] Popup destroyed/hidden (cleanup)")
@@ -205,6 +212,170 @@ local REROLL_ACCENT  = Color3.fromRGB(170, 110, 255)
 local REROLL_BTN_BG  = Color3.fromRGB(80, 55, 120)
 local CANCEL_BTN_BG  = Color3.fromRGB(120, 40, 40)
 
+local function getTooltipHostGui()
+    if questsScreenGui and questsScreenGui.Parent then
+        return questsScreenGui
+    end
+    local playerGui = player:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then
+        return nil
+    end
+    return playerGui:FindFirstChild("SideUIModal") or playerGui:FindFirstChildOfClass("ScreenGui")
+end
+
+local function ensureRerollTooltip()
+    local hostGui = getTooltipHostGui()
+    if not hostGui then
+        return false
+    end
+
+    if rerollTooltipLayer and rerollTooltipLayer.Parent ~= hostGui then
+        rerollTooltipLayer:Destroy()
+        rerollTooltipLayer = nil
+        rerollTooltipPanel = nil
+        rerollTooltipLabel = nil
+    end
+
+    if rerollTooltipLayer and rerollTooltipPanel and rerollTooltipLabel then
+        return true
+    end
+
+    local layer = Instance.new("Frame")
+    layer.Name = "RerollTooltipLayer"
+    layer.BackgroundTransparency = 1
+    layer.Size = UDim2.new(1, 0, 1, 0)
+    layer.Position = UDim2.new(0, 0, 0, 0)
+    layer.Active = false
+    layer.Visible = false
+    layer.ZIndex = 899
+    layer.ClipsDescendants = false
+    layer.Parent = hostGui
+
+    local panel = Instance.new("Frame")
+    panel.Name = "RerollTooltip"
+    panel.BackgroundColor3 = Color3.fromRGB(16, 22, 38)
+    panel.BackgroundTransparency = 0.12
+    panel.BorderSizePixel = 0
+    panel.Size = UDim2.new(0, px(170), 0, px(30))
+    panel.Position = UDim2.new(0, 0, 0, 0)
+    panel.Active = false
+    panel.Visible = false
+    panel.ZIndex = 900
+    panel.Parent = layer
+
+    local panelCorner = Instance.new("UICorner")
+    panelCorner.CornerRadius = UDim.new(0, px(8))
+    panelCorner.Parent = panel
+
+    local panelStroke = Instance.new("UIStroke")
+    panelStroke.Color = CARD_STROKE
+    panelStroke.Thickness = 1.1
+    panelStroke.Transparency = 0.2
+    panelStroke.Parent = panel
+
+    local panelPad = Instance.new("UIPadding")
+    panelPad.PaddingLeft = UDim.new(0, px(10))
+    panelPad.PaddingRight = UDim.new(0, px(10))
+    panelPad.PaddingTop = UDim.new(0, px(6))
+    panelPad.PaddingBottom = UDim.new(0, px(6))
+    panelPad.Parent = panel
+
+    local text = Instance.new("TextLabel")
+    text.Name = "TooltipText"
+    text.BackgroundTransparency = 1
+    text.Font = Enum.Font.GothamBold
+    text.Text = "Reroll Quest"
+    text.TextColor3 = GOLD
+    text.TextSize = math.max(11, math.floor(px(12)))
+    text.TextXAlignment = Enum.TextXAlignment.Left
+    text.TextYAlignment = Enum.TextYAlignment.Center
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.ZIndex = 901
+    text.Parent = panel
+
+    rerollTooltipLayer = layer
+    rerollTooltipPanel = panel
+    rerollTooltipLabel = text
+    return true
+end
+
+hideRerollTooltip = function()
+    if rerollTooltipPanel then
+        rerollTooltipPanel.Visible = false
+    end
+    if rerollTooltipLayer then
+        rerollTooltipLayer.Visible = false
+    end
+end
+
+local function showRerollTooltipForButton(button, tooltipText)
+    if not button or not button.Parent then
+        return
+    end
+    if not ensureRerollTooltip() then
+        return
+    end
+
+    local text = tooltipText and tostring(tooltipText) or "Reroll Quest"
+    rerollTooltipLabel.Text = text
+
+    local textSize = TextService:GetTextSize(
+        text,
+        rerollTooltipLabel.TextSize,
+        rerollTooltipLabel.Font,
+        Vector2.new(2000, 2000)
+    )
+
+    local tooltipW = math.max(px(120), textSize.X + px(20))
+    local tooltipH = math.max(px(30), textSize.Y + px(12))
+
+    local layerAbsPos = rerollTooltipLayer.AbsolutePosition
+    local layerAbsSize = rerollTooltipLayer.AbsoluteSize
+    local btnAbsPos = button.AbsolutePosition
+    local btnAbsSize = button.AbsoluteSize
+    local margin = px(8)
+    local verticalPad = px(6)
+
+    -- Position from the hovered button center in screen space, then convert to tooltip-layer space.
+    local screenX = btnAbsPos.X + math.floor((btnAbsSize.X - tooltipW) / 2)
+    local screenY = btnAbsPos.Y - tooltipH - verticalPad
+
+    local x = screenX - layerAbsPos.X
+    local y = screenY - layerAbsPos.Y
+
+    if x + tooltipW > layerAbsSize.X - margin then
+        x = layerAbsSize.X - tooltipW - margin
+    end
+    if x < margin then
+        x = margin
+    end
+
+    -- Prefer above the button; if there isn't room, flip below while preserving bounds.
+    if y < margin then
+        y = (btnAbsPos.Y + btnAbsSize.Y + verticalPad) - layerAbsPos.Y
+    end
+    if y + tooltipH > layerAbsSize.Y - margin then
+        y = layerAbsSize.Y - tooltipH - margin
+    end
+    if y < margin then
+        y = margin
+    end
+
+    rerollTooltipPanel.Size = UDim2.new(0, tooltipW, 0, tooltipH)
+    rerollTooltipPanel.Position = UDim2.new(0, x, 0, y)
+    rerollTooltipLayer.Visible = true
+    rerollTooltipPanel.Visible = true
+
+    if DEBUG_REROLL_TOOLTIP then
+        print(string.format("[QuestRerollTooltip] button AbsolutePosition=(%d, %d)", btnAbsPos.X, btnAbsPos.Y))
+        print(string.format("[QuestRerollTooltip] button AbsoluteSize=(%d, %d)", btnAbsSize.X, btnAbsSize.Y))
+        print(string.format("[QuestRerollTooltip] tooltip parent=%s", tostring(rerollTooltipPanel.Parent and rerollTooltipPanel.Parent:GetFullName() or "nil")))
+        print(string.format("[QuestRerollTooltip] positioned from button coords (not mouse)"))
+        print(string.format("[QuestRerollTooltip] tooltip final Position=%s", tostring(rerollTooltipPanel.Position)))
+        print(string.format("[QuestRerollTooltip] tooltip AbsolutePosition=(%d, %d)", rerollTooltipPanel.AbsolutePosition.X, rerollTooltipPanel.AbsolutePosition.Y))
+    end
+end
+
 local function destroyAllRerollModalArtifacts(reason)
     local playerGui = player:FindFirstChildOfClass("PlayerGui")
     if not playerGui then
@@ -232,6 +403,7 @@ end
 
 local function closeRerollPopup(reason)
     print(string.format("[QuestReroll] CloseRerollPopup called (%s)", tostring(reason or "unspecified")))
+    hideRerollTooltip()
     if activeRerollOverlay then
         print(string.format("[QuestReroll] Overlay before cleanup | visible=%s | active=%s", tostring(activeRerollOverlay.Visible), tostring(activeRerollOverlay.Active)))
     end
@@ -705,14 +877,18 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
 
     setRerollEnabled(not isClaimed and not isComplete)
 
+    local tooltipText = string.format("Reroll Quest (%d coins)", getRerollCost())
+
     -- Hover
     trackConn(rerollBtn.MouseEnter:Connect(function()
+        showRerollTooltipForButton(rerollBtn, tooltipText)
         if rerollBtn.Active then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_ACCENT, TextColor3 = WHITE}):Play()
             rbStr.Transparency = 0
         end
     end))
     trackConn(rerollBtn.MouseLeave:Connect(function()
+        hideRerollTooltip()
         if rerollBtn.Active then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(30, 26, 48), TextColor3 = REROLL_ACCENT}):Play()
             rbStr.Transparency = 0.4
@@ -722,6 +898,7 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     -- Click: open confirmation popup
     trackConn(rerollBtn.MouseButton1Click:Connect(function()
         if not rerollBtn.Active then return end
+        hideRerollTooltip()
         print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s)", tabId, serverIdx, questTitle))
         showRerollConfirmation(tabId, serverIdx, questTitle, function(success, _msg)
             if success and refreshQuests then
@@ -947,6 +1124,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
     local function setActiveTab(tabId)
         currentTab = tabId
+        hideRerollTooltip()
 
         -- Close any open reroll confirmation popup when switching tabs
         closeRerollPopup("tab-switch")

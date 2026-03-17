@@ -139,10 +139,8 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
                 if desc:IsA("BasePart") then desc.Anchored = false; desc.CanCollide = true end
             end
             task.wait(0.05)
-            pcall(function() victimModel:BreakJoints() end)
-            task.delay(5, function()
-                if victimModel and victimModel.Parent then pcall(function() victimModel:Destroy() end) end
-            end)
+            -- MobDeathFade handles the fade-out and Destroy; skip BreakJoints
+            -- so tweens on child parts still work.
         end
     end
 end
