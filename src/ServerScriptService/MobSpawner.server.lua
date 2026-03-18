@@ -33,6 +33,7 @@ local DEFAULT_ATTACK_RANGE    = 6
 local DEFAULT_AGGRO_DURATION  = 12
 local MOB_TAG                 = "ZombieNPC"
 local Debris = game:GetService("Debris")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- optional per-mob settings module (put presets keyed by template Name)
@@ -257,6 +258,8 @@ local function spawnZombie(portalPart, areaPart, tpl)
     local ATTACK_WINDUP   = mobCfg.attack_windup    or 1   -- seconds locked in place before hitbox fires
     local HITBOX_SIZE     = mobCfg.hitbox_size       or Vector3.new(4, 6, 4)
     local HITBOX_OFFSET   = mobCfg.hitbox_offset     or Vector3.new(0, 0, 3)
+    local SHOW_HITBOX     = (mobCfg.show_hitbox == true)
+    local HITBOX_COLOR    = mobCfg.hitbox_color       or Color3.fromRGB(255, 50, 50)
 
     local isAttacking     = false   -- true while in the attack wind-up/swing
     local lastSwingEnd    = 0       -- os.clock() when last swing finished (for cooldown)
@@ -439,6 +442,27 @@ local function spawnZombie(portalPart, areaPart, tpl)
         zroot = getRootPart(z) -- refresh reference
         if zroot then
             local boxCF = zroot.CFrame * CFrame.new(HITBOX_OFFSET)
+
+            -- Debug: show hitbox part
+            if SHOW_HITBOX then
+                local dbg = Instance.new("Part")
+                dbg.Name         = "_MobHitboxDebug"
+                dbg.Anchored     = true
+                dbg.CanCollide   = false
+                dbg.CanTouch     = false
+                dbg.CanQuery     = false
+                dbg.Size         = HITBOX_SIZE
+                dbg.CFrame       = boxCF
+                dbg.Transparency = 0.5
+                dbg.Color        = HITBOX_COLOR
+                dbg.Material     = Enum.Material.Neon
+                dbg.Parent       = Workspace
+                -- Fade out and destroy after 0.5s
+                local tween = TweenService:Create(dbg, TweenInfo.new(0.5, Enum.EasingStyle.Linear), { Transparency = 1 })
+                tween:Play()
+                Debris:AddItem(dbg, 0.6)
+            end
+
             local parts  = Workspace:GetPartBoundsInBox(boxCF, HITBOX_SIZE)
             local hitHumanoids = {}
             if parts then
