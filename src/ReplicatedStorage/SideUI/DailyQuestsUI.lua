@@ -73,6 +73,7 @@ local claimWeeklyRF
 local weeklyProgressRE
 local rerollDailyRF
 local rerollWeeklyRF
+local getRerollCooldownsRF
 
 local function ensureRemotes()
     if questRemotesFolder then return true end
@@ -90,6 +91,7 @@ local function ensureRemotes()
     weeklyProgressRE = questRemotesFolder:FindFirstChild("WeeklyQuestProgress")
     rerollDailyRF    = questRemotesFolder:WaitForChild("RequestRerollDailyQuest", 5)
     rerollWeeklyRF   = questRemotesFolder:WaitForChild("RequestRerollWeeklyQuest", 5)
+    getRerollCooldownsRF = questRemotesFolder:WaitForChild("GetRerollCooldowns", 5)
 
     if rerollDailyRF then
         debugLog("QuestReroll", "Found RequestRerollDailyQuest")
@@ -106,13 +108,16 @@ end
 
 -- Lazy re-resolve reroll remotes (in case they weren't ready on first ensureRemotes call)
 local function ensureRerollRemotes()
-    if rerollDailyRF and rerollWeeklyRF then return end
+    if rerollDailyRF and rerollWeeklyRF and getRerollCooldownsRF then return end
     if not questRemotesFolder then return end
     if not rerollDailyRF then
         rerollDailyRF = questRemotesFolder:FindFirstChild("RequestRerollDailyQuest")
     end
     if not rerollWeeklyRF then
         rerollWeeklyRF = questRemotesFolder:FindFirstChild("RequestRerollWeeklyQuest")
+    end
+    if not getRerollCooldownsRF then
+        getRerollCooldownsRF = questRemotesFolder:FindFirstChild("GetRerollCooldowns")
     end
 end
 
@@ -133,6 +138,7 @@ local rerollTooltipLayer = nil
 local rerollTooltipPanel = nil
 local rerollTooltipLabel = nil
 local hideRerollTooltip = function() end
+local activeCountdownThread = nil   -- coroutine handle for live countdown
 
 local function trackConn(conn)
     table.insert(activeConnections, conn)
@@ -211,6 +217,38 @@ end
 local REROLL_ACCENT  = Color3.fromRGB(170, 110, 255)
 local REROLL_BTN_BG  = Color3.fromRGB(80, 55, 120)
 local CANCEL_BTN_BG  = Color3.fromRGB(120, 40, 40)
+local DISABLED_REROLL_BG = Color3.fromRGB(50, 45, 60)
+
+--------------------------------------------------------------------------------
+-- Client-side cooldown cache (mirrors server authoritative cooldowns)
+-- Updated on popup open and after successful reroll
+--------------------------------------------------------------------------------
+local clientCooldowns = { daily = 0, weekly = 0 }   -- os.clock()-based expiry
+
+local function fetchServerCooldowns()
+    ensureRerollRemotes()
+    if not getRerollCooldownsRF then return end
+    local ok, result = pcall(function()
+        return getRerollCooldownsRF:InvokeServer()
+    end)
+    if ok and type(result) == "table" then
+        local now = os.clock()
+        clientCooldowns.daily  = now + (tonumber(result.daily)  or 0)
+        clientCooldowns.weekly = now + (tonumber(result.weekly) or 0)
+        print(string.format("[QuestReroll] Cooldowns fetched: daily=%ds weekly=%ds",
+            math.max(0, math.ceil(tonumber(result.daily) or 0)),
+            math.max(0, math.ceil(tonumber(result.weekly) or 0))))
+    end
+end
+
+local function getClientCooldownRemaining(category)
+    local expiresAt = clientCooldowns[category] or 0
+    return math.max(0, expiresAt - os.clock())
+end
+
+local function setClientCooldown(category, seconds)
+    clientCooldowns[category] = os.clock() + seconds
+end
 
 local function getTooltipHostGui()
     if questsScreenGui and questsScreenGui.Parent then
@@ -496,15 +534,19 @@ local function submitReroll(tabId, serverIdx)
 end
 
 --------------------------------------------------------------------------------
--- showRerollConfirmation  –  Modal popup before spending coins
+-- showRerollConfirmation  –  Modal popup with multiple visual states
 -- tabId: "daily" | "weekly"
 -- serverIdx: the 1-based quest index to reroll
 -- questName: display name of the quest being rerolled
+-- popupState: "ready" | "cooldown" | "completedBlocked" | "claimedBlocked"
 -- onConfirm: function(success, msg) called after server response
 --------------------------------------------------------------------------------
-local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
+local function showRerollConfirmation(tabId, serverIdx, questName, popupState, onConfirm)
     -- Close any existing popup first
     closeRerollPopup("before-open")
+
+    popupState = popupState or "ready"
+    print(string.format("[QuestReroll] Opening popup state=%s for %s quest index %d (%s)", popupState, tabId, serverIdx, questName))
 
     local rerollCost = getRerollCost()
     local hostGui = resolveModalHostGui()
@@ -553,8 +595,8 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     activeRerollOverlay = dimBg
     print(string.format("[QuestReroll] Overlay shown | parent=%s | zindex=%d", dimBg.Parent:GetFullName(), dimBg.ZIndex))
 
-    -- Modal card
-    local modalW, modalH = px(430), px(290)
+    -- Modal card (slightly larger to accommodate status text)
+    local modalW, modalH = px(440), px(340)
     local modal = Instance.new("Frame")
     modal.Name = "RerollModal"
     modal.BackgroundColor3 = Color3.fromRGB(18, 16, 28)
@@ -575,6 +617,10 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
             print("[QuestReroll] Popup destroyed/hidden (ancestry removed)")
             rerollModalOpen = false
             rerollModalSelection = nil
+            if activeCountdownThread then
+                pcall(function() task.cancel(activeCountdownThread) end)
+                activeCountdownThread = nil
+            end
             print("[QuestReroll] Modal state reset (ancestry removed)")
         end
     end)
@@ -625,30 +671,42 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     questLbl.ZIndex = 911
     questLbl.Parent = modal
 
-    -- Body description
+    -- Body description (state-dependent)
+    local bodyText
+    if popupState == "cooldown" then
+        bodyText = "Reroll is temporarily unavailable.\nPlease wait for the cooldown to expire."
+    elseif popupState == "completedBlocked" then
+        bodyText = "This quest is already completed.\nCompleted quests cannot be rerolled."
+    elseif popupState == "claimedBlocked" then
+        bodyText = "This quest has already been claimed.\nClaimed quests cannot be rerolled."
+    else
+        bodyText = "This will replace the quest above with a new random quest."
+    end
+
     local bodyLbl = Instance.new("TextLabel")
     bodyLbl.Name = "BodyText"
     bodyLbl.BackgroundTransparency = 1
     bodyLbl.Font = Enum.Font.GothamMedium
-    bodyLbl.Text = "This will replace the quest above with a new random quest."
+    bodyLbl.Text = bodyText
     bodyLbl.TextColor3 = DIM_TEXT
     bodyLbl.TextSize = math.max(13, math.floor(px(15)))
     bodyLbl.TextWrapped = true
     bodyLbl.TextXAlignment = Enum.TextXAlignment.Center
-    bodyLbl.Size = UDim2.new(1, 0, 0, px(44))
+    bodyLbl.Size = UDim2.new(1, 0, 0, px(50))
     bodyLbl.Position = UDim2.new(0, 0, 0, px(76))
     bodyLbl.ZIndex = 911
     bodyLbl.Parent = modal
 
-    -- Cost badge
+    -- Cost badge (only shown in ready state)
     local costBadge = Instance.new("Frame")
     costBadge.Name = "CostBadge"
     costBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
     costBadge.BackgroundTransparency = 0.3
     costBadge.Size = UDim2.new(0, px(130), 0, px(34))
     costBadge.AnchorPoint = Vector2.new(0.5, 0)
-    costBadge.Position = UDim2.new(0.5, 0, 0, px(130))
+    costBadge.Position = UDim2.new(0.5, 0, 0, px(136))
     costBadge.ZIndex = 911
+    costBadge.Visible = (popupState == "ready")
     costBadge.Parent = modal
 
     local cbCr = Instance.new("UICorner")
@@ -678,7 +736,7 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     costCoin.Position = UDim2.new(1, -px(6), 0.5, 0)
     costCoin.ZIndex = 912
 
-    -- Error / status label
+    -- Error / status label (above buttons)
     local statusLbl = Instance.new("TextLabel")
     statusLbl.Name = "StatusLbl"
     statusLbl.BackgroundTransparency = 1
@@ -688,16 +746,16 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     statusLbl.TextSize = math.max(12, math.floor(px(14)))
     statusLbl.TextXAlignment = Enum.TextXAlignment.Center
     statusLbl.Size = UDim2.new(1, 0, 0, px(22))
-    statusLbl.Position = UDim2.new(0, 0, 0, px(172))
+    statusLbl.Position = UDim2.new(0, 0, 0, px(178))
     statusLbl.ZIndex = 911
     statusLbl.Parent = modal
 
     -- Button row
-    local btnRowY = px(198)
+    local btnRowY = px(206)
     local btnW = px(140)
     local btnH = px(42)
 
-    -- Cancel button
+    -- Cancel button (always active)
     local cancelBtn = Instance.new("TextButton")
     cancelBtn.Name = "CancelBtn"
     cancelBtn.AutoButtonColor = false
@@ -723,29 +781,99 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     ccStr.Parent = cancelBtn
 
     -- Reroll (confirm) button
+    local isDisabled = (popupState ~= "ready")
     local confirmBtn = Instance.new("TextButton")
     confirmBtn.Name = "ConfirmBtn"
     confirmBtn.AutoButtonColor = false
     confirmBtn.Font = Enum.Font.GothamBold
     confirmBtn.Text = "\u{1F504} REROLL"
-    confirmBtn.TextColor3 = WHITE
     confirmBtn.TextSize = math.max(14, math.floor(px(16)))
-    confirmBtn.BackgroundColor3 = REROLL_BTN_BG
     confirmBtn.Size = UDim2.new(0, btnW, 0, btnH)
     confirmBtn.AnchorPoint = Vector2.new(0, 0)
     confirmBtn.Position = UDim2.new(0.5, px(6), 0, btnRowY)
     confirmBtn.ZIndex = 911
     confirmBtn.Parent = modal
 
+    -- Set confirm button appearance based on state
+    if isDisabled then
+        confirmBtn.BackgroundColor3 = DISABLED_REROLL_BG
+        confirmBtn.TextColor3 = DIM_TEXT
+        confirmBtn.Active = false
+    else
+        confirmBtn.BackgroundColor3 = REROLL_BTN_BG
+        confirmBtn.TextColor3 = WHITE
+        confirmBtn.Active = true
+    end
+
     local cfCr = Instance.new("UICorner")
     cfCr.CornerRadius = UDim.new(0, px(12))
     cfCr.Parent = confirmBtn
 
     local cfStr = Instance.new("UIStroke")
-    cfStr.Color = REROLL_ACCENT
+    if isDisabled then
+        cfStr.Color = CARD_STROKE
+        cfStr.Transparency = 0.6
+    else
+        cfStr.Color = REROLL_ACCENT
+        cfStr.Transparency = 0.25
+    end
     cfStr.Thickness = 1.4
-    cfStr.Transparency = 0.25
     cfStr.Parent = confirmBtn
+
+    -- Status text line beneath buttons (for cooldown / blocked reason)
+    local footerLbl = Instance.new("TextLabel")
+    footerLbl.Name = "FooterStatus"
+    footerLbl.BackgroundTransparency = 1
+    footerLbl.Font = Enum.Font.GothamBold
+    footerLbl.TextColor3 = Color3.fromRGB(255, 130, 70)
+    footerLbl.TextSize = math.max(12, math.floor(px(14)))
+    footerLbl.TextXAlignment = Enum.TextXAlignment.Center
+    footerLbl.Size = UDim2.new(1, 0, 0, px(22))
+    footerLbl.Position = UDim2.new(0, 0, 0, btnRowY + btnH + px(10))
+    footerLbl.ZIndex = 911
+    footerLbl.Parent = modal
+
+    -- Set footer text by state
+    if popupState == "completedBlocked" then
+        footerLbl.Text = "Completed quests cannot be rerolled"
+        footerLbl.TextColor3 = Color3.fromRGB(255, 130, 70)
+    elseif popupState == "claimedBlocked" then
+        footerLbl.Text = "Claimed quests cannot be rerolled"
+        footerLbl.TextColor3 = Color3.fromRGB(255, 130, 70)
+    elseif popupState == "cooldown" then
+        local remaining = math.ceil(getClientCooldownRemaining(tabId))
+        footerLbl.Text = string.format("Reroll Cooldown: %ds", remaining)
+        footerLbl.TextColor3 = Color3.fromRGB(255, 180, 60)
+
+        -- Live countdown update loop
+        activeCountdownThread = task.spawn(function()
+            while true do
+                task.wait(1)
+                if not modal or not modal.Parent then break end
+                if not rerollModalOpen then break end
+                local rem = math.ceil(getClientCooldownRemaining(tabId))
+                if rem <= 0 then
+                    -- Cooldown expired while popup is open — upgrade to ready state
+                    footerLbl.Text = ""
+                    confirmBtn.BackgroundColor3 = REROLL_BTN_BG
+                    confirmBtn.TextColor3 = WHITE
+                    confirmBtn.Active = true
+                    cfStr.Color = REROLL_ACCENT
+                    cfStr.Transparency = 0.25
+                    bodyLbl.Text = "This will replace the quest above with a new random quest."
+                    costBadge.Visible = true
+                    statusLbl.Text = ""
+                    popupState = "ready"
+                    print("[QuestReroll] Cooldown expired while popup open — now ready")
+                    break
+                end
+                footerLbl.Text = string.format("Reroll Cooldown: %ds", rem)
+            end
+            activeCountdownThread = nil
+        end)
+    else
+        footerLbl.Text = ""
+    end
 
     local inFlight = false
 
@@ -767,19 +895,20 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
         TweenService:Create(cancelBtn, TWEEN_QUICK, {BackgroundColor3 = CANCEL_BTN_BG}):Play()
     end)
     confirmBtn.MouseEnter:Connect(function()
-        if not inFlight then
+        if not inFlight and confirmBtn.Active then
             TweenService:Create(confirmBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_ACCENT}):Play()
         end
     end)
     confirmBtn.MouseLeave:Connect(function()
-        if not inFlight then
+        if not inFlight and confirmBtn.Active then
             TweenService:Create(confirmBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_BTN_BG}):Play()
         end
     end)
 
-    -- Confirm: send reroll
+    -- Confirm: send reroll (only works in ready state)
     confirmBtn.MouseButton1Click:Connect(function()
         if inFlight then return end
+        if not confirmBtn.Active then return end
         print("[QuestReroll] Confirm clicked")
         inFlight = true
         confirmBtn.Text = "..."
@@ -793,6 +922,11 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
 
         if success then
             print("[QuestReroll] Reroll success; refreshing quest list")
+            -- Set client-side cooldown immediately
+            local cdDuration = (tabId == "weekly") and 90 or 45
+            setClientCooldown(tabId, cdDuration)
+            print(string.format("[QuestReroll] Client cooldown set: %s = %ds", tabId, cdDuration))
+
             closeRerollPopup("confirm-success")
             pcall(function()
                 if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
@@ -803,6 +937,10 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
             local errText = tostring(msg or "Reroll failed")
             if errText:find("Insufficient") or errText:find("coins") then
                 errText = "Not enough coins!"
+            elseif errText:find("cooldown") then
+                -- Server rejected due to cooldown — refresh cached cooldowns
+                fetchServerCooldowns()
+                errText = "Reroll on cooldown!"
             end
             statusLbl.Text = errText
             confirmBtn.Text = "\u{1F504} REROLL"
@@ -827,6 +965,7 @@ end
 --------------------------------------------------------------------------------
 local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, isComplete, refreshQuests)
     local btnSize = px(36)
+    local claimBtnW = px(108)
     local rerollBtn = Instance.new("TextButton")
     rerollBtn.Name = "RerollBtn"
     rerollBtn.AutoButtonColor = false
@@ -838,10 +977,10 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     rerollBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
     rerollBtn.AnchorPoint = Vector2.new(1, 0)
     -- Place to the left of the claim button, vertically aligned with it
-    -- Claim button: size px(100) x px(34), at y = px(52) - px(2) = px(50)
+    -- Claim button: size px(108) x px(34), at y = px(52) - px(2) = px(50)
     local barYRef = px(52)
     local claimBtnH = px(34)
-    rerollBtn.Position = UDim2.new(1, -(px(100) + px(12)), 0, barYRef - px(2) + math.floor((claimBtnH - btnSize) / 2))
+    rerollBtn.Position = UDim2.new(1, -(claimBtnW + px(12)), 0, barYRef - px(2) + math.floor((claimBtnH - btnSize) / 2))
     rerollBtn.ZIndex = 5
     rerollBtn.Parent = card
 
@@ -856,17 +995,15 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     rbStr.Transparency = 0.4
     rbStr.Parent = rerollBtn
 
-    -- Disable for claimed or completed quests
-    local function setRerollEnabled(enabled)
+    -- Visual state for the reroll button (dimmed for completed/claimed, normal otherwise)
+    local function setRerollVisuals(enabled)
         if enabled then
-            rerollBtn.Active = true
             rerollBtn.TextColor3 = REROLL_ACCENT
             rerollBtn.BackgroundColor3 = Color3.fromRGB(30, 26, 48)
             rbStr.Color = REROLL_ACCENT
             rbStr.Transparency = 0.4
             rerollBtn.BackgroundTransparency = 0
         else
-            rerollBtn.Active = false
             rerollBtn.TextColor3 = DIM_TEXT
             rerollBtn.BackgroundColor3 = Color3.fromRGB(22, 20, 30)
             rbStr.Color = CARD_STROKE
@@ -875,39 +1012,66 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
         end
     end
 
-    setRerollEnabled(not isClaimed and not isComplete)
+    -- Dim the button visually for completed/claimed quests
+    setRerollVisuals(not isClaimed and not isComplete)
+
+    -- Button is always Active so clicks are captured for popup state routing
+    rerollBtn.Active = true
 
     local tooltipText = string.format("Reroll Quest (%d coins)", getRerollCost())
+    if isComplete then
+        tooltipText = "Cannot reroll (completed)"
+    elseif isClaimed then
+        tooltipText = "Cannot reroll (claimed)"
+    end
 
     -- Hover
     trackConn(rerollBtn.MouseEnter:Connect(function()
         showRerollTooltipForButton(rerollBtn, tooltipText)
-        if rerollBtn.Active then
+        if not isClaimed and not isComplete then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_ACCENT, TextColor3 = WHITE}):Play()
             rbStr.Transparency = 0
         end
     end))
     trackConn(rerollBtn.MouseLeave:Connect(function()
         hideRerollTooltip()
-        if rerollBtn.Active then
+        if not isClaimed and not isComplete then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(30, 26, 48), TextColor3 = REROLL_ACCENT}):Play()
             rbStr.Transparency = 0.4
         end
     end))
 
-    -- Click: open confirmation popup
+    -- Click: determine popup state and open confirmation popup
     trackConn(rerollBtn.MouseButton1Click:Connect(function()
-        if not rerollBtn.Active then return end
         hideRerollTooltip()
-        print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s)", tabId, serverIdx, questTitle))
-        showRerollConfirmation(tabId, serverIdx, questTitle, function(success, _msg)
+
+        -- Determine the popup state
+        local popupState = "ready"
+        if isClaimed then
+            popupState = "claimedBlocked"
+            print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — CLAIMED BLOCKED", tabId, serverIdx, questTitle))
+        elseif isComplete then
+            popupState = "completedBlocked"
+            print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — COMPLETED BLOCKED", tabId, serverIdx, questTitle))
+        else
+            -- Check cooldown
+            local cdRemaining = getClientCooldownRemaining(tabId)
+            if cdRemaining > 0 then
+                popupState = "cooldown"
+                print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — COOLDOWN (%ds)", tabId, serverIdx, questTitle, math.ceil(cdRemaining)))
+            else
+                print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — READY", tabId, serverIdx, questTitle))
+            end
+        end
+
+        showRerollConfirmation(tabId, serverIdx, questTitle, popupState, function(success, _msg)
             if success and refreshQuests then
                 refreshQuests(tabId)
             end
         end)
     end))
 
-    return rerollBtn, setRerollEnabled
+    return rerollBtn, setRerollVisuals
 end
 
 --------------------------------------------------------------------------------
@@ -948,6 +1112,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         errLabel.Parent    = parent
         return nil
     end
+
+    -- Fetch reroll cooldown state from server on UI open
+    task.spawn(fetchServerCooldowns)
 
     -- Fetch quest data from server
     local quests = {}
@@ -1029,6 +1196,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     contentArea.Position            = UDim2.new(0, TAB_W + TAB_GAP, 0, 0)
     contentArea.ClipsDescendants    = false
     contentArea.Parent              = root
+
+    local contentPad = Instance.new("UIPadding")
+    contentPad.PaddingRight = UDim.new(0, px(6))
+    contentPad.Parent = contentArea
 
     ---------------------------------------------------------------------------
     -- Tab definitions
@@ -1315,7 +1486,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         local card = Instance.new("Frame")
         card.Name             = "Quest_" .. quest.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.Size             = UDim2.new(1, -px(6), 0, px(120))
         card.LayoutOrder      = 10 + i
         card.Parent           = dailyPage
         questCards[quest.id]  = card
@@ -1481,7 +1652,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progressTexts[quest.id] = progText
 
         -- Claim button
-        local btnW2 = px(100)
+        local btnW2 = px(108)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
@@ -1660,7 +1831,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         local card = Instance.new("Frame")
         card.Name             = "WeeklyQuest_" .. questIdx
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.Size             = UDim2.new(1, -px(6), 0, px(120))
         card.LayoutOrder      = 10 + i
         card.Parent           = weeklyPage
         wkCards[questIdx]     = card
@@ -1825,7 +1996,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         wkProgressTexts[questIdx] = progText
 
         -- Claim button
-        local btnW2 = px(100)
+        local btnW2 = px(108)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
@@ -2018,7 +2189,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         local card = Instance.new("Frame")
         card.Name             = "Ach_" .. ach.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.Size             = UDim2.new(1, -px(6), 0, px(120))
         card.LayoutOrder      = 10 + i
         card.Parent           = achievPage
         achCards[ach.id]      = card
@@ -2195,7 +2366,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         achProgressTexts[ach.id] = progText
 
         -- Claim / status button
-        local btnW2 = px(100)
+        local btnW2 = px(108)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"

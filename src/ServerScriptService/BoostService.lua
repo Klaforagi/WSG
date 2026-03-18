@@ -12,6 +12,7 @@
 --   BoostService:ActivateOwnedBoost(player, boostId) -> bool, string, states
 --   BoostService:BuyAndActivate(player, boostId) -> bool, string, states  -- legacy alias
 --   BoostService:RerollQuest(player, questType, questIndex) -> bool, string, updatedQuests
+--   BoostService:GetRerollCooldowns(player) -> { daily = number, weekly = number }
 --   BoostService:BonusClaim(player, questId) -> bool, string
 --   BoostService:HasActiveBoost(player, boostId) -> bool
 --   BoostService:GetCoinMultiplier(player) -> number
@@ -96,6 +97,15 @@ local BoostService = {}
 --     bonusClaimed = { [questId] = true },
 -- }
 local playerBoosts = {}
+
+----------------------------------------------------------------------------
+-- Reroll cooldown tracking (server-authoritative, in-memory only)
+-- rerollCooldowns[player] = { daily = expiresAt, weekly = expiresAt }
+----------------------------------------------------------------------------
+local DAILY_REROLL_COOLDOWN  = 45   -- seconds
+local WEEKLY_REROLL_COOLDOWN = 90   -- seconds
+
+local rerollCooldowns = {}
 
 local function getKey(player)
     return "User_" .. tostring(player.UserId)
@@ -381,8 +391,34 @@ end
 ----------------------------------------------------------------------------
 -- Reroll Quest
 ----------------------------------------------------------------------------
+local function getRerollCooldownRemaining(player, questType)
+    local cd = rerollCooldowns[player]
+    if not cd then return 0 end
+    local expiresAt = cd[questType] or 0
+    local remaining = expiresAt - os.time()
+    return math.max(0, remaining)
+end
+
+local function setRerollCooldown(player, questType)
+    if not rerollCooldowns[player] then
+        rerollCooldowns[player] = { daily = 0, weekly = 0 }
+    end
+    local duration = questType == "weekly" and WEEKLY_REROLL_COOLDOWN or DAILY_REROLL_COOLDOWN
+    rerollCooldowns[player][questType] = os.time() + duration
+    print(string.format("[BoostService] Reroll cooldown set: %s %s = %ds", player.Name, questType, duration))
+end
+
+function BoostService:GetRerollCooldowns(player)
+    if not player then return { daily = 0, weekly = 0 } end
+    return {
+        daily = getRerollCooldownRemaining(player, "daily"),
+        weekly = getRerollCooldownRemaining(player, "weekly"),
+    }
+end
+
 function BoostService:RerollQuest(player, questType, questIndex)
     if not player or type(questType) ~= "string" or type(questIndex) ~= "number" then
+        print(string.format("[BoostService] Reroll rejected: invalid request params"))
         return false, "Invalid request"
     end
 
@@ -391,10 +427,18 @@ function BoostService:RerollQuest(player, questType, questIndex)
     local def = config.GetById("quest_reroll")
     if not def then return false, "Reroll config missing" end
 
+    -- Check cooldown (server-authoritative)
+    local cdRemaining = getRerollCooldownRemaining(player, questType)
+    if cdRemaining > 0 then
+        print(string.format("[BoostService] Reroll rejected: %s %s cooldown active (%ds remaining)", player.Name, questType, cdRemaining))
+        return false, "Reroll on cooldown", nil, cdRemaining
+    end
+
     -- Validate coins
     local cs = getCurrencyService()
     if not cs then return false, "Currency system unavailable" end
     if cs:GetCoins(player) < def.PriceCoins then
+        print(string.format("[BoostService] Reroll rejected: %s insufficient coins", player.Name))
         return false, "Insufficient coins"
     end
 
@@ -417,7 +461,16 @@ function BoostService:RerollQuest(player, questType, questIndex)
     end
 
     local target = quests[questIndex]
+
+    -- Block completed quests (progress >= goal)
+    if target.progress >= target.goal then
+        print(string.format("[BoostService] Reroll rejected: %s quest index %d is completed (progress=%d goal=%d)", player.Name, questIndex, target.progress, target.goal))
+        return false, "Completed quests cannot be rerolled"
+    end
+
+    -- Block claimed quests
     if target.claimed then
+        print(string.format("[BoostService] Reroll rejected: %s quest index %d is already claimed", player.Name, questIndex))
         return false, "Quest already claimed"
     end
 
@@ -428,7 +481,13 @@ function BoostService:RerollQuest(player, questType, questIndex)
 
     -- Deduct coins only after successful reroll
     cs:AddCoins(player, -def.PriceCoins)
-    print(("[BoostService] %s rerolled %s quest index %d"):format(player.Name, questType, questIndex))
+
+    -- Set shared category cooldown
+    setRerollCooldown(player, questType)
+
+    print(("[BoostService] %s rerolled %s quest index %d (cooldown started: %ds)"):format(
+        player.Name, questType, questIndex,
+        questType == "weekly" and WEEKLY_REROLL_COOLDOWN or DAILY_REROLL_COOLDOWN))
 
     return true, "Quest rerolled", updatedQuests
 end
