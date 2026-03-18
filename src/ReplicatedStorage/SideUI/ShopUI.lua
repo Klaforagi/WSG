@@ -1521,8 +1521,301 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
     makePlaceholderPage("SkinsContent",   "skins",   "\u{2726}", "Skins coming soon")
     makePlaceholderPage("TrailsContent",  "trails",  "\u{2727}", "Trails coming soon")
-    makePlaceholderPage("EmotesContent",  "emotes",  "\u{263A}", "Emotes coming soon")
     makePlaceholderPage("EffectsContent", "effects", "\u{2738}", "Effects coming soon")
+
+    ---------------------------------------------------------------------------
+    -- EMOTES content page (real shop page, reads from EmoteConfig)
+    ---------------------------------------------------------------------------
+    do
+        local EmoteConfig = nil
+        pcall(function()
+            local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+            local mod = sideUI and sideUI:FindFirstChild("EmoteConfig")
+            if mod and mod:IsA("ModuleScript") then EmoteConfig = require(mod) end
+        end)
+
+        local emoteRemotes = nil
+        local function ensureEmoteRemotes()
+            if emoteRemotes then return emoteRemotes end
+            local rf = ReplicatedStorage:FindFirstChild("Remotes")
+            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
+            if not rf then return nil end
+            local ef = rf:FindFirstChild("Emotes") or rf:WaitForChild("Emotes", 5)
+            if not ef then return nil end
+            emoteRemotes = {
+                purchase  = ef:FindFirstChild("PurchaseEmote"),
+                getOwned  = ef:FindFirstChild("GetOwnedEmotes"),
+            }
+            return emoteRemotes
+        end
+
+        local allEmotes = EmoteConfig and EmoteConfig.GetAll() or {}
+
+        if #allEmotes > 0 then
+            local emotesPage = Instance.new("Frame")
+            emotesPage.Name                = "EmotesContent"
+            emotesPage.BackgroundTransparency = 1
+            emotesPage.Size                = UDim2.new(1, 0, 0, 0)
+            emotesPage.AutomaticSize       = Enum.AutomaticSize.Y
+            emotesPage.Visible             = false
+            emotesPage.Parent              = contentContainer
+
+            local epLayout = Instance.new("UIListLayout")
+            epLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            epLayout.Padding   = UDim.new(0, px(16))
+            epLayout.Parent    = emotesPage
+
+            local emoteSection, emoteGrid = makeSection(emotesPage, "Emotes", "Emotes")
+            emoteSection.LayoutOrder = 1
+
+            -- Fetch owned emotes from the server once
+            local ownedSet = {}
+            task.spawn(function()
+                local remotes = ensureEmoteRemotes()
+                if remotes and remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
+                    local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
+                    if ok and type(list) == "table" then
+                        for _, id in ipairs(list) do ownedSet[id] = true end
+                    end
+                end
+            end)
+            -- Small yield to let the initial owned fetch complete
+            task.wait(0.3)
+
+            -- Build a card for each emote
+            local emoteRefreshFns = {}
+            for _, def in ipairs(allEmotes) do
+                local emoteId     = def.Id
+                local displayName = def.DisplayName or emoteId
+                local price       = def.CoinCost or 0
+                local iconKey     = def.IconKey
+                local description = def.Description or ""
+
+                local card = Instance.new("Frame")
+                card.Name = "Emote_" .. emoteId
+                card.BackgroundColor3 = CARD_BG
+                card.Size = UDim2.new(1, 0, 1, 0)
+                card.AutomaticSize = Enum.AutomaticSize.Y
+                card.ZIndex = 250
+                card.Parent = emoteGrid
+
+                local crn = Instance.new("UICorner")
+                crn.CornerRadius = UDim.new(0, px(12))
+                crn.Parent = card
+                local stk = Instance.new("UIStroke")
+                stk.Color = CARD_STROKE
+                stk.Thickness = 1.2
+                stk.Transparency = 0.35
+                stk.Parent = card
+                local cPad = Instance.new("UIPadding")
+                cPad.PaddingTop    = UDim.new(0, px(8))
+                cPad.PaddingBottom = UDim.new(0, px(8))
+                cPad.PaddingLeft   = UDim.new(0, px(8))
+                cPad.PaddingRight  = UDim.new(0, px(8))
+                cPad.Parent = card
+
+                -- LEFT: icon
+                local leftBox = Instance.new("Frame")
+                leftBox.Name = "LeftBox"
+                leftBox.Size = UDim2.new(0.45, 0, 1, 0)
+                leftBox.BackgroundColor3 = ICON_BG
+                leftBox.ZIndex = 251
+                leftBox.Parent = card
+                local lCrn = Instance.new("UICorner")
+                lCrn.CornerRadius = UDim.new(0, px(10))
+                lCrn.Parent = leftBox
+                local lStk = Instance.new("UIStroke")
+                lStk.Color = CARD_STROKE; lStk.Thickness = 1; lStk.Transparency = 0.5
+                lStk.Parent = leftBox
+
+                local thumb = Instance.new("ImageLabel")
+                thumb.Name = "Thumb"
+                thumb.Size = UDim2.new(0.75, 0, 0.75, 0)
+                thumb.AnchorPoint = Vector2.new(0.5, 0.5)
+                thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
+                thumb.BackgroundTransparency = 1
+                thumb.ScaleType = Enum.ScaleType.Fit
+                thumb.ZIndex = 252
+                thumb.Parent = leftBox
+                pcall(function()
+                    if AssetCodes and iconKey then
+                        local img = AssetCodes.Get(iconKey)
+                        if img and #img > 0 then thumb.Image = img end
+                    end
+                end)
+
+                -- RIGHT: name, description, price, buy button
+                local rightBox = Instance.new("Frame")
+                rightBox.Name = "RightBox"
+                rightBox.Size = UDim2.new(0.52, 0, 1, 0)
+                rightBox.Position = UDim2.new(0.48, 0, 0, 0)
+                rightBox.BackgroundTransparency = 1
+                rightBox.ZIndex = 251
+                rightBox.Parent = card
+
+                -- Price badge
+                local priceBadge = Instance.new("Frame")
+                priceBadge.Name = "PriceBadge"
+                priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
+                priceBadge.BackgroundTransparency = 0.3
+                priceBadge.Size = UDim2.new(0.65, 0, 0.18, 0)
+                priceBadge.Position = UDim2.new(0.04, 0, 0.04, 0)
+                priceBadge.ZIndex = 253
+                priceBadge.Parent = rightBox
+                local pbCrn = Instance.new("UICorner")
+                pbCrn.CornerRadius = UDim.new(0, px(6))
+                pbCrn.Parent = priceBadge
+                local pbStk = Instance.new("UIStroke")
+                pbStk.Color = GOLD; pbStk.Thickness = 1; pbStk.Transparency = 0.4
+                pbStk.Parent = priceBadge
+                local pbLbl = Instance.new("TextLabel")
+                pbLbl.BackgroundTransparency = 1
+                pbLbl.Size = UDim2.new(1, -px(6), 1, 0)
+                pbLbl.Position = UDim2.new(0, px(6), 0, 0)
+                pbLbl.Font = Enum.Font.GothamBold
+                pbLbl.Text = tostring(price)
+                pbLbl.TextColor3 = GOLD
+                pbLbl.TextScaled = true
+                pbLbl.TextXAlignment = Enum.TextXAlignment.Left
+                pbLbl.ZIndex = 254
+                pbLbl.Parent = priceBadge
+
+                -- Name
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "ItemName"
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Size = UDim2.new(0.95, 0, 0.22, 0)
+                nameLabel.Position = UDim2.new(0.04, 0, 0.26, 0)
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = displayName
+                nameLabel.TextColor3 = WHITE
+                nameLabel.TextScaled = true
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.ZIndex = 253
+                nameLabel.Parent = rightBox
+
+                -- Description
+                local descLabel = Instance.new("TextLabel")
+                descLabel.Name = "Desc"
+                descLabel.BackgroundTransparency = 1
+                descLabel.Size = UDim2.new(0.95, 0, 0.18, 0)
+                descLabel.Position = UDim2.new(0.04, 0, 0.48, 0)
+                descLabel.Font = Enum.Font.Gotham
+                descLabel.Text = description
+                descLabel.TextColor3 = DIM_TEXT
+                descLabel.TextScaled = true
+                descLabel.TextXAlignment = Enum.TextXAlignment.Left
+                descLabel.ZIndex = 253
+                descLabel.Parent = rightBox
+
+                -- Buy button
+                local buyBtn = Instance.new("TextButton")
+                buyBtn.Name = "BuyBtn"
+                buyBtn.Size = UDim2.new(0.85, 0, 0.24, 0)
+                buyBtn.AnchorPoint = Vector2.new(0.5, 1)
+                buyBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+                buyBtn.BackgroundColor3 = BTN_BUY
+                buyBtn.Font = Enum.Font.GothamBold
+                buyBtn.TextScaled = true
+                buyBtn.TextColor3 = WHITE
+                buyBtn.AutoButtonColor = false
+                buyBtn.ZIndex = 253
+                buyBtn.Parent = rightBox
+                local bCrn = Instance.new("UICorner")
+                bCrn.CornerRadius = UDim.new(0, px(10))
+                bCrn.Parent = buyBtn
+                local bStk = Instance.new("UIStroke")
+                bStk.Color = BTN_STROKE_C; bStk.Thickness = 1.4; bStk.Transparency = 0.25
+                bStk.Parent = buyBtn
+
+                local function refreshEmoteCard()
+                    local owned = ownedSet[emoteId] == true
+                    if owned then
+                        buyBtn.Text = "\u{2714} OWNED"
+                        buyBtn.Active = false
+                        buyBtn.BackgroundColor3 = DISABLED_BG
+                        buyBtn.TextColor3 = GREEN_GLOW
+                        bStk.Color = GREEN_GLOW
+                        bStk.Transparency = 0.45
+                        card.BackgroundColor3 = CARD_OWNED
+                        stk.Color = GREEN_GLOW
+                        stk.Thickness = 1.6
+                        stk.Transparency = 0.35
+                    else
+                        buyBtn.Text = "BUY"
+                        buyBtn.Active = true
+                        buyBtn.BackgroundColor3 = BTN_BUY
+                        buyBtn.TextColor3 = WHITE
+                        bStk.Color = BTN_STROKE_C
+                        bStk.Transparency = 0.25
+                        card.BackgroundColor3 = CARD_BG
+                        stk.Color = CARD_STROKE
+                        stk.Thickness = 1.2
+                        stk.Transparency = 0.35
+                    end
+                end
+                refreshEmoteCard()
+                table.insert(emoteRefreshFns, refreshEmoteCard)
+
+                -- Hover
+                buyBtn.MouseEnter:Connect(function()
+                    if buyBtn.Active then
+                        pcall(function() TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play() end)
+                    end
+                end)
+                buyBtn.MouseLeave:Connect(function()
+                    if buyBtn.Active then
+                        pcall(function() TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BUY}):Play() end)
+                    end
+                end)
+
+                -- Purchase click
+                buyBtn.MouseButton1Click:Connect(function()
+                    if not buyBtn.Active then return end
+                    if ownedSet[emoteId] then return end
+
+                    local remotes = ensureEmoteRemotes()
+                    if not remotes or not remotes.purchase or not remotes.purchase:IsA("RemoteFunction") then
+                        warn("[ShopUI] PurchaseEmote remote not found")
+                        return
+                    end
+
+                    print("[ShopUI] emote purchase requested:", emoteId)
+                    local ok, success, newBalance, msg = pcall(function()
+                        return remotes.purchase:InvokeServer(emoteId)
+                    end)
+                    if ok and success then
+                        ownedSet[emoteId] = true
+                        if coinApi and coinApi.SetCoins then
+                            pcall(function() coinApi.SetCoins(newBalance) end)
+                        end
+                        pcall(function()
+                            if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                        end)
+                        print("[ShopUI] emote purchase accepted:", emoteId)
+                        refreshEmoteCard()
+                    else
+                        buyBtn.Text = "NOT ENOUGH"
+                        buyBtn.TextColor3 = RED_TEXT
+                        bStk.Color = RED_TEXT
+                        bStk.Transparency = 0.3
+                        task.delay(1.2, function()
+                            buyBtn.TextColor3 = WHITE
+                            bStk.Color = BTN_STROKE_C
+                            bStk.Transparency = 0.25
+                            refreshEmoteCard()
+                        end)
+                        print("[ShopUI] emote purchase rejected:", emoteId, msg)
+                    end
+                end)
+            end -- end for each emote
+
+            contentPages["emotes"] = emotesPage
+        else
+            -- No emotes defined yet: show placeholder
+            makePlaceholderPage("EmotesContent",  "emotes",  "\u{263A}", "Emotes coming soon")
+        end
+    end
 
     ---------------------------------------------------------------------------
     -- Set initial state: Weapons tab active by default

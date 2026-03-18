@@ -114,27 +114,47 @@ local emotePanel = EmoteUI.Build(emoteGui)
 print("[EmoteClient] Emote panel built; path:", emotePanel and emotePanel:GetFullName() or "NIL")
 print("[EmoteClient] emotePanel.Visible (should be false):", emotePanel and emotePanel.Visible)
 
--- ── Wire the close button (X in header) ──────────────────────────────────
-local header   = emotePanel:FindFirstChild("Header")
-local closeBtn = header and header:FindFirstChild("CloseBtn")
-if closeBtn then
-    closeBtn.MouseButton1Click:Connect(function()
-        if MenuController then
-            MenuController.CloseMenu("Emote")
-        else
-            EmoteUI.Hide(emotePanel)
-        end
-    end)
+-- ── Wire the close-after-selection callback ──────────────────────────────
+-- When the player clicks a slot (or the backdrop), EmoteUI calls this.
+-- We hide the wheel instantly so the player can see the emote clearly.
+EmoteUI.OnSlotSelected = function(emoteId)
+    print("[EmoteClient] slot selected, emoteId:", tostring(emoteId), "→ closing wheel immediately")
+    EmoteUI.HideInstant(emotePanel)
+    -- Update MenuController state (tween-less: panel already hidden)
+    if MenuController then
+        pcall(function() MenuController.CloseMenu("Emote") end)
+    end
+end
+
+-- ── Emote remotes ─────────────────────────────────────────────────────────
+local emoteRemotes = nil
+do
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+    local emoteDir = remotes and (remotes:FindFirstChild("Emotes") or remotes:WaitForChild("Emotes", 5))
+    if emoteDir then
+        emoteRemotes = {
+            getEquipped    = emoteDir:FindFirstChild("GetEquippedEmotes"),
+            equippedChanged = emoteDir:FindFirstChild("EquippedEmotesChanged"),
+        }
+        print("[EmoteClient] emote remotes resolved")
+    else
+        warn("[EmoteClient] Remotes.Emotes folder not found")
+    end
 end
 
 -- ── Emote data helpers ────────────────────────────────────────────────────
--- Returns the list of equipped emotes for the local player.
--- Currently returns an empty table (no emotes owned yet).
--- TODO: Replace with a RemoteFunction call to fetch real equipped emote data.
+-- Cache the last-known equipped emote list for fast re-opens
+local cachedEquipped = {}
+
 local function GetEquippedEmotes()
-    -- Future: invoke Remotes.Emotes.GetEquippedEmotes:InvokeServer()
-    -- For now, return an empty table (no emotes owned)
-    return {}
+    if emoteRemotes and emoteRemotes.getEquipped and emoteRemotes.getEquipped:IsA("RemoteFunction") then
+        local ok, list = pcall(function() return emoteRemotes.getEquipped:InvokeServer() end)
+        if ok and type(list) == "table" then
+            cachedEquipped = list
+            return list
+        end
+    end
+    return cachedEquipped
 end
 
 -- ── Open / close helpers ──────────────────────────────────────────────────
@@ -233,7 +253,6 @@ end
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     -- Only trace keys we care about; avoids log spam for WASD etc.
     if input.KeyCode ~= Enum.KeyCode.E
-    and input.KeyCode ~= Enum.KeyCode.P
     and input.KeyCode ~= Enum.KeyCode.Escape then
         return
     end
@@ -265,13 +284,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
         return
     end
 
-    -- ── P key – [TEMP-TEST] unconditional fallback, no gameProcessed check ─
-    -- Remove this block once the E keybind is confirmed working.
-    if input.KeyCode == Enum.KeyCode.P then
-        print("[EmoteClient] [TEMP-TEST] P key – calling ToggleEmoteMenu()")
-        ToggleEmoteMenu()
-        return
-    end
+    -- P key fallback removed – E is the only emote toggle.
 
     -- ── Escape – close if open ────────────────────────────────────────────
     if input.KeyCode == Enum.KeyCode.Escape then
@@ -305,96 +318,46 @@ _G.EmoteMenu.RefreshEmotes = function(equippedList)
     end
 end
 
--- ── TODO: Future live data wiring ─────────────────────────────────────────
--- When the server exposes emote ownership/equip data, connect here:
---
--- task.spawn(function()
---     local remotes  = ReplicatedStorage:WaitForChild("Remotes", 10)
---     local emoteDir = remotes and remotes:WaitForChild("Emotes", 5)
---     if not emoteDir then return end
---
---     -- Initial fetch
---     local getEquipped = emoteDir:FindFirstChild("GetEquippedEmotes")
---     if getEquipped and getEquipped:IsA("RemoteFunction") then
---         local ok, list = pcall(function() return getEquipped:InvokeServer() end)
---         if ok and type(list) == "table" then
---             _G.EmoteMenu.RefreshEmotes(list)
---         end
---     end
---
---     -- Live updates (e.g. player equipped a new emote in Inventory)
---     local equippedChanged = emoteDir:FindFirstChild("EquippedEmotesChanged")
---     if equippedChanged and equippedChanged:IsA("RemoteEvent") then
---         equippedChanged.OnClientEvent:Connect(function(list)
---             _G.EmoteMenu.RefreshEmotes(list)
---         end)
---     end
--- end)
+-- ── Live data wiring ──────────────────────────────────────────────────────
+-- Fetch initial equipped emotes and listen for server-side changes.
+task.spawn(function()
+    -- Initial fetch (populates cache so first menu open is instant)
+    local list = GetEquippedEmotes()
+    if list and #list > 0 then
+        cachedEquipped = list
+        print("[EmoteClient] initial equipped emotes loaded:", #list)
+    end
 
--- ── [TEMP-TEST] Debug button ──────────────────────────────────────────────
--- A small on-screen button as a fallback if keybinds still fail.
--- Remove this entire block once both E and P are confirmed working.
+    -- Live updates (e.g. player equipped a new emote in Inventory)
+    if emoteRemotes and emoteRemotes.equippedChanged and emoteRemotes.equippedChanged:IsA("RemoteEvent") then
+        emoteRemotes.equippedChanged.OnClientEvent:Connect(function(updatedList)
+            if type(updatedList) == "table" then
+                cachedEquipped = updatedList
+                print("[EmoteClient] received EquippedEmotesChanged, count:", #updatedList)
+                -- If the emote menu is currently open, refresh it live
+                if IsEmoteMenuOpen() then
+                    if #updatedList > 0 then
+                        EmoteUI.RenderEquippedEmotes(emotePanel, updatedList)
+                    else
+                        EmoteUI.ShowEmptyState(emotePanel)
+                    end
+                end
+            end
+        end)
+        print("[EmoteClient] EquippedEmotesChanged listener connected")
+    end
+end)
+
+-- ── [REMOVED] Debug button was here — now deleted ────────────────────────
+-- The E keybind is the only intended way to open/close the emote wheel.
+-- Destroy any leftover EmoteDebugBtn ScreenGui from previous sessions.
 do
-    local debugGui = Instance.new("ScreenGui")
-    debugGui.Name           = "EmoteDebugBtn"
-    debugGui.ResetOnSpawn   = false
-    debugGui.IgnoreGuiInset = true
-    debugGui.DisplayOrder   = 325
-    debugGui.Parent         = playerGui
-
-    local btn = Instance.new("TextButton")
-    btn.Name               = "ToggleBtn"
-    btn.AnchorPoint        = Vector2.new(0, 0)
-    btn.Position           = UDim2.new(0, 8, 0, 80)  -- top-left, below the coin display
-    btn.Size               = UDim2.new(0, 90, 0, 28)
-    btn.BackgroundColor3   = Color3.fromRGB(22, 26, 48)
-    btn.BorderSizePixel    = 0
-    btn.Font               = Enum.Font.GothamBold
-    btn.Text               = "🎭 EMOTES"
-    btn.TextColor3         = Color3.fromRGB(255, 215, 80)
-    btn.TextSize           = 13
-    btn.AutoButtonColor    = false
-    btn.ZIndex             = 326
-    btn.Parent             = debugGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
-    corner.Parent = btn
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color       = Color3.fromRGB(180, 150, 50)
-    stroke.Thickness   = 1
-    stroke.Transparency= 0.3
-    stroke.Parent      = btn
-
-    -- Label it clearly as temp in Studio
-    local tempLabel = Instance.new("TextLabel")
-    tempLabel.Name               = "TempLabel"
-    tempLabel.Size               = UDim2.new(1, 0, 0, 10)
-    tempLabel.Position           = UDim2.new(0, 0, 1, 2)
-    tempLabel.BackgroundTransparency = 1
-    tempLabel.Font               = Enum.Font.Gotham
-    tempLabel.Text               = "[TEMP TEST]"
-    tempLabel.TextColor3         = Color3.fromRGB(120, 120, 140)
-    tempLabel.TextSize           = 9
-    tempLabel.ZIndex             = 326
-    tempLabel.Parent             = btn
-
-    btn.MouseButton1Click:Connect(function()
-        print("[EmoteClient] [TEMP-TEST] Debug button clicked – calling ToggleEmoteMenu()")
-        ToggleEmoteMenu()
-    end)
-
-    -- Hover tint
-    btn.MouseEnter:Connect(function()
-        btn.BackgroundColor3 = Color3.fromRGB(36, 42, 72)
-    end)
-    btn.MouseLeave:Connect(function()
-        btn.BackgroundColor3 = Color3.fromRGB(22, 26, 48)
-    end)
-
-    print("[EmoteClient] [TEMP-TEST] Debug button created at top-left (remove EmoteDebugBtn ScreenGui when done)")
+    local staleDebug = playerGui:FindFirstChild("EmoteDebugBtn")
+    if staleDebug then
+        staleDebug:Destroy()
+        print("[EmoteClient] stale EmoteDebugBtn ScreenGui destroyed")
+    end
 end
--- ── end TEMP-TEST debug button ────────────────────────────────────────────
+print("[EmoteClient] debug button removed – E is the only emote toggle")
 
 print("[EmoteClient] fully initialized")

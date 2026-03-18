@@ -13,7 +13,7 @@ local EmoteConfig = {}
 
 -- ── Slot configuration ────────────────────────────────────────────────────
 -- How many equip slots the player has in the Emote wheel/panel.
-EmoteConfig.SLOT_COUNT = 6
+EmoteConfig.SLOT_COUNT = 8
 
 -- ── Emote definitions ─────────────────────────────────────────────────────
 -- Each entry represents an emote that *could* exist in the game.
@@ -30,30 +30,34 @@ EmoteConfig.SLOT_COUNT = 6
 --   Cooldown    (number)  seconds before this emote can be played again
 --   IsFree      (boolean) granted to all players automatically if true
 --
--- Example (uncomment and fill when real emotes are ready):
--- EmoteConfig.Emotes = {
---     {
---         Id          = "wave",
---         DisplayName = "Wave",
---         Description = "A friendly wave.",
---         IconKey     = "EmoteWave",
---         AnimationId = "rbxassetid://0",
---         CoinCost    = 0,
---         Cooldown    = 3,
---         IsFree      = true,
---     },
---     {
---         Id          = "dance",
---         DisplayName = "Dance",
---         Description = "Break it down!",
---         IconKey     = "EmoteDance",
---         AnimationId = "rbxassetid://0",
---         CoinCost    = 150,
---         Cooldown    = 5,
---         IsFree      = false,
---     },
--- }
-EmoteConfig.Emotes = {}  -- empty until emotes are added
+-- To add a new emote: copy one of the entries below, give it a unique Id,
+-- set the DisplayName / Description / CoinCost / AnimationId, and register
+-- an icon in AssetCodes.lua under the IconKey name.
+EmoteConfig.Emotes = {
+    {
+        Id          = "wave",
+        DisplayName = "Wave",
+        Description = "Give a friendly wave.",
+        IconKey     = "EmoteWave",      -- looked up via AssetCodes.Get("EmoteWave")
+        -- REPLACE the animation id below with a real uploaded Wave animation asset.
+        -- This placeholder (507770239) is a generic Roblox wave animation.
+        AnimationId = "rbxassetid://507770239",
+        CoinCost    = 20,
+        Cooldown    = 3,
+        IsFree      = false,
+    },
+    -- Future emotes go here:
+    -- {
+    --     Id          = "dance",
+    --     DisplayName = "Dance",
+    --     Description = "Break it down!",
+    --     IconKey     = "EmoteDance",
+    --     AnimationId = "rbxassetid://0",
+    --     CoinCost    = 150,
+    --     Cooldown    = 5,
+    --     IsFree      = false,
+    -- },
+}
 
 -- ── Cooldown defaults ─────────────────────────────────────────────────────
 EmoteConfig.DEFAULT_COOLDOWN = 3  -- seconds

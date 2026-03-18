@@ -28,7 +28,9 @@ AssetCodes.images = {
     Shortbow = "rbxassetid://15950019592",
     Longbow = "rbxassetid://13303448470",
     Xbow = "rbxassetid://87445004842826",
-    
+
+    -- Emote icons
+    EmoteWave = "rbxassetid://4720094407",  -- waving hand icon
 }
 
 -- Returns the asset string for a named key, or nil
