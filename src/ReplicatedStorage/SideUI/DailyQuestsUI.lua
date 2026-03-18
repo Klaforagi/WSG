@@ -171,6 +171,34 @@ local function applySortedCardLayoutOrders(tabId, quests, getCardForQuest)
     end
 end
 
+local MONTH_ABBR = {
+    [1] = "Jan", [2] = "Feb", [3] = "Mar", [4] = "Apr", [5] = "May", [6] = "Jun",
+    [7] = "Jul", [8] = "Aug", [9] = "Sep", [10] = "Oct", [11] = "Nov", [12] = "Dec",
+}
+
+local function formatAchievedOn(ts)
+    local unix = tonumber(ts)
+    if not unix or unix <= 0 then
+        return nil
+    end
+
+    local ok, dateTable = pcall(function()
+        return os.date("!*t", math.floor(unix))
+    end)
+    if not ok or type(dateTable) ~= "table" then
+        return nil
+    end
+
+    local month = MONTH_ABBR[dateTable.month]
+    local day = tonumber(dateTable.day)
+    local year = tonumber(dateTable.year)
+    if not month or not day or not year then
+        return nil
+    end
+
+    return string.format("%s %d, %d", month, day, year)
+end
+
 --------------------------------------------------------------------------------
 -- Remotes (resolved lazily with WaitForChild)
 --------------------------------------------------------------------------------
@@ -1260,7 +1288,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     local TAB_W   = px(160)
     local TAB_GAP = px(10)
-    local CARD_H  = px(130)   -- taller cards for more breathing room
+    local CARD_H  = px(142)   -- includes space for achievement date line under progress bar
     local HDR_H   = px(66)    -- header + subheader + accent bar
 
     local function pageHeightForCount(count)
@@ -2385,6 +2413,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local achClaimed       = {} -- [id] -> bool
     local achCards         = {} -- [id] -> Frame
     local achCardStrokes   = {} -- [id] -> UIStroke
+    local achAchievedOnLabels = {} -- [id] -> TextLabel
 
     if #achievements == 0 then
         makePlaceholder("Loading achievements...", 3, achievPage)
@@ -2399,7 +2428,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         local card = Instance.new("Frame")
         card.Name             = "Ach_" .. ach.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, -px(6), 0, px(120))
+        card.Size             = UDim2.new(1, -px(6), 0, px(136))
         card.LayoutOrder      = 10 + i
         card.Parent           = achievPage
         achCards[ach.id]      = card
@@ -2575,6 +2604,32 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Parent             = track
         achProgressTexts[ach.id] = progText
 
+        local achievedOnLbl = Instance.new("TextLabel")
+        achievedOnLbl.Name                = "AchievedOn"
+        achievedOnLbl.BackgroundTransparency = 1
+        achievedOnLbl.Font                = Enum.Font.Gotham
+        achievedOnLbl.Text                = ""
+        achievedOnLbl.TextColor3          = DIM_TEXT
+        achievedOnLbl.TextSize            = math.max(10, math.floor(px(11)))
+        achievedOnLbl.TextXAlignment      = Enum.TextXAlignment.Left
+        achievedOnLbl.TextTransparency    = 0.1
+        achievedOnLbl.Visible             = false
+        achievedOnLbl.Size                = UDim2.new(0.62, 0, 0, px(14))
+        achievedOnLbl.Position            = UDim2.new(0, 0, 0, barY + barH + px(6))
+        achievedOnLbl.Parent              = card
+        achAchievedOnLabels[ach.id]       = achievedOnLbl
+
+        local function updateAchievedOnLabel(completed, achievedOn)
+            local formattedDate = formatAchievedOn(achievedOn)
+            if completed and formattedDate then
+                achievedOnLbl.Text = "Achieved On: " .. formattedDate
+                achievedOnLbl.Visible = true
+            else
+                achievedOnLbl.Text = ""
+                achievedOnLbl.Visible = false
+            end
+        end
+
         -- Claim / status button
         local btnW2 = px(108)
         local btnH  = px(34)
@@ -2654,6 +2709,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end
 
         updateAchBtnState(ach.progress, ach.target, ach.claimed)
+        updateAchievedOnLabel(ach.completed == true, ach.achievedOn)
 
         -- Hover
         trackConn(btn.MouseEnter:Connect(function()
@@ -2692,6 +2748,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     achievementDataById[ach.id].progress = ach.target
                 end
                 updateAchBtnState(ach.target, ach.target, true)
+                local latest = achievementDataById[ach.id]
+                updateAchievedOnLabel(true, latest and latest.achievedOn)
                 -- Flash gold
                 TweenService:Create(card, TWEEN_QUICK,
                     {BackgroundColor3 = Color3.fromRGB(60, 55, 25)}):Play()
@@ -2717,7 +2775,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     -- Live achievement progress updates
     ---------------------------------------------------------------------------
     if achievProgressRE then
-        trackConn(achievProgressRE.OnClientEvent:Connect(function(achId, newProgress, completed)
+        trackConn(achievProgressRE.OnClientEvent:Connect(function(achId, newProgress, completed, achievedOn, claimedFromServer)
             if type(achId) ~= "string" then return end
 
             -- Full refresh: re-fetch and rebuild
@@ -2733,6 +2791,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                 achievementData.target = a.target
                                 achievementData.claimed = a.claimed
                                 achievementData.completed = a.completed
+                                achievementData.achievedOn = a.achievedOn
                             end
                             achGoals[a.id]   = a.target
                             achClaimed[a.id] = a.claimed
@@ -2745,6 +2804,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             local txt = achProgressTexts[a.id]
                             if txt and txt.Parent then
                                 txt.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                            end
+                            local achievedOnLabel = achAchievedOnLabels[a.id]
+                            if achievedOnLabel and achievedOnLabel.Parent then
+                                local achievedDate = formatAchievedOn(a.achievedOn)
+                                if a.completed and achievedDate then
+                                    achievedOnLabel.Text = "Achieved On: " .. achievedDate
+                                    achievedOnLabel.Visible = true
+                                else
+                                    achievedOnLabel.Text = ""
+                                    achievedOnLabel.Visible = false
+                                end
                             end
                             local claimBtn2 = achClaimButtons[a.id]
                             if claimBtn2 then
@@ -2807,6 +2877,20 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             if achievementData then
                 achievementData.progress = math.min(newProgress, goal)
                 achievementData.completed = completed == true or achievementData.completed == true or newProgress >= goal
+                if achievementData.completed then
+                    if achievementData.achievedOn == nil then
+                        achievementData.achievedOn = tonumber(achievedOn)
+                    end
+                else
+                    achievementData.achievedOn = nil
+                end
+                if claimedFromServer ~= nil then
+                    achievementData.claimed = claimedFromServer == true
+                end
+            end
+
+            if claimedFromServer ~= nil then
+                achClaimed[achId] = claimedFromServer == true
             end
 
             local pct2 = math.clamp(newProgress / goal, 0, 1)
@@ -2822,10 +2906,30 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
             end
 
+            local achievedOnLabel = achAchievedOnLabels[achId]
+            if achievedOnLabel and achievedOnLabel.Parent then
+                local localData = achievementDataById[achId]
+                local achievedDate = localData and formatAchievedOn(localData.achievedOn)
+                local isComplete = (localData and localData.completed == true) or newProgress >= goal
+                if isComplete and achievedDate then
+                    achievedOnLabel.Text = "Achieved On: " .. achievedDate
+                    achievedOnLabel.Visible = true
+                else
+                    achievedOnLabel.Text = ""
+                    achievedOnLabel.Visible = false
+                end
+            end
+
             local claimBtn2 = achClaimButtons[achId]
             if claimBtn2 and claimBtn2.Parent then
                 local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
-                if newProgress >= goal then
+                if achClaimed[achId] then
+                    claimBtn2.Text             = "\u{2714} CLAIMED"
+                    claimBtn2.BackgroundColor3 = BTN_CLAIMED
+                    claimBtn2.TextColor3       = GREEN_GLOW
+                    claimBtn2.Active           = false
+                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
+                elseif newProgress >= goal then
                     claimBtn2.Text             = "\u{2B50} CLAIM"
                     claimBtn2.BackgroundColor3 = BTN_CLAIM
                     claimBtn2.TextColor3       = WHITE
@@ -2839,7 +2943,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local cardStroke = achCardStrokes[achId]
             if cardFrame and cardFrame.Parent then
                 local accent = cardFrame:FindFirstChild("StateAccent")
-                if newProgress >= goal then
+                if achClaimed[achId] then
+                    cardFrame.BackgroundColor3 = ROW_CLAIMED_BG
+                    if cardStroke then cardStroke.Color = GREEN_GLOW; cardStroke.Thickness = 1.8; cardStroke.Transparency = 0.3 end
+                    if accent then accent.BackgroundColor3 = GREEN_GLOW; accent.BackgroundTransparency = 0.2 end
+                elseif newProgress >= goal then
                     cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
                     if cardStroke then cardStroke.Color = CLAIM_GOLD_GLOW; cardStroke.Thickness = 2; cardStroke.Transparency = 0.15 end
                     if accent then accent.BackgroundColor3 = CLAIM_GOLD_GLOW; accent.BackgroundTransparency = 0 end
