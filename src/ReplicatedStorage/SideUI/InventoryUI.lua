@@ -37,7 +37,249 @@ local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirect
 local TAB_DEFS = {
     { id = "weapons", icon = "\u{2694}", label = "Weapons", order = 1 },
     { id = "boosts",  icon = "\u{26A1}", label = "Boosts",  order = 2 },
+    { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 3 },
+    { id = "trails",  icon = "\u{2727}", label = "Trails",  order = 4 },
+    { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 5 },
+    { id = "effects", icon = "\u{2738}", label = "Effects", order = 6 },
 }
+
+local function markIconPart(part)
+    part:SetAttribute("TabIconPart", true)
+    return part
+end
+
+local function setTabIconTint(iconRoot, color)
+    if not iconRoot then return end
+    if iconRoot:GetAttribute("TabIconPart") then
+        if iconRoot:IsA("Frame") then
+            iconRoot.BackgroundColor3 = color
+        elseif iconRoot:IsA("TextLabel") then
+            iconRoot.TextColor3 = color
+        elseif iconRoot:IsA("ImageLabel") then
+            iconRoot.ImageColor3 = color
+        elseif iconRoot:IsA("UIStroke") then
+            iconRoot.Color = color
+        end
+    end
+    for _, d in ipairs(iconRoot:GetDescendants()) do
+        if d:GetAttribute("TabIconPart") then
+            if d:IsA("Frame") then
+                d.BackgroundColor3 = color
+            elseif d:IsA("TextLabel") then
+                d.TextColor3 = color
+            elseif d:IsA("ImageLabel") then
+                d.ImageColor3 = color
+            elseif d:IsA("UIStroke") then
+                d.Color = color
+            end
+        end
+    end
+end
+
+local CUSTOM_TAB_ICON_COLORS = {
+    skins  = { active = Color3.fromRGB(178, 146, 220), inactive = Color3.fromRGB(114, 99, 140) },
+    trails = { active = Color3.fromRGB(116, 190, 218), inactive = Color3.fromRGB(78, 122, 142) },
+    emotes = { active = Color3.fromRGB(223, 176, 96), inactive = Color3.fromRGB(145, 116, 74) },
+    effects = { active = Color3.fromRGB(214, 138, 206), inactive = Color3.fromRGB(136, 90, 131) },
+}
+
+local function getCustomTabIconColor(tabId, active)
+    local palette = CUSTOM_TAB_ICON_COLORS[tabId]
+    if not palette then
+        return active and GOLD or DIM_TEXT
+    end
+    return active and palette.active or palette.inactive
+end
+
+local function buildCustomTabIcon(parentBtn, tabId)
+    local root = Instance.new("Frame")
+    root.Name = "IconCustom"
+    root.BackgroundTransparency = 1
+    root.Size = UDim2.new(0, px(26), 0, px(24))
+    root.AnchorPoint = Vector2.new(0.5, 0)
+    root.Position = UDim2.new(0.5, 0, 0, px(8))
+    root.Parent = parentBtn
+
+    if tabId == "skins" then
+        local shoulders = markIconPart(Instance.new("Frame"))
+        shoulders.BackgroundTransparency = 0
+        shoulders.BorderSizePixel = 0
+        shoulders.Size = UDim2.new(0, px(18), 0, px(7))
+        shoulders.Position = UDim2.new(0.5, 0, 0, px(14))
+        shoulders.AnchorPoint = Vector2.new(0.5, 0)
+        shoulders.Parent = root
+        local shouldersCorner = Instance.new("UICorner")
+        shouldersCorner.CornerRadius = UDim.new(0, px(3))
+        shouldersCorner.Parent = shoulders
+
+        local torso = markIconPart(Instance.new("Frame"))
+        torso.BackgroundTransparency = 0
+        torso.BorderSizePixel = 0
+        torso.Size = UDim2.new(0, px(12), 0, px(8))
+        torso.Position = UDim2.new(0.5, 0, 0, px(10))
+        torso.AnchorPoint = Vector2.new(0.5, 0)
+        torso.Parent = root
+        local torsoCorner = Instance.new("UICorner")
+        torsoCorner.CornerRadius = UDim.new(0, px(3))
+        torsoCorner.Parent = torso
+
+        local head = markIconPart(Instance.new("Frame"))
+        head.BackgroundTransparency = 0
+        head.BorderSizePixel = 0
+        head.Size = UDim2.new(0, px(8), 0, px(8))
+        head.Position = UDim2.new(0.5, 0, 0, px(2))
+        head.AnchorPoint = Vector2.new(0.5, 0)
+        head.Parent = root
+        local headCorner = Instance.new("UICorner")
+        headCorner.CornerRadius = UDim.new(1, 0)
+        headCorner.Parent = head
+    elseif tabId == "trails" then
+        local trailHead = markIconPart(Instance.new("Frame"))
+        trailHead.BackgroundTransparency = 0
+        trailHead.BorderSizePixel = 0
+        trailHead.Size = UDim2.new(0, px(5), 0, px(5))
+        trailHead.Position = UDim2.new(0, px(2), 0, px(7))
+        trailHead.Parent = root
+        local trailHeadCorner = Instance.new("UICorner")
+        trailHeadCorner.CornerRadius = UDim.new(1, 0)
+        trailHeadCorner.Parent = trailHead
+
+        local streakA = markIconPart(Instance.new("Frame"))
+        streakA.BackgroundTransparency = 0
+        streakA.BorderSizePixel = 0
+        streakA.Size = UDim2.new(0, px(17), 0, px(4))
+        streakA.Position = UDim2.new(0, px(6), 0, px(6))
+        streakA.Rotation = -18
+        streakA.Parent = root
+        local streakACorner = Instance.new("UICorner")
+        streakACorner.CornerRadius = UDim.new(1, 0)
+        streakACorner.Parent = streakA
+
+        local streakB = markIconPart(Instance.new("Frame"))
+        streakB.BackgroundTransparency = 0
+        streakB.BorderSizePixel = 0
+        streakB.Size = UDim2.new(0, px(13), 0, px(4))
+        streakB.Position = UDim2.new(0, px(9), 0, px(12))
+        streakB.Rotation = -18
+        streakB.Parent = root
+        local streakBCorner = Instance.new("UICorner")
+        streakBCorner.CornerRadius = UDim.new(1, 0)
+        streakBCorner.Parent = streakB
+
+        local streakC = markIconPart(Instance.new("Frame"))
+        streakC.BackgroundTransparency = 0
+        streakC.BorderSizePixel = 0
+        streakC.Size = UDim2.new(0, px(9), 0, px(4))
+        streakC.Position = UDim2.new(0, px(12), 0, px(17))
+        streakC.Rotation = -18
+        streakC.Parent = root
+        local streakCCorner = Instance.new("UICorner")
+        streakCCorner.CornerRadius = UDim.new(1, 0)
+        streakCCorner.Parent = streakC
+    elseif tabId == "emotes" then
+        local face = Instance.new("Frame")
+        face.Name = "FaceOutline"
+        face.BackgroundTransparency = 1
+        face.BorderSizePixel = 0
+        face.Size = UDim2.new(0, px(20), 0, px(20))
+        face.Position = UDim2.new(0.5, 0, 0, px(2))
+        face.AnchorPoint = Vector2.new(0.5, 0)
+        face.Parent = root
+
+        local faceStroke = markIconPart(Instance.new("UIStroke"))
+        faceStroke.Thickness = math.max(1, math.floor(px(2)))
+        faceStroke.Parent = face
+
+        local faceCorner = Instance.new("UICorner")
+        faceCorner.CornerRadius = UDim.new(1, 0)
+        faceCorner.Parent = face
+
+        local eyeL = markIconPart(Instance.new("Frame"))
+        eyeL.BackgroundTransparency = 0
+        eyeL.BorderSizePixel = 0
+        eyeL.Size = UDim2.new(0, px(3), 0, px(3))
+        eyeL.Position = UDim2.new(0, px(6), 0, px(8))
+        eyeL.Parent = root
+        local eyeLCorner = Instance.new("UICorner")
+        eyeLCorner.CornerRadius = UDim.new(1, 0)
+        eyeLCorner.Parent = eyeL
+
+        local eyeR = markIconPart(Instance.new("Frame"))
+        eyeR.BackgroundTransparency = 0
+        eyeR.BorderSizePixel = 0
+        eyeR.Size = UDim2.new(0, px(3), 0, px(3))
+        eyeR.Position = UDim2.new(0, px(17), 0, px(8))
+        eyeR.Parent = root
+        local eyeRCorner = Instance.new("UICorner")
+        eyeRCorner.CornerRadius = UDim.new(1, 0)
+        eyeRCorner.Parent = eyeR
+
+        local smile = markIconPart(Instance.new("Frame"))
+        smile.BackgroundTransparency = 0
+        smile.BorderSizePixel = 0
+        smile.Size = UDim2.new(0, px(10), 0, px(3))
+        smile.Position = UDim2.new(0.5, 0, 0, px(14))
+        smile.AnchorPoint = Vector2.new(0.5, 0)
+        smile.Parent = root
+        local smileCorner = Instance.new("UICorner")
+        smileCorner.CornerRadius = UDim.new(1, 0)
+        smileCorner.Parent = smile
+    elseif tabId == "effects" then
+        local sparkleV = markIconPart(Instance.new("Frame"))
+        sparkleV.BackgroundTransparency = 0
+        sparkleV.BorderSizePixel = 0
+        sparkleV.Size = UDim2.new(0, px(3), 0, px(14))
+        sparkleV.Position = UDim2.new(0.5, 0, 0, px(4))
+        sparkleV.AnchorPoint = Vector2.new(0.5, 0)
+        sparkleV.Parent = root
+        local sparkleVCorner = Instance.new("UICorner")
+        sparkleVCorner.CornerRadius = UDim.new(1, 0)
+        sparkleVCorner.Parent = sparkleV
+
+        local sparkleH = markIconPart(Instance.new("Frame"))
+        sparkleH.BackgroundTransparency = 0
+        sparkleH.BorderSizePixel = 0
+        sparkleH.Size = UDim2.new(0, px(14), 0, px(3))
+        sparkleH.Position = UDim2.new(0.5, 0, 0, px(10))
+        sparkleH.AnchorPoint = Vector2.new(0.5, 0)
+        sparkleH.Parent = root
+        local sparkleHCorner = Instance.new("UICorner")
+        sparkleHCorner.CornerRadius = UDim.new(1, 0)
+        sparkleHCorner.Parent = sparkleH
+
+        local miniA = markIconPart(Instance.new("Frame"))
+        miniA.BackgroundTransparency = 0
+        miniA.BorderSizePixel = 0
+        miniA.Size = UDim2.new(0, px(2), 0, px(7))
+        miniA.Position = UDim2.new(0, px(4), 0, px(2))
+        miniA.Parent = root
+        local miniACorner = Instance.new("UICorner")
+        miniACorner.CornerRadius = UDim.new(1, 0)
+        miniACorner.Parent = miniA
+
+        local miniB = markIconPart(Instance.new("Frame"))
+        miniB.BackgroundTransparency = 0
+        miniB.BorderSizePixel = 0
+        miniB.Size = UDim2.new(0, px(7), 0, px(2))
+        miniB.Position = UDim2.new(0, px(2), 0, px(4))
+        miniB.Parent = root
+        local miniBCorner = Instance.new("UICorner")
+        miniBCorner.CornerRadius = UDim.new(1, 0)
+        miniBCorner.Parent = miniB
+
+        local miniDot = markIconPart(Instance.new("Frame"))
+        miniDot.BackgroundTransparency = 0
+        miniDot.BorderSizePixel = 0
+        miniDot.Size = UDim2.new(0, px(3), 0, px(3))
+        miniDot.Position = UDim2.new(0, px(20), 0, px(3))
+        miniDot.Parent = root
+        local miniDotCorner = Instance.new("UICorner")
+        miniDotCorner.CornerRadius = UDim.new(1, 0)
+        miniDotCorner.Parent = miniDot
+    end
+
+    return root
+end
 
 local InventoryUI = {}
 
@@ -255,17 +497,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         barCorner.CornerRadius = UDim.new(0.5, 0)
         barCorner.Parent = bar
 
-        local iconLbl = Instance.new("TextLabel")
-        iconLbl.Name = "Icon"
-        iconLbl.BackgroundTransparency = 1
-        iconLbl.Font = Enum.Font.GothamBold
-        iconLbl.Text = def.icon
-        iconLbl.TextColor3 = DIM_TEXT
-        iconLbl.TextSize = math.max(16, math.floor(px(18)))
-        iconLbl.Size = UDim2.new(1, 0, 0, px(24))
-        iconLbl.Position = UDim2.new(0, 0, 0, px(8))
-        iconLbl.TextXAlignment = Enum.TextXAlignment.Center
-        iconLbl.Parent = btn
+        if def.id == "weapons" or def.id == "boosts" then
+            local iconLbl = Instance.new("TextLabel")
+            iconLbl.Name = "Icon"
+            iconLbl.BackgroundTransparency = 1
+            iconLbl.Font = Enum.Font.GothamBold
+            iconLbl.Text = def.icon
+            iconLbl.TextColor3 = DIM_TEXT
+            iconLbl.TextSize = math.max(16, math.floor(px(18)))
+            iconLbl.Size = UDim2.new(1, 0, 0, px(24))
+            iconLbl.Position = UDim2.new(0, 0, 0, px(8))
+            iconLbl.TextXAlignment = Enum.TextXAlignment.Center
+            iconLbl.Parent = btn
+        else
+            local custom = buildCustomTabIcon(btn, def.id)
+            setTabIconTint(custom, getCustomTabIconColor(def.id, false))
+        end
 
         local textLbl = Instance.new("TextLabel")
         textLbl.Name = "Label"
@@ -302,19 +549,102 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     contentContainer.ClipsDescendants = false
     contentContainer.Parent = root
 
+    local function attachEmptyStateCategoryIcon(card, tabId, fallbackGlyph)
+        local iconPlate = Instance.new("Frame")
+        iconPlate.Name = "PlaceholderIconPlate"
+        iconPlate.BackgroundColor3 = ICON_BG
+        iconPlate.BackgroundTransparency = 0.15
+        iconPlate.BorderSizePixel = 0
+        iconPlate.Size = UDim2.new(0, px(74), 0, px(74))
+        iconPlate.AnchorPoint = Vector2.new(0.5, 0)
+        iconPlate.Position = UDim2.new(0.5, 0, 0, px(12))
+        iconPlate.Parent = card
+
+        local plateCorner = Instance.new("UICorner")
+        plateCorner.CornerRadius = UDim.new(0, px(14))
+        plateCorner.Parent = iconPlate
+
+        local plateStroke = Instance.new("UIStroke")
+        plateStroke.Color = CARD_STROKE
+        plateStroke.Thickness = 1.1
+        plateStroke.Transparency = 0.45
+        plateStroke.Parent = iconPlate
+
+        local sourceBtn = tabButtons[tabId]
+        local sourceCustom = sourceBtn and sourceBtn:FindFirstChild("IconCustom")
+        local sourceGlyph = sourceBtn and sourceBtn:FindFirstChild("Icon")
+
+        local iconRef = "none"
+        local iconVisual = nil
+
+        if sourceCustom and sourceCustom:IsA("Frame") then
+            iconVisual = sourceCustom:Clone()
+            iconVisual.Name = "PlaceholderIconVisual"
+            iconVisual.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconVisual.Position = UDim2.new(0.5, 0, 0.5, 0)
+            iconVisual.Size = UDim2.fromOffset(px(26), px(24))
+            iconVisual.BackgroundTransparency = 1
+            iconVisual.Parent = iconPlate
+
+            local iconScale = Instance.new("UIScale")
+            iconScale.Scale = 2.3
+            iconScale.Parent = iconVisual
+
+            setTabIconTint(iconVisual, getCustomTabIconColor(tabId, true))
+            iconRef = "tab:IconCustom"
+        else
+            local glyph = fallbackGlyph
+            if sourceGlyph and sourceGlyph:IsA("TextLabel") and sourceGlyph.Text ~= "" then
+                glyph = sourceGlyph.Text
+            end
+
+            local iconGlyph = Instance.new("TextLabel")
+            iconGlyph.Name = "PlaceholderIconVisual"
+            iconGlyph.BackgroundTransparency = 1
+            iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconGlyph.Position = UDim2.new(0.5, 0, 0.5, 0)
+            iconGlyph.Size = UDim2.new(1, -px(12), 1, -px(12))
+            iconGlyph.Font = Enum.Font.GothamBold
+            iconGlyph.Text = glyph or "?"
+            iconGlyph.TextSize = math.max(24, math.floor(px(34)))
+            iconGlyph.TextColor3 = getCustomTabIconColor(tabId, true)
+            iconGlyph.TextXAlignment = Enum.TextXAlignment.Center
+            iconGlyph.TextYAlignment = Enum.TextYAlignment.Center
+            iconGlyph.Parent = iconPlate
+
+            iconVisual = iconGlyph
+            iconRef = "tab:IconGlyph"
+        end
+
+        print(string.format("[EmptyStateIconDebug][Inventory] category=%s iconRef=%s exists=%s", tostring(tabId), iconRef, tostring(iconVisual ~= nil)))
+        task.defer(function()
+            if not iconVisual or not iconVisual.Parent then
+                print(string.format("[EmptyStateIconDebug][Inventory] category=%s finalSize=n/a visible=false", tostring(tabId)))
+                return
+            end
+            local size = iconVisual.AbsoluteSize
+            print(string.format("[EmptyStateIconDebug][Inventory] category=%s finalSize=%dx%d visible=%s", tostring(tabId), size.X, size.Y, tostring(iconVisual.Visible)))
+        end)
+
+        return iconVisual
+    end
+
     local function setActiveTab(tabId)
         currentTab = tabId
+        print(string.format("[EmptyStateIconDebug][Inventory] selectedCategory=%s", tostring(tabId)))
         for id, btn in pairs(tabButtons) do
             local active = (id == tabId)
             btn.BackgroundColor3 = active and TAB_ACTIVE_BG or SIDEBAR_BG
 
             local bar = btn:FindFirstChild("ActiveBar")
             local icon = btn:FindFirstChild("Icon")
+            local iconCustom = btn:FindFirstChild("IconCustom")
             local label = btn:FindFirstChild("Label")
             local stroke = btn:FindFirstChildOfClass("UIStroke")
 
             if bar then bar.BackgroundTransparency = active and 0 or 1 end
             if icon then icon.TextColor3 = active and GOLD or DIM_TEXT end
+            if iconCustom then setTabIconTint(iconCustom, getCustomTabIconColor(id, active)) end
             if label then label.TextColor3 = active and WHITE or DIM_TEXT end
             if stroke then stroke.Transparency = active and 0.2 or 0.6 end
         end
@@ -853,6 +1183,68 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     contentPages.boosts = boostsPage
+
+    local function makeOwnedPlaceholderPage(name, tabId, iconGlyph, titleText)
+        local page = Instance.new("Frame")
+        page.Name = name
+        page.BackgroundTransparency = 1
+        page.Size = UDim2.new(1, 0, 0, px(300))
+        page.Visible = false
+        page.Parent = contentContainer
+
+        local card = Instance.new("Frame")
+        card.Name = "PlaceholderCard"
+        card.BackgroundColor3 = CARD_BG
+        card.Size = UDim2.new(0.6, 0, 0, px(190))
+        card.AnchorPoint = Vector2.new(0.5, 0.5)
+        card.Position = UDim2.new(0.5, 0, 0.5, 0)
+        card.Parent = page
+
+        local cardCorner = Instance.new("UICorner")
+        cardCorner.CornerRadius = UDim.new(0, px(16))
+        cardCorner.Parent = card
+
+        local cardStroke = Instance.new("UIStroke")
+        cardStroke.Color = CARD_STROKE
+        cardStroke.Thickness = 1.4
+        cardStroke.Transparency = 0.25
+        cardStroke.Parent = card
+
+        attachEmptyStateCategoryIcon(card, tabId, iconGlyph)
+
+        local title = Instance.new("TextLabel")
+        title.Name = "PlaceholderTitle"
+        title.BackgroundTransparency = 1
+        title.Font = Enum.Font.GothamBold
+        title.Text = titleText
+        title.TextColor3 = GOLD
+        title.TextSize = math.max(16, math.floor(px(18)))
+        title.Size = UDim2.new(1, 0, 0, px(26))
+        title.Position = UDim2.new(0, 0, 0.46, 0)
+        title.TextXAlignment = Enum.TextXAlignment.Center
+        title.Parent = card
+
+        local subtitle = Instance.new("TextLabel")
+        subtitle.Name = "PlaceholderSub"
+        subtitle.BackgroundTransparency = 1
+        subtitle.Font = Enum.Font.GothamMedium
+        subtitle.Text = "No items owned in this category yet"
+        subtitle.TextColor3 = DIM_TEXT
+        subtitle.TextSize = math.max(12, math.floor(px(13)))
+        subtitle.Size = UDim2.new(1, -px(20), 0, px(20))
+        subtitle.Position = UDim2.new(0, px(10), 0.64, 0)
+        subtitle.TextWrapped = true
+        subtitle.TextXAlignment = Enum.TextXAlignment.Center
+        subtitle.Parent = card
+
+        contentPages[tabId] = page
+        return page
+    end
+
+    makeOwnedPlaceholderPage("SkinsPage", "skins", "\u{2726}", "SKINS")
+    makeOwnedPlaceholderPage("TrailsPage", "trails", "\u{2727}", "TRAILS")
+    makeOwnedPlaceholderPage("EmotesPage", "emotes", "\u{263A}", "EMOTES")
+    makeOwnedPlaceholderPage("EffectsPage", "effects", "\u{2738}", "EFFECTS")
 
     local GREEN_BTN = Color3.fromRGB(35, 190, 75)
     local GREEN_BTN_STR = Color3.fromRGB(50, 230, 110)
