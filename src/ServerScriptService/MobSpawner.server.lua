@@ -33,6 +33,7 @@ local DEFAULT_ATTACK_RANGE    = 6
 local DEFAULT_AGGRO_DURATION  = 12
 local MOB_TAG                 = "ZombieNPC"
 local Debris = game:GetService("Debris")
+local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- optional per-mob settings module (put presets keyed by template Name)
@@ -252,9 +253,17 @@ local function spawnZombie(portalPart, areaPart, tpl)
     humanoid.WalkSpeed  = MOB_WALK_SPEED
     humanoid.AutoRotate = true
     -- attack setup (resolve per-template values if provided)
-    local ATTACK_DAMAGE = mobCfg.attack_damage or 60
-    local ATTACK_COOLDOWN = mobCfg.attack_cooldown or 1 -- seconds per target
-    local lastAttackTimes = {}
+    local ATTACK_DAMAGE   = mobCfg.attack_damage   or 60
+    local ATTACK_COOLDOWN = mobCfg.attack_cooldown  or 1   -- minimum seconds between swings
+    local ATTACK_WINDUP   = mobCfg.attack_windup    or 1   -- seconds locked in place before hitbox fires
+    local HITBOX_SIZE     = mobCfg.hitbox_size       or Vector3.new(4, 6, 4)
+    local HITBOX_OFFSET   = mobCfg.hitbox_offset     or Vector3.new(0, 0, 3)
+    local SHOW_HITBOX     = (mobCfg.show_hitbox == true)
+    local HITBOX_COLOR    = mobCfg.hitbox_color       or Color3.fromRGB(255, 50, 50)
+
+    local isAttacking     = false   -- true while in the attack wind-up/swing
+    local lastSwingEnd    = 0       -- os.clock() when last swing finished (for cooldown)
+
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     local attackSoundTemplate
     if soundsFolder then
@@ -310,6 +319,20 @@ local function spawnZombie(portalPart, areaPart, tpl)
     end)
     if not ok then warn("[MobSpawner] Anim load failed: " .. tostring(err)); walkTrack = nil; runTrack = nil end
 
+    -- Build attack animation (optional – plays during wind-up)
+    local attackTrack = nil
+    if mobCfg.attack_anim_id and mobCfg.attack_anim_id ~= "" then
+        local atkAnimObj = Instance.new("Animation")
+        atkAnimObj.Name        = "Attack_Mob"
+        atkAnimObj.AnimationId = mobCfg.attack_anim_id
+        atkAnimObj.Parent      = z
+        pcall(function()
+            attackTrack          = animator:LoadAnimation(atkAnimObj)
+            attackTrack.Priority = Enum.AnimationPriority.Action
+            attackTrack.Looped   = false
+        end)
+    end
+
     -- play idle on spawn so the mob isn't T-posing
     if idleTrack then
         pcall(function() idleTrack:Play() end)
@@ -317,6 +340,15 @@ local function spawnZombie(portalPart, areaPart, tpl)
 
     -- activeTrack points to whichever track is currently playing
     local activeTrack = nil
+
+    -------------------------------------------------------------------
+    -- Forward declarations for cross-referencing state
+    -------------------------------------------------------------------
+    local aggroPlayer = nil   -- Player who last damaged this mob
+    local aggroExpiry = 0     -- os.clock() when aggro expires
+    local moving = false
+    local chasing = false     -- true while actively chasing a player
+    local stationaryTicks = 0 -- consecutive AI ticks with near-zero velocity
 
     -- adjust speed based on enraged/aggro state
     local function updateSpeedByHealth(h)
@@ -334,8 +366,6 @@ local function spawnZombie(portalPart, areaPart, tpl)
     -------------------------------------------------------------------
     -- Damage-based aggro: whoever shot us becomes the priority target
     -------------------------------------------------------------------
-    local aggroPlayer = nil   -- Player who last damaged this mob
-    local aggroExpiry = 0     -- os.clock() when aggro expires
 
     local prevHealth = humanoid.Health
     -- apply immediately in case template spawns damaged
@@ -363,41 +393,128 @@ local function spawnZombie(portalPart, areaPart, tpl)
         prevHealth = newHealth
     end)
 
-    -- damage on touch
-    local function tryDamage(otherPart)
-        if not otherPart or not otherPart.Parent then return end
-        local victimHum = otherPart.Parent:FindFirstChildOfClass("Humanoid")
-        if not victimHum or victimHum.Health <= 0 then return end
-        local victimChar = victimHum.Parent
-        local ply = Players:GetPlayerFromCharacter(victimChar)
-        if not ply then return end -- only damage players
-        local now = tick()
-        local last = lastAttackTimes[victimHum] or 0
-        if now - last < ATTACK_COOLDOWN then return end
-        lastAttackTimes[victimHum] = now
-        -- apply damage
-        victimHum:TakeDamage(ATTACK_DAMAGE)
-        -- if this killed the player, fire ZombieKill to the victim for DGH popup
-        if victimHum.Health <= 0 then
-            pcall(function() zombieKillEvent:FireClient(ply) end)
+    -------------------------------------------------------------------
+    -- Hitbox-based melee attack
+    -- When called, the mob locks in place for ATTACK_WINDUP seconds,
+    -- then a GetPartBoundsInBox hitbox fires at the mob's front.
+    -- Any player characters inside take ATTACK_DAMAGE.
+    -------------------------------------------------------------------
+    local function performAttack()
+        if isAttacking then return end
+        if not z or not z.Parent then return end
+        if not humanoid or humanoid.Health <= 0 then return end
+        local now = os.clock()
+        if now - lastSwingEnd < ATTACK_COOLDOWN then return end
+
+        isAttacking = true
+        local zroot = getRootPart(z)
+        if not zroot then isAttacking = false return end
+
+        -- 1) Lock the mob: stop movement, lock orientation, disable knockback, freeze speed
+        humanoid.WalkSpeed  = 0
+        humanoid.AutoRotate = false
+        humanoid:SetAttribute("knockbackImmune", true)
+
+        -- Stop movement animations, play attack anim if available
+        if activeTrack and activeTrack.IsPlaying then
+            pcall(function() activeTrack:Stop(0.1) end)
         end
-        -- play attack sound at victim root or zombie
-        local parentForSound = (victimChar:FindFirstChild("HumanoidRootPart") or victimChar:FindFirstChildWhichIsA("BasePart")) or z
-        if attackSoundTemplate and attackSoundTemplate:IsA("Sound") then
-            local s = attackSoundTemplate:Clone()
-            s.Parent = parentForSound
-            s:Play()
-            Debris:AddItem(s, 4)
+        if idleTrack and idleTrack.IsPlaying then
+            pcall(function() idleTrack:Stop(0.1) end)
         end
+        if attackTrack then
+            pcall(function()
+                attackTrack:AdjustSpeed(attackTrack.Length / ATTACK_WINDUP)
+                attackTrack:Play(0.1)
+            end)
+        end
+
+        -- 2) Wait for the wind-up duration
+        task.wait(ATTACK_WINDUP)
+
+        -- Mob may have died during wind-up
+        if not z or not z.Parent or not humanoid or humanoid.Health <= 0 then
+            isAttacking = false
+            return
+        end
+
+        -- 3) Fire the hitbox: oriented box in front of the mob
+        zroot = getRootPart(z) -- refresh reference
+        if zroot then
+            local boxCF = zroot.CFrame * CFrame.new(HITBOX_OFFSET)
+
+            -- Debug: show hitbox part
+            if SHOW_HITBOX then
+                local dbg = Instance.new("Part")
+                dbg.Name         = "_MobHitboxDebug"
+                dbg.Anchored     = true
+                dbg.CanCollide   = false
+                dbg.CanTouch     = false
+                dbg.CanQuery     = false
+                dbg.Size         = HITBOX_SIZE
+                dbg.CFrame       = boxCF
+                dbg.Transparency = 0.5
+                dbg.Color        = HITBOX_COLOR
+                dbg.Material     = Enum.Material.Neon
+                dbg.Parent       = Workspace
+                -- Fade out and destroy after 0.5s
+                local tween = TweenService:Create(dbg, TweenInfo.new(0.5, Enum.EasingStyle.Linear), { Transparency = 1 })
+                tween:Play()
+                Debris:AddItem(dbg, 0.6)
+            end
+
+            local parts  = Workspace:GetPartBoundsInBox(boxCF, HITBOX_SIZE)
+            local hitHumanoids = {}
+            if parts then
+                for _, part in ipairs(parts) do
+                    if not part or not part:IsA("BasePart") then continue end
+                    local model = part:FindFirstAncestorOfClass("Model")
+                    if not model or model == z then continue end
+                    local victimHum = model:FindFirstChildOfClass("Humanoid")
+                    if not victimHum or victimHum.Health <= 0 then continue end
+                    local ply = Players:GetPlayerFromCharacter(model)
+                    if not ply then continue end  -- only damage players
+                    if hitHumanoids[victimHum] then continue end
+                    hitHumanoids[victimHum] = ply
+                end
+            end
+
+            -- Apply damage & sound to each hit player
+            for victimHum, ply in pairs(hitHumanoids) do
+                victimHum:TakeDamage(ATTACK_DAMAGE)
+                if victimHum.Health <= 0 then
+                    pcall(function() zombieKillEvent:FireClient(ply) end)
+                end
+                -- play attack sound
+                local victimChar = victimHum.Parent
+                local parentForSound = (victimChar and (victimChar:FindFirstChild("HumanoidRootPart") or victimChar:FindFirstChildWhichIsA("BasePart"))) or z
+                if attackSoundTemplate and attackSoundTemplate:IsA("Sound") then
+                    local s = attackSoundTemplate:Clone()
+                    s.Parent = parentForSound
+                    s:Play()
+                    Debris:AddItem(s, 4)
+                end
+            end
+        end
+
+        -- 4) Unlock the mob: restore speed, re-enable rotation & knockback
+        lastSwingEnd = os.clock()
+        humanoid:SetAttribute("knockbackImmune", false)
+        humanoid.AutoRotate = true
+        -- Restore speed based on current state
+        if isEnraged then
+            humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+        elseif chasing then
+            humanoid.WalkSpeed = MOB_CHASE_SPEED
+        else
+            humanoid.WalkSpeed = MOB_WALK_SPEED
+        end
+        isAttacking = false
     end
-    -- (proximity-based attack is handled in the AI loop below — no Touched events needed)
 
     -------------------------------------------------------------------
     -- Movement helpers
     -------------------------------------------------------------------
-    local moving = false
-    local chasing = false  -- true while actively chasing a player
-    local stationaryTicks = 0  -- consecutive AI ticks with near-zero velocity
 
     -- Switch to the correct animation track based on chasing state
     local function switchTrack(wantRun)
@@ -485,20 +602,27 @@ local function spawnZombie(portalPart, areaPart, tpl)
 
             if targetRoot and dist then
                 chasing = true
-                -- set appropriate speed: enraged > chase
-                if isEnraged then
-                    humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+
+                -- If currently mid-attack, skip movement/attack logic this tick
+                if isAttacking then
+                    -- do nothing; performAttack coroutine handles unlock
                 else
-                    humanoid.WalkSpeed = MOB_CHASE_SPEED
-                end
-                -- overshoot: move to a point 10 studs PAST the player so the
-                -- humanoid never decelerates near them
-                local dir = (targetRoot.Position - zroot.Position).Unit
-                local overshoot = targetRoot.Position + dir * 10
-                startWalking(overshoot, true)  -- true = use run animation
-                -- proximity attack
-                if dist <= MOB_ATTACK_RANGE then
-                    tryDamage(targetRoot)
+                    -- In range → begin attack (non-blocking: runs in its own coroutine)
+                    if dist <= MOB_ATTACK_RANGE then
+                        task.spawn(performAttack)
+                    else
+                        -- set appropriate speed: enraged > chase
+                        if isEnraged then
+                            humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+                        else
+                            humanoid.WalkSpeed = MOB_CHASE_SPEED
+                        end
+                        -- overshoot: move to a point 10 studs PAST the player so the
+                        -- humanoid never decelerates near them
+                        local dir = (targetRoot.Position - zroot.Position).Unit
+                        local overshoot = targetRoot.Position + dir * 10
+                        startWalking(overshoot, true)  -- true = use run animation
+                    end
                 end
             else
                 -- was chasing but lost target → immediately transition to wander

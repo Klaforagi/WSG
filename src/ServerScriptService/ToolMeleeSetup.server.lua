@@ -170,6 +170,12 @@ end
 ---------------------------------------------------------------------------
 local function applyKnockback(victimRoot, direction, force)
     if not victimRoot or not victimRoot:IsA("BasePart") then return end
+    -- Respect knockback immunity (e.g. mobs mid-attack)
+    local model = victimRoot:FindFirstAncestorOfClass("Model")
+    if model then
+        local hum = model:FindFirstChildOfClass("Humanoid")
+        if hum and hum:GetAttribute("knockbackImmune") then return end
+    end
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)
     bv.Velocity = direction.Unit * force + Vector3.new(0, force * 0.3, 0) -- slight upward pop
