@@ -76,6 +76,7 @@ local dashFolder    = remotesFolder and remotesFolder:WaitForChild("Dash", 15)
 local requestDash   = dashFolder and dashFolder:WaitForChild("RequestDash", 10)
 local dashApproved  = dashFolder and dashFolder:WaitForChild("DashApproved", 10)
 local dashRejected  = dashFolder and dashFolder:WaitForChild("DashRejected", 10)
+local playDashVFX   = dashFolder and dashFolder:WaitForChild("PlayDashVFX", 10)
 
 if not requestDash or not dashApproved then
     warn("[DashClient] Dash remotes not found – dash disabled")
@@ -88,6 +89,7 @@ end
 local isCoolingDown  = false
 local cooldownEnd    = 0
 local isDashing      = false
+local currentTeamColor = nil
 
 --------------------------------------------------------------------------------
 -- PALETTE (consistent with navy + gold game theme)
@@ -99,6 +101,40 @@ local GOLD_DIM    = Color3.fromRGB(180, 150, 50)
 local WHITE       = Color3.fromRGB(245, 245, 252)
 local DIM_TEXT    = Color3.fromRGB(145, 150, 175)
 local DISABLED_BG = Color3.fromRGB(35, 38, 52)
+
+local function teamColorOrNil(team)
+    if not team then return nil end
+    local name = tostring(team.Name):lower()
+    if string.find(name, "neutral") then return nil end
+    if team.TeamColor then return team.TeamColor.Color end
+    return nil
+end
+
+local function getTeamTintFill(teamColor)
+    if not teamColor then
+        return NAVY_LIGHT
+    end
+    -- Mirror Hotbar style: darkened team tint for base readability.
+    return teamColor:Lerp(Color3.new(0, 0, 0), 0.55)
+end
+
+local function getTeamTintHoverFill(teamColor)
+    if not teamColor then
+        return Color3.fromRGB(30, 34, 60)
+    end
+    -- Slightly lighter than ready fill, still legible with gold stroke/text.
+    local base = getTeamTintFill(teamColor)
+    return base:Lerp(Color3.new(1, 1, 1), 0.08)
+end
+
+local function getTeamTintPressedFill(teamColor)
+    if not teamColor then
+        return Color3.fromRGB(35, 40, 65)
+    end
+    -- Press state: a bit deeper than hover for click feedback.
+    local base = getTeamTintFill(teamColor)
+    return base:Lerp(Color3.new(0, 0, 0), 0.08)
+end
 
 --------------------------------------------------------------------------------
 -- SCREEN GUI
@@ -332,7 +368,7 @@ cdText.Parent = btn
 -- BUTTON VISUAL FEEDBACK
 --------------------------------------------------------------------------------
 local function setButtonReady()
-    btn.BackgroundColor3 = NAVY_LIGHT
+    btn.BackgroundColor3 = getTeamTintFill(currentTeamColor)
     btnStroke.Color = GOLD_DIM
     iconLabel.TextColor3 = GOLD
     dashLabel.TextColor3 = WHITE
@@ -346,20 +382,20 @@ local function setButtonCooldown()
 end
 
 local function setButtonPressed()
-    btn.BackgroundColor3 = Color3.fromRGB(35, 40, 65)
+    btn.BackgroundColor3 = getTeamTintPressedFill(currentTeamColor)
 end
 
 -- Hover (desktop only)
 if not UserInputService.TouchEnabled then
     btn.MouseEnter:Connect(function()
         if not isCoolingDown then
-            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = Color3.fromRGB(30, 34, 60) }):Play()
+            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = getTeamTintHoverFill(currentTeamColor) }):Play()
             TweenService:Create(btnStroke, TweenInfo.new(0.12), { Color = GOLD }):Play()
         end
     end)
     btn.MouseLeave:Connect(function()
         if not isCoolingDown then
-            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = NAVY_LIGHT }):Play()
+            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = getTeamTintFill(currentTeamColor) }):Play()
             TweenService:Create(btnStroke, TweenInfo.new(0.12), { Color = GOLD_DIM }):Play()
         end
     end)
@@ -414,8 +450,8 @@ end
 --------------------------------------------------------------------------------
 -- VISUAL EFFECTS
 --------------------------------------------------------------------------------
-local function getEffectColor()
-    local team = player.Team
+local function getEffectColorForPlayer(targetPlayer)
+    local team = targetPlayer and targetPlayer.Team
     if team then
         if team.Name == "Blue" then
             return Color3.fromRGB(100, 160, 255)
@@ -426,15 +462,27 @@ local function getEffectColor()
     return DashConfig.DefaultEffectColor
 end
 
-local function playDashEffects()
+local function playDashEffects(targetPlayer)
     if not DashConfig.EffectEnabled then return end
-    local char = player.Character
+    if not targetPlayer or not targetPlayer:IsA("Player") then return end
+    local char = targetPlayer.Character
     if not char then return end
     local rootPart = char:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
 
-    local color = getEffectColor()
+    local color = getEffectColorForPlayer(targetPlayer)
     local duration = DashConfig.Duration
+
+    -- Cleanup stale transient dash VFX before spawning fresh ones.
+    for _, child in ipairs(rootPart:GetChildren()) do
+        if child.Name == "_DashTrailA0"
+            or child.Name == "_DashTrailA1"
+            or child.Name == "_DashTrail"
+            or child.Name == "_DashParticleAttach"
+            or child.Name == "_DashStreaks" then
+            pcall(function() child:Destroy() end)
+        end
+    end
 
     -------------------------------------------------------
     -- 1) Trail effect
@@ -511,7 +559,7 @@ local function playDashEffects()
     -------------------------------------------------------
     task.spawn(function()
         local ghostModel = Instance.new("Model")
-        ghostModel.Name = "_DashGhost"
+        ghostModel.Name = "_DashGhost_" .. tostring(targetPlayer.UserId)
 
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -610,8 +658,7 @@ end
 dashApproved.OnClientEvent:Connect(function()
     log("dash approved")
     isDashing = false
-    -- Play effects client-side
-    playDashEffects()
+    -- VFX now comes from PlayDashVFX broadcast so all clients see the same dash.
     playDashAnimation()
     -- Flash button briefly to give feedback
     task.spawn(function()
@@ -623,6 +670,16 @@ dashApproved.OnClientEvent:Connect(function()
     end)
 end)
 
+if playDashVFX then
+    playDashVFX.OnClientEvent:Connect(function(dashingPlayer)
+        if not dashingPlayer or not dashingPlayer:IsA("Player") then return end
+        print("[DashClient] received dash VFX for", dashingPlayer.Name)
+        playDashEffects(dashingPlayer)
+    end)
+else
+    warn("[DashClient] PlayDashVFX remote missing; dash VFX visibility may be local-only")
+end
+
 if dashRejected then
     dashRejected.OnClientEvent:Connect(function(reason)
         log("dash rejected:", reason)
@@ -633,6 +690,18 @@ if dashRejected then
         end
     end)
 end
+
+-- Keep dash button fill synced to current team at runtime (no respawn needed)
+currentTeamColor = teamColorOrNil(player.Team)
+setButtonReady()
+player:GetPropertyChangedSignal("Team"):Connect(function()
+    currentTeamColor = teamColorOrNil(player.Team)
+    if isCoolingDown then
+        setButtonCooldown()
+    else
+        setButtonReady()
+    end
+end)
 
 --------------------------------------------------------------------------------
 -- INPUT: BUTTON CLICK

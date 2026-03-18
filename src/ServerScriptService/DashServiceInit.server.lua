@@ -1,12 +1,20 @@
 --------------------------------------------------------------------------------
 -- DashServiceInit.server.lua
 -- Creates the RequestDash remote and wires DashService into the game.
--- Fires DashApproved back to the client so it can play effects locally.
+-- DashApproved is owner-only for local cooldown/UI response.
+-- PlayDashVFX is broadcast to all clients so everyone sees dash effects.
 --------------------------------------------------------------------------------
 
 local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+
+local DEBUG = true
+local function dprint(...)
+    if DEBUG then
+        print("[DashServiceInit]", ...)
+    end
+end
 
 --------------------------------------------------------------------------------
 -- Require DashService
@@ -56,6 +64,14 @@ if not dashRejected then
     dashRejected.Parent = dashFolder
 end
 
+-- PlayDashVFX: server -> all clients (all players render the same dash VFX)
+local playDashVFX = dashFolder:FindFirstChild("PlayDashVFX")
+if not playDashVFX then
+    playDashVFX = Instance.new("RemoteEvent")
+    playDashVFX.Name = "PlayDashVFX"
+    playDashVFX.Parent = dashFolder
+end
+
 --------------------------------------------------------------------------------
 -- Rate-limit: ignore requests that arrive faster than once per second
 --------------------------------------------------------------------------------
@@ -74,8 +90,12 @@ requestDash.OnServerEvent:Connect(function(player)
 
     local success, reason = DashService:TryDash(player)
     if success then
+        dprint("dash approved for", player.Name)
         dashApproved:FireClient(player)
+        dprint("broadcasting dash VFX for", player.Name)
+        playDashVFX:FireAllClients(player)
     else
+        dprint("dash rejected for", player.Name, "reason=", reason)
         dashRejected:FireClient(player, reason)
     end
 end)
