@@ -125,7 +125,7 @@ container.Name                    = "HotbarContainer"
 container.BackgroundTransparency  = 1
 container.AnchorPoint             = Vector2.new(0.5, 1)
 -- anchor to the bottom-center, above the XP bar
-container.Position                = UDim2.new(0.5, 0, 1 - (MARGIN_SCALE + 0.04), 0)
+container.Position                = UDim2.new(0.5, 0, 1 - (MARGIN_SCALE + 0.058), 0)
 container.Size                    = UDim2.fromScale(1, SLOT_SCALE) -- full width, height = slot height
 container.Parent                  = screenGui
 

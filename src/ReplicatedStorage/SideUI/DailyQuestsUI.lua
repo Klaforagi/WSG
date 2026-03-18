@@ -52,11 +52,122 @@ local CLAIM_GOLD_GLOW  = UITheme.GOLD_WARM
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local DEBUG_QUEST_UI = false
+local DEBUG_QUEST_SORT = true
 local DEBUG_REROLL_TOOLTIP = true
 
 local function debugLog(prefix, message)
     if DEBUG_QUEST_UI then
         print(string.format("[%s] %s", prefix, message))
+    end
+end
+
+local function getQuestCompletionTarget(quest)
+    if type(quest) ~= "table" then
+        return 0
+    end
+    return tonumber(quest.goal) or tonumber(quest.target) or 0
+end
+
+local function isQuestCompletedForDisplay(quest)
+    if type(quest) ~= "table" then
+        return false
+    end
+    if quest.completed == true then
+        return true
+    end
+
+    local target = getQuestCompletionTarget(quest)
+    local progress = tonumber(quest.progress) or 0
+    return target > 0 and progress >= target
+end
+
+local function getQuestSortPriority(quest)
+    if type(quest) ~= "table" then
+        return 4
+    end
+    if quest.claimed == true then
+        return 3
+    end
+    if isQuestCompletedForDisplay(quest) then
+        return 2
+    end
+    return 1
+end
+
+local function getQuestDebugLabel(quest, fallbackIndex)
+    if type(quest) ~= "table" then
+        return string.format("quest_%d", fallbackIndex)
+    end
+    return tostring(quest.title or quest.id or quest.index or ("quest_" .. tostring(fallbackIndex)))
+end
+
+local function logQuestSortOrder(tabId, phase, entries)
+    if not DEBUG_QUEST_SORT then
+        return
+    end
+
+    local parts = {}
+    for _, entry in ipairs(entries) do
+        local quest = entry.quest
+        table.insert(parts, string.format(
+            "%d:%s(priority=%d, claimed=%s, completed=%s)",
+            entry.originalIndex,
+            getQuestDebugLabel(quest, entry.originalIndex),
+            entry.priority,
+            tostring(quest and quest.claimed == true),
+            tostring(isQuestCompletedForDisplay(quest))
+        ))
+    end
+
+    print(string.format("[QuestSort] tab=%s phase=%s order=%s", tostring(tabId), tostring(phase), table.concat(parts, " | ")))
+end
+
+local function sortQuestsForDisplay(tabId, quests)
+    local sortable = {}
+
+    for originalIndex, quest in ipairs(quests) do
+        table.insert(sortable, {
+            quest = quest,
+            originalIndex = originalIndex,
+            priority = getQuestSortPriority(quest),
+        })
+    end
+
+    logQuestSortOrder(tabId, "original", sortable)
+
+    table.sort(sortable, function(a, b)
+        if a.priority ~= b.priority then
+            return a.priority < b.priority
+        end
+        return a.originalIndex < b.originalIndex
+    end)
+
+    logQuestSortOrder(tabId, "sorted", sortable)
+
+    local sorted = {}
+    for _, entry in ipairs(sortable) do
+        table.insert(sorted, entry.quest)
+        if DEBUG_QUEST_SORT then
+            print(string.format(
+                "[QuestSort] tab=%s quest=%s priority=%d originalIndex=%d",
+                tostring(tabId),
+                getQuestDebugLabel(entry.quest, entry.originalIndex),
+                entry.priority,
+                entry.originalIndex
+            ))
+        end
+    end
+
+    return sorted
+end
+
+local function applySortedCardLayoutOrders(tabId, quests, getCardForQuest)
+    local sorted = sortQuestsForDisplay(tabId, quests)
+    for displayIndex, quest in ipairs(sorted) do
+        local card = getCardForQuest(quest)
+        if card and card.Parent then
+            card.LayoutOrder = 10 + displayIndex
+        end
     end
 end
 
@@ -964,6 +1075,11 @@ end
 -- refreshQuests: function(tabId) to rebuild UI after reroll
 --------------------------------------------------------------------------------
 local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, isComplete, refreshQuests)
+    local rerollState = {
+        claimed = isClaimed == true,
+        complete = isComplete == true,
+    }
+
     local btnSize = px(36)
     local claimBtnW = px(108)
     local rerollBtn = Instance.new("TextButton")
@@ -1013,29 +1129,38 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     end
 
     -- Dim the button visually for completed/claimed quests
-    setRerollVisuals(not isClaimed and not isComplete)
+    setRerollVisuals(not rerollState.claimed and not rerollState.complete)
 
     -- Button is always Active so clicks are captured for popup state routing
     rerollBtn.Active = true
 
-    local tooltipText = string.format("Reroll Quest (%d coins)", getRerollCost())
-    if isComplete then
-        tooltipText = "Cannot reroll (completed)"
-    elseif isClaimed then
-        tooltipText = "Cannot reroll (claimed)"
+    local function getTooltipText()
+        if rerollState.complete then
+            return "Cannot reroll (completed)"
+        end
+        if rerollState.claimed then
+            return "Cannot reroll (claimed)"
+        end
+        return string.format("Reroll Quest (%d coins)", getRerollCost())
+    end
+
+    local function setQuestRerollState(claimed, complete)
+        rerollState.claimed = claimed == true
+        rerollState.complete = complete == true
+        setRerollVisuals(not rerollState.claimed and not rerollState.complete)
     end
 
     -- Hover
     trackConn(rerollBtn.MouseEnter:Connect(function()
-        showRerollTooltipForButton(rerollBtn, tooltipText)
-        if not isClaimed and not isComplete then
+        showRerollTooltipForButton(rerollBtn, getTooltipText())
+        if not rerollState.claimed and not rerollState.complete then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_ACCENT, TextColor3 = WHITE}):Play()
             rbStr.Transparency = 0
         end
     end))
     trackConn(rerollBtn.MouseLeave:Connect(function()
         hideRerollTooltip()
-        if not isClaimed and not isComplete then
+        if not rerollState.claimed and not rerollState.complete then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(30, 26, 48), TextColor3 = REROLL_ACCENT}):Play()
             rbStr.Transparency = 0.4
         end
@@ -1047,10 +1172,10 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
 
         -- Determine the popup state
         local popupState = "ready"
-        if isClaimed then
+        if rerollState.claimed then
             popupState = "claimedBlocked"
             print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — CLAIMED BLOCKED", tabId, serverIdx, questTitle))
-        elseif isComplete then
+        elseif rerollState.complete then
             popupState = "completedBlocked"
             print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — COMPLETED BLOCKED", tabId, serverIdx, questTitle))
         else
@@ -1071,7 +1196,7 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
         end)
     end))
 
-    return rerollBtn, setRerollVisuals
+    return rerollBtn, setQuestRerollState
 end
 
 --------------------------------------------------------------------------------
@@ -1123,6 +1248,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     end)
     if type(quests) ~= "table" then quests = {} end
 
+    local dailyQuestServerIndexById = {}
+    local dailyQuestDataById = {}
+    for index, quest in ipairs(quests) do
+        dailyQuestServerIndexById[quest.id] = index
+        dailyQuestDataById[quest.id] = quest
+    end
+
     ---------------------------------------------------------------------------
     -- Layout constants
     ---------------------------------------------------------------------------
@@ -1131,7 +1263,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local CARD_H  = px(130)   -- taller cards for more breathing room
     local HDR_H   = px(66)    -- header + subheader + accent bar
 
-    local dailyH = HDR_H + math.max(1, #quests) * CARD_H + px(24)
+    local function pageHeightForCount(count)
+        return HDR_H + math.max(1, count) * CARD_H + px(24)
+    end
+
+    local dailyH = pageHeightForCount(#quests)
     local rootH  = math.max(dailyH, px(220))
 
     ---------------------------------------------------------------------------
@@ -1212,6 +1348,36 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
     local tabButtons   = {}  -- [id] -> TextButton
     local contentPages = {}  -- [id] -> Frame
+
+    -- Parent is the modal ScrollingFrame in SideUI; tune style per active tab.
+    local parentScroll = if parent and parent:IsA("ScrollingFrame") then parent else nil
+    local defaultScrollThickness = parentScroll and parentScroll.ScrollBarThickness or 0
+    local defaultScrollColor = parentScroll and parentScroll.ScrollBarImageColor3 or Color3.new(1, 1, 1)
+    local defaultScrollTransparency = parentScroll and parentScroll.ScrollBarImageTransparency or 0
+
+    local function applyAchievementsScrollStyle(isAchievTab)
+        if not parentScroll then return end
+        if isAchievTab then
+            parentScroll.ScrollBarThickness = px(3)
+            parentScroll.ScrollBarImageColor3 = GOLD
+            parentScroll.ScrollBarImageTransparency = 0.08
+            parentScroll.VerticalScrollBarPosition = Enum.VerticalScrollBarPosition.Right
+        else
+            parentScroll.ScrollBarThickness = defaultScrollThickness
+            parentScroll.ScrollBarImageColor3 = defaultScrollColor
+            parentScroll.ScrollBarImageTransparency = defaultScrollTransparency
+        end
+    end
+
+    local function updateRootHeight(minRows)
+        local targetHeight = math.max(pageHeightForCount(minRows), px(220))
+        if targetHeight <= rootH then return end
+        rootH = targetHeight
+        root.Size = UDim2.new(1, 0, 0, rootH)
+        for _, page in pairs(contentPages) do
+            page.Size = UDim2.new(1, 0, 0, rootH)
+        end
+    end
 
     ---------------------------------------------------------------------------
     -- Helper: build one sidebar tab button
@@ -1318,6 +1484,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         for id, page in pairs(contentPages) do
             page.Visible = (id == tabId)
         end
+        applyAchievementsScrollStyle(tabId == "achiev")
         -- Update the modal window title to match the active tab
         local TAB_TITLES = {
             daily  = "DAILY QUESTS",
@@ -1472,14 +1639,16 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local claimButtons  = {}
     local questGoals    = {}
     local questClaimed  = {}
+    local dailyRerollStateUpdaters = {}
 
     ---------------------------------------------------------------------------
     -- Quest cards (Daily)
     ---------------------------------------------------------------------------
     local questCardStrokes = {}   -- [questId] = UIStroke (for state glow)
     local questCards       = {}   -- [questId] = Frame
+    local dailyDisplayQuests = sortQuestsForDisplay("daily", quests)
 
-    for i, quest in ipairs(quests) do
+    for i, quest in ipairs(dailyDisplayQuests) do
         questGoals[quest.id]   = quest.goal
         questClaimed[quest.id] = quest.claimed
 
@@ -1760,6 +1929,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             if success then
                 questClaimed[quest.id] = true
+                if dailyQuestDataById[quest.id] then
+                    dailyQuestDataById[quest.id].claimed = true
+                    dailyQuestDataById[quest.id].progress = quest.goal
+                end
+                if dailyRerollStateUpdaters[quest.id] then
+                    dailyRerollStateUpdaters[quest.id](true, true)
+                end
                 updateButtonState(quest.goal, quest.goal, true)
                 -- Flash gold
                 local origColor = card.BackgroundColor3
@@ -1774,14 +1950,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 if _G.UpdateShopHeaderCoins then
                     pcall(_G.UpdateShopHeaderCoins)
                 end
+                applySortedCardLayoutOrders("daily", quests, function(displayQuest)
+                    return questCards[displayQuest.id]
+                end)
             else
                 updateButtonState(quest.progress, quest.goal, false)
             end
         end))
 
         -- Inline reroll button for this quest
-        local _rerollBtn, _setRerollEnabled = makeRerollButton(
-            card, "daily", i, quest.title,
+        local _rerollBtn, setDailyRerollState = makeRerollButton(
+            card, "daily", dailyQuestServerIndexById[quest.id] or i, quest.title,
             quest.claimed, quest.progress >= quest.goal,
             function(selectedTab)
                 task.defer(function()
@@ -1789,6 +1968,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 end)
             end
         )
+        dailyRerollStateUpdaters[quest.id] = setDailyRerollState
     end
 
 
@@ -1809,6 +1989,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end)
     end
     if type(weeklyQuests) ~= "table" then weeklyQuests = {} end
+    updateRootHeight(#weeklyQuests)
+
+    local weeklyQuestDataByIndex = {}
+    for _, weeklyQuest in ipairs(weeklyQuests) do
+        local weeklyIndex = tonumber(weeklyQuest.index)
+        if weeklyIndex then
+            weeklyQuestDataByIndex[weeklyIndex] = weeklyQuest
+        end
+    end
 
     if #weeklyQuests == 0 then
         makePlaceholder("No weekly quests available.", 3, weeklyPage)
@@ -1822,8 +2011,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local wkClaimed       = {}
     local wkCards         = {}
     local wkCardStrokes   = {}
+    local weeklyRerollStateUpdaters = {}
+    local weeklyDisplayQuests = sortQuestsForDisplay("weekly", weeklyQuests)
 
-    for i, wq in ipairs(weeklyQuests) do
+    for i, wq in ipairs(weeklyDisplayQuests) do
         local questIdx       = wq.index or i
         wkGoals[questIdx]    = wq.goal
         wkClaimed[questIdx]  = wq.claimed
@@ -2105,6 +2296,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             if success then
                 wkClaimed[questIdx] = true
+                if weeklyQuestDataByIndex[questIdx] then
+                    weeklyQuestDataByIndex[questIdx].claimed = true
+                    weeklyQuestDataByIndex[questIdx].progress = wq.goal
+                end
+                if weeklyRerollStateUpdaters[questIdx] then
+                    weeklyRerollStateUpdaters[questIdx](true, true)
+                end
                 updateWkBtnState(wq.goal, wq.goal, true)
                 -- Flash gold
                 local origColor2 = card.BackgroundColor3
@@ -2119,13 +2317,16 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 if _G.UpdateShopHeaderCoins then
                     pcall(_G.UpdateShopHeaderCoins)
                 end
+                applySortedCardLayoutOrders("weekly", weeklyQuests, function(displayQuest)
+                    return wkCards[displayQuest.index]
+                end)
             else
                 updateWkBtnState(wq.progress, wq.goal, false)
             end
         end))
 
         -- Inline reroll button for this weekly quest
-        local _wkRerollBtn, _wkSetRerollEnabled = makeRerollButton(
+        local _wkRerollBtn, setWeeklyRerollState = makeRerollButton(
             card, "weekly", questIdx, wq.title,
             wq.claimed, wq.progress >= wq.goal,
             function(selectedTab)
@@ -2134,6 +2335,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 end)
             end
         )
+        weeklyRerollStateUpdaters[questIdx] = setWeeklyRerollState
     end
 
 
@@ -2168,6 +2370,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end)
     end
     if type(achievements) ~= "table" then achievements = {} end
+    updateRootHeight(#achievements)
+
+    local achievementDataById = {}
+    for _, achievement in ipairs(achievements) do
+        achievementDataById[achievement.id] = achievement
+    end
 
     -- Lookup tables for live updates
     local achProgressBars  = {} -- [id] -> fill Frame
@@ -2182,7 +2390,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         makePlaceholder("Loading achievements...", 3, achievPage)
     end
 
-    for i, ach in ipairs(achievements) do
+    local achievementDisplayList = sortQuestsForDisplay("achiev", achievements)
+
+    for i, ach in ipairs(achievementDisplayList) do
         achGoals[ach.id]   = ach.target
         achClaimed[ach.id] = ach.claimed
 
@@ -2476,6 +2686,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             if success then
                 achClaimed[ach.id] = true
+                if achievementDataById[ach.id] then
+                    achievementDataById[ach.id].claimed = true
+                    achievementDataById[ach.id].completed = true
+                    achievementDataById[ach.id].progress = ach.target
+                end
                 updateAchBtnState(ach.target, ach.target, true)
                 -- Flash gold
                 TweenService:Create(card, TWEEN_QUICK,
@@ -2489,6 +2704,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 if _G.UpdateShopHeaderCoins then
                     pcall(_G.UpdateShopHeaderCoins)
                 end
+                applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
+                    return achCards[displayAchievement.id]
+                end)
             else
                 updateAchBtnState(ach.progress, ach.target, false)
             end
@@ -2509,6 +2727,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     pcall(function() newData = getAchievRF:InvokeServer() end)
                     if type(newData) == "table" then
                         for _, a in ipairs(newData) do
+                            local achievementData = achievementDataById[a.id]
+                            if achievementData then
+                                achievementData.progress = a.progress
+                                achievementData.target = a.target
+                                achievementData.claimed = a.claimed
+                                achievementData.completed = a.completed
+                            end
                             achGoals[a.id]   = a.target
                             achClaimed[a.id] = a.claimed
                             local fillBar = achProgressBars[a.id]
@@ -2564,6 +2789,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                 end
                             end
                         end
+                        applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
+                            return achCards[displayAchievement.id]
+                        end)
                     end
                 end
                 return
@@ -2574,6 +2802,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local goal = achGoals[achId]
             if not goal then return end
             if achClaimed[achId] then return end
+
+            local achievementData = achievementDataById[achId]
+            if achievementData then
+                achievementData.progress = math.min(newProgress, goal)
+                achievementData.completed = completed == true or achievementData.completed == true or newProgress >= goal
+            end
 
             local pct2 = math.clamp(newProgress / goal, 0, 1)
 
@@ -2612,6 +2846,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 end
             end
 
+            applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
+                return achCards[displayAchievement.id]
+            end)
+
             -- Show toast notification when an achievement is newly completed
             if completed and _G.ShowAchievementToast then
                 pcall(function() _G.ShowAchievementToast(achId) end)
@@ -2635,6 +2873,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local goal = wkGoals[questIdx]
             if not goal then return end
             if wkClaimed[questIdx] then return end
+
+            local weeklyQuestData = weeklyQuestDataByIndex[questIdx]
+            if weeklyQuestData then
+                weeklyQuestData.progress = math.min(newProgress, goal)
+            end
+            if weeklyRerollStateUpdaters[questIdx] then
+                weeklyRerollStateUpdaters[questIdx](false, newProgress >= goal)
+            end
 
             local pctW2 = math.clamp(newProgress / goal, 0, 1)
 
@@ -2682,6 +2928,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     if accent2 then accent2.BackgroundColor3 = GOLD; accent2.BackgroundTransparency = 0.5 end
                 end
             end
+
+            applySortedCardLayoutOrders("weekly", weeklyQuests, function(displayQuest)
+                return wkCards[displayQuest.index]
+            end)
         end))
     end
 
@@ -2695,6 +2945,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local goal = questGoals[questId]
             if not goal then return end
             if questClaimed[questId] then return end
+
+            local questData = dailyQuestDataById[questId]
+            if questData then
+                questData.progress = math.min(newProgress, goal)
+            end
+            if dailyRerollStateUpdaters[questId] then
+                dailyRerollStateUpdaters[questId](false, newProgress >= goal)
+            end
 
             local pct2 = math.clamp(newProgress / goal, 0, 1)
 
@@ -2762,6 +3020,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     end
                 end
             end
+
+            applySortedCardLayoutOrders("daily", quests, function(displayQuest)
+                return questCards[displayQuest.id]
+            end)
         end))
     end
 
