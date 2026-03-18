@@ -472,8 +472,123 @@ local function CreateMenuButton(def)
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = btn
 
-    -- Background image (fills the button)
-    if def.iconKey and AssetCodes and type(AssetCodes.Get) == "function" then
+    local function buildCrossedFlagIcon(parent)
+        local iconRoot = Instance.new("Frame")
+        iconRoot.Name = "TeamCrossedFlagsIcon"
+        iconRoot.BackgroundTransparency = 1
+        iconRoot.Size = UDim2.new(0.82, 0, 0.68, 0)
+        iconRoot.AnchorPoint = Vector2.new(0.5, 0.5)
+        iconRoot.Position = UDim2.new(0.5, 0, 0.40, 0)
+        iconRoot.Parent = parent
+
+        local function makeFlag(name, angle, direction, poleColor, clothColor, clothShade)
+            local flag = Instance.new("Frame")
+            flag.Name = name
+            flag.BackgroundTransparency = 1
+            flag.Size = UDim2.new(0.78, 0, 0.92, 0)
+            flag.AnchorPoint = Vector2.new(0.5, 0.5)
+            flag.Position = UDim2.new(0.5, 0, 0.54, 0)
+            flag.Rotation = angle
+            flag.Parent = iconRoot
+
+            local poleX = direction == 1 and 0.40 or 0.60
+            local outward = direction == 1 and -1 or 1
+
+            local pole = Instance.new("Frame")
+            pole.Name = "Pole"
+            pole.BorderSizePixel = 0
+            pole.BackgroundColor3 = poleColor
+            pole.Size = UDim2.new(0.09, 0, 0.96, 0)
+            pole.AnchorPoint = Vector2.new(0.5, 0)
+            pole.Position = UDim2.new(poleX, 0, 0.02, 0)
+            pole.Parent = flag
+
+            local poleCorner = Instance.new("UICorner")
+            poleCorner.CornerRadius = UDim.new(1, 0)
+            poleCorner.Parent = pole
+
+            local finial = Instance.new("Frame")
+            finial.Name = "Finial"
+            finial.BorderSizePixel = 0
+            finial.BackgroundColor3 = poleColor:Lerp(Color3.new(1, 1, 1), 0.18)
+            finial.Size = UDim2.new(0, px(5), 0, px(5))
+            finial.AnchorPoint = Vector2.new(0.5, 0.5)
+            finial.Position = UDim2.new(poleX, 0, 0.02, 0)
+            finial.Parent = flag
+
+            local finialCorner = Instance.new("UICorner")
+            finialCorner.CornerRadius = UDim.new(1, 0)
+            finialCorner.Parent = finial
+
+            local clothMain = Instance.new("Frame")
+            clothMain.Name = "ClothMain"
+            clothMain.BorderSizePixel = 0
+            clothMain.BackgroundColor3 = clothColor
+            clothMain.Size = UDim2.new(0.48, 0, 0.30, 0)
+            clothMain.AnchorPoint = Vector2.new(outward == 1 and 0 or 1, 0)
+            clothMain.Position = UDim2.new(poleX + outward * 0.03, 0, 0.15, 0)
+            clothMain.Parent = flag
+
+            local clothMainCorner = Instance.new("UICorner")
+            clothMainCorner.CornerRadius = UDim.new(0, px(3))
+            clothMainCorner.Parent = clothMain
+
+            local clothTip = Instance.new("Frame")
+            clothTip.Name = "ClothTip"
+            clothTip.BorderSizePixel = 0
+            clothTip.BackgroundColor3 = clothColor
+            clothTip.Size = UDim2.new(0.14, 0, 0.14, 0)
+            clothTip.AnchorPoint = Vector2.new(0.5, 0.5)
+            clothTip.Position = UDim2.new(
+                clothMain.Position.X.Scale + outward * clothMain.Size.X.Scale,
+                0,
+                clothMain.Position.Y.Scale + clothMain.Size.Y.Scale * 0.55,
+                0
+            )
+            clothTip.Rotation = outward == 1 and 45 or -45
+            clothTip.Parent = flag
+
+            local clothStripe = Instance.new("Frame")
+            clothStripe.Name = "ClothStripe"
+            clothStripe.BorderSizePixel = 0
+            clothStripe.BackgroundColor3 = clothShade
+            clothStripe.Size = UDim2.new(0.20, 0, 0.06, 0)
+            clothStripe.AnchorPoint = Vector2.new(outward == 1 and 0 or 1, 0.5)
+            clothStripe.Position = UDim2.new(poleX + outward * 0.06, 0, 0.23, 0)
+            clothStripe.Parent = flag
+
+            local clothStroke = Instance.new("UIStroke")
+            clothStroke.Color = clothColor:Lerp(Color3.new(1, 1, 1), 0.2)
+            clothStroke.Thickness = 1
+            clothStroke.Transparency = 0.35
+            clothStroke.Parent = clothMain
+
+            return flag
+        end
+
+        makeFlag(
+            "RedFlag",
+            -40,
+            1,
+            Color3.fromRGB(172, 132, 88),
+            Color3.fromRGB(196, 44, 50),
+            Color3.fromRGB(235, 118, 124)
+        )
+
+        makeFlag(
+            "BlueFlag",
+            40,
+            -1,
+            Color3.fromRGB(150, 118, 82),
+            Color3.fromRGB(56, 100, 188),
+            Color3.fromRGB(122, 166, 240)
+        )
+    end
+
+    -- Background image (fills the button) or Team-specific icon art
+    if def.id == "Team" then
+        buildCrossedFlagIcon(btn)
+    elseif def.iconKey and AssetCodes and type(AssetCodes.Get) == "function" then
         local ok, id = pcall(function() return AssetCodes.Get(def.iconKey) end)
         if ok and id and type(id) == "string" then
             local bgImg = Instance.new("ImageLabel")
@@ -493,12 +608,12 @@ local function CreateMenuButton(def)
     nameLabel.Name = "NameLabel"
     nameLabel.BackgroundTransparency = 1
     nameLabel.AnchorPoint = Vector2.new(0.5, 1)
-    nameLabel.Position = UDim2.new(0.5, 0, 1, -px(3))
-    nameLabel.Size = UDim2.new(0.95, 0, 0, px(11))
+    nameLabel.Position = UDim2.new(0.5, 0, 1, def.id == "Team" and -px(2) or -px(3))
+    nameLabel.Size = UDim2.new(0.95, 0, 0, def.id == "Team" and px(12) or px(11))
     nameLabel.Font = Enum.Font.GothamBold
     nameLabel.Text = def.label or def.id
     nameLabel.TextColor3 = COLORS.gold
-    nameLabel.TextSize = tpx(24)
+    nameLabel.TextSize = tpx(def.id == "Team" and 28 or 24)
     nameLabel.TextXAlignment = Enum.TextXAlignment.Center
     nameLabel.Parent = btn
     local nameStroke = Instance.new("UIStroke")

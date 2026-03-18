@@ -27,6 +27,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local AchievementDefs = require(ReplicatedStorage:WaitForChild("AchievementDefs", 10))
 
 local DATASTORE_NAME = "Achievements_v1"
+local ACHIEVEMENT_DATA_VERSION = 2 -- Bump to force a one-time global reset of old achievement saves.
 local RETRIES        = 3
 local RETRY_DELAY    = 0.5
 
@@ -37,9 +38,10 @@ local AchievementService = {}
 --------------------------------------------------------------------------------
 -- Per-player state:
 --   playerData[player] = {
+--       achievementDataVersion = 2,
 --       stats = { totalElims = 0, zombieElims = 0, ... },
 --       achievements = {
---           [achievementId] = { completed = false, claimed = false },
+--           [achievementId] = { completed = false, claimed = false, achievedOn = nil },
 --       },
 --   }
 --------------------------------------------------------------------------------
@@ -68,21 +70,49 @@ local STAT_KEYS = {
     "totalCoinsEarned", "flagActions", "matchesPlayed",
 }
 
+local function sanitizeAchievedOn(value)
+    local num = tonumber(value)
+    if not num then
+        return nil
+    end
+    if num <= 0 then
+        return nil
+    end
+    return math.floor(num)
+end
+
 local function defaultData()
-    local data = { stats = {}, achievements = {} }
+    local data = {
+        achievementDataVersion = ACHIEVEMENT_DATA_VERSION,
+        stats = {},
+        achievements = {},
+    }
     for _, key in ipairs(STAT_KEYS) do
         data.stats[key] = 0
     end
     for _, def in ipairs(AchievementDefs.Achievements) do
-        data.achievements[def.id] = { completed = false, claimed = false }
+        data.achievements[def.id] = { completed = false, claimed = false, achievedOn = nil }
     end
     return data
 end
 
 --- Merge saved data with current definitions so new achievements get defaults.
 local function mergeWithDefaults(saved)
-    if type(saved) ~= "table" then return defaultData() end
-    local data = { stats = {}, achievements = {} }
+    if type(saved) ~= "table" then
+        return defaultData(), false
+    end
+
+    local savedVersion = tonumber(saved.achievementDataVersion or saved.dataVersion or 1) or 1
+    if savedVersion < ACHIEVEMENT_DATA_VERSION then
+        -- Discard all previous completion/progress/claim metadata for a clean reset.
+        return defaultData(), true
+    end
+
+    local data = {
+        achievementDataVersion = ACHIEVEMENT_DATA_VERSION,
+        stats = {},
+        achievements = {},
+    }
     -- Stats
     local ss = (type(saved.stats) == "table") and saved.stats or {}
     for _, key in ipairs(STAT_KEYS) do
@@ -93,15 +123,17 @@ local function mergeWithDefaults(saved)
     for _, def in ipairs(AchievementDefs.Achievements) do
         local prev = sa[def.id]
         if type(prev) == "table" then
+            local completed = (prev.completed == true)
             data.achievements[def.id] = {
-                completed = (prev.completed == true),
-                claimed   = (prev.claimed == true),
+                completed = completed,
+                claimed   = completed and (prev.claimed == true) or false,
+                achievedOn = completed and sanitizeAchievedOn(prev.achievedOn) or nil,
             }
         else
-            data.achievements[def.id] = { completed = false, claimed = false }
+            data.achievements[def.id] = { completed = false, claimed = false, achievedOn = nil }
         end
     end
-    return data
+    return data, false
 end
 
 local function getKey(player)
@@ -120,11 +152,11 @@ local function getRemote(name)
     return remotesFolder and remotesFolder:FindFirstChild(name)
 end
 
-local function pushProgress(player, achievementId, progress, completed)
+local function pushProgress(player, achievementId, progress, completed, achievedOn, claimed)
     local ev = getRemote("AchievementProgress")
     if ev and ev:IsA("RemoteEvent") then
         pcall(function()
-            ev:FireClient(player, achievementId, progress, completed)
+            ev:FireClient(player, achievementId, progress, completed, achievedOn, claimed)
         end)
     end
 end
@@ -133,7 +165,7 @@ local function pushAllAchievements(player)
     local ev = getRemote("AchievementProgress")
     if ev and ev:IsA("RemoteEvent") then
         pcall(function()
-            ev:FireClient(player, "__full_refresh", 0, false)
+            ev:FireClient(player, "__full_refresh", 0, false, nil, false)
         end)
     end
 end
@@ -155,17 +187,32 @@ function AchievementService:LoadForPlayer(player)
         task.wait(RETRY_DELAY * i)
     end
 
-    local data = mergeWithDefaults(success and result or nil)
+    local data, wasResetByVersion = mergeWithDefaults(success and result or nil)
 
     -- Retroactively mark completed for stats that already exceeded target
     for _, def in ipairs(AchievementDefs.Achievements) do
         local st = data.stats[def.stat] or 0
-        if st >= def.target and not data.achievements[def.id].completed then
-            data.achievements[def.id].completed = true
+        local ach = data.achievements[def.id]
+        if st >= def.target and not ach.completed then
+            ach.completed = true
+            -- Stamp first completion time once; keep existing values stable.
+            if ach.achievedOn == nil then
+                ach.achievedOn = os.time()
+            end
+        elseif st < def.target then
+            ach.completed = false
+            ach.claimed = false
+            ach.achievedOn = nil
         end
     end
 
     playerData[player] = data
+
+    if wasResetByVersion then
+        task.spawn(function()
+            AchievementService:SaveForPlayer(player)
+        end)
+    end
 end
 
 function AchievementService:SaveForPlayer(player)
@@ -220,9 +267,13 @@ function AchievementService:IncrementStat(player, statKey, amount)
             if ach and not ach.completed then
                 if currentValue >= def.target then
                     ach.completed = true
-                    pushProgress(player, def.id, currentValue, true)
+                    -- Set achievedOn exactly once at first completion.
+                    if ach.achievedOn == nil then
+                        ach.achievedOn = os.time()
+                    end
+                    pushProgress(player, def.id, currentValue, true, ach.achievedOn, ach.claimed == true)
                 else
-                    pushProgress(player, def.id, currentValue, false)
+                    pushProgress(player, def.id, currentValue, false, nil, ach.claimed == true)
                 end
             end
         end
@@ -240,7 +291,7 @@ function AchievementService:GetAchievementsForPlayer(player)
 
     local out = {}
     for _, def in ipairs(AchievementDefs.Achievements) do
-        local ach = data.achievements[def.id] or { completed = false, claimed = false }
+        local ach = data.achievements[def.id] or { completed = false, claimed = false, achievedOn = nil }
         local progress = math.min(data.stats[def.stat] or 0, def.target)
         table.insert(out, {
             id        = def.id,
@@ -252,6 +303,7 @@ function AchievementService:GetAchievementsForPlayer(player)
             progress  = progress,
             completed = ach.completed,
             claimed   = ach.claimed,
+            achievedOn = ach.achievedOn,
             hidden    = def.hidden,
         })
     end
@@ -284,7 +336,7 @@ function AchievementService:ClaimReward(player, achievementId)
     ach.claimed = true
 
     -- Push a progress update so the client refreshes the card
-    pushProgress(player, achievementId, def.target, true)
+    pushProgress(player, achievementId, def.target, true, ach.achievedOn, true)
 
     return true
 end

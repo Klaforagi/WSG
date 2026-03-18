@@ -54,6 +54,9 @@ local claimQuestRF = ensureInstance(questsFolder, "RemoteFunction", "ClaimQuest"
 -- RequestRerollDailyQuest: client requests a daily quest reroll (passes quest index)
 local rerollDailyRF = ensureInstance(questsFolder, "RemoteFunction", "RequestRerollDailyQuest")
 
+-- GetRerollCooldowns: client queries current reroll cooldown state
+local getRerollCooldownsRF = ensureInstance(questsFolder, "RemoteFunction", "GetRerollCooldowns")
+
 --------------------------------------------------------------------------------
 -- Remote handlers
 --------------------------------------------------------------------------------
@@ -71,6 +74,10 @@ rerollDailyRF.OnServerInvoke = function(player, questIndex)
         return false, "Invalid"
     end
     return BoostService:RerollQuest(player, "daily", questIndex)
+end
+
+getRerollCooldownsRF.OnServerInvoke = function(player)
+    return BoostService:GetRerollCooldowns(player)
 end
 
 --------------------------------------------------------------------------------

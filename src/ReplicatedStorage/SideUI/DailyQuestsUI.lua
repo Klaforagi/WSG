@@ -52,12 +52,151 @@ local CLAIM_GOLD_GLOW  = UITheme.GOLD_WARM
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local DEBUG_QUEST_UI = false
+local DEBUG_QUEST_SORT = true
 local DEBUG_REROLL_TOOLTIP = true
 
 local function debugLog(prefix, message)
     if DEBUG_QUEST_UI then
         print(string.format("[%s] %s", prefix, message))
     end
+end
+
+local function getQuestCompletionTarget(quest)
+    if type(quest) ~= "table" then
+        return 0
+    end
+    return tonumber(quest.goal) or tonumber(quest.target) or 0
+end
+
+local function isQuestCompletedForDisplay(quest)
+    if type(quest) ~= "table" then
+        return false
+    end
+    if quest.completed == true then
+        return true
+    end
+
+    local target = getQuestCompletionTarget(quest)
+    local progress = tonumber(quest.progress) or 0
+    return target > 0 and progress >= target
+end
+
+local function getQuestSortPriority(quest)
+    if type(quest) ~= "table" then
+        return 4
+    end
+    if quest.claimed == true then
+        return 3
+    end
+    if isQuestCompletedForDisplay(quest) then
+        return 2
+    end
+    return 1
+end
+
+local function getQuestDebugLabel(quest, fallbackIndex)
+    if type(quest) ~= "table" then
+        return string.format("quest_%d", fallbackIndex)
+    end
+    return tostring(quest.title or quest.id or quest.index or ("quest_" .. tostring(fallbackIndex)))
+end
+
+local function logQuestSortOrder(tabId, phase, entries)
+    if not DEBUG_QUEST_SORT then
+        return
+    end
+
+    local parts = {}
+    for _, entry in ipairs(entries) do
+        local quest = entry.quest
+        table.insert(parts, string.format(
+            "%d:%s(priority=%d, claimed=%s, completed=%s)",
+            entry.originalIndex,
+            getQuestDebugLabel(quest, entry.originalIndex),
+            entry.priority,
+            tostring(quest and quest.claimed == true),
+            tostring(isQuestCompletedForDisplay(quest))
+        ))
+    end
+
+    print(string.format("[QuestSort] tab=%s phase=%s order=%s", tostring(tabId), tostring(phase), table.concat(parts, " | ")))
+end
+
+local function sortQuestsForDisplay(tabId, quests)
+    local sortable = {}
+
+    for originalIndex, quest in ipairs(quests) do
+        table.insert(sortable, {
+            quest = quest,
+            originalIndex = originalIndex,
+            priority = getQuestSortPriority(quest),
+        })
+    end
+
+    logQuestSortOrder(tabId, "original", sortable)
+
+    table.sort(sortable, function(a, b)
+        if a.priority ~= b.priority then
+            return a.priority < b.priority
+        end
+        return a.originalIndex < b.originalIndex
+    end)
+
+    logQuestSortOrder(tabId, "sorted", sortable)
+
+    local sorted = {}
+    for _, entry in ipairs(sortable) do
+        table.insert(sorted, entry.quest)
+        if DEBUG_QUEST_SORT then
+            print(string.format(
+                "[QuestSort] tab=%s quest=%s priority=%d originalIndex=%d",
+                tostring(tabId),
+                getQuestDebugLabel(entry.quest, entry.originalIndex),
+                entry.priority,
+                entry.originalIndex
+            ))
+        end
+    end
+
+    return sorted
+end
+
+local function applySortedCardLayoutOrders(tabId, quests, getCardForQuest)
+    local sorted = sortQuestsForDisplay(tabId, quests)
+    for displayIndex, quest in ipairs(sorted) do
+        local card = getCardForQuest(quest)
+        if card and card.Parent then
+            card.LayoutOrder = 10 + displayIndex
+        end
+    end
+end
+
+local MONTH_ABBR = {
+    [1] = "Jan", [2] = "Feb", [3] = "Mar", [4] = "Apr", [5] = "May", [6] = "Jun",
+    [7] = "Jul", [8] = "Aug", [9] = "Sep", [10] = "Oct", [11] = "Nov", [12] = "Dec",
+}
+
+local function formatAchievedOn(ts)
+    local unix = tonumber(ts)
+    if not unix or unix <= 0 then
+        return nil
+    end
+
+    local ok, dateTable = pcall(function()
+        return os.date("!*t", math.floor(unix))
+    end)
+    if not ok or type(dateTable) ~= "table" then
+        return nil
+    end
+
+    local month = MONTH_ABBR[dateTable.month]
+    local day = tonumber(dateTable.day)
+    local year = tonumber(dateTable.year)
+    if not month or not day or not year then
+        return nil
+    end
+
+    return string.format("%s %d, %d", month, day, year)
 end
 
 --------------------------------------------------------------------------------
@@ -73,6 +212,7 @@ local claimWeeklyRF
 local weeklyProgressRE
 local rerollDailyRF
 local rerollWeeklyRF
+local getRerollCooldownsRF
 
 local function ensureRemotes()
     if questRemotesFolder then return true end
@@ -90,6 +230,7 @@ local function ensureRemotes()
     weeklyProgressRE = questRemotesFolder:FindFirstChild("WeeklyQuestProgress")
     rerollDailyRF    = questRemotesFolder:WaitForChild("RequestRerollDailyQuest", 5)
     rerollWeeklyRF   = questRemotesFolder:WaitForChild("RequestRerollWeeklyQuest", 5)
+    getRerollCooldownsRF = questRemotesFolder:WaitForChild("GetRerollCooldowns", 5)
 
     if rerollDailyRF then
         debugLog("QuestReroll", "Found RequestRerollDailyQuest")
@@ -106,13 +247,16 @@ end
 
 -- Lazy re-resolve reroll remotes (in case they weren't ready on first ensureRemotes call)
 local function ensureRerollRemotes()
-    if rerollDailyRF and rerollWeeklyRF then return end
+    if rerollDailyRF and rerollWeeklyRF and getRerollCooldownsRF then return end
     if not questRemotesFolder then return end
     if not rerollDailyRF then
         rerollDailyRF = questRemotesFolder:FindFirstChild("RequestRerollDailyQuest")
     end
     if not rerollWeeklyRF then
         rerollWeeklyRF = questRemotesFolder:FindFirstChild("RequestRerollWeeklyQuest")
+    end
+    if not getRerollCooldownsRF then
+        getRerollCooldownsRF = questRemotesFolder:FindFirstChild("GetRerollCooldowns")
     end
 end
 
@@ -133,6 +277,7 @@ local rerollTooltipLayer = nil
 local rerollTooltipPanel = nil
 local rerollTooltipLabel = nil
 local hideRerollTooltip = function() end
+local activeCountdownThread = nil   -- coroutine handle for live countdown
 
 local function trackConn(conn)
     table.insert(activeConnections, conn)
@@ -211,6 +356,38 @@ end
 local REROLL_ACCENT  = Color3.fromRGB(170, 110, 255)
 local REROLL_BTN_BG  = Color3.fromRGB(80, 55, 120)
 local CANCEL_BTN_BG  = Color3.fromRGB(120, 40, 40)
+local DISABLED_REROLL_BG = Color3.fromRGB(50, 45, 60)
+
+--------------------------------------------------------------------------------
+-- Client-side cooldown cache (mirrors server authoritative cooldowns)
+-- Updated on popup open and after successful reroll
+--------------------------------------------------------------------------------
+local clientCooldowns = { daily = 0, weekly = 0 }   -- os.clock()-based expiry
+
+local function fetchServerCooldowns()
+    ensureRerollRemotes()
+    if not getRerollCooldownsRF then return end
+    local ok, result = pcall(function()
+        return getRerollCooldownsRF:InvokeServer()
+    end)
+    if ok and type(result) == "table" then
+        local now = os.clock()
+        clientCooldowns.daily  = now + (tonumber(result.daily)  or 0)
+        clientCooldowns.weekly = now + (tonumber(result.weekly) or 0)
+        print(string.format("[QuestReroll] Cooldowns fetched: daily=%ds weekly=%ds",
+            math.max(0, math.ceil(tonumber(result.daily) or 0)),
+            math.max(0, math.ceil(tonumber(result.weekly) or 0))))
+    end
+end
+
+local function getClientCooldownRemaining(category)
+    local expiresAt = clientCooldowns[category] or 0
+    return math.max(0, expiresAt - os.clock())
+end
+
+local function setClientCooldown(category, seconds)
+    clientCooldowns[category] = os.clock() + seconds
+end
 
 local function getTooltipHostGui()
     if questsScreenGui and questsScreenGui.Parent then
@@ -496,15 +673,19 @@ local function submitReroll(tabId, serverIdx)
 end
 
 --------------------------------------------------------------------------------
--- showRerollConfirmation  –  Modal popup before spending coins
+-- showRerollConfirmation  –  Modal popup with multiple visual states
 -- tabId: "daily" | "weekly"
 -- serverIdx: the 1-based quest index to reroll
 -- questName: display name of the quest being rerolled
+-- popupState: "ready" | "cooldown" | "completedBlocked" | "claimedBlocked"
 -- onConfirm: function(success, msg) called after server response
 --------------------------------------------------------------------------------
-local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
+local function showRerollConfirmation(tabId, serverIdx, questName, popupState, onConfirm)
     -- Close any existing popup first
     closeRerollPopup("before-open")
+
+    popupState = popupState or "ready"
+    print(string.format("[QuestReroll] Opening popup state=%s for %s quest index %d (%s)", popupState, tabId, serverIdx, questName))
 
     local rerollCost = getRerollCost()
     local hostGui = resolveModalHostGui()
@@ -553,8 +734,8 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     activeRerollOverlay = dimBg
     print(string.format("[QuestReroll] Overlay shown | parent=%s | zindex=%d", dimBg.Parent:GetFullName(), dimBg.ZIndex))
 
-    -- Modal card
-    local modalW, modalH = px(430), px(290)
+    -- Modal card (slightly larger to accommodate status text)
+    local modalW, modalH = px(440), px(340)
     local modal = Instance.new("Frame")
     modal.Name = "RerollModal"
     modal.BackgroundColor3 = Color3.fromRGB(18, 16, 28)
@@ -575,6 +756,10 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
             print("[QuestReroll] Popup destroyed/hidden (ancestry removed)")
             rerollModalOpen = false
             rerollModalSelection = nil
+            if activeCountdownThread then
+                pcall(function() task.cancel(activeCountdownThread) end)
+                activeCountdownThread = nil
+            end
             print("[QuestReroll] Modal state reset (ancestry removed)")
         end
     end)
@@ -625,30 +810,42 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     questLbl.ZIndex = 911
     questLbl.Parent = modal
 
-    -- Body description
+    -- Body description (state-dependent)
+    local bodyText
+    if popupState == "cooldown" then
+        bodyText = "Reroll is temporarily unavailable.\nPlease wait for the cooldown to expire."
+    elseif popupState == "completedBlocked" then
+        bodyText = "This quest is already completed.\nCompleted quests cannot be rerolled."
+    elseif popupState == "claimedBlocked" then
+        bodyText = "This quest has already been claimed.\nClaimed quests cannot be rerolled."
+    else
+        bodyText = "This will replace the quest above with a new random quest."
+    end
+
     local bodyLbl = Instance.new("TextLabel")
     bodyLbl.Name = "BodyText"
     bodyLbl.BackgroundTransparency = 1
     bodyLbl.Font = Enum.Font.GothamMedium
-    bodyLbl.Text = "This will replace the quest above with a new random quest."
+    bodyLbl.Text = bodyText
     bodyLbl.TextColor3 = DIM_TEXT
     bodyLbl.TextSize = math.max(13, math.floor(px(15)))
     bodyLbl.TextWrapped = true
     bodyLbl.TextXAlignment = Enum.TextXAlignment.Center
-    bodyLbl.Size = UDim2.new(1, 0, 0, px(44))
+    bodyLbl.Size = UDim2.new(1, 0, 0, px(50))
     bodyLbl.Position = UDim2.new(0, 0, 0, px(76))
     bodyLbl.ZIndex = 911
     bodyLbl.Parent = modal
 
-    -- Cost badge
+    -- Cost badge (only shown in ready state)
     local costBadge = Instance.new("Frame")
     costBadge.Name = "CostBadge"
     costBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
     costBadge.BackgroundTransparency = 0.3
     costBadge.Size = UDim2.new(0, px(130), 0, px(34))
     costBadge.AnchorPoint = Vector2.new(0.5, 0)
-    costBadge.Position = UDim2.new(0.5, 0, 0, px(130))
+    costBadge.Position = UDim2.new(0.5, 0, 0, px(136))
     costBadge.ZIndex = 911
+    costBadge.Visible = (popupState == "ready")
     costBadge.Parent = modal
 
     local cbCr = Instance.new("UICorner")
@@ -678,7 +875,7 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     costCoin.Position = UDim2.new(1, -px(6), 0.5, 0)
     costCoin.ZIndex = 912
 
-    -- Error / status label
+    -- Error / status label (above buttons)
     local statusLbl = Instance.new("TextLabel")
     statusLbl.Name = "StatusLbl"
     statusLbl.BackgroundTransparency = 1
@@ -688,16 +885,16 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     statusLbl.TextSize = math.max(12, math.floor(px(14)))
     statusLbl.TextXAlignment = Enum.TextXAlignment.Center
     statusLbl.Size = UDim2.new(1, 0, 0, px(22))
-    statusLbl.Position = UDim2.new(0, 0, 0, px(172))
+    statusLbl.Position = UDim2.new(0, 0, 0, px(178))
     statusLbl.ZIndex = 911
     statusLbl.Parent = modal
 
     -- Button row
-    local btnRowY = px(198)
+    local btnRowY = px(206)
     local btnW = px(140)
     local btnH = px(42)
 
-    -- Cancel button
+    -- Cancel button (always active)
     local cancelBtn = Instance.new("TextButton")
     cancelBtn.Name = "CancelBtn"
     cancelBtn.AutoButtonColor = false
@@ -723,29 +920,99 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
     ccStr.Parent = cancelBtn
 
     -- Reroll (confirm) button
+    local isDisabled = (popupState ~= "ready")
     local confirmBtn = Instance.new("TextButton")
     confirmBtn.Name = "ConfirmBtn"
     confirmBtn.AutoButtonColor = false
     confirmBtn.Font = Enum.Font.GothamBold
     confirmBtn.Text = "\u{1F504} REROLL"
-    confirmBtn.TextColor3 = WHITE
     confirmBtn.TextSize = math.max(14, math.floor(px(16)))
-    confirmBtn.BackgroundColor3 = REROLL_BTN_BG
     confirmBtn.Size = UDim2.new(0, btnW, 0, btnH)
     confirmBtn.AnchorPoint = Vector2.new(0, 0)
     confirmBtn.Position = UDim2.new(0.5, px(6), 0, btnRowY)
     confirmBtn.ZIndex = 911
     confirmBtn.Parent = modal
 
+    -- Set confirm button appearance based on state
+    if isDisabled then
+        confirmBtn.BackgroundColor3 = DISABLED_REROLL_BG
+        confirmBtn.TextColor3 = DIM_TEXT
+        confirmBtn.Active = false
+    else
+        confirmBtn.BackgroundColor3 = REROLL_BTN_BG
+        confirmBtn.TextColor3 = WHITE
+        confirmBtn.Active = true
+    end
+
     local cfCr = Instance.new("UICorner")
     cfCr.CornerRadius = UDim.new(0, px(12))
     cfCr.Parent = confirmBtn
 
     local cfStr = Instance.new("UIStroke")
-    cfStr.Color = REROLL_ACCENT
+    if isDisabled then
+        cfStr.Color = CARD_STROKE
+        cfStr.Transparency = 0.6
+    else
+        cfStr.Color = REROLL_ACCENT
+        cfStr.Transparency = 0.25
+    end
     cfStr.Thickness = 1.4
-    cfStr.Transparency = 0.25
     cfStr.Parent = confirmBtn
+
+    -- Status text line beneath buttons (for cooldown / blocked reason)
+    local footerLbl = Instance.new("TextLabel")
+    footerLbl.Name = "FooterStatus"
+    footerLbl.BackgroundTransparency = 1
+    footerLbl.Font = Enum.Font.GothamBold
+    footerLbl.TextColor3 = Color3.fromRGB(255, 130, 70)
+    footerLbl.TextSize = math.max(12, math.floor(px(14)))
+    footerLbl.TextXAlignment = Enum.TextXAlignment.Center
+    footerLbl.Size = UDim2.new(1, 0, 0, px(22))
+    footerLbl.Position = UDim2.new(0, 0, 0, btnRowY + btnH + px(10))
+    footerLbl.ZIndex = 911
+    footerLbl.Parent = modal
+
+    -- Set footer text by state
+    if popupState == "completedBlocked" then
+        footerLbl.Text = "Completed quests cannot be rerolled"
+        footerLbl.TextColor3 = Color3.fromRGB(255, 130, 70)
+    elseif popupState == "claimedBlocked" then
+        footerLbl.Text = "Claimed quests cannot be rerolled"
+        footerLbl.TextColor3 = Color3.fromRGB(255, 130, 70)
+    elseif popupState == "cooldown" then
+        local remaining = math.ceil(getClientCooldownRemaining(tabId))
+        footerLbl.Text = string.format("Reroll Cooldown: %ds", remaining)
+        footerLbl.TextColor3 = Color3.fromRGB(255, 180, 60)
+
+        -- Live countdown update loop
+        activeCountdownThread = task.spawn(function()
+            while true do
+                task.wait(1)
+                if not modal or not modal.Parent then break end
+                if not rerollModalOpen then break end
+                local rem = math.ceil(getClientCooldownRemaining(tabId))
+                if rem <= 0 then
+                    -- Cooldown expired while popup is open — upgrade to ready state
+                    footerLbl.Text = ""
+                    confirmBtn.BackgroundColor3 = REROLL_BTN_BG
+                    confirmBtn.TextColor3 = WHITE
+                    confirmBtn.Active = true
+                    cfStr.Color = REROLL_ACCENT
+                    cfStr.Transparency = 0.25
+                    bodyLbl.Text = "This will replace the quest above with a new random quest."
+                    costBadge.Visible = true
+                    statusLbl.Text = ""
+                    popupState = "ready"
+                    print("[QuestReroll] Cooldown expired while popup open — now ready")
+                    break
+                end
+                footerLbl.Text = string.format("Reroll Cooldown: %ds", rem)
+            end
+            activeCountdownThread = nil
+        end)
+    else
+        footerLbl.Text = ""
+    end
 
     local inFlight = false
 
@@ -767,19 +1034,20 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
         TweenService:Create(cancelBtn, TWEEN_QUICK, {BackgroundColor3 = CANCEL_BTN_BG}):Play()
     end)
     confirmBtn.MouseEnter:Connect(function()
-        if not inFlight then
+        if not inFlight and confirmBtn.Active then
             TweenService:Create(confirmBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_ACCENT}):Play()
         end
     end)
     confirmBtn.MouseLeave:Connect(function()
-        if not inFlight then
+        if not inFlight and confirmBtn.Active then
             TweenService:Create(confirmBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_BTN_BG}):Play()
         end
     end)
 
-    -- Confirm: send reroll
+    -- Confirm: send reroll (only works in ready state)
     confirmBtn.MouseButton1Click:Connect(function()
         if inFlight then return end
+        if not confirmBtn.Active then return end
         print("[QuestReroll] Confirm clicked")
         inFlight = true
         confirmBtn.Text = "..."
@@ -793,6 +1061,11 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
 
         if success then
             print("[QuestReroll] Reroll success; refreshing quest list")
+            -- Set client-side cooldown immediately
+            local cdDuration = (tabId == "weekly") and 90 or 45
+            setClientCooldown(tabId, cdDuration)
+            print(string.format("[QuestReroll] Client cooldown set: %s = %ds", tabId, cdDuration))
+
             closeRerollPopup("confirm-success")
             pcall(function()
                 if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
@@ -803,6 +1076,10 @@ local function showRerollConfirmation(tabId, serverIdx, questName, onConfirm)
             local errText = tostring(msg or "Reroll failed")
             if errText:find("Insufficient") or errText:find("coins") then
                 errText = "Not enough coins!"
+            elseif errText:find("cooldown") then
+                -- Server rejected due to cooldown — refresh cached cooldowns
+                fetchServerCooldowns()
+                errText = "Reroll on cooldown!"
             end
             statusLbl.Text = errText
             confirmBtn.Text = "\u{1F504} REROLL"
@@ -826,7 +1103,13 @@ end
 -- refreshQuests: function(tabId) to rebuild UI after reroll
 --------------------------------------------------------------------------------
 local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, isComplete, refreshQuests)
+    local rerollState = {
+        claimed = isClaimed == true,
+        complete = isComplete == true,
+    }
+
     local btnSize = px(36)
+    local claimBtnW = px(108)
     local rerollBtn = Instance.new("TextButton")
     rerollBtn.Name = "RerollBtn"
     rerollBtn.AutoButtonColor = false
@@ -838,10 +1121,10 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     rerollBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
     rerollBtn.AnchorPoint = Vector2.new(1, 0)
     -- Place to the left of the claim button, vertically aligned with it
-    -- Claim button: size px(100) x px(34), at y = px(52) - px(2) = px(50)
+    -- Claim button: size px(108) x px(34), at y = px(52) - px(2) = px(50)
     local barYRef = px(52)
     local claimBtnH = px(34)
-    rerollBtn.Position = UDim2.new(1, -(px(100) + px(12)), 0, barYRef - px(2) + math.floor((claimBtnH - btnSize) / 2))
+    rerollBtn.Position = UDim2.new(1, -(claimBtnW + px(12)), 0, barYRef - px(2) + math.floor((claimBtnH - btnSize) / 2))
     rerollBtn.ZIndex = 5
     rerollBtn.Parent = card
 
@@ -856,17 +1139,15 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     rbStr.Transparency = 0.4
     rbStr.Parent = rerollBtn
 
-    -- Disable for claimed or completed quests
-    local function setRerollEnabled(enabled)
+    -- Visual state for the reroll button (dimmed for completed/claimed, normal otherwise)
+    local function setRerollVisuals(enabled)
         if enabled then
-            rerollBtn.Active = true
             rerollBtn.TextColor3 = REROLL_ACCENT
             rerollBtn.BackgroundColor3 = Color3.fromRGB(30, 26, 48)
             rbStr.Color = REROLL_ACCENT
             rbStr.Transparency = 0.4
             rerollBtn.BackgroundTransparency = 0
         else
-            rerollBtn.Active = false
             rerollBtn.TextColor3 = DIM_TEXT
             rerollBtn.BackgroundColor3 = Color3.fromRGB(22, 20, 30)
             rbStr.Color = CARD_STROKE
@@ -875,39 +1156,75 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
         end
     end
 
-    setRerollEnabled(not isClaimed and not isComplete)
+    -- Dim the button visually for completed/claimed quests
+    setRerollVisuals(not rerollState.claimed and not rerollState.complete)
 
-    local tooltipText = string.format("Reroll Quest (%d coins)", getRerollCost())
+    -- Button is always Active so clicks are captured for popup state routing
+    rerollBtn.Active = true
+
+    local function getTooltipText()
+        if rerollState.complete then
+            return "Cannot reroll (completed)"
+        end
+        if rerollState.claimed then
+            return "Cannot reroll (claimed)"
+        end
+        return string.format("Reroll Quest (%d coins)", getRerollCost())
+    end
+
+    local function setQuestRerollState(claimed, complete)
+        rerollState.claimed = claimed == true
+        rerollState.complete = complete == true
+        setRerollVisuals(not rerollState.claimed and not rerollState.complete)
+    end
 
     -- Hover
     trackConn(rerollBtn.MouseEnter:Connect(function()
-        showRerollTooltipForButton(rerollBtn, tooltipText)
-        if rerollBtn.Active then
+        showRerollTooltipForButton(rerollBtn, getTooltipText())
+        if not rerollState.claimed and not rerollState.complete then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = REROLL_ACCENT, TextColor3 = WHITE}):Play()
             rbStr.Transparency = 0
         end
     end))
     trackConn(rerollBtn.MouseLeave:Connect(function()
         hideRerollTooltip()
-        if rerollBtn.Active then
+        if not rerollState.claimed and not rerollState.complete then
             TweenService:Create(rerollBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(30, 26, 48), TextColor3 = REROLL_ACCENT}):Play()
             rbStr.Transparency = 0.4
         end
     end))
 
-    -- Click: open confirmation popup
+    -- Click: determine popup state and open confirmation popup
     trackConn(rerollBtn.MouseButton1Click:Connect(function()
-        if not rerollBtn.Active then return end
         hideRerollTooltip()
-        print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s)", tabId, serverIdx, questTitle))
-        showRerollConfirmation(tabId, serverIdx, questTitle, function(success, _msg)
+
+        -- Determine the popup state
+        local popupState = "ready"
+        if rerollState.claimed then
+            popupState = "claimedBlocked"
+            print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — CLAIMED BLOCKED", tabId, serverIdx, questTitle))
+        elseif rerollState.complete then
+            popupState = "completedBlocked"
+            print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — COMPLETED BLOCKED", tabId, serverIdx, questTitle))
+        else
+            -- Check cooldown
+            local cdRemaining = getClientCooldownRemaining(tabId)
+            if cdRemaining > 0 then
+                popupState = "cooldown"
+                print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — COOLDOWN (%ds)", tabId, serverIdx, questTitle, math.ceil(cdRemaining)))
+            else
+                print(string.format("[QuestReroll] Reroll icon clicked: %s quest index %d (%s) — READY", tabId, serverIdx, questTitle))
+            end
+        end
+
+        showRerollConfirmation(tabId, serverIdx, questTitle, popupState, function(success, _msg)
             if success and refreshQuests then
                 refreshQuests(tabId)
             end
         end)
     end))
 
-    return rerollBtn, setRerollEnabled
+    return rerollBtn, setQuestRerollState
 end
 
 --------------------------------------------------------------------------------
@@ -949,6 +1266,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         return nil
     end
 
+    -- Fetch reroll cooldown state from server on UI open
+    task.spawn(fetchServerCooldowns)
+
     -- Fetch quest data from server
     local quests = {}
     pcall(function()
@@ -956,15 +1276,26 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     end)
     if type(quests) ~= "table" then quests = {} end
 
+    local dailyQuestServerIndexById = {}
+    local dailyQuestDataById = {}
+    for index, quest in ipairs(quests) do
+        dailyQuestServerIndexById[quest.id] = index
+        dailyQuestDataById[quest.id] = quest
+    end
+
     ---------------------------------------------------------------------------
     -- Layout constants
     ---------------------------------------------------------------------------
     local TAB_W   = px(160)
     local TAB_GAP = px(10)
-    local CARD_H  = px(130)   -- taller cards for more breathing room
+    local CARD_H  = px(142)   -- includes space for achievement date line under progress bar
     local HDR_H   = px(66)    -- header + subheader + accent bar
 
-    local dailyH = HDR_H + math.max(1, #quests) * CARD_H + px(24)
+    local function pageHeightForCount(count)
+        return HDR_H + math.max(1, count) * CARD_H + px(24)
+    end
+
+    local dailyH = pageHeightForCount(#quests)
     local rootH  = math.max(dailyH, px(220))
 
     ---------------------------------------------------------------------------
@@ -1030,6 +1361,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     contentArea.ClipsDescendants    = false
     contentArea.Parent              = root
 
+    local contentPad = Instance.new("UIPadding")
+    contentPad.PaddingRight = UDim.new(0, px(6))
+    contentPad.Parent = contentArea
+
     ---------------------------------------------------------------------------
     -- Tab definitions
     ---------------------------------------------------------------------------
@@ -1041,6 +1376,36 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
     local tabButtons   = {}  -- [id] -> TextButton
     local contentPages = {}  -- [id] -> Frame
+
+    -- Parent is the modal ScrollingFrame in SideUI; tune style per active tab.
+    local parentScroll = if parent and parent:IsA("ScrollingFrame") then parent else nil
+    local defaultScrollThickness = parentScroll and parentScroll.ScrollBarThickness or 0
+    local defaultScrollColor = parentScroll and parentScroll.ScrollBarImageColor3 or Color3.new(1, 1, 1)
+    local defaultScrollTransparency = parentScroll and parentScroll.ScrollBarImageTransparency or 0
+
+    local function applyAchievementsScrollStyle(isAchievTab)
+        if not parentScroll then return end
+        if isAchievTab then
+            parentScroll.ScrollBarThickness = px(3)
+            parentScroll.ScrollBarImageColor3 = GOLD
+            parentScroll.ScrollBarImageTransparency = 0.08
+            parentScroll.VerticalScrollBarPosition = Enum.VerticalScrollBarPosition.Right
+        else
+            parentScroll.ScrollBarThickness = defaultScrollThickness
+            parentScroll.ScrollBarImageColor3 = defaultScrollColor
+            parentScroll.ScrollBarImageTransparency = defaultScrollTransparency
+        end
+    end
+
+    local function updateRootHeight(minRows)
+        local targetHeight = math.max(pageHeightForCount(minRows), px(220))
+        if targetHeight <= rootH then return end
+        rootH = targetHeight
+        root.Size = UDim2.new(1, 0, 0, rootH)
+        for _, page in pairs(contentPages) do
+            page.Size = UDim2.new(1, 0, 0, rootH)
+        end
+    end
 
     ---------------------------------------------------------------------------
     -- Helper: build one sidebar tab button
@@ -1147,6 +1512,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         for id, page in pairs(contentPages) do
             page.Visible = (id == tabId)
         end
+        applyAchievementsScrollStyle(tabId == "achiev")
         -- Update the modal window title to match the active tab
         local TAB_TITLES = {
             daily  = "DAILY QUESTS",
@@ -1301,21 +1667,23 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local claimButtons  = {}
     local questGoals    = {}
     local questClaimed  = {}
+    local dailyRerollStateUpdaters = {}
 
     ---------------------------------------------------------------------------
     -- Quest cards (Daily)
     ---------------------------------------------------------------------------
     local questCardStrokes = {}   -- [questId] = UIStroke (for state glow)
     local questCards       = {}   -- [questId] = Frame
+    local dailyDisplayQuests = sortQuestsForDisplay("daily", quests)
 
-    for i, quest in ipairs(quests) do
+    for i, quest in ipairs(dailyDisplayQuests) do
         questGoals[quest.id]   = quest.goal
         questClaimed[quest.id] = quest.claimed
 
         local card = Instance.new("Frame")
         card.Name             = "Quest_" .. quest.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.Size             = UDim2.new(1, -px(6), 0, px(120))
         card.LayoutOrder      = 10 + i
         card.Parent           = dailyPage
         questCards[quest.id]  = card
@@ -1481,7 +1849,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progressTexts[quest.id] = progText
 
         -- Claim button
-        local btnW2 = px(100)
+        local btnW2 = px(108)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
@@ -1589,6 +1957,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             if success then
                 questClaimed[quest.id] = true
+                if dailyQuestDataById[quest.id] then
+                    dailyQuestDataById[quest.id].claimed = true
+                    dailyQuestDataById[quest.id].progress = quest.goal
+                end
+                if dailyRerollStateUpdaters[quest.id] then
+                    dailyRerollStateUpdaters[quest.id](true, true)
+                end
                 updateButtonState(quest.goal, quest.goal, true)
                 -- Flash gold
                 local origColor = card.BackgroundColor3
@@ -1603,14 +1978,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 if _G.UpdateShopHeaderCoins then
                     pcall(_G.UpdateShopHeaderCoins)
                 end
+                applySortedCardLayoutOrders("daily", quests, function(displayQuest)
+                    return questCards[displayQuest.id]
+                end)
             else
                 updateButtonState(quest.progress, quest.goal, false)
             end
         end))
 
         -- Inline reroll button for this quest
-        local _rerollBtn, _setRerollEnabled = makeRerollButton(
-            card, "daily", i, quest.title,
+        local _rerollBtn, setDailyRerollState = makeRerollButton(
+            card, "daily", dailyQuestServerIndexById[quest.id] or i, quest.title,
             quest.claimed, quest.progress >= quest.goal,
             function(selectedTab)
                 task.defer(function()
@@ -1618,6 +1996,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 end)
             end
         )
+        dailyRerollStateUpdaters[quest.id] = setDailyRerollState
     end
 
 
@@ -1638,6 +2017,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end)
     end
     if type(weeklyQuests) ~= "table" then weeklyQuests = {} end
+    updateRootHeight(#weeklyQuests)
+
+    local weeklyQuestDataByIndex = {}
+    for _, weeklyQuest in ipairs(weeklyQuests) do
+        local weeklyIndex = tonumber(weeklyQuest.index)
+        if weeklyIndex then
+            weeklyQuestDataByIndex[weeklyIndex] = weeklyQuest
+        end
+    end
 
     if #weeklyQuests == 0 then
         makePlaceholder("No weekly quests available.", 3, weeklyPage)
@@ -1651,8 +2039,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local wkClaimed       = {}
     local wkCards         = {}
     local wkCardStrokes   = {}
+    local weeklyRerollStateUpdaters = {}
+    local weeklyDisplayQuests = sortQuestsForDisplay("weekly", weeklyQuests)
 
-    for i, wq in ipairs(weeklyQuests) do
+    for i, wq in ipairs(weeklyDisplayQuests) do
         local questIdx       = wq.index or i
         wkGoals[questIdx]    = wq.goal
         wkClaimed[questIdx]  = wq.claimed
@@ -1660,7 +2050,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         local card = Instance.new("Frame")
         card.Name             = "WeeklyQuest_" .. questIdx
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.Size             = UDim2.new(1, -px(6), 0, px(120))
         card.LayoutOrder      = 10 + i
         card.Parent           = weeklyPage
         wkCards[questIdx]     = card
@@ -1825,7 +2215,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         wkProgressTexts[questIdx] = progText
 
         -- Claim button
-        local btnW2 = px(100)
+        local btnW2 = px(108)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
@@ -1934,6 +2324,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             if success then
                 wkClaimed[questIdx] = true
+                if weeklyQuestDataByIndex[questIdx] then
+                    weeklyQuestDataByIndex[questIdx].claimed = true
+                    weeklyQuestDataByIndex[questIdx].progress = wq.goal
+                end
+                if weeklyRerollStateUpdaters[questIdx] then
+                    weeklyRerollStateUpdaters[questIdx](true, true)
+                end
                 updateWkBtnState(wq.goal, wq.goal, true)
                 -- Flash gold
                 local origColor2 = card.BackgroundColor3
@@ -1948,13 +2345,16 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 if _G.UpdateShopHeaderCoins then
                     pcall(_G.UpdateShopHeaderCoins)
                 end
+                applySortedCardLayoutOrders("weekly", weeklyQuests, function(displayQuest)
+                    return wkCards[displayQuest.index]
+                end)
             else
                 updateWkBtnState(wq.progress, wq.goal, false)
             end
         end))
 
         -- Inline reroll button for this weekly quest
-        local _wkRerollBtn, _wkSetRerollEnabled = makeRerollButton(
+        local _wkRerollBtn, setWeeklyRerollState = makeRerollButton(
             card, "weekly", questIdx, wq.title,
             wq.claimed, wq.progress >= wq.goal,
             function(selectedTab)
@@ -1963,6 +2363,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 end)
             end
         )
+        weeklyRerollStateUpdaters[questIdx] = setWeeklyRerollState
     end
 
 
@@ -1997,6 +2398,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end)
     end
     if type(achievements) ~= "table" then achievements = {} end
+    updateRootHeight(#achievements)
+
+    local achievementDataById = {}
+    for _, achievement in ipairs(achievements) do
+        achievementDataById[achievement.id] = achievement
+    end
 
     -- Lookup tables for live updates
     local achProgressBars  = {} -- [id] -> fill Frame
@@ -2006,19 +2413,22 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local achClaimed       = {} -- [id] -> bool
     local achCards         = {} -- [id] -> Frame
     local achCardStrokes   = {} -- [id] -> UIStroke
+    local achAchievedOnLabels = {} -- [id] -> TextLabel
 
     if #achievements == 0 then
         makePlaceholder("Loading achievements...", 3, achievPage)
     end
 
-    for i, ach in ipairs(achievements) do
+    local achievementDisplayList = sortQuestsForDisplay("achiev", achievements)
+
+    for i, ach in ipairs(achievementDisplayList) do
         achGoals[ach.id]   = ach.target
         achClaimed[ach.id] = ach.claimed
 
         local card = Instance.new("Frame")
         card.Name             = "Ach_" .. ach.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, 0, 0, px(120))
+        card.Size             = UDim2.new(1, -px(6), 0, px(136))
         card.LayoutOrder      = 10 + i
         card.Parent           = achievPage
         achCards[ach.id]      = card
@@ -2194,8 +2604,34 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Parent             = track
         achProgressTexts[ach.id] = progText
 
+        local achievedOnLbl = Instance.new("TextLabel")
+        achievedOnLbl.Name                = "AchievedOn"
+        achievedOnLbl.BackgroundTransparency = 1
+        achievedOnLbl.Font                = Enum.Font.Gotham
+        achievedOnLbl.Text                = ""
+        achievedOnLbl.TextColor3          = DIM_TEXT
+        achievedOnLbl.TextSize            = math.max(10, math.floor(px(11)))
+        achievedOnLbl.TextXAlignment      = Enum.TextXAlignment.Left
+        achievedOnLbl.TextTransparency    = 0.1
+        achievedOnLbl.Visible             = false
+        achievedOnLbl.Size                = UDim2.new(0.62, 0, 0, px(14))
+        achievedOnLbl.Position            = UDim2.new(0, 0, 0, barY + barH + px(6))
+        achievedOnLbl.Parent              = card
+        achAchievedOnLabels[ach.id]       = achievedOnLbl
+
+        local function updateAchievedOnLabel(completed, achievedOn)
+            local formattedDate = formatAchievedOn(achievedOn)
+            if completed and formattedDate then
+                achievedOnLbl.Text = "Achieved On: " .. formattedDate
+                achievedOnLbl.Visible = true
+            else
+                achievedOnLbl.Text = ""
+                achievedOnLbl.Visible = false
+            end
+        end
+
         -- Claim / status button
-        local btnW2 = px(100)
+        local btnW2 = px(108)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
@@ -2273,6 +2709,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end
 
         updateAchBtnState(ach.progress, ach.target, ach.claimed)
+        updateAchievedOnLabel(ach.completed == true, ach.achievedOn)
 
         -- Hover
         trackConn(btn.MouseEnter:Connect(function()
@@ -2305,7 +2742,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             if success then
                 achClaimed[ach.id] = true
+                if achievementDataById[ach.id] then
+                    achievementDataById[ach.id].claimed = true
+                    achievementDataById[ach.id].completed = true
+                    achievementDataById[ach.id].progress = ach.target
+                end
                 updateAchBtnState(ach.target, ach.target, true)
+                local latest = achievementDataById[ach.id]
+                updateAchievedOnLabel(true, latest and latest.achievedOn)
                 -- Flash gold
                 TweenService:Create(card, TWEEN_QUICK,
                     {BackgroundColor3 = Color3.fromRGB(60, 55, 25)}):Play()
@@ -2318,6 +2762,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 if _G.UpdateShopHeaderCoins then
                     pcall(_G.UpdateShopHeaderCoins)
                 end
+                applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
+                    return achCards[displayAchievement.id]
+                end)
             else
                 updateAchBtnState(ach.progress, ach.target, false)
             end
@@ -2328,7 +2775,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     -- Live achievement progress updates
     ---------------------------------------------------------------------------
     if achievProgressRE then
-        trackConn(achievProgressRE.OnClientEvent:Connect(function(achId, newProgress, completed)
+        trackConn(achievProgressRE.OnClientEvent:Connect(function(achId, newProgress, completed, achievedOn, claimedFromServer)
             if type(achId) ~= "string" then return end
 
             -- Full refresh: re-fetch and rebuild
@@ -2338,6 +2785,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     pcall(function() newData = getAchievRF:InvokeServer() end)
                     if type(newData) == "table" then
                         for _, a in ipairs(newData) do
+                            local achievementData = achievementDataById[a.id]
+                            if achievementData then
+                                achievementData.progress = a.progress
+                                achievementData.target = a.target
+                                achievementData.claimed = a.claimed
+                                achievementData.completed = a.completed
+                                achievementData.achievedOn = a.achievedOn
+                            end
                             achGoals[a.id]   = a.target
                             achClaimed[a.id] = a.claimed
                             local fillBar = achProgressBars[a.id]
@@ -2349,6 +2804,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             local txt = achProgressTexts[a.id]
                             if txt and txt.Parent then
                                 txt.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                            end
+                            local achievedOnLabel = achAchievedOnLabels[a.id]
+                            if achievedOnLabel and achievedOnLabel.Parent then
+                                local achievedDate = formatAchievedOn(a.achievedOn)
+                                if a.completed and achievedDate then
+                                    achievedOnLabel.Text = "Achieved On: " .. achievedDate
+                                    achievedOnLabel.Visible = true
+                                else
+                                    achievedOnLabel.Text = ""
+                                    achievedOnLabel.Visible = false
+                                end
                             end
                             local claimBtn2 = achClaimButtons[a.id]
                             if claimBtn2 then
@@ -2393,6 +2859,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                 end
                             end
                         end
+                        applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
+                            return achCards[displayAchievement.id]
+                        end)
                     end
                 end
                 return
@@ -2403,6 +2872,26 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local goal = achGoals[achId]
             if not goal then return end
             if achClaimed[achId] then return end
+
+            local achievementData = achievementDataById[achId]
+            if achievementData then
+                achievementData.progress = math.min(newProgress, goal)
+                achievementData.completed = completed == true or achievementData.completed == true or newProgress >= goal
+                if achievementData.completed then
+                    if achievementData.achievedOn == nil then
+                        achievementData.achievedOn = tonumber(achievedOn)
+                    end
+                else
+                    achievementData.achievedOn = nil
+                end
+                if claimedFromServer ~= nil then
+                    achievementData.claimed = claimedFromServer == true
+                end
+            end
+
+            if claimedFromServer ~= nil then
+                achClaimed[achId] = claimedFromServer == true
+            end
 
             local pct2 = math.clamp(newProgress / goal, 0, 1)
 
@@ -2417,10 +2906,30 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
             end
 
+            local achievedOnLabel = achAchievedOnLabels[achId]
+            if achievedOnLabel and achievedOnLabel.Parent then
+                local localData = achievementDataById[achId]
+                local achievedDate = localData and formatAchievedOn(localData.achievedOn)
+                local isComplete = (localData and localData.completed == true) or newProgress >= goal
+                if isComplete and achievedDate then
+                    achievedOnLabel.Text = "Achieved On: " .. achievedDate
+                    achievedOnLabel.Visible = true
+                else
+                    achievedOnLabel.Text = ""
+                    achievedOnLabel.Visible = false
+                end
+            end
+
             local claimBtn2 = achClaimButtons[achId]
             if claimBtn2 and claimBtn2.Parent then
                 local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
-                if newProgress >= goal then
+                if achClaimed[achId] then
+                    claimBtn2.Text             = "\u{2714} CLAIMED"
+                    claimBtn2.BackgroundColor3 = BTN_CLAIMED
+                    claimBtn2.TextColor3       = GREEN_GLOW
+                    claimBtn2.Active           = false
+                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
+                elseif newProgress >= goal then
                     claimBtn2.Text             = "\u{2B50} CLAIM"
                     claimBtn2.BackgroundColor3 = BTN_CLAIM
                     claimBtn2.TextColor3       = WHITE
@@ -2434,12 +2943,20 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local cardStroke = achCardStrokes[achId]
             if cardFrame and cardFrame.Parent then
                 local accent = cardFrame:FindFirstChild("StateAccent")
-                if newProgress >= goal then
+                if achClaimed[achId] then
+                    cardFrame.BackgroundColor3 = ROW_CLAIMED_BG
+                    if cardStroke then cardStroke.Color = GREEN_GLOW; cardStroke.Thickness = 1.8; cardStroke.Transparency = 0.3 end
+                    if accent then accent.BackgroundColor3 = GREEN_GLOW; accent.BackgroundTransparency = 0.2 end
+                elseif newProgress >= goal then
                     cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
                     if cardStroke then cardStroke.Color = CLAIM_GOLD_GLOW; cardStroke.Thickness = 2; cardStroke.Transparency = 0.15 end
                     if accent then accent.BackgroundColor3 = CLAIM_GOLD_GLOW; accent.BackgroundTransparency = 0 end
                 end
             end
+
+            applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
+                return achCards[displayAchievement.id]
+            end)
 
             -- Show toast notification when an achievement is newly completed
             if completed and _G.ShowAchievementToast then
@@ -2464,6 +2981,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local goal = wkGoals[questIdx]
             if not goal then return end
             if wkClaimed[questIdx] then return end
+
+            local weeklyQuestData = weeklyQuestDataByIndex[questIdx]
+            if weeklyQuestData then
+                weeklyQuestData.progress = math.min(newProgress, goal)
+            end
+            if weeklyRerollStateUpdaters[questIdx] then
+                weeklyRerollStateUpdaters[questIdx](false, newProgress >= goal)
+            end
 
             local pctW2 = math.clamp(newProgress / goal, 0, 1)
 
@@ -2511,6 +3036,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     if accent2 then accent2.BackgroundColor3 = GOLD; accent2.BackgroundTransparency = 0.5 end
                 end
             end
+
+            applySortedCardLayoutOrders("weekly", weeklyQuests, function(displayQuest)
+                return wkCards[displayQuest.index]
+            end)
         end))
     end
 
@@ -2524,6 +3053,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local goal = questGoals[questId]
             if not goal then return end
             if questClaimed[questId] then return end
+
+            local questData = dailyQuestDataById[questId]
+            if questData then
+                questData.progress = math.min(newProgress, goal)
+            end
+            if dailyRerollStateUpdaters[questId] then
+                dailyRerollStateUpdaters[questId](false, newProgress >= goal)
+            end
 
             local pct2 = math.clamp(newProgress / goal, 0, 1)
 
@@ -2591,6 +3128,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     end
                 end
             end
+
+            applySortedCardLayoutOrders("daily", quests, function(displayQuest)
+                return questCards[displayQuest.id]
+            end)
         end))
     end
 

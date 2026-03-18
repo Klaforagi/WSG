@@ -24,14 +24,17 @@ pcall(function() AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes
 -- STYLE CONSTANTS
 --------------------------------------------------------------------------------
 local BAR_WIDTH_SCALE   = 0.34          -- % of screen width (slightly narrower)
-local BAR_HEIGHT        = 14            -- base px (may be reduced on mobile)
-local LABEL_SIZE        = 20            -- px – small level numbers
-local CORNER_RADIUS     = UDim.new(0, 6) -- subtle rounded corners for a sleek look
+local TRACK_HEIGHT      = 16            -- inner XP track height
+local LABEL_SIZE        = 22            -- level numbers at each side of the track
+local CORNER_RADIUS     = UDim.new(0, 7)
+local SHELL_CORNER      = UDim.new(0, 11)
 
-local COLOR_BAR_BG      = Color3.fromRGB(12, 14, 28)   -- NAVY base
+local COLOR_SHELL_BG    = Color3.fromRGB(12, 16, 34)   -- outer HUD shell
+local COLOR_BAR_BG      = Color3.fromRGB(22, 28, 52)   -- inset dark track frame
+local COLOR_TRACK_BASE  = Color3.fromRGB(9, 12, 24)    -- deepest background behind fill
 local COLOR_BAR_STROKE  = Color3.fromRGB(255, 215, 80) -- GOLD stroke
-local COLOR_FILL_LEFT   = Color3.fromRGB(255, 215, 80) -- gold -> lighter gold gradient
-local COLOR_FILL_RIGHT  = Color3.fromRGB(255, 235, 120)
+local COLOR_FILL_LEFT   = Color3.fromRGB(54, 144, 255) -- blue XP fill
+local COLOR_FILL_RIGHT  = Color3.fromRGB(124, 196, 255)
 local COLOR_LABEL       = Color3.fromRGB(255, 215, 80) -- gold labels
 local COLOR_POPUP       = Color3.fromRGB(255, 215, 80)
 local COLOR_LEVELUP     = Color3.fromRGB(255, 235, 120)
@@ -55,15 +58,40 @@ local vpY = 1080
 if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
     vpY = cam.ViewportSize.Y
 end
-local barH = UserInputService.TouchEnabled and math.max(8, math.floor(vpY * 0.015)) or BAR_HEIGHT
+local trackH = UserInputService.TouchEnabled and math.max(11, math.floor(vpY * 0.014)) or TRACK_HEIGHT
+local shellH = UserInputService.TouchEnabled and math.max(30, math.floor(vpY * 0.031)) or math.max(36, math.floor(vpY * 0.034))
 
 local container = Instance.new("Frame")
 container.Name = "XPContainer"
 container.AnchorPoint = Vector2.new(0.5, 1)
-container.Position = UDim2.new(0.5, 0, 1, -4)        -- 4 px from bottom edge
-container.Size = UDim2.new(BAR_WIDTH_SCALE, LABEL_SIZE * 2 + 16, 0, barH)
-container.BackgroundTransparency = 1
+container.Position = UDim2.new(0.5, 0, 1, -2)        -- keep near bottom while opening gap above
+container.Size = UDim2.new(BAR_WIDTH_SCALE, LABEL_SIZE * 2 + 24, 0, shellH)
+container.BackgroundColor3 = COLOR_SHELL_BG
+container.BackgroundTransparency = 0.06
+container.BorderSizePixel = 0
 container.Parent = screen
+
+local shellCorner = Instance.new("UICorner")
+shellCorner.CornerRadius = SHELL_CORNER
+shellCorner.Parent = container
+
+local shellStroke = Instance.new("UIStroke")
+shellStroke.Color = COLOR_BAR_STROKE
+shellStroke.Thickness = 2
+shellStroke.Transparency = 0.38
+shellStroke.Parent = container
+
+local shellShadow = Instance.new("Frame")
+shellShadow.Name = "Shadow"
+shellShadow.AnchorPoint = Vector2.new(0.5, 0.5)
+shellShadow.Position = UDim2.new(0.5, 0, 0.55, 3)
+shellShadow.Size = UDim2.new(1, 10, 1, 10)
+shellShadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+shellShadow.BackgroundTransparency = 0.66
+shellShadow.BorderSizePixel = 0
+shellShadow.ZIndex = 0
+shellShadow.Parent = container
+Instance.new("UICorner", shellShadow).CornerRadius = UDim.new(0, 14)
 
 --------------------------------------------------------------------------------
 -- LEVEL LABELS  (outside bar, left = current, right = next)
@@ -75,10 +103,12 @@ levelLabel.Position = UDim2.new(0, 0, 0.5, 0)
 levelLabel.AnchorPoint = Vector2.new(0, 0.5)
 levelLabel.BackgroundTransparency = 1
 levelLabel.Font = Enum.Font.GothamBold
-levelLabel.TextSize = 13
+levelLabel.TextSize = 14
 levelLabel.TextColor3 = COLOR_LABEL
 levelLabel.Text = "1"
 levelLabel.TextXAlignment = Enum.TextXAlignment.Center
+levelLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+levelLabel.TextStrokeTransparency = 0.45
 levelLabel.Parent = container
 
 local nextLabel = Instance.new("TextLabel")
@@ -88,10 +118,12 @@ nextLabel.Position = UDim2.new(1, 0, 0.5, 0)
 nextLabel.AnchorPoint = Vector2.new(1, 0.5)
 nextLabel.BackgroundTransparency = 1
 nextLabel.Font = Enum.Font.GothamBold
-nextLabel.TextSize = 13
+nextLabel.TextSize = 14
 nextLabel.TextColor3 = COLOR_LABEL
 nextLabel.Text = "2"
 nextLabel.TextXAlignment = Enum.TextXAlignment.Center
+nextLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+nextLabel.TextStrokeTransparency = 0.45
 nextLabel.Parent = container
 
 --------------------------------------------------------------------------------
@@ -101,7 +133,7 @@ local barBG = Instance.new("Frame")
 barBG.Name = "BarBG"
 barBG.AnchorPoint = Vector2.new(0.5, 0.5)
 barBG.Position = UDim2.new(0.5, 0, 0.5, 0)
-barBG.Size = UDim2.new(1, -(LABEL_SIZE * 2 + 12), 0, barH)
+barBG.Size = UDim2.new(1, -(LABEL_SIZE * 2 + 12), 0, trackH)
 barBG.BackgroundColor3 = COLOR_BAR_BG
 barBG.BorderSizePixel = 0
 barBG.ClipsDescendants = true
@@ -114,7 +146,25 @@ local bgStroke = Instance.new("UIStroke", barBG)
 bgStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 bgStroke.Thickness = 2
 bgStroke.Color = COLOR_BAR_STROKE
-bgStroke.Transparency = 0.2
+bgStroke.Transparency = 0.6
+
+local fillInset = Instance.new("Frame")
+fillInset.Name = "FillInset"
+fillInset.AnchorPoint = Vector2.new(0.5, 0.5)
+fillInset.Position = UDim2.new(0.5, 0, 0.5, 0)
+fillInset.Size = UDim2.new(1, -4, 1, -4)
+fillInset.BackgroundColor3 = COLOR_TRACK_BASE
+fillInset.BorderSizePixel = 0
+fillInset.ClipsDescendants = true
+fillInset.ZIndex = 1
+fillInset.Parent = barBG
+Instance.new("UICorner", fillInset).CornerRadius = UDim.new(0, 5)
+
+local insetStroke = Instance.new("UIStroke")
+insetStroke.Color = Color3.fromRGB(255, 255, 255)
+insetStroke.Thickness = 1
+insetStroke.Transparency = 0.9
+insetStroke.Parent = fillInset
 
 --------------------------------------------------------------------------------
 -- FILL BAR  (gradient-filled, pill-shaped)
@@ -126,7 +176,7 @@ fill.Position = UDim2.new(0, 0, 0.5, 0)
 fill.Size = UDim2.new(0, 0, 1, 0) -- starts empty
 fill.BackgroundColor3 = COLOR_FILL_LEFT
 fill.BorderSizePixel = 0
-fill.Parent = barBG
+fill.Parent = fillInset
 fill.ZIndex = 2
 
 local fillCorner = Instance.new("UICorner", fill)
@@ -149,23 +199,16 @@ local function lighterColor(c, amt)
 end
 
 local function setBarTint(color)
-    if not color then color = COLOR_FILL_LEFT end
-    -- choose a smaller light amount for strongly red tints so the "light" variant isn't too bright
-    local isRed = color.R > color.G and color.R > color.B and color.R > 0.55
-    local lightAmt = isRed and 0.06 or 0.12
-    local light = lighterColor(color, lightAmt)
-    -- compute a slightly darker active fill and a much lighter base fill
-    local activeFillColor = color:Lerp(Color3.new(0,0,0), 0.12)
-    local baseFillColor = lighterColor(color, 0.24)
+    if not color then color = COLOR_BAR_STROKE end
+    local activeFillColor = COLOR_FILL_LEFT:Lerp(Color3.new(0,0,0), 0.12)
+    local light = COLOR_FILL_RIGHT
     fill.BackgroundColor3 = activeFillColor
     gradient.Color = ColorSequence.new(activeFillColor, light)
-    -- keep base (underlay) as a fixed dark translucent gray so team tint only affects the active fill
-    -- (do not overwrite baseFill color here)
-    -- keep numeric labels a consistent gold color (do not tint them by team)
+    -- keep numeric labels and frame in a consistent XP palette
     levelLabel.TextColor3 = COLOR_LABEL
     nextLabel.TextColor3 = COLOR_LABEL
-    bgStroke.Color = color
-    COLOR_POPUP = color
+    bgStroke.Color = COLOR_BAR_STROKE
+    COLOR_POPUP = COLOR_LABEL
 end
 
 -- react when local player's team changes (and set initial tint)
@@ -224,11 +267,11 @@ baseFill.Name = "BaseFill"
 baseFill.AnchorPoint = Vector2.new(0, 0.5)
 baseFill.Position = UDim2.new(0, 0, 0.5, 0)
 baseFill.Size = UDim2.new(1, 0, 1, 0)
-baseFill.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-baseFill.BackgroundTransparency = 0.25
+baseFill.BackgroundColor3 = COLOR_TRACK_BASE
+baseFill.BackgroundTransparency = 0.15
 baseFill.BorderSizePixel = 0
 baseFill.ZIndex = 1
-baseFill.Parent = barBG
+baseFill.Parent = fillInset
 
 local baseCorner = Instance.new("UICorner", baseFill)
 baseCorner.CornerRadius = CORNER_RADIUS
