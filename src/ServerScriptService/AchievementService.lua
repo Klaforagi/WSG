@@ -67,7 +67,7 @@ end
 --------------------------------------------------------------------------------
 local STAT_KEYS = {
     "totalElims", "zombieElims", "playerElims",
-    "totalCoinsEarned", "flagActions", "matchesPlayed",
+    "totalCoinsEarned", "flagCaptures", "flagReturns", "matchesPlayed",
 }
 
 local function sanitizeAchievedOn(value)

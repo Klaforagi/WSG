@@ -219,26 +219,12 @@ function EmoteUI.Build(screenGui)
         slotStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         slotStroke.Parent          = slot
 
-        -- Slot number badge (top-right)
-        local indexLabel = Instance.new("TextLabel")
-        indexLabel.Name                 = "IndexLabel"
-        indexLabel.Size                 = UDim2.new(0, px(16), 0, px(16))
-        indexLabel.AnchorPoint          = Vector2.new(1, 0)
-        indexLabel.Position             = UDim2.new(1, -px(2), 0, px(2))
-        indexLabel.BackgroundTransparency = 1
-        indexLabel.Font                 = Enum.Font.GothamBold
-        indexLabel.Text                 = tostring(i)
-        indexLabel.TextColor3           = DIM_TEXT
-        indexLabel.TextSize             = px(10)
-        indexLabel.ZIndex               = 316
-        indexLabel.Parent               = slot
-
-        -- Icon image (centered, hidden until emote assigned)
+        -- Icon image (centered in slot; primary display when icon exists)
         local iconImg = Instance.new("ImageLabel")
         iconImg.Name                 = "IconImg"
         iconImg.Size                 = UDim2.new(0.55, 0, 0.55, 0)
         iconImg.AnchorPoint          = Vector2.new(0.5, 0.5)
-        iconImg.Position             = UDim2.new(0.5, 0, 0.40, 0)
+        iconImg.Position             = UDim2.new(0.5, 0, 0.42, 0)
         iconImg.BackgroundTransparency = 1
         iconImg.Image                = ""
         iconImg.ScaleType            = Enum.ScaleType.Fit
@@ -246,17 +232,19 @@ function EmoteUI.Build(screenGui)
         iconImg.ZIndex               = 316
         iconImg.Parent               = slot
 
-        -- Emote name label (bottom, shows emote name)
+        -- Emote name label (bottom of slot; shown when no icon, or as sub-label)
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Name                 = "NameLabel"
-        nameLabel.Size                 = UDim2.new(0.92, 0, 0.26, 0)
-        nameLabel.AnchorPoint          = Vector2.new(0.5, 1)
-        nameLabel.Position             = UDim2.new(0.5, 0, 0.96, 0)
+            nameLabel.Size                 = UDim2.new(0.82, 0, 0.34, 0)
+            nameLabel.AnchorPoint          = Vector2.new(0.5, 0.5)
+            nameLabel.Position             = UDim2.new(0.5, 0, 0.5, 0)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font                 = Enum.Font.GothamBold
         nameLabel.Text                 = ""
         nameLabel.TextColor3           = WHITE
         nameLabel.TextScaled           = true
+            nameLabel.TextXAlignment       = Enum.TextXAlignment.Center
+            nameLabel.TextYAlignment       = Enum.TextYAlignment.Center
         nameLabel.ZIndex               = 316
         nameLabel.Parent               = slot
 
@@ -271,6 +259,8 @@ function EmoteUI.Build(screenGui)
         lockLabel.Text                 = "—"
         lockLabel.TextColor3           = Color3.fromRGB(65, 70, 92)
         lockLabel.TextScaled           = true
+        lockLabel.TextXAlignment       = Enum.TextXAlignment.Center
+        lockLabel.TextYAlignment       = Enum.TextYAlignment.Center
         lockLabel.ZIndex               = 316
         lockLabel.Parent               = slot
     end

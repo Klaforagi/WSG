@@ -38,10 +38,20 @@ local TAB_DEFS = {
     { id = "weapons", icon = "\u{2694}", label = "Weapons", order = 1 },
     { id = "boosts",  icon = "\u{26A1}", label = "Boosts",  order = 2 },
     { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 3 },
-    { id = "trails",  icon = "\u{2727}", label = "Trails",  order = 4 },
-    { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 5 },
-    { id = "effects", icon = "\u{2738}", label = "Effects", order = 6 },
+    { id = "effects", icon = "\u{2738}", label = "Effects", order = 4 },
 }
+print("[InventoryUI] Inventory categories loaded: Weapons, Boosts, Skins, Effects (Emotes removed)")
+
+-- Debug: final Inventory categories after Trails removal
+do
+    local ids = {}
+    for _, def in ipairs(TAB_DEFS) do
+        table.insert(ids, def.id)
+    end
+    local joined = table.concat(ids, ",")
+    print("[CategoryDebug][Inventory] final categories:", joined)
+    print("[CategoryDebug][Inventory] trails present:", tostring(string.find(joined, "trails", 1, true) ~= nil))
+end
 
 local function markIconPart(part)
     part:SetAttribute("TabIconPart", true)
@@ -78,8 +88,6 @@ end
 
 local CUSTOM_TAB_ICON_COLORS = {
     skins  = { active = Color3.fromRGB(178, 146, 220), inactive = Color3.fromRGB(114, 99, 140) },
-    trails = { active = Color3.fromRGB(116, 190, 218), inactive = Color3.fromRGB(78, 122, 142) },
-    emotes = { active = Color3.fromRGB(223, 176, 96), inactive = Color3.fromRGB(145, 116, 74) },
     effects = { active = Color3.fromRGB(214, 138, 206), inactive = Color3.fromRGB(136, 90, 131) },
 }
 
@@ -133,49 +141,6 @@ local function buildCustomTabIcon(parentBtn, tabId)
         local headCorner = Instance.new("UICorner")
         headCorner.CornerRadius = UDim.new(1, 0)
         headCorner.Parent = head
-    elseif tabId == "trails" then
-        local trailHead = markIconPart(Instance.new("Frame"))
-        trailHead.BackgroundTransparency = 0
-        trailHead.BorderSizePixel = 0
-        trailHead.Size = UDim2.new(0, px(5), 0, px(5))
-        trailHead.Position = UDim2.new(0, px(2), 0, px(7))
-        trailHead.Parent = root
-        local trailHeadCorner = Instance.new("UICorner")
-        trailHeadCorner.CornerRadius = UDim.new(1, 0)
-        trailHeadCorner.Parent = trailHead
-
-        local streakA = markIconPart(Instance.new("Frame"))
-        streakA.BackgroundTransparency = 0
-        streakA.BorderSizePixel = 0
-        streakA.Size = UDim2.new(0, px(17), 0, px(4))
-        streakA.Position = UDim2.new(0, px(6), 0, px(6))
-        streakA.Rotation = -18
-        streakA.Parent = root
-        local streakACorner = Instance.new("UICorner")
-        streakACorner.CornerRadius = UDim.new(1, 0)
-        streakACorner.Parent = streakA
-
-        local streakB = markIconPart(Instance.new("Frame"))
-        streakB.BackgroundTransparency = 0
-        streakB.BorderSizePixel = 0
-        streakB.Size = UDim2.new(0, px(13), 0, px(4))
-        streakB.Position = UDim2.new(0, px(9), 0, px(12))
-        streakB.Rotation = -18
-        streakB.Parent = root
-        local streakBCorner = Instance.new("UICorner")
-        streakBCorner.CornerRadius = UDim.new(1, 0)
-        streakBCorner.Parent = streakB
-
-        local streakC = markIconPart(Instance.new("Frame"))
-        streakC.BackgroundTransparency = 0
-        streakC.BorderSizePixel = 0
-        streakC.Size = UDim2.new(0, px(9), 0, px(4))
-        streakC.Position = UDim2.new(0, px(12), 0, px(17))
-        streakC.Rotation = -18
-        streakC.Parent = root
-        local streakCCorner = Instance.new("UICorner")
-        streakCCorner.CornerRadius = UDim.new(1, 0)
-        streakCCorner.Parent = streakC
     elseif tabId == "emotes" then
         local face = Instance.new("Frame")
         face.Name = "FaceOutline"
@@ -659,6 +624,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local btn = tabButtons[id]
 
         btn.MouseButton1Click:Connect(function()
+            print(string.format("[CategoryDebug][Inventory] tab clicked=%s", tostring(id)))
             setActiveTab(id)
         end)
         btn.MouseEnter:Connect(function()
@@ -1242,331 +1208,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     makeOwnedPlaceholderPage("SkinsPage", "skins", "\u{2726}", "SKINS")
-    makeOwnedPlaceholderPage("TrailsPage", "trails", "\u{2727}", "TRAILS")
     makeOwnedPlaceholderPage("EffectsPage", "effects", "\u{2738}", "EFFECTS")
+    print("[InventoryUI] all placeholder pages created (Emotes removed)")
 
-    ---------------------------------------------------------------------------
-    -- EMOTES inventory page (real content from EmoteConfig + server data)
-    ---------------------------------------------------------------------------
-    do
-        local EmoteConfig = nil
-        pcall(function()
-            local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
-            local m = sideUI and sideUI:FindFirstChild("EmoteConfig")
-            if m and m:IsA("ModuleScript") then EmoteConfig = require(m) end
-        end)
-
-        local emoteRemotes = nil
-        local function ensureEmoteRemotes()
-            if emoteRemotes then return emoteRemotes end
-            local rf = ReplicatedStorage:FindFirstChild("Remotes")
-            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
-            if not rf then return nil end
-            local ef = rf:FindFirstChild("Emotes") or rf:WaitForChild("Emotes", 5)
-            if not ef then return nil end
-            emoteRemotes = {
-                getOwned    = ef:FindFirstChild("GetOwnedEmotes"),
-                getEquipped = ef:FindFirstChild("GetEquippedEmotes"),
-                equip       = ef:FindFirstChild("EquipEmote"),
-                unequip     = ef:FindFirstChild("UnequipEmote"),
-                eqChanged   = ef:FindFirstChild("EquippedEmotesChanged"),
-            }
-            return emoteRemotes
-        end
-
-        local EMOTE_SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 6
-        local ownedEmotes   = {} -- set: emoteId→true
-        local equippedSlots = {} -- slot→emoteId
-
-        -- Fetch initial state from server
-        task.spawn(function()
-            local remotes = ensureEmoteRemotes()
-            if remotes and remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
-                local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
-                if ok and type(list) == "table" then
-                    for _, id in ipairs(list) do ownedEmotes[id] = true end
-                end
-            end
-            if remotes and remotes.getEquipped and remotes.getEquipped:IsA("RemoteFunction") then
-                local ok, list = pcall(function() return remotes.getEquipped:InvokeServer() end)
-                if ok and type(list) == "table" then
-                    for _, entry in ipairs(list) do
-                        if type(entry) == "table" and entry.Slot and entry.Id then
-                            equippedSlots[entry.Slot] = entry.Id
-                        end
-                    end
-                end
-            end
-        end)
-        task.wait(0.3)
-
-        -- Check if the player actually owns any emotes
-        local hasAnyOwned = false
-        for _ in pairs(ownedEmotes) do hasAnyOwned = true; break end
-
-        if not hasAnyOwned then
-            -- Show placeholder if no emotes owned
-            makeOwnedPlaceholderPage("EmotesPage", "emotes", "\u{263A}", "EMOTES")
-        else
-            local emotesPage = Instance.new("Frame")
-            emotesPage.Name = "EmotesPage"
-            emotesPage.BackgroundTransparency = 1
-            emotesPage.Size = UDim2.new(1, 0, 0, 0)
-            emotesPage.AutomaticSize = Enum.AutomaticSize.Y
-            emotesPage.Visible = false
-            emotesPage.Parent = contentContainer
-
-            local epLayout = Instance.new("UIListLayout")
-            epLayout.SortOrder = Enum.SortOrder.LayoutOrder
-            epLayout.Padding   = UDim.new(0, px(16))
-            epLayout.Parent    = emotesPage
-
-            local emoteSection, emoteGrid = makeSection(emotesPage, "Emotes", "Owned Emotes")
-            emoteSection.LayoutOrder = 1
-
-            local allEmotes = EmoteConfig and EmoteConfig.GetAll() or {}
-            local emoteEquipBtns = {} -- emoteId → {btn, stroke, card, cardStroke}
-
-            -- Helper: is emoteId equipped in any slot?
-            local function isEmoteEquipped(emoteId)
-                for _, id in pairs(equippedSlots) do
-                    if id == emoteId then return true end
-                end
-                return false
-            end
-
-            -- Helper: find first empty slot
-            local function findEmptySlot()
-                for s = 1, EMOTE_SLOT_COUNT do
-                    if not equippedSlots[s] then return s end
-                end
-                return nil
-            end
-
-            -- Helper: find slot of an equipped emote
-            local function findSlotOf(emoteId)
-                for s = 1, EMOTE_SLOT_COUNT do
-                    if equippedSlots[s] == emoteId then return s end
-                end
-                return nil
-            end
-
-            local function refreshEmoteEquipButtons()
-                for emoteId, info in pairs(emoteEquipBtns) do
-                    local equipped = isEmoteEquipped(emoteId)
-                    if equipped then
-                        info.btn.Text = "\u{2714} EQUIPPED"
-                        info.btn.BackgroundColor3 = DISABLED_BG
-                        info.btn.TextColor3 = GREEN_GLOW
-                        info.stroke.Color = GREEN_GLOW
-                        info.stroke.Transparency = 0.45
-                        if info.card then info.card.BackgroundColor3 = CARD_EQUIPPED end
-                        if info.cardStroke then
-                            info.cardStroke.Color = GREEN_GLOW
-                            info.cardStroke.Thickness = 1.8
-                            info.cardStroke.Transparency = 0.3
-                        end
-                    else
-                        info.btn.Text = "EQUIP"
-                        info.btn.BackgroundColor3 = BTN_BG
-                        info.btn.TextColor3 = WHITE
-                        info.stroke.Color = BTN_STROKE_C
-                        info.stroke.Transparency = 0.25
-                        if info.card then info.card.BackgroundColor3 = CARD_BG end
-                        if info.cardStroke then
-                            info.cardStroke.Color = CARD_STROKE
-                            info.cardStroke.Thickness = 1.2
-                            info.cardStroke.Transparency = 0.35
-                        end
-                    end
-                end
-            end
-
-            for _, def in ipairs(allEmotes) do
-                if not ownedEmotes[def.Id] then continue end
-
-                local emoteId = def.Id
-                local card = Instance.new("Frame")
-                card.Name = "EmoteCard_" .. emoteId
-                card.BackgroundColor3 = CARD_BG
-                card.Size = UDim2.new(1, 0, 1, 0)
-                card.AutomaticSize = Enum.AutomaticSize.Y
-                card.Parent = emoteGrid
-
-                local crn = Instance.new("UICorner")
-                crn.CornerRadius = UDim.new(0, px(12))
-                crn.Parent = card
-                local stk = Instance.new("UIStroke")
-                stk.Color = CARD_STROKE; stk.Thickness = 1.2; stk.Transparency = 0.35
-                stk.Parent = card
-                local cPad = Instance.new("UIPadding")
-                cPad.PaddingTop    = UDim.new(0, px(8))
-                cPad.PaddingBottom = UDim.new(0, px(8))
-                cPad.PaddingLeft   = UDim.new(0, px(8))
-                cPad.PaddingRight  = UDim.new(0, px(8))
-                cPad.Parent = card
-
-                -- LEFT: icon
-                local leftBox = Instance.new("Frame")
-                leftBox.Name = "LeftBox"
-                leftBox.Size = UDim2.new(0.45, 0, 1, 0)
-                leftBox.BackgroundColor3 = ICON_BG
-                leftBox.ZIndex = 251
-                leftBox.Parent = card
-                local lCrn = Instance.new("UICorner")
-                lCrn.CornerRadius = UDim.new(0, px(10))
-                lCrn.Parent = leftBox
-                local lStk = Instance.new("UIStroke")
-                lStk.Color = CARD_STROKE; lStk.Thickness = 1; lStk.Transparency = 0.5
-                lStk.Parent = leftBox
-
-                local thumb = Instance.new("ImageLabel")
-                thumb.Name = "Thumb"
-                thumb.Size = UDim2.new(0.75, 0, 0.75, 0)
-                thumb.AnchorPoint = Vector2.new(0.5, 0.5)
-                thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
-                thumb.BackgroundTransparency = 1
-                thumb.ScaleType = Enum.ScaleType.Fit
-                thumb.ZIndex = 252
-                thumb.Parent = leftBox
-                pcall(function()
-                    if AssetCodes and def.IconKey then
-                        local img = AssetCodes.Get(def.IconKey)
-                        if img and #img > 0 then thumb.Image = img end
-                    end
-                end)
-
-                -- RIGHT: name + equip button
-                local rightBox = Instance.new("Frame")
-                rightBox.Name = "RightBox"
-                rightBox.Size = UDim2.new(0.52, 0, 1, 0)
-                rightBox.Position = UDim2.new(0.48, 0, 0, 0)
-                rightBox.BackgroundTransparency = 1
-                rightBox.ZIndex = 251
-                rightBox.Parent = card
-
-                local nameLabel = Instance.new("TextLabel")
-                nameLabel.Name = "EmoteName"
-                nameLabel.BackgroundTransparency = 1
-                nameLabel.Font = Enum.Font.GothamBold
-                nameLabel.TextScaled = true
-                nameLabel.TextColor3 = WHITE
-                nameLabel.TextXAlignment = Enum.TextXAlignment.Center
-                nameLabel.Text = def.DisplayName or emoteId
-                nameLabel.Size = UDim2.new(1, 0, 0, px(28))
-                nameLabel.Position = UDim2.new(0, 0, 0.34, 0)
-                nameLabel.Parent = rightBox
-
-                local equipBtn = Instance.new("TextButton")
-                equipBtn.Name = "EquipBtn"
-                equipBtn.Size = UDim2.new(0.85, 0, 0.24, 0)
-                equipBtn.AnchorPoint = Vector2.new(0.5, 1)
-                equipBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
-                equipBtn.BackgroundColor3 = BTN_BG
-                equipBtn.Font = Enum.Font.GothamBold
-                equipBtn.TextScaled = true
-                equipBtn.TextColor3 = WHITE
-                equipBtn.Text = "EQUIP"
-                equipBtn.AutoButtonColor = false
-                equipBtn.Parent = rightBox
-                local bCrn = Instance.new("UICorner")
-                bCrn.CornerRadius = UDim.new(0, px(10))
-                bCrn.Parent = equipBtn
-                local bStk = Instance.new("UIStroke")
-                bStk.Color = BTN_STROKE_C; bStk.Thickness = 1.4; bStk.Transparency = 0.25
-                bStk.Parent = equipBtn
-
-                emoteEquipBtns[emoteId] = { btn = equipBtn, stroke = bStk, card = card, cardStroke = stk }
-
-                equipBtn.MouseButton1Click:Connect(function()
-                    local remotes = ensureEmoteRemotes()
-                    if not remotes then return end
-
-                    if isEmoteEquipped(emoteId) then
-                        -- Unequip
-                        local slot = findSlotOf(emoteId)
-                        if slot and remotes.unequip and remotes.unequip:IsA("RemoteEvent") then
-                            pcall(function() remotes.unequip:FireServer(slot) end)
-                            equippedSlots[slot] = nil
-                            print("[InventoryUI] unequipped emote", emoteId, "from slot", slot)
-                        end
-                    else
-                        -- Equip into first empty slot
-                        local slot = findEmptySlot()
-                        if not slot then
-                            -- All slots full: replace slot 1
-                            slot = 1
-                        end
-                        if remotes.equip and remotes.equip:IsA("RemoteEvent") then
-                            pcall(function() remotes.equip:FireServer(emoteId, slot) end)
-                            -- Remove from old slot if already somewhere
-                            for s = 1, EMOTE_SLOT_COUNT do
-                                if equippedSlots[s] == emoteId then equippedSlots[s] = nil end
-                            end
-                            equippedSlots[slot] = emoteId
-                            print("[InventoryUI] equipped emote", emoteId, "into slot", slot)
-                        end
-                    end
-
-                    refreshEmoteEquipButtons()
-
-                    -- Refresh the emote menu if open
-                    pcall(function()
-                        if _G.EmoteMenu and _G.EmoteMenu.RefreshEmotes then
-                            local eqList = {}
-                            for s = 1, EMOTE_SLOT_COUNT do
-                                local eid = equippedSlots[s]
-                                if eid then
-                                    local eDef = EmoteConfig and EmoteConfig.GetById(eid)
-                                    if eDef then
-                                        table.insert(eqList, {
-                                            Slot = s,
-                                            Id = eDef.Id,
-                                            DisplayName = eDef.DisplayName,
-                                            IconKey = eDef.IconKey,
-                                        })
-                                    end
-                                end
-                            end
-                            _G.EmoteMenu.RefreshEmotes(eqList)
-                        end
-                    end)
-                end)
-
-                -- Hover
-                equipBtn.MouseEnter:Connect(function()
-                    if not isEmoteEquipped(emoteId) then
-                        pcall(function() TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play() end)
-                    end
-                end)
-                equipBtn.MouseLeave:Connect(function()
-                    if not isEmoteEquipped(emoteId) then
-                        pcall(function() TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play() end)
-                    end
-                end)
-            end -- end for each owned emote
-
-            refreshEmoteEquipButtons()
-            contentPages["emotes"] = emotesPage
-        end
-
-        -- Listen for server-side equip changes (live updates)
-        task.spawn(function()
-            local remotes = ensureEmoteRemotes()
-            if remotes and remotes.eqChanged and remotes.eqChanged:IsA("RemoteEvent") then
-                remotes.eqChanged.OnClientEvent:Connect(function(list)
-                    if type(list) ~= "table" then return end
-                    -- Rebuild equippedSlots from server data
-                    for s = 1, EMOTE_SLOT_COUNT do equippedSlots[s] = nil end
-                    for _, entry in ipairs(list) do
-                        if type(entry) == "table" and entry.Slot and entry.Id then
-                            equippedSlots[entry.Slot] = entry.Id
-                        end
-                    end
-                end)
-            end
-        end)
-    end
+    -- [REMOVED] Emotes inventory page -- emotes are now managed via the dedicated E wheel
+    print("[InventoryUI] Emotes category removed from Inventory sidebar")
 
     local GREEN_BTN = Color3.fromRGB(35, 190, 75)
     local GREEN_BTN_STR = Color3.fromRGB(50, 230, 110)

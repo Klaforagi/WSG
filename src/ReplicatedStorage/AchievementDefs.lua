@@ -44,12 +44,22 @@ AchievementDefs.Achievements = {
         hidden      = false,
     },
     {
-        id          = "flag_runner",
-        title       = "Flag Runner",
-        desc        = "Return or capture the flag 3 times.",
-        stat        = "flagActions",
+        id          = "flag_capturer",
+        title       = "Capture Artist",
+        desc        = "Capture the flag 3 times.",
+        stat        = "flagCaptures",
         target      = 3,
         reward      = 30,
+        icon        = "🚩",
+        hidden      = false,
+    },
+    {
+        id          = "flag_returner",
+        title       = "Banner Guardian",
+        desc        = "Return the flag 3 times.",
+        stat        = "flagReturns",
+        target      = 3,
+        reward      = 20,
         icon        = "🚩",
         hidden      = false,
     },
@@ -79,6 +89,18 @@ AchievementDefs.Achievements = {
 AchievementDefs.ById = {}
 for _, def in ipairs(AchievementDefs.Achievements) do
     AchievementDefs.ById[def.id] = def
+end
+
+-- Debug: verify flag achievement names
+if game:GetService("RunService"):IsServer() then
+    local capturer = AchievementDefs.ById["flag_capturer"]
+    local returner = AchievementDefs.ById["flag_returner"]
+    if capturer then
+        print("[AchievementDefs] flag_capturer loaded: '" .. capturer.title .. "' (trackstat: " .. capturer.stat .. ")")
+    end
+    if returner then
+        print("[AchievementDefs] flag_returner loaded: '" .. returner.title .. "' (tracks stat: " .. returner.stat .. ")")
+    end
 end
 
 return AchievementDefs

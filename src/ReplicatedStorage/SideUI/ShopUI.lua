@@ -3,6 +3,7 @@
 --------------------------------------------------------------------------------
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local Players = game:GetService("Players")
 
 local UITheme = require(script.Parent.UITheme)
 
@@ -74,6 +75,14 @@ local function getBoostIconImage(def)
     end
     return nil
 end
+
+-- Wave emote preview data (reusable anywhere emote previews appear)
+-- NOTE: rbxassetid://4720094407 failed to load (blank), so we use a
+-- guaranteed-rendering text glyph as the primary visual.
+local WAVE_PREVIEW = {
+    glyph = "\u{1F44B}",  -- waving hand emoji (always renders)
+    size  = UDim2.new(0.82, 0, 0.82, 0),
+}
 
 local function ensureBoostRemotes()
     if boostRemotes then return boostRemotes end
@@ -226,10 +235,20 @@ local TAB_DEFS = {
     { id = "weapons", icon = "\u{2694}", label = "Weapons", order = 1 },
     { id = "boosts",  icon = "\u{26A1}", label = "Boosts",  order = 2 },
     { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 3 },
-    { id = "trails",  icon = "\u{2727}", label = "Trails",  order = 4 },
-    { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 5 },
-    { id = "effects", icon = "\u{2738}", label = "Effects", order = 6 },
+    { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 4 },
+    { id = "effects", icon = "\u{2738}", label = "Effects", order = 5 },
 }
+
+-- Debug: final Shop categories after Trails removal
+do
+    local ids = {}
+    for _, def in ipairs(TAB_DEFS) do
+        table.insert(ids, def.id)
+    end
+    local joined = table.concat(ids, ",")
+    print("[CategoryDebug][Shop] final categories:", joined)
+    print("[CategoryDebug][Shop] trails present:", tostring(string.find(joined, "trails", 1, true) ~= nil))
+end
 
 local function markIconPart(part)
     part:SetAttribute("TabIconPart", true)
@@ -266,7 +285,6 @@ end
 
 local CUSTOM_TAB_ICON_COLORS = {
     skins  = { active = Color3.fromRGB(178, 146, 220), inactive = Color3.fromRGB(114, 99, 140) },
-    trails = { active = Color3.fromRGB(116, 190, 218), inactive = Color3.fromRGB(78, 122, 142) },
     emotes = { active = Color3.fromRGB(223, 176, 96), inactive = Color3.fromRGB(145, 116, 74) },
     effects = { active = Color3.fromRGB(214, 138, 206), inactive = Color3.fromRGB(136, 90, 131) },
 }
@@ -321,49 +339,6 @@ local function buildCustomTabIcon(parentBtn, tabId)
         local headCorner = Instance.new("UICorner")
         headCorner.CornerRadius = UDim.new(1, 0)
         headCorner.Parent = head
-    elseif tabId == "trails" then
-        local trailHead = markIconPart(Instance.new("Frame"))
-        trailHead.BackgroundTransparency = 0
-        trailHead.BorderSizePixel = 0
-        trailHead.Size = UDim2.new(0, px(5), 0, px(5))
-        trailHead.Position = UDim2.new(0, px(2), 0, px(7))
-        trailHead.Parent = root
-        local trailHeadCorner = Instance.new("UICorner")
-        trailHeadCorner.CornerRadius = UDim.new(1, 0)
-        trailHeadCorner.Parent = trailHead
-
-        local streakA = markIconPart(Instance.new("Frame"))
-        streakA.BackgroundTransparency = 0
-        streakA.BorderSizePixel = 0
-        streakA.Size = UDim2.new(0, px(17), 0, px(4))
-        streakA.Position = UDim2.new(0, px(6), 0, px(6))
-        streakA.Rotation = -18
-        streakA.Parent = root
-        local streakACorner = Instance.new("UICorner")
-        streakACorner.CornerRadius = UDim.new(1, 0)
-        streakACorner.Parent = streakA
-
-        local streakB = markIconPart(Instance.new("Frame"))
-        streakB.BackgroundTransparency = 0
-        streakB.BorderSizePixel = 0
-        streakB.Size = UDim2.new(0, px(13), 0, px(4))
-        streakB.Position = UDim2.new(0, px(9), 0, px(12))
-        streakB.Rotation = -18
-        streakB.Parent = root
-        local streakBCorner = Instance.new("UICorner")
-        streakBCorner.CornerRadius = UDim.new(1, 0)
-        streakBCorner.Parent = streakB
-
-        local streakC = markIconPart(Instance.new("Frame"))
-        streakC.BackgroundTransparency = 0
-        streakC.BorderSizePixel = 0
-        streakC.Size = UDim2.new(0, px(9), 0, px(4))
-        streakC.Position = UDim2.new(0, px(12), 0, px(17))
-        streakC.Rotation = -18
-        streakC.Parent = root
-        local streakCCorner = Instance.new("UICorner")
-        streakCCorner.CornerRadius = UDim.new(1, 0)
-        streakCCorner.Parent = streakC
     elseif tabId == "emotes" then
         local face = Instance.new("Frame")
         face.Name = "FaceOutline"
@@ -1039,6 +1014,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         local btn = tabButtons[id]
 
         btn.MouseButton1Click:Connect(function()
+            print(string.format("[CategoryDebug][Shop] tab clicked=%s", tostring(id)))
             setActiveTab(id)
         end)
         btn.MouseEnter:Connect(function()
@@ -1458,7 +1434,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     contentPages["boosts"] = boostsPage
 
     ---------------------------------------------------------------------------
-    -- Placeholder content pages (Skins, Trails, Emotes, Effects)
+    -- Placeholder content pages (Skins, Effects). Trails are now grouped under Effects.
     ---------------------------------------------------------------------------
     local function makePlaceholderPage(name, tabId, placeholderIcon, message)
         local page = Instance.new("Frame")
@@ -1520,8 +1496,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     end
 
     makePlaceholderPage("SkinsContent",   "skins",   "\u{2726}", "Skins coming soon")
-    makePlaceholderPage("TrailsContent",  "trails",  "\u{2727}", "Trails coming soon")
-    makePlaceholderPage("EffectsContent", "effects", "\u{2738}", "Effects coming soon")
+    makePlaceholderPage("EffectsContent", "effects", "\u{2738}", "Effects (including trails) coming soon")
 
     ---------------------------------------------------------------------------
     -- EMOTES content page (real shop page, reads from EmoteConfig)
@@ -1643,6 +1618,33 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                         if img and #img > 0 then thumb.Image = img end
                     end
                 end)
+
+                -- Wave-specific shop preview: guaranteed-visible static glyph
+                if emoteId == "wave" then
+                    -- Hide the ImageLabel (asset was blank); use a TextLabel instead
+                    thumb.Visible = false
+
+                    local waveIcon = Instance.new("TextLabel")
+                    waveIcon.Name = "WaveGlyph"
+                    waveIcon.Text = WAVE_PREVIEW.glyph
+                    waveIcon.Size = WAVE_PREVIEW.size
+                    waveIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+                    waveIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    waveIcon.BackgroundTransparency = 1
+                    waveIcon.TextScaled = true
+                    waveIcon.Font = Enum.Font.GothamBold
+                    waveIcon.TextColor3 = GOLD
+                    waveIcon.ZIndex = 252
+                    waveIcon.Parent = leftBox
+
+                    -- Debug prints (remove once confirmed working)
+                    print("[ShopUI][WavePreview] preview source: TextLabel glyph")
+                    print("[ShopUI][WavePreview] class:", waveIcon.ClassName)
+                    print("[ShopUI][WavePreview] visible:", waveIcon.Visible)
+                    print("[ShopUI][WavePreview] size:", tostring(waveIcon.Size))
+                    print("[ShopUI][WavePreview] position:", tostring(waveIcon.Position))
+                    print("[ShopUI][WavePreview] text (empty?):", waveIcon.Text == "" and "YES" or "NO", "text:", waveIcon.Text)
+                end
 
                 -- RIGHT: name, description, price, buy button
                 local rightBox = Instance.new("Frame")

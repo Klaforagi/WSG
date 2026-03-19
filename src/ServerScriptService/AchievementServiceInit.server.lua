@@ -108,14 +108,14 @@ StatService:OnStatEvent(function(payload)
             print(string.format("[AchievementService] %s: totalElims/zombieElims +1 for %s", action, player.Name))
         end
     elseif action == Actions.FlagCapture then
-        AchievementService:IncrementStat(player, "flagActions", 1)
+        AchievementService:IncrementStat(player, "flagCaptures", 1)
         if StatService.DEBUG then
-            print(string.format("[AchievementService] %s: flagActions +1 for %s", action, player.Name))
+            print(string.format("[AchievementService] %s: flagCaptures +1 for %s", action, player.Name))
         end
     elseif action == Actions.FlagReturn then
-        AchievementService:IncrementStat(player, "flagActions", 1)
+        AchievementService:IncrementStat(player, "flagReturns", 1)
         if StatService.DEBUG then
-            print(string.format("[AchievementService] %s: flagActions +1 for %s", action, player.Name))
+            print(string.format("[AchievementService] %s: flagReturns +1 for %s", action, player.Name))
         end
     elseif action == Actions.MatchPlayed then
         AchievementService:IncrementStat(player, "matchesPlayed", 1)
