@@ -38,7 +38,7 @@ function MenuController.CloseAllMenus(exceptName)
 	for name, m in pairs(menus) do
 		if name ~= exceptName and m.isOpen() then
 			if m.closeInstant then
-				m.closeInstant()
+				m.closeInstant(false)
 			else
 				m.close()
 			end
@@ -47,12 +47,15 @@ function MenuController.CloseAllMenus(exceptName)
 	if not exceptName then
 		currentMenu = nil
 	end
+	print("[MenuController] CloseAll | except=", tostring(exceptName))
 end
 
 --- Open a menu by name, closing any other open menu first.
 -- When switching between menus in the same group (e.g. two modal pages),
 -- the open callback receives sameGroup = true so it can skip the close/open
 -- animation and just swap content in place.
+-- closeInstant receives sameGroup so same-group menus can keep their shared
+-- overlay visible during the switch (prevents flicker).
 function MenuController.OpenMenu(name, ...)
 	local menu = menus[name]
 	if not menu then
@@ -62,14 +65,17 @@ function MenuController.OpenMenu(name, ...)
 
 	-- Detect if we are switching within the same group (e.g. Shop ↔ Quests)
 	local sameGroup = false
+	local closingMenuName = nil
 	for n, m in pairs(menus) do
 		if n ~= name and m.isOpen() then
+			closingMenuName = n
 			if m.group and menu.group and m.group == menu.group then
 				sameGroup = true
 			end
-			-- Instant-close the other menu
+			-- Instant-close the other menu; pass sameGroup so same-group
+			-- menus keep their shared overlay visible during the switch.
 			if m.closeInstant then
-				m.closeInstant()
+				m.closeInstant(sameGroup)
 			else
 				m.close()
 			end
@@ -79,7 +85,15 @@ function MenuController.OpenMenu(name, ...)
 	-- forward any extra args (e.g. a parent ScreenGui) to the menu.open callback
 	menu.open(sameGroup, ...)
 	currentMenu = name
-	print("[MenuController] Opened:", name)
+
+	-- Debug: log transition type
+	if closingMenuName then
+		print(string.format(
+			"[MenuController] Switch: %s -> %s | sameGroup=%s | overlay stays=%s",
+			closingMenuName, name, tostring(sameGroup), tostring(sameGroup)))
+	else
+		print(string.format("[MenuController] Fresh open: %s | no previous menu", name))
+	end
 end
 
 --- Close a specific menu (animated).
@@ -91,7 +105,7 @@ function MenuController.CloseMenu(name)
 		if currentMenu == name then
 			currentMenu = nil
 		end
-		print("[MenuController] Closed:", name)
+		print("[MenuController] Closed (animated):", name)
 	end
 end
 

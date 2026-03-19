@@ -888,13 +888,16 @@ end
 
 ---------------------------------------------------------------------------
 -- Instant hide (no animation). Used by MenuController when switching menus.
+-- sameGroup: if true, another menu in the same group is opening (Team is
+-- the only member of the "team" group, so this is always false in practice).
 ---------------------------------------------------------------------------
-local function hideInstant()
+local function hideInstant(sameGroup)
 	isVisible = false
 	isPinned  = false
 	collapseTeamPicker()
 	panel.Visible  = false
 	modalOverlay.Visible = false
+	print("[TeamStatsUI] hideInstant | sameGroup=", tostring(sameGroup))
 end
 
 ---------------------------------------------------------------------------
@@ -909,8 +912,8 @@ if MenuController then
 		close = function()
 			hide()
 		end,
-		closeInstant = function()
-			hideInstant()
+		closeInstant = function(sameGroup)
+			hideInstant(sameGroup)
 		end,
 		isOpen = function()
 			return isVisible

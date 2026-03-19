@@ -75,8 +75,8 @@ local GREEN_BTN    = UITheme and UITheme.GREEN_BTN or Color3.fromRGB(35, 190, 75
 local RED_BTN      = UITheme and UITheme.RED_BTN or Color3.fromRGB(160, 50, 50)
 local OVERLAY_CLR  = UITheme and UITheme.OVERLAY_CLR or Color3.fromRGB(10, 10, 10)
 
-local TWEEN_IN     = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local TWEEN_OUT    = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local TWEEN_IN     = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TWEEN_OUT    = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 --------------------------------------------------------------------------------
 -- AssetCodes (for coin icon)
@@ -513,17 +513,18 @@ if MenuController then
 				isOpen = false
 			end)
 		end,
-		closeInstant = function()
+		closeInstant = function(sameGroup)
 			if overlay then
 				overlay.Visible = false
 			end
 			isAnimating = false
 			isOpen = false
+			print("[CoinShopUI] closeInstant | sameGroup=", tostring(sameGroup))
 		end,
 		isOpen = function()
 			return isOpen
 		end,
-		group = "modal",
+		group = "coinshop",
 	})
 end
 

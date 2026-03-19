@@ -1545,20 +1545,22 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
             -- Fetch owned emotes from the server once
             local ownedSet = {}
+            -- Build a card for each emote
+            local emoteRefreshFns = {}
             task.spawn(function()
                 local remotes = ensureEmoteRemotes()
                 if remotes and remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
                     local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
                     if ok and type(list) == "table" then
                         for _, id in ipairs(list) do ownedSet[id] = true end
+                        -- Refresh all emote cards now that owned data arrived
+                        for _, fn in ipairs(emoteRefreshFns) do
+                            pcall(fn)
+                        end
                     end
                 end
             end)
-            -- Small yield to let the initial owned fetch complete
-            task.wait(0.3)
 
-            -- Build a card for each emote
-            local emoteRefreshFns = {}
             for _, def in ipairs(allEmotes) do
                 local emoteId     = def.Id
                 local displayName = def.DisplayName or emoteId
