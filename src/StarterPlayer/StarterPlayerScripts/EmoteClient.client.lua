@@ -20,7 +20,20 @@
 local Players          = game:GetService("Players")
 local ReplicatedStorage= game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 local TweenService     = game:GetService("TweenService")
+
+-- Keep a stable signal for text entry, including chat/custom text fields.
+local textEntryActive = false
+UserInputService.TextBoxFocused:Connect(function(textBox)
+    textEntryActive = true
+    print("[EmoteClient] TextBoxFocused:", textBox and textBox:GetFullName() or "nil")
+end)
+UserInputService.TextBoxFocusReleased:Connect(function(textBox)
+    textEntryActive = UserInputService:GetFocusedTextBox() ~= nil
+    print("[EmoteClient] TextBoxFocusReleased:", textBox and textBox:GetFullName() or "nil",
+          "| textEntryActive:", textEntryActive)
+end)
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -239,60 +252,73 @@ if MenuController then
     print("[EmoteClient] Emote menu registered with MenuController")
 end
 
--- ── Keybind: E to toggle ─────────────────────────────────────────────────
+-- ── Keybind: E to toggle emote menu (via ContextActionService) ───────────
 --
--- Root cause of "E does nothing" in Roblox: the default swim character
--- controller binds E (swim up) via ContextActionService and returns Sink,
--- which marks gameProcessed=true even on dry land. The previous code
--- bailed silently.  Fix: log the value and skip the bail for E during
--- testing so we can confirm the rest of the chain works.
---
--- [TEMP-DEBUG] Once confirmed working, restore the guard:
---   if gameProcessed then return end
+-- WHY CAS instead of InputBegan for the E key:
+--   1. The swim/climb controller binds E via CAS and returns Sink, which
+--      makes gameProcessedEvent=true in InputBegan even when NOT typing.
+--   2. Roblox's modern TextChatService chat uses an internal TextBox that
+--      GetFocusedTextBox() cannot see, so we can't detect chat focus from
+--      InputBegan.
+--   3. CAS callbacks are AUTOMATICALLY SUPPRESSED by the engine when ANY
+--      TextBox is focused — including the chat's internal TextBox. This
+--      means our handler simply won't fire while the player is typing in
+--      chat, with zero extra detection code needed.
+--   4. Binding at a higher stack position than the swim controller also
+--      prevents E from being swallowed by the swim system.
 -- ─────────────────────────────────────────────────────────────────────────
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-    -- Only trace keys we care about; avoids log spam for WASD etc.
-    if input.KeyCode ~= Enum.KeyCode.E
-    and input.KeyCode ~= Enum.KeyCode.Escape then
-        return
+
+local function handleEmoteHotkey(_actionName, inputState, inputObject)
+    -- Only act on key-down, not key-up or other states
+    if inputState ~= Enum.UserInputState.Begin then
+        return Enum.ContextActionResult.Sink
     end
 
-    print("[EmoteClient] InputBegan | key:", input.KeyCode.Name,
-          "| gameProcessed:", gameProcessed)
+    -- Extra safety: check GetFocusedTextBox for custom TextBoxes that CAS
+    -- might not suppress (belt-and-suspenders).
+    local focusedTextBox = UserInputService:GetFocusedTextBox()
 
-    local focusedBox = UserInputService:GetFocusedTextBox()
-    print("[EmoteClient] FocusedTextBox:",
-          focusedBox and focusedBox:GetFullName() or "nil")
+    print("[EmoteClient] CAS EmoteToggle fired | inputState:", inputState.Name,
+          "| focusedTextBox:", focusedTextBox and focusedTextBox:GetFullName() or "nil",
+          "| textEntryActive:", textEntryActive)
 
-    -- ── E key ────────────────────────────────────────────────────────────
-    if input.KeyCode == Enum.KeyCode.E then
-        -- [TEMP-DEBUG] Log but do NOT bail on gameProcessed=true.
-        -- Roblox swim binds E and marks it processed; we bypass that for testing.
-        -- TODO: after confirming the menu opens, evaluate whether to re-add this guard:
-        --   if gameProcessed then return end
-        if gameProcessed then
-            print("[EmoteClient] E: gameProcessed=true (swim ctrl or tool consumed it) – proceeding anyway for debug")
-        end
-
-        if focusedBox then
-            print("[EmoteClient] E blocked: TextBox is focused")
-            return
-        end
-
-        print("[EmoteClient] E accepted – calling ToggleEmoteMenu()")
-        ToggleEmoteMenu()
-        return
+    if focusedTextBox then
+        print("[EmoteClient] E blocked — player is typing in:", focusedTextBox:GetFullName())
+        return Enum.ContextActionResult.Pass  -- let the TextBox receive the keystroke
     end
 
-    -- P key fallback removed – E is the only emote toggle.
+    print("[EmoteClient] E allowed -> toggling emote menu")
+    ToggleEmoteMenu()
+    return Enum.ContextActionResult.Sink
+end
 
-    -- ── Escape – close if open ────────────────────────────────────────────
-    if input.KeyCode == Enum.KeyCode.Escape then
-        if gameProcessed then return end
-        if IsEmoteMenuOpen() then
-            print("[EmoteClient] Escape – closing Emote menu")
-            CloseEmoteMenu()
-        end
+-- Bind now, and re-bind after every respawn so we stay above the swim
+-- controller on the CAS stack (swim rebinds E on character load).
+local function bindEmoteHotkey()
+    ContextActionService:BindAction("EmoteToggle", handleEmoteHotkey, false, Enum.KeyCode.E)
+    print("[EmoteClient] EmoteToggle CAS action bound to E")
+end
+
+player.CharacterAdded:Connect(function()
+    -- Small delay so the swim controller binds first, then we override it
+    task.delay(0.5, bindEmoteHotkey)
+end)
+bindEmoteHotkey()  -- initial bind
+
+-- ── Escape key (stays in InputBegan — no swim conflict) ──────────────────
+UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+    if not input then return end
+    if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    if input.KeyCode ~= Enum.KeyCode.Escape then return end
+
+    if gameProcessedEvent then return end
+
+    local focusedTextBox = UserInputService:GetFocusedTextBox()
+    if focusedTextBox then return end
+
+    if IsEmoteMenuOpen() then
+        print("[EmoteClient] Escape – closing Emote menu")
+        CloseEmoteMenu()
     end
 end)
 

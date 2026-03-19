@@ -1655,32 +1655,70 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 rightBox.ZIndex = 251
                 rightBox.Parent = card
 
-                -- Price badge
+                -- Price badge (match standard shop item card style)
                 local priceBadge = Instance.new("Frame")
                 priceBadge.Name = "PriceBadge"
                 priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
                 priceBadge.BackgroundTransparency = 0.3
-                priceBadge.Size = UDim2.new(0.65, 0, 0.18, 0)
-                priceBadge.Position = UDim2.new(0.04, 0, 0.04, 0)
-                priceBadge.ZIndex = 253
+                priceBadge.Size = UDim2.new(0.85, 0, 0, px(24))
+                priceBadge.AnchorPoint = Vector2.new(0.5, 0)
+                priceBadge.Position = UDim2.new(0.5, 0, 0.04, 0)
+                priceBadge.ZIndex = 252
                 priceBadge.Parent = rightBox
                 local pbCrn = Instance.new("UICorner")
-                pbCrn.CornerRadius = UDim.new(0, px(6))
+                pbCrn.CornerRadius = UDim.new(0, px(8))
                 pbCrn.Parent = priceBadge
                 local pbStk = Instance.new("UIStroke")
-                pbStk.Color = GOLD; pbStk.Thickness = 1; pbStk.Transparency = 0.4
+                pbStk.Color = Color3.fromRGB(255, 200, 40)
+                pbStk.Thickness = 1
+                pbStk.Transparency = 0.55
                 pbStk.Parent = priceBadge
+
                 local pbLbl = Instance.new("TextLabel")
+                pbLbl.Name = "Price"
                 pbLbl.BackgroundTransparency = 1
-                pbLbl.Size = UDim2.new(1, -px(6), 1, 0)
-                pbLbl.Position = UDim2.new(0, px(6), 0, 0)
+                pbLbl.Size = UDim2.new(0.58, 0, 1, 0)
+                pbLbl.Position = UDim2.new(0, 0, 0, 0)
                 pbLbl.Font = Enum.Font.GothamBold
-                pbLbl.Text = tostring(price)
+                pbLbl.Text = (price > 0) and tostring(price) or "FREE"
                 pbLbl.TextColor3 = GOLD
                 pbLbl.TextScaled = true
-                pbLbl.TextXAlignment = Enum.TextXAlignment.Left
-                pbLbl.ZIndex = 254
+                pbLbl.TextXAlignment = Enum.TextXAlignment.Right
+                pbLbl.ZIndex = 253
                 pbLbl.Parent = priceBadge
+
+                local emoteCoinIcon = Instance.new("ImageLabel")
+                emoteCoinIcon.Name = "CoinIcon"
+                emoteCoinIcon.Size = UDim2.new(0.26, 0, 0.80, 0)
+                emoteCoinIcon.Position = UDim2.new(0.64, 0, 0.5, 0)
+                emoteCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
+                emoteCoinIcon.BackgroundTransparency = 1
+                emoteCoinIcon.ScaleType = Enum.ScaleType.Fit
+                emoteCoinIcon.ZIndex = 253
+                emoteCoinIcon.Visible = (price > 0)
+                emoteCoinIcon.Parent = priceBadge
+
+                local emoteCoinAsset = ""
+                pcall(function()
+                    if AssetCodes and type(AssetCodes.Get) == "function" then
+                        local ci = AssetCodes.Get("Coin")
+                        if ci and #ci > 0 then
+                            emoteCoinIcon.Image = ci
+                            emoteCoinAsset = ci
+                        end
+                    end
+                end)
+
+                -- Debug prints (temporary): validate emote price render path + coin icon + badge state
+                print(string.format("[ShopUI][EmotePrice] card=%s path=EmotesCustomCard->WeaponStylePriceBadge", tostring(emoteId)))
+                print(string.format("[ShopUI][EmotePrice] card=%s coinAsset=%s", tostring(emoteId), tostring(emoteCoinAsset)))
+                print(string.format(
+                    "[ShopUI][EmotePrice] card=%s badgeVisible=%s badgeSize=%s coinVisible=%s",
+                    tostring(emoteId),
+                    tostring(priceBadge.Visible),
+                    tostring(priceBadge.Size),
+                    tostring(emoteCoinIcon.Visible)
+                ))
 
                 -- Name
                 local nameLabel = Instance.new("TextLabel")

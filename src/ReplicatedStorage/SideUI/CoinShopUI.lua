@@ -15,6 +15,12 @@ local UserInputService   = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 
+-- Try to require the central MenuController (optional fallback)
+local MenuController = nil
+pcall(function()
+	MenuController = require(script.Parent:WaitForChild("MenuController"))
+end)
+
 --------------------------------------------------------------------------------
 -- Load CoinProducts config
 --------------------------------------------------------------------------------
@@ -412,6 +418,7 @@ end
 -- Show / Hide / Toggle
 --------------------------------------------------------------------------------
 function CoinShopUI.Show(screenGui)
+	-- legacy direct show (kept for compatibility)
 	if isOpen or isAnimating then return end
 	if not overlay then
 		buildPopup(screenGui)
@@ -433,6 +440,7 @@ function CoinShopUI.Show(screenGui)
 end
 
 function CoinShopUI.Hide()
+	-- legacy direct hide (kept for compatibility)
 	if not isOpen or isAnimating then return end
 	if not overlay then return end
 
@@ -449,15 +457,74 @@ function CoinShopUI.Hide()
 end
 
 function CoinShopUI.Toggle(screenGui)
-	if isOpen then
-		CoinShopUI.Hide()
+	-- Prefer to use the central MenuController when available so this popup
+	-- participates in the shared single-open-menu behaviour. Fall back to
+	-- local toggle when the controller is not present (e.g. unit tests).
+	if MenuController then
+		MenuController.ToggleMenu("CoinShop", screenGui)
 	else
-		CoinShopUI.Show(screenGui)
+		if isOpen then
+			CoinShopUI.Hide()
+		else
+			CoinShopUI.Show(screenGui)
+		end
 	end
 end
 
 function CoinShopUI.IsOpen()
 	return isOpen
+end
+
+-- Register with MenuController (if available) so the popup becomes a
+-- first-class managed menu. The open callback accepts (sameGroup, screenGui).
+if MenuController then
+	MenuController.RegisterMenu("CoinShop", {
+		open = function(sameGroup, screenGui)
+			-- ignore sameGroup for this simple popup; use screenGui to parent
+			if not overlay then
+				buildPopup(screenGui)
+			end
+			if overlay then
+				-- animate in
+				if isAnimating or isOpen then return end
+				isAnimating = true
+				overlay.Visible = true
+				popup.Position = UDim2.new(0.5, 0, -0.3, 0)
+				local tween = TweenService:Create(popup, TWEEN_IN, {
+					Position = UDim2.new(0.5, 0, 0.5, 0),
+				})
+				tween:Play()
+				tween.Completed:Connect(function()
+					isAnimating = false
+					isOpen = true
+				end)
+			end
+		end,
+		close = function()
+			if not isOpen or isAnimating then return end
+			isAnimating = true
+			local tween = TweenService:Create(popup, TWEEN_OUT, {
+				Position = UDim2.new(0.5, 0, -0.3, 0),
+			})
+			tween:Play()
+			tween.Completed:Connect(function()
+				overlay.Visible = false
+				isAnimating = false
+				isOpen = false
+			end)
+		end,
+		closeInstant = function()
+			if overlay then
+				overlay.Visible = false
+			end
+			isAnimating = false
+			isOpen = false
+		end,
+		isOpen = function()
+			return isOpen
+		end,
+		group = "modal",
+	})
 end
 
 return CoinShopUI

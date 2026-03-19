@@ -181,26 +181,8 @@ do
     Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 2)
 end
 
--- Diamond team badge (shield motif)
-do
-    local badge = Instance.new("Frame")
-    badge.Name = "TeamBadge"
-    badge.AnchorPoint = Vector2.new(0.5, 0.5)
-    badge.Position = UDim2.new(0.075, 0, 0.32, 0)
-    badge.Size = UDim2.new(0, 10, 0, 10)
-    badge.Rotation = 45
-    badge.BackgroundColor3 = BLUE_ACCENT
-    badge.BackgroundTransparency = 0.1
-    badge.BorderSizePixel = 0
-    badge.ZIndex = 3
-    badge.Parent = bluePanel
-    Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 2)
-    local bs = Instance.new("UIStroke")
-    bs.Color = BLUE_GLOW
-    bs.Thickness = 1
-    bs.Transparency = 0.3
-    bs.Parent = badge
-end
+-- Diamond team badge removed (decorative element)
+print("[MatchHUD] Removed blue diamond badge for cleaner scoreboard")
 
 -- Team name label
 local blueName = Instance.new("TextLabel")
@@ -210,8 +192,8 @@ blueName.Font = Enum.Font.GothamBlack
 blueName.TextScaled = true
 blueName.TextColor3 = GOLD_TEXT
 blueName.BackgroundTransparency = 1
-blueName.Size = UDim2.new(0.62, 0, 0.34, 0)
-blueName.Position = UDim2.new(0.15, 0, 0.02, 0)
+    blueName.Size = UDim2.new(0.62, 0, 0.34, 0)
+    blueName.Position = UDim2.new(0.12, 0, 0.02, 0)
 blueName.TextXAlignment = Enum.TextXAlignment.Center
 blueName.ZIndex = 3
 blueName.Parent = bluePanel
@@ -263,26 +245,8 @@ do
     Instance.new("UICorner", bar).CornerRadius = UDim.new(0, 2)
 end
 
--- Diamond team badge (swords motif)
-do
-    local badge = Instance.new("Frame")
-    badge.Name = "TeamBadge"
-    badge.AnchorPoint = Vector2.new(0.5, 0.5)
-    badge.Position = UDim2.new(0.925, 0, 0.32, 0)
-    badge.Size = UDim2.new(0, 10, 0, 10)
-    badge.Rotation = 45
-    badge.BackgroundColor3 = RED_ACCENT
-    badge.BackgroundTransparency = 0.1
-    badge.BorderSizePixel = 0
-    badge.ZIndex = 3
-    badge.Parent = redPanel
-    Instance.new("UICorner", badge).CornerRadius = UDim.new(0, 2)
-    local bs = Instance.new("UIStroke")
-    bs.Color = RED_GLOW
-    bs.Thickness = 1
-    bs.Transparency = 0.3
-    bs.Parent = badge
-end
+-- Diamond team badge removed (decorative element)
+print("[MatchHUD] Removed red diamond badge for cleaner scoreboard")
 
 -- Team name label
 local redName = Instance.new("TextLabel")
@@ -292,8 +256,8 @@ redName.Font = Enum.Font.GothamBlack
 redName.TextScaled = true
 redName.TextColor3 = GOLD_TEXT
 redName.BackgroundTransparency = 1
-redName.Size = UDim2.new(0.62, 0, 0.34, 0)
-redName.Position = UDim2.new(0.23, 0, 0.02, 0)
+    redName.Size = UDim2.new(0.62, 0, 0.34, 0)
+    redName.Position = UDim2.new(0.20, 0, 0.02, 0)
 redName.TextXAlignment = Enum.TextXAlignment.Center
 redName.ZIndex = 3
 redName.Parent = redPanel

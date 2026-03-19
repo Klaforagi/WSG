@@ -53,7 +53,7 @@ end
 -- When switching between menus in the same group (e.g. two modal pages),
 -- the open callback receives sameGroup = true so it can skip the close/open
 -- animation and just swap content in place.
-function MenuController.OpenMenu(name)
+function MenuController.OpenMenu(name, ...)
 	local menu = menus[name]
 	if not menu then
 		warn("[MenuController] OpenMenu: unknown menu", name)
@@ -76,7 +76,8 @@ function MenuController.OpenMenu(name)
 		end
 	end
 
-	menu.open(sameGroup)
+	-- forward any extra args (e.g. a parent ScreenGui) to the menu.open callback
+	menu.open(sameGroup, ...)
 	currentMenu = name
 	print("[MenuController] Opened:", name)
 end
@@ -95,7 +96,7 @@ function MenuController.CloseMenu(name)
 end
 
 --- Toggle a menu: close it if open, open it (closing others) if closed.
-function MenuController.ToggleMenu(name)
+function MenuController.ToggleMenu(name, ...)
 	local menu = menus[name]
 	if not menu then
 		warn("[MenuController] ToggleMenu: unknown menu", name)
@@ -104,7 +105,7 @@ function MenuController.ToggleMenu(name)
 	if menu.isOpen() then
 		MenuController.CloseMenu(name)
 	else
-		MenuController.OpenMenu(name)
+		MenuController.OpenMenu(name, ...)
 	end
 end
 
