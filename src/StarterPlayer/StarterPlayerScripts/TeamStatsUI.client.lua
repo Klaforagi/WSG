@@ -93,24 +93,22 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name            = "TeamStatsUI"
 screenGui.ResetOnSpawn    = false
 screenGui.IgnoreGuiInset  = true
-screenGui.DisplayOrder    = 100
+screenGui.DisplayOrder    = 270
 screenGui.Parent          = playerGui
 
 ---------------------------------------------------------------------------
--- Drop shadow behind panel
+-- Full-screen dark overlay behind panel (matches SideUI modal pattern)
 ---------------------------------------------------------------------------
-local shadow = Instance.new("Frame")
-shadow.Name                 = "PanelShadow"
-shadow.AnchorPoint          = Vector2.new(0.5, 0.5)
-shadow.Position             = UDim2.new(0.5, 0, 0.5, 3)
-shadow.Size                 = UDim2.new(0.74, 8, 0.84, 8)
-shadow.BackgroundColor3     = Color3.fromRGB(0, 0, 0)
-shadow.BackgroundTransparency = 0.68
-shadow.BorderSizePixel      = 0
-shadow.Visible              = false
-shadow.ZIndex               = 0
-shadow.Parent               = screenGui
-Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, px(14))
+local modalOverlay = Instance.new("Frame")
+modalOverlay.Name                 = "ModalOverlay"
+modalOverlay.Size                 = UDim2.new(1, 0, 1, 0)
+modalOverlay.Position             = UDim2.new(0, 0, 0, 0)
+modalOverlay.BackgroundColor3     = Color3.fromRGB(10, 10, 10)
+modalOverlay.BackgroundTransparency = 0.5
+modalOverlay.BorderSizePixel      = 0
+modalOverlay.Visible              = false
+modalOverlay.ZIndex               = 0
+modalOverlay.Parent               = screenGui
 
 ---------------------------------------------------------------------------
 -- Main panel
@@ -864,15 +862,13 @@ local function show()
 	collapseTeamPicker()
 	refreshTeamButtons()
 	rebuildAll()
+	modalOverlay.Visible = true
 	panel.Visible  = true
-	shadow.Visible = true
 
 	-- Slide in from above
 	panel.Position  = UDim2.new(0.5, 0, -0.35, 0)
-	shadow.Position = UDim2.new(0.5, 0, -0.35, 3)
 
 	TweenService:Create(panel,  TWEEN_IN, { Position = UDim2.new(0.5, 0, 0.5, 0) }):Play()
-	TweenService:Create(shadow, TWEEN_IN, { Position = UDim2.new(0.5, 0, 0.5, 3) }):Play()
 end
 
 local function hide()
@@ -881,12 +877,11 @@ local function hide()
 	collapseTeamPicker()
 
 	local tw = TweenService:Create(panel, TWEEN_OUT, { Position = UDim2.new(0.5, 0, -0.35, 0) })
-	TweenService:Create(shadow, TWEEN_OUT, { Position = UDim2.new(0.5, 0, -0.35, 3) }):Play()
 	tw:Play()
 	tw.Completed:Connect(function()
 		if not isVisible then
 			panel.Visible  = false
-			shadow.Visible = false
+			modalOverlay.Visible = false
 		end
 	end)
 end
@@ -899,7 +894,7 @@ local function hideInstant()
 	isPinned  = false
 	collapseTeamPicker()
 	panel.Visible  = false
-	shadow.Visible = false
+	modalOverlay.Visible = false
 end
 
 ---------------------------------------------------------------------------
