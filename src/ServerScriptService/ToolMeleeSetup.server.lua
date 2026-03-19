@@ -27,6 +27,12 @@ pcall(function()
     end
 end)
 
+-- StatService: damage tracking for quests
+local StatService
+pcall(function()
+    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
+end)
+
 -- Melee settings module
 local MeleeCfg
 if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
@@ -94,6 +100,10 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         humanoid:SetAttribute("lastDamageTime", tick())
     end)
     humanoid:TakeDamage(damage)
+    -- Track damage dealt for quest progress
+    if StatService and StatService.RegisterDamageDealt then
+        pcall(function() StatService:RegisterDamageDealt(player, damage) end)
+    end
     -- send hit feedback to the attacker
     pcall(function()
         meleeHit:FireClient(player, damage, false, hitPart, hitPos)

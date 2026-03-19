@@ -5,6 +5,9 @@
 -- Tracks per-player quest progress in memory. Progress resets each
 -- calendar day (UTC). Rewards are granted through CurrencyService.
 --
+-- Uses DailyQuestDefs (ReplicatedStorage) for the quest pool so
+-- definitions are shared with the client UI.
+--
 -- Public API used by QuestServiceInit.server.lua:
 --   QuestService:GetQuestsForPlayer(player) -> { {id, title, desc, goal, progress, reward, claimed}, ... }
 --   QuestService:IncrementQuest(player, questId, amount)
@@ -16,81 +19,29 @@
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local DailyQuestDefs = require(ReplicatedStorage:WaitForChild("DailyQuestDefs", 10))
+
 local QuestService = {}
 
 --------------------------------------------------------------------------------
--- Quest definitions
+-- Quest definitions sourced from shared DailyQuestDefs module
 --------------------------------------------------------------------------------
-local QUEST_DEFS = {
-    {
-        id = "zombie_hunter",
-        title = "Zombie Hunter",
-        desc = "Defeat 5 Zombies",
-        goal = 5,
-        reward = 10,
-        trackType = "zombies_eliminated",
-    },
-    {
-        id = "zombie_slayer",
-        title = "Zombie Slayer",
-        desc = "Defeat 10 Zombies",
-        goal = 10,
-        reward = 18,
-        trackType = "zombies_eliminated",
-    },
-    {
-        id = "battle_ready",
-        title = "Battle Ready",
-        desc = "Eliminate 5 Players",
-        goal = 5,
-        reward = 15,
-        trackType = "players_eliminated",
-    },
-    {
-        id = "headhunter",
-        title = "Headhunter",
-        desc = "Eliminate 8 Players",
-        goal = 8,
-        reward = 22,
-        trackType = "players_eliminated",
-    },
-    {
-        id = "team_defender",
-        title = "Team Defender",
-        desc = "Return the Flag 1 Time",
-        goal = 1,
-        reward = 20,
-        trackType = "flag_returns",
-    },
-    {
-        id = "frontline_guard",
-        title = "Frontline Guard",
-        desc = "Return the Flag 2 Times",
-        goal = 2,
-        reward = 28,
-        trackType = "flag_returns",
-    },
-}
+local QUEST_DEFS          = DailyQuestDefs.Pool
+local QUEST_DEF_BY_ID     = DailyQuestDefs.ById
+local QUEST_DEFS_BY_TRACK = DailyQuestDefs.ByTrackType
 
-local QUEST_DEF_BY_ID = {}
-local QUEST_DEFS_BY_TRACK = {}
-for _, def in ipairs(QUEST_DEFS) do
-    QUEST_DEF_BY_ID[def.id] = def
-    QUEST_DEFS_BY_TRACK[def.trackType] = QUEST_DEFS_BY_TRACK[def.trackType] or {}
-    table.insert(QUEST_DEFS_BY_TRACK[def.trackType], def)
+-- Track types for assignment diversity (one quest per track type)
+local DEFAULT_TRACK_ORDER = {}
+for tt, _ in pairs(QUEST_DEFS_BY_TRACK) do
+    table.insert(DEFAULT_TRACK_ORDER, tt)
 end
-
-local DEFAULT_TRACK_ORDER = {
-    "zombies_eliminated",
-    "players_eliminated",
-    "flag_returns",
-}
+table.sort(DEFAULT_TRACK_ORDER) -- deterministic order
 
 --------------------------------------------------------------------------------
 -- Per-player state:
 -- playerData[player] = {
 --     day = "2026-03-16",
---     questOrder = { "zombie_hunter", "battle_ready", "team_defender" },
+--     questOrder = { "monster_hunter", "player_hunter", "battle_ready" },
 --     quests = { [questId] = { progress, claimed } },
 -- }
 --------------------------------------------------------------------------------
@@ -107,11 +58,19 @@ local function shuffleInPlace(items)
     end
 end
 
+-- Number of daily quests assigned per day (picks from different track types)
+local DAILY_QUEST_COUNT = 3
+
 local function assignQuestOrder()
     local order = {}
     local usedQuestIds = {}
 
-    for _, trackType in ipairs(DEFAULT_TRACK_ORDER) do
+    -- Shuffle track types so each day features a different mix
+    local shuffledTracks = table.clone(DEFAULT_TRACK_ORDER)
+    shuffleInPlace(shuffledTracks)
+
+    for _, trackType in ipairs(shuffledTracks) do
+        if #order >= DAILY_QUEST_COUNT then break end
         local pool = QUEST_DEFS_BY_TRACK[trackType]
         if pool and #pool > 0 then
             local candidates = table.clone(pool)

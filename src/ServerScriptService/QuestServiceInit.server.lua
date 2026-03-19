@@ -90,33 +90,70 @@ end)
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events  (replaces ALL legacy hooks)
 --
--- Mapping:
---   MobKill      → zombies_eliminated daily quest track
---   Elimination  → players_eliminated daily quest track
---   FlagReturn   → flag_returns daily quest track
+-- Daily quest track types:
+--   MobKill      → zombies_eliminated
+--   Elimination  → players_eliminated
+--   MatchPlayed  → matches_played
+--   DamageDealt  → damage_dealt
+--   CoinsEarned  → coins_earned
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
 StatService:OnStatEvent(function(payload)
     local player = payload.player
     local action = payload.action
+    local amount = payload.amount or 1
     if not player or not player:IsA("Player") then return end
 
     if action == Actions.MobKill then
         QuestService:IncrementByType(player, "zombies_eliminated", 1)
-        if StatService.DEBUG then
-            print(string.format("[QuestService] Progressed daily zombie quests for %s via %s", player.Name, action))
-        end
     elseif action == Actions.Elimination then
         QuestService:IncrementByType(player, "players_eliminated", 1)
-        if StatService.DEBUG then
-            print(string.format("[QuestService] Progressed daily player-elimination quests for %s via %s", player.Name, action))
+    elseif action == Actions.MatchPlayed then
+        QuestService:IncrementByType(player, "matches_played", 1)
+    elseif action == Actions.DamageDealt then
+        QuestService:IncrementByType(player, "damage_dealt", amount)
+    elseif action == Actions.CoinsEarned then
+        QuestService:IncrementByType(player, "coins_earned", amount)
+    end
+end)
+
+--------------------------------------------------------------------------------
+-- Hook: Wrap CurrencyService.AddCoins to fire CoinsEarned stat events.
+-- Delayed to wrap AFTER BoostServiceInit's coin multiplier wrapper.
+-- Excludes quest/achievement rewards to prevent feedback loops.
+--------------------------------------------------------------------------------
+task.spawn(function()
+    task.wait(3) -- Wait for BoostServiceInit wrapper to be applied first
+
+    local CurrencyService
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("CurrencyService")
+        if mod and mod:IsA("ModuleScript") then
+            CurrencyService = require(mod)
         end
-    elseif action == Actions.FlagReturn then
-        QuestService:IncrementByType(player, "flag_returns", 1)
-        if StatService.DEBUG then
-            print(string.format("[QuestService] Progressed daily flag-return quests for %s via %s", player.Name, action))
+    end)
+
+    if CurrencyService then
+        local _prevAddCoins = CurrencyService.AddCoins
+
+        function CurrencyService:AddCoins(player, amount, source)
+            local result = _prevAddCoins(self, player, amount, source)
+
+            -- Fire coins_earned stat event for positive, non-reward amounts
+            local earned = tonumber(result) or tonumber(amount) or 0
+            if earned > 0 and typeof(player) == "Instance" and player:IsA("Player") then
+                -- Exclude quest/achievement/weekly_quest rewards to avoid feedback loops
+                if source ~= "quest" and source ~= "weekly_quest" and source ~= "achievement" then
+                    task.spawn(function()
+                        StatService:RegisterCoinsEarned(player, earned)
+                    end)
+                end
+            end
+
+            return result
         end
+        print("[QuestServiceInit] CurrencyService.AddCoins wrapped for coins_earned tracking")
     end
 end)
 

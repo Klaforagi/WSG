@@ -55,6 +55,8 @@ StatService.Actions = {
     FlagPickup   = "FlagPickup",       -- Picked up enemy flag
     MatchPlayed  = "MatchPlayed",      -- Completed a match
     MatchWon     = "MatchWon",         -- Was on the winning team
+    DamageDealt  = "DamageDealt",      -- Combat damage dealt to any target
+    CoinsEarned  = "CoinsEarned",      -- Coins earned (positive, non-quest)
 }
 
 --------------------------------------------------------------------------------
@@ -253,6 +255,26 @@ end
 function StatService:RegisterMatchWon(player)
     if not player or not player:IsA("Player") then return end
     fireEvent(player, self.Actions.MatchWon, 1)
+end
+
+--------------------------------------------------------------------------------
+-- Registration: Damage Dealt  (any valid combat damage to players or mobs)
+--------------------------------------------------------------------------------
+function StatService:RegisterDamageDealt(player, amount)
+    if not player or not player:IsA("Player") then return end
+    amount = tonumber(amount) or 0
+    if amount <= 0 then return end
+    fireEvent(player, self.Actions.DamageDealt, amount)
+end
+
+--------------------------------------------------------------------------------
+-- Registration: Coins Earned  (positive coin gains, excludes quest/achievement)
+--------------------------------------------------------------------------------
+function StatService:RegisterCoinsEarned(player, amount)
+    if not player or not player:IsA("Player") then return end
+    amount = tonumber(amount) or 0
+    if amount <= 0 then return end
+    fireEvent(player, self.Actions.CoinsEarned, amount)
 end
 
 --------------------------------------------------------------------------------

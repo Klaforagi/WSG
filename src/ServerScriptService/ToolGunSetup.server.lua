@@ -230,6 +230,10 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
     end)
     -- apply damage (server may already have multiplied for headshots)
     humanoid:TakeDamage(damage)
+    -- Track damage dealt for quest progress
+    if StatService and StatService.RegisterDamageDealt then
+        pcall(function() StatService:RegisterDamageDealt(player, damage) end)
+    end
     pcall(function()
         if fireHit then fireHit:FireClient(player, damage, isHeadshot == true, hitPart, hitPos) end
     end)

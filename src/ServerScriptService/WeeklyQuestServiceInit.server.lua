@@ -92,41 +92,34 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
 
 --------------------------------------------------------------------------------
--- Subscribe to centralized stat events  (replaces ALL legacy hooks)
+-- Subscribe to centralized stat events
 --
--- Mapping:
---   Elimination  → players_eliminated weekly quest trackType
---   MobKill      → zombies_eliminated weekly quest trackType
---   MatchPlayed  → matches_played     weekly quest trackType
---   MatchWon     → matches_won        weekly quest trackType
+-- Weekly quest track types:
+--   MatchWon     → matches_won
+--   FlagCapture  → flag_captures
+--   FlagReturn   → flag_returns
+--   MatchPlayed  → matches_played
+--   CoinsEarned  → coins_earned
+--   (time_played is handled by the 60-second heartbeat below)
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
 StatService:OnStatEvent(function(payload)
     local player = payload.player
     local action = payload.action
+    local amount = payload.amount or 1
     if not player or not player:IsA("Player") then return end
 
-    if action == Actions.Elimination then
-        WeeklyQuestService:IncrementByType(player, "players_eliminated", 1)
-        if StatService.DEBUG then
-            print(string.format("[WeeklyQuestService] %s: players_eliminated +1 for %s", action, player.Name))
-        end
-    elseif action == Actions.MobKill then
-        WeeklyQuestService:IncrementByType(player, "zombies_eliminated", 1)
-        if StatService.DEBUG then
-            print(string.format("[WeeklyQuestService] %s: zombies_eliminated +1 for %s", action, player.Name))
-        end
+    if action == Actions.MatchWon then
+        WeeklyQuestService:IncrementByType(player, "matches_won", 1)
+    elseif action == Actions.FlagCapture then
+        WeeklyQuestService:IncrementByType(player, "flag_captures", 1)
+    elseif action == Actions.FlagReturn then
+        WeeklyQuestService:IncrementByType(player, "flag_returns", 1)
     elseif action == Actions.MatchPlayed then
         WeeklyQuestService:IncrementByType(player, "matches_played", 1)
-        if StatService.DEBUG then
-            print(string.format("[WeeklyQuestService] %s: matches_played +1 for %s", action, player.Name))
-        end
-    elseif action == Actions.MatchWon then
-        WeeklyQuestService:IncrementByType(player, "matches_won", 1)
-        if StatService.DEBUG then
-            print(string.format("[WeeklyQuestService] %s: matches_won +1 for %s", action, player.Name))
-        end
+    elseif action == Actions.CoinsEarned then
+        WeeklyQuestService:IncrementByType(player, "coins_earned", amount)
     end
 end)
 

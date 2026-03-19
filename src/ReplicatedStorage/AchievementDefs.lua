@@ -25,8 +25,8 @@ AchievementDefs.Achievements = {
     },
     {
         id          = "zombie_hunter",
-        title       = "Zombie Hunter",
-        desc        = "Eliminate 25 zombies.",
+        title       = "Monster Hunter",
+        desc        = "Eliminate 25 monsters.",
         stat        = "zombieElims",
         target      = 25,
         reward      = 20,
