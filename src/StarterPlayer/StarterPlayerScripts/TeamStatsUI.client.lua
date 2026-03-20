@@ -87,6 +87,25 @@ local isVisible = false
 local isPinned  = false   -- true when open (from either Teams button or Tab)
 
 ---------------------------------------------------------------------------
+-- Selected-player state (for viewing other players' Career profiles)
+---------------------------------------------------------------------------
+local selectedCareerTarget = nil   -- Player instance or nil (nil = local player)
+local activePopup          = nil   -- current popup Frame or nil
+local activePopupRow       = nil   -- the row Frame the popup is anchored to
+
+---------------------------------------------------------------------------
+-- Services for Add Friend
+---------------------------------------------------------------------------
+local StarterGui = game:GetService("StarterGui")
+
+---------------------------------------------------------------------------
+-- Forward declarations for popup functions (defined after row builder)
+---------------------------------------------------------------------------
+local closePlayerActionPopup  -- forward-declared
+local openPlayerActionPopup   -- forward-declared
+local popupJustOpened = false -- guard to prevent immediate close after row click
+
+---------------------------------------------------------------------------
 -- ScreenGui
 ---------------------------------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
@@ -397,11 +416,12 @@ local function updateTabVisuals()
 end
 
 local function selectTab(tabName)
-	if activeTab == tabName then return end
+	local changed = (activeTab ~= tabName)
 	activeTab = tabName
+	closePlayerActionPopup()
 	teamStatsContainer.Visible = (tabName == "TeamStats")
 	careerContainer.Visible    = (tabName == "Career")
-	updateTabVisuals()
+	if changed then updateTabVisuals() end
 	if tabName == "Career" then
 		populateCareerTab()  -- forward-declared below
 	end
@@ -885,6 +905,40 @@ local function createPlayerRow(plr, teamName, order)
 		end
 	end
 
+	---------------------------------------------------------------------------
+	-- Interactive click overlay + hover effects
+	---------------------------------------------------------------------------
+	local rowDefaultBG = isLocal and Color3.fromRGB(30, 34, 58) or NAVY_LIGHT
+	local rowHoverBG   = isLocal and Color3.fromRGB(38, 40, 62) or Color3.fromRGB(30, 32, 52)
+	local rowPressBG   = isLocal and Color3.fromRGB(24, 28, 48) or Color3.fromRGB(20, 22, 40)
+
+	local clickOverlay = Instance.new("TextButton")
+	clickOverlay.Name                 = "ClickOverlay"
+	clickOverlay.Size                 = UDim2.new(1, 0, 1, 0)
+	clickOverlay.BackgroundTransparency = 1
+	clickOverlay.Text                 = ""
+	clickOverlay.AutoButtonColor      = false
+	clickOverlay.BorderSizePixel      = 0
+	clickOverlay.ZIndex               = 5
+	clickOverlay.Parent               = row
+
+	local hoverFi = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	clickOverlay.MouseEnter:Connect(function()
+		TweenService:Create(row, hoverFi, {BackgroundColor3 = rowHoverBG, BackgroundTransparency = 0.02}):Play()
+	end)
+	clickOverlay.MouseLeave:Connect(function()
+		TweenService:Create(row, hoverFi, {BackgroundColor3 = rowDefaultBG, BackgroundTransparency = isLocal and 0.05 or 0.30}):Play()
+	end)
+	clickOverlay.MouseButton1Down:Connect(function()
+		TweenService:Create(row, hoverFi, {BackgroundColor3 = rowPressBG}):Play()
+	end)
+	clickOverlay.MouseButton1Up:Connect(function()
+		TweenService:Create(row, hoverFi, {BackgroundColor3 = rowHoverBG}):Play()
+	end)
+	clickOverlay.MouseButton1Click:Connect(function()
+		openPlayerActionPopup(plr, row)
+	end)
+
 	return row, cells
 end
 
@@ -1004,6 +1058,14 @@ local function unwatchPlayer(plr)
 	if teamConns[plr] then pcall(function() teamConns[plr]:Disconnect() end) end
 	teamConns[plr] = nil
 	cleanupPlayerRow(plr)
+	-- If the player being viewed in Career leaves, revert to local player
+	if selectedCareerTarget == plr then
+		selectedCareerTarget = nil
+		closePlayerActionPopup()
+		if isVisible and activeTab == "Career" then
+			populateCareerTab()
+		end
+	end
 	if isVisible then
 		updateBlueLabel()
 		updateRedLabel()
@@ -1054,25 +1116,245 @@ local function getCareerStatsRemote()
 	return careerStatsRemote
 end
 
+--- Lazily resolve the GetPublicCareerStats remote (for other players)
+local publicCareerStatsRemote = nil
+local function getPublicCareerStatsRemote()
+	if publicCareerStatsRemote then return publicCareerStatsRemote end
+	local remotes = ReplicatedStorage:WaitForChild("Remotes", 5)
+	if remotes then
+		publicCareerStatsRemote = remotes:WaitForChild("GetPublicCareerStats", 5)
+	end
+	return publicCareerStatsRemote
+end
+
 --- Whether the Career tab has been populated at least once
 local careerBuilt = false
 
---- Build or update the Career tab content
-function populateCareerTab()
-	-- Fetch stats from server
-	local remote = getCareerStatsRemote()
-	if not remote then
-		warn("[TeamStatsUI] GetCareerStats remote not found")
-		return
+---------------------------------------------------------------------------
+-- Player Action Popup
+---------------------------------------------------------------------------
+closePlayerActionPopup = function()
+	if activePopup then
+		pcall(function() activePopup:Destroy() end)
+		activePopup = nil
+	end
+	-- Remove highlight from previous row
+	if activePopupRow then
+		local hs = activePopupRow:FindFirstChild("PopupHighlight")
+		if hs then hs:Destroy() end
+		activePopupRow = nil
+	end
+end
+
+openPlayerActionPopup = function(targetPlayer, anchorRow)
+	-- Close any existing popup first
+	closePlayerActionPopup()
+
+	if not targetPlayer or not anchorRow or not anchorRow.Parent then return end
+
+	activePopupRow = anchorRow
+
+	-- Subtle highlight on the selected row
+	local highlight = Instance.new("Frame")
+	highlight.Name                 = "PopupHighlight"
+	highlight.Size                 = UDim2.new(1, 0, 1, 0)
+	highlight.BackgroundColor3     = GOLD
+	highlight.BackgroundTransparency = 0.88
+	highlight.BorderSizePixel      = 0
+	highlight.ZIndex               = 0
+	highlight.Parent               = anchorRow
+	Instance.new("UICorner", highlight).CornerRadius = UDim.new(0, px(6))
+
+	-- Popup container – anchored to the right side of the row
+	local popup = Instance.new("Frame")
+	popup.Name                 = "PlayerActionPopup"
+	popup.Size                 = UDim2.new(0, px(180), 0, px(100))
+	popup.BackgroundColor3     = NAVY
+	popup.BackgroundTransparency = 0.02
+	popup.BorderSizePixel      = 0
+	popup.ZIndex               = 50
+	popup.ClipsDescendants     = true
+	popup.Parent               = screenGui -- parent to screenGui for absolute positioning
+	Instance.new("UICorner", popup).CornerRadius = UDim.new(0, px(10))
+
+	do
+		local s = Instance.new("UIStroke")
+		s.Color           = GOLD_DIM
+		s.Thickness       = 1.5
+		s.Transparency    = 0.15
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		s.Parent          = popup
 	end
 
-	local ok, profileData = pcall(function()
-		return remote:InvokeServer()
+	-- Position popup near the row (absolute screen coordinates)
+	local function positionPopup()
+		local rowAbsPos  = anchorRow.AbsolutePosition
+		local rowAbsSize = anchorRow.AbsoluteSize
+		local cam = workspace.CurrentCamera
+		local screenW = cam and cam.ViewportSize.X or 1920
+		local screenH = cam and cam.ViewportSize.Y or 1080
+		local popW = popup.AbsoluteSize.X
+		local popH = popup.AbsoluteSize.Y
+
+		-- Default: to the right of the row, vertically centered
+		local posX = rowAbsPos.X + rowAbsSize.X + px(6)
+		local posY = rowAbsPos.Y + (rowAbsSize.Y / 2) - (popH / 2)
+
+		-- Clamp to screen
+		if posX + popW > screenW then
+			posX = rowAbsPos.X - popW - px(6) -- flip to left
+		end
+		posY = math.clamp(posY, px(4), screenH - popH - px(4))
+
+		popup.Position = UDim2.new(0, posX, 0, posY)
+	end
+
+	-- Position after a frame so AbsoluteSize is available
+	task.defer(positionPopup)
+
+	-- Layout inside popup
+	local popupLayout = Instance.new("UIListLayout")
+	popupLayout.SortOrder         = Enum.SortOrder.LayoutOrder
+	popupLayout.Padding           = UDim.new(0, px(4))
+	popupLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	popupLayout.Parent            = popup
+
+	local popupPad = Instance.new("UIPadding")
+	popupPad.PaddingTop    = UDim.new(0, px(8))
+	popupPad.PaddingBottom = UDim.new(0, px(8))
+	popupPad.PaddingLeft   = UDim.new(0, px(8))
+	popupPad.PaddingRight  = UDim.new(0, px(8))
+	popupPad.Parent        = popup
+
+	-- Helper for popup buttons
+	local BTN_DEFAULT = Color3.fromRGB(26, 30, 48)
+	local BTN_HOVER   = Color3.fromRGB(42, 38, 22)
+	local fi = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+	local function makePopupButton(text, order, callback)
+		local btn = Instance.new("TextButton")
+		btn.Name                 = text .. "Btn"
+		btn.Size                 = UDim2.new(1, 0, 0, px(36))
+		btn.BackgroundColor3     = BTN_DEFAULT
+		btn.BackgroundTransparency = 0.05
+		btn.Font                 = Enum.Font.GothamBold
+		btn.TextSize             = px(18)
+		btn.Text                 = text
+		btn.TextColor3           = WHITE
+		btn.AutoButtonColor      = false
+		btn.BorderSizePixel      = 0
+		btn.LayoutOrder          = order
+		btn.ZIndex               = 51
+		btn.Parent               = popup
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, px(6))
+
+		btn.MouseEnter:Connect(function()
+			TweenService:Create(btn, fi, {BackgroundColor3 = BTN_HOVER, TextColor3 = GOLD}):Play()
+		end)
+		btn.MouseLeave:Connect(function()
+			TweenService:Create(btn, fi, {BackgroundColor3 = BTN_DEFAULT, TextColor3 = WHITE}):Play()
+		end)
+		btn.MouseButton1Click:Connect(function()
+			closePlayerActionPopup()
+			if callback then callback() end
+		end)
+		return btn
+	end
+
+	-- "Stats" button
+	makePopupButton("Stats", 1, function()
+		selectedCareerTarget = targetPlayer
+		selectTab("Career")
 	end)
+
+	-- "Add Friend" button
+	makePopupButton("Add Friend", 2, function()
+		if targetPlayer == player then return end -- can't friend yourself
+		pcall(function()
+			StarterGui:SetCore("PromptSendFriendRequest", targetPlayer)
+		end)
+	end)
+
+	activePopup = popup
+	popupJustOpened = true
+end
+
+-- Close popup when clicking outside (modal overlay or any non-popup area)
+modalOverlay.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+		closePlayerActionPopup()
+	end
+end)
+
+-- Close popup on any click outside popup via InputEnded for reliable ordering
+UserInputService.InputEnded:Connect(function(input)
+	if not activePopup then return end
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1
+		and input.UserInputType ~= Enum.UserInputType.Touch then
+		return
+	end
+	if popupJustOpened then
+		popupJustOpened = false
+		return
+	end
+	-- Check if click was inside the popup
+	local pos = input.Position
+	if activePopup and activePopup.Parent then
+		local apPos  = activePopup.AbsolutePosition
+		local apSize = activePopup.AbsoluteSize
+		if pos.X >= apPos.X and pos.X <= apPos.X + apSize.X
+			and pos.Y >= apPos.Y and pos.Y <= apPos.Y + apSize.Y then
+			return -- clicked inside popup, don't close
+		end
+	end
+	closePlayerActionPopup()
+end)
+
+--- Build or update the Career tab content
+function populateCareerTab()
+	-- Determine which player's stats to show
+	local targetPlayer = selectedCareerTarget or player
+	local isViewingSelf = (targetPlayer == player)
+
+	-- Fetch stats from server
+	local ok, profileData
+	if isViewingSelf then
+		local remote = getCareerStatsRemote()
+		if not remote then
+			warn("[TeamStatsUI] GetCareerStats remote not found")
+			return
+		end
+		ok, profileData = pcall(function()
+			return remote:InvokeServer()
+		end)
+	else
+		local remote = getPublicCareerStatsRemote()
+		if not remote then
+			warn("[TeamStatsUI] GetPublicCareerStats remote not found")
+			return
+		end
+		ok, profileData = pcall(function()
+			return remote:InvokeServer(targetPlayer.UserId)
+		end)
+	end
+
 	if not ok or type(profileData) ~= "table" then
+		-- If fetching another player failed (e.g. they left), fall back to self
+		if not isViewingSelf then
+			warn("[TeamStatsUI] Failed to fetch stats for", targetPlayer.Name, "- reverting to self")
+			selectedCareerTarget = nil
+			populateCareerTab()
+			return
+		end
 		warn("[TeamStatsUI] Failed to fetch career stats:", tostring(profileData))
 		return
 	end
+
+	-- Determine display identity
+	local viewDisplayName = isViewingSelf and player.DisplayName or (profileData._DisplayName or targetPlayer.DisplayName)
+	local viewUsername    = isViewingSelf and player.Name or (profileData._Username or targetPlayer.Name)
+	local viewUserId      = isViewingSelf and player.UserId or (profileData._UserId or targetPlayer.UserId)
 
 	-- Clear previous content if rebuilding
 	for _, child in ipairs(careerContainer:GetChildren()) do
@@ -1133,11 +1415,11 @@ function populateCareerTab()
 		as.Parent       = avatarFrame
 	end
 
-	-- Load avatar thumbnail
+	-- Load avatar thumbnail (for target player)
 	task.spawn(function()
 		local okA, url = pcall(function()
 			return Players:GetUserThumbnailAsync(
-				player.UserId,
+				viewUserId,
 				Enum.ThumbnailType.HeadShot,
 				Enum.ThumbnailSize.Size100x100
 			)
@@ -1159,7 +1441,7 @@ function populateCareerTab()
 	displayNameLabel.TextSize             = px(30)
 	displayNameLabel.TextColor3           = GOLD
 	displayNameLabel.TextXAlignment       = Enum.TextXAlignment.Left
-	displayNameLabel.Text                 = player.DisplayName
+	displayNameLabel.Text                 = viewDisplayName
 	displayNameLabel.TextTruncate         = Enum.TextTruncate.AtEnd
 	displayNameLabel.Parent               = profileFrame
 
@@ -1172,14 +1454,22 @@ function populateCareerTab()
 	usernameLabel.TextSize             = px(19)
 	usernameLabel.TextColor3           = GRAY
 	usernameLabel.TextXAlignment       = Enum.TextXAlignment.Left
-	usernameLabel.Text                 = "@" .. player.Name
+	usernameLabel.Text                 = "@" .. viewUsername
 	usernameLabel.Parent               = profileFrame
 
 	-- Level / XP display
-	local playerLevel = profileData._Level or player:GetAttribute("Level") or 1
-	local playerXP    = profileData._XP or player:GetAttribute("XP") or 0
-	local xpToNext    = profileData._XPToNext or player:GetAttribute("XPToNext") or 100
-	local totalXP     = profileData._TotalXP or profileData.TotalXP or 0
+	local playerLevel, playerXP, xpToNext, totalXP
+	if isViewingSelf then
+		playerLevel = profileData._Level or player:GetAttribute("Level") or 1
+		playerXP    = profileData._XP or player:GetAttribute("XP") or 0
+		xpToNext    = profileData._XPToNext or player:GetAttribute("XPToNext") or 100
+		totalXP     = profileData._TotalXP or profileData.TotalXP or 0
+	else
+		playerLevel = profileData._Level or 1
+		playerXP    = profileData._XP or 0
+		xpToNext    = profileData._XPToNext or 100
+		totalXP     = profileData._TotalXP or profileData.TotalXP or 0
+	end
 
 	local levelLabel = Instance.new("TextLabel")
 	levelLabel.Name                 = "Level"
@@ -1242,6 +1532,82 @@ function populateCareerTab()
 	winRateLabel.Text                 = winRate .. "% WIN RATE"
 	winRateLabel.Parent               = profileFrame
 	Instance.new("UICorner", winRateLabel).CornerRadius = UDim.new(0, px(6))
+
+	---------------------------------------------------------------------------
+	-- "Viewing: PlayerName" indicator + Back to My Stats (shown when viewing another player)
+	---------------------------------------------------------------------------
+	if not isViewingSelf then
+		local viewingBar = Instance.new("Frame")
+		viewingBar.Name                 = "ViewingBar"
+		viewingBar.Size                 = UDim2.new(1, 0, 0, px(40))
+		viewingBar.BackgroundColor3     = Color3.fromRGB(28, 22, 14)
+		viewingBar.BackgroundTransparency = 0.15
+		viewingBar.LayoutOrder          = nextOrder()
+		viewingBar.Parent               = careerContainer
+		Instance.new("UICorner", viewingBar).CornerRadius = UDim.new(0, px(8))
+		do
+			local vs = Instance.new("UIStroke")
+			vs.Color           = GOLD_DIM
+			vs.Thickness       = 1
+			vs.Transparency    = 0.4
+			vs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			vs.Parent          = viewingBar
+		end
+
+		local viewingBarPad = Instance.new("UIPadding")
+		viewingBarPad.PaddingLeft  = UDim.new(0, px(14))
+		viewingBarPad.PaddingRight = UDim.new(0, px(8))
+		viewingBarPad.Parent       = viewingBar
+
+		local viewingLabel = Instance.new("TextLabel")
+		viewingLabel.Name                 = "ViewingLabel"
+		viewingLabel.Size                 = UDim2.new(1, -px(140), 1, 0)
+		viewingLabel.Position             = UDim2.new(0, 0, 0, 0)
+		viewingLabel.BackgroundTransparency = 1
+		viewingLabel.Font                 = Enum.Font.GothamBold
+		viewingLabel.TextSize             = px(18)
+		viewingLabel.TextColor3           = GOLD
+		viewingLabel.TextXAlignment       = Enum.TextXAlignment.Left
+		viewingLabel.TextTruncate         = Enum.TextTruncate.AtEnd
+		viewingLabel.Text                 = "Viewing: " .. viewDisplayName
+		viewingLabel.Parent               = viewingBar
+
+		local backBtn = Instance.new("TextButton")
+		backBtn.Name                 = "BackToMyStats"
+		backBtn.Size                 = UDim2.new(0, px(130), 0, px(28))
+		backBtn.Position             = UDim2.new(1, -px(130), 0.5, 0)
+		backBtn.AnchorPoint          = Vector2.new(0, 0.5)
+		backBtn.BackgroundColor3     = Color3.fromRGB(40, 18, 18)
+		backBtn.BackgroundTransparency = 0.1
+		backBtn.Font                 = Enum.Font.GothamBold
+		backBtn.TextSize             = px(15)
+		backBtn.Text                 = "Back to My Stats"
+		backBtn.TextColor3           = WHITE
+		backBtn.AutoButtonColor      = false
+		backBtn.BorderSizePixel      = 0
+		backBtn.Parent               = viewingBar
+		Instance.new("UICorner", backBtn).CornerRadius = UDim.new(0, px(6))
+		do
+			local bs = Instance.new("UIStroke")
+			bs.Color           = RED_ACCENT
+			bs.Thickness       = 1
+			bs.Transparency    = 0.3
+			bs.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			bs.Parent          = backBtn
+		end
+
+		local bbFi = TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		backBtn.MouseEnter:Connect(function()
+			TweenService:Create(backBtn, bbFi, {BackgroundColor3 = Color3.fromRGB(60, 25, 25), TextColor3 = GOLD}):Play()
+		end)
+		backBtn.MouseLeave:Connect(function()
+			TweenService:Create(backBtn, bbFi, {BackgroundColor3 = Color3.fromRGB(40, 18, 18), TextColor3 = WHITE}):Play()
+		end)
+		backBtn.MouseButton1Click:Connect(function()
+			selectedCareerTarget = nil
+			populateCareerTab()
+		end)
+	end
 
 	---------------------------------------------------------------------------
 	-- Stat Section Builder
@@ -1411,6 +1777,7 @@ local function show()
 	if isVisible then return end
 	print("[TeamStatsUI] show() called")
 	isVisible = true
+	closePlayerActionPopup()
 	-- Default to Team Stats tab on open
 	activeTab = "TeamStats"
 	teamStatsContainer.Visible = true
@@ -1433,6 +1800,7 @@ local function hide()
 	print("[TeamStatsUI] hide() called (animated)")
 	isVisible = false
 	collapseTeamPicker()
+	closePlayerActionPopup()
 
 	local tw = TweenService:Create(panel, TWEEN_OUT, { Position = UDim2.new(0.5, 0, -0.35, 0) })
 	tw:Play()
@@ -1461,6 +1829,7 @@ local function hideInstant(sameGroup, isSwitching)
 	isVisible = false
 	isPinned  = false
 	collapseTeamPicker()
+	closePlayerActionPopup()
 	panel.Visible = false
 
 	if isSwitching then

@@ -65,6 +65,50 @@ getCareerStatsRF.OnServerInvoke = function(player)
 end
 
 --------------------------------------------------------------------------------
+-- GetPublicCareerStats – lets a client request another player's public profile
+--------------------------------------------------------------------------------
+local getPublicCareerStatsRF = Instance.new("RemoteFunction")
+getPublicCareerStatsRF.Name = "GetPublicCareerStats"
+getPublicCareerStatsRF.Parent = remotesFolder
+
+getPublicCareerStatsRF.OnServerInvoke = function(requestingPlayer, targetUserId)
+    if not requestingPlayer or not requestingPlayer:IsA("Player") then return nil end
+    if type(targetUserId) ~= "number" then return nil end
+
+    -- Find the target player in the current server
+    local targetPlayer = Players:GetPlayerByUserId(targetUserId)
+    if not targetPlayer then return nil end
+
+    local stats = CareerStatsService:GetCareerStats(targetPlayer)
+    if not stats then return nil end
+
+    -- Enrich with live XP/Level data (same as self-view)
+    local xpData
+    if XPModule and XPModule.GetPlayerData then
+        pcall(function() xpData = XPModule.GetPlayerData(targetPlayer) end)
+    end
+    if xpData then
+        stats._Level = xpData.Level or 1
+        stats._XP = xpData.XP or 0
+        stats._TotalXP = xpData.TotalXP or 0
+        local XPFormula
+        pcall(function()
+            XPFormula = require(ReplicatedStorage:WaitForChild("XPFormula", 5))
+        end)
+        if XPFormula and XPFormula.GetXPRequiredForLevel then
+            stats._XPToNext = XPFormula.GetXPRequiredForLevel(xpData.Level or 1)
+        end
+    end
+
+    -- Attach display identity so the client knows who it's viewing
+    stats._DisplayName = targetPlayer.DisplayName
+    stats._Username    = targetPlayer.Name
+    stats._UserId      = targetPlayer.UserId
+
+    return stats
+end
+
+--------------------------------------------------------------------------------
 -- Player lifecycle
 --------------------------------------------------------------------------------
 local joinTimes = {}  -- [Player] -> os.clock() when they joined
