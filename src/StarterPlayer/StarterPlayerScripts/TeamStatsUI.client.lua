@@ -936,7 +936,8 @@ local function createPlayerRow(plr, teamName, order)
 		TweenService:Create(row, hoverFi, {BackgroundColor3 = rowHoverBG}):Play()
 	end)
 	clickOverlay.MouseButton1Click:Connect(function()
-		openPlayerActionPopup(plr, row)
+		local mousePos = UserInputService:GetMouseLocation()
+		openPlayerActionPopup(plr, row, mousePos)
 	end)
 
 	return row, cells
@@ -1146,7 +1147,7 @@ closePlayerActionPopup = function()
 	end
 end
 
-openPlayerActionPopup = function(targetPlayer, anchorRow)
+openPlayerActionPopup = function(targetPlayer, anchorRow, clickPos)
 	-- Close any existing popup first
 	closePlayerActionPopup()
 
@@ -1186,25 +1187,43 @@ openPlayerActionPopup = function(targetPlayer, anchorRow)
 		s.Parent          = popup
 	end
 
-	-- Position popup near the row (absolute screen coordinates)
+	-- Position popup near the actual mouse click position
 	local function positionPopup()
-		local rowAbsPos  = anchorRow.AbsolutePosition
-		local rowAbsSize = anchorRow.AbsoluteSize
-		local cam = workspace.CurrentCamera
-		local screenW = cam and cam.ViewportSize.X or 1920
-		local screenH = cam and cam.ViewportSize.Y or 1080
 		local popW = popup.AbsoluteSize.X
 		local popH = popup.AbsoluteSize.Y
 
-		-- Default: to the right of the row, vertically centered
-		local posX = rowAbsPos.X + rowAbsSize.X + px(6)
-		local posY = rowAbsPos.Y + (rowAbsSize.Y / 2) - (popH / 2)
+		-- Stats panel bounds for clamping
+		local panelPos  = panel.AbsolutePosition
+		local panelSize = panel.AbsoluteSize
+		local panelL = panelPos.X
+		local panelT = panelPos.Y
+		local panelR = panelL + panelSize.X
+		local panelB = panelT + panelSize.Y
 
-		-- Clamp to screen
-		if posX + popW > screenW then
-			posX = rowAbsPos.X - popW - px(6) -- flip to left
+		-- Use real click position; fall back to row center if unavailable
+		local cx, cy
+		if clickPos then
+			cx = clickPos.X
+			cy = clickPos.Y
+		else
+			local rp = anchorRow.AbsolutePosition
+			local rs = anchorRow.AbsoluteSize
+			cx = rp.X + rs.X * 0.25
+			cy = rp.Y + rs.Y / 2
 		end
-		posY = math.clamp(posY, px(4), screenH - popH - px(4))
+
+		-- Center popup horizontally on click X, place above click Y
+		local posX = cx - popW / 2
+		local posY = cy - popH - px(8)
+
+		-- If not enough room above the click, place below instead
+		if posY < panelT + px(4) then
+			posY = cy + px(8)
+		end
+
+		-- Clamp within the Stats panel bounds
+		posX = math.clamp(posX, panelL + px(4), panelR - popW - px(4))
+		posY = math.clamp(posY, panelT + px(4), panelB - popH - px(4))
 
 		popup.Position = UDim2.new(0, posX, 0, posY)
 	end

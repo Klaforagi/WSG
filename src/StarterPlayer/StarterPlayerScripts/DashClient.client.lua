@@ -450,16 +450,10 @@ end
 --------------------------------------------------------------------------------
 -- VISUAL EFFECTS
 --------------------------------------------------------------------------------
-local function getEffectColorForPlayer(targetPlayer)
-    local team = targetPlayer and targetPlayer.Team
-    if team then
-        if team.Name == "Blue" then
-            return Color3.fromRGB(100, 160, 255)
-        elseif team.Name == "Red" then
-            return Color3.fromRGB(255, 100, 100)
-        end
-    end
-    return DashConfig.DefaultEffectColor
+local function getEffectColorForPlayer(_targetPlayer)
+    -- Always return the default white trail color; team color no longer affects dash trails.
+    -- Equipped cosmetic color is provided by the server via PlayDashVFX RGB args.
+    return DashConfig.DefaultEffectColor  -- white (255,255,255)
 end
 
 local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColorB)
@@ -470,14 +464,15 @@ local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColo
     local rootPart = char:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
 
-    -- Use custom trail color if provided by server, otherwise fall back to team color
+    -- Use the trail color sent by the server (always provided now).
+    -- Fall back to white if somehow missing.
     local color
     if trailColorR and trailColorG and trailColorB then
         color = Color3.fromRGB(trailColorR, trailColorG, trailColorB)
         log("Using equipped trail color:", trailColorR, trailColorG, trailColorB)
     else
-        color = getEffectColorForPlayer(targetPlayer)
-        log("Using default/team trail color")
+        color = DashConfig.DefaultEffectColor -- white fallback
+        log("No trail color from server – using white fallback")
     end
     local duration = DashConfig.Duration
 

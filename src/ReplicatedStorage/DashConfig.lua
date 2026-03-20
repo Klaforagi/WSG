@@ -26,7 +26,10 @@ DashConfig.GhostFadeDuration = 0.35 -- seconds for afterimage to vanish
 -- Animation (leave empty string to skip; set an rbxassetid to play)
 DashConfig.AnimationId  = ""
 
--- Default effect color (used when team color is unavailable)
-DashConfig.DefaultEffectColor = Color3.fromRGB(180, 220, 255)
+-- Default effect color (white – used when no cosmetic trail is equipped)
+DashConfig.DefaultEffectColor = Color3.fromRGB(255, 255, 255)
+
+-- The EffectDefs Id that every player starts with
+DashConfig.DefaultTrailId = "DefaultTrail"
 
 return DashConfig

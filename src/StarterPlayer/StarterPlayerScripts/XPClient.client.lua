@@ -199,9 +199,9 @@ local function lighterColor(c, amt)
 end
 
 local function setBarTint(color)
-    if not color then color = COLOR_BAR_STROKE end
-    local activeFillColor = COLOR_FILL_LEFT:Lerp(Color3.new(0,0,0), 0.12)
-    local light = COLOR_FILL_RIGHT
+    if not color then color = COLOR_FILL_LEFT end
+    local activeFillColor = color:Lerp(Color3.new(0,0,0), 0.12)
+    local light = lighterColor(color, 0.27)
     fill.BackgroundColor3 = activeFillColor
     gradient.Color = ColorSequence.new(activeFillColor, light)
     -- keep numeric labels and frame in a consistent XP palette

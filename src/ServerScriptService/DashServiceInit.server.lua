@@ -105,18 +105,28 @@ requestDash.OnServerEvent:Connect(function(player)
 
         -- Read the equipped trail from player attribute (set by EffectsService)
         local equippedId = player:GetAttribute("EquippedDashTrail")
-        local trailColorR, trailColorG, trailColorB = nil, nil, nil
-        if equippedId and EffectDefs then
+        dprint("raw EquippedDashTrail attribute for", player.Name, ":", equippedId or "NIL")
+
+        -- Fallback to DefaultTrail if attribute is missing/blank
+        if not equippedId or equippedId == "" then
+            equippedId = "DefaultTrail"
+            dprint("no equipped trail found, falling back to DefaultTrail")
+        end
+
+        -- Resolve color from EffectDefs
+        local trailColorR, trailColorG, trailColorB = 255, 255, 255 -- white fallback
+        if EffectDefs then
             local def = EffectDefs.GetById(equippedId)
             if def and def.Color then
                 trailColorR = math.floor(def.Color.R * 255)
                 trailColorG = math.floor(def.Color.G * 255)
                 trailColorB = math.floor(def.Color.B * 255)
-                dprint("Using equipped trail color:", equippedId, trailColorR, trailColorG, trailColorB)
+            else
+                dprint("unknown trail id", equippedId, "– using white")
             end
         end
 
-        dprint("broadcasting dash VFX for", player.Name, "trail:", equippedId or "default")
+        dprint("broadcasting dash VFX for", player.Name, "trail:", equippedId, "color:", trailColorR, trailColorG, trailColorB)
         playDashVFX:FireAllClients(player, trailColorR, trailColorG, trailColorB)
     else
         dprint("dash rejected for", player.Name, "reason=", reason)
