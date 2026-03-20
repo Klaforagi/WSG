@@ -94,6 +94,14 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
     end
+    -- Apply melee upgrade multiplier (PvP-capped / PvE-uncapped)
+    if _G.GetMeleeDamageMultiplier then
+        local isPvP = (victimPlayer ~= nil)
+        local mult = _G.GetMeleeDamageMultiplier(player, isPvP)
+        if mult > 1 then
+            damage = damage * mult
+        end
+    end
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
@@ -353,14 +361,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
     -- resolve config
     local cfg = getServerMeleeCfg(toolName)
     local damage    = cfg.damage or 30
-    -- Apply melee weapon upgrade multiplier (from UpgradeServiceInit)
-    if _G.GetMeleeDamageMultiplier then
-        local mult = _G.GetMeleeDamageMultiplier(player)
-        damage = damage * mult
-        if mult > 1 then
-            print(("[ToolMeleeSetup] Melee upgrade multiplier %.3fx applied → damage %.1f"):format(mult, damage))
-        end
-    end
+    -- Melee upgrade multiplier is applied at hit time in applyMeleeDamage
+    -- so PvP vs PvE targets get the correct (capped vs uncapped) scaling.
     local cd        = cfg.cd or 0.5
     local knockback = cfg.knockback or 0
 

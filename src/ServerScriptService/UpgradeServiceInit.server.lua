@@ -122,18 +122,27 @@ end)
 --------------------------------------------------------------------------------
 -- INTEGRATION: Expose weapon damage multipliers via _G
 -- ToolGunSetup and ToolMeleeSetup read these to apply the upgrade bonus.
+-- Each function accepts an optional isPvP flag to return the capped PvP
+-- multiplier or the uncapped PvE multiplier.
 --------------------------------------------------------------------------------
 _G.UpgradeService = UpgradeService
 
---- Convenience helpers for weapon scripts
-_G.GetMeleeDamageMultiplier = function(player)
+--- Melee damage multiplier (isPvP = true → capped, false/nil → uncapped PvE)
+_G.GetMeleeDamageMultiplier = function(player, isPvP)
 	if not player then return 1 end
-	return UpgradeService:GetMeleeMultiplier(player)
+	if isPvP then
+		return UpgradeService:GetMeleePvPMultiplier(player)
+	end
+	return UpgradeService:GetMeleePvEMultiplier(player)
 end
 
-_G.GetRangedDamageMultiplier = function(player)
+--- Ranged damage multiplier (isPvP = true → capped, false/nil → uncapped PvE)
+_G.GetRangedDamageMultiplier = function(player, isPvP)
 	if not player then return 1 end
-	return UpgradeService:GetRangedMultiplier(player)
+	if isPvP then
+		return UpgradeService:GetRangedPvPMultiplier(player)
+	end
+	return UpgradeService:GetRangedPvEMultiplier(player)
 end
 
 print("[UpgradeServiceInit] Weapon upgrade system initialized")

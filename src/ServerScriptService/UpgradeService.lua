@@ -22,7 +22,7 @@ local DataStoreService    = game:GetService("DataStoreService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local DATASTORE_NAME = "Upgrades_v2"   -- new key to avoid collisions with old system
+local DATASTORE_NAME = "Upgrades_v3"   -- bumped to reset all upgrade progress for testing
 local RETRIES        = 3
 local RETRY_DELAY    = 0.5
 
@@ -231,21 +231,53 @@ function UpgradeService:GetAllLevels(player)
 	return copy
 end
 
---- Returns the damage multiplier for melee weapons.
---- e.g. level 3 → 1.015
+--- Returns the damage multiplier for melee weapons (PvE, uncapped).
+--- e.g. level 10 → 1.30
 function UpgradeService:GetMeleeMultiplier(player)
 	local config = getUpgradeConfig()
 	if not config then return 1 end
 	local level = self:GetLevel(player, config.MELEE)
-	return config.GetMultiplier(level)
+	return config.GetPvEMultiplier(level, config.MELEE)
 end
 
---- Returns the damage multiplier for ranged weapons.
+--- Returns the damage multiplier for ranged weapons (PvE, uncapped).
 function UpgradeService:GetRangedMultiplier(player)
 	local config = getUpgradeConfig()
 	if not config then return 1 end
 	local level = self:GetLevel(player, config.RANGED)
-	return config.GetMultiplier(level)
+	return config.GetPvEMultiplier(level, config.RANGED)
+end
+
+--- PvP melee multiplier (capped).
+function UpgradeService:GetMeleePvPMultiplier(player)
+	local config = getUpgradeConfig()
+	if not config then return 1 end
+	local level = self:GetLevel(player, config.MELEE)
+	return config.GetPvPMultiplier(level, config.MELEE)
+end
+
+--- PvE melee multiplier (uncapped).
+function UpgradeService:GetMeleePvEMultiplier(player)
+	local config = getUpgradeConfig()
+	if not config then return 1 end
+	local level = self:GetLevel(player, config.MELEE)
+	return config.GetPvEMultiplier(level, config.MELEE)
+end
+
+--- PvP ranged multiplier (capped).
+function UpgradeService:GetRangedPvPMultiplier(player)
+	local config = getUpgradeConfig()
+	if not config then return 1 end
+	local level = self:GetLevel(player, config.RANGED)
+	return config.GetPvPMultiplier(level, config.RANGED)
+end
+
+--- PvE ranged multiplier (uncapped).
+function UpgradeService:GetRangedPvEMultiplier(player)
+	local config = getUpgradeConfig()
+	if not config then return 1 end
+	local level = self:GetLevel(player, config.RANGED)
+	return config.GetPvEMultiplier(level, config.RANGED)
 end
 
 --------------------------------------------------------------------------------

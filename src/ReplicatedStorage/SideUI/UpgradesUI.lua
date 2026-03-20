@@ -254,7 +254,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 	subHeader.Name = "SubHeader"
 	subHeader.BackgroundTransparency = 1
 	subHeader.Font = Enum.Font.GothamMedium
-	subHeader.Text = "Upgrade your weapons for permanent damage increases."
+	subHeader.Text = "Upgrade your weapons for permanent power increases."
 	subHeader.TextColor3 = DIM_TEXT
 	subHeader.TextSize = math.max(11, math.floor(px(12)))
 	subHeader.TextXAlignment = Enum.TextXAlignment.Left
@@ -550,7 +550,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		bonusLabel.TextXAlignment = Enum.TextXAlignment.Center
 		bonusLabel.Size = UDim2.new(1, 0, 0, px(16))
 		bonusLabel.Position = UDim2.new(0, 0, infoY, px(88))
-		bonusLabel.Text = UpgradeConfig.GetBonusText(currentLevel)
+		bonusLabel.Text = (currentLevel == 0) and UpgradeConfig.GetBonusText(currentLevel, upgradeId) or ("Bonus: " .. UpgradeConfig.GetBonusText(currentLevel, upgradeId))
 		bonusLabel.ZIndex = 10
 		bonusLabel.Parent = card
 
@@ -645,12 +645,13 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		-----------------------------------------------------------------------
 		local function updateCard(level)
 			levelLabel.Text  = "Weapon Level: " .. level
-			bonusLabel.Text  = UpgradeConfig.GetBonusText(level)
+			local bonusTxt = UpgradeConfig.GetBonusText(level, upgradeId)
+			bonusLabel.Text  = (level == 0) and bonusTxt or ("Bonus: " .. bonusTxt)
 			local cost       = UpgradeConfig.GetCost(level)
 			priceLabel.Text  = tostring(cost)
 
 			print(("[UpgradesUI] Card '%s' updated: level=%d, bonus=%s, nextCost=%d"):format(
-				upgradeId, level, UpgradeConfig.GetBonusText(level), cost))
+				upgradeId, level, UpgradeConfig.GetBonusText(level, upgradeId), cost))
 		end
 
 		cardUpdaters[upgradeId] = { updateCard = updateCard, btn = btn }
