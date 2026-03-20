@@ -858,6 +858,7 @@ local TWEEN_OUT = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirectio
 
 local function show()
 	if isVisible then return end
+	print("[TeamStatsUI] show() called")
 	isVisible = true
 	collapseTeamPicker()
 	refreshTeamButtons()
@@ -873,6 +874,7 @@ end
 
 local function hide()
 	if not isVisible then return end
+	print("[TeamStatsUI] hide() called (animated)")
 	isVisible = false
 	collapseTeamPicker()
 
@@ -882,22 +884,48 @@ local function hide()
 		if not isVisible then
 			panel.Visible  = false
 			modalOverlay.Visible = false
+			print("[TeamStatsUI] hide tween completed: panel+overlay hidden")
 		end
 	end)
 end
 
 ---------------------------------------------------------------------------
 -- Instant hide (no animation). Used by MenuController when switching menus.
--- sameGroup: if true, another menu in the same group is opening (Team is
--- the only member of the "team" group, so this is always false in practice).
+-- sameGroup:    true when same overlay group (always false for Team).
+-- isSwitching:  true when MenuController is opening another menu right
+--               after this close.  When true we must keep our overlay
+--               alive so the screen doesn't flash before the next menu's
+--               overlay appears.
 ---------------------------------------------------------------------------
-local function hideInstant(sameGroup)
+local function hideInstant(sameGroup, isSwitching)
+	print(string.format(
+		"[TeamStatsUI] hideInstant | sameGroup=%s | isSwitching=%s",
+		tostring(sameGroup), tostring(isSwitching)))
+
 	isVisible = false
 	isPinned  = false
 	collapseTeamPicker()
-	panel.Visible  = false
-	modalOverlay.Visible = false
-	print("[TeamStatsUI] hideInstant | sameGroup=", tostring(sameGroup))
+	panel.Visible = false
+
+	if isSwitching then
+		-- Another menu is about to open. Keep our dark overlay visible
+		-- for this frame so there is no flash. The incoming menu will
+		-- bring its own overlay; we defer cleanup to the next frame so
+		-- the two overlays overlap briefly rather than leaving a gap.
+		print("[TeamStatsUI] switch-away: overlay kept alive (deferred hide)")
+		task.defer(function()
+			-- Only hide if Team is still closed (another open would have
+			-- set isVisible back to true).
+			if not isVisible then
+				modalOverlay.Visible = false
+				print("[TeamStatsUI] deferred overlay hide executed")
+			end
+		end)
+	else
+		-- True close (no menu following). Hide overlay immediately.
+		modalOverlay.Visible = false
+		print("[TeamStatsUI] full close: overlay hidden immediately")
+	end
 end
 
 ---------------------------------------------------------------------------
@@ -907,13 +935,15 @@ if MenuController then
 	MenuController.RegisterMenu("Team", {
 		group = "team",  -- own group (not modal)
 		open = function(_sameGroup)
+			print("[TeamStatsUI] open callback | sameGroup=", tostring(_sameGroup))
 			show()
 		end,
 		close = function()
+			print("[TeamStatsUI] close callback (animated)")
 			hide()
 		end,
-		closeInstant = function(sameGroup)
-			hideInstant(sameGroup)
+		closeInstant = function(sameGroup, isSwitching)
+			hideInstant(sameGroup, isSwitching)
 		end,
 		isOpen = function()
 			return isVisible

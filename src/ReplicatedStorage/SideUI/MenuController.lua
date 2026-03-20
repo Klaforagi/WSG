@@ -72,10 +72,12 @@ function MenuController.OpenMenu(name, ...)
 			if m.group and menu.group and m.group == menu.group then
 				sameGroup = true
 			end
-			-- Instant-close the other menu; pass sameGroup so same-group
-			-- menus keep their shared overlay visible during the switch.
+			-- Instant-close the other menu.
+			-- sameGroup: true when same overlay group (content swap only).
+			-- isSwitching (2nd arg): true so menus know another menu is
+			--   about to open and should NOT tear down their backdrop.
 			if m.closeInstant then
-				m.closeInstant(sameGroup)
+				m.closeInstant(sameGroup, true)
 			else
 				m.close()
 			end
@@ -89,8 +91,8 @@ function MenuController.OpenMenu(name, ...)
 	-- Debug: log transition type
 	if closingMenuName then
 		print(string.format(
-			"[MenuController] Switch: %s -> %s | sameGroup=%s | overlay stays=%s",
-			closingMenuName, name, tostring(sameGroup), tostring(sameGroup)))
+			"[MenuController] Switch: %s -> %s | sameGroup=%s | isSwitching=true",
+			closingMenuName, name, tostring(sameGroup)))
 	else
 		print(string.format("[MenuController] Fresh open: %s | no previous menu", name))
 	end
