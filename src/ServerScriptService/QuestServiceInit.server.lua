@@ -66,7 +66,11 @@ end
 
 claimQuestRF.OnServerInvoke = function(player, questId)
     if type(questId) ~= "string" then return false end
-    return QuestService:ClaimReward(player, questId)
+    local result = QuestService:ClaimReward(player, questId)
+    if result and StatService then
+        pcall(function() StatService:RegisterQuestClaimed(player) end)
+    end
+    return result
 end
 
 rerollDailyRF.OnServerInvoke = function(player, questIndex)

@@ -57,6 +57,8 @@ StatService.Actions = {
     MatchWon     = "MatchWon",         -- Was on the winning team
     DamageDealt  = "DamageDealt",      -- Combat damage dealt to any target
     CoinsEarned  = "CoinsEarned",      -- Coins earned (positive, non-quest)
+    QuestClaimed       = "QuestClaimed",       -- Quest reward claimed
+    AchievementClaimed = "AchievementClaimed", -- Achievement reward claimed
 }
 
 --------------------------------------------------------------------------------
@@ -297,6 +299,22 @@ function StatService:TrackDeaths(player)
             end)
         end
     end
+end
+
+--------------------------------------------------------------------------------
+-- Registration: Quest Claimed
+--------------------------------------------------------------------------------
+function StatService:RegisterQuestClaimed(player)
+    if not player or not player:IsA("Player") then return end
+    fireEvent(player, self.Actions.QuestClaimed, 1)
+end
+
+--------------------------------------------------------------------------------
+-- Registration: Achievement Claimed
+--------------------------------------------------------------------------------
+function StatService:RegisterAchievementClaimed(player)
+    if not player or not player:IsA("Player") then return end
+    fireEvent(player, self.Actions.AchievementClaimed, 1)
 end
 
 return StatService

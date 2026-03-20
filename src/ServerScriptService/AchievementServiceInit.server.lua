@@ -49,7 +49,11 @@ end
 
 claimAchievRF.OnServerInvoke = function(player, achievementId)
     if type(achievementId) ~= "string" then return false end
-    return AchievementService:ClaimReward(player, achievementId)
+    local result = AchievementService:ClaimReward(player, achievementId)
+    if result and StatService then
+        pcall(function() StatService:RegisterAchievementClaimed(player) end)
+    end
+    return result
 end
 
 --------------------------------------------------------------------------------
