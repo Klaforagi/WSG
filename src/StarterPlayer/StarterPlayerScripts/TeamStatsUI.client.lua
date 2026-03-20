@@ -173,7 +173,7 @@ titleLabel.Size                 = UDim2.new(1, 0, 1, 0)
 titleLabel.BackgroundTransparency = 1
 titleLabel.Font                 = Enum.Font.GothamBlack
 titleLabel.Text                 = "STATS"
-titleLabel.TextSize             = px(40)
+titleLabel.TextSize             = px(44)
 titleLabel.TextColor3           = GOLD
 titleLabel.TextXAlignment       = Enum.TextXAlignment.Center
 titleLabel.Parent               = header
@@ -280,7 +280,7 @@ local function createTabButton(name, label, layoutOrder)
 	btn.BackgroundTransparency = 0.05
 	btn.Font                 = Enum.Font.GothamBold
 	btn.Text                 = label
-	btn.TextSize             = px(18)
+	btn.TextSize             = px(20)
 	btn.TextColor3           = TAB_INACTIVE_TEXT
 	btn.AutoButtonColor      = false
 	btn.BorderSizePixel      = 0
@@ -1156,7 +1156,7 @@ function populateCareerTab()
 	displayNameLabel.Position             = UDim2.new(0, infoX, 0, px(4))
 	displayNameLabel.BackgroundTransparency = 1
 	displayNameLabel.Font                 = Enum.Font.GothamBlack
-	displayNameLabel.TextSize             = px(22)
+	displayNameLabel.TextSize             = px(24)
 	displayNameLabel.TextColor3           = GOLD
 	displayNameLabel.TextXAlignment       = Enum.TextXAlignment.Left
 	displayNameLabel.Text                 = player.DisplayName
@@ -1169,7 +1169,7 @@ function populateCareerTab()
 	usernameLabel.Position             = UDim2.new(0, infoX, 0, px(30))
 	usernameLabel.BackgroundTransparency = 1
 	usernameLabel.Font                 = Enum.Font.Gotham
-	usernameLabel.TextSize             = px(14)
+	usernameLabel.TextSize             = px(16)
 	usernameLabel.TextColor3           = GRAY
 	usernameLabel.TextXAlignment       = Enum.TextXAlignment.Left
 	usernameLabel.Text                 = "@" .. player.Name
@@ -1187,7 +1187,7 @@ function populateCareerTab()
 	levelLabel.Position             = UDim2.new(0, infoX, 0, px(52))
 	levelLabel.BackgroundTransparency = 1
 	levelLabel.Font                 = Enum.Font.GothamBold
-	levelLabel.TextSize             = px(16)
+	levelLabel.TextSize             = px(18)
 	levelLabel.TextColor3           = WHITE
 	levelLabel.TextXAlignment       = Enum.TextXAlignment.Left
 	levelLabel.Text                 = "Level " .. tostring(playerLevel)
@@ -1195,11 +1195,11 @@ function populateCareerTab()
 
 	local xpLabel = Instance.new("TextLabel")
 	xpLabel.Name                 = "XPLabel"
-	xpLabel.Size                 = UDim2.new(0.5, 0, 0, px(16))
+	xpLabel.Size                 = UDim2.new(0.5, 0, 0, px(18))
 	xpLabel.Position             = UDim2.new(0.5, 0, 0, px(54))
 	xpLabel.BackgroundTransparency = 1
 	xpLabel.Font                 = Enum.Font.Gotham
-	xpLabel.TextSize             = px(13)
+	xpLabel.TextSize             = px(15)
 	xpLabel.TextColor3           = GRAY
 	xpLabel.TextXAlignment       = Enum.TextXAlignment.Right
 	xpLabel.Text                 = formatStatNumber(playerXP) .. " / " .. formatStatNumber(xpToNext) .. " XP"
@@ -1237,7 +1237,7 @@ function populateCareerTab()
 	winRateLabel.BackgroundColor3     = Color3.fromRGB(22, 38, 34)
 	winRateLabel.BackgroundTransparency = 0.3
 	winRateLabel.Font                 = Enum.Font.GothamBold
-	winRateLabel.TextSize             = px(14)
+	winRateLabel.TextSize             = px(16)
 	winRateLabel.TextColor3           = Color3.fromRGB(35, 190, 75)
 	winRateLabel.Text                 = winRate .. "% WIN RATE"
 	winRateLabel.Parent               = profileFrame
@@ -1283,7 +1283,7 @@ function populateCareerTab()
 		headerLbl.Size                 = UDim2.new(1, 0, 0, px(28))
 		headerLbl.BackgroundTransparency = 1
 		headerLbl.Font                 = Enum.Font.GothamBold
-		headerLbl.TextSize             = px(16)
+		headerLbl.TextSize             = px(18)
 		headerLbl.TextColor3           = GOLD
 		headerLbl.TextXAlignment       = Enum.TextXAlignment.Left
 		headerLbl.Text                 = string.upper(sectionTitle)
@@ -1322,7 +1322,7 @@ function populateCareerTab()
 			nameLbl.Position             = UDim2.new(0, 0, 0, 0)
 			nameLbl.BackgroundTransparency = 1
 			nameLbl.Font                 = Enum.Font.Gotham
-			nameLbl.TextSize             = px(15)
+			nameLbl.TextSize             = px(17)
 			nameLbl.TextColor3           = WHITE
 			nameLbl.TextXAlignment       = Enum.TextXAlignment.Left
 			nameLbl.Text                 = stat.label
@@ -1342,7 +1342,7 @@ function populateCareerTab()
 			valLbl.Position             = UDim2.new(0.6, 0, 0, 0)
 			valLbl.BackgroundTransparency = 1
 			valLbl.Font                 = Enum.Font.GothamBold
-			valLbl.TextSize             = px(16)
+			valLbl.TextSize             = px(18)
 			valLbl.TextColor3           = GOLD
 			valLbl.TextXAlignment       = Enum.TextXAlignment.Right
 			valLbl.Text                 = displayValue
@@ -1393,7 +1393,7 @@ function populateCareerTab()
 	futureLbl.Size                 = UDim2.new(1, 0, 1, 0)
 	futureLbl.BackgroundTransparency = 1
 	futureLbl.Font                 = Enum.Font.Gotham
-	futureLbl.TextSize             = px(14)
+	futureLbl.TextSize             = px(16)
 	futureLbl.TextColor3           = GRAY
 	futureLbl.Text                 = "Titles & Badges coming soon..."
 	futureLbl.Parent               = futureFrame
