@@ -28,6 +28,7 @@ local EmoteUI = {}
 
 -- ── Callback: set by EmoteClient for close-after-selection ───────────────
 EmoteUI.OnSlotSelected = nil   -- function(emoteId) or nil
+EmoteUI.OnShopClicked  = nil   -- function() – called when Shop slot is clicked
 
 -- ── Shared theme ─────────────────────────────────────────────────────────
 local UITheme = nil
@@ -73,8 +74,9 @@ end
 local SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 8
 
 -- ── Wheel layout constants ───────────────────────────────────────────────
-local NUM_SLOTS   = SLOT_COUNT
-local SLICE_ANGLE = (2 * math.pi) / NUM_SLOTS
+local NUM_SLOTS       = SLOT_COUNT
+local SLICE_ANGLE     = (2 * math.pi) / NUM_SLOTS
+local SHOP_SLOT_INDEX = 5   -- bottom position reserved for "Shop" button
 
 -- ── AssetCodes for icon lookup ────────────────────────────────────────────
 local AssetCodes = nil
@@ -413,6 +415,117 @@ function EmoteUI.IsVisible(panel)
 end
 
 --------------------------------------------------------------------------------
+-- Configure the permanent Shop slot (called every render pass).
+--------------------------------------------------------------------------------
+local function setupShopSlot(wheel, centerCircle)
+    local slot = wheel:FindFirstChild("Slot_" .. SHOP_SLOT_INDEX)
+    if not slot then return end
+
+    -- Remove any stale overlays
+    local oldBtn  = slot:FindFirstChild("PlayBtn")
+    if oldBtn then oldBtn:Destroy() end
+    local oldShop = slot:FindFirstChild("ShopBtn")
+    if oldShop then oldShop:Destroy() end
+
+    -- Visual style: stands out from empty slots but matches the wheel
+    local SHOP_BG = Color3.fromRGB(22, 28, 52)
+    slot.BackgroundColor3       = SHOP_BG
+    slot.BackgroundTransparency = 0.05
+
+    local slotStroke = slot:FindFirstChildOfClass("UIStroke")
+    if slotStroke then
+        slotStroke.Color        = GOLD
+        slotStroke.Transparency = 0.1
+    end
+
+    -- Hide emote icon image
+    local iconImg = slot:FindFirstChild("IconImg")
+    if iconImg then iconImg.Visible = false end
+
+    -- "+" icon (reuses LockLabel, repositioned to upper area)
+    local lockLabel = slot:FindFirstChild("LockLabel")
+    if lockLabel then
+        lockLabel.Visible       = true
+        lockLabel.Text          = "+"
+        lockLabel.TextColor3    = GOLD
+        lockLabel.Font          = Enum.Font.GothamBlack
+        lockLabel.Position      = UDim2.new(0.5, 0, 0.34, 0)
+        lockLabel.Size          = UDim2.new(0.50, 0, 0.40, 0)
+    end
+
+    -- "Shop" label in lower portion
+    local nameLabel = slot:FindFirstChild("NameLabel")
+    if nameLabel then
+        nameLabel.Text          = "Shop"
+        nameLabel.TextColor3    = WHITE
+        nameLabel.Font          = Enum.Font.GothamBold
+        nameLabel.Position      = UDim2.new(0.5, 0, 0.74, 0)
+        nameLabel.Size          = UDim2.new(0.82, 0, 0.24, 0)
+    end
+
+    -- Click overlay
+    local shopBtn = Instance.new("TextButton")
+    shopBtn.Name                 = "ShopBtn"
+    shopBtn.Size                 = UDim2.new(1, 0, 1, 0)
+    shopBtn.BackgroundTransparency = 1
+    shopBtn.Text                 = ""
+    shopBtn.ZIndex               = 317
+    shopBtn.Parent               = slot
+
+    local shopCorner = Instance.new("UICorner")
+    shopCorner.CornerRadius = UDim.new(1, 0)
+    shopCorner.Parent       = shopBtn
+
+    shopBtn.MouseButton1Click:Connect(function()
+        print("[EmoteUI] Shop slot clicked → opening emote shop")
+        if EmoteUI.OnShopClicked then
+            EmoteUI.OnShopClicked()
+        end
+    end)
+
+    -- Hover: bright gold highlight + center text update
+    local hoverInfo = TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+    shopBtn.MouseEnter:Connect(function()
+        TweenService:Create(slot, hoverInfo, {
+            BackgroundColor3       = Color3.fromRGB(42, 48, 72),
+            BackgroundTransparency = 0,
+        }):Play()
+        if slotStroke then
+            TweenService:Create(slotStroke, hoverInfo, {
+                Color        = Color3.fromRGB(255, 225, 100),
+                Transparency = 0,
+            }):Play()
+        end
+        if centerCircle then
+            local ct = centerCircle:FindFirstChild("CenterTitle")
+            local cs = centerCircle:FindFirstChild("CenterSubtext")
+            if ct then ct.Text = "GET EMOTES" end
+            if cs then cs.Text = "Browse the shop" end
+        end
+    end)
+
+    shopBtn.MouseLeave:Connect(function()
+        TweenService:Create(slot, hoverInfo, {
+            BackgroundColor3       = SHOP_BG,
+            BackgroundTransparency = 0.05,
+        }):Play()
+        if slotStroke then
+            TweenService:Create(slotStroke, hoverInfo, {
+                Color        = GOLD,
+                Transparency = 0.1,
+            }):Play()
+        end
+        if centerCircle then
+            local ct = centerCircle:FindFirstChild("CenterTitle")
+            local cs = centerCircle:FindFirstChild("CenterSubtext")
+            if ct then ct.Text = "EMOTES" end
+            if cs then cs.Text = "Select an Emote" end
+        end
+    end)
+end
+
+--------------------------------------------------------------------------------
 -- Render equipped emotes into the radial wheel slots.
 -- emoteList: array of { Id, DisplayName, IconKey?, IconAssetId?, Slot? }
 -- Populates matching slots; all others revert to the empty placeholder.
@@ -446,6 +559,7 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
     end
 
     for i = 1, NUM_SLOTS do
+        if i == SHOP_SLOT_INDEX then continue end   -- reserved for Shop
         local slot = wheel:FindFirstChild("Slot_" .. i)
         if not slot then continue end
         local emote     = slotMap[i]
@@ -551,6 +665,9 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
         end
     end
 
+    -- Always configure the permanent Shop slot
+    setupShopSlot(wheel, centerCircle)
+
     print("[EmoteUI] equipped emotes rendered on wheel, count:", #emoteList)
 end
 
@@ -573,6 +690,7 @@ function EmoteUI.ShowEmptyState(panel)
 
     -- Reset all slots to empty state
     for i = 1, NUM_SLOTS do
+        if i == SHOP_SLOT_INDEX then continue end   -- reserved for Shop
         local slot = wheel:FindFirstChild("Slot_" .. i)
         if not slot then continue end
         slot.BackgroundColor3       = DISABLED_BG
@@ -588,6 +706,9 @@ function EmoteUI.ShowEmptyState(panel)
         local oldBtn = slot:FindFirstChild("PlayBtn")
         if oldBtn then oldBtn:Destroy() end
     end
+
+    -- Always configure the permanent Shop slot
+    setupShopSlot(wheel, centerCircle)
 
     print("[EmoteUI] empty state shown on wheel")
 end
@@ -620,6 +741,42 @@ function EmoteUI.StopCurrentEmote()
         print("[EmoteUI] StopEmote fired")
     else
         warn("[EmoteUI] StopEmote remote not found")
+    end
+end
+
+--------------------------------------------------------------------------------
+-- Open the emote shop: opens the Shop modal and switches to the Emotes tab.
+-- Falls back to a visible warning if MenuController or ShopUI is unreachable.
+-- Other scripts can also use:  _G.EmoteMenu.OpenShop()
+--------------------------------------------------------------------------------
+function EmoteUI.OpenEmoteShop()
+    print("[EmoteUI] OpenEmoteShop() entered")
+
+    -- 1. Resolve MenuController (exposed globally by SideUI.client)
+    local mc = _G.SideUI and _G.SideUI.MenuController
+    if not mc then
+        warn("[EmoteUI] OpenEmoteShop: _G.SideUI.MenuController not found")
+        return
+    end
+    print("[EmoteUI] MenuController resolved")
+
+    -- 2. Open the Shop modal via MenuController
+    mc.OpenMenu("Shop")
+    print("[EmoteUI] Shop menu opened via MenuController")
+
+    -- 3. Switch to the Emotes tab inside ShopUI
+    local sideUI  = ReplicatedStorage:FindFirstChild("SideUI")
+    local shopMod = sideUI and sideUI:FindFirstChild("ShopUI")
+    if shopMod and shopMod:IsA("ModuleScript") then
+        local ok, ShopUI = pcall(require, shopMod)
+        if ok and ShopUI and type(ShopUI.setActiveTab) == "function" then
+            ShopUI.setActiveTab("emotes")
+            print("[EmoteUI] ShopUI.setActiveTab('emotes') called successfully")
+        else
+            warn("[EmoteUI] OpenEmoteShop: ShopUI.setActiveTab not available")
+        end
+    else
+        warn("[EmoteUI] OpenEmoteShop: SideUI/ShopUI module not found")
     end
 end
 

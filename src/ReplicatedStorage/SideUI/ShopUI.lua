@@ -1864,6 +1864,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     ---------------------------------------------------------------------------
     setActiveTab("weapons")
 
+    -- Expose so external code (e.g. EmoteUI shop button) can switch tabs
+    ShopUI.setActiveTab = setActiveTab
+
     ---------------------------------------------------------------------------
     -- Dynamic root height: keep root tall enough for content (sidebar fills it)
     ---------------------------------------------------------------------------

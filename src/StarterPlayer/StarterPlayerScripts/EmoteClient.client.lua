@@ -130,14 +130,8 @@ print("[EmoteClient] emotePanel.Visible (should be false):", emotePanel and emot
 -- ── Wire the close-after-selection callback ──────────────────────────────
 -- When the player clicks a slot (or the backdrop), EmoteUI calls this.
 -- We hide the wheel instantly so the player can see the emote clearly.
-EmoteUI.OnSlotSelected = function(emoteId)
-    print("[EmoteClient] slot selected, emoteId:", tostring(emoteId), "→ closing wheel immediately")
-    EmoteUI.HideInstant(emotePanel)
-    -- Update MenuController state (tween-less: panel already hidden)
-    if MenuController then
-        pcall(function() MenuController.CloseMenu("Emote") end)
-    end
-end
+-- NOTE: OpenEmoteShop, OnSlotSelected, and OnShopClicked are wired further
+-- below (after IsEmoteMenuOpen is defined) to avoid forward-reference nils.
 
 -- ── Emote remotes ─────────────────────────────────────────────────────────
 local emoteRemotes = nil
@@ -199,6 +193,44 @@ end
 
 local function IsEmoteMenuOpen()
     return EmoteUI.IsVisible(emotePanel)
+end
+
+-- ── Wire emote-wheel callbacks (Shop slot + emote slot selection) ────────
+-- Placed here so all required locals (IsEmoteMenuOpen, etc.) are in scope.
+
+local function OpenEmoteShop()
+    print("[EmoteClient] OpenEmoteShop() called")
+    print("[EmoteClient]   EmoteUI.OpenEmoteShop:", typeof(EmoteUI.OpenEmoteShop), EmoteUI.OpenEmoteShop ~= nil)
+    -- Close emote wheel first (belt-and-suspenders; OnShopClicked already does this)
+    if IsEmoteMenuOpen() then
+        EmoteUI.HideInstant(emotePanel)
+        if MenuController then
+            pcall(function() MenuController.CloseMenu("Emote") end)
+        end
+    end
+    -- Delegate to EmoteUI which uses MenuController to open Shop → Emotes tab
+    if type(EmoteUI.OpenEmoteShop) == "function" then
+        EmoteUI.OpenEmoteShop()
+    else
+        warn("[EmoteClient] EmoteUI.OpenEmoteShop is not a function:", typeof(EmoteUI.OpenEmoteShop))
+    end
+end
+
+EmoteUI.OnSlotSelected = function(emoteId)
+    print("[EmoteClient] slot selected, emoteId:", tostring(emoteId), "→ closing wheel immediately")
+    EmoteUI.HideInstant(emotePanel)
+    if MenuController then
+        pcall(function() MenuController.CloseMenu("Emote") end)
+    end
+end
+
+EmoteUI.OnShopClicked = function()
+    print("[EmoteClient] Shop clicked → closing wheel and opening emote shop")
+    EmoteUI.HideInstant(emotePanel)
+    if MenuController then
+        pcall(function() MenuController.CloseMenu("Emote") end)
+    end
+    OpenEmoteShop()
 end
 
 local function ToggleEmoteMenu()
@@ -333,6 +365,7 @@ _G.EmoteMenu.Close     = function()
     if MenuController then MenuController.CloseMenu("Emote") else CloseEmoteMenu() end
 end
 _G.EmoteMenu.IsOpen    = IsEmoteMenuOpen
+_G.EmoteMenu.OpenShop  = OpenEmoteShop
 -- Called by Inventory UI once it has real equipped emote data:
 --   _G.EmoteMenu.RefreshEmotes({ {Id="wave", DisplayName="Wave", IconAssetId="..."}, ... })
 _G.EmoteMenu.RefreshEmotes = function(equippedList)
