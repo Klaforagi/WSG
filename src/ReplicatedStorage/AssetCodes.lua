@@ -16,6 +16,7 @@ AssetCodes.images = {
     Boosts = "rbxassetid://138146402871393",
     Trolls = "rbxassetid://4911139003",
     Team = "rbxassetid://12345678",
+    DailyReward = "rbxassetid://6034281693",  -- calendar/gift icon
 
     --WEAPON icons
     --MELEE

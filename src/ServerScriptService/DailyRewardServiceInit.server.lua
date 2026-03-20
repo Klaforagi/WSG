@@ -1,0 +1,125 @@
+--------------------------------------------------------------------------------
+-- DailyRewardServiceInit.server.lua
+-- Creates remotes and wires DailyRewardService into the game.
+-- Handles: player lifecycle, remote handlers, state push.
+-- Follows the same pattern as BoostServiceInit.server.lua.
+--------------------------------------------------------------------------------
+
+local Players             = game:GetService("Players")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+--------------------------------------------------------------------------------
+-- Require modules
+--------------------------------------------------------------------------------
+local DailyRewardService = require(ServerScriptService:WaitForChild("DailyRewardService", 10))
+
+local function ensureInstance(parent, className, name)
+    local existing = parent:FindFirstChild(name)
+    if existing and not existing:IsA(className) then
+        existing:Destroy()
+        existing = nil
+    end
+    if existing then return existing end
+
+    local instance = Instance.new(className)
+    instance.Name = name
+    instance.Parent = parent
+    return instance
+end
+
+--------------------------------------------------------------------------------
+-- Create Remotes (inside ReplicatedStorage.Remotes.DailyRewards)
+--------------------------------------------------------------------------------
+local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+if not remotesFolder then
+    remotesFolder = Instance.new("Folder")
+    remotesFolder.Name = "Remotes"
+    remotesFolder.Parent = ReplicatedStorage
+end
+
+local drFolder = ensureInstance(remotesFolder, "Folder", "DailyRewards")
+
+-- GetDailyRewardState: client requests current state snapshot
+local getStateRF = ensureInstance(drFolder, "RemoteFunction", "GetDailyRewardState")
+
+-- ClaimDailyReward: client requests to claim today's reward
+local claimRF = ensureInstance(drFolder, "RemoteFunction", "ClaimDailyReward")
+
+-- DailyRewardStateUpdated: server pushes updated state to client
+local stateUpdatedRE = ensureInstance(drFolder, "RemoteEvent", "DailyRewardStateUpdated")
+
+--------------------------------------------------------------------------------
+-- Push state to client (helper)
+--------------------------------------------------------------------------------
+local function pushState(player)
+    if not player or not player.Parent then return end
+    local state = DailyRewardService:GetState(player)
+    pcall(function()
+        stateUpdatedRE:FireClient(player, state)
+    end)
+end
+
+--------------------------------------------------------------------------------
+-- Remote handlers
+--------------------------------------------------------------------------------
+
+getStateRF.OnServerInvoke = function(player)
+    if not player then return {} end
+    return DailyRewardService:GetState(player)
+end
+
+claimRF.OnServerInvoke = function(player)
+    if not player then return false, "Invalid" end
+    local success, message = DailyRewardService:ClaimReward(player)
+    if success then
+        -- Push refreshed state after successful claim
+        task.defer(function()
+            pushState(player)
+        end)
+    end
+    -- Return the updated state along with success/message so client can
+    -- update immediately without a second round-trip
+    local updatedState = DailyRewardService:GetState(player)
+    return success, message, updatedState
+end
+
+--------------------------------------------------------------------------------
+-- Player lifecycle
+--------------------------------------------------------------------------------
+local function onPlayerAdded(player)
+    DailyRewardService:LoadForPlayer(player)
+
+    -- Small delay to let client scripts initialize before pushing auto-popup state
+    task.delay(3, function()
+        if not player or not player.Parent then return end
+        local state = DailyRewardService:GetState(player)
+        -- Only auto-push if eligible (unclaimed) and auto-popup not yet shown
+        if state.canClaimToday and state.autoPopup then
+            DailyRewardService:MarkAutoPopupShown(player)
+            pcall(function()
+                stateUpdatedRE:FireClient(player, state)
+            end)
+        end
+    end)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+
+-- Handle players already in the server (Team Test / late join)
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(function()
+        onPlayerAdded(player)
+    end)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    DailyRewardService:SaveForPlayer(player)
+    DailyRewardService:ClearPlayer(player)
+end)
+
+game:BindToClose(function()
+    DailyRewardService:SaveAll()
+end)
+
+print("[DailyRewardServiceInit] Daily Reward system initialized")
