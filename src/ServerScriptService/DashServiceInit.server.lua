@@ -23,6 +23,16 @@ local DashService = require(ServerScriptService:WaitForChild("DashService", 10))
 DashService:Init()
 
 --------------------------------------------------------------------------------
+-- EffectDefs (for resolving equipped dash trail color)
+--------------------------------------------------------------------------------
+local EffectDefs = nil
+pcall(function()
+    local sideUI = ReplicatedStorage:WaitForChild("SideUI", 10)
+    local mod = sideUI and sideUI:FindFirstChild("EffectDefs")
+    if mod and mod:IsA("ModuleScript") then EffectDefs = require(mod) end
+end)
+
+--------------------------------------------------------------------------------
 -- Ensure Remotes folder exists (matches project convention)
 --------------------------------------------------------------------------------
 local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
@@ -92,8 +102,22 @@ requestDash.OnServerEvent:Connect(function(player)
     if success then
         dprint("dash approved for", player.Name)
         dashApproved:FireClient(player)
-        dprint("broadcasting dash VFX for", player.Name)
-        playDashVFX:FireAllClients(player)
+
+        -- Read the equipped trail from player attribute (set by EffectsService)
+        local equippedId = player:GetAttribute("EquippedDashTrail")
+        local trailColorR, trailColorG, trailColorB = nil, nil, nil
+        if equippedId and EffectDefs then
+            local def = EffectDefs.GetById(equippedId)
+            if def and def.Color then
+                trailColorR = math.floor(def.Color.R * 255)
+                trailColorG = math.floor(def.Color.G * 255)
+                trailColorB = math.floor(def.Color.B * 255)
+                dprint("Using equipped trail color:", equippedId, trailColorR, trailColorG, trailColorB)
+            end
+        end
+
+        dprint("broadcasting dash VFX for", player.Name, "trail:", equippedId or "default")
+        playDashVFX:FireAllClients(player, trailColorR, trailColorG, trailColorB)
     else
         dprint("dash rejected for", player.Name, "reason=", reason)
         dashRejected:FireClient(player, reason)

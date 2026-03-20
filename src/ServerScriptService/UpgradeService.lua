@@ -1,11 +1,11 @@
 --------------------------------------------------------------------------------
--- UpgradeService.lua  –  Server-authoritative upgrade management
+-- UpgradeService.lua  –  Server-authoritative weapon upgrade management
 -- ModuleScript in ServerScriptService.
 --
--- Tracks per-player upgrade levels in memory, persists to DataStore,
--- and provides query APIs for gameplay integration.
+-- NEW SYSTEM: Two infinite upgrade paths – melee_weapon & ranged_weapon.
+-- Each level gives a small permanent damage multiplier increase.
 --
--- Public API (used by UpgradeServiceInit.server.lua):
+-- Public API:
 --   UpgradeService:Init()
 --   UpgradeService:LoadForPlayer(player)  -> table
 --   UpgradeService:SaveForPlayer(player)  -> bool
@@ -13,10 +13,8 @@
 --   UpgradeService:PurchaseUpgrade(player, upgradeId)  -> bool, string
 --   UpgradeService:GetLevel(player, upgradeId)  -> number
 --   UpgradeService:GetAllLevels(player)  -> { [upgradeId] = level }
---   UpgradeService:GetCoinMultiplier(player)  -> number (1 + bonus)
---   UpgradeService:GetQuestProgressMultiplier(player)  -> number (1 + bonus)
---   UpgradeService:GetRespawnMultiplier(player)  -> number (1 - reduction)
---   UpgradeService:GetObjectiveCoinMultiplier(player)  -> number (1 + bonus)
+--   UpgradeService:GetMeleeMultiplier(player)  -> number
+--   UpgradeService:GetRangedMultiplier(player)  -> number
 --   UpgradeService:ClearPlayer(player)
 --------------------------------------------------------------------------------
 
@@ -24,7 +22,7 @@ local DataStoreService    = game:GetService("DataStoreService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local DATASTORE_NAME = "Upgrades_v1"
+local DATASTORE_NAME = "Upgrades_v2"   -- new key to avoid collisions with old system
 local RETRIES        = 3
 local RETRY_DELAY    = 0.5
 
@@ -60,7 +58,7 @@ local function getCurrencyService()
 end
 
 --------------------------------------------------------------------------------
--- Per-player state: playerUpgrades[player] = { [upgradeId] = level }
+-- Per-player state: playerUpgrades[player] = { melee_weapon = N, ranged_weapon = N }
 --------------------------------------------------------------------------------
 local playerUpgrades = {}
 
@@ -116,21 +114,25 @@ function UpgradeService:LoadForPlayer(player)
 		warn("UpgradeService: failed to load for", tostring(player.Name), "; defaulting to empty")
 	end
 
-	-- Validate levels against config
 	local config = getUpgradeConfig()
 	local validated = {}
 	if config then
-		for _, def in ipairs(config.Upgrades) do
-			local stored = data[def.Id]
-			if type(stored) == "number" and stored >= 0 and stored <= def.MaxLevel then
-				validated[def.Id] = math.floor(stored)
+		-- Only load the two valid upgrade keys
+		for id, _ in pairs(config.ValidIds) do
+			local stored = data[id]
+			if type(stored) == "number" and stored >= 0 then
+				validated[id] = math.floor(stored)
 			else
-				validated[def.Id] = 0
+				validated[id] = 0
 			end
 		end
 	end
 
 	playerUpgrades[player] = validated
+	print(("[UpgradeService] Loaded for %s: melee=%d, ranged=%d"):format(
+		player.Name,
+		validated.melee_weapon or 0,
+		validated.ranged_weapon or 0))
 	return validated
 end
 
@@ -172,19 +174,15 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 	local config = getUpgradeConfig()
 	if not config then return false, "Config unavailable" end
 
-	local def = config.GetById(upgradeId)
-	if not def then return false, "Unknown upgrade" end
+	if not config.IsValid(upgradeId) then
+		return false, "Unknown upgrade"
+	end
 
 	local levels = playerUpgrades[player]
 	if not levels then return false, "Player data not loaded" end
 
 	local currentLevel = levels[upgradeId] or 0
-	if currentLevel >= def.MaxLevel then
-		return false, "Already maxed"
-	end
-
-	local price = def.LevelPrices[currentLevel + 1]
-	if not price then return false, "Price not found" end
+	local price = config.GetCost(currentLevel)
 
 	local cs = getCurrencyService()
 	if not cs then return false, "Currency system unavailable" end
@@ -194,13 +192,13 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 		return false, "Insufficient coins"
 	end
 
-	-- Deduct coins (pass "purchase" source to prevent upgrade multiplier from applying)
+	-- Deduct coins (pass "purchase" source to prevent boost multiplier from applying)
 	cs:AddCoins(player, -price, "purchase")
 
 	-- Increase level
 	levels[upgradeId] = currentLevel + 1
-	print(("[UpgradeService] %s upgraded '%s' to level %d"):format(
-		player.Name, upgradeId, levels[upgradeId]))
+	print(("[UpgradeService] %s upgraded '%s' to level %d (cost %d coins)"):format(
+		player.Name, upgradeId, levels[upgradeId], price))
 
 	-- Save immediately
 	task.spawn(function()
@@ -226,7 +224,6 @@ end
 function UpgradeService:GetAllLevels(player)
 	local levels = playerUpgrades[player]
 	if not levels then return {} end
-	-- Return a copy
 	local copy = {}
 	for k, v in pairs(levels) do
 		copy[k] = v
@@ -234,38 +231,21 @@ function UpgradeService:GetAllLevels(player)
 	return copy
 end
 
---- Returns the multiplier for earnable coin rewards (1 + bonus).
---- e.g. level 3 at 5% per level = 1.15
-function UpgradeService:GetCoinMultiplier(player)
-	local level = self:GetLevel(player, "coin_mastery")
+--- Returns the damage multiplier for melee weapons.
+--- e.g. level 3 → 1.015
+function UpgradeService:GetMeleeMultiplier(player)
 	local config = getUpgradeConfig()
 	if not config then return 1 end
-	return 1 + config.GetEffect("coin_mastery", level)
+	local level = self:GetLevel(player, config.MELEE)
+	return config.GetMultiplier(level)
 end
 
---- Returns the multiplier for quest progress (1 + bonus).
-function UpgradeService:GetQuestProgressMultiplier(player)
-	local level = self:GetLevel(player, "quest_mastery")
+--- Returns the damage multiplier for ranged weapons.
+function UpgradeService:GetRangedMultiplier(player)
 	local config = getUpgradeConfig()
 	if not config then return 1 end
-	return 1 + config.GetEffect("quest_mastery", level)
-end
-
---- Returns the multiplier for respawn time (1 - reduction).
---- e.g. level 3 at 5% per level = 0.85
-function UpgradeService:GetRespawnMultiplier(player)
-	local level = self:GetLevel(player, "rapid_recovery")
-	local config = getUpgradeConfig()
-	if not config then return 1 end
-	return math.max(0.5, 1 - config.GetEffect("rapid_recovery", level))
-end
-
---- Returns the multiplier for objective coin rewards (1 + bonus).
-function UpgradeService:GetObjectiveCoinMultiplier(player)
-	local level = self:GetLevel(player, "objective_specialist")
-	local config = getUpgradeConfig()
-	if not config then return 1 end
-	return 1 + config.GetEffect("objective_specialist", level)
+	local level = self:GetLevel(player, config.RANGED)
+	return config.GetMultiplier(level)
 end
 
 --------------------------------------------------------------------------------

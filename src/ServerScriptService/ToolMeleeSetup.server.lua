@@ -353,6 +353,14 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
     -- resolve config
     local cfg = getServerMeleeCfg(toolName)
     local damage    = cfg.damage or 30
+    -- Apply melee weapon upgrade multiplier (from UpgradeServiceInit)
+    if _G.GetMeleeDamageMultiplier then
+        local mult = _G.GetMeleeDamageMultiplier(player)
+        damage = damage * mult
+        if mult > 1 then
+            print(("[ToolMeleeSetup] Melee upgrade multiplier %.3fx applied → damage %.1f"):format(mult, damage))
+        end
+    end
     local cd        = cfg.cd or 0.5
     local knockback = cfg.knockback or 0
 

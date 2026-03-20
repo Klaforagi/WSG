@@ -1,10 +1,10 @@
 --------------------------------------------------------------------------------
--- UpgradesUI.lua  –  Client-side Upgrades panel
+-- UpgradesUI.lua  –  Weapon Upgrade menu (2 cards: Melee + Ranged)
 -- Place in ReplicatedStorage > SideUI alongside BoostsUI / ShopUI etc.
 -- Loaded by SideUI.client.lua via the modal window system.
 --
--- Shows purchasable permanent upgrades with level display, pricing, and
--- real-time state updates.
+-- Redesigned: two large side-by-side weapon upgrade cards with infinite
+-- levelling, auto-scaling cost, and live refresh after purchase.
 --------------------------------------------------------------------------------
 
 local Players           = game:GetService("Players")
@@ -28,37 +28,18 @@ local function px(base)
 end
 
 --------------------------------------------------------------------------------
--- Palette (sourced from shared UITheme – Team menu visual language)
+-- Palette (from shared UITheme)
 --------------------------------------------------------------------------------
 local CARD_BG       = UITheme.CARD_BG
 local CARD_STROKE   = UITheme.CARD_STROKE
-local ICON_BG       = UITheme.ICON_BG
 local GOLD          = UITheme.GOLD
+local GOLD_DIM      = UITheme.GOLD_DIM
 local WHITE         = UITheme.WHITE
 local DIM_TEXT      = UITheme.DIM_TEXT
 local BTN_BG        = UITheme.BTN_BG
 local BTN_STROKE_C  = UITheme.BTN_STROKE
 local GREEN_BTN     = UITheme.GREEN_BTN
 local RED_TEXT       = UITheme.RED_TEXT
-local MAXED_COLOR   = UITheme.GREEN_GLOW
-local DISABLED_BG   = UITheme.DISABLED_BG
-local PIP_ACTIVE    = UITheme.PIP_ACTIVE
-local PIP_INACTIVE  = UITheme.PIP_INACTIVE
-local SUCCESS_FLASH = UITheme.GREEN_GLOW
-
-local ACCENT_COLORS = {
-	coin_mastery         = Color3.fromRGB(255, 200, 40),
-	quest_mastery        = Color3.fromRGB(80, 165, 255),
-	rapid_recovery       = Color3.fromRGB(120, 220, 160),
-	objective_specialist = Color3.fromRGB(255, 120, 65),
-}
-
-local UPGRADE_GLYPHS = {
-	coin_mastery         = "\u{1F4B0}",  -- 💰
-	quest_mastery        = "\u{26A1}",   -- ⚡
-	rapid_recovery       = "\u{1F3C3}",  -- 🏃
-	objective_specialist = "\u{1F3AF}",  -- 🎯
-}
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
@@ -189,72 +170,6 @@ local function makeCoinIcon(parentFrame, size)
 end
 
 --------------------------------------------------------------------------------
--- Upgrade icon (colored circle with emoji-style glyph, matches BoostsUI)
---------------------------------------------------------------------------------
-local function makeUpgradeIcon(parent, upgradeId, size)
-	local frame = Instance.new("Frame")
-	frame.Name = "UpgradeIcon"
-	frame.Size = UDim2.new(0, size, 0, size)
-	frame.BackgroundColor3 = ACCENT_COLORS[upgradeId] or Color3.fromRGB(80, 80, 90)
-	frame.BorderSizePixel = 0
-	local cr = Instance.new("UICorner")
-	cr.CornerRadius = UDim.new(0, px(14))
-	cr.Parent = frame
-	local iconStroke = Instance.new("UIStroke")
-	iconStroke.Color = Color3.fromRGB(255, 255, 255)
-	iconStroke.Thickness = 1.5
-	iconStroke.Transparency = 0.7
-	iconStroke.Parent = frame
-	local lbl = Instance.new("TextLabel")
-	lbl.BackgroundTransparency = 1
-	lbl.Size = UDim2.new(1, 0, 1, 0)
-	lbl.Font = Enum.Font.GothamBold
-	lbl.Text = UPGRADE_GLYPHS[upgradeId] or "?"
-	lbl.TextSize = math.max(18, math.floor(size * 0.52))
-	lbl.TextColor3 = WHITE
-	lbl.Parent = frame
-	frame.Parent = parent
-	return frame
-end
-
---------------------------------------------------------------------------------
--- Level pips row
---------------------------------------------------------------------------------
-local function createLevelPips(parent, currentLevel, maxLevel, pipSize)
-	pipSize = pipSize or px(12)
-	local pipsFrame = Instance.new("Frame")
-	pipsFrame.Name = "LevelPips"
-	pipsFrame.BackgroundTransparency = 1
-	pipsFrame.Size = UDim2.new(0, (pipSize + px(4)) * maxLevel, 0, pipSize)
-	pipsFrame.Parent = parent
-
-	local pipsLayout = Instance.new("UIListLayout")
-	pipsLayout.FillDirection = Enum.FillDirection.Horizontal
-	pipsLayout.Padding = UDim.new(0, px(4))
-	pipsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	pipsLayout.Parent = pipsFrame
-
-	local pips = {}
-	for i = 1, maxLevel do
-		local pip = Instance.new("Frame")
-		pip.Name = "Pip_" .. i
-		pip.Size = UDim2.new(0, pipSize, 0, pipSize)
-		pip.BackgroundColor3 = (i <= currentLevel) and PIP_ACTIVE or PIP_INACTIVE
-		pip.BorderSizePixel = 0
-		pip.LayoutOrder = i
-		pip.Parent = pipsFrame
-
-		local pipCorner = Instance.new("UICorner")
-		pipCorner.CornerRadius = UDim.new(0, px(3))
-		pipCorner.Parent = pip
-
-		pips[i] = pip
-	end
-
-	return pipsFrame, pips
-end
-
---------------------------------------------------------------------------------
 -- Module
 --------------------------------------------------------------------------------
 local UpgradesUI = {}
@@ -263,6 +178,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 	if not parent then return nil end
 
 	cleanupConnections()
+	print("[UpgradesUI] Opening upgrades menu")
 
 	for _, c in ipairs(parent:GetChildren()) do
 		if not c:IsA("UIListLayout") and not c:IsA("UIGridLayout")
@@ -308,33 +224,20 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 	local root = Instance.new("Frame")
 	root.Name = "UpgradesRoot"
 	root.BackgroundTransparency = 1
-	root.Size = UDim2.new(1, 0, 0, 0)
-	root.AutomaticSize = Enum.AutomaticSize.Y
+	root.Size = UDim2.new(1, 0, 1, 0)
 	root.LayoutOrder = 1
 	root.Parent = parent
 
-	local rootLayout = Instance.new("UIListLayout")
-	rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	rootLayout.Padding = UDim.new(0, px(10))
-	rootLayout.Parent = root
-
 	local rootPad = Instance.new("UIPadding")
-	rootPad.PaddingTop = UDim.new(0, px(6))
+	rootPad.PaddingTop    = UDim.new(0, px(8))
 	rootPad.PaddingBottom = UDim.new(0, px(16))
-	rootPad.PaddingLeft = UDim.new(0, px(8))
-	rootPad.PaddingRight = UDim.new(0, px(8))
+	rootPad.PaddingLeft   = UDim.new(0, px(12))
+	rootPad.PaddingRight  = UDim.new(0, px(12))
 	rootPad.Parent = root
 
 	---------------------------------------------------------------------------
 	-- Header
 	---------------------------------------------------------------------------
-	local headerWrap = Instance.new("Frame")
-	headerWrap.Name = "HeaderWrap"
-	headerWrap.BackgroundTransparency = 1
-	headerWrap.Size = UDim2.new(1, 0, 0, px(54))
-	headerWrap.LayoutOrder = 1
-	headerWrap.Parent = root
-
 	local header = Instance.new("TextLabel")
 	header.Name = "Header"
 	header.BackgroundTransparency = 1
@@ -345,19 +248,19 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 	header.TextXAlignment = Enum.TextXAlignment.Left
 	header.Size = UDim2.new(1, 0, 0, px(30))
 	header.Position = UDim2.new(0, 0, 0, 0)
-	header.Parent = headerWrap
+	header.Parent = root
 
 	local subHeader = Instance.new("TextLabel")
 	subHeader.Name = "SubHeader"
 	subHeader.BackgroundTransparency = 1
 	subHeader.Font = Enum.Font.GothamMedium
-	subHeader.Text = "Spend coins on permanent account improvements."
+	subHeader.Text = "Upgrade your weapons for permanent damage increases."
 	subHeader.TextColor3 = DIM_TEXT
 	subHeader.TextSize = math.max(11, math.floor(px(12)))
 	subHeader.TextXAlignment = Enum.TextXAlignment.Left
 	subHeader.Size = UDim2.new(1, 0, 0, px(16))
-	subHeader.Position = UDim2.new(0, 0, 0, px(30))
-	subHeader.Parent = headerWrap
+	subHeader.Position = UDim2.new(0, 0, 0, px(32))
+	subHeader.Parent = root
 
 	-- Gold accent bar under header
 	local accentBar = Instance.new("Frame")
@@ -365,351 +268,424 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 	accentBar.BackgroundColor3 = GOLD
 	accentBar.BackgroundTransparency = 0.3
 	accentBar.Size = UDim2.new(1, 0, 0, px(2))
-	accentBar.Position = UDim2.new(0, 0, 1, -px(2))
+	accentBar.Position = UDim2.new(0, 0, 0, px(54))
 	accentBar.BorderSizePixel = 0
-	accentBar.Parent = headerWrap
+	accentBar.Parent = root
 
 	---------------------------------------------------------------------------
-	-- Upgrade cards
+	-- Cards container (side by side)
 	---------------------------------------------------------------------------
-	local cardButtons  = {}  -- [upgradeId] = TextButton
-	local cardLevels   = {}  -- [upgradeId] = { levelLabel, pips, nextEffectLabel, priceLabel, card }
-	local cardBorders  = {}  -- [upgradeId] = UIStroke
+	local cardsFrame = Instance.new("Frame")
+	cardsFrame.Name = "CardsFrame"
+	cardsFrame.BackgroundTransparency = 1
+	cardsFrame.Size = UDim2.new(1, 0, 1, -px(66))
+	cardsFrame.Position = UDim2.new(0, 0, 0, px(66))
+	cardsFrame.Parent = root
 
-	-- Sort upgrades by SortOrder
-	local sortedUpgrades = {}
-	for _, def in ipairs(UpgradeConfig.Upgrades) do
-		table.insert(sortedUpgrades, def)
-	end
-	table.sort(sortedUpgrades, function(a, b) return a.SortOrder < b.SortOrder end)
+	-- Table to hold both card update functions
+	local cardUpdaters = {}
 
-	for i, def in ipairs(sortedUpgrades) do
-		local currentLevel = upgradeLevels[def.Id] or 0
-		local isMaxed = currentLevel >= def.MaxLevel
+	-- The two upgrade definitions: left=melee, right=ranged
+	local CARD_DEFS = {
+		{ id = UpgradeConfig.MELEE,  layoutOrder = 1 },
+		{ id = UpgradeConfig.RANGED, layoutOrder = 2 },
+	}
 
-		local CARD_H = px(140)
+	local GAP = px(16)
+	local cardWidth = UDim2.new(0.5, -GAP / 2, 1, -px(16))
 
+	for idx, cardDef in ipairs(CARD_DEFS) do
+		local upgradeId = cardDef.id
+		local display = UpgradeConfig.Display[upgradeId]
+		local currentLevel = upgradeLevels[upgradeId] or 0
+
+		print(("[UpgradesUI] Rendering card '%s' at level %d"):format(upgradeId, currentLevel))
+
+		-- Card frame
 		local card = Instance.new("Frame")
-		card.Name = "Upgrade_" .. def.Id
+		card.Name = "Card_" .. upgradeId
 		card.BackgroundColor3 = CARD_BG
-		card.Size = UDim2.new(1, 0, 0, CARD_H)
-		card.LayoutOrder = 10 + i
-		card.Parent = root
+		card.Size = cardWidth
+		card.AnchorPoint = Vector2.new(0, 0.5)
+		card.Position = UDim2.new((idx - 1) * 0.5, (idx == 2) and (GAP / 2) or 0, 0.5, 0)
+		card.Parent = cardsFrame
 
 		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, px(12))
+		corner.CornerRadius = UDim.new(0, px(14))
 		corner.Parent = card
 
 		local stroke = Instance.new("UIStroke")
-		stroke.Color = isMaxed and MAXED_COLOR or CARD_STROKE
-		stroke.Thickness = isMaxed and 2.5 or 1.2
-		stroke.Transparency = isMaxed and 0.1 or 0.35
+		stroke.Color = GOLD_DIM
+		stroke.Thickness = 1.5
+		stroke.Transparency = 0.3
 		stroke.Parent = card
-		cardBorders[def.Id] = stroke
 
 		local pad = Instance.new("UIPadding")
-		pad.PaddingLeft   = UDim.new(0, px(14))
-		pad.PaddingRight  = UDim.new(0, px(14))
-		pad.PaddingTop    = UDim.new(0, px(12))
-		pad.PaddingBottom = UDim.new(0, px(12))
+		pad.PaddingLeft   = UDim.new(0, px(16))
+		pad.PaddingRight  = UDim.new(0, px(16))
+		pad.PaddingTop    = UDim.new(0, px(18))
+		pad.PaddingBottom = UDim.new(0, px(16))
 		pad.Parent = card
 
-		-- Subtle accent glow behind icon area
-		local iconSize = px(60)
-		local iconGlow = Instance.new("Frame")
-		iconGlow.Name = "IconGlow"
-		iconGlow.Size = UDim2.new(0, iconSize + px(10), 0, iconSize + px(10))
-		iconGlow.AnchorPoint = Vector2.new(0, 0.5)
-		iconGlow.Position = UDim2.new(0, -px(5), 0.45, 0)
-		iconGlow.BackgroundColor3 = ACCENT_COLORS[def.Id] or CARD_STROKE
-		iconGlow.BackgroundTransparency = 0.82
-		iconGlow.BorderSizePixel = 0
-		local glowCr = Instance.new("UICorner")
-		glowCr.CornerRadius = UDim.new(0, px(18))
-		glowCr.Parent = iconGlow
-		iconGlow.Parent = card
+		-----------------------------------------------------------------------
+		-- Weapon Showcase (hero image area — upper portion of card)
+		-----------------------------------------------------------------------
+		local showcaseFrame = Instance.new("Frame")
+		showcaseFrame.Name = "WeaponShowcase"
+		showcaseFrame.Size = UDim2.new(1, 0, 0.52, 0)
+		showcaseFrame.Position = UDim2.new(0, 0, 0, 0)
+		showcaseFrame.BackgroundTransparency = 1
+		showcaseFrame.ClipsDescendants = false
+		showcaseFrame.Parent = card
 
-		-- Left: icon
-		local iconFrame = makeUpgradeIcon(card, def.Id, iconSize)
-		iconFrame.Position = UDim2.new(0, 0, 0.45, 0)
-		iconFrame.AnchorPoint = Vector2.new(0, 0.5)
+		-- Outer glow (soft, large radial)
+		local glowOuterSize = px(200)
+		local glowOuter = Instance.new("Frame")
+		glowOuter.Name = "GlowOuter"
+		glowOuter.Size = UDim2.new(0, glowOuterSize, 0, glowOuterSize)
+		glowOuter.AnchorPoint = Vector2.new(0.5, 0.5)
+		glowOuter.Position = UDim2.new(0.5, 0, 0.5, 0)
+		glowOuter.BackgroundColor3 = display.Accent
+		glowOuter.BackgroundTransparency = 0.88
+		glowOuter.BorderSizePixel = 0
+		glowOuter.ZIndex = 1
+		glowOuter.Parent = showcaseFrame
 
-		-- Middle-top: name
-		local nameLabel = Instance.new("TextLabel")
-		nameLabel.Name = "Name"
-		nameLabel.BackgroundTransparency = 1
-		nameLabel.Font = Enum.Font.GothamBold
-		nameLabel.Text = def.DisplayName
-		nameLabel.TextColor3 = WHITE
-		nameLabel.TextSize = math.max(15, math.floor(px(17)))
-		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-		nameLabel.Size = UDim2.new(0.50, 0, 0, px(22))
-		nameLabel.Position = UDim2.new(0, iconSize + px(14), 0, 0)
-		nameLabel.Parent = card
+		local goCr = Instance.new("UICorner")
+		goCr.CornerRadius = UDim.new(0.5, 0)
+		goCr.Parent = glowOuter
 
-		-- Middle: description
-		local descLabel = Instance.new("TextLabel")
-		descLabel.Name = "Desc"
-		descLabel.BackgroundTransparency = 1
-		descLabel.Font = Enum.Font.GothamMedium
-		descLabel.Text = def.Description
-		descLabel.TextColor3 = DIM_TEXT
-		descLabel.TextSize = math.max(11, math.floor(px(12)))
-		descLabel.TextXAlignment = Enum.TextXAlignment.Left
-		descLabel.TextWrapped = true
-		descLabel.Size = UDim2.new(0.50, 0, 0, px(20))
-		descLabel.Position = UDim2.new(0, iconSize + px(14), 0, px(22))
-		descLabel.Parent = card
+		-- Mid glow (medium intensity)
+		local glowMidSize = px(140)
+		local glowMid = Instance.new("Frame")
+		glowMid.Name = "GlowMid"
+		glowMid.Size = UDim2.new(0, glowMidSize, 0, glowMidSize)
+		glowMid.AnchorPoint = Vector2.new(0.5, 0.5)
+		glowMid.Position = UDim2.new(0.5, 0, 0.5, 0)
+		glowMid.BackgroundColor3 = display.Accent
+		glowMid.BackgroundTransparency = 0.78
+		glowMid.BorderSizePixel = 0
+		glowMid.ZIndex = 2
+		glowMid.Parent = showcaseFrame
 
-		-- Level display: "Level X / Y"
+		local gmCr = Instance.new("UICorner")
+		gmCr.CornerRadius = UDim.new(0.5, 0)
+		gmCr.Parent = glowMid
+
+		-- Inner glow (bright core)
+		local glowInnerSize = px(90)
+		local glowInner = Instance.new("Frame")
+		glowInner.Name = "GlowInner"
+		glowInner.Size = UDim2.new(0, glowInnerSize, 0, glowInnerSize)
+		glowInner.AnchorPoint = Vector2.new(0.5, 0.5)
+		glowInner.Position = UDim2.new(0.5, 0, 0.5, 0)
+		glowInner.BackgroundColor3 = display.Accent
+		glowInner.BackgroundTransparency = 0.65
+		glowInner.BorderSizePixel = 0
+		glowInner.ZIndex = 3
+		glowInner.Parent = showcaseFrame
+
+		local giCr = Instance.new("UICorner")
+		giCr.CornerRadius = UDim.new(0.5, 0)
+		giCr.Parent = glowInner
+
+		-- Weapon image or fallback large glyph
+		local weaponRotation = display.ImageRotation or -12
+
+		if display.ImageId and display.ImageId ~= "" then
+			-- Custom weapon art (ImageLabel)
+			local artSize = px(160)
+
+			-- Drop shadow
+			local shadow = Instance.new("ImageLabel")
+			shadow.Name = "WeaponShadow"
+			shadow.Size = UDim2.new(0, artSize, 0, artSize)
+			shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+			shadow.Position = UDim2.new(0.5, px(4), 0.5, px(4))
+			shadow.BackgroundTransparency = 1
+			shadow.Image = display.ImageId
+			shadow.ImageTransparency = 0.7
+			shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+			shadow.ScaleType = Enum.ScaleType.Fit
+			shadow.Rotation = weaponRotation
+			shadow.ZIndex = 4
+			shadow.Parent = showcaseFrame
+
+			-- Main weapon image
+			local weaponImg = Instance.new("ImageLabel")
+			weaponImg.Name = "WeaponArt"
+			weaponImg.Size = UDim2.new(0, artSize, 0, artSize)
+			weaponImg.AnchorPoint = Vector2.new(0.5, 0.5)
+			weaponImg.Position = UDim2.new(0.5, 0, 0.5, 0)
+			weaponImg.BackgroundTransparency = 1
+			weaponImg.Image = display.ImageId
+			weaponImg.ScaleType = Enum.ScaleType.Fit
+			weaponImg.Rotation = weaponRotation
+			weaponImg.ZIndex = 6
+			weaponImg.Parent = showcaseFrame
+		else
+			-- Fallback: oversized glyph with shadow for depth
+			local glyphSize = math.max(70, math.floor(px(100)))
+
+			-- Glyph shadow
+			local glyphShadow = Instance.new("TextLabel")
+			glyphShadow.Name = "GlyphShadow"
+			glyphShadow.BackgroundTransparency = 1
+			glyphShadow.Size = UDim2.new(1, 0, 1, 0)
+			glyphShadow.AnchorPoint = Vector2.new(0.5, 0.5)
+			glyphShadow.Position = UDim2.new(0.5, px(3), 0.5, px(3))
+			glyphShadow.Font = Enum.Font.GothamBold
+			glyphShadow.Text = display.Glyph
+			glyphShadow.TextSize = glyphSize
+			glyphShadow.TextColor3 = Color3.fromRGB(0, 0, 0)
+			glyphShadow.TextTransparency = 0.55
+			glyphShadow.Rotation = weaponRotation
+			glyphShadow.ZIndex = 4
+			glyphShadow.Parent = showcaseFrame
+
+			-- Main glyph
+			local bigGlyph = Instance.new("TextLabel")
+			bigGlyph.Name = "BigGlyph"
+			bigGlyph.BackgroundTransparency = 1
+			bigGlyph.Size = UDim2.new(1, 0, 1, 0)
+			bigGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			bigGlyph.Position = UDim2.new(0.5, 0, 0.5, 0)
+			bigGlyph.Font = Enum.Font.GothamBold
+			bigGlyph.Text = display.Glyph
+			bigGlyph.TextSize = glyphSize
+			bigGlyph.TextColor3 = WHITE
+			bigGlyph.Rotation = weaponRotation
+			bigGlyph.ZIndex = 6
+			bigGlyph.Parent = showcaseFrame
+		end
+
+		-- Bottom fade (blends showcase into card background)
+		local fade = Instance.new("Frame")
+		fade.Name = "BottomFade"
+		fade.Size = UDim2.new(1, px(32), 0, px(30))
+		fade.AnchorPoint = Vector2.new(0.5, 1)
+		fade.Position = UDim2.new(0.5, 0, 1, 0)
+		fade.BackgroundColor3 = CARD_BG
+		fade.BorderSizePixel = 0
+		fade.ZIndex = 8
+		fade.Parent = showcaseFrame
+
+		local fadeGrad = Instance.new("UIGradient")
+		fadeGrad.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.5, 0.5),
+			NumberSequenceKeypoint.new(1, 0),
+		})
+		fadeGrad.Rotation = 90
+		fadeGrad.Parent = fade
+
+		-- Accent line separating showcase from info
+		local accentLine = Instance.new("Frame")
+		accentLine.Name = "AccentLine"
+		accentLine.Size = UDim2.new(0.6, 0, 0, px(2))
+		accentLine.AnchorPoint = Vector2.new(0.5, 0)
+		accentLine.Position = UDim2.new(0.5, 0, 0.53, px(2))
+		accentLine.BackgroundColor3 = display.Accent
+		accentLine.BackgroundTransparency = 0.5
+		accentLine.BorderSizePixel = 0
+		accentLine.ZIndex = 10
+		accentLine.Parent = card
+
+		-----------------------------------------------------------------------
+		-- Info section (below showcase, above button)
+		-- Uses scale Y (0.55) + pixel offsets for compact stacking
+		-----------------------------------------------------------------------
+		local infoY = 0.55
+
+		-- Title
+		local title = Instance.new("TextLabel")
+		title.Name = "Title"
+		title.BackgroundTransparency = 1
+		title.Font = Enum.Font.GothamBold
+		title.Text = display.Title
+		title.TextColor3 = GOLD
+		title.TextSize = math.max(18, math.floor(px(22)))
+		title.TextXAlignment = Enum.TextXAlignment.Center
+		title.Size = UDim2.new(1, 0, 0, px(24))
+		title.Position = UDim2.new(0, 0, infoY, px(4))
+		title.ZIndex = 10
+		title.Parent = card
+
+		-- Description
+		local desc = Instance.new("TextLabel")
+		desc.Name = "Desc"
+		desc.BackgroundTransparency = 1
+		desc.Font = Enum.Font.GothamMedium
+		desc.Text = display.Description
+		desc.TextColor3 = DIM_TEXT
+		desc.TextSize = math.max(11, math.floor(px(12)))
+		desc.TextXAlignment = Enum.TextXAlignment.Center
+		desc.TextWrapped = true
+		desc.Size = UDim2.new(1, 0, 0, px(16))
+		desc.Position = UDim2.new(0, 0, infoY, px(32))
+		desc.ZIndex = 10
+		desc.Parent = card
+
+		-- Level display
 		local levelLabel = Instance.new("TextLabel")
 		levelLabel.Name = "LevelLabel"
 		levelLabel.BackgroundTransparency = 1
 		levelLabel.Font = Enum.Font.GothamBold
-		levelLabel.RichText = true
-		levelLabel.TextColor3 = isMaxed and MAXED_COLOR or GOLD
-		levelLabel.TextSize = math.max(12, math.floor(px(13)))
-		levelLabel.TextXAlignment = Enum.TextXAlignment.Left
-		levelLabel.Size = UDim2.new(0.50, 0, 0, px(16))
-		levelLabel.Position = UDim2.new(0, iconSize + px(14), 0, px(46))
+		levelLabel.TextColor3 = WHITE
+		levelLabel.TextSize = math.max(14, math.floor(px(16)))
+		levelLabel.TextXAlignment = Enum.TextXAlignment.Center
+		levelLabel.Size = UDim2.new(1, 0, 0, px(18))
+		levelLabel.Position = UDim2.new(0, 0, infoY, px(60))
+		levelLabel.Text = "Weapon Level: " .. currentLevel
+		levelLabel.ZIndex = 10
 		levelLabel.Parent = card
-		if isMaxed then
-			levelLabel.Text = '<font color="#32E66E">Level ' .. currentLevel .. " / " .. def.MaxLevel .. '  \u{2714} MAXED</font>'
-		else
-			levelLabel.Text = "Level " .. currentLevel .. " / " .. def.MaxLevel
-		end
 
-		-- Level pips
-		local pipsFrame, pips = createLevelPips(card, currentLevel, def.MaxLevel, px(10))
-		pipsFrame.Position = UDim2.new(0, iconSize + px(14), 0, px(64))
-		pipsFrame.AnchorPoint = Vector2.new(0, 0)
+		-- Bonus display
+		local bonusLabel = Instance.new("TextLabel")
+		bonusLabel.Name = "BonusLabel"
+		bonusLabel.BackgroundTransparency = 1
+		bonusLabel.Font = Enum.Font.GothamMedium
+		bonusLabel.TextColor3 = GOLD
+		bonusLabel.TextSize = math.max(12, math.floor(px(14)))
+		bonusLabel.TextXAlignment = Enum.TextXAlignment.Center
+		bonusLabel.Size = UDim2.new(1, 0, 0, px(16))
+		bonusLabel.Position = UDim2.new(0, 0, infoY, px(88))
+		bonusLabel.Text = UpgradeConfig.GetBonusText(currentLevel)
+		bonusLabel.ZIndex = 10
+		bonusLabel.Parent = card
 
-		-- Next effect text
-		local nextEffectLabel = Instance.new("TextLabel")
-		nextEffectLabel.Name = "NextEffect"
-		nextEffectLabel.BackgroundTransparency = 1
-		nextEffectLabel.Font = Enum.Font.GothamMedium
-		nextEffectLabel.RichText = true
-		nextEffectLabel.TextColor3 = DIM_TEXT
-		nextEffectLabel.TextSize = math.max(10, math.floor(px(11)))
-		nextEffectLabel.TextXAlignment = Enum.TextXAlignment.Left
-		nextEffectLabel.Size = UDim2.new(0.50, 0, 0, px(14))
-		nextEffectLabel.Position = UDim2.new(0, iconSize + px(14), 0, px(80))
-		nextEffectLabel.Parent = card
-		if isMaxed then
-			nextEffectLabel.Text = '<font color="#9096af">Fully upgraded!</font>'
-		else
-			local nextText = UpgradeConfig.GetNextLevelText(def.Id, currentLevel)
-			nextEffectLabel.Text = '<font color="#9096af">Next: </font><font color="#FFD73C">' .. nextText .. '</font>'
-		end
-
-		-- Right side: price row + button
-		-- Price row
-		local priceRow = Instance.new("Frame")
-		priceRow.Name = "PriceRow"
-		priceRow.BackgroundTransparency = 1
-		priceRow.Size = UDim2.new(0.28, 0, 0, px(22))
-		priceRow.AnchorPoint = Vector2.new(1, 0)
-		priceRow.Position = UDim2.new(1, 0, 0, 0)
-		priceRow.Parent = card
-
-		local priceLabel = Instance.new("TextLabel")
-		priceLabel.Name = "Price"
-		priceLabel.BackgroundTransparency = 1
-		priceLabel.Font = Enum.Font.GothamBold
-		priceLabel.TextScaled = true
-		priceLabel.TextColor3 = GOLD
-		priceLabel.TextXAlignment = Enum.TextXAlignment.Right
-		priceLabel.Size = UDim2.new(0.60, 0, 1, 0)
-		priceLabel.Parent = priceRow
-
-		if isMaxed then
-			priceLabel.Text = "---"
-			priceLabel.TextColor3 = DIM_TEXT
-		else
-			local nextPrice = UpgradeConfig.GetPrice(def.Id, currentLevel)
-			priceLabel.Text = tostring(nextPrice or "?")
-		end
-
-		local coinIconSize = px(18)
-		local cIcon = makeCoinIcon(priceRow, coinIconSize)
-		cIcon.AnchorPoint = Vector2.new(0, 0.5)
-		cIcon.Position = UDim2.new(0.66, 0, 0.5, 0)
-		if isMaxed then cIcon.Visible = false end
-
-		-- Action button
+		-----------------------------------------------------------------------
+		-- UPGRADE button (anchored at bottom)
+		-----------------------------------------------------------------------
+		local btnH = px(46)
 		local btn = Instance.new("TextButton")
-		btn.Name = "ActionBtn"
+		btn.Name = "UpgradeBtn"
 		btn.AutoButtonColor = false
 		btn.Font = Enum.Font.GothamBold
-		btn.TextSize = math.max(13, math.floor(px(14)))
+		btn.Text = "UPGRADE"
+		btn.TextSize = math.max(15, math.floor(px(18)))
 		btn.TextColor3 = WHITE
-		btn.Size = UDim2.new(0.28, 0, 0, px(36))
-		btn.AnchorPoint = Vector2.new(1, 0)
-		btn.Position = UDim2.new(1, 0, 0, px(28))
+		btn.BackgroundColor3 = BTN_BG
+		btn.Size = UDim2.new(1, 0, 0, btnH)
+		btn.AnchorPoint = Vector2.new(0, 1)
+		btn.Position = UDim2.new(0, 0, 1, 0)
+		btn.ZIndex = 10
 		btn.Parent = card
 
 		local btnCorner = Instance.new("UICorner")
-		btnCorner.CornerRadius = UDim.new(0, px(10))
+		btnCorner.CornerRadius = UDim.new(0, px(12))
 		btnCorner.Parent = btn
 
 		local btnStroke = Instance.new("UIStroke")
 		btnStroke.Color = BTN_STROKE_C
-		btnStroke.Thickness = 1.4
-		btnStroke.Transparency = 0.25
+		btnStroke.Thickness = 1.5
+		btnStroke.Transparency = 0.2
 		btnStroke.Parent = btn
 
-		cardButtons[def.Id] = btn
+		-----------------------------------------------------------------------
+		-- Next upgrade cost (positioned directly above the button)
+		-----------------------------------------------------------------------
+		local costContainer = Instance.new("Frame")
+		costContainer.Name = "CostContainer"
+		costContainer.BackgroundTransparency = 1
+		costContainer.Size = UDim2.new(1, 0, 0, px(38))
+		costContainer.AnchorPoint = Vector2.new(0, 1)
+		costContainer.Position = UDim2.new(0, 0, 1, -(btnH + px(8)))
+		costContainer.ZIndex = 10
+		costContainer.Parent = card
 
-		-- Status label below button (shows current total effect)
-		local statusLabel = Instance.new("TextLabel")
-		statusLabel.Name = "Status"
-		statusLabel.BackgroundTransparency = 1
-		statusLabel.Font = Enum.Font.GothamBold
-		statusLabel.TextSize = math.max(10, math.floor(px(11)))
-		statusLabel.TextColor3 = DIM_TEXT
-		statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-		statusLabel.TextWrapped = true
-		statusLabel.Size = UDim2.new(0.28, 0, 0, px(30))
-		statusLabel.AnchorPoint = Vector2.new(1, 0)
-		statusLabel.Position = UDim2.new(1, 0, 0, px(67))
-		statusLabel.Parent = card
+		-- "Next Upgrade:" header
+		local costHeader = Instance.new("TextLabel")
+		costHeader.Name = "CostHeader"
+		costHeader.BackgroundTransparency = 1
+		costHeader.Font = Enum.Font.GothamMedium
+		costHeader.Text = "Next Upgrade:"
+		costHeader.TextColor3 = DIM_TEXT
+		costHeader.TextSize = math.max(10, math.floor(px(11)))
+		costHeader.TextXAlignment = Enum.TextXAlignment.Center
+		costHeader.Size = UDim2.new(1, 0, 0, px(14))
+		costHeader.Position = UDim2.new(0, 0, 0, 0)
+		costHeader.ZIndex = 10
+		costHeader.Parent = costContainer
 
-		-- Show current total effect
-		local function getTotalEffectText(level)
-			if level <= 0 then return "No bonus" end
-			local totalPct = math.floor(def.EffectPerLevel * level * 100 + 0.5)
-			local effectType = def.EffectType
-			if effectType == UpgradeConfig.EffectType.CoinMultiplier then
-				return "+" .. totalPct .. "% coins"
-			elseif effectType == UpgradeConfig.EffectType.QuestProgress then
-				return "+" .. totalPct .. "% quest"
-			elseif effectType == UpgradeConfig.EffectType.RespawnReduction then
-				return "-" .. totalPct .. "% respawn"
-			elseif effectType == UpgradeConfig.EffectType.ObjectiveCoinBonus then
-				return "+" .. totalPct .. "% obj coins"
-			end
-			return "+" .. totalPct .. "%"
+		-- Price row (number + coin icon, centered)
+		local nextCost = UpgradeConfig.GetCost(currentLevel)
+		local costCoinSize = px(16)
+		local priceRowH = px(20)
+
+		local priceRow = Instance.new("Frame")
+		priceRow.Name = "PriceRow"
+		priceRow.BackgroundTransparency = 1
+		priceRow.AnchorPoint = Vector2.new(0.5, 0)
+		priceRow.Size = UDim2.new(0, px(80), 0, priceRowH)
+		priceRow.Position = UDim2.new(0.5, 0, 0, px(15))
+		priceRow.ZIndex = 10
+		priceRow.Parent = costContainer
+
+		local priceLabel = Instance.new("TextLabel")
+		priceLabel.Name = "PriceLabel"
+		priceLabel.BackgroundTransparency = 1
+		priceLabel.Font = Enum.Font.GothamBold
+		priceLabel.TextColor3 = GOLD
+		priceLabel.TextSize = math.max(14, math.floor(px(16)))
+		priceLabel.Text = tostring(nextCost)
+		priceLabel.TextXAlignment = Enum.TextXAlignment.Right
+		priceLabel.Size = UDim2.new(0.5, -(costCoinSize / 2 + px(3)), 1, 0)
+		priceLabel.Position = UDim2.new(0, 0, 0, 0)
+		priceLabel.ZIndex = 10
+		priceLabel.Parent = priceRow
+
+		local costCoin = makeCoinIcon(priceRow, costCoinSize)
+		costCoin.AnchorPoint = Vector2.new(0, 0.5)
+		costCoin.Position = UDim2.new(0.5, (costCoinSize / 2 + px(1)), 0.5, 0)
+		costCoin.ZIndex = 10
+
+		-----------------------------------------------------------------------
+		-- Update function for this card
+		-----------------------------------------------------------------------
+		local function updateCard(level)
+			levelLabel.Text  = "Weapon Level: " .. level
+			bonusLabel.Text  = UpgradeConfig.GetBonusText(level)
+			local cost       = UpgradeConfig.GetCost(level)
+			priceLabel.Text  = tostring(cost)
+
+			print(("[UpgradesUI] Card '%s' updated: level=%d, bonus=%s, nextCost=%d"):format(
+				upgradeId, level, UpgradeConfig.GetBonusText(level), cost))
 		end
 
-		statusLabel.Text = getTotalEffectText(currentLevel)
+		cardUpdaters[upgradeId] = { updateCard = updateCard, btn = btn }
 
-		-- Store UI refs for updates
-		cardLevels[def.Id] = {
-			levelLabel      = levelLabel,
-			pips            = pips,
-			nextEffectLabel = nextEffectLabel,
-			priceLabel      = priceLabel,
-			statusLabel     = statusLabel,
-			card            = card,
-			coinIcon        = cIcon,
-			priceRow        = priceRow,
-			getTotalEffectText = getTotalEffectText,
-		}
-
-		---------------------------------------------------------------------------
-		-- Update card state
-		---------------------------------------------------------------------------
-		local function updateCardState(level)
-			local maxed = level >= def.MaxLevel
-
-			-- level label
-			if maxed then
-				levelLabel.Text = '<font color="#32E66E">Level ' .. level .. " / " .. def.MaxLevel .. '  \u{2714} MAXED</font>'
-				levelLabel.TextColor3 = MAXED_COLOR
-			else
-				levelLabel.Text = "Level " .. level .. " / " .. def.MaxLevel
-				levelLabel.TextColor3 = GOLD
-			end
-
-			-- pips
-			for idx, pip in ipairs(pips) do
-				pip.BackgroundColor3 = (idx <= level) and PIP_ACTIVE or PIP_INACTIVE
-			end
-
-			-- next effect
-			if maxed then
-				nextEffectLabel.Text = '<font color="#9096af">Fully upgraded!</font>'
-			else
-				local nextText = UpgradeConfig.GetNextLevelText(def.Id, level)
-				nextEffectLabel.Text = '<font color="#9096af">Next: </font><font color="#FFD73C">' .. nextText .. '</font>'
-			end
-
-			-- price
-			if maxed then
-				priceLabel.Text = "---"
-				priceLabel.TextColor3 = DIM_TEXT
-				cIcon.Visible = false
-			else
-				local nextPrice = UpgradeConfig.GetPrice(def.Id, level)
-				priceLabel.Text = tostring(nextPrice or "?")
-				priceLabel.TextColor3 = GOLD
-				cIcon.Visible = true
-			end
-
-			-- button
-			if maxed then
-				btn.Text = "MAXED"
-				btn.BackgroundColor3 = DISABLED_BG
-				btn.Active = false
-				btn.TextColor3 = MAXED_COLOR
-			else
-				btn.Text = "UPGRADE"
-				btn.BackgroundColor3 = BTN_BG
-				btn.Active = true
-				btn.TextColor3 = WHITE
-			end
-
-			-- border
-			if maxed then
-				stroke.Color = MAXED_COLOR
-				stroke.Thickness = 2.5
-				stroke.Transparency = 0.1
-			else
-				stroke.Color = CARD_STROKE
-				stroke.Thickness = 1.2
-				stroke.Transparency = 0.35
-			end
-
-			-- status
-			statusLabel.Text = getTotalEffectText(level)
-		end
-
-		-- Initial state
-		updateCardState(currentLevel)
-
+		-----------------------------------------------------------------------
 		-- Hover feedback
+		-----------------------------------------------------------------------
 		trackConn(btn.MouseEnter:Connect(function()
-			if btn.Active then
-				TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
-			end
+			TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
 		end))
 		trackConn(btn.MouseLeave:Connect(function()
-			if btn.Active then
-				TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
-			end
+			TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
 		end))
 
-		-- Click handler
+		-----------------------------------------------------------------------
+		-- Click handler (purchase)
+		-----------------------------------------------------------------------
 		trackConn(btn.MouseButton1Click:Connect(function()
 			if not btn.Active then return end
-
 			btn.Active = false
 			btn.Text = "..."
 
 			local success, msg = false, "Error"
 			pcall(function()
-				success, msg = purchaseRF:InvokeServer(def.Id)
+				success, msg = purchaseRF:InvokeServer(upgradeId)
 			end)
 
 			if success then
 				currentLevel = currentLevel + 1
-				upgradeLevels[def.Id] = currentLevel
-				updateCardState(currentLevel)
+				upgradeLevels[upgradeId] = currentLevel
+				updateCard(currentLevel)
 
-				showToast(root, def.DisplayName .. " upgraded to Level " .. currentLevel .. "!", GREEN_BTN, 2.5)
+				showToast(root, display.Title .. " upgraded to Level " .. currentLevel .. "!", GREEN_BTN, 2.5)
 
-				-- Success flash animation on the card
+				-- Success flash
 				local origBg = card.BackgroundColor3
 				TweenService:Create(card, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 60, 40)}):Play()
 				task.delay(0.15, function()
@@ -727,109 +703,30 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 				local toastColor = RED_TEXT
 				if tostring(msg):find("Insufficient") then
 					toastMsg = "Not enough coins!"
-				elseif tostring(msg):find("maxed") or tostring(msg):find("Maxed") then
-					toastMsg = "Already at max level!"
 				end
 				showToast(root, toastMsg, toastColor, 2.5)
-
-				-- Restore button
-				if currentLevel < def.MaxLevel then
-					btn.Text = "UPGRADE"
-					btn.BackgroundColor3 = BTN_BG
-					btn.Active = true
-				else
-					btn.Text = "MAXED"
-					btn.BackgroundColor3 = DISABLED_BG
-					btn.Active = false
-				end
 			end
+
+			btn.Text = "UPGRADE"
+			btn.Active = true
+			btn.BackgroundColor3 = BTN_BG
 		end))
 	end
 
 	---------------------------------------------------------------------------
-	-- Listen for server push updates
+	-- Listen for server push updates (live refresh)
 	---------------------------------------------------------------------------
 	if stateUpdatedRE then
 		trackConn(stateUpdatedRE.OnClientEvent:Connect(function(levels)
 			if type(levels) ~= "table" then return end
 			upgradeLevels = levels
 
-			for _, def in ipairs(UpgradeConfig.Upgrades) do
-				local level = levels[def.Id] or 0
-				local refs = cardLevels[def.Id]
+			for _, cardDef in ipairs(CARD_DEFS) do
+				local id = cardDef.id
+				local level = levels[id] or 0
+				local refs = cardUpdaters[id]
 				if refs then
-					local maxed = level >= def.MaxLevel
-					local btn2 = cardButtons[def.Id]
-					local border = cardBorders[def.Id]
-
-					-- level label
-					if maxed then
-						refs.levelLabel.Text = '<font color="#32E66E">Level ' .. level .. " / " .. def.MaxLevel .. '  \u{2714} MAXED</font>'
-						refs.levelLabel.TextColor3 = MAXED_COLOR
-					else
-						refs.levelLabel.Text = "Level " .. level .. " / " .. def.MaxLevel
-						refs.levelLabel.TextColor3 = GOLD
-					end
-
-					-- pips
-					if refs.pips then
-						for idx, pip in ipairs(refs.pips) do
-							pip.BackgroundColor3 = (idx <= level) and PIP_ACTIVE or PIP_INACTIVE
-						end
-					end
-
-					-- next effect
-					if maxed then
-						refs.nextEffectLabel.Text = '<font color="#9096af">Fully upgraded!</font>'
-					else
-						local nextText = UpgradeConfig.GetNextLevelText(def.Id, level)
-						refs.nextEffectLabel.Text = '<font color="#9096af">Next: </font><font color="#FFD73C">' .. nextText .. '</font>'
-					end
-
-					-- price
-					if maxed then
-						refs.priceLabel.Text = "---"
-						refs.priceLabel.TextColor3 = DIM_TEXT
-						if refs.coinIcon then refs.coinIcon.Visible = false end
-					else
-						local nextPrice = UpgradeConfig.GetPrice(def.Id, level)
-						refs.priceLabel.Text = tostring(nextPrice or "?")
-						refs.priceLabel.TextColor3 = GOLD
-						if refs.coinIcon then refs.coinIcon.Visible = true end
-					end
-
-					-- button
-					if btn2 then
-						if maxed then
-							btn2.Text = "MAXED"
-							btn2.BackgroundColor3 = DISABLED_BG
-							btn2.Active = false
-							btn2.TextColor3 = MAXED_COLOR
-						else
-							btn2.Text = "UPGRADE"
-							btn2.BackgroundColor3 = BTN_BG
-							btn2.Active = true
-							btn2.TextColor3 = WHITE
-						end
-					end
-
-					-- border
-					if border then
-						if maxed then
-							border.Color = MAXED_COLOR
-							border.Thickness = 2.5
-							border.Transparency = 0.1
-						else
-							border.Color = CARD_STROKE
-							border.Thickness = 1.2
-							border.Transparency = 0.35
-						end
-					end
-
-					-- status
-					if refs.statusLabel and refs.getTotalEffectText then
-						refs.statusLabel.Text = refs.getTotalEffectText(level)
-					end
+					refs.updateCard(level)
 				end
 			end
 		end))

@@ -320,6 +320,14 @@ end
 local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName)
     -- projCfg contains per-tool overrides: damage, range, bulletdrop, projectile_size, projectile_lifetime
     local pDamage = (projCfg and projCfg.damage) or DAMAGE
+    -- Apply ranged weapon upgrade multiplier (from UpgradeServiceInit)
+    if _G.GetRangedDamageMultiplier then
+        local mult = _G.GetRangedDamageMultiplier(player)
+        pDamage = pDamage * mult
+        if mult > 1 then
+            print(("[ToolGunSetup] Ranged upgrade multiplier %.3fx applied → damage %.1f"):format(mult, pDamage))
+        end
+    end
     local pRange = (projCfg and projCfg.range) or RANGE
     local pDrop = (projCfg and projCfg.bulletdrop) or BULLET_DROP
     local pLifetime = (projCfg and projCfg.projectile_lifetime) or PROJECTILE_LIFETIME

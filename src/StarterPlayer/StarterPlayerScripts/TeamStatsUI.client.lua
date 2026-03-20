@@ -367,15 +367,15 @@ careerContainer.Parent                  = panel
 
 local careerLayout = Instance.new("UIListLayout")
 careerLayout.SortOrder         = Enum.SortOrder.LayoutOrder
-careerLayout.Padding           = UDim.new(0, px(10))
+careerLayout.Padding           = UDim.new(0, px(14))
 careerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 careerLayout.Parent            = careerContainer
 
 local careerPad = Instance.new("UIPadding")
-careerPad.PaddingTop    = UDim.new(0, px(8))
-careerPad.PaddingBottom = UDim.new(0, px(16))
-careerPad.PaddingLeft   = UDim.new(0, px(4))
-careerPad.PaddingRight  = UDim.new(0, px(4))
+careerPad.PaddingTop    = UDim.new(0, px(10))
+careerPad.PaddingBottom = UDim.new(0, px(20))
+careerPad.PaddingLeft   = UDim.new(0, px(10))
+careerPad.PaddingRight  = UDim.new(0, px(10))
 careerPad.Parent        = careerContainer
 
 ---------------------------------------------------------------------------
@@ -1092,7 +1092,7 @@ function populateCareerTab()
 	---------------------------------------------------------------------------
 	local profileFrame = Instance.new("Frame")
 	profileFrame.Name                 = "ProfileHeader"
-	profileFrame.Size                 = UDim2.new(1, 0, 0, px(120))
+	profileFrame.Size                 = UDim2.new(1, 0, 0, px(150))
 	profileFrame.BackgroundColor3     = NAVY_LIGHT
 	profileFrame.BackgroundTransparency = 0.15
 	profileFrame.LayoutOrder          = nextOrder()
@@ -1108,14 +1108,14 @@ function populateCareerTab()
 	end
 
 	local profPad = Instance.new("UIPadding")
-	profPad.PaddingLeft   = UDim.new(0, px(16))
-	profPad.PaddingRight  = UDim.new(0, px(16))
-	profPad.PaddingTop    = UDim.new(0, px(12))
-	profPad.PaddingBottom = UDim.new(0, px(12))
+	profPad.PaddingLeft   = UDim.new(0, px(20))
+	profPad.PaddingRight  = UDim.new(0, px(20))
+	profPad.PaddingTop    = UDim.new(0, px(14))
+	profPad.PaddingBottom = UDim.new(0, px(14))
 	profPad.Parent        = profileFrame
 
 	-- Avatar
-	local avatarSize = px(80)
+	local avatarSize = px(96)
 	local avatarFrame = Instance.new("ImageLabel")
 	avatarFrame.Name                 = "Avatar"
 	avatarFrame.Size                 = UDim2.new(0, avatarSize, 0, avatarSize)
@@ -1152,11 +1152,11 @@ function populateCareerTab()
 
 	local displayNameLabel = Instance.new("TextLabel")
 	displayNameLabel.Name                 = "DisplayName"
-	displayNameLabel.Size                 = UDim2.new(1, -infoX, 0, px(28))
+	displayNameLabel.Size                 = UDim2.new(1, -infoX, 0, px(34))
 	displayNameLabel.Position             = UDim2.new(0, infoX, 0, px(4))
 	displayNameLabel.BackgroundTransparency = 1
 	displayNameLabel.Font                 = Enum.Font.GothamBlack
-	displayNameLabel.TextSize             = px(24)
+	displayNameLabel.TextSize             = px(30)
 	displayNameLabel.TextColor3           = GOLD
 	displayNameLabel.TextXAlignment       = Enum.TextXAlignment.Left
 	displayNameLabel.Text                 = player.DisplayName
@@ -1165,11 +1165,11 @@ function populateCareerTab()
 
 	local usernameLabel = Instance.new("TextLabel")
 	usernameLabel.Name                 = "Username"
-	usernameLabel.Size                 = UDim2.new(1, -infoX, 0, px(18))
-	usernameLabel.Position             = UDim2.new(0, infoX, 0, px(30))
+	usernameLabel.Size                 = UDim2.new(1, -infoX, 0, px(22))
+	usernameLabel.Position             = UDim2.new(0, infoX, 0, px(36))
 	usernameLabel.BackgroundTransparency = 1
 	usernameLabel.Font                 = Enum.Font.Gotham
-	usernameLabel.TextSize             = px(16)
+	usernameLabel.TextSize             = px(19)
 	usernameLabel.TextColor3           = GRAY
 	usernameLabel.TextXAlignment       = Enum.TextXAlignment.Left
 	usernameLabel.Text                 = "@" .. player.Name
@@ -1183,11 +1183,11 @@ function populateCareerTab()
 
 	local levelLabel = Instance.new("TextLabel")
 	levelLabel.Name                 = "Level"
-	levelLabel.Size                 = UDim2.new(0.5, -infoX / 2, 0, px(20))
-	levelLabel.Position             = UDim2.new(0, infoX, 0, px(52))
+	levelLabel.Size                 = UDim2.new(0.5, -infoX / 2, 0, px(26))
+	levelLabel.Position             = UDim2.new(0, infoX, 0, px(62))
 	levelLabel.BackgroundTransparency = 1
 	levelLabel.Font                 = Enum.Font.GothamBold
-	levelLabel.TextSize             = px(18)
+	levelLabel.TextSize             = px(22)
 	levelLabel.TextColor3           = WHITE
 	levelLabel.TextXAlignment       = Enum.TextXAlignment.Left
 	levelLabel.Text                 = "Level " .. tostring(playerLevel)
@@ -1195,11 +1195,11 @@ function populateCareerTab()
 
 	local xpLabel = Instance.new("TextLabel")
 	xpLabel.Name                 = "XPLabel"
-	xpLabel.Size                 = UDim2.new(0.5, 0, 0, px(18))
-	xpLabel.Position             = UDim2.new(0.5, 0, 0, px(54))
+	xpLabel.Size                 = UDim2.new(0.5, 0, 0, px(22))
+	xpLabel.Position             = UDim2.new(0.5, 0, 0, px(64))
 	xpLabel.BackgroundTransparency = 1
-	xpLabel.Font                 = Enum.Font.Gotham
-	xpLabel.TextSize             = px(15)
+	xpLabel.Font                 = Enum.Font.GothamBold
+	xpLabel.TextSize             = px(18)
 	xpLabel.TextColor3           = GRAY
 	xpLabel.TextXAlignment       = Enum.TextXAlignment.Right
 	xpLabel.Text                 = formatStatNumber(playerXP) .. " / " .. formatStatNumber(xpToNext) .. " XP"
@@ -1208,8 +1208,8 @@ function populateCareerTab()
 	-- XP progress bar
 	local barBG = Instance.new("Frame")
 	barBG.Name                 = "XPBarBG"
-	barBG.Size                 = UDim2.new(1, -infoX, 0, px(10))
-	barBG.Position             = UDim2.new(0, infoX, 0, px(76))
+	barBG.Size                 = UDim2.new(1, -infoX, 0, px(14))
+	barBG.Position             = UDim2.new(0, infoX, 0, px(92))
 	barBG.BackgroundColor3     = Color3.fromRGB(35, 38, 58)
 	barBG.BackgroundTransparency = 0
 	barBG.Parent               = profileFrame
@@ -1232,12 +1232,12 @@ function populateCareerTab()
 
 	local winRateLabel = Instance.new("TextLabel")
 	winRateLabel.Name                 = "WinRate"
-	winRateLabel.Size                 = UDim2.new(0, px(120), 0, px(24))
-	winRateLabel.Position             = UDim2.new(1, -px(120), 0, px(4))
+	winRateLabel.Size                 = UDim2.new(0, px(160), 0, px(30))
+	winRateLabel.Position             = UDim2.new(1, -px(160), 0, px(4))
 	winRateLabel.BackgroundColor3     = Color3.fromRGB(22, 38, 34)
 	winRateLabel.BackgroundTransparency = 0.3
 	winRateLabel.Font                 = Enum.Font.GothamBold
-	winRateLabel.TextSize             = px(16)
+	winRateLabel.TextSize             = px(19)
 	winRateLabel.TextColor3           = Color3.fromRGB(35, 190, 75)
 	winRateLabel.Text                 = winRate .. "% WIN RATE"
 	winRateLabel.Parent               = profileFrame
@@ -1266,24 +1266,24 @@ function populateCareerTab()
 		end
 
 		local secPad = Instance.new("UIPadding")
-		secPad.PaddingLeft   = UDim.new(0, px(16))
-		secPad.PaddingRight  = UDim.new(0, px(16))
-		secPad.PaddingTop    = UDim.new(0, px(10))
-		secPad.PaddingBottom = UDim.new(0, px(10))
+		secPad.PaddingLeft   = UDim.new(0, px(20))
+		secPad.PaddingRight  = UDim.new(0, px(20))
+		secPad.PaddingTop    = UDim.new(0, px(14))
+		secPad.PaddingBottom = UDim.new(0, px(14))
 		secPad.Parent        = section
 
 		local secLayout = Instance.new("UIListLayout")
 		secLayout.SortOrder = Enum.SortOrder.LayoutOrder
-		secLayout.Padding   = UDim.new(0, px(4))
+		secLayout.Padding   = UDim.new(0, px(6))
 		secLayout.Parent    = section
 
 		-- Section header
 		local headerLbl = Instance.new("TextLabel")
 		headerLbl.Name                 = "SectionHeader"
-		headerLbl.Size                 = UDim2.new(1, 0, 0, px(28))
+		headerLbl.Size                 = UDim2.new(1, 0, 0, px(38))
 		headerLbl.BackgroundTransparency = 1
-		headerLbl.Font                 = Enum.Font.GothamBold
-		headerLbl.TextSize             = px(18)
+		headerLbl.Font                 = Enum.Font.GothamBlack
+		headerLbl.TextSize             = px(26)
 		headerLbl.TextColor3           = GOLD
 		headerLbl.TextXAlignment       = Enum.TextXAlignment.Left
 		headerLbl.Text                 = string.upper(sectionTitle)
@@ -1304,25 +1304,25 @@ function populateCareerTab()
 		for i, stat in ipairs(stats) do
 			local row = Instance.new("Frame")
 			row.Name                 = stat.key
-			row.Size                 = UDim2.new(1, 0, 0, px(32))
-			row.BackgroundColor3     = (i % 2 == 0) and Color3.fromRGB(18, 20, 36) or NAVY_LIGHT
-			row.BackgroundTransparency = (i % 2 == 0) and 0.3 or 1
+			row.Size                 = UDim2.new(1, 0, 0, px(48))
+			row.BackgroundColor3     = (i % 2 == 0) and Color3.fromRGB(18, 20, 38) or Color3.fromRGB(24, 28, 52)
+			row.BackgroundTransparency = (i % 2 == 0) and 0.20 or 0.45
 			row.LayoutOrder          = i + 1
 			row.Parent               = section
 			Instance.new("UICorner", row).CornerRadius = UDim.new(0, px(4))
 
 			local rowPad = Instance.new("UIPadding")
-			rowPad.PaddingLeft  = UDim.new(0, px(4))
-			rowPad.PaddingRight = UDim.new(0, px(4))
+			rowPad.PaddingLeft  = UDim.new(0, px(10))
+			rowPad.PaddingRight = UDim.new(0, px(10))
 			rowPad.Parent       = row
 
 			local nameLbl = Instance.new("TextLabel")
 			nameLbl.Name                 = "Label"
-			nameLbl.Size                 = UDim2.new(0.6, 0, 1, 0)
+			nameLbl.Size                 = UDim2.new(0.65, 0, 1, 0)
 			nameLbl.Position             = UDim2.new(0, 0, 0, 0)
 			nameLbl.BackgroundTransparency = 1
-			nameLbl.Font                 = Enum.Font.Gotham
-			nameLbl.TextSize             = px(17)
+			nameLbl.Font                 = Enum.Font.GothamBold
+			nameLbl.TextSize             = px(22)
 			nameLbl.TextColor3           = WHITE
 			nameLbl.TextXAlignment       = Enum.TextXAlignment.Left
 			nameLbl.Text                 = stat.label
@@ -1338,11 +1338,11 @@ function populateCareerTab()
 
 			local valLbl = Instance.new("TextLabel")
 			valLbl.Name                 = "Value"
-			valLbl.Size                 = UDim2.new(0.4, 0, 1, 0)
-			valLbl.Position             = UDim2.new(0.6, 0, 0, 0)
+			valLbl.Size                 = UDim2.new(0.35, 0, 1, 0)
+			valLbl.Position             = UDim2.new(0.65, 0, 0, 0)
 			valLbl.BackgroundTransparency = 1
-			valLbl.Font                 = Enum.Font.GothamBold
-			valLbl.TextSize             = px(18)
+			valLbl.Font                 = Enum.Font.GothamBlack
+			valLbl.TextSize             = px(24)
 			valLbl.TextColor3           = GOLD
 			valLbl.TextXAlignment       = Enum.TextXAlignment.Right
 			valLbl.Text                 = displayValue
@@ -1382,7 +1382,7 @@ function populateCareerTab()
 	-- Future placeholder: Title / Badge area
 	local futureFrame = Instance.new("Frame")
 	futureFrame.Name                 = "FuturePlaceholder"
-	futureFrame.Size                 = UDim2.new(1, 0, 0, px(50))
+	futureFrame.Size                 = UDim2.new(1, 0, 0, px(60))
 	futureFrame.BackgroundColor3     = NAVY_LIGHT
 	futureFrame.BackgroundTransparency = 0.5
 	futureFrame.LayoutOrder          = nextOrder()
@@ -1393,7 +1393,7 @@ function populateCareerTab()
 	futureLbl.Size                 = UDim2.new(1, 0, 1, 0)
 	futureLbl.BackgroundTransparency = 1
 	futureLbl.Font                 = Enum.Font.Gotham
-	futureLbl.TextSize             = px(16)
+	futureLbl.TextSize             = px(20)
 	futureLbl.TextColor3           = GRAY
 	futureLbl.Text                 = "Titles & Badges coming soon..."
 	futureLbl.Parent               = futureFrame

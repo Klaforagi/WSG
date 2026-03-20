@@ -462,7 +462,7 @@ local function getEffectColorForPlayer(targetPlayer)
     return DashConfig.DefaultEffectColor
 end
 
-local function playDashEffects(targetPlayer)
+local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColorB)
     if not DashConfig.EffectEnabled then return end
     if not targetPlayer or not targetPlayer:IsA("Player") then return end
     local char = targetPlayer.Character
@@ -470,7 +470,15 @@ local function playDashEffects(targetPlayer)
     local rootPart = char:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
 
-    local color = getEffectColorForPlayer(targetPlayer)
+    -- Use custom trail color if provided by server, otherwise fall back to team color
+    local color
+    if trailColorR and trailColorG and trailColorB then
+        color = Color3.fromRGB(trailColorR, trailColorG, trailColorB)
+        log("Using equipped trail color:", trailColorR, trailColorG, trailColorB)
+    else
+        color = getEffectColorForPlayer(targetPlayer)
+        log("Using default/team trail color")
+    end
     local duration = DashConfig.Duration
 
     -- Cleanup stale transient dash VFX before spawning fresh ones.
@@ -671,10 +679,11 @@ dashApproved.OnClientEvent:Connect(function()
 end)
 
 if playDashVFX then
-    playDashVFX.OnClientEvent:Connect(function(dashingPlayer)
+    playDashVFX.OnClientEvent:Connect(function(dashingPlayer, trailColorR, trailColorG, trailColorB)
         if not dashingPlayer or not dashingPlayer:IsA("Player") then return end
-        print("[DashClient] received dash VFX for", dashingPlayer.Name)
-        playDashEffects(dashingPlayer)
+        print("[DashClient] received dash VFX for", dashingPlayer.Name,
+            "trailColor:", trailColorR or "default", trailColorG or "", trailColorB or "")
+        playDashEffects(dashingPlayer, trailColorR, trailColorG, trailColorB)
     end)
 else
     warn("[DashClient] PlayDashVFX remote missing; dash VFX visibility may be local-only")

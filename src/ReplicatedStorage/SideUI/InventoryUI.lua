@@ -1208,7 +1208,313 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     makeOwnedPlaceholderPage("SkinsPage", "skins", "\u{2726}", "SKINS")
-    makeOwnedPlaceholderPage("EffectsPage", "effects", "\u{2738}", "EFFECTS")
+
+    ---------------------------------------------------------------------------
+    -- EFFECTS inventory page (equippable dash trail effects)
+    ---------------------------------------------------------------------------
+    do
+        local EffectDefs = nil
+        pcall(function()
+            local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+            local mod = sideUI and sideUI:FindFirstChild("EffectDefs")
+            if mod and mod:IsA("ModuleScript") then EffectDefs = require(mod) end
+        end)
+
+        local effectRemotes = nil
+        local function ensureEffectRemotes()
+            if effectRemotes then return effectRemotes end
+            local rf = ReplicatedStorage:FindFirstChild("Remotes")
+            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
+            if not rf then return nil end
+            local ef = rf:FindFirstChild("Effects") or rf:WaitForChild("Effects", 5)
+            if not ef then return nil end
+            effectRemotes = {
+                getOwned    = ef:FindFirstChild("GetOwnedEffects"),
+                equip       = ef:FindFirstChild("EquipEffect"),
+                getEquipped = ef:FindFirstChild("GetEquippedEffects"),
+                changed     = ef:FindFirstChild("EquippedEffectsChanged"),
+            }
+            return effectRemotes
+        end
+
+        local allTrailDefs = EffectDefs and EffectDefs.GetBySubType("DashTrail") or {}
+
+        if #allTrailDefs > 0 then
+            local effectsPage = Instance.new("Frame")
+            effectsPage.Name                = "EffectsPage"
+            effectsPage.BackgroundTransparency = 1
+            effectsPage.Size                = UDim2.new(1, 0, 0, 0)
+            effectsPage.AutomaticSize       = Enum.AutomaticSize.Y
+            effectsPage.Visible             = false
+            effectsPage.Parent              = contentContainer
+
+            local epLayout = Instance.new("UIListLayout")
+            epLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            epLayout.Padding   = UDim.new(0, px(16))
+            epLayout.Parent    = effectsPage
+
+            local trailSection, trailGrid = makeSection(effectsPage, "DashTrails", "Dash Trails")
+            trailSection.LayoutOrder = 1
+
+            -- Track owned and equipped state
+            local ownedSet = {}
+            local equippedTrailId = nil
+            local effectEquipBtns = {} -- effectId -> { btn, stroke, card, cardStroke }
+
+            local function refreshAllEffectBtns()
+                for eid, info in pairs(effectEquipBtns) do
+                    if equippedTrailId == eid then
+                        info.btn.Text = "\u{2714} EQUIPPED"
+                        info.btn.BackgroundColor3 = DISABLED_BG
+                        info.btn.TextColor3 = GREEN_GLOW
+                        info.stroke.Color = GREEN_GLOW
+                        info.stroke.Transparency = 0.45
+                        if info.card then
+                            info.card.BackgroundColor3 = CARD_EQUIPPED
+                        end
+                        if info.cardStroke then
+                            info.cardStroke.Color = GREEN_GLOW
+                            info.cardStroke.Thickness = 1.8
+                            info.cardStroke.Transparency = 0.3
+                        end
+                    elseif ownedSet[eid] then
+                        info.btn.Text = "EQUIP"
+                        info.btn.BackgroundColor3 = BTN_BG
+                        info.btn.TextColor3 = WHITE
+                        info.stroke.Color = BTN_STROKE_C
+                        info.stroke.Transparency = 0.25
+                        if info.card then
+                            info.card.BackgroundColor3 = CARD_BG
+                        end
+                        if info.cardStroke then
+                            info.cardStroke.Color = CARD_STROKE
+                            info.cardStroke.Thickness = 1.2
+                            info.cardStroke.Transparency = 0.35
+                        end
+                    else
+                        -- Not owned: dim out
+                        info.btn.Text = "NOT OWNED"
+                        info.btn.BackgroundColor3 = DISABLED_BG
+                        info.btn.TextColor3 = DIM_TEXT
+                        info.stroke.Color = CARD_STROKE
+                        info.stroke.Transparency = 0.5
+                        if info.card then
+                            info.card.BackgroundColor3 = CARD_BG
+                        end
+                        if info.cardStroke then
+                            info.cardStroke.Color = CARD_STROKE
+                            info.cardStroke.Thickness = 1.2
+                            info.cardStroke.Transparency = 0.35
+                        end
+                    end
+                end
+            end
+
+            -- Async fetch owned + equipped
+            task.spawn(function()
+                local remotes = ensureEffectRemotes()
+                if not remotes then return end
+                -- Fetch owned
+                if remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
+                    local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
+                    if ok and type(list) == "table" then
+                        for _, id in ipairs(list) do ownedSet[id] = true end
+                    end
+                end
+                -- Fetch equipped
+                if remotes.getEquipped and remotes.getEquipped:IsA("RemoteFunction") then
+                    local ok, equipped = pcall(function() return remotes.getEquipped:InvokeServer() end)
+                    if ok and type(equipped) == "table" then
+                        equippedTrailId = equipped.DashTrail
+                        print("[InventoryUI] loaded equipped DashTrail:", equippedTrailId or "none")
+                    end
+                end
+                refreshAllEffectBtns()
+
+                -- Listen for server-pushed equip changes
+                if remotes.changed and remotes.changed:IsA("RemoteEvent") then
+                    remotes.changed.OnClientEvent:Connect(function(newEquipped)
+                        if type(newEquipped) == "table" then
+                            equippedTrailId = newEquipped.DashTrail
+                            refreshAllEffectBtns()
+                        end
+                    end)
+                end
+            end)
+
+            -- Build cards for each trail effect
+            for _, def in ipairs(allTrailDefs) do
+                local effectId    = def.Id
+                local displayName = def.DisplayName or effectId
+                local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
+                local description = def.Description or ""
+                local isFree      = def.IsFree or false
+
+                local card = Instance.new("Frame")
+                card.Name = "EffectCard_" .. effectId
+                card.BackgroundColor3 = CARD_BG
+                card.Size = UDim2.new(1, 0, 1, 0)
+                card.AutomaticSize = Enum.AutomaticSize.Y
+                card.Parent = trailGrid
+                local corner = Instance.new("UICorner")
+                corner.CornerRadius = UDim.new(0, px(12))
+                corner.Parent = card
+                local stroke = Instance.new("UIStroke")
+                stroke.Color = CARD_STROKE
+                stroke.Thickness = 1.2
+                stroke.Transparency = 0.35
+                stroke.Parent = card
+                local cardPad = Instance.new("UIPadding")
+                cardPad.PaddingTop    = UDim.new(0, px(8))
+                cardPad.PaddingBottom = UDim.new(0, px(8))
+                cardPad.PaddingLeft   = UDim.new(0, px(8))
+                cardPad.PaddingRight  = UDim.new(0, px(8))
+                cardPad.Parent = card
+
+                -- LEFT: color swatch
+                local leftBox = Instance.new("Frame")
+                leftBox.Name = "LeftBox"
+                leftBox.Size = UDim2.new(0.45, 0, 1, 0)
+                leftBox.Position = UDim2.new(0, 0, 0, 0)
+                leftBox.BackgroundColor3 = ICON_BG
+                leftBox.ZIndex = 251
+                leftBox.Parent = card
+                local lCrn = Instance.new("UICorner")
+                lCrn.CornerRadius = UDim.new(0, px(10))
+                lCrn.Parent = leftBox
+                local lStk = Instance.new("UIStroke")
+                lStk.Color = CARD_STROKE; lStk.Thickness = 1; lStk.Transparency = 0.5
+                lStk.Parent = leftBox
+
+                -- Color swatch
+                local swatch = Instance.new("Frame")
+                swatch.Name = "ColorSwatch"
+                swatch.Size = UDim2.new(0.6, 0, 0.15, 0)
+                swatch.AnchorPoint = Vector2.new(0.5, 0.5)
+                swatch.Position = UDim2.new(0.5, 0, 0.4, 0)
+                swatch.BackgroundColor3 = effectColor
+                swatch.BorderSizePixel = 0
+                swatch.ZIndex = 252
+                swatch.Parent = leftBox
+                local swCrn = Instance.new("UICorner")
+                swCrn.CornerRadius = UDim.new(0.5, 0)
+                swCrn.Parent = swatch
+                local swStk = Instance.new("UIStroke")
+                swStk.Color = effectColor; swStk.Thickness = px(2); swStk.Transparency = 0.3
+                swStk.Parent = swatch
+
+                local trailGlyph = Instance.new("TextLabel")
+                trailGlyph.Name = "TrailGlyph"
+                trailGlyph.Text = "\u{2550}\u{2550}\u{2550}"
+                trailGlyph.Font = Enum.Font.GothamBold
+                trailGlyph.TextColor3 = effectColor
+                trailGlyph.TextScaled = true
+                trailGlyph.BackgroundTransparency = 1
+                trailGlyph.Size = UDim2.new(0.8, 0, 0.2, 0)
+                trailGlyph.AnchorPoint = Vector2.new(0.5, 0)
+                trailGlyph.Position = UDim2.new(0.5, 0, 0.6, 0)
+                trailGlyph.ZIndex = 252
+                trailGlyph.Parent = leftBox
+
+                -- RIGHT: name + equip button
+                local rightBox = Instance.new("Frame")
+                rightBox.Name = "RightBox"
+                rightBox.Size = UDim2.new(0.52, 0, 1, 0)
+                rightBox.Position = UDim2.new(0.48, 0, 0, 0)
+                rightBox.BackgroundTransparency = 1
+                rightBox.ZIndex = 251
+                rightBox.Parent = card
+
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "ItemName"
+                nameLabel.Size = UDim2.new(0.95, 0, 0.28, 0)
+                nameLabel.Position = UDim2.new(0.04, 0, 0.08, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = displayName
+                nameLabel.TextColor3 = WHITE
+                nameLabel.TextSize = math.max(13, math.floor(px(15)))
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                nameLabel.ZIndex = 252
+                nameLabel.Parent = rightBox
+
+                local descLabel = Instance.new("TextLabel")
+                descLabel.Name = "Desc"
+                descLabel.Size = UDim2.new(0.95, 0, 0.22, 0)
+                descLabel.Position = UDim2.new(0.04, 0, 0.36, 0)
+                descLabel.BackgroundTransparency = 1
+                descLabel.Font = Enum.Font.GothamMedium
+                descLabel.Text = isFree and "Free (default)" or description
+                descLabel.TextColor3 = DIM_TEXT
+                descLabel.TextSize = math.max(10, math.floor(px(11)))
+                descLabel.TextXAlignment = Enum.TextXAlignment.Left
+                descLabel.TextWrapped = true
+                descLabel.ZIndex = 252
+                descLabel.Parent = rightBox
+
+                -- Equip button
+                local equipBtn = Instance.new("TextButton")
+                equipBtn.Name = "EquipBtn"
+                equipBtn.Size = UDim2.new(0.85, 0, 0.26, 0)
+                equipBtn.AnchorPoint = Vector2.new(0.5, 1)
+                equipBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+                equipBtn.BackgroundColor3 = BTN_BG
+                equipBtn.BorderSizePixel = 0
+                equipBtn.AutoButtonColor = false
+                equipBtn.Font = Enum.Font.GothamBold
+                equipBtn.Text = "EQUIP"
+                equipBtn.TextColor3 = WHITE
+                equipBtn.TextSize = math.max(13, math.floor(px(14)))
+                equipBtn.ZIndex = 253
+                equipBtn.Parent = rightBox
+                local eCrn = Instance.new("UICorner")
+                eCrn.CornerRadius = UDim.new(0, px(8))
+                eCrn.Parent = equipBtn
+                local eStk = Instance.new("UIStroke")
+                eStk.Color = BTN_STROKE_C
+                eStk.Thickness = 1.2
+                eStk.Transparency = 0.25
+                eStk.Parent = equipBtn
+
+                effectEquipBtns[effectId] = { btn = equipBtn, stroke = eStk, card = card, cardStroke = stroke }
+
+                -- Hover effects
+                if not game:GetService("UserInputService").TouchEnabled then
+                    equipBtn.MouseEnter:Connect(function()
+                        if ownedSet[effectId] and equippedTrailId ~= effectId then
+                            TweenService:Create(equipBtn, TWEEN_QUICK, { BackgroundColor3 = Color3.fromRGB(35, 190, 75) }):Play()
+                        end
+                    end)
+                    equipBtn.MouseLeave:Connect(function()
+                        if ownedSet[effectId] and equippedTrailId ~= effectId then
+                            TweenService:Create(equipBtn, TWEEN_QUICK, { BackgroundColor3 = BTN_BG }):Play()
+                        end
+                    end)
+                end
+
+                -- Equip click handler
+                equipBtn.MouseButton1Click:Connect(function()
+                    if not ownedSet[effectId] then return end
+                    if equippedTrailId == effectId then return end
+
+                    local remotes = ensureEffectRemotes()
+                    if remotes and remotes.equip and remotes.equip:IsA("RemoteEvent") then
+                        pcall(function() remotes.equip:FireServer(effectId, "DashTrail") end)
+                    end
+
+                    equippedTrailId = effectId
+                    print("[InventoryUI] Equipped DashTrail =", effectId)
+                    refreshAllEffectBtns()
+                end)
+            end -- end for each trail def
+
+            contentPages["effects"] = effectsPage
+        else
+            makeOwnedPlaceholderPage("EffectsPage", "effects", "\u{2738}", "EFFECTS")
+        end
+    end
+
     print("[InventoryUI] all placeholder pages created (Emotes removed)")
 
     -- [REMOVED] Emotes inventory page -- emotes are now managed via the dedicated E wheel

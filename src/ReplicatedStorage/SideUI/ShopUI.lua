@@ -1496,7 +1496,328 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     end
 
     makePlaceholderPage("SkinsContent",   "skins",   "\u{2726}", "Skins coming soon")
-    makePlaceholderPage("EffectsContent", "effects", "\u{2738}", "Effects (including trails) coming soon")
+
+    ---------------------------------------------------------------------------
+    -- EFFECTS content page (real shop page, reads from EffectDefs)
+    ---------------------------------------------------------------------------
+    do
+        local EffectDefs = nil
+        pcall(function()
+            local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+            local mod = sideUI and sideUI:FindFirstChild("EffectDefs")
+            if mod and mod:IsA("ModuleScript") then EffectDefs = require(mod) end
+        end)
+
+        local effectRemotes = nil
+        local function ensureEffectRemotes()
+            if effectRemotes then return effectRemotes end
+            local rf = ReplicatedStorage:FindFirstChild("Remotes")
+            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
+            if not rf then return nil end
+            local ef = rf:FindFirstChild("Effects") or rf:WaitForChild("Effects", 5)
+            if not ef then return nil end
+            effectRemotes = {
+                purchase = ef:FindFirstChild("PurchaseEffect"),
+                getOwned = ef:FindFirstChild("GetOwnedEffects"),
+            }
+            return effectRemotes
+        end
+
+        -- Only show purchasable effects (exclude free defaults)
+        local allEffects = {}
+        if EffectDefs then
+            for _, def in ipairs(EffectDefs.GetAll()) do
+                if not def.IsFree then
+                    table.insert(allEffects, def)
+                end
+            end
+        end
+
+        if #allEffects > 0 then
+            local effectsPage = Instance.new("Frame")
+            effectsPage.Name                = "EffectsContent"
+            effectsPage.BackgroundTransparency = 1
+            effectsPage.Size                = UDim2.new(1, 0, 0, 0)
+            effectsPage.AutomaticSize       = Enum.AutomaticSize.Y
+            effectsPage.Visible             = false
+            effectsPage.Parent              = contentContainer
+
+            local epLayout = Instance.new("UIListLayout")
+            epLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            epLayout.Padding   = UDim.new(0, px(16))
+            epLayout.Parent    = effectsPage
+
+            local effectSection, effectGrid = makeSection(effectsPage, "DashTrails", "Dash Trails")
+            effectSection.LayoutOrder = 1
+
+            -- Fetch owned effects from the server once
+            local ownedSet = {}
+            local effectRefreshFns = {}
+            task.spawn(function()
+                local remotes = ensureEffectRemotes()
+                if remotes and remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
+                    local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
+                    if ok and type(list) == "table" then
+                        for _, id in ipairs(list) do ownedSet[id] = true end
+                        for _, fn in ipairs(effectRefreshFns) do
+                            pcall(fn)
+                        end
+                    end
+                end
+            end)
+
+            for _, def in ipairs(allEffects) do
+                local effectId    = def.Id
+                local displayName = def.DisplayName or effectId
+                local price       = def.CoinCost or 0
+                local description = def.Description or ""
+                local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
+
+                local card = Instance.new("Frame")
+                card.Name = "Effect_" .. effectId
+                card.BackgroundColor3 = CARD_BG
+                card.Size = UDim2.new(1, 0, 1, 0)
+                card.AutomaticSize = Enum.AutomaticSize.Y
+                card.ZIndex = 250
+                card.Parent = effectGrid
+
+                local crn = Instance.new("UICorner")
+                crn.CornerRadius = UDim.new(0, px(12))
+                crn.Parent = card
+                local stk = Instance.new("UIStroke")
+                stk.Color = CARD_STROKE
+                stk.Thickness = 1.2
+                stk.Transparency = 0.35
+                stk.Parent = card
+                local cPad = Instance.new("UIPadding")
+                cPad.PaddingTop    = UDim.new(0, px(8))
+                cPad.PaddingBottom = UDim.new(0, px(8))
+                cPad.PaddingLeft   = UDim.new(0, px(8))
+                cPad.PaddingRight  = UDim.new(0, px(8))
+                cPad.Parent = card
+
+                -- LEFT: color swatch preview
+                local leftBox = Instance.new("Frame")
+                leftBox.Name = "LeftBox"
+                leftBox.Size = UDim2.new(0.45, 0, 1, 0)
+                leftBox.BackgroundColor3 = ICON_BG
+                leftBox.ZIndex = 251
+                leftBox.Parent = card
+                local lCrn = Instance.new("UICorner")
+                lCrn.CornerRadius = UDim.new(0, px(10))
+                lCrn.Parent = leftBox
+                local lStk = Instance.new("UIStroke")
+                lStk.Color = CARD_STROKE; lStk.Thickness = 1; lStk.Transparency = 0.5
+                lStk.Parent = leftBox
+
+                -- Trail color swatch (colored streak icon)
+                local swatch = Instance.new("Frame")
+                swatch.Name = "ColorSwatch"
+                swatch.Size = UDim2.new(0.6, 0, 0.15, 0)
+                swatch.AnchorPoint = Vector2.new(0.5, 0.5)
+                swatch.Position = UDim2.new(0.5, 0, 0.4, 0)
+                swatch.BackgroundColor3 = effectColor
+                swatch.BorderSizePixel = 0
+                swatch.ZIndex = 252
+                swatch.Parent = leftBox
+                local swatchCorner = Instance.new("UICorner")
+                swatchCorner.CornerRadius = UDim.new(0.5, 0)
+                swatchCorner.Parent = swatch
+                -- Glow effect on the swatch
+                local swatchStroke = Instance.new("UIStroke")
+                swatchStroke.Color = effectColor
+                swatchStroke.Thickness = px(2)
+                swatchStroke.Transparency = 0.3
+                swatchStroke.Parent = swatch
+
+                -- "TRAIL" label beneath swatch
+                local trailLabel = Instance.new("TextLabel")
+                trailLabel.Name = "TrailLabel"
+                trailLabel.Text = "\u{2550}\u{2550}\u{2550}"
+                trailLabel.Font = Enum.Font.GothamBold
+                trailLabel.TextColor3 = effectColor
+                trailLabel.TextScaled = true
+                trailLabel.BackgroundTransparency = 1
+                trailLabel.Size = UDim2.new(0.8, 0, 0.2, 0)
+                trailLabel.AnchorPoint = Vector2.new(0.5, 0)
+                trailLabel.Position = UDim2.new(0.5, 0, 0.6, 0)
+                trailLabel.ZIndex = 252
+                trailLabel.Parent = leftBox
+
+                -- RIGHT: name, description, price, buy button
+                local rightBox = Instance.new("Frame")
+                rightBox.Name = "RightBox"
+                rightBox.Size = UDim2.new(0.52, 0, 1, 0)
+                rightBox.Position = UDim2.new(0.48, 0, 0, 0)
+                rightBox.BackgroundTransparency = 1
+                rightBox.ZIndex = 251
+                rightBox.Parent = card
+
+                -- Price badge
+                local priceBadge = Instance.new("Frame")
+                priceBadge.Name = "PriceBadge"
+                priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
+                priceBadge.BackgroundTransparency = 0.3
+                priceBadge.Size = UDim2.new(0.85, 0, 0, px(24))
+                priceBadge.AnchorPoint = Vector2.new(0.5, 0)
+                priceBadge.Position = UDim2.new(0.5, 0, 0.04, 0)
+                priceBadge.ZIndex = 252
+                priceBadge.Parent = rightBox
+                local pbCrn = Instance.new("UICorner")
+                pbCrn.CornerRadius = UDim.new(0, px(6))
+                pbCrn.Parent = priceBadge
+                local pbStk = Instance.new("UIStroke")
+                pbStk.Color = GOLD; pbStk.Thickness = 1; pbStk.Transparency = 0.5
+                pbStk.Parent = priceBadge
+
+                local pbLbl = Instance.new("TextLabel")
+                pbLbl.Name = "PriceText"
+                pbLbl.BackgroundTransparency = 1
+                pbLbl.Font = Enum.Font.GothamBold
+                pbLbl.Text = tostring(price)
+                pbLbl.TextColor3 = GOLD
+                pbLbl.TextSize = math.max(12, math.floor(px(14)))
+                pbLbl.Size = UDim2.new(0.7, 0, 1, 0)
+                pbLbl.Position = UDim2.new(0.15, 0, 0, 0)
+                pbLbl.TextXAlignment = Enum.TextXAlignment.Center
+                pbLbl.ZIndex = 253
+                pbLbl.Parent = priceBadge
+
+                -- Name label
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "ItemName"
+                nameLabel.Size = UDim2.new(0.95, 0, 0.22, 0)
+                nameLabel.Position = UDim2.new(0.04, 0, 0.26, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = displayName
+                nameLabel.TextColor3 = WHITE
+                nameLabel.TextSize = math.max(13, math.floor(px(15)))
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                nameLabel.ZIndex = 252
+                nameLabel.Parent = rightBox
+
+                -- Description label
+                local descLabel = Instance.new("TextLabel")
+                descLabel.Name = "Desc"
+                descLabel.Size = UDim2.new(0.95, 0, 0.18, 0)
+                descLabel.Position = UDim2.new(0.04, 0, 0.48, 0)
+                descLabel.BackgroundTransparency = 1
+                descLabel.Font = Enum.Font.GothamMedium
+                descLabel.Text = description
+                descLabel.TextColor3 = DIM_TEXT
+                descLabel.TextSize = math.max(10, math.floor(px(11)))
+                descLabel.TextXAlignment = Enum.TextXAlignment.Left
+                descLabel.TextWrapped = true
+                descLabel.ZIndex = 252
+                descLabel.Parent = rightBox
+
+                -- Buy button
+                local buyBtn = Instance.new("TextButton")
+                buyBtn.Name = "BuyBtn"
+                buyBtn.Size = UDim2.new(0.85, 0, 0.24, 0)
+                buyBtn.AnchorPoint = Vector2.new(0.5, 1)
+                buyBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+                buyBtn.BackgroundColor3 = BTN_BUY
+                buyBtn.BorderSizePixel = 0
+                buyBtn.AutoButtonColor = false
+                buyBtn.Font = Enum.Font.GothamBold
+                buyBtn.Text = "BUY"
+                buyBtn.TextColor3 = WHITE
+                buyBtn.TextSize = math.max(13, math.floor(px(14)))
+                buyBtn.ZIndex = 253
+                buyBtn.Parent = rightBox
+                local bCrn = Instance.new("UICorner")
+                bCrn.CornerRadius = UDim.new(0, px(8))
+                bCrn.Parent = buyBtn
+                local bStk = Instance.new("UIStroke")
+                bStk.Color = BTN_STROKE_C
+                bStk.Thickness = 1.2
+                bStk.Transparency = 0.25
+                bStk.Parent = buyBtn
+
+                -- Refresh display based on ownership
+                local function refreshEffectCard()
+                    local owned = ownedSet[effectId] == true
+                    if owned then
+                        buyBtn.Text = "\u{2714} OWNED"
+                        buyBtn.Active = false
+                        buyBtn.BackgroundColor3 = DISABLED_BG
+                        buyBtn.TextColor3 = GREEN_GLOW
+                        bStk.Color = GREEN_GLOW; bStk.Transparency = 0.45
+                        card.BackgroundColor3 = CARD_OWNED
+                        stk.Color = GREEN_GLOW; stk.Thickness = 1.6; stk.Transparency = 0.35
+                    else
+                        buyBtn.Text = "BUY"
+                        buyBtn.Active = true
+                        buyBtn.BackgroundColor3 = BTN_BUY
+                        buyBtn.TextColor3 = WHITE
+                        bStk.Color = BTN_STROKE_C; bStk.Transparency = 0.25
+                        card.BackgroundColor3 = CARD_BG
+                        stk.Color = CARD_STROKE; stk.Thickness = 1.2; stk.Transparency = 0.35
+                    end
+                end
+                refreshEffectCard()
+                table.insert(effectRefreshFns, refreshEffectCard)
+
+                -- Hover effects
+                if not game:GetService("UserInputService").TouchEnabled then
+                    buyBtn.MouseEnter:Connect(function()
+                        if buyBtn.Active then
+                            TweenService:Create(buyBtn, TWEEN_QUICK, { BackgroundColor3 = GREEN_BTN }):Play()
+                        end
+                    end)
+                    buyBtn.MouseLeave:Connect(function()
+                        if buyBtn.Active then
+                            TweenService:Create(buyBtn, TWEEN_QUICK, { BackgroundColor3 = BTN_BUY }):Play()
+                        end
+                    end)
+                end
+
+                -- Purchase click handler
+                buyBtn.MouseButton1Click:Connect(function()
+                    if not buyBtn.Active then return end
+                    if ownedSet[effectId] then return end
+
+                    local remotes = ensureEffectRemotes()
+                    if not remotes or not remotes.purchase then
+                        warn("[ShopUI] Effects purchase remote not found")
+                        return
+                    end
+
+                    buyBtn.Active = false
+                    buyBtn.Text = "..."
+
+                    local ok, success, newBalance, msg = pcall(function()
+                        return remotes.purchase:InvokeServer(effectId)
+                    end)
+
+                    if ok and success then
+                        ownedSet[effectId] = true
+                        if coinApi and coinApi.SetCoins then
+                            coinApi:SetCoins(newBalance)
+                        end
+                        print("[ShopUI] Purchased", displayName)
+                        refreshEffectCard()
+                    else
+                        buyBtn.Text = "NOT ENOUGH"
+                        buyBtn.TextColor3 = RED_TEXT
+                        print("[ShopUI] effect purchase rejected:", effectId, msg)
+                        task.delay(1.2, function()
+                            if not ownedSet[effectId] then
+                                refreshEffectCard()
+                            end
+                        end)
+                    end
+                end)
+            end -- end for each effect
+
+            contentPages["effects"] = effectsPage
+        else
+            makePlaceholderPage("EffectsContent", "effects", "\u{2738}", "Effects coming soon")
+        end
+    end
 
     ---------------------------------------------------------------------------
     -- EMOTES content page (real shop page, reads from EmoteConfig)
