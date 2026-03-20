@@ -1105,8 +1105,8 @@ local function clearContent()
 end
 local currentModule = nil
 local isAnimating = false
-local TWEEN_IN_INFO = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-local TWEEN_OUT_INFO = TweenInfo.new(0.20, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+local TWEEN_IN_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local TWEEN_OUT_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 local function clearAndHide()
     currentModule = nil
@@ -1200,17 +1200,23 @@ local function updateHeaderCoins()
         local ok, val = pcall(function() return coinApi.GetCoins() end)
         if ok and type(val) == "number" then coins = val end
     end
-    -- If still 0, try server
-    if coins == 0 then
-        pcall(function()
-            local getCoinsFn = ReplicatedStorage:FindFirstChild("GetCoins")
-            if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
-                local res = getCoinsFn:InvokeServer()
-                if type(res) == "number" then coins = res end
-            end
+    if coins > 0 then
+        headerCoinLabel.Text = tostring(math.floor(coins))
+    else
+        -- Defer server call to avoid yielding during menu transitions
+        headerCoinLabel.Text = "0"
+        task.spawn(function()
+            pcall(function()
+                local getCoinsFn = ReplicatedStorage:FindFirstChild("GetCoins")
+                if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
+                    local res = getCoinsFn:InvokeServer()
+                    if type(res) == "number" then
+                        headerCoinLabel.Text = tostring(math.floor(res))
+                    end
+                end
+            end)
         end)
     end
-    headerCoinLabel.Text = tostring(math.floor(coins))
 end
 -- Expose so ShopUI can trigger a refresh after purchase
 _G.UpdateShopHeaderCoins = updateHeaderCoins
@@ -1233,10 +1239,18 @@ local function populateModalContent(mod, label)
 end
 
 -- Instant-close the modal (no animation). Used when switching menus.
-local function modalCloseInstant()
+-- sameGroup: when true, keeps overlay visible for seamless same-group transition.
+local function modalCloseInstant(sameGroup)
     isAnimating = false
     currentModule = nil
-    clearAndHide()
+    if sameGroup then
+        -- Same-group switch: keep overlay visible, only swap content
+        clearContent()
+        print("[SideUI] modalCloseInstant: sameGroup=true, overlay stays visible")
+    else
+        clearAndHide()
+        print("[SideUI] modalCloseInstant: sameGroup=false, overlay hidden")
+    end
 end
 
 -- Register a modal-based menu (Shop, Inventory, etc.) with the MenuController.
@@ -1260,8 +1274,8 @@ local function registerModalMenu(name, mod, label)
         close = function()
             tweenWindowOut()
         end,
-        closeInstant = function()
-            modalCloseInstant()
+        closeInstant = function(sameGroup)
+            modalCloseInstant(sameGroup)
         end,
         isOpen = function()
             return modalOverlay.Visible and currentModule == mod

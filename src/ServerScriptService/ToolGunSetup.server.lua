@@ -223,13 +223,24 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
     end
+    -- Apply ranged upgrade multiplier (PvP-capped / PvE-uncapped)
+    if _G.GetRangedDamageMultiplier then
+        local isPvP = (victimPlayer ~= nil)
+        local mult = _G.GetRangedDamageMultiplier(player, isPvP)
+        if mult > 1 then
+            damage = damage * mult
+        end
+    end
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
         humanoid:SetAttribute("lastDamageTime", tick())
     end)
-    -- apply damage (server may already have multiplied for headshots)
     humanoid:TakeDamage(damage)
+    -- Track damage dealt for quest progress
+    if StatService and StatService.RegisterDamageDealt then
+        pcall(function() StatService:RegisterDamageDealt(player, damage) end)
+    end
     pcall(function()
         if fireHit then fireHit:FireClient(player, damage, isHeadshot == true, hitPart, hitPos) end
     end)
@@ -316,6 +327,8 @@ end
 local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName)
     -- projCfg contains per-tool overrides: damage, range, bulletdrop, projectile_size, projectile_lifetime
     local pDamage = (projCfg and projCfg.damage) or DAMAGE
+    -- Ranged upgrade multiplier is applied at hit time in applyDamage
+    -- so PvP vs PvE targets get the correct (capped vs uncapped) scaling.
     local pRange = (projCfg and projCfg.range) or RANGE
     local pDrop = (projCfg and projCfg.bulletdrop) or BULLET_DROP
     local pLifetime = (projCfg and projCfg.projectile_lifetime) or PROJECTILE_LIFETIME

@@ -619,4 +619,31 @@ function BoostService:ClearPlayer(player)
     playerBoosts[player] = nil
 end
 
+----------------------------------------------------------------------------
+-- Free boost grant (for reward systems like Daily Rewards)
+-- Adds count to the player's inventory without charging coins.
+-- Returns true on success.
+----------------------------------------------------------------------------
+function BoostService:GrantFreeBoost(player, boostId, count)
+    if not player or type(boostId) ~= "string" then return false end
+    count = math.max(1, math.floor(tonumber(count) or 1))
+
+    local config = getBoostConfig()
+    if not config then return false end
+    local def = config.GetById(boostId)
+    if not def then return false end
+
+    local pd = ensurePlayerData(player)
+    if def.InstantUse then
+        -- Instant-use boosts don't have inventory; do nothing here
+        return false
+    end
+
+    pd.inventory[boostId] = math.max(0, math.floor(tonumber(pd.inventory[boostId]) or 0)) + count
+    print(("[BoostService] Granted %d free '%s' to %s (owned=%d)"):format(
+        count, boostId, player.Name, pd.inventory[boostId]))
+    pushBoostState(player)
+    return true
+end
+
 return BoostService

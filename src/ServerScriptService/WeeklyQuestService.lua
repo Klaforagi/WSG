@@ -42,9 +42,9 @@ end
 -- playerWeekly[player] = {
 --     weekKey = "2026-W11",
 --     quests  = {
---         [1] = { defId = "play_5_matches", progress = 3, claimed = false },
---         [2] = { defId = "elim_50_zombies", progress = 22, claimed = false },
---         [3] = { defId = "win_3_matches",   progress = 1, claimed = false },
+--         [1] = { defId = "win_3_matches",       progress = 1, claimed = false },
+--         [2] = { defId = "capture_5_flags",     progress = 2, claimed = false },
+--         [3] = { defId = "play_60_min",         progress = 15, claimed = false },
 --     },
 --     dirty = false,   -- whether unsaved changes exist
 -- }
@@ -206,7 +206,9 @@ function WeeklyQuestService:LoadPlayer(player)
     local stored = loadFromStore(player)
 
     if stored and stored.weekKey == week and type(stored.quests) == "table" and #stored.quests == 3 then
-        -- Validate all quest IDs still exist in the pool
+        -- Validate all quest IDs still exist in the pool.
+        -- If any saved quest ID was removed (e.g. after a quest pool redesign),
+        -- the player gets fresh quests from the current pool instead.
         local valid = true
         for _, q in ipairs(stored.quests) do
             if not WeeklyQuestDefs.ById[q.defId] then

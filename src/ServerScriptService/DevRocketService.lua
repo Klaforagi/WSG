@@ -311,6 +311,10 @@ local function applyAoEDamage(shooter, hitPosition)
 
         -- Apply damage
         hum:TakeDamage(damage)
+        -- Track damage dealt for quest progress
+        if StatService and StatService.RegisterDamageDealt then
+            pcall(function() StatService:RegisterDamageDealt(shooter, damage) end)
+        end
 
         -- Immediate kill credit if dead (same pattern as ToolGunSetup)
         if hum.Health <= 0 then
@@ -366,6 +370,10 @@ local function applyAoEDamage(shooter, hitPosition)
         end)
 
         model:TakeDamage(damage)
+        -- Track damage dealt for quest progress
+        if StatService and StatService.RegisterDamageDealt then
+            pcall(function() StatService:RegisterDamageDealt(shooter, damage) end)
+        end
 
         if model.Health <= 0 then
             pcall(function() model:SetAttribute("_killCredited", true) end)

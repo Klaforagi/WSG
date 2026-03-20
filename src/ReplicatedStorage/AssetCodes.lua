@@ -16,6 +16,7 @@ AssetCodes.images = {
     Boosts = "rbxassetid://138146402871393",
     Trolls = "rbxassetid://4911139003",
     Team = "rbxassetid://12345678",
+    DailyReward = "rbxassetid://6034281693",  -- calendar/gift icon
 
     --WEAPON icons
     --MELEE
@@ -28,7 +29,9 @@ AssetCodes.images = {
     Shortbow = "rbxassetid://15950019592",
     Longbow = "rbxassetid://13303448470",
     Xbow = "rbxassetid://87445004842826",
-    
+
+    -- Emote icons
+    EmoteWave = "rbxassetid://4720094407",  -- waving hand icon
 }
 
 -- Returns the asset string for a named key, or nil
