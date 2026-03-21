@@ -274,11 +274,25 @@ local function spawnZombie(portalPart, areaPart, tpl)
     -------------------------------------------------------------------
     -- Animator + walk/run tracks
     -------------------------------------------------------------------
+    -- Remove any built-in Animate scripts that conflict with our tracks
+    for _, desc in ipairs(z:GetDescendants()) do
+        if (desc:IsA("Script") or desc:IsA("LocalScript")) and desc.Name == "Animate" then
+            desc:Destroy()
+        end
+    end
+
     local animator = humanoid:FindFirstChildOfClass("Animator")
     if not animator then
         animator = Instance.new("Animator")
         animator.Parent = humanoid
     end
+
+    -- Stop any pre-existing tracks from the template
+    pcall(function()
+        for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+            track:Stop(0)
+        end
+    end)
 
     -- Build walk animation object
     local walkAnimId = (mobCfg.walk_anim_id and mobCfg.walk_anim_id ~= "") and mobCfg.walk_anim_id or DEFAULT_WALK_ANIM_ID
@@ -362,6 +376,108 @@ local function spawnZombie(portalPart, areaPart, tpl)
             humanoid.WalkSpeed = MOB_WALK_SPEED
         end
     end
+
+    -------------------------------------------------------------------
+    -- Movement helpers (declared before performAttack so it can use them)
+    -------------------------------------------------------------------
+
+    -- Reactive animation: Humanoid.Running fires with the current speed
+    -- whenever the humanoid starts/stops moving. This prevents the
+    -- "slidewalking" that happens when manual track switching is out of
+    -- sync with the actual physics velocity.
+    local function playMoveAnim(wantRun)
+        local desired = wantRun and runTrack or walkTrack
+        if not desired then return end
+        if activeTrack == desired and desired.IsPlaying then return end
+        pcall(function()
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                if track ~= desired and track ~= attackTrack then
+                    track:Stop(0.15)
+                end
+            end
+        end)
+        pcall(function() desired:Play(0.15) end)
+        activeTrack = desired
+    end
+
+    local function playIdleAnim()
+        pcall(function()
+            for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+                if track ~= idleTrack and track ~= attackTrack then
+                    track:Stop(0.2)
+                end
+            end
+        end)
+        activeTrack = nil
+        if idleTrack and not idleTrack.IsPlaying then
+            pcall(function() idleTrack:Play(0.2) end)
+        end
+    end
+
+    -- Velocity-based animation enforcer — self-heals if Running misses
+    local function enforceAnim()
+        if isAttacking then return end
+        local zroot = getRootPart(z)
+        if not zroot or not zroot:IsA("BasePart") then return end
+        local vel = zroot.AssemblyLinearVelocity or zroot.Velocity
+        local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+        if hSpeed > 0.75 then
+            playMoveAnim(chasing)
+        else
+            playIdleAnim()
+        end
+    end
+
+    -- Connect to Humanoid.Running — fires with the humanoid's speed,
+    -- giving us near-frame-accurate animation transitions.
+    humanoid.Running:Connect(function(speed)
+        if isAttacking then return end
+        if speed > 0.5 then
+            playMoveAnim(chasing)
+        else
+            playIdleAnim()
+        end
+    end)
+
+    -- Re-evaluate animation after obstacle interactions (climbing, jumping, falling)
+    humanoid.StateChanged:Connect(function(_, newState)
+        if isAttacking then return end
+        if newState == Enum.HumanoidStateType.Running
+            or newState == Enum.HumanoidStateType.RunningNoPhysics then
+            enforceAnim()
+        end
+    end)
+
+    local function startWalking(dest, useRun)
+        humanoid:MoveTo(dest)
+        -- Running event will handle animation
+        moving = true
+        stationaryTicks = 0
+    end
+
+    local function stopWalking()
+        moving = false
+        stationaryTicks = 0
+        -- Running event handles animation, but force idle now in case
+        -- the humanoid is already stationary and won't fire Running again
+        playIdleAnim()
+    end
+
+    humanoid.MoveToFinished:Connect(function()
+        -- don't stop walking while chasing; the AI loop will issue a new MoveTo
+        if chasing then return end
+        -- only stop if actually stationary; the mob may still be sliding
+        local zroot = getRootPart(z)
+        if zroot and zroot:IsA("BasePart") then
+            local vel = zroot.AssemblyLinearVelocity or zroot.Velocity
+            local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+            if hSpeed > 0.75 then
+                -- still moving (bumped, sliding, etc.) — let enforceAnim handle it
+                return
+            end
+        end
+        stopWalking()
+    end)
 
     -------------------------------------------------------------------
     -- Damage-based aggro: whoever shot us becomes the priority target
@@ -510,56 +626,9 @@ local function spawnZombie(portalPart, areaPart, tpl)
             humanoid.WalkSpeed = MOB_WALK_SPEED
         end
         isAttacking = false
+        -- Running event will automatically resume the correct animation
+        -- once the humanoid starts moving again on the next AI tick
     end
-
-    -------------------------------------------------------------------
-    -- Movement helpers
-    -------------------------------------------------------------------
-
-    -- Switch to the correct animation track based on chasing state
-    local function switchTrack(wantRun)
-        local desired = wantRun and runTrack or walkTrack
-        if not desired then return end
-        -- always restart if track stopped unexpectedly
-        if activeTrack == desired and desired.IsPlaying then return end
-        -- stop previous track
-        if activeTrack and activeTrack ~= desired and activeTrack.IsPlaying then
-            pcall(function() activeTrack:Stop(0.15) end)
-        end
-        -- stop idle if playing
-        if idleTrack and idleTrack.IsPlaying then
-            pcall(function() idleTrack:Stop(0.15) end)
-        end
-        pcall(function() desired:Play(0.15) end)
-        activeTrack = desired
-    end
-
-    local function startWalking(dest, useRun)
-        humanoid:MoveTo(dest)
-        switchTrack(useRun)
-        moving = true
-        stationaryTicks = 0
-    end
-
-    local function stopWalking()
-        if activeTrack and activeTrack.IsPlaying then
-            pcall(function() activeTrack:Stop() end)
-        end
-        activeTrack = nil
-        moving = false
-        stationaryTicks = 0
-        -- play idle animation if available
-        if idleTrack and not idleTrack.IsPlaying then
-            pcall(function() idleTrack:Play(0.2) end)
-        end
-    end
-
-    humanoid.MoveToFinished:Connect(function()
-        -- don't stop walking while chasing; the AI loop will issue a new MoveTo
-        if not chasing then
-            stopWalking()
-        end
-    end)
 
     -------------------------------------------------------------------
     -- AI loop
@@ -665,24 +734,25 @@ local function spawnZombie(portalPart, areaPart, tpl)
                         startWalking(dest, false)  -- false = use walk animation
                     end
                 else
-                    -- safety: if stationary for several consecutive ticks, stop anim
+                    -- if truly stationary for too long, stop movement state
                     if moving and zroot:IsA("BasePart") then
                         local vel = zroot.AssemblyLinearVelocity or zroot.Velocity
                         local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
                         if hSpeed < 0.3 then
                             stationaryTicks = stationaryTicks + 1
-                            if stationaryTicks >= 5 then -- ~1s stationary before stopping
+                            if stationaryTicks >= 5 then
                                 stopWalking()
                             end
                         else
                             stationaryTicks = 0
-                            -- ensure animation is playing while actually moving
-                            if activeTrack and not activeTrack.IsPlaying then
-                                pcall(function() activeTrack:Play(0.1) end)
-                            end
                         end
                     end
                 end
+            end
+
+            -- self-heal animation every tick in case Running/StateChanged missed it
+            if not isAttacking then
+                enforceAnim()
             end
 
             task.wait(0.2)
