@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- InventoryUI.lua  –  Sectioned inventory (Melee · Ranged · Special)
+-- InventoryUI.lua  –  Sectioned inventory (Melee · Ranged)
 --------------------------------------------------------------------------------
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -248,6 +248,11 @@ end
 
 local InventoryUI = {}
 
+local ShopUIModule = nil
+pcall(function()
+    ShopUIModule = require(script.Parent.ShopUI)
+end)
+
 local BoostConfig = nil
 local AssetCodes = nil
 local boostRemotes = nil
@@ -433,6 +438,144 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local contentPages = {}
     local currentTab = "weapons"
 
+    -- Tab mapping: Inventory tab -> Shop tab
+    local INV_TO_SHOP_TAB = {
+        weapons = "weapons",
+        boosts  = "boosts",
+        skins   = "skins",
+        effects = "effects",
+    }
+
+    ---------------------------------------------------------------------------
+    -- Helper: create a "Visit Shop" button at the bottom of a content page
+    ---------------------------------------------------------------------------
+    local function createShopNavButton(parentPage, layoutOrder)
+        -- Wrapper frame: full-width row so the UIListLayout positions it,
+        -- with top padding for breathing room below item cards.
+        local shopNavWrap = Instance.new("Frame")
+        shopNavWrap.Name = "ShopNavWrap"
+        shopNavWrap.BackgroundTransparency = 1
+        shopNavWrap.Size = UDim2.new(1, 0, 0, px(38) + px(12))
+        shopNavWrap.LayoutOrder = layoutOrder or 9999
+        shopNavWrap.ZIndex = 260
+        shopNavWrap.Parent = parentPage
+
+        local shopNavBtn = Instance.new("TextButton")
+        shopNavBtn.Name = "ShopNavBtn"
+        shopNavBtn.AutoButtonColor = false
+        shopNavBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        shopNavBtn.BorderSizePixel = 0
+        shopNavBtn.Font = Enum.Font.GothamBold
+        shopNavBtn.Text = "\u{1F6D2}  Browse Shop"
+        shopNavBtn.TextColor3 = UITheme.GOLD_DIM
+        shopNavBtn.TextSize = math.max(13, math.floor(px(14)))
+        shopNavBtn.AutomaticSize = Enum.AutomaticSize.X
+        shopNavBtn.Size = UDim2.new(0, 0, 0, px(38))
+        shopNavBtn.AnchorPoint = Vector2.new(0.5, 0)
+        shopNavBtn.Position = UDim2.new(0.5, 0, 0, px(12))
+        shopNavBtn.ZIndex = 260
+        shopNavBtn.Parent = shopNavWrap
+
+        local btnPadding = Instance.new("UIPadding")
+        btnPadding.PaddingLeft = UDim.new(0, px(20))
+        btnPadding.PaddingRight = UDim.new(0, px(20))
+        btnPadding.Parent = shopNavBtn
+
+        local btnCorner = Instance.new("UICorner")
+        btnCorner.CornerRadius = UDim.new(0, px(8))
+        btnCorner.Parent = shopNavBtn
+
+        local btnStroke = Instance.new("UIStroke")
+        btnStroke.Color = UITheme.GOLD_DIM
+        btnStroke.Thickness = 1.2
+        btnStroke.Transparency = 0.45
+        btnStroke.Parent = shopNavBtn
+
+        -- Hover effects
+        shopNavBtn.MouseEnter:Connect(function()
+            TweenService:Create(shopNavBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play()
+            TweenService:Create(btnStroke, TWEEN_QUICK, {Transparency = 0.15}):Play()
+        end)
+        shopNavBtn.MouseLeave:Connect(function()
+            TweenService:Create(shopNavBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play()
+            TweenService:Create(btnStroke, TWEEN_QUICK, {Transparency = 0.45}):Play()
+        end)
+
+        -- Click: open Shop to matching tab
+        shopNavBtn.MouseButton1Click:Connect(function()
+            local targetTab = INV_TO_SHOP_TAB[currentTab] or "weapons"
+            print(string.format("[InventoryUI] Shop button clicked | inventoryTab=%s -> shopTab=%s", tostring(currentTab), tostring(targetTab)))
+
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then
+                mc.OpenMenu("Shop")
+                -- Set the Shop to the matching tab after it opens
+                if ShopUIModule and ShopUIModule.setActiveTab then
+                    ShopUIModule.setActiveTab(targetTab)
+                end
+            end
+        end)
+
+        return shopNavBtn
+    end
+
+    ---------------------------------------------------------------------------
+    -- Helper: create an empty-state card for a category (inline in page)
+    ---------------------------------------------------------------------------
+    local function createEmptyStateInline(parentPage, tabId, layoutOrder)
+        local emptyWrap = Instance.new("Frame")
+        emptyWrap.Name = "EmptyState"
+        emptyWrap.BackgroundTransparency = 1
+        emptyWrap.Size = UDim2.new(1, 0, 0, px(160))
+        emptyWrap.LayoutOrder = layoutOrder or 500
+        emptyWrap.Parent = parentPage
+
+        local card = Instance.new("Frame")
+        card.Name = "EmptyCard"
+        card.BackgroundColor3 = CARD_BG
+        card.Size = UDim2.new(0.7, 0, 0, px(130))
+        card.AnchorPoint = Vector2.new(0.5, 0.5)
+        card.Position = UDim2.new(0.5, 0, 0.5, 0)
+        card.Parent = emptyWrap
+
+        local cr = Instance.new("UICorner")
+        cr.CornerRadius = UDim.new(0, px(14))
+        cr.Parent = card
+
+        local st = Instance.new("UIStroke")
+        st.Color = CARD_STROKE
+        st.Thickness = 1.2
+        st.Transparency = 0.3
+        st.Parent = card
+
+        local line1 = Instance.new("TextLabel")
+        line1.BackgroundTransparency = 1
+        line1.Font = Enum.Font.GothamMedium
+        line1.Text = "You don't own any items in this category yet."
+        line1.TextColor3 = DIM_TEXT
+        line1.TextSize = math.max(13, math.floor(px(14)))
+        line1.TextWrapped = true
+        line1.Size = UDim2.new(0.85, 0, 0, px(40))
+        line1.AnchorPoint = Vector2.new(0.5, 0)
+        line1.Position = UDim2.new(0.5, 0, 0, px(28))
+        line1.TextXAlignment = Enum.TextXAlignment.Center
+        line1.Parent = card
+
+        local line2 = Instance.new("TextLabel")
+        line2.BackgroundTransparency = 1
+        line2.Font = Enum.Font.GothamMedium
+        line2.Text = "Visit the shop to unlock more."
+        line2.TextColor3 = UITheme.GOLD_DIM
+        line2.TextSize = math.max(11, math.floor(px(12)))
+        line2.Size = UDim2.new(0.85, 0, 0, px(20))
+        line2.AnchorPoint = Vector2.new(0.5, 0)
+        line2.Position = UDim2.new(0.5, 0, 0, px(74))
+        line2.TextXAlignment = Enum.TextXAlignment.Center
+        line2.Parent = card
+
+        return emptyWrap
+    end
+
     local function makeTabButton(def)
         local btn = Instance.new("TextButton")
         btn.Name = def.label .. "Tab"
@@ -596,6 +739,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local function setActiveTab(tabId)
         currentTab = tabId
+        print(string.format("[InventoryUI] Active tab=%s", tostring(tabId)))
         print(string.format("[EmptyStateIconDebug][Inventory] selectedCategory=%s", tostring(tabId)))
         for id, btn in pairs(tabButtons) do
             local active = (id == tabId)
@@ -778,10 +922,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- Create sections stacked vertically
     local meleeSection, meleeGrid = makeSection(weaponsPage, "Melee", "Melee Weapons")
     local rangedSection, rangedGrid = makeSection(weaponsPage, "Ranged", "Ranged Weapons")
-    local specialSection, specialGrid = makeSection(weaponsPage, "Special", "Special Weapons")
     meleeSection.LayoutOrder = 1
     rangedSection.LayoutOrder = 2
-    specialSection.LayoutOrder = 3
 
     contentPages.weapons = weaponsPage
 
@@ -881,7 +1023,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
     end
 
+    -- Empty state label for boosts (created once, visibility toggled)
+    local boostsEmptyState = createEmptyStateInline(boostsPage, "boosts", 500)
+    boostsEmptyState.Visible = false
+
     local function refreshBoostCards()
+        local visibleCount = 0
         for _, def in ipairs(boostDefs) do
             local refs = boostCards[def.Id]
             local state = boostStates[def.Id] or {}
@@ -889,6 +1036,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local owned = math.max(0, math.floor(tonumber(state.owned) or 0))
                 local expiresAt = math.floor(tonumber(state.expiresAt) or 0) + timeDelta
                 local active = expiresAt > os.time()
+
+                -- Only show cards for boosts the player owns or has active
+                if owned > 0 or active then
+                    refs.card.Parent = boostsPage
+                    visibleCount = visibleCount + 1
+                else
+                    refs.card.Parent = nil  -- Remove from layout
+                end
 
                 refs.card.BackgroundColor3 = active and CARD_EQUIPPED or CARD_BG
                 refs.cardStroke.Color = active and GREEN_GLOW or CARD_STROKE
@@ -914,17 +1069,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     refs.button.BackgroundColor3 = BTN_BG
                     refs.button.TextColor3 = WHITE
                     refs.buttonStroke.Color = BTN_STROKE_C
-                else
-                    refs.status.Text = "Not owned"
-                    refs.status.TextColor3 = DIM_TEXT
-                    refs.button.Text = "UNAVAILABLE"
-                    refs.button.Active = false
-                    refs.button.BackgroundColor3 = DISABLED_BG
-                    refs.button.TextColor3 = DIM_TEXT
-                    refs.buttonStroke.Color = CARD_STROKE
                 end
             end
         end
+        -- Show/hide empty state
+        boostsEmptyState.Visible = (visibleCount == 0)
+        print(string.format("[InventoryUI] Boosts refresh | ownedVisible=%d", visibleCount))
     end
 
     if #boostDefs == 0 or not remotes then
@@ -1148,6 +1298,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end))
     end
 
+    -- Shop button at the bottom of boosts page
+    createShopNavButton(boostsPage, 9999)
+
     contentPages.boosts = boostsPage
 
     local function makeOwnedPlaceholderPage(name, tabId, iconGlyph, titleText)
@@ -1194,14 +1347,23 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         subtitle.Name = "PlaceholderSub"
         subtitle.BackgroundTransparency = 1
         subtitle.Font = Enum.Font.GothamMedium
-        subtitle.Text = "No items owned in this category yet"
+        subtitle.Text = "You don't own any items in this category yet.\nVisit the shop to unlock more."
         subtitle.TextColor3 = DIM_TEXT
         subtitle.TextSize = math.max(12, math.floor(px(13)))
-        subtitle.Size = UDim2.new(1, -px(20), 0, px(20))
-        subtitle.Position = UDim2.new(0, px(10), 0.64, 0)
+        subtitle.Size = UDim2.new(1, -px(20), 0, px(36))
+        subtitle.Position = UDim2.new(0, px(10), 0.58, 0)
         subtitle.TextWrapped = true
         subtitle.TextXAlignment = Enum.TextXAlignment.Center
         subtitle.Parent = card
+
+        -- Shop button below the placeholder card
+        local shopBtnWrap = Instance.new("Frame")
+        shopBtnWrap.Name = "ShopBtnWrap"
+        shopBtnWrap.BackgroundTransparency = 1
+        shopBtnWrap.Size = UDim2.new(1, 0, 0, px(50))
+        shopBtnWrap.Position = UDim2.new(0, 0, 1, px(10))
+        shopBtnWrap.Parent = page
+        createShopNavButton(shopBtnWrap, 1)
 
         contentPages[tabId] = page
         return page
@@ -1260,9 +1422,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local ownedSet = {}
             local equippedTrailId = nil
             local effectEquipBtns = {} -- effectId -> { btn, stroke, card, cardStroke }
+            local effectsEmptyState = nil  -- forward-declare; created after card loop
 
             local function refreshAllEffectBtns()
+                local visibleCount = 0
                 for eid, info in pairs(effectEquipBtns) do
+                    local isOwned = ownedSet[eid] or info.isFree
+                    -- Only show cards for owned effects
+                    if isOwned then
+                        info.card.Parent = trailGrid
+                        visibleCount = visibleCount + 1
+                    else
+                        info.card.Parent = nil  -- Remove unowned from layout
+                    end
+
                     if equippedTrailId == eid then
                         info.btn.Text = "\u{2714} EQUIPPED"
                         info.btn.BackgroundColor3 = DISABLED_BG
@@ -1277,7 +1450,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                             info.cardStroke.Thickness = 1.8
                             info.cardStroke.Transparency = 0.3
                         end
-                    elseif ownedSet[eid] then
+                    elseif isOwned then
                         info.btn.Text = "EQUIP"
                         info.btn.BackgroundColor3 = BTN_BG
                         info.btn.TextColor3 = WHITE
@@ -1291,23 +1464,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                             info.cardStroke.Thickness = 1.2
                             info.cardStroke.Transparency = 0.35
                         end
-                    else
-                        -- Not owned: dim out
-                        info.btn.Text = "NOT OWNED"
-                        info.btn.BackgroundColor3 = DISABLED_BG
-                        info.btn.TextColor3 = DIM_TEXT
-                        info.stroke.Color = CARD_STROKE
-                        info.stroke.Transparency = 0.5
-                        if info.card then
-                            info.card.BackgroundColor3 = CARD_BG
-                        end
-                        if info.cardStroke then
-                            info.cardStroke.Color = CARD_STROKE
-                            info.cardStroke.Thickness = 1.2
-                            info.cardStroke.Transparency = 0.35
-                        end
                     end
                 end
+                -- Show/hide effects empty state
+                if effectsEmptyState then
+                    effectsEmptyState.Visible = (visibleCount == 0)
+                end
+                print(string.format("[InventoryUI] Effects refresh | ownedVisible=%d", visibleCount))
             end
 
             -- Async fetch owned + equipped
@@ -1477,17 +1640,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 eStk.Transparency = 0.25
                 eStk.Parent = equipBtn
 
-                effectEquipBtns[effectId] = { btn = equipBtn, stroke = eStk, card = card, cardStroke = stroke }
+                effectEquipBtns[effectId] = { btn = equipBtn, stroke = eStk, card = card, cardStroke = stroke, isFree = isFree }
 
                 -- Hover effects
                 if not game:GetService("UserInputService").TouchEnabled then
                     equipBtn.MouseEnter:Connect(function()
-                        if ownedSet[effectId] and equippedTrailId ~= effectId then
+                        if (ownedSet[effectId] or isFree) and equippedTrailId ~= effectId then
                             TweenService:Create(equipBtn, TWEEN_QUICK, { BackgroundColor3 = Color3.fromRGB(35, 190, 75) }):Play()
                         end
                     end)
                     equipBtn.MouseLeave:Connect(function()
-                        if ownedSet[effectId] and equippedTrailId ~= effectId then
+                        if (ownedSet[effectId] or isFree) and equippedTrailId ~= effectId then
                             TweenService:Create(equipBtn, TWEEN_QUICK, { BackgroundColor3 = BTN_BG }):Play()
                         end
                     end)
@@ -1495,7 +1658,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 -- Equip click handler
                 equipBtn.MouseButton1Click:Connect(function()
-                    if not ownedSet[effectId] then return end
+                    if not ownedSet[effectId] and not isFree then return end
                     if equippedTrailId == effectId then return end
 
                     local remotes = ensureEffectRemotes()
@@ -1508,6 +1671,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     refreshAllEffectBtns()
                 end)
             end -- end for each trail def
+
+            -- Empty state for effects (visibility managed in refreshAllEffectBtns)
+            effectsEmptyState = createEmptyStateInline(effectsPage, "effects", 500)
+            effectsEmptyState.Visible = false
+
+            -- Shop button at the bottom of effects page
+            createShopNavButton(effectsPage, 9999)
 
             contentPages["effects"] = effectsPage
         else
@@ -1523,21 +1693,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local GREEN_BTN = Color3.fromRGB(35, 190, 75)
     local GREEN_BTN_STR = Color3.fromRGB(50, 230, 110)
     -- Restore equipped state from inventory API if available (per-category)
-    local equippedState = { Melee = nil, Ranged = nil, Special = nil }
+    local equippedState = { Melee = nil, Ranged = nil }
     if inventoryApi and inventoryApi.GetEquipped then
         pcall(function()
             equippedState.Melee = inventoryApi:GetEquipped("Melee")
             equippedState.Ranged = inventoryApi:GetEquipped("Ranged")
-            equippedState.Special = inventoryApi:GetEquipped("Special")
             -- normalize legacy equipped references
             if type(equippedState.Melee) == "string" and equippedState.Melee:lower() == "stick" then
                 equippedState.Melee = "Wooden Sword"
             end
             if type(equippedState.Ranged) == "string" and equippedState.Ranged:lower() == "stick" then
                 equippedState.Ranged = "Wooden Sword"
-            end
-            if type(equippedState.Special) == "string" and equippedState.Special:lower() == "stick" then
-                equippedState.Special = "Wooden Sword"
             end
         end)
     end
@@ -1771,38 +1937,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local cat = classifyItem(id)
         if cat == "Melee" then
             createCard(meleeGrid, id)
-        elseif cat == "Ranged" then
-            createCard(rangedGrid, id)
         else
-            createCard(specialGrid, id)
+            createCard(rangedGrid, id)
         end
     end
 
-    -- If no items, show friendly message in root
+    -- If no items, show friendly empty state
     if #items == 0 then
-        local emptyCard = Instance.new("Frame")
-        emptyCard.Name = "EmptyState"
-        emptyCard.BackgroundColor3 = CARD_BG
-        emptyCard.Size = UDim2.new(1, 0, 0, px(110))
-        emptyCard.Parent = weaponsPage
-        local emptyCr = Instance.new("UICorner")
-        emptyCr.CornerRadius = UDim.new(0, px(12))
-        emptyCr.Parent = emptyCard
-        local emptyStroke = Instance.new("UIStroke")
-        emptyStroke.Color = CARD_STROKE
-        emptyStroke.Thickness = 1.2
-        emptyStroke.Transparency = 0.35
-        emptyStroke.Parent = emptyCard
-        local lbl = Instance.new("TextLabel")
-        lbl.Text = "No items owned"
-        lbl.Font = Enum.Font.GothamMedium
-        lbl.TextSize = px(16)
-        lbl.BackgroundTransparency = 1
-        lbl.TextColor3 = DIM_TEXT
-        lbl.Size = UDim2.new(1, 0, 1, 0)
-        lbl.TextXAlignment = Enum.TextXAlignment.Center
-        lbl.Parent = emptyCard
+        createEmptyStateInline(weaponsPage, "weapons", 500)
     end
+
+    -- Shop button at the bottom of weapons page
+    createShopNavButton(weaponsPage, 9999)
+
+    print(string.format("[InventoryUI] Weapons rendered | ownedCount=%d", #items))
 
     -- Apply initial equipped state visually
     refreshAllEquipButtons()
