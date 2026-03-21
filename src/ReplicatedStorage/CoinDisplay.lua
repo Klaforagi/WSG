@@ -217,26 +217,61 @@ function CoinDisplay.Create(parent, layoutOrder)
     plusCorner.CornerRadius = UDim.new(0, px(5))
     plusCorner.Parent = plusBtn
 
-    -- Debounced "+" click → toggle the coin shop popup
+    -- Debounced "+" click → toggle Shop Coins tab
     local plusDebounce = false
     plusBtn.MouseButton1Click:Connect(function()
         if plusDebounce then return end
         plusDebounce = true
 
-        local shop = ensureCoinShop()
-        if shop then
-            -- Walk up to the ScreenGui so the popup can overlay the full screen
-            local screenGui = parent
-            while screenGui and not screenGui:IsA("ScreenGui") do
-                screenGui = screenGui.Parent
-            end
-            if screenGui then
-                shop.Toggle(screenGui)
+        local mc = _G.SideUI and _G.SideUI.MenuController
+        if mc then
+            local shopOpen = mc.IsOpen("Shop")
+            if shopOpen then
+                -- Check current tab via ShopUI.getActiveTab
+                local onCoins = false
+                local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+                local shopMod = sideUI and sideUI:FindFirstChild("ShopUI")
+                if shopMod and shopMod:IsA("ModuleScript") then
+                    local ok, ShopUI = pcall(require, shopMod)
+                    if ok and ShopUI and ShopUI.getActiveTab then
+                        onCoins = (ShopUI.getActiveTab() == "coins")
+                    end
+                end
+
+                if onCoins then
+                    -- Already on Coins → close the Shop (toggle off)
+                    mc.CloseMenu("Shop")
+                else
+                    -- Open on another tab → switch to Coins
+                    local ok2, ShopUI2 = pcall(require, ReplicatedStorage:FindFirstChild("SideUI"):FindFirstChild("ShopUI"))
+                    if ok2 and ShopUI2 and ShopUI2.setActiveTab then
+                        ShopUI2.setActiveTab("coins")
+                    end
+                end
             else
-                warn("[CoinDisplay] Could not find parent ScreenGui for coin shop popup")
+                -- Shop is closed → open it to Coins tab
+                mc.OpenMenu("Shop")
+                local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+                local shopMod = sideUI and sideUI:FindFirstChild("ShopUI")
+                if shopMod and shopMod:IsA("ModuleScript") then
+                    local ok, ShopUI = pcall(require, shopMod)
+                    if ok and ShopUI and ShopUI.setActiveTab then
+                        ShopUI.setActiveTab("coins")
+                    end
+                end
             end
         else
-            warn("[CoinDisplay] CoinShopUI module not available")
+            -- Fallback: try the old coin shop popup if MenuController not available
+            local shop = ensureCoinShop()
+            if shop then
+                local screenGui = parent
+                while screenGui and not screenGui:IsA("ScreenGui") do
+                    screenGui = screenGui.Parent
+                end
+                if screenGui then
+                    shop.Toggle(screenGui)
+                end
+            end
         end
 
         task.delay(0.3, function()

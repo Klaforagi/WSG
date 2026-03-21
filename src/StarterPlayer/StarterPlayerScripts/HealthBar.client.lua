@@ -57,10 +57,39 @@ end
 local NAVY        = Color3.fromRGB(12, 14, 28)
 local NAVY_LIGHT  = Color3.fromRGB(22, 26, 48)
 local GOLD        = Color3.fromRGB(255, 215, 80)
-local GREEN_FILL  = Color3.fromRGB(75, 200, 80)
+local GREEN_FILL  = Color3.fromRGB(75, 200, 80) -- fallback when no team
 local YELLOW_FILL = Color3.fromRGB(230, 195, 50)
 local RED_FILL    = Color3.fromRGB(220, 50, 50)
 local WHITE       = Color3.fromRGB(245, 245, 245)
+
+-- Team-aware fill color (replaces GREEN_FILL for >50% HP)
+local teamFillColor = GREEN_FILL
+
+local function teamColorOrNil(team)
+	if not team then return nil end
+	local name = tostring(team.Name):lower()
+	if string.find(name, "neutral") then return nil end
+	if team.TeamColor then return team.TeamColor.Color end
+	return nil
+end
+
+local function refreshTeamFillColor()
+	local tc = teamColorOrNil(player.Team)
+	teamFillColor = tc or GREEN_FILL
+	-- Immediately recolor the visible fill if the bar exists and HP > 50%
+	pcall(function()
+		local char = player.Character
+		if char then
+			local hum = char:FindFirstChildOfClass("Humanoid")
+			if hum and hum.MaxHealth > 0 and (hum.Health / hum.MaxHealth) > 0.5 then
+				fill.BackgroundColor3 = teamFillColor
+			end
+		end
+	end)
+end
+
+refreshTeamFillColor()
+player:GetPropertyChangedSignal("Team"):Connect(refreshTeamFillColor)
 
 --------------------------------------------------------------------------------
 -- CREATE SCREEN GUI
@@ -235,7 +264,7 @@ local currentTween: Tween? = nil
 
 local function getBarColor(ratio: number): Color3
 	if ratio > 0.5 then
-		return GREEN_FILL
+		return teamFillColor
 	elseif ratio > 0.25 then
 		return YELLOW_FILL
 	else

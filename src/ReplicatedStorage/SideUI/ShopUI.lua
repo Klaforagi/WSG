@@ -3,6 +3,7 @@
 --------------------------------------------------------------------------------
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 
 local UITheme = require(script.Parent.UITheme)
@@ -237,6 +238,7 @@ local TAB_DEFS = {
     { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 3 },
     { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 4 },
     { id = "effects", icon = "\u{2738}", label = "Effects", order = 5 },
+    { id = "coins",   icon = "\u{1FA99}", label = "Coins",   order = 6 },
 }
 
 -- Debug: final Shop categories after Trails removal
@@ -287,6 +289,7 @@ local CUSTOM_TAB_ICON_COLORS = {
     skins  = { active = Color3.fromRGB(178, 146, 220), inactive = Color3.fromRGB(114, 99, 140) },
     emotes = { active = Color3.fromRGB(223, 176, 96), inactive = Color3.fromRGB(145, 116, 74) },
     effects = { active = Color3.fromRGB(214, 138, 206), inactive = Color3.fromRGB(136, 90, 131) },
+    coins  = { active = Color3.fromRGB(255, 215, 80), inactive = Color3.fromRGB(160, 140, 60) },
 }
 
 local function getCustomTabIconColor(tabId, active)
@@ -439,6 +442,29 @@ local function buildCustomTabIcon(parentBtn, tabId)
         local miniDotCorner = Instance.new("UICorner")
         miniDotCorner.CornerRadius = UDim.new(1, 0)
         miniDotCorner.Parent = miniDot
+    elseif tabId == "coins" then
+        -- Coin circle icon
+        local coinOuter = markIconPart(Instance.new("Frame"))
+        coinOuter.BackgroundTransparency = 0
+        coinOuter.BorderSizePixel = 0
+        coinOuter.Size = UDim2.new(0, px(18), 0, px(18))
+        coinOuter.Position = UDim2.new(0.5, 0, 0, px(3))
+        coinOuter.AnchorPoint = Vector2.new(0.5, 0)
+        coinOuter.Parent = root
+        local coinOuterCorner = Instance.new("UICorner")
+        coinOuterCorner.CornerRadius = UDim.new(1, 0)
+        coinOuterCorner.Parent = coinOuter
+
+        -- Inner dollar sign text
+        local coinSign = markIconPart(Instance.new("TextLabel"))
+        coinSign.BackgroundTransparency = 1
+        coinSign.Font = Enum.Font.GothamBlack
+        coinSign.Text = "$"
+        coinSign.TextSize = math.max(10, math.floor(px(12)))
+        coinSign.Size = UDim2.new(1, 0, 1, 0)
+        coinSign.TextXAlignment = Enum.TextXAlignment.Center
+        coinSign.TextYAlignment = Enum.TextYAlignment.Center
+        coinSign.Parent = coinOuter
     end
 
     return root
@@ -1062,13 +1088,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     -- Weapon sections (moved from old root into weapons page)
     local meleeSection, meleeGrid     = makeSection(weaponsPage, "Melee", "Melee Weapons")
     local rangedSection, rangedGrid   = makeSection(weaponsPage, "Ranged", "Ranged Weapons")
-    local specialSection, specialGrid = makeSection(weaponsPage, "Special", "Special Weapons")
-    local coinsSection, coinsGrid     = makeSection(weaponsPage, "Coins", "Coins")
 
     meleeSection.LayoutOrder   = 1
     rangedSection.LayoutOrder  = 2
-    specialSection.LayoutOrder = 3
-    coinsSection.LayoutOrder   = 4
 
     -- Populate melee weapons (free starter: Wooden Sword)
     makeItem(meleeGrid, "Wooden Sword", "Wooden Sword", 0, "Wooden Sword", coinApi, inventoryApi, "Melee")
@@ -1082,7 +1104,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     makeItem(rangedGrid, "Longbow", "Longbow", 30, "Longbow", coinApi, inventoryApi, "Ranged")
     makeItem(rangedGrid, "Xbow", "Xbow", 40, "Xbow", coinApi, inventoryApi, "Ranged")
 
-    -- Special/Coin sections can be populated similarly by calling makeItem
+    -- Additional sections can be populated similarly by calling makeItem
 
     contentPages["weapons"] = weaponsPage
 
@@ -2181,12 +2203,218 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     end
 
     ---------------------------------------------------------------------------
+    -- COINS content page (Robux coin packs via Developer Products)
+    ---------------------------------------------------------------------------
+    do
+        local CoinProducts = nil
+        pcall(function()
+            local mod = ReplicatedStorage:FindFirstChild("CoinProducts")
+            if mod and mod:IsA("ModuleScript") then
+                CoinProducts = require(mod)
+            end
+        end)
+
+        local coinsPage = Instance.new("Frame")
+        coinsPage.Name = "CoinsContent"
+        coinsPage.BackgroundTransparency = 1
+        coinsPage.Size = UDim2.new(1, 0, 0, 0)
+        coinsPage.AutomaticSize = Enum.AutomaticSize.Y
+        coinsPage.Visible = false
+        coinsPage.Parent = contentContainer
+
+        local coinsLayout = Instance.new("UIListLayout")
+        coinsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        coinsLayout.Padding = UDim.new(0, px(14))
+        coinsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        coinsLayout.Parent = coinsPage
+
+        -- Section header
+        local coinsHeader = Instance.new("TextLabel")
+        coinsHeader.Name = "CoinsHeader"
+        coinsHeader.BackgroundTransparency = 1
+        coinsHeader.Font = Enum.Font.GothamBlack
+        coinsHeader.Text = "Coin Packs"
+        coinsHeader.TextColor3 = GOLD
+        coinsHeader.TextSize = math.max(16, math.floor(px(20)))
+        coinsHeader.Size = UDim2.new(1, 0, 0, px(30))
+        coinsHeader.TextXAlignment = Enum.TextXAlignment.Left
+        coinsHeader.LayoutOrder = 0
+        coinsHeader.Parent = coinsPage
+
+        local coinsAccent = Instance.new("Frame")
+        coinsAccent.Name = "AccentBar"
+        coinsAccent.BackgroundColor3 = GOLD
+        coinsAccent.BackgroundTransparency = 0.3
+        coinsAccent.Size = UDim2.new(1, 0, 0, px(2))
+        coinsAccent.BorderSizePixel = 0
+        coinsAccent.LayoutOrder = 1
+        coinsAccent.Parent = coinsPage
+
+        local coinPromptDebounce = false
+
+        if CoinProducts and CoinProducts.Packs then
+            local coinAsset = nil
+            if AssetCodes and type(AssetCodes.Get) == "function" then
+                pcall(function() coinAsset = AssetCodes.Get("Coin") end)
+            end
+
+            for i, pack in ipairs(CoinProducts.Packs) do
+                local card = Instance.new("Frame")
+                card.Name = "CoinPack_" .. tostring(i)
+                card.Size = UDim2.new(1, -px(4), 0, px(115))
+                card.BackgroundColor3 = CARD_BG
+                card.BorderSizePixel = 0
+                card.LayoutOrder = 1 + i
+                card.ZIndex = 250
+                card.ClipsDescendants = true
+                card.Parent = coinsPage
+
+                local cardCorner = Instance.new("UICorner")
+                cardCorner.CornerRadius = UDim.new(0, px(10))
+                cardCorner.Parent = card
+
+                local cardStroke = Instance.new("UIStroke")
+                cardStroke.Color = CARD_STROKE
+                cardStroke.Thickness = 1.2
+                cardStroke.Transparency = 0.35
+                cardStroke.Parent = card
+
+                local cardPad = Instance.new("UIPadding")
+                cardPad.PaddingLeft = UDim.new(0, px(20))
+                cardPad.PaddingRight = UDim.new(0, px(18))
+                cardPad.Parent = card
+
+                -- Coin icon (image or fallback circle)
+                local coinIconSize = px(54)
+                if coinAsset and type(coinAsset) == "string" then
+                    local coinIcon = Instance.new("ImageLabel")
+                    coinIcon.Name = "CoinIcon"
+                    coinIcon.Size = UDim2.new(0, coinIconSize, 0, coinIconSize)
+                    coinIcon.AnchorPoint = Vector2.new(0, 0.5)
+                    coinIcon.Position = UDim2.new(0, 0, 0.5, 0)
+                    coinIcon.BackgroundTransparency = 1
+                    coinIcon.Image = coinAsset
+                    coinIcon.ScaleType = Enum.ScaleType.Fit
+                    coinIcon.ZIndex = 252
+                    coinIcon.Parent = card
+                else
+                    local coinCircle = Instance.new("Frame")
+                    coinCircle.Name = "CoinIcon"
+                    coinCircle.Size = UDim2.new(0, coinIconSize, 0, coinIconSize)
+                    coinCircle.AnchorPoint = Vector2.new(0, 0.5)
+                    coinCircle.Position = UDim2.new(0, 0, 0.5, 0)
+                    coinCircle.BackgroundColor3 = Color3.fromRGB(255, 200, 28)
+                    coinCircle.BorderSizePixel = 0
+                    coinCircle.ZIndex = 252
+                    coinCircle.Parent = card
+                    local cc = Instance.new("UICorner")
+                    cc.CornerRadius = UDim.new(0.5, 0)
+                    cc.Parent = coinCircle
+                end
+
+                -- Coin amount label
+                local coinLabel = Instance.new("TextLabel")
+                coinLabel.Name = "CoinAmount"
+                coinLabel.Size = UDim2.new(0.50, -coinIconSize, 0.50, 0)
+                coinLabel.Position = UDim2.new(0, coinIconSize + px(16), 0, px(10))
+                coinLabel.BackgroundTransparency = 1
+                coinLabel.Font = Enum.Font.GothamBlack
+                coinLabel.Text = tostring(pack.Coins) .. " Coins"
+                coinLabel.TextColor3 = GOLD
+                coinLabel.TextSize = math.max(18, math.floor(px(22)))
+                coinLabel.TextXAlignment = Enum.TextXAlignment.Left
+                coinLabel.ZIndex = 252
+                coinLabel.Parent = card
+
+                -- Pack name subtitle
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "PackName"
+                nameLabel.Size = UDim2.new(0.50, -coinIconSize, 0.35, 0)
+                nameLabel.Position = UDim2.new(0, coinIconSize + px(16), 0.50, px(4))
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = pack.Name
+                nameLabel.TextColor3 = DIM_TEXT
+                nameLabel.TextSize = math.max(13, math.floor(px(15)))
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.ZIndex = 252
+                nameLabel.Parent = card
+
+                -- Buy button (right side)
+                local buyBtn = Instance.new("TextButton")
+                buyBtn.Name = "BuyBtn"
+                buyBtn.Size = UDim2.new(0, px(140), 0, px(48))
+                buyBtn.AnchorPoint = Vector2.new(1, 0.5)
+                buyBtn.Position = UDim2.new(1, 0, 0.5, 0)
+                buyBtn.BackgroundColor3 = GREEN_BTN
+                buyBtn.BorderSizePixel = 0
+                buyBtn.Font = Enum.Font.GothamBold
+                buyBtn.Text = "R$ " .. tostring(pack.Price or "??")
+                buyBtn.TextColor3 = WHITE
+                buyBtn.TextSize = math.max(15, math.floor(px(18)))
+                buyBtn.AutoButtonColor = false
+                buyBtn.ZIndex = 253
+                buyBtn.Parent = card
+
+                local buyCorner = Instance.new("UICorner")
+                buyCorner.CornerRadius = UDim.new(0, px(8))
+                buyCorner.Parent = buyBtn
+
+                local buyStroke = Instance.new("UIStroke")
+                buyStroke.Color = Color3.fromRGB(25, 140, 50)
+                buyStroke.Thickness = 1.2
+                buyStroke.Parent = buyBtn
+
+                -- Hover feedback
+                buyBtn.MouseEnter:Connect(function()
+                    TweenService:Create(buyBtn, TWEEN_QUICK, {
+                        BackgroundColor3 = Color3.fromRGB(50, 220, 90),
+                    }):Play()
+                end)
+                buyBtn.MouseLeave:Connect(function()
+                    TweenService:Create(buyBtn, TWEEN_QUICK, {
+                        BackgroundColor3 = GREEN_BTN,
+                    }):Play()
+                end)
+
+                -- Purchase click handler
+                buyBtn.MouseButton1Click:Connect(function()
+                    if coinPromptDebounce then return end
+
+                    local productId = pack.ProductId
+                    if not productId or productId == 0 then
+                        warn("[ShopUI][Coins] Product ID not set for '" .. pack.Name .. "'. Set it in CoinProducts.lua")
+                        return
+                    end
+
+                    coinPromptDebounce = true
+                    print("[ShopUI][Coins] Prompting purchase:", pack.Name, "ProductId:", productId)
+
+                    local ok, err = pcall(function()
+                        MarketplaceService:PromptProductPurchase(Players.LocalPlayer, productId)
+                    end)
+                    if not ok then
+                        warn("[ShopUI][Coins] PromptProductPurchase failed:", tostring(err))
+                    end
+
+                    task.delay(2, function()
+                        coinPromptDebounce = false
+                    end)
+                end)
+            end
+        end
+
+        contentPages["coins"] = coinsPage
+    end
+
+    ---------------------------------------------------------------------------
     -- Set initial state: Weapons tab active by default
     ---------------------------------------------------------------------------
     setActiveTab("weapons")
 
     -- Expose so external code (e.g. EmoteUI shop button) can switch tabs
     ShopUI.setActiveTab = setActiveTab
+    ShopUI.getActiveTab = function() return currentTab end
 
     ---------------------------------------------------------------------------
     -- Dynamic root height: keep root tall enough for content (sidebar fills it)

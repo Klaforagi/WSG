@@ -188,22 +188,42 @@ local function pushEquippedToClient(player)
     pcall(function() equippedChangedRE:FireClient(player, equipped) end)
 end
 
+-- The default trail every player should have equipped if they haven't chosen one
+local DEFAULT_TRAIL_ID = "DefaultTrail"
+
 -- Sync equipped dash trail to player attribute (so DashServiceInit can read it)
 local function syncDashTrailAttribute(player)
     local data = getOrCreateData(player)
     local trailId = data.equipped.DashTrail
-    if trailId then
-        player:SetAttribute("EquippedDashTrail", trailId)
-    else
-        player:SetAttribute("EquippedDashTrail", nil)
+    -- Fall back to the default white trail if nothing is equipped
+    if not trailId or trailId == "" then
+        trailId = DEFAULT_TRAIL_ID
+        data.equipped.DashTrail = trailId
+        dprint(player.Name, "had no equipped trail – set default:", trailId)
     end
+    player:SetAttribute("EquippedDashTrail", trailId)
+    dprint(player.Name, "synced EquippedDashTrail attribute:", trailId)
 end
 
 -- ── Player lifecycle ───────────────────────────────────────────────────────
 Players.PlayerAdded:Connect(function(player)
     local data = getOrCreateData(player)
+
+    -- Ensure DefaultTrail is owned (it's free)
+    if not data.owned[DEFAULT_TRAIL_ID] then
+        data.owned[DEFAULT_TRAIL_ID] = true
+        dprint(player.Name, "granted free DefaultTrail")
+    end
+
+    -- Auto-equip the default white trail if nothing is equipped
+    if not data.equipped.DashTrail or data.equipped.DashTrail == "" then
+        data.equipped.DashTrail = DEFAULT_TRAIL_ID
+        dprint(player.Name, "auto-equipped DefaultTrail (first join or missing)")
+    end
+
     syncDashTrailAttribute(player)
-    dprint(player.Name, "joined – equipped DashTrail:", data.equipped.DashTrail or "none")
+    dprint(player.Name, "joined – equipped DashTrail:", data.equipped.DashTrail)
+    dprint(player.Name, "loaded trail from data:", data.equipped.DashTrail)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
@@ -213,7 +233,14 @@ end)
 
 for _, p in ipairs(Players:GetPlayers()) do
     task.spawn(function()
-        getOrCreateData(p)
+        local data = getOrCreateData(p)
+        if not data.owned[DEFAULT_TRAIL_ID] then
+            data.owned[DEFAULT_TRAIL_ID] = true
+        end
+        if not data.equipped.DashTrail or data.equipped.DashTrail == "" then
+            data.equipped.DashTrail = DEFAULT_TRAIL_ID
+            dprint(p.Name, "auto-equipped DefaultTrail (late init)")
+        end
         syncDashTrailAttribute(p)
     end)
 end

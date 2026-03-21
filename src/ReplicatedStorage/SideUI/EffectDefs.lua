@@ -18,7 +18,7 @@ EffectDefs.Effects = {
         Description = "The standard white dash trail.",
         Category    = "Effects",
         SubType     = "DashTrail",
-        Color       = Color3.fromRGB(180, 220, 255),
+        Color       = Color3.fromRGB(255, 255, 255),
         CoinCost    = 0,
         IsFree      = true,
         Rarity      = "Common",
@@ -81,7 +81,7 @@ end
 
 function EffectDefs.GetColor(id)
     local def = EffectDefs.GetById(id)
-    return (def and def.Color) or Color3.fromRGB(180, 220, 255)
+    return (def and def.Color) or Color3.fromRGB(255, 255, 255)
 end
 
 return EffectDefs
