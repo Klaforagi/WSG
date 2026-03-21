@@ -40,6 +40,16 @@ local claimAchievRF = Instance.new("RemoteFunction")
 claimAchievRF.Name = "ClaimAchievement"
 claimAchievRF.Parent = remotesFolder
 
+-- GetCompletedHistory: client asks for completed achievement history
+local getHistoryRF = Instance.new("RemoteFunction")
+getHistoryRF.Name = "GetCompletedHistory"
+getHistoryRF.Parent = remotesFolder
+
+-- GetCategoryProgress: client asks for per-category completion summary
+local getCategoryProgressRF = Instance.new("RemoteFunction")
+getCategoryProgressRF.Name = "GetCategoryProgress"
+getCategoryProgressRF.Parent = remotesFolder
+
 --------------------------------------------------------------------------------
 -- Remote handlers
 --------------------------------------------------------------------------------
@@ -54,6 +64,14 @@ claimAchievRF.OnServerInvoke = function(player, achievementId)
         pcall(function() StatService:RegisterAchievementClaimed(player) end)
     end
     return result
+end
+
+getHistoryRF.OnServerInvoke = function(player)
+    return AchievementService:GetCompletedHistory(player)
+end
+
+getCategoryProgressRF.OnServerInvoke = function(player)
+    return AchievementService:GetCategoryProgressSummary(player)
 end
 
 --------------------------------------------------------------------------------

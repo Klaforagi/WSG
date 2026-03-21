@@ -1402,8 +1402,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         if targetHeight <= rootH then return end
         rootH = targetHeight
         root.Size = UDim2.new(1, 0, 0, rootH)
-        for _, page in pairs(contentPages) do
-            page.Size = UDim2.new(1, 0, 0, rootH)
+        for id, page in pairs(contentPages) do
+            -- achievPage uses relative sizing (1,0) for its hub layout; skip it
+            if id ~= "achiev" then
+                page.Size = UDim2.new(1, 0, 0, rootH)
+            end
         end
     end
 
@@ -2369,59 +2372,255 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
 
     ---------------------------------------------------------------------------
-    -- ACHIEVEMENTS page  (fully functional)
+    -- ACHIEVEMENTS page  (Phase 2: achievement hub with category showcase)
+    --
+    -- Structure (all INSIDE the existing achievements tab):
+    --   achievPage
+    --     AchievHubRoot (Frame, fills achievPage)
+    --       CategoryShowcase (left ~42%, Home button + 2x3 grid of category cards)
+    --       ContentPanel  (right ~58%, scrollable, swaps between Home/Category)
+    --
+    -- Internal state:
+    --   achViewMode = "Home" | "Category"
+    --   achSelectedCategory = category string | nil
     ---------------------------------------------------------------------------
-    local achievPage = makePage("AchievPage", false)
+    local achievPage = Instance.new("Frame")
+    achievPage.Name               = "AchievPage"
+    achievPage.BackgroundTransparency = 1
+    achievPage.Size               = UDim2.new(1, 0, 1, 0)
+    achievPage.Visible            = false
+    achievPage.ClipsDescendants   = true
+    achievPage.Parent             = contentArea
     contentPages["achiev"] = achievPage
 
-    makeHeader("ACHIEVEMENTS", "Track your progress and earn rewards!", achievPage)
-
     -- Remotes for achievement system
-    local getAchievRF
-    local claimAchievRF2
-    local achievProgressRE
+    local getAchievRF, claimAchievRF2, achievProgressRE
+    local getHistoryRF, getCategoryProgressRF
 
     pcall(function()
         local rm = ReplicatedStorage:WaitForChild("Remotes", 5)
         if rm then
-            getAchievRF     = rm:FindFirstChild("GetAchievements")
-            claimAchievRF2  = rm:FindFirstChild("ClaimAchievement")
-            achievProgressRE = rm:FindFirstChild("AchievementProgress")
+            getAchievRF        = rm:FindFirstChild("GetAchievements")
+            claimAchievRF2     = rm:FindFirstChild("ClaimAchievement")
+            achievProgressRE   = rm:FindFirstChild("AchievementProgress")
+            getHistoryRF       = rm:FindFirstChild("GetCompletedHistory")
+            getCategoryProgressRF = rm:FindFirstChild("GetCategoryProgress")
         end
     end)
 
-    -- Fetch achievement data
+    -- Fetch all achievement + history data up front
     local achievements = {}
     if getAchievRF then
-        pcall(function()
-            achievements = getAchievRF:InvokeServer()
-        end)
+        pcall(function() achievements = getAchievRF:InvokeServer() end)
     end
     if type(achievements) ~= "table" then achievements = {} end
-    updateRootHeight(#achievements)
+
+    local completedHistory = {}
+    if getHistoryRF then
+        pcall(function() completedHistory = getHistoryRF:InvokeServer() end)
+    end
+    if type(completedHistory) ~= "table" then completedHistory = {} end
+
+    local categoryProgress = {}
+    if getCategoryProgressRF then
+        pcall(function() categoryProgress = getCategoryProgressRF:InvokeServer() end)
+    end
+    if type(categoryProgress) ~= "table" then categoryProgress = {} end
 
     local achievementDataById = {}
-    for _, achievement in ipairs(achievements) do
-        achievementDataById[achievement.id] = achievement
+    for _, a in ipairs(achievements) do
+        achievementDataById[a.id] = a
     end
 
     -- Lookup tables for live updates
-    local achProgressBars  = {} -- [id] -> fill Frame
-    local achProgressTexts = {} -- [id] -> TextLabel
-    local achClaimButtons  = {} -- [id] -> TextButton
-    local achGoals         = {} -- [id] -> number
-    local achClaimed       = {} -- [id] -> bool
-    local achCards         = {} -- [id] -> Frame
-    local achCardStrokes   = {} -- [id] -> UIStroke
-    local achAchievedOnLabels = {} -- [id] -> TextLabel
+    local achProgressBars      = {}
+    local achProgressTexts     = {}
+    local achClaimButtons      = {}
+    local achGoals             = {}
+    local achClaimed           = {}
+    local achCards             = {}
+    local achCardStrokes       = {}
+    local achAchievedOnLabels  = {}
 
-    if #achievements == 0 then
-        makePlaceholder("Loading achievements...", 3, achievPage)
+    ---------------------------------------------------------------------------
+    -- Hub root: fills the achievPage, laid out with absolute positioning
+    ---------------------------------------------------------------------------
+    local hubRoot = Instance.new("Frame")
+    hubRoot.Name                = "AchievHubRoot"
+    hubRoot.BackgroundTransparency = 1
+    hubRoot.Size                = UDim2.new(1, 0, 1, 0)
+    hubRoot.ClipsDescendants    = true
+    hubRoot.Parent              = achievPage
+
+    -- Showcase layout: left category cards + right content panel
+    local SHOWCASE_W_SCALE = 0.42   -- left showcase takes ~42% width
+    local CONTENT_GAP = px(10)
+
+    ---------------------------------------------------------------------------
+    -- Category showcase frame (left area, 2-column grid of category cards)
+    ---------------------------------------------------------------------------
+    local showcaseFrame = Instance.new("Frame")
+    showcaseFrame.Name                = "CategoryShowcase"
+    showcaseFrame.BackgroundTransparency = 1
+    showcaseFrame.Size                = UDim2.new(SHOWCASE_W_SCALE, -CONTENT_GAP, 1, 0)
+    showcaseFrame.Position            = UDim2.new(0, 0, 0, 0)
+    showcaseFrame.ClipsDescendants    = true
+    showcaseFrame.Parent              = hubRoot
+
+    -- Grid container for 2x3 category cards (no home button – grid fills showcase)
+    local GRID_GAP = px(8)
+
+    local gridFrame = Instance.new("Frame")
+    gridFrame.Name                = "CategoryGrid"
+    gridFrame.BackgroundTransparency = 1
+    gridFrame.Size                = UDim2.new(1, 0, 1, 0)
+    gridFrame.Position            = UDim2.new(0, 0, 0, 0)
+    gridFrame.ClipsDescendants    = true
+    gridFrame.Parent              = showcaseFrame
+
+    ---------------------------------------------------------------------------
+    -- Content panel (right side, scrollable)
+    ---------------------------------------------------------------------------
+    local contentPanel = Instance.new("ScrollingFrame")
+    contentPanel.Name                    = "ContentPanel"
+    contentPanel.BackgroundTransparency  = 1
+    contentPanel.Size                    = UDim2.new(1 - SHOWCASE_W_SCALE, -CONTENT_GAP, 1, 0)
+    contentPanel.Position               = UDim2.new(SHOWCASE_W_SCALE, CONTENT_GAP, 0, 0)
+    contentPanel.CanvasSize             = UDim2.new(0, 0, 0, 0)
+    contentPanel.AutomaticCanvasSize    = Enum.AutomaticSize.Y
+    contentPanel.ScrollBarThickness     = px(3)
+    contentPanel.ScrollBarImageColor3   = GOLD
+    contentPanel.ScrollBarImageTransparency = 0.08
+    contentPanel.BorderSizePixel        = 0
+    contentPanel.ClipsDescendants       = true
+    contentPanel.Parent                 = hubRoot
+
+    local cpLayout = Instance.new("UIListLayout")
+    cpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    cpLayout.Padding   = UDim.new(0, px(8))
+    cpLayout.Parent    = contentPanel
+
+    local cpPad = Instance.new("UIPadding")
+    cpPad.PaddingTop   = UDim.new(0, px(4))
+    cpPad.PaddingBottom = UDim.new(0, px(8))
+    cpPad.PaddingLeft  = UDim.new(0, px(4))
+    cpPad.PaddingRight = UDim.new(0, px(4))
+    cpPad.Parent       = contentPanel
+
+    -- Disable parent scrolling when on achievements tab
+    local function achDisableParentScroll()
+        if parentScroll then
+            parentScroll.ScrollBarThickness = 0
+            parentScroll.ScrollingEnabled = false
+        end
+    end
+    local function achRestoreParentScroll()
+        if parentScroll then
+            parentScroll.ScrollBarThickness = defaultScrollThickness
+            parentScroll.ScrollingEnabled = true
+        end
     end
 
-    local achievementDisplayList = sortQuestsForDisplay("achiev", achievements)
+    ---------------------------------------------------------------------------
+    -- Internal state
+    ---------------------------------------------------------------------------
+    local achViewMode = "Home"         -- "Home" or "Category"
+    local achSelectedCategory = nil    -- category string or nil
 
-    for i, ach in ipairs(achievementDisplayList) do
+    -- Forward declarations (referenced in makeContentHeader back button)
+    local showAchievementsHomeView
+    local updateCatButtonStates
+
+    ---------------------------------------------------------------------------
+    -- Content panel header
+    ---------------------------------------------------------------------------
+    local function makeContentHeader(text, showBackButton)
+        local hdr = Instance.new("Frame")
+        hdr.Name                = "ContentHeader"
+        hdr.BackgroundTransparency = 1
+        hdr.Size                = UDim2.new(1, 0, 0, px(36))
+        hdr.LayoutOrder         = 1
+        hdr.Parent              = contentPanel
+
+        local label = Instance.new("TextLabel")
+        label.Name                = "HeaderLabel"
+        label.BackgroundTransparency = 1
+        label.Font                = Enum.Font.GothamBold
+        label.Text                = text
+        label.TextColor3          = GOLD
+        label.TextSize            = math.max(16, math.floor(px(18)))
+        label.TextXAlignment      = Enum.TextXAlignment.Left
+        label.Size                = UDim2.new(1, 0, 1, 0)
+        label.Parent              = hdr
+
+        -- Accent bar under header
+        local accent = Instance.new("Frame")
+        accent.Name                = "AccentBar"
+        accent.BackgroundColor3    = GOLD
+        accent.BackgroundTransparency = 0.5
+        accent.BorderSizePixel     = 0
+        accent.Size                = UDim2.new(0.3, 0, 0, px(2))
+        accent.AnchorPoint         = Vector2.new(0, 1)
+        accent.Position            = UDim2.new(0, 0, 1, 0)
+        accent.Parent              = hdr
+
+        -- Back button (upper-right, only in category view)
+        if showBackButton then
+            local backBtn = Instance.new("TextButton")
+            backBtn.Name            = "BackBtn"
+            backBtn.AutoButtonColor = false
+            backBtn.BackgroundColor3 = SIDEBAR_BG
+            backBtn.BorderSizePixel = 0
+            backBtn.Size            = UDim2.new(0, px(72), 0, px(26))
+            backBtn.AnchorPoint     = Vector2.new(1, 0.5)
+            backBtn.Position        = UDim2.new(1, 0, 0.5, 0)
+            backBtn.Text            = ""
+            backBtn.ZIndex          = 5
+            backBtn.Parent          = hdr
+
+            local bbCorner = Instance.new("UICorner")
+            bbCorner.CornerRadius = UDim.new(0, px(6))
+            bbCorner.Parent = backBtn
+
+            local bbStroke = Instance.new("UIStroke")
+            bbStroke.Color        = CARD_STROKE
+            bbStroke.Thickness    = 1
+            bbStroke.Transparency = 0.4
+            bbStroke.Parent       = backBtn
+
+            local bbLabel = Instance.new("TextLabel")
+            bbLabel.Name                = "BackLabel"
+            bbLabel.BackgroundTransparency = 1
+            bbLabel.Font                = Enum.Font.GothamBold
+            bbLabel.Text                = "\u{2190} Back"
+            bbLabel.TextColor3          = DIM_TEXT
+            bbLabel.TextSize            = math.max(11, math.floor(px(12)))
+            bbLabel.Size                = UDim2.new(1, 0, 1, 0)
+            bbLabel.TextXAlignment      = Enum.TextXAlignment.Center
+            bbLabel.ZIndex              = 6
+            bbLabel.Parent              = backBtn
+
+            trackConn(backBtn.MouseButton1Click:Connect(function()
+                showAchievementsHomeView()
+                updateCatButtonStates("Home")
+            end))
+            trackConn(backBtn.MouseEnter:Connect(function()
+                TweenService:Create(backBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(30, 28, 20)}):Play()
+                bbLabel.TextColor3 = WHITE
+            end))
+            trackConn(backBtn.MouseLeave:Connect(function()
+                TweenService:Create(backBtn, TWEEN_QUICK, {BackgroundColor3 = SIDEBAR_BG}):Play()
+                bbLabel.TextColor3 = DIM_TEXT
+            end))
+        end
+
+        return hdr, label
+    end
+
+    ---------------------------------------------------------------------------
+    -- Achievement card builder (reusable for both Home and Category views)
+    ---------------------------------------------------------------------------
+    local function buildAchievementCard(ach, layoutOrder, parentFrame)
         achGoals[ach.id]   = ach.target
         achClaimed[ach.id] = ach.claimed
 
@@ -2429,8 +2628,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         card.Name             = "Ach_" .. ach.id
         card.BackgroundColor3 = ROW_BG
         card.Size             = UDim2.new(1, -px(6), 0, px(136))
-        card.LayoutOrder      = 10 + i
-        card.Parent           = achievPage
+        card.LayoutOrder      = layoutOrder
+        card.Parent           = parentFrame
         achCards[ach.id]      = card
 
         local corner = Instance.new("UICorner")
@@ -2465,19 +2664,19 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         accentCr.Parent = accentBar
         accentBar.Parent = card
 
-        -- Icon glyph (left side)
+        -- Icon glyph
         local iconLabel = Instance.new("TextLabel")
         iconLabel.Name                = "AchIcon"
         iconLabel.BackgroundTransparency = 1
         iconLabel.Font                = Enum.Font.GothamBold
-        iconLabel.Text                = ach.icon or "★"
+        iconLabel.Text                = ach.icon or "\u{2605}"
         iconLabel.TextSize            = math.max(20, math.floor(px(24)))
         iconLabel.TextColor3          = GOLD
         iconLabel.Size                = UDim2.new(0, px(32), 0, px(32))
         iconLabel.Position            = UDim2.new(0, 0, 0, 0)
         iconLabel.Parent              = card
 
-        -- Title (right of icon)
+        -- Title
         local titleLbl = Instance.new("TextLabel")
         titleLbl.Name               = "Title"
         titleLbl.BackgroundTransparency = 1
@@ -2490,7 +2689,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         titleLbl.Position           = UDim2.new(0, px(38), 0, 0)
         titleLbl.Parent             = card
 
-        -- Reward badge (right of title)
+        -- Reward badge
         local rewardBadge = Instance.new("Frame")
         rewardBadge.Name              = "RewardBadge"
         rewardBadge.BackgroundColor3  = Color3.fromRGB(36, 33, 18)
@@ -2542,7 +2741,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         descLbl.Position           = UDim2.new(0, px(38), 0, px(26))
         descLbl.Parent             = card
 
-        -- Progress bar track
+        -- Progress bar
         local barY = px(52)
         local barH = px(16)
         local track = Instance.new("Frame")
@@ -2563,7 +2762,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         trackStroke.Parent       = track
 
-        -- Progress bar fill
         local pct = (ach.target > 0) and math.clamp(ach.progress / ach.target, 0, 1) or 0
         local fill = Instance.new("Frame")
         fill.Name             = "BarFill"
@@ -2576,7 +2774,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         fillCorner.CornerRadius = UDim.new(0, px(6))
         fillCorner.Parent = fill
 
-        -- Subtle inner highlight on fill bar
         local fillHighlight = Instance.new("Frame")
         fillHighlight.Name = "FillHighlight"
         fillHighlight.BackgroundColor3 = Color3.fromRGB(255, 245, 180)
@@ -2604,6 +2801,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Parent             = track
         achProgressTexts[ach.id] = progText
 
+        -- Achieved on date
         local achievedOnLbl = Instance.new("TextLabel")
         achievedOnLbl.Name                = "AchievedOn"
         achievedOnLbl.BackgroundTransparency = 1
@@ -2619,9 +2817,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         achievedOnLbl.Parent              = card
         achAchievedOnLabels[ach.id]       = achievedOnLbl
 
-        local function updateAchievedOnLabel(completed, achievedOn)
+        local function updateAchievedOnLabel(isCompleted, achievedOn)
             local formattedDate = formatAchievedOn(achievedOn)
-            if completed and formattedDate then
+            if isCompleted and formattedDate then
                 achievedOnLbl.Text = "Achieved On: " .. formattedDate
                 achievedOnLbl.Visible = true
             else
@@ -2632,13 +2830,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         -- Claim / status button
         local btnW2 = px(108)
-        local btnH  = px(34)
+        local btnH2 = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
         btn.TextSize        = math.max(13, math.floor(px(14)))
-        btn.Size            = UDim2.new(0, btnW2, 0, btnH)
+        btn.Size            = UDim2.new(0, btnW2, 0, btnH2)
         btn.AnchorPoint     = Vector2.new(1, 0)
         btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
         btn.Parent          = card
@@ -2655,55 +2853,35 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         achClaimButtons[ach.id] = btn
 
-        -- Card visuals helper
         local function updateAchCardVisuals(progress, goal, claimed)
             if claimed then
                 card.BackgroundColor3 = ROW_CLAIMED_BG
-                stroke.Color = GREEN_GLOW
-                stroke.Thickness = 1.8
-                stroke.Transparency = 0.3
-                accentBar.BackgroundColor3 = GREEN_GLOW
-                accentBar.BackgroundTransparency = 0.2
+                stroke.Color = GREEN_GLOW; stroke.Thickness = 1.8; stroke.Transparency = 0.3
+                accentBar.BackgroundColor3 = GREEN_GLOW; accentBar.BackgroundTransparency = 0.2
             elseif progress >= goal then
                 card.BackgroundColor3 = ROW_CLAIMABLE_BG
-                stroke.Color = CLAIM_GOLD_GLOW
-                stroke.Thickness = 2
-                stroke.Transparency = 0.15
-                accentBar.BackgroundColor3 = CLAIM_GOLD_GLOW
-                accentBar.BackgroundTransparency = 0
+                stroke.Color = CLAIM_GOLD_GLOW; stroke.Thickness = 2; stroke.Transparency = 0.15
+                accentBar.BackgroundColor3 = CLAIM_GOLD_GLOW; accentBar.BackgroundTransparency = 0
             else
                 card.BackgroundColor3 = ROW_BG
-                stroke.Color = CARD_STROKE
-                stroke.Thickness = 1.2
-                stroke.Transparency = 0.35
-                accentBar.BackgroundColor3 = GOLD
-                accentBar.BackgroundTransparency = 0.5
+                stroke.Color = CARD_STROKE; stroke.Thickness = 1.2; stroke.Transparency = 0.35
+                accentBar.BackgroundColor3 = GOLD; accentBar.BackgroundTransparency = 0.5
             end
         end
 
-        -- Button state helper
         local function updateAchBtnState(progress, goal, claimed)
             if claimed then
-                btn.Text             = "\u{2714} CLAIMED"
-                btn.BackgroundColor3 = BTN_CLAIMED
-                btn.TextColor3       = GREEN_GLOW
-                btn.Active           = false
-                btnStroke.Color      = GREEN_GLOW
-                btnStroke.Transparency = 0.5
+                btn.Text = "\u{2714} CLAIMED"; btn.BackgroundColor3 = BTN_CLAIMED
+                btn.TextColor3 = GREEN_GLOW; btn.Active = false
+                btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.5
             elseif progress >= goal then
-                btn.Text             = "\u{2B50} CLAIM"
-                btn.BackgroundColor3 = BTN_CLAIM
-                btn.TextColor3       = WHITE
-                btn.Active           = true
-                btnStroke.Color      = GREEN_GLOW
-                btnStroke.Transparency = 0.15
+                btn.Text = "\u{2B50} CLAIM"; btn.BackgroundColor3 = BTN_CLAIM
+                btn.TextColor3 = WHITE; btn.Active = true
+                btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.15
             else
-                btn.Text             = tostring(progress) .. "/" .. tostring(goal)
-                btn.BackgroundColor3 = BTN_LOCKED
-                btn.TextColor3       = DIM_TEXT
-                btn.Active           = false
-                btnStroke.Color      = BTN_STROKE
-                btnStroke.Transparency = 0.4
+                btn.Text = tostring(progress) .. "/" .. tostring(goal)
+                btn.BackgroundColor3 = BTN_LOCKED; btn.TextColor3 = DIM_TEXT; btn.Active = false
+                btnStroke.Color = BTN_STROKE; btnStroke.Transparency = 0.4
             end
             updateAchCardVisuals(progress, goal, claimed)
         end
@@ -2714,14 +2892,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         -- Hover
         trackConn(btn.MouseEnter:Connect(function()
             if btn.Active then
-                TweenService:Create(btn, TWEEN_QUICK,
-                    {BackgroundColor3 = Color3.fromRGB(45, 210, 90)}):Play()
+                TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(45, 210, 90)}):Play()
             end
         end))
         trackConn(btn.MouseLeave:Connect(function()
             if btn.Active then
-                TweenService:Create(btn, TWEEN_QUICK,
-                    {BackgroundColor3 = BTN_CLAIM}):Play()
+                TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = BTN_CLAIM}):Play()
             end
         end))
 
@@ -2729,17 +2905,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         trackConn(btn.MouseButton1Click:Connect(function()
             if achClaimed[ach.id] then return end
             if not btn.Active then return end
-
-            btn.Active = false
-            btn.Text   = "..."
+            btn.Active = false; btn.Text = "..."
 
             local success = false
             if claimAchievRF2 then
-                pcall(function()
-                    success = claimAchievRF2:InvokeServer(ach.id)
-                end)
+                pcall(function() success = claimAchievRF2:InvokeServer(ach.id) end)
             end
-
             if success then
                 achClaimed[ach.id] = true
                 if achievementDataById[ach.id] then
@@ -2750,26 +2921,550 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 updateAchBtnState(ach.target, ach.target, true)
                 local latest = achievementDataById[ach.id]
                 updateAchievedOnLabel(true, latest and latest.achievedOn)
-                -- Flash gold
-                TweenService:Create(card, TWEEN_QUICK,
-                    {BackgroundColor3 = Color3.fromRGB(60, 55, 25)}):Play()
+                TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(60, 55, 25)}):Play()
                 task.delay(0.3, function()
                     if card and card.Parent then
-                        TweenService:Create(card, TWEEN_QUICK,
-                            {BackgroundColor3 = ROW_CLAIMED_BG}):Play()
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = ROW_CLAIMED_BG}):Play()
                     end
                 end)
-                if _G.UpdateShopHeaderCoins then
-                    pcall(_G.UpdateShopHeaderCoins)
-                end
-                applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
-                    return achCards[displayAchievement.id]
-                end)
+                if _G.UpdateShopHeaderCoins then pcall(_G.UpdateShopHeaderCoins) end
             else
                 updateAchBtnState(ach.progress, ach.target, false)
             end
         end))
+
+        return card
     end
+
+    ---------------------------------------------------------------------------
+    -- Clear right content panel
+    ---------------------------------------------------------------------------
+    local function clearContentPanel()
+        for _, c in ipairs(contentPanel:GetChildren()) do
+            if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then
+                pcall(function() c:Destroy() end)
+            end
+        end
+        -- Reset canvas position to top
+        contentPanel.CanvasPosition = Vector2.new(0, 0)
+    end
+
+    ---------------------------------------------------------------------------
+    -- Show Home view (Recently Completed)
+    ---------------------------------------------------------------------------
+    showAchievementsHomeView = function()
+        achViewMode = "Home"
+        achSelectedCategory = nil
+        clearContentPanel()
+
+        makeContentHeader("Recently Completed", false)
+
+        if #completedHistory == 0 then
+            -- Empty state
+            local empty = Instance.new("Frame")
+            empty.Name              = "EmptyState"
+            empty.BackgroundColor3  = ROW_BG
+            empty.Size              = UDim2.new(1, 0, 0, px(120))
+            empty.LayoutOrder       = 10
+            empty.Parent            = contentPanel
+
+            local emptyCr = Instance.new("UICorner")
+            emptyCr.CornerRadius = UDim.new(0, px(12))
+            emptyCr.Parent = empty
+
+            local emptyStroke = Instance.new("UIStroke")
+            emptyStroke.Color = CARD_STROKE; emptyStroke.Thickness = 1.2; emptyStroke.Transparency = 0.35
+            emptyStroke.Parent = empty
+
+            local msgMain = Instance.new("TextLabel")
+            msgMain.BackgroundTransparency = 1
+            msgMain.Font            = Enum.Font.GothamBold
+            msgMain.Text            = "No achievements completed yet."
+            msgMain.TextColor3      = DIM_TEXT
+            msgMain.TextSize        = math.max(14, math.floor(px(15)))
+            msgMain.Size            = UDim2.new(1, 0, 0.5, 0)
+            msgMain.Position        = UDim2.new(0, 0, 0, px(8))
+            msgMain.TextXAlignment  = Enum.TextXAlignment.Center
+            msgMain.Parent          = empty
+
+            local msgSub = Instance.new("TextLabel")
+            msgSub.BackgroundTransparency = 1
+            msgSub.Font             = Enum.Font.GothamMedium
+            msgSub.Text             = "Complete achievements to see them here."
+            msgSub.TextColor3       = DIM_TEXT
+            msgSub.TextSize         = math.max(11, math.floor(px(12)))
+            msgSub.Size             = UDim2.new(1, 0, 0.4, 0)
+            msgSub.Position         = UDim2.new(0, 0, 0.5, 0)
+            msgSub.TextXAlignment   = Enum.TextXAlignment.Center
+            msgSub.Parent           = empty
+            return
+        end
+
+        -- Show completed history entries (newest first)
+        for i, entry in ipairs(completedHistory) do
+            local histCard = Instance.new("Frame")
+            histCard.Name             = "HistEntry_" .. tostring(i)
+            histCard.BackgroundColor3 = ROW_CLAIMED_BG
+            histCard.Size             = UDim2.new(1, -px(6), 0, px(72))
+            histCard.LayoutOrder      = 10 + i
+            histCard.Parent           = contentPanel
+
+            local hcCorner = Instance.new("UICorner")
+            hcCorner.CornerRadius = UDim.new(0, px(10))
+            hcCorner.Parent = histCard
+
+            local hcStroke = Instance.new("UIStroke")
+            hcStroke.Color = GREEN_GLOW; hcStroke.Thickness = 1.2; hcStroke.Transparency = 0.4
+            hcStroke.Parent = histCard
+
+            local hcPad = Instance.new("UIPadding")
+            hcPad.PaddingLeft  = UDim.new(0, px(12))
+            hcPad.PaddingRight = UDim.new(0, px(12))
+            hcPad.PaddingTop   = UDim.new(0, px(8))
+            hcPad.PaddingBottom = UDim.new(0, px(8))
+            hcPad.Parent       = histCard
+
+            -- Checkmark
+            local check = Instance.new("TextLabel")
+            check.Name = "Check"
+            check.BackgroundTransparency = 1
+            check.Font      = Enum.Font.GothamBold
+            check.Text      = "\u{2714}"
+            check.TextColor3 = GREEN_GLOW
+            check.TextSize  = math.max(16, math.floor(px(18)))
+            check.Size      = UDim2.new(0, px(24), 0, px(24))
+            check.Position  = UDim2.new(0, 0, 0, 0)
+            check.Parent    = histCard
+
+            -- Title
+            local hTitle = Instance.new("TextLabel")
+            hTitle.Name = "Title"
+            hTitle.BackgroundTransparency = 1
+            hTitle.Font      = Enum.Font.GothamBold
+            hTitle.Text      = entry.displayName or entry.id
+            hTitle.TextColor3 = WHITE
+            hTitle.TextSize  = math.max(13, math.floor(px(14)))
+            hTitle.TextXAlignment = Enum.TextXAlignment.Left
+            hTitle.Size      = UDim2.new(0.6, 0, 0, px(18))
+            hTitle.Position  = UDim2.new(0, px(30), 0, 0)
+            hTitle.Parent    = histCard
+
+            -- Date line (category label removed for cleaner look)
+            local dateStr = formatAchievedOn(entry.achievedOn) or ""
+            local hMeta   = Instance.new("TextLabel")
+            hMeta.Name = "Meta"
+            hMeta.BackgroundTransparency = 1
+            hMeta.Font      = Enum.Font.Gotham
+            hMeta.Text      = dateStr
+            hMeta.TextColor3 = DIM_TEXT
+            hMeta.TextSize  = math.max(10, math.floor(px(11)))
+            hMeta.TextXAlignment = Enum.TextXAlignment.Left
+            hMeta.Size      = UDim2.new(0.7, 0, 0, px(14))
+            hMeta.Position  = UDim2.new(0, px(30), 0, px(20))
+            hMeta.Parent    = histCard
+
+            -- Desc
+            local hDesc = Instance.new("TextLabel")
+            hDesc.Name = "Desc"
+            hDesc.BackgroundTransparency = 1
+            hDesc.Font      = Enum.Font.GothamMedium
+            hDesc.Text      = entry.desc or ""
+            hDesc.TextColor3 = DIM_TEXT
+            hDesc.TextSize  = math.max(10, math.floor(px(11)))
+            hDesc.TextXAlignment = Enum.TextXAlignment.Left
+            hDesc.TextWrapped = true
+            hDesc.Size      = UDim2.new(0.85, 0, 0, px(14))
+            hDesc.Position  = UDim2.new(0, px(30), 0, px(36))
+            hDesc.Parent    = histCard
+
+            -- Reward on the right
+            local hReward = Instance.new("TextLabel")
+            hReward.Name = "Reward"
+            hReward.BackgroundTransparency = 1
+            hReward.Font      = Enum.Font.GothamBold
+            hReward.Text      = "+" .. tostring(entry.reward or 0) .. " coins"
+            hReward.TextColor3 = GOLD
+            hReward.TextSize  = math.max(11, math.floor(px(12)))
+            hReward.TextXAlignment = Enum.TextXAlignment.Right
+            hReward.AnchorPoint = Vector2.new(1, 0)
+            hReward.Size      = UDim2.new(0.3, 0, 0, px(18))
+            hReward.Position  = UDim2.new(1, 0, 0, 0)
+            hReward.Parent    = histCard
+        end
+    end
+
+    ---------------------------------------------------------------------------
+    -- Show Category view
+    ---------------------------------------------------------------------------
+    local function showAchievementCategoryView(category)
+        achViewMode = "Category"
+        achSelectedCategory = category
+        clearContentPanel()
+
+        makeContentHeader(category, true)
+
+        -- Events placeholder
+        if category == "Events" then
+            local evPlaceholder = Instance.new("Frame")
+            evPlaceholder.Name              = "EventsPlaceholder"
+            evPlaceholder.BackgroundColor3  = ROW_BG
+            evPlaceholder.Size              = UDim2.new(1, 0, 0, px(120))
+            evPlaceholder.LayoutOrder       = 10
+            evPlaceholder.Parent            = contentPanel
+
+            local evCr = Instance.new("UICorner")
+            evCr.CornerRadius = UDim.new(0, px(12))
+            evCr.Parent = evPlaceholder
+
+            local evStroke = Instance.new("UIStroke")
+            evStroke.Color = CARD_STROKE; evStroke.Thickness = 1.2; evStroke.Transparency = 0.35
+            evStroke.Parent = evPlaceholder
+
+            local evMsg = Instance.new("TextLabel")
+            evMsg.BackgroundTransparency = 1
+            evMsg.Font            = Enum.Font.GothamBold
+            evMsg.Text            = "No event achievements yet."
+            evMsg.TextColor3      = DIM_TEXT
+            evMsg.TextSize        = math.max(14, math.floor(px(15)))
+            evMsg.Size            = UDim2.new(1, 0, 0.5, 0)
+            evMsg.Position        = UDim2.new(0, 0, 0, px(8))
+            evMsg.TextXAlignment  = Enum.TextXAlignment.Center
+            evMsg.Parent          = evPlaceholder
+
+            local evSub = Instance.new("TextLabel")
+            evSub.BackgroundTransparency = 1
+            evSub.Font            = Enum.Font.GothamMedium
+            evSub.Text            = "Check back during future events."
+            evSub.TextColor3      = DIM_TEXT
+            evSub.TextSize        = math.max(11, math.floor(px(12)))
+            evSub.Size            = UDim2.new(1, 0, 0.4, 0)
+            evSub.Position        = UDim2.new(0, 0, 0.5, 0)
+            evSub.TextXAlignment  = Enum.TextXAlignment.Center
+            evSub.Parent          = evPlaceholder
+            return
+        end
+
+        -- Filter achievements for this category, sorted (active → claimable → claimed)
+        local catAchs = {}
+        for _, ach in ipairs(achievements) do
+            if ach.category == category then
+                table.insert(catAchs, ach)
+            end
+        end
+
+        local sortedCatAchs = sortQuestsForDisplay("achiev_" .. category, catAchs)
+
+        if #sortedCatAchs == 0 then
+            local noAch = Instance.new("Frame")
+            noAch.Name              = "NoAchievements"
+            noAch.BackgroundColor3  = ROW_BG
+            noAch.Size              = UDim2.new(1, 0, 0, px(80))
+            noAch.LayoutOrder       = 10
+            noAch.Parent            = contentPanel
+
+            local naCr = Instance.new("UICorner")
+            naCr.CornerRadius = UDim.new(0, px(12))
+            naCr.Parent = noAch
+
+            local naLbl = Instance.new("TextLabel")
+            naLbl.BackgroundTransparency = 1
+            naLbl.Font = Enum.Font.GothamMedium
+            naLbl.Text = "No achievements in this category."
+            naLbl.TextColor3 = DIM_TEXT
+            naLbl.TextSize = math.max(13, math.floor(px(14)))
+            naLbl.Size = UDim2.new(1, 0, 1, 0)
+            naLbl.TextXAlignment = Enum.TextXAlignment.Center
+            naLbl.Parent = noAch
+            return
+        end
+
+        for idx, ach in ipairs(sortedCatAchs) do
+            buildAchievementCard(ach, 10 + idx, contentPanel)
+        end
+    end
+
+    ---------------------------------------------------------------------------
+    -- Category card definitions (showcase grid, 2 columns x 3 rows)
+    ---------------------------------------------------------------------------
+    local CATEGORY_ICONS = {
+        Combat      = "\u{2694}",    -- ⚔
+        Objectives  = "\u{1F6A9}",   -- 🚩
+        Economy     = "\u{1F4B0}",   -- 💰
+        Progression = "\u{2B50}",    -- ⭐
+        Special     = "\u{2728}",    -- ✨
+        Events      = "\u{1F3C6}",   -- 🏆
+    }
+
+    local CAT_CARD_DEFS = {
+        { id = "Combat",      label = "Combat",      order = 1 },
+        { id = "Objectives",  label = "Objectives",  order = 2 },
+        { id = "Economy",     label = "Economy",     order = 3 },
+        { id = "Progression", label = "Progression", order = 4 },
+        { id = "Special",     label = "Special",     order = 5 },
+        { id = "Events",      label = "Events",      order = 6 },
+    }
+
+    local catButtons = {}  -- keyed by category id, used by live-update code
+
+    -- Active/inactive styling for showcase cards + home button
+    local CARD_ACTIVE_BG   = Color3.fromRGB(44, 38, 14)   -- warm gold tint (richer)
+    local CARD_INACTIVE_BG = Color3.fromRGB(18, 20, 34)   -- dark navy card
+    local CARD_HOVER_BG    = Color3.fromRGB(30, 28, 20)   -- subtle warm hover
+    local CARD_ACTIVE_STROKE  = Color3.fromRGB(255, 200, 60)  -- bright gold border for active
+    local CARD_ICON_BG        = Color3.fromRGB(12, 14, 26)    -- dark icon well bg
+    local CARD_ICON_BG_ACTIVE = Color3.fromRGB(52, 44, 14)    -- richer warm icon well when active
+
+    updateCatButtonStates = function(activeId)
+        -- Update category cards
+        for catId, catBtn in pairs(catButtons) do
+            local isActive = (catId == activeId)
+            catBtn.BackgroundColor3 = isActive and CARD_ACTIVE_BG or CARD_INACTIVE_BG
+
+            local iconWell = catBtn:FindFirstChild("IconWell")
+            local iconLbl = catBtn:FindFirstChild("CatIcon")
+            local textLbl = catBtn:FindFirstChild("CatLabel")
+            local progLbl = catBtn:FindFirstChild("ProgressLabel")
+            local progBar = catBtn:FindFirstChild("CatProgressTrack")
+            local catBtnStroke = catBtn:FindFirstChildOfClass("UIStroke")
+            local glowFrame = catBtn:FindFirstChild("ActiveGlow")
+
+            if iconWell then
+                iconWell.BackgroundColor3 = isActive and CARD_ICON_BG_ACTIVE or CARD_ICON_BG
+                local iwStroke = iconWell:FindFirstChildOfClass("UIStroke")
+                if iwStroke then
+                    iwStroke.Color = isActive and Color3.fromRGB(180, 155, 50) or Color3.fromRGB(50, 54, 78)
+                    iwStroke.Transparency = isActive and 0.15 or 0.4
+                end
+            end
+            if iconLbl then iconLbl.TextColor3 = isActive and GOLD or DIM_TEXT end
+            if textLbl then textLbl.TextColor3 = isActive and WHITE or DIM_TEXT end
+            if progLbl then progLbl.TextColor3 = isActive and GOLD or Color3.fromRGB(120, 125, 150) end
+            if catBtnStroke then
+                catBtnStroke.Color = isActive and CARD_ACTIVE_STROKE or CARD_STROKE
+                catBtnStroke.Thickness = isActive and 2.5 or 1
+                catBtnStroke.Transparency = isActive and 0 or 0.55
+            end
+            if glowFrame then
+                glowFrame.BackgroundTransparency = isActive and 0.72 or 1
+            end
+            if progBar then
+                local pFill = progBar:FindFirstChild("CatBarFill")
+                if pFill then pFill.BackgroundColor3 = isActive and GOLD or BAR_FILL end
+            end
+        end
+    end
+
+    ---------------------------------------------------------------------------
+    -- Build 2x3 showcase grid of category cards (compact medallion style)
+    ---------------------------------------------------------------------------
+    local GRID_COLS = 2
+    local CARD_H = px(138)  -- scaled-up category cards
+
+    -- Use UIGridLayout for clean 2-column arrangement
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellSize        = UDim2.new(0.5, -math.ceil(GRID_GAP * 0.75), 0, CARD_H)
+    gridLayout.CellPadding     = UDim2.new(0, GRID_GAP, 0, GRID_GAP)
+    gridLayout.SortOrder       = Enum.SortOrder.LayoutOrder
+    gridLayout.FillDirection   = Enum.FillDirection.Horizontal
+    gridLayout.Parent          = gridFrame
+
+    -- Resize gridFrame to fit content instead of stretching to fill
+    gridFrame.AutomaticSize = Enum.AutomaticSize.Y
+    gridFrame.Size = UDim2.new(1, 0, 0, 0)
+
+    for idx, def in ipairs(CAT_CARD_DEFS) do
+        -- Progress data for this category
+        local progData = categoryProgress[def.id]
+        local completed = 0
+        local total = 0
+        local pctVal = 0
+        if progData and type(progData) == "table" then
+            completed = progData.completed or 0
+            total = progData.total or 0
+            pctVal = progData.percentage or 0
+        end
+
+        local catBtn = Instance.new("TextButton")
+        catBtn.Name            = def.id .. "CatCard"
+        catBtn.AutoButtonColor = false
+        catBtn.BackgroundColor3 = CARD_INACTIVE_BG
+        catBtn.BorderSizePixel = 0
+        catBtn.Text            = ""
+        catBtn.LayoutOrder     = idx
+        catBtn.ClipsDescendants = true
+        catBtn.Parent          = gridFrame
+
+        local cbCorner = Instance.new("UICorner")
+        cbCorner.CornerRadius = UDim.new(0, px(8))
+        cbCorner.Parent = catBtn
+
+        local cbStroke = Instance.new("UIStroke")
+        cbStroke.Color        = CARD_STROKE
+        cbStroke.Thickness    = 1
+        cbStroke.Transparency = 0.55
+        cbStroke.Parent       = catBtn
+
+        -- Subtle active glow overlay (hidden by default, shown when selected)
+        local glowFrame = Instance.new("Frame")
+        glowFrame.Name                  = "ActiveGlow"
+        glowFrame.BackgroundColor3      = GOLD
+        glowFrame.BackgroundTransparency = 1
+        glowFrame.BorderSizePixel       = 0
+        glowFrame.Size                  = UDim2.new(1, 0, 1, 0)
+        glowFrame.ZIndex                = 0
+        glowFrame.Parent                = catBtn
+
+        local glowCorner = Instance.new("UICorner")
+        glowCorner.CornerRadius = UDim.new(0, px(8))
+        glowCorner.Parent = glowFrame
+
+        -- Icon well: prominent dark circle behind the icon (focal point)
+        local iconWellSize = px(62)
+        local iconWell = Instance.new("Frame")
+        iconWell.Name                  = "IconWell"
+        iconWell.BackgroundColor3      = CARD_ICON_BG
+        iconWell.BackgroundTransparency = 0.15
+        iconWell.BorderSizePixel       = 0
+        iconWell.Size                  = UDim2.new(0, iconWellSize, 0, iconWellSize)
+        iconWell.AnchorPoint           = Vector2.new(0.5, 0)
+        iconWell.Position              = UDim2.new(0.5, 0, 0, px(12))
+        iconWell.ZIndex                = 2
+        iconWell.Parent                = catBtn
+
+        local iconWellCorner = Instance.new("UICorner")
+        iconWellCorner.CornerRadius = UDim.new(0.5, 0)  -- circle
+        iconWellCorner.Parent = iconWell
+
+        local iconWellStroke = Instance.new("UIStroke")
+        iconWellStroke.Color        = Color3.fromRGB(50, 54, 78)
+        iconWellStroke.Thickness    = 1.5
+        iconWellStroke.Transparency = 0.4
+        iconWellStroke.Parent       = iconWell
+
+        -- Category icon (large, primary focal point)
+        local iconSize = math.max(32, math.floor(px(42)))
+        local icon = Instance.new("TextLabel")
+        icon.Name                = "CatIcon"
+        icon.BackgroundTransparency = 1
+        icon.Font                = Enum.Font.GothamBold
+        icon.Text                = CATEGORY_ICONS[def.id] or "\u{2605}"
+        icon.TextColor3          = DIM_TEXT
+        icon.TextSize            = iconSize
+        icon.Size                = UDim2.new(1, 0, 1, 0)
+        icon.TextXAlignment      = Enum.TextXAlignment.Center
+        icon.TextYAlignment      = Enum.TextYAlignment.Center
+        icon.ZIndex              = 3
+        icon.Parent              = iconWell
+
+        -- Category name (below icon, readable secondary label)
+        local label = Instance.new("TextLabel")
+        label.Name                = "CatLabel"
+        label.BackgroundTransparency = 1
+        label.Font                = Enum.Font.GothamBold
+        label.Text                = def.label
+        label.TextColor3          = DIM_TEXT
+        label.TextSize            = math.max(14, math.floor(px(16)))
+        label.TextXAlignment      = Enum.TextXAlignment.Center
+        label.Size                = UDim2.new(1, 0, 0, px(18))
+        label.AnchorPoint         = Vector2.new(0.5, 0)
+        label.Position            = UDim2.new(0.5, 0, 0, px(12) + iconWellSize + px(5))
+        label.TextTruncate        = Enum.TextTruncate.AtEnd
+        label.ZIndex              = 2
+        label.Parent              = catBtn
+
+        -- Percentage (small, subtle below label)
+        local pctY = px(12) + iconWellSize + px(5) + px(18) + px(2)
+        local progLbl = Instance.new("TextLabel")
+        progLbl.Name                = "ProgressLabel"
+        progLbl.BackgroundTransparency = 1
+        progLbl.Font                = Enum.Font.GothamMedium
+        progLbl.Text                = tostring(pctVal) .. "%"
+        progLbl.TextColor3          = Color3.fromRGB(120, 125, 150)
+        progLbl.TextSize            = math.max(10, math.floor(px(11)))
+        progLbl.TextXAlignment      = Enum.TextXAlignment.Center
+        progLbl.Size                = UDim2.new(1, 0, 0, px(12))
+        progLbl.AnchorPoint         = Vector2.new(0.5, 0)
+        progLbl.Position            = UDim2.new(0.5, 0, 0, pctY)
+        progLbl.ZIndex              = 2
+        progLbl.Parent              = catBtn
+
+        -- Thin progress bar at bottom of card (subtle, integrated)
+        local miniBarH = px(3)
+        local miniTrack = Instance.new("Frame")
+        miniTrack.Name             = "CatProgressTrack"
+        miniTrack.BackgroundColor3 = BAR_BG
+        miniTrack.BackgroundTransparency = 0.3
+        miniTrack.BorderSizePixel  = 0
+        miniTrack.Size             = UDim2.new(0.7, 0, 0, miniBarH)
+        miniTrack.AnchorPoint      = Vector2.new(0.5, 1)
+        miniTrack.Position         = UDim2.new(0.5, 0, 1, -px(6))
+        miniTrack.ZIndex           = 2
+        miniTrack.Parent           = catBtn
+
+        local miniTrackCr = Instance.new("UICorner")
+        miniTrackCr.CornerRadius = UDim.new(0.5, 0)
+        miniTrackCr.Parent = miniTrack
+
+        local miniPct = (total > 0) and math.clamp(completed / total, 0, 1) or 0
+        local miniFill = Instance.new("Frame")
+        miniFill.Name             = "CatBarFill"
+        miniFill.BackgroundColor3 = BAR_FILL
+        miniFill.BackgroundTransparency = 0.1
+        miniFill.BorderSizePixel  = 0
+        miniFill.Size             = UDim2.new(miniPct, 0, 1, 0)
+        miniFill.ZIndex           = 3
+        miniFill.Parent           = miniTrack
+
+        local miniFillCr = Instance.new("UICorner")
+        miniFillCr.CornerRadius = UDim.new(0.5, 0)
+        miniFillCr.Parent = miniFill
+
+        catButtons[def.id] = catBtn
+
+        -- Click handler
+        trackConn(catBtn.MouseButton1Click:Connect(function()
+            showAchievementCategoryView(def.id)
+            updateCatButtonStates(def.id)
+        end))
+
+        -- Hover (scale up stroke + warm bg shift)
+        trackConn(catBtn.MouseEnter:Connect(function()
+            local activeId = achViewMode == "Home" and "Home" or achSelectedCategory
+            if def.id ~= activeId then
+                TweenService:Create(catBtn, TWEEN_QUICK, {BackgroundColor3 = CARD_HOVER_BG}):Play()
+                TweenService:Create(cbStroke, TWEEN_QUICK, {Transparency = 0.35}):Play()
+            end
+        end))
+        trackConn(catBtn.MouseLeave:Connect(function()
+            local activeId = achViewMode == "Home" and "Home" or achSelectedCategory
+            if def.id ~= activeId then
+                TweenService:Create(catBtn, TWEEN_QUICK, {BackgroundColor3 = CARD_INACTIVE_BG}):Play()
+                TweenService:Create(cbStroke, TWEEN_QUICK, {Transparency = 0.55}):Play()
+            end
+        end))
+    end
+
+    ---------------------------------------------------------------------------
+    -- Override scroll style: disable parent scroll and fit root to viewport on achiev tab
+    ---------------------------------------------------------------------------
+    applyAchievementsScrollStyle = function(isAchievTab)
+        if isAchievTab then
+            achDisableParentScroll()
+            -- Fit root to the parent viewport so the hub fills available space
+            if parentScroll and parentScroll.AbsoluteSize.Y > 0 then
+                root.Size = UDim2.new(1, 0, 0, parentScroll.AbsoluteSize.Y)
+            end
+        else
+            achRestoreParentScroll()
+            root.Size = UDim2.new(1, 0, 0, rootH)
+        end
+    end
+
+    ---------------------------------------------------------------------------
+    -- Default to Home when achievements tab is activated
+    ---------------------------------------------------------------------------
+    showAchievementsHomeView()
+    updateCatButtonStates("Home")
 
     ---------------------------------------------------------------------------
     -- Live achievement progress updates
@@ -2784,20 +3479,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     local newData = {}
                     pcall(function() newData = getAchievRF:InvokeServer() end)
                     if type(newData) == "table" then
-                        for _, a in ipairs(newData) do
-                            local achievementData = achievementDataById[a.id]
-                            if achievementData then
-                                achievementData.progress = a.progress
-                                achievementData.target = a.target
-                                achievementData.claimed = a.claimed
-                                achievementData.completed = a.completed
-                                achievementData.achievedOn = a.achievedOn
-                                achievementData.title = a.title
-                                achievementData.desc = a.desc
-                                achievementData.reward = a.reward
-                            end
+                        achievements = newData
+                        achievementDataById = {}
+                        for _, a in ipairs(achievements) do
+                            achievementDataById[a.id] = a
                             achGoals[a.id]   = a.target
                             achClaimed[a.id] = a.claimed
+
+                            -- Update existing UI cards if visible
                             local fillBar = achProgressBars[a.id]
                             if fillBar and fillBar.Parent then
                                 local p2 = math.clamp(a.progress / a.target, 0, 1)
@@ -2808,17 +3497,16 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             if txt and txt.Parent then
                                 txt.Text = tostring(a.progress) .. "/" .. tostring(a.target)
                             end
-                            -- Update title/desc/reward labels on the card (staged achievements may advance)
                             local cardFrame = achCards[a.id]
                             if cardFrame and cardFrame.Parent then
-                                local titleLbl = cardFrame:FindFirstChild("Title")
-                                if titleLbl then titleLbl.Text = a.title or "" end
-                                local descLbl = cardFrame:FindFirstChild("Desc")
-                                if descLbl then descLbl.Text = a.desc or "" end
-                                local rewardBadge = cardFrame:FindFirstChild("RewardBadge")
-                                if rewardBadge then
-                                    local amtLbl = rewardBadge:FindFirstChild("Amount")
-                                    if amtLbl then amtLbl.Text = tostring(a.reward or 0) end
+                                local tLbl = cardFrame:FindFirstChild("Title")
+                                if tLbl then tLbl.Text = a.title or "" end
+                                local dLbl = cardFrame:FindFirstChild("Desc")
+                                if dLbl then dLbl.Text = a.desc or "" end
+                                local rb = cardFrame:FindFirstChild("RewardBadge")
+                                if rb then
+                                    local aLbl = rb:FindFirstChild("Amount")
+                                    if aLbl then aLbl.Text = tostring(a.reward or 0) end
                                 end
                             end
                             local achievedOnLabel = achAchievedOnLabels[a.id]
@@ -2832,53 +3520,77 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                     achievedOnLabel.Visible = false
                                 end
                             end
-                            local claimBtn2 = achClaimButtons[a.id]
-                            if claimBtn2 then
-                                local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
+                            local claimB = achClaimButtons[a.id]
+                            if claimB then
+                                local bS = claimB:FindFirstChildOfClass("UIStroke")
                                 if a.claimed then
-                                    claimBtn2.Text = "\u{2714} CLAIMED"
-                                    claimBtn2.BackgroundColor3 = BTN_CLAIMED
-                                    claimBtn2.TextColor3 = GREEN_GLOW
-                                    claimBtn2.Active = false
-                                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
+                                    claimB.Text = "\u{2714} CLAIMED"; claimB.BackgroundColor3 = BTN_CLAIMED
+                                    claimB.TextColor3 = GREEN_GLOW; claimB.Active = false
+                                    if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.5 end
                                 elseif a.progress >= a.target then
-                                    claimBtn2.Text = "\u{2B50} CLAIM"
-                                    claimBtn2.BackgroundColor3 = BTN_CLAIM
-                                    claimBtn2.TextColor3 = WHITE
-                                    claimBtn2.Active = true
-                                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.15 end
+                                    claimB.Text = "\u{2B50} CLAIM"; claimB.BackgroundColor3 = BTN_CLAIM
+                                    claimB.TextColor3 = WHITE; claimB.Active = true
+                                    if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.15 end
                                 else
-                                    claimBtn2.Text = tostring(a.progress) .. "/" .. tostring(a.target)
-                                    claimBtn2.BackgroundColor3 = BTN_LOCKED
-                                    claimBtn2.TextColor3 = DIM_TEXT
-                                    claimBtn2.Active = false
-                                    if bStroke then bStroke.Color = BTN_STROKE; bStroke.Transparency = 0.4 end
+                                    claimB.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                                    claimB.BackgroundColor3 = BTN_LOCKED; claimB.TextColor3 = DIM_TEXT; claimB.Active = false
+                                    if bS then bS.Color = BTN_STROKE; bS.Transparency = 0.4 end
                                 end
                             end
-                            -- Update card visuals
-                            local cardFrame = achCards[a.id]
-                            local cardStroke = achCardStrokes[a.id]
-                            if cardFrame and cardFrame.Parent then
-                                local accent = cardFrame:FindFirstChild("StateAccent")
+                            local cFrame = achCards[a.id]
+                            local cStroke = achCardStrokes[a.id]
+                            if cFrame and cFrame.Parent then
+                                local acnt = cFrame:FindFirstChild("StateAccent")
                                 if a.claimed then
-                                    cardFrame.BackgroundColor3 = ROW_CLAIMED_BG
-                                    if cardStroke then cardStroke.Color = GREEN_GLOW; cardStroke.Thickness = 1.8; cardStroke.Transparency = 0.3 end
-                                    if accent then accent.BackgroundColor3 = GREEN_GLOW; accent.BackgroundTransparency = 0.2 end
+                                    cFrame.BackgroundColor3 = ROW_CLAIMED_BG
+                                    if cStroke then cStroke.Color = GREEN_GLOW; cStroke.Thickness = 1.8; cStroke.Transparency = 0.3 end
+                                    if acnt then acnt.BackgroundColor3 = GREEN_GLOW; acnt.BackgroundTransparency = 0.2 end
                                 elseif a.progress >= a.target then
-                                    cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
-                                    if cardStroke then cardStroke.Color = CLAIM_GOLD_GLOW; cardStroke.Thickness = 2; cardStroke.Transparency = 0.15 end
-                                    if accent then accent.BackgroundColor3 = CLAIM_GOLD_GLOW; accent.BackgroundTransparency = 0 end
+                                    cFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
+                                    if cStroke then cStroke.Color = CLAIM_GOLD_GLOW; cStroke.Thickness = 2; cStroke.Transparency = 0.15 end
+                                    if acnt then acnt.BackgroundColor3 = CLAIM_GOLD_GLOW; acnt.BackgroundTransparency = 0 end
                                 else
-                                    cardFrame.BackgroundColor3 = ROW_BG
-                                    if cardStroke then cardStroke.Color = CARD_STROKE; cardStroke.Thickness = 1.2; cardStroke.Transparency = 0.35 end
-                                    if accent then accent.BackgroundColor3 = GOLD; accent.BackgroundTransparency = 0.5 end
+                                    cFrame.BackgroundColor3 = ROW_BG
+                                    if cStroke then cStroke.Color = CARD_STROKE; cStroke.Thickness = 1.2; cStroke.Transparency = 0.35 end
+                                    if acnt then acnt.BackgroundColor3 = GOLD; acnt.BackgroundTransparency = 0.5 end
                                 end
                             end
                         end
-                        applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
-                            return achCards[displayAchievement.id]
-                        end)
                     end
+                end
+                -- Also refresh history + category progress
+                pcall(function()
+                    if getHistoryRF then completedHistory = getHistoryRF:InvokeServer() end
+                    if type(completedHistory) ~= "table" then completedHistory = {} end
+                end)
+                pcall(function()
+                    if getCategoryProgressRF then categoryProgress = getCategoryProgressRF:InvokeServer() end
+                    if type(categoryProgress) ~= "table" then categoryProgress = {} end
+                end)
+                -- Update category button progress labels + bars
+                for catId, catBtn in pairs(catButtons) do
+                    local cp = categoryProgress[catId]
+                    if cp then
+                        local pLbl = catBtn:FindFirstChild("ProgressLabel")
+                        if pLbl then pLbl.Text = tostring(cp.percentage or 0) .. "%" end
+                        local pBar = catBtn:FindFirstChild("CatProgressTrack")
+                        if pBar then
+                            local pFill = pBar:FindFirstChild("CatBarFill")
+                            if pFill then
+                                local ct = (cp.total or 0)
+                                local pct = ct > 0 and math.clamp((cp.completed or 0) / ct, 0, 1) or 0
+                                pFill.Size = UDim2.new(pct, 0, 1, 0)
+                            end
+                        end
+                    end
+                end
+                -- Refresh current view
+                if achViewMode == "Home" then
+                    showAchievementsHomeView()
+                    updateCatButtonStates("Home")
+                elseif achViewMode == "Category" and achSelectedCategory then
+                    showAchievementCategoryView(achSelectedCategory)
+                    updateCatButtonStates(achSelectedCategory)
                 end
                 return
             end
@@ -2889,72 +3601,49 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             if not goal then return end
             if achClaimed[achId] then return end
 
-            local achievementData = achievementDataById[achId]
-            if achievementData then
-                achievementData.progress = math.min(newProgress, goal)
-                achievementData.completed = completed == true or achievementData.completed == true or newProgress >= goal
-                if achievementData.completed then
-                    if achievementData.achievedOn == nil then
-                        achievementData.achievedOn = tonumber(achievedOn)
-                    end
+            local achData = achievementDataById[achId]
+            if achData then
+                achData.progress = math.min(newProgress, goal)
+                achData.completed = completed == true or achData.completed == true or newProgress >= goal
+                if achData.completed then
+                    if achData.achievedOn == nil then achData.achievedOn = tonumber(achievedOn) end
                 else
-                    achievementData.achievedOn = nil
+                    achData.achievedOn = nil
                 end
-                if claimedFromServer ~= nil then
-                    achievementData.claimed = claimedFromServer == true
-                end
+                if claimedFromServer ~= nil then achData.claimed = claimedFromServer == true end
             end
-
-            if claimedFromServer ~= nil then
-                achClaimed[achId] = claimedFromServer == true
-            end
+            if claimedFromServer ~= nil then achClaimed[achId] = claimedFromServer == true end
 
             local pct2 = math.clamp(newProgress / goal, 0, 1)
-
             local fillBar = achProgressBars[achId]
             if fillBar and fillBar.Parent then
-                TweenService:Create(fillBar, TWEEN_QUICK,
-                    {Size = UDim2.new(pct2, 0, 1, 0)}):Play()
+                TweenService:Create(fillBar, TWEEN_QUICK, {Size = UDim2.new(pct2, 0, 1, 0)}):Play()
             end
-
             local txt = achProgressTexts[achId]
             if txt and txt.Parent then
                 txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
             end
-
-            local achievedOnLabel = achAchievedOnLabels[achId]
-            if achievedOnLabel and achievedOnLabel.Parent then
-                local localData = achievementDataById[achId]
-                local achievedDate = localData and formatAchievedOn(localData.achievedOn)
-                local isComplete = (localData and localData.completed == true) or newProgress >= goal
-                if isComplete and achievedDate then
-                    achievedOnLabel.Text = "Achieved On: " .. achievedDate
-                    achievedOnLabel.Visible = true
-                else
-                    achievedOnLabel.Text = ""
-                    achievedOnLabel.Visible = false
-                end
+            local aOnLbl = achAchievedOnLabels[achId]
+            if aOnLbl and aOnLbl.Parent then
+                local ld = achievementDataById[achId]
+                local ad = ld and formatAchievedOn(ld.achievedOn)
+                local ic = (ld and ld.completed == true) or newProgress >= goal
+                if ic and ad then aOnLbl.Text = "Achieved On: " .. ad; aOnLbl.Visible = true
+                else aOnLbl.Text = ""; aOnLbl.Visible = false end
             end
-
             local claimBtn2 = achClaimButtons[achId]
             if claimBtn2 and claimBtn2.Parent then
                 local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
                 if achClaimed[achId] then
-                    claimBtn2.Text             = "\u{2714} CLAIMED"
-                    claimBtn2.BackgroundColor3 = BTN_CLAIMED
-                    claimBtn2.TextColor3       = GREEN_GLOW
-                    claimBtn2.Active           = false
+                    claimBtn2.Text = "\u{2714} CLAIMED"; claimBtn2.BackgroundColor3 = BTN_CLAIMED
+                    claimBtn2.TextColor3 = GREEN_GLOW; claimBtn2.Active = false
                     if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
                 elseif newProgress >= goal then
-                    claimBtn2.Text             = "\u{2B50} CLAIM"
-                    claimBtn2.BackgroundColor3 = BTN_CLAIM
-                    claimBtn2.TextColor3       = WHITE
-                    claimBtn2.Active           = true
+                    claimBtn2.Text = "\u{2B50} CLAIM"; claimBtn2.BackgroundColor3 = BTN_CLAIM
+                    claimBtn2.TextColor3 = WHITE; claimBtn2.Active = true
                     if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.15 end
                 end
             end
-
-            -- Update card visuals
             local cardFrame = achCards[achId]
             local cardStroke = achCardStrokes[achId]
             if cardFrame and cardFrame.Parent then
@@ -2970,11 +3659,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 end
             end
 
-            applySortedCardLayoutOrders("achiev", achievements, function(displayAchievement)
-                return achCards[displayAchievement.id]
-            end)
-
-            -- Show toast notification when an achievement is newly completed
             if completed and _G.ShowAchievementToast then
                 pcall(function() _G.ShowAchievementToast(achId) end)
             end
