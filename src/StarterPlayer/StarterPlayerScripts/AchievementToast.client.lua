@@ -177,11 +177,30 @@ end
 _G.ShowAchievementToast = function(achievementId)
     local def
     if AchievementDefs and AchievementDefs.ById then
-        def = AchievementDefs.ById[achievementId]
+        -- Resolve old id aliases (e.g. first_blood → first_strike)
+        local resolvedId = achievementId
+        if AchievementDefs.ResolveId then
+            resolvedId = AchievementDefs.ResolveId(achievementId)
+        end
+        def = AchievementDefs.ById[resolvedId]
     end
-    local title  = def and def.title or achievementId
-    local icon   = def and def.icon or "★"
-    local reward = def and def.reward or 0
+    -- For staged achievements, title/reward come from stage 1 fallback
+    -- but we get extra data from the server push, so use helpers when available
+    local title  = achievementId
+    local icon   = "★"
+    local reward = 0
+    if def then
+        icon = def.icon or icon
+        if def.staged then
+            -- Default to stage 1; the actual stage title was computed server-side
+            -- and sent via GetAchievements. The toast just needs something reasonable.
+            title = AchievementDefs.GetStageTitle and AchievementDefs.GetStageTitle(def, 1) or (def.titleFormat and string.format(def.titleFormat, "I") or achievementId)
+            reward = AchievementDefs.GetStageReward and AchievementDefs.GetStageReward(def, 1) or (def.rewards and def.rewards[1] or 0)
+        else
+            title = def.title or achievementId
+            reward = def.reward or 0
+        end
+    end
 
     if isShowing then
         table.insert(toastQueue, { title = title, icon = icon, reward = reward })

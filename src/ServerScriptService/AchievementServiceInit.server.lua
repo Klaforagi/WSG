@@ -83,14 +83,21 @@ end
 Players.PlayerAdded:Connect(onPlayerAdded)
 
 --------------------------------------------------------------------------------
--- Subscribe to centralized stat events  (replaces ALL legacy hooks)
+-- Subscribe to centralized stat events
 --
 -- Mapping:
 --   Elimination  → totalElims + playerElims
 --   MobKill      → totalElims + zombieElims
---   FlagCapture  → flagActions
---   FlagReturn   → flagActions
+--   FlagCapture  → flagCaptures
+--   FlagReturn   → flagReturns
 --   MatchPlayed  → matchesPlayed
+--   MatchWon     → matchWins
+--   DamageDealt  → totalDamage
+--
+-- Stats not yet wired (TODO in future phases):
+--   flagCarrierElims, bestElimStreak, doubleElims, tripleElims,
+--   totalCoinsSpent, totalPurchases, itemsOwned, flagCarryTime,
+--   matchMinutes, consecutiveLogins, flawlessWins
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
@@ -102,29 +109,21 @@ StatService:OnStatEvent(function(payload)
     if action == Actions.Elimination then
         AchievementService:IncrementStat(player, "totalElims", 1)
         AchievementService:IncrementStat(player, "playerElims", 1)
-        if StatService.DEBUG then
-            print(string.format("[AchievementService] %s: totalElims/playerElims +1 for %s", action, player.Name))
-        end
     elseif action == Actions.MobKill then
         AchievementService:IncrementStat(player, "totalElims", 1)
         AchievementService:IncrementStat(player, "zombieElims", 1)
-        if StatService.DEBUG then
-            print(string.format("[AchievementService] %s: totalElims/zombieElims +1 for %s", action, player.Name))
-        end
     elseif action == Actions.FlagCapture then
         AchievementService:IncrementStat(player, "flagCaptures", 1)
-        if StatService.DEBUG then
-            print(string.format("[AchievementService] %s: flagCaptures +1 for %s", action, player.Name))
-        end
     elseif action == Actions.FlagReturn then
         AchievementService:IncrementStat(player, "flagReturns", 1)
-        if StatService.DEBUG then
-            print(string.format("[AchievementService] %s: flagReturns +1 for %s", action, player.Name))
-        end
     elseif action == Actions.MatchPlayed then
         AchievementService:IncrementStat(player, "matchesPlayed", 1)
-        if StatService.DEBUG then
-            print(string.format("[AchievementService] %s: matchesPlayed +1 for %s", action, player.Name))
+    elseif action == Actions.MatchWon then
+        AchievementService:IncrementStat(player, "matchWins", 1)
+    elseif action == Actions.DamageDealt then
+        local amount = tonumber(payload.amount) or 0
+        if amount > 0 then
+            AchievementService:IncrementStat(player, "totalDamage", amount)
         end
     end
 end)

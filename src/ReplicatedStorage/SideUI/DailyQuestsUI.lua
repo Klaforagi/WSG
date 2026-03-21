@@ -2792,6 +2792,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                 achievementData.claimed = a.claimed
                                 achievementData.completed = a.completed
                                 achievementData.achievedOn = a.achievedOn
+                                achievementData.title = a.title
+                                achievementData.desc = a.desc
+                                achievementData.reward = a.reward
                             end
                             achGoals[a.id]   = a.target
                             achClaimed[a.id] = a.claimed
@@ -2804,6 +2807,19 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             local txt = achProgressTexts[a.id]
                             if txt and txt.Parent then
                                 txt.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                            end
+                            -- Update title/desc/reward labels on the card (staged achievements may advance)
+                            local cardFrame = achCards[a.id]
+                            if cardFrame and cardFrame.Parent then
+                                local titleLbl = cardFrame:FindFirstChild("Title")
+                                if titleLbl then titleLbl.Text = a.title or "" end
+                                local descLbl = cardFrame:FindFirstChild("Desc")
+                                if descLbl then descLbl.Text = a.desc or "" end
+                                local rewardBadge = cardFrame:FindFirstChild("RewardBadge")
+                                if rewardBadge then
+                                    local amtLbl = rewardBadge:FindFirstChild("Amount")
+                                    if amtLbl then amtLbl.Text = tostring(a.reward or 0) end
+                                end
                             end
                             local achievedOnLabel = achAchievedOnLabels[a.id]
                             if achievedOnLabel and achievedOnLabel.Parent then

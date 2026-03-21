@@ -2,21 +2,27 @@
 -- AchievementService.lua  –  Server-side achievement tracking & persistence
 -- ModuleScript in ServerScriptService.
 --
--- Responsibilities:
---   • Load / save per-player achievement data (DataStore "Achievements_v1")
---   • Track lifetime stat counters
---   • Mark achievements complete when targets are hit
---   • Let players claim coin rewards (once per achievement)
---   • Push live progress to clients via RemoteEvent
+-- PHASE 1 OVERHAUL:
+--   • Staged achievement lines (one active stage visible at a time)
+--   • Completion history (newest-to-oldest archive of every completed stage)
+--   • achievedOn timestamps for every completion
+--   • Category support
+--   • First Blood → First Strike migration
+--   • Safe schema-version reset (v2 → v3)
+--   • Backward-compatible GetAchievementsForPlayer for existing UI
 --
--- Public API (called by AchievementServiceInit.server.lua):
+-- Public API:
 --   AchievementService:LoadForPlayer(player)
 --   AchievementService:SaveForPlayer(player)
 --   AchievementService:SaveAll()
 --   AchievementService:ClearPlayer(player)
 --   AchievementService:IncrementStat(player, statKey, amount)
+--   AchievementService:SetStat(player, statKey, value)
 --   AchievementService:GetAchievementsForPlayer(player)
 --   AchievementService:ClaimReward(player, achievementId) -> bool
+--   AchievementService:GetCompletedHistory(player) -> array
+--   AchievementService:GetRecentlyCompleted(player, limit) -> array
+--   AchievementService:GetCategoryProgressSummary(player) -> table
 --------------------------------------------------------------------------------
 
 local DataStoreService    = game:GetService("DataStoreService")
@@ -27,7 +33,9 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local AchievementDefs = require(ReplicatedStorage:WaitForChild("AchievementDefs", 10))
 
 local DATASTORE_NAME = "Achievements_v1"
-local ACHIEVEMENT_DATA_VERSION = 2 -- Bump to force a one-time global reset of old achievement saves.
+-- Schema v3: staged achievement model with completion history.
+-- Bumping from v2 forces a clean reset of all achievement progress.
+local ACHIEVEMENT_DATA_VERSION = 3
 local RETRIES        = 3
 local RETRY_DELAY    = 0.5
 
@@ -38,10 +46,20 @@ local AchievementService = {}
 --------------------------------------------------------------------------------
 -- Per-player state:
 --   playerData[player] = {
---       achievementDataVersion = 2,
---       stats = { totalElims = 0, zombieElims = 0, ... },
+--       achievementDataVersion = 3,
+--       stats = { zombieElims = 0, playerElims = 0, ... },
 --       achievements = {
---           [achievementId] = { completed = false, claimed = false, achievedOn = nil },
+--           [achievementId] = {
+--               stageIndex  = 1,       -- current active stage (1-based)
+--               completed   = false,   -- current stage completed?
+--               claimed     = false,   -- current stage reward claimed?
+--               achievedOn  = nil,     -- timestamp of current stage completion
+--               maxedOut    = false,   -- entire staged line finished?
+--           },
+--       },
+--       completedHistory = {
+--           { id, displayName, category, stageIndex, achievedOn, desc, reward },
+--           ...  (newest first)
 --       },
 --   }
 --------------------------------------------------------------------------------
@@ -63,40 +81,73 @@ local function getCurrencyService()
 end
 
 --------------------------------------------------------------------------------
--- Helpers
+-- All tracked stat keys
+-- Stats not yet wired in the game are stubbed here so save data initializes
+-- cleanly. Add TODO comments for unwired stats.
 --------------------------------------------------------------------------------
 local STAT_KEYS = {
-    "totalElims", "zombieElims", "playerElims",
-    "totalCoinsEarned", "flagCaptures", "flagReturns", "matchesPlayed",
+    "totalElims",
+    "zombieElims",
+    "playerElims",
+    "flagCarrierElims",     -- TODO: wire when flag-carrier-kill detection exists
+    "totalDamage",          -- TODO: wire DamageDealt stat events
+    "bestElimStreak",       -- special: set (not increment) by streak tracker
+    "doubleElims",          -- TODO: wire multi-elim detection
+    "tripleElims",          -- TODO: wire multi-elim detection
+    "totalCoinsEarned",
+    "totalCoinsSpent",      -- TODO: wire coin spending tracker
+    "totalPurchases",       -- TODO: wire shop purchase counter
+    "itemsOwned",           -- TODO: wire inventory count
+    "flagCaptures",
+    "flagReturns",
+    "flagCarryTime",        -- TODO: wire flag carry time tracker (seconds)
+    "matchesPlayed",
+    "matchWins",
+    "matchMinutes",         -- TODO: wire match-time tracker (minutes)
+    "consecutiveLogins",    -- TODO: wire daily login streak
+    "flawlessWins",         -- TODO: wire flawless-win detection
+    "achievementsCompleted", -- internal: auto-updated by this service
+    "categoriesWithCompletion", -- internal: auto-updated by this service
 }
+
+local STAT_KEY_SET = {}
+for _, k in ipairs(STAT_KEYS) do STAT_KEY_SET[k] = true end
+
+--------------------------------------------------------------------------------
+-- Helpers
+--------------------------------------------------------------------------------
 
 local function sanitizeAchievedOn(value)
     local num = tonumber(value)
-    if not num then
-        return nil
-    end
-    if num <= 0 then
-        return nil
-    end
+    if not num or num <= 0 then return nil end
     return math.floor(num)
 end
 
+--- Build clean default player data from current definitions.
 local function defaultData()
     local data = {
         achievementDataVersion = ACHIEVEMENT_DATA_VERSION,
         stats = {},
         achievements = {},
+        completedHistory = {},
     }
     for _, key in ipairs(STAT_KEYS) do
         data.stats[key] = 0
     end
     for _, def in ipairs(AchievementDefs.Achievements) do
-        data.achievements[def.id] = { completed = false, claimed = false, achievedOn = nil }
+        data.achievements[def.id] = {
+            stageIndex = 1,
+            completed  = false,
+            claimed    = false,
+            achievedOn = nil,
+            maxedOut   = false,
+        }
     end
     return data
 end
 
---- Merge saved data with current definitions so new achievements get defaults.
+--- Merge saved data with current definitions.
+--- If schema version is too old, performs a clean reset.
 local function mergeWithDefaults(saved)
     if type(saved) ~= "table" then
         return defaultData(), false
@@ -104,7 +155,7 @@ local function mergeWithDefaults(saved)
 
     local savedVersion = tonumber(saved.achievementDataVersion or saved.dataVersion or 1) or 1
     if savedVersion < ACHIEVEMENT_DATA_VERSION then
-        -- Discard all previous completion/progress/claim metadata for a clean reset.
+        -- Full reset — early testing, old data is incompatible with staged model.
         return defaultData(), true
     end
 
@@ -112,32 +163,144 @@ local function mergeWithDefaults(saved)
         achievementDataVersion = ACHIEVEMENT_DATA_VERSION,
         stats = {},
         achievements = {},
+        completedHistory = {},
     }
+
     -- Stats
     local ss = (type(saved.stats) == "table") and saved.stats or {}
     for _, key in ipairs(STAT_KEYS) do
         data.stats[key] = (type(ss[key]) == "number") and ss[key] or 0
     end
-    -- Achievements
+
+    -- Achievements (merge with defs so new achievements get defaults)
     local sa = (type(saved.achievements) == "table") and saved.achievements or {}
     for _, def in ipairs(AchievementDefs.Achievements) do
         local prev = sa[def.id]
         if type(prev) == "table" then
-            local completed = (prev.completed == true)
+            local maxStage = AchievementDefs.GetMaxStage(def)
+            local si = math.clamp(tonumber(prev.stageIndex) or 1, 1, maxStage + 1)
+            local maxedOut = si > maxStage
             data.achievements[def.id] = {
-                completed = completed,
-                claimed   = completed and (prev.claimed == true) or false,
-                achievedOn = completed and sanitizeAchievedOn(prev.achievedOn) or nil,
+                stageIndex = si,
+                completed  = (prev.completed == true),
+                claimed    = (prev.claimed == true),
+                achievedOn = sanitizeAchievedOn(prev.achievedOn),
+                maxedOut   = maxedOut,
             }
         else
-            data.achievements[def.id] = { completed = false, claimed = false, achievedOn = nil }
+            data.achievements[def.id] = {
+                stageIndex = 1,
+                completed  = false,
+                claimed    = false,
+                achievedOn = nil,
+                maxedOut   = false,
+            }
         end
     end
+
+    -- Completed history
+    if type(saved.completedHistory) == "table" then
+        for _, entry in ipairs(saved.completedHistory) do
+            if type(entry) == "table" and type(entry.id) == "string" then
+                table.insert(data.completedHistory, {
+                    id          = entry.id,
+                    displayName = entry.displayName or "",
+                    category    = entry.category or "",
+                    stageIndex  = tonumber(entry.stageIndex) or nil,
+                    achievedOn  = sanitizeAchievedOn(entry.achievedOn),
+                    desc        = entry.desc or "",
+                    reward      = tonumber(entry.reward) or 0,
+                })
+            end
+        end
+    end
+
     return data, false
 end
 
 local function getKey(player)
     return "User_" .. tostring(player.UserId)
+end
+
+--------------------------------------------------------------------------------
+-- Forward declarations for functions referenced before definition
+--------------------------------------------------------------------------------
+local pushProgress     -- defined below after Remote helpers
+local pushAllAchievements
+
+--------------------------------------------------------------------------------
+-- Internal: archive a completed stage into history (newest first)
+--------------------------------------------------------------------------------
+local function archiveCompletion(data, def, stageIndex, achievedOn)
+    local entry = {
+        id          = def.id,
+        displayName = AchievementDefs.GetStageTitle(def, stageIndex),
+        category    = def.category,
+        stageIndex  = def.staged and stageIndex or nil,
+        achievedOn  = achievedOn,
+        desc        = AchievementDefs.GetStageDesc(def, stageIndex),
+        reward      = AchievementDefs.GetStageReward(def, stageIndex),
+    }
+    table.insert(data.completedHistory, 1, entry) -- newest first
+end
+
+--------------------------------------------------------------------------------
+-- Internal: recalculate the meta-stats (achievementsCompleted, categoriesWithCompletion)
+-- Called after any completion change.
+--------------------------------------------------------------------------------
+local function recalcMetaStats(data)
+    local totalCompleted = 0
+    local categoriesHit = {}
+    for _, entry in ipairs(data.completedHistory) do
+        totalCompleted = totalCompleted + 1
+        if entry.category and entry.category ~= "" then
+            categoriesHit[entry.category] = true
+        end
+    end
+    data.stats["achievementsCompleted"] = totalCompleted
+
+    local catCount = 0
+    for _ in pairs(categoriesHit) do catCount = catCount + 1 end
+    data.stats["categoriesWithCompletion"] = catCount
+end
+
+--------------------------------------------------------------------------------
+-- Internal: try to advance a staged line after claiming
+-- Called for staged achievements when the current stage is claimed.
+-- Automatically checks if the stat already exceeds the next threshold.
+--------------------------------------------------------------------------------
+local function tryAdvanceStage(player, data, def)
+    if not def.staged then return end
+    local ach = data.achievements[def.id]
+    if not ach then return end
+    if not ach.claimed then return end -- must claim before advancing
+
+    local maxStage = AchievementDefs.GetMaxStage(def)
+
+    -- Move to next stage
+    ach.stageIndex = ach.stageIndex + 1
+    ach.completed = false
+    ach.claimed = false
+    ach.achievedOn = nil
+
+    if ach.stageIndex > maxStage then
+        -- Entire line is maxed out
+        ach.maxedOut = true
+        return
+    end
+
+    -- Check if stat already meets the next stage threshold (carry-over)
+    local statVal = data.stats[def.stat] or 0
+    local nextTarget = AchievementDefs.GetStageTarget(def, ach.stageIndex)
+    if statVal >= nextTarget then
+        ach.completed = true
+        ach.achievedOn = os.time()
+        archiveCompletion(data, def, ach.stageIndex, ach.achievedOn)
+        recalcMetaStats(data)
+        pushProgress(player, def, data)
+        -- Recurse: auto-claim is NOT done, but we mark completed.
+        -- The player must still manually claim each stage.
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -152,16 +315,29 @@ local function getRemote(name)
     return remotesFolder and remotesFolder:FindFirstChild(name)
 end
 
-local function pushProgress(player, achievementId, progress, completed, achievedOn, claimed)
+--- Push a progress update for a single achievement to the client.
+--- Sends a flat snapshot the existing UI can consume.
+pushProgress = function(player, def, data)
     local ev = getRemote("AchievementProgress")
-    if ev and ev:IsA("RemoteEvent") then
-        pcall(function()
-            ev:FireClient(player, achievementId, progress, completed, achievedOn, claimed)
-        end)
-    end
+    if not ev or not ev:IsA("RemoteEvent") then return end
+
+    local ach = data.achievements[def.id]
+    if not ach then return end
+
+    local si = ach.stageIndex
+    local maxStage = AchievementDefs.GetMaxStage(def)
+    if ach.maxedOut then si = maxStage end
+
+    local target   = AchievementDefs.GetStageTarget(def, si)
+    local statVal  = data.stats[def.stat] or 0
+    local progress = math.min(statVal, target)
+
+    pcall(function()
+        ev:FireClient(player, def.id, progress, ach.completed, ach.achievedOn, ach.claimed == true)
+    end)
 end
 
-local function pushAllAchievements(player)
+pushAllAchievements = function(player)
     local ev = getRemote("AchievementProgress")
     if ev and ev:IsA("RemoteEvent") then
         pcall(function()
@@ -189,23 +365,29 @@ function AchievementService:LoadForPlayer(player)
 
     local data, wasResetByVersion = mergeWithDefaults(success and result or nil)
 
-    -- Retroactively mark completed for stats that already exceeded target
+    -- Retroactively evaluate stat thresholds for all achievements
     for _, def in ipairs(AchievementDefs.Achievements) do
-        local st = data.stats[def.stat] or 0
         local ach = data.achievements[def.id]
-        if st >= def.target and not ach.completed then
+        if not ach then continue end
+        if ach.maxedOut then continue end
+
+        local statVal = data.stats[def.stat] or 0
+        local si = ach.stageIndex
+        local target = AchievementDefs.GetStageTarget(def, si)
+
+        if statVal >= target and not ach.completed then
             ach.completed = true
-            -- Stamp first completion time once; keep existing values stable.
-            if ach.achievedOn == nil then
+            if not ach.achievedOn then
                 ach.achievedOn = os.time()
             end
-        elseif st < def.target then
+        elseif statVal < target then
             ach.completed = false
             ach.claimed = false
             ach.achievedOn = nil
         end
     end
 
+    recalcMetaStats(data)
     playerData[player] = data
 
     if wasResetByVersion then
@@ -249,31 +431,82 @@ end
 -- Core tracking
 --------------------------------------------------------------------------------
 
---- Increment a lifetime stat and update any related achievements.
+--- Increment a lifetime stat and evaluate all related achievements.
 function AchievementService:IncrementStat(player, statKey, amount)
     amount = tonumber(amount) or 1
     if amount <= 0 then return end
+    if not STAT_KEY_SET[statKey] then return end
 
     local data = playerData[player]
     if not data then return end
 
     data.stats[statKey] = (data.stats[statKey] or 0) + amount
+    self:_evaluateStatAchievements(player, data, statKey)
+end
 
-    -- Check all achievements that use this stat
+--- Set a stat to an absolute value (used for "best" stats like bestElimStreak).
+function AchievementService:SetStat(player, statKey, value)
+    value = tonumber(value) or 0
+    if not STAT_KEY_SET[statKey] then return end
+
+    local data = playerData[player]
+    if not data then return end
+
+    -- Only update if new value is higher (for "best" type stats)
+    if value > (data.stats[statKey] or 0) then
+        data.stats[statKey] = value
+        self:_evaluateStatAchievements(player, data, statKey)
+    end
+end
+
+--- Internal: check all achievements using the given stat key.
+function AchievementService:_evaluateStatAchievements(player, data, statKey)
     local currentValue = data.stats[statKey]
+    local anyCompleted = false
+
     for _, def in ipairs(AchievementDefs.Achievements) do
-        if def.stat == statKey then
-            local ach = data.achievements[def.id]
-            if ach and not ach.completed then
-                if currentValue >= def.target then
-                    ach.completed = true
-                    -- Set achievedOn exactly once at first completion.
-                    if ach.achievedOn == nil then
-                        ach.achievedOn = os.time()
+        if def.stat ~= statKey then continue end
+
+        local ach = data.achievements[def.id]
+        if not ach then continue end
+        if ach.maxedOut then continue end
+
+        local si = ach.stageIndex
+        local target = AchievementDefs.GetStageTarget(def, si)
+
+        if not ach.completed and currentValue >= target then
+            ach.completed = true
+            if not ach.achievedOn then
+                ach.achievedOn = os.time()
+            end
+            -- Archive into completion history
+            archiveCompletion(data, def, si, ach.achievedOn)
+            anyCompleted = true
+            pushProgress(player, def, data)
+        elseif not ach.completed then
+            pushProgress(player, def, data)
+        end
+    end
+
+    if anyCompleted then
+        recalcMetaStats(data)
+        -- Re-evaluate meta achievements (overachiever, jack of all trades)
+        -- after updating the meta stat counters
+        for _, def in ipairs(AchievementDefs.Achievements) do
+            if def.stat == "achievementsCompleted" or def.stat == "categoriesWithCompletion" then
+                local ach = data.achievements[def.id]
+                if ach and not ach.completed and not ach.maxedOut then
+                    local target = AchievementDefs.GetStageTarget(def, ach.stageIndex)
+                    local val = data.stats[def.stat] or 0
+                    if val >= target then
+                        ach.completed = true
+                        if not ach.achievedOn then
+                            ach.achievedOn = os.time()
+                        end
+                        archiveCompletion(data, def, ach.stageIndex, ach.achievedOn)
+                        recalcMetaStats(data)
+                        pushProgress(player, def, data)
                     end
-                    pushProgress(player, def.id, currentValue, true, ach.achievedOn, ach.claimed == true)
-                else
-                    pushProgress(player, def.id, currentValue, false, nil, ach.claimed == true)
                 end
             end
         end
@@ -285,34 +518,56 @@ end
 --------------------------------------------------------------------------------
 
 --- Returns an array of achievement snapshots for the client.
+--- Each entry represents the CURRENT ACTIVE STAGE only.
+--- Backward-compatible: includes id, title, desc, icon, target, reward,
+--- progress, completed, claimed, achievedOn, hidden, category, stageIndex.
 function AchievementService:GetAchievementsForPlayer(player)
     local data = playerData[player]
     if not data then return {} end
 
     local out = {}
     for _, def in ipairs(AchievementDefs.Achievements) do
-        local ach = data.achievements[def.id] or { completed = false, claimed = false, achievedOn = nil }
-        local progress = math.min(data.stats[def.stat] or 0, def.target)
+        local ach = data.achievements[def.id]
+        if not ach then continue end
+
+        -- Fully maxed staged lines: show last stage as completed
+        local si = ach.stageIndex
+        local maxStage = AchievementDefs.GetMaxStage(def)
+        if ach.maxedOut then si = maxStage end
+
+        local target   = AchievementDefs.GetStageTarget(def, si)
+        local statVal  = data.stats[def.stat] or 0
+        local progress = math.min(statVal, target)
+
         table.insert(out, {
-            id        = def.id,
-            title     = def.title,
-            desc      = def.desc,
-            icon      = def.icon,
-            target    = def.target,
-            reward    = def.reward,
-            progress  = progress,
-            completed = ach.completed,
-            claimed   = ach.claimed,
+            id         = def.id,
+            title      = AchievementDefs.GetStageTitle(def, si),
+            desc       = AchievementDefs.GetStageDesc(def, si),
+            icon       = def.icon,
+            target     = target,
+            reward     = AchievementDefs.GetStageReward(def, si),
+            progress   = progress,
+            completed  = ach.completed or ach.maxedOut,
+            claimed    = ach.claimed or ach.maxedOut,
             achievedOn = ach.achievedOn,
-            hidden    = def.hidden,
+            hidden     = def.hidden,
+            category   = def.category,
+            stageIndex = si,
+            staged     = def.staged,
+            maxedOut   = ach.maxedOut,
         })
     end
     return out
 end
 
---- Claim the reward for a completed achievement.  Returns true on success.
+--- Claim the reward for a completed achievement stage. Returns true on success.
+--- For staged achievements, also advances to the next stage after claiming.
 function AchievementService:ClaimReward(player, achievementId)
     if type(achievementId) ~= "string" then return false end
+
+    -- Resolve old id aliases (e.g. first_blood → first_strike)
+    achievementId = AchievementDefs.ResolveId(achievementId)
+
     local data = playerData[player]
     if not data then return false end
 
@@ -323,22 +578,96 @@ function AchievementService:ClaimReward(player, achievementId)
     if not ach then return false end
     if not ach.completed then return false end
     if ach.claimed then return false end
+    if ach.maxedOut then return false end
 
-    -- Double-check stat meets target (server-authoritative)
-    if (data.stats[def.stat] or 0) < def.target then return false end
+    -- Verify stat meets threshold (server-authoritative)
+    local si = ach.stageIndex
+    local target = AchievementDefs.GetStageTarget(def, si)
+    if (data.stats[def.stat] or 0) < target then return false end
 
     -- Grant coins
+    local reward = AchievementDefs.GetStageReward(def, si)
     local cs = getCurrencyService()
     if cs and cs.AddCoins then
-        cs:AddCoins(player, def.reward, "achievement")
+        cs:AddCoins(player, reward, "achievement")
     end
 
     ach.claimed = true
 
-    -- Push a progress update so the client refreshes the card
-    pushProgress(player, achievementId, def.target, true, ach.achievedOn, true)
+    -- Push update showing claimed state
+    pushProgress(player, def, data)
+
+    -- For staged achievements, advance to next stage
+    if def.staged then
+        tryAdvanceStage(player, data, def)
+        -- Push the new stage data to client
+        pushAllAchievements(player)
+    end
 
     return true
+end
+
+--------------------------------------------------------------------------------
+-- History / recently completed
+--------------------------------------------------------------------------------
+
+--- Get full completed history (newest first).
+function AchievementService:GetCompletedHistory(player)
+    local data = playerData[player]
+    if not data then return {} end
+    return data.completedHistory
+end
+
+--- Get the N most recently completed achievements.
+function AchievementService:GetRecentlyCompleted(player, limit)
+    limit = tonumber(limit) or 5
+    local data = playerData[player]
+    if not data then return {} end
+
+    local result = {}
+    for i = 1, math.min(limit, #data.completedHistory) do
+        table.insert(result, data.completedHistory[i])
+    end
+    return result
+end
+
+--------------------------------------------------------------------------------
+-- Category progress summary
+--------------------------------------------------------------------------------
+
+--- Returns { [category] = { total, completed, percentage } }
+function AchievementService:GetCategoryProgressSummary(player)
+    local data = playerData[player]
+    if not data then return {} end
+
+    -- Count completed entries per category from history
+    local catCompleted = {}
+    for _, entry in ipairs(data.completedHistory) do
+        local cat = entry.category
+        if cat then
+            catCompleted[cat] = (catCompleted[cat] or 0) + 1
+        end
+    end
+
+    -- Count total possible completions per category
+    local catTotal = {}
+    for _, def in ipairs(AchievementDefs.Achievements) do
+        local cat = def.category
+        local stages = AchievementDefs.GetMaxStage(def)
+        catTotal[cat] = (catTotal[cat] or 0) + stages
+    end
+
+    local summary = {}
+    for _, cat in ipairs(AchievementDefs.Categories) do
+        local total = catTotal[cat] or 0
+        local done = catCompleted[cat] or 0
+        summary[cat] = {
+            total      = total,
+            completed  = done,
+            percentage = total > 0 and math.floor(done / total * 100) or 0,
+        }
+    end
+    return summary
 end
 
 return AchievementService
