@@ -1512,6 +1512,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
                 local description = def.Description or ""
                 local isFree      = def.IsFree or false
+                local isRainbow   = def.IsRainbow == true
+                local isEpic      = (def.Rarity == "Epic")
 
                 local card = Instance.new("Frame")
                 card.Name = "EffectCard_" .. effectId
@@ -1523,9 +1525,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 corner.CornerRadius = UDim.new(0, px(12))
                 corner.Parent = card
                 local stroke = Instance.new("UIStroke")
-                stroke.Color = CARD_STROKE
-                stroke.Thickness = 1.2
-                stroke.Transparency = 0.35
+                stroke.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+                stroke.Thickness = isEpic and 1.6 or 1.2
+                stroke.Transparency = isEpic and 0.2 or 0.35
                 stroke.Parent = card
                 local cardPad = Instance.new("UIPadding")
                 cardPad.PaddingTop    = UDim.new(0, px(8))
@@ -1555,22 +1557,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 swatch.Size = UDim2.new(0.6, 0, 0.15, 0)
                 swatch.AnchorPoint = Vector2.new(0.5, 0.5)
                 swatch.Position = UDim2.new(0.5, 0, 0.4, 0)
-                swatch.BackgroundColor3 = effectColor
+                swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
                 swatch.BorderSizePixel = 0
                 swatch.ZIndex = 252
                 swatch.Parent = leftBox
                 local swCrn = Instance.new("UICorner")
                 swCrn.CornerRadius = UDim.new(0.5, 0)
                 swCrn.Parent = swatch
+                if isRainbow and def.TrailColorSequence then
+                    local grad = Instance.new("UIGradient")
+                    grad.Color = def.TrailColorSequence
+                    grad.Parent = swatch
+                end
                 local swStk = Instance.new("UIStroke")
-                swStk.Color = effectColor; swStk.Thickness = px(2); swStk.Transparency = 0.3
+                swStk.Color = isRainbow and Color3.fromRGB(200, 160, 255) or effectColor
+                swStk.Thickness = px(2); swStk.Transparency = 0.3
                 swStk.Parent = swatch
 
                 local trailGlyph = Instance.new("TextLabel")
                 trailGlyph.Name = "TrailGlyph"
                 trailGlyph.Text = "\u{2550}\u{2550}\u{2550}"
                 trailGlyph.Font = Enum.Font.GothamBold
-                trailGlyph.TextColor3 = effectColor
+                trailGlyph.TextColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
                 trailGlyph.TextScaled = true
                 trailGlyph.BackgroundTransparency = 1
                 trailGlyph.Size = UDim2.new(0.8, 0, 0.2, 0)
@@ -1578,6 +1586,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 trailGlyph.Position = UDim2.new(0.5, 0, 0.6, 0)
                 trailGlyph.ZIndex = 252
                 trailGlyph.Parent = leftBox
+                if isRainbow and def.TrailColorSequence then
+                    local glyphGrad = Instance.new("UIGradient")
+                    glyphGrad.Color = def.TrailColorSequence
+                    glyphGrad.Parent = trailGlyph
+                end
 
                 -- RIGHT: name + equip button
                 local rightBox = Instance.new("Frame")
@@ -1595,7 +1608,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 nameLabel.BackgroundTransparency = 1
                 nameLabel.Font = Enum.Font.GothamBold
                 nameLabel.Text = displayName
-                nameLabel.TextColor3 = WHITE
+                nameLabel.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
                 nameLabel.TextSize = math.max(13, math.floor(px(15)))
                 nameLabel.TextXAlignment = Enum.TextXAlignment.Left
                 nameLabel.TextTruncate = Enum.TextTruncate.AtEnd

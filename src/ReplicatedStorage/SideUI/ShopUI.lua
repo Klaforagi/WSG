@@ -1545,7 +1545,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             return effectRemotes
         end
 
-        -- Only show purchasable effects (exclude free defaults)
+        -- Only show purchasable effects (exclude free defaults), sorted by price
         local allEffects = {}
         if EffectDefs then
             for _, def in ipairs(EffectDefs.GetAll()) do
@@ -1553,6 +1553,13 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     table.insert(allEffects, def)
                 end
             end
+            table.sort(allEffects, function(a, b)
+                local pa = a.CoinCost or 0
+                local pb = b.CoinCost or 0
+                if pa ~= pb then return pa < pb end
+                return (a.DisplayName or a.Id) < (b.DisplayName or b.Id)
+            end)
+            print("[Shop] Applied effect sort by price")
         end
 
         if #allEffects > 0 then
@@ -1588,7 +1595,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 end
             end)
 
-            for _, def in ipairs(allEffects) do
+            for i_effect, def in ipairs(allEffects) do
                 local effectId    = def.Id
                 local displayName = def.DisplayName or effectId
                 local price       = def.CoinCost or 0
@@ -1600,16 +1607,18 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 card.BackgroundColor3 = CARD_BG
                 card.Size = UDim2.new(1, 0, 1, 0)
                 card.AutomaticSize = Enum.AutomaticSize.Y
+                card.LayoutOrder = i_effect
                 card.ZIndex = 250
                 card.Parent = effectGrid
 
                 local crn = Instance.new("UICorner")
                 crn.CornerRadius = UDim.new(0, px(12))
                 crn.Parent = card
+                local isEpic = (def.Rarity == "Epic")
                 local stk = Instance.new("UIStroke")
-                stk.Color = CARD_STROKE
-                stk.Thickness = 1.2
-                stk.Transparency = 0.35
+                stk.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+                stk.Thickness = isEpic and 1.6 or 1.2
+                stk.Transparency = isEpic and 0.2 or 0.35
                 stk.Parent = card
                 local cPad = Instance.new("UIPadding")
                 cPad.PaddingTop    = UDim.new(0, px(8))
@@ -1633,21 +1642,28 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 lStk.Parent = leftBox
 
                 -- Trail color swatch (colored streak icon)
+                local isRainbow = def.IsRainbow == true
                 local swatch = Instance.new("Frame")
                 swatch.Name = "ColorSwatch"
                 swatch.Size = UDim2.new(0.6, 0, 0.15, 0)
                 swatch.AnchorPoint = Vector2.new(0.5, 0.5)
                 swatch.Position = UDim2.new(0.5, 0, 0.4, 0)
-                swatch.BackgroundColor3 = effectColor
+                swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
                 swatch.BorderSizePixel = 0
                 swatch.ZIndex = 252
                 swatch.Parent = leftBox
                 local swatchCorner = Instance.new("UICorner")
                 swatchCorner.CornerRadius = UDim.new(0.5, 0)
                 swatchCorner.Parent = swatch
+                -- Rainbow gradient on the swatch
+                if isRainbow and def.TrailColorSequence then
+                    local grad = Instance.new("UIGradient")
+                    grad.Color = def.TrailColorSequence
+                    grad.Parent = swatch
+                end
                 -- Glow effect on the swatch
                 local swatchStroke = Instance.new("UIStroke")
-                swatchStroke.Color = effectColor
+                swatchStroke.Color = isRainbow and Color3.fromRGB(200, 160, 255) or effectColor
                 swatchStroke.Thickness = px(2)
                 swatchStroke.Transparency = 0.3
                 swatchStroke.Parent = swatch
@@ -1657,7 +1673,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 trailLabel.Name = "TrailLabel"
                 trailLabel.Text = "\u{2550}\u{2550}\u{2550}"
                 trailLabel.Font = Enum.Font.GothamBold
-                trailLabel.TextColor3 = effectColor
+                trailLabel.TextColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
                 trailLabel.TextScaled = true
                 trailLabel.BackgroundTransparency = 1
                 trailLabel.Size = UDim2.new(0.8, 0, 0.2, 0)
@@ -1665,6 +1681,11 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 trailLabel.Position = UDim2.new(0.5, 0, 0.6, 0)
                 trailLabel.ZIndex = 252
                 trailLabel.Parent = leftBox
+                if isRainbow and def.TrailColorSequence then
+                    local glyphGrad = Instance.new("UIGradient")
+                    glyphGrad.Color = def.TrailColorSequence
+                    glyphGrad.Parent = trailLabel
+                end
 
                 -- RIGHT: name, description, price, buy button
                 local rightBox = Instance.new("Frame")
@@ -1675,7 +1696,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 rightBox.ZIndex = 251
                 rightBox.Parent = card
 
-                -- Price badge
+                -- Price badge (matching emote card coin icon style)
                 local priceBadge = Instance.new("Frame")
                 priceBadge.Name = "PriceBadge"
                 priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
@@ -1686,24 +1707,43 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 priceBadge.ZIndex = 252
                 priceBadge.Parent = rightBox
                 local pbCrn = Instance.new("UICorner")
-                pbCrn.CornerRadius = UDim.new(0, px(6))
+                pbCrn.CornerRadius = UDim.new(0, px(8))
                 pbCrn.Parent = priceBadge
                 local pbStk = Instance.new("UIStroke")
-                pbStk.Color = GOLD; pbStk.Thickness = 1; pbStk.Transparency = 0.5
+                pbStk.Color = Color3.fromRGB(255, 200, 40); pbStk.Thickness = 1; pbStk.Transparency = 0.55
                 pbStk.Parent = priceBadge
 
                 local pbLbl = Instance.new("TextLabel")
                 pbLbl.Name = "PriceText"
                 pbLbl.BackgroundTransparency = 1
                 pbLbl.Font = Enum.Font.GothamBold
-                pbLbl.Text = tostring(price)
+                pbLbl.Text = (price > 0) and tostring(price) or "FREE"
                 pbLbl.TextColor3 = GOLD
-                pbLbl.TextSize = math.max(12, math.floor(px(14)))
-                pbLbl.Size = UDim2.new(0.7, 0, 1, 0)
-                pbLbl.Position = UDim2.new(0.15, 0, 0, 0)
-                pbLbl.TextXAlignment = Enum.TextXAlignment.Center
+                pbLbl.TextScaled = true
+                pbLbl.Size = UDim2.new(0.58, 0, 1, 0)
+                pbLbl.Position = UDim2.new(0, 0, 0, 0)
+                pbLbl.TextXAlignment = Enum.TextXAlignment.Right
                 pbLbl.ZIndex = 253
                 pbLbl.Parent = priceBadge
+
+                local trailCoinIcon = Instance.new("ImageLabel")
+                trailCoinIcon.Name = "CoinIcon"
+                trailCoinIcon.Size = UDim2.new(0.26, 0, 0.80, 0)
+                trailCoinIcon.Position = UDim2.new(0.64, 0, 0.5, 0)
+                trailCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
+                trailCoinIcon.BackgroundTransparency = 1
+                trailCoinIcon.ScaleType = Enum.ScaleType.Fit
+                trailCoinIcon.ZIndex = 253
+                trailCoinIcon.Visible = (price > 0)
+                trailCoinIcon.Parent = priceBadge
+                pcall(function()
+                    if AssetCodes and type(AssetCodes.Get) == "function" then
+                        local ci = AssetCodes.Get("Coin")
+                        if ci and #ci > 0 then trailCoinIcon.Image = ci end
+                    end
+                end)
+
+                print(string.format("[Shop] Rendering effect item: %s price=%d", displayName, price))
 
                 -- Name label
                 local nameLabel = Instance.new("TextLabel")
@@ -1713,7 +1753,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 nameLabel.BackgroundTransparency = 1
                 nameLabel.Font = Enum.Font.GothamBold
                 nameLabel.Text = displayName
-                nameLabel.TextColor3 = WHITE
+                nameLabel.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
                 nameLabel.TextSize = math.max(13, math.floor(px(15)))
                 nameLabel.TextXAlignment = Enum.TextXAlignment.Left
                 nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1777,7 +1817,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                         buyBtn.TextColor3 = WHITE
                         bStk.Color = BTN_STROKE_C; bStk.Transparency = 0.25
                         card.BackgroundColor3 = CARD_BG
-                        stk.Color = CARD_STROKE; stk.Thickness = 1.2; stk.Transparency = 0.35
+                        stk.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+                        stk.Thickness = isEpic and 1.6 or 1.2
+                        stk.Transparency = isEpic and 0.2 or 0.35
                     end
                 end
                 refreshEffectCard()

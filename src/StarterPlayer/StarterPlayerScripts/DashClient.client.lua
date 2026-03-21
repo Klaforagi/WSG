@@ -69,6 +69,16 @@ if not DashConfig then
 end
 
 --------------------------------------------------------------------------------
+-- Load EffectDefs (for resolving trail colors by effectId)
+--------------------------------------------------------------------------------
+local EffectDefs = nil
+pcall(function()
+    local sideUI = ReplicatedStorage:WaitForChild("SideUI", 10)
+    local mod = sideUI and sideUI:FindFirstChild("EffectDefs")
+    if mod and mod:IsA("ModuleScript") then EffectDefs = require(mod) end
+end)
+
+--------------------------------------------------------------------------------
 -- Wait for Remotes
 --------------------------------------------------------------------------------
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 15)
@@ -456,7 +466,7 @@ local function getEffectColorForPlayer(_targetPlayer)
     return DashConfig.DefaultEffectColor  -- white (255,255,255)
 end
 
-local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColorB)
+local function playDashEffects(targetPlayer, effectId)
     if not DashConfig.EffectEnabled then return end
     if not targetPlayer or not targetPlayer:IsA("Player") then return end
     local char = targetPlayer.Character
@@ -464,15 +474,24 @@ local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColo
     local rootPart = char:FindFirstChild("HumanoidRootPart")
     if not rootPart then return end
 
-    -- Use the trail color sent by the server (always provided now).
-    -- Fall back to white if somehow missing.
-    local color
-    if trailColorR and trailColorG and trailColorB then
-        color = Color3.fromRGB(trailColorR, trailColorG, trailColorB)
-        log("Using equipped trail color:", trailColorR, trailColorG, trailColorB)
+    -- Resolve effect definition from EffectDefs
+    local def = EffectDefs and EffectDefs.GetById(effectId or "DefaultTrail")
+    if not def then
+        def = EffectDefs and EffectDefs.GetById("DefaultTrail")
+    end
+
+    -- Determine trail color or color sequence
+    local isRainbow = def and def.IsRainbow
+    local trailColorSeq
+    local solidColor
+    if isRainbow and def.TrailColorSequence then
+        trailColorSeq = def.TrailColorSequence
+        solidColor = def.Color or Color3.fromRGB(180, 120, 255)
+        log("[Dash] Using Rainbow Trail sequence")
     else
-        color = DashConfig.DefaultEffectColor -- white fallback
-        log("No trail color from server – using white fallback")
+        solidColor = (def and def.Color) or DashConfig.DefaultEffectColor
+        trailColorSeq = ColorSequence.new(solidColor, solidColor)
+        log("[Dash] Using", (def and def.DisplayName or "Default Trail"), "visuals")
     end
     local duration = DashConfig.Duration
 
@@ -504,18 +523,18 @@ local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColo
     trail.Name = "_DashTrail"
     trail.Attachment0 = trailAttach0
     trail.Attachment1 = trailAttach1
-    trail.Color = ColorSequence.new(color, color)
+    trail.Color = trailColorSeq
     trail.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.3),
+        NumberSequenceKeypoint.new(0, isRainbow and 0.2 or 0.3),
         NumberSequenceKeypoint.new(1, 1),
     })
-    trail.Lifetime = DashConfig.TrailLifetime
+    trail.Lifetime = isRainbow and (DashConfig.TrailLifetime * 1.15) or DashConfig.TrailLifetime
     trail.MinLength = 0.05
     trail.FaceCamera = true
-    trail.LightEmission = 0.6
+    trail.LightEmission = isRainbow and 0.7 or 0.6
     trail.WidthScale = NumberSequence.new({
         NumberSequenceKeypoint.new(0, 1),
-        NumberSequenceKeypoint.new(1, 0.3),
+        NumberSequenceKeypoint.new(1, isRainbow and 0.4 or 0.3),
     })
     trail.Parent = rootPart
 
@@ -532,13 +551,13 @@ local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColo
 
     local particles = Instance.new("ParticleEmitter")
     particles.Name = "_DashStreaks"
-    particles.Color = ColorSequence.new(color)
+    particles.Color = isRainbow and trailColorSeq or ColorSequence.new(solidColor)
     particles.Size = NumberSequence.new({
         NumberSequenceKeypoint.new(0, 0.2),
         NumberSequenceKeypoint.new(1, 0),
     })
     particles.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.2),
+        NumberSequenceKeypoint.new(0, isRainbow and 0.15 or 0.2),
         NumberSequenceKeypoint.new(1, 1),
     })
     particles.Lifetime = NumberRange.new(0.15, 0.3)
@@ -564,6 +583,10 @@ local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColo
         local ghostModel = Instance.new("Model")
         ghostModel.Name = "_DashGhost_" .. tostring(targetPlayer.UserId)
 
+        -- For rainbow, cycle ghost part colors through the palette
+        local ghostColors = (isRainbow and def.GhostColors) or nil
+        local ghostIdx = 0
+
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
                 local ghost = part:Clone()
@@ -579,9 +602,14 @@ local function playDashEffects(targetPlayer, trailColorR, trailColorG, trailColo
                 ghost.CanQuery = false
                 ghost.CanTouch = false
                 ghost.CastShadow = false
-                ghost.Transparency = DashConfig.GhostTransparency
+                ghost.Transparency = isRainbow and (DashConfig.GhostTransparency - 0.05) or DashConfig.GhostTransparency
                 ghost.Material = Enum.Material.Neon
-                ghost.Color = color
+                if ghostColors then
+                    ghostIdx = ghostIdx + 1
+                    ghost.Color = ghostColors[((ghostIdx - 1) % #ghostColors) + 1]
+                else
+                    ghost.Color = solidColor
+                end
                 ghost.Parent = ghostModel
             end
         end
@@ -676,11 +704,11 @@ dashApproved.OnClientEvent:Connect(function()
 end)
 
 if playDashVFX then
-    playDashVFX.OnClientEvent:Connect(function(dashingPlayer, trailColorR, trailColorG, trailColorB)
+    playDashVFX.OnClientEvent:Connect(function(dashingPlayer, effectId)
         if not dashingPlayer or not dashingPlayer:IsA("Player") then return end
         print("[DashClient] received dash VFX for", dashingPlayer.Name,
-            "trailColor:", trailColorR or "default", trailColorG or "", trailColorB or "")
-        playDashEffects(dashingPlayer, trailColorR, trailColorG, trailColorB)
+            "trail:", effectId or "DefaultTrail")
+        playDashEffects(dashingPlayer, effectId)
     end)
 else
     warn("[DashClient] PlayDashVFX remote missing; dash VFX visibility may be local-only")

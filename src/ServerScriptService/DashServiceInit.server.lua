@@ -113,21 +113,21 @@ requestDash.OnServerEvent:Connect(function(player)
             dprint("no equipped trail found, falling back to DefaultTrail")
         end
 
-        -- Resolve color from EffectDefs
-        local trailColorR, trailColorG, trailColorB = 255, 255, 255 -- white fallback
+        -- Validate that the effect exists in EffectDefs
         if EffectDefs then
             local def = EffectDefs.GetById(equippedId)
-            if def and def.Color then
-                trailColorR = math.floor(def.Color.R * 255)
-                trailColorG = math.floor(def.Color.G * 255)
-                trailColorB = math.floor(def.Color.B * 255)
-            else
-                dprint("unknown trail id", equippedId, "– using white")
+            if not def then
+                dprint("unknown trail id", equippedId, "– falling back to DefaultTrail")
+                equippedId = "DefaultTrail"
             end
         end
 
-        dprint("broadcasting dash VFX for", player.Name, "trail:", equippedId, "color:", trailColorR, trailColorG, trailColorB)
-        playDashVFX:FireAllClients(player, trailColorR, trailColorG, trailColorB)
+        -- Send the effect id to all clients so they can resolve color/sequence locally
+        dprint("broadcasting dash VFX for", player.Name, "trail:", equippedId)
+        if equippedId == "RainbowTrail" then
+            dprint("[Dash] Using Rainbow Trail sequence")
+        end
+        playDashVFX:FireAllClients(player, equippedId)
     else
         dprint("dash rejected for", player.Name, "reason=", reason)
         dashRejected:FireClient(player, reason)

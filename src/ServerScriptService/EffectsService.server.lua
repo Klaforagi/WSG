@@ -33,6 +33,11 @@ if not EffectDefs then
     return
 end
 
+-- Log all registered effects
+for _, def in ipairs(EffectDefs.GetAll()) do
+    dprint("Registered", def.DisplayName)
+end
+
 -- ── CurrencyService ────────────────────────────────────────────────────────
 local CurrencyService = nil
 pcall(function()
@@ -224,6 +229,9 @@ Players.PlayerAdded:Connect(function(player)
     syncDashTrailAttribute(player)
     dprint(player.Name, "joined – equipped DashTrail:", data.equipped.DashTrail)
     dprint(player.Name, "loaded trail from data:", data.equipped.DashTrail)
+    if data.equipped.DashTrail == "RainbowTrail" then
+        dprint(player.Name, "Rainbow Trail loaded from saved data")
+    end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
