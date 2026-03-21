@@ -422,6 +422,8 @@ local function attachTool(tool)
     local lastShot = 0
     local function startFiring()
         if holding then return end
+        -- Prevent firing while bandaging
+        if _G.IsBandaging then return end
         holding = true
         firing[tool] = true
         if isFiringLoopRunning then return end

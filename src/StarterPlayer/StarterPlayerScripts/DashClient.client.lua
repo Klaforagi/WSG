@@ -638,6 +638,8 @@ end
 local function requestDashAction()
     if isCoolingDown then return end
     if isDashing then return end
+    -- Cancel bandage if player tries to dash
+    if _G.IsBandaging then return end
 
     -- Quick client-side sanity
     local char = player.Character

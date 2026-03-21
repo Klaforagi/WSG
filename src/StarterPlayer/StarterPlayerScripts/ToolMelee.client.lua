@@ -400,6 +400,8 @@ local function attachMelee(tool)
     local function doSwing()
         -- prevent reentry
         if swingLock then return end
+        -- Cancel bandage if player tries to attack
+        if _G.IsBandaging then return end
         local now = tick()
         if now - lastSwing < cooldown then return end
         swingLock = true

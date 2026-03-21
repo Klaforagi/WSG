@@ -5,7 +5,7 @@
 local presets = {
     ["wooden sword"] = {
         damage          = 15,
-        cd              = 0.6,   -- seconds between swings
+        cd              = 0.45,   -- seconds between swings
         knockback       = 15,    -- impulse applied to the victim
         hitboxDelay     = 0.27,   -- seconds before hitbox becomes active (animation sync)
         hitboxActive    = 0.1,   -- seconds the hitbox remains active
@@ -13,11 +13,11 @@ local presets = {
         hitboxColor     = Color3.fromRGB(255, 100, 50),
         hitboxSize      = Vector3.new(4, 10, 4),
         hitboxOffset    = Vector3.new(1, 0, 3.5),
-        swing_anim_id   = "135263926933355",    -- fallback: single anim (used if swing_anim_ids is empty)
+        swing_anim_id   = "126350429326127",    -- fallback: single anim (used if swing_anim_ids is empty)
         swing_anim_ids  = {                      -- ordered cycle: plays 1 → 2 → 3 → 1 …
-            "135263926933355",  -- swing 1  (replace with your asset ids)
-            "84391444206704",                 -- swing 2  (fill in)
-            "138752532534641 ",                -- swing 3  (fill in)
+            "126350429326127",  -- swing 1  (replace with your asset ids)
+            "113012516512867",                 -- swing 2  (fill in)
+            "105219374085984",                -- swing 3  (fill in)
         },
         swing_sound     = "SwordSwing",    -- key in ReplicatedStorage.Sounds.ToolMelee
         hit_sound       = "SwordHit",

@@ -35,9 +35,9 @@ local forceEquipRemote     = ReplicatedStorage:WaitForChild("ForceEquipTool")
 -- SLOT DEFINITIONS
 --------------------------------------------------------------------------------
 local SLOT_DEFS = {
-    { index = 1, key = Enum.KeyCode.One,   category = "Melee",   toolName = "Sword",   label = "1" },
-    { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Slingshot",     label = "2" },
-    { index = 3, key = Enum.KeyCode.Three, category = "Special", toolName = "Special", label = "3" },
+    { index = 1, key = Enum.KeyCode.One,   category = "Melee",   toolName = "Sword",      label = "1" },
+    { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Slingshot",   label = "2" },
+    { index = 3, key = Enum.KeyCode.Three, category = "Utility", toolName = "Bandage",     label = "3", isUtility = true },
 }
 
 local SLOT_COUNT = #SLOT_DEFS
@@ -73,7 +73,7 @@ local COLOR_LOCK_TXT = COLOR_TEXT
 --------------------------------------------------------------------------------
 -- STATE
 --------------------------------------------------------------------------------
-local specialUnlocked = false
+local specialUnlocked = true   -- slot 3 is now always unlocked (Bandage utility)
 local selectedSlot    = 0
 local slotUI          = {}
 local slotTools       = {}
@@ -141,6 +141,94 @@ layout.Parent              = container
 -- FORWARD DECLARE
 --------------------------------------------------------------------------------
 local equipSlot
+
+--------------------------------------------------------------------------------
+-- BANDAGE ICON (programmatic — built from UI primitives)
+--------------------------------------------------------------------------------
+local function buildBandageIcon(parent)
+    local iconFrame = Instance.new("Frame")
+    iconFrame.Name                   = "BandageIcon"
+    iconFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
+    iconFrame.Position               = UDim2.fromScale(0.5, 0.45)
+    iconFrame.Size                   = UDim2.fromScale(0.58, 0.58)
+    iconFrame.BackgroundTransparency = 1
+    iconFrame.ZIndex                 = 2
+    iconFrame.Parent                 = parent
+
+    local TAN       = Color3.fromRGB(235, 210, 170)
+    local TAN_DARK  = Color3.fromRGB(175, 145, 105)
+    local PAD_COLOR = Color3.fromRGB(248, 242, 230)
+    local RED_CROSS = Color3.fromRGB(195, 55, 55)
+
+    -- Main diagonal strip
+    local strip1 = Instance.new("Frame")
+    strip1.Name                   = "Strip1"
+    strip1.AnchorPoint            = Vector2.new(0.5, 0.5)
+    strip1.Position               = UDim2.fromScale(0.5, 0.5)
+    strip1.Size                   = UDim2.fromScale(0.90, 0.30)
+    strip1.Rotation               = -35
+    strip1.BackgroundColor3       = TAN
+    strip1.BorderSizePixel        = 0
+    strip1.Parent                 = iconFrame
+    Instance.new("UICorner", strip1).CornerRadius = UDim.new(0.35, 0)
+    local s1s = Instance.new("UIStroke", strip1)
+    s1s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s1s.Color     = TAN_DARK
+    s1s.Thickness = 1
+
+    -- Second crossing strip
+    local strip2 = Instance.new("Frame")
+    strip2.Name                   = "Strip2"
+    strip2.AnchorPoint            = Vector2.new(0.5, 0.5)
+    strip2.Position               = UDim2.fromScale(0.5, 0.5)
+    strip2.Size                   = UDim2.fromScale(0.90, 0.30)
+    strip2.Rotation               = 35
+    strip2.BackgroundColor3       = TAN
+    strip2.BorderSizePixel        = 0
+    strip2.Parent                 = iconFrame
+    Instance.new("UICorner", strip2).CornerRadius = UDim.new(0.35, 0)
+    local s2s = Instance.new("UIStroke", strip2)
+    s2s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    s2s.Color     = TAN_DARK
+    s2s.Thickness = 1
+
+    -- Center pad (gauze)
+    local pad = Instance.new("Frame")
+    pad.Name                   = "Pad"
+    pad.AnchorPoint            = Vector2.new(0.5, 0.5)
+    pad.Position               = UDim2.fromScale(0.5, 0.5)
+    pad.Size                   = UDim2.fromScale(0.24, 0.24)
+    pad.BackgroundColor3       = PAD_COLOR
+    pad.BorderSizePixel        = 0
+    pad.ZIndex                 = 3
+    pad.Parent                 = iconFrame
+    Instance.new("UICorner", pad).CornerRadius = UDim.new(0.18, 0)
+    local ps = Instance.new("UIStroke", pad)
+    ps.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    ps.Color     = TAN_DARK
+    ps.Thickness = 1
+
+    -- Small red cross on the pad
+    local crossH = Instance.new("Frame")
+    crossH.AnchorPoint       = Vector2.new(0.5, 0.5)
+    crossH.Position          = UDim2.fromScale(0.5, 0.5)
+    crossH.Size              = UDim2.fromScale(0.55, 0.16)
+    crossH.BackgroundColor3  = RED_CROSS
+    crossH.BorderSizePixel   = 0
+    crossH.ZIndex            = 4
+    crossH.Parent            = pad
+
+    local crossV = Instance.new("Frame")
+    crossV.AnchorPoint       = Vector2.new(0.5, 0.5)
+    crossV.Position          = UDim2.fromScale(0.5, 0.5)
+    crossV.Size              = UDim2.fromScale(0.16, 0.55)
+    crossV.BackgroundColor3  = RED_CROSS
+    crossV.BorderSizePixel   = 0
+    crossV.ZIndex            = 4
+    crossV.Parent            = pad
+
+    return iconFrame
+end
 
 --------------------------------------------------------------------------------
 -- BUILD SLOTS
@@ -225,13 +313,38 @@ local function buildSlot(def)
     local overlayCorner = Instance.new("UICorner", cooldownOverlay)
     overlayCorner.CornerRadius = UDim.new(0, 4)
 
+    -- Numeric cooldown countdown (centered, shows seconds remaining)
+    local cdCountdown = Instance.new("TextLabel")
+    cdCountdown.Name                   = "CooldownCountdown"
+    cdCountdown.AnchorPoint            = Vector2.new(0.5, 0.5)
+    cdCountdown.Position               = UDim2.fromScale(0.5, 0.45)
+    cdCountdown.Size                   = UDim2.fromScale(0.7, 0.45)
+    cdCountdown.BackgroundTransparency = 1
+    cdCountdown.Text                   = ""
+    cdCountdown.Font                   = Enum.Font.GothamBlack
+    cdCountdown.TextScaled             = true
+    cdCountdown.TextColor3             = Color3.fromRGB(255, 255, 255)
+    cdCountdown.TextStrokeColor3       = Color3.new(0, 0, 0)
+    cdCountdown.TextStrokeTransparency = 0.3
+    cdCountdown.ZIndex                 = 6
+    cdCountdown.Visible                = false
+    cdCountdown.Parent                 = btn
+
+    -- Build programmatic bandage icon for the utility slot
+    local bandageIcon = nil
+    if def.isUtility then
+        bandageIcon = buildBandageIcon(btn)
+    end
+
     slotUI[idx] = {
-        btn             = btn,
-        stroke          = stroke,
-        keyLabel        = keyLabel,
-        nameLabel       = nameLabel,
-        thumb           = thumb,
-        cooldownOverlay = cooldownOverlay,
+        btn               = btn,
+        stroke            = stroke,
+        keyLabel          = keyLabel,
+        nameLabel         = nameLabel,
+        thumb             = thumb,
+        bandageIcon       = bandageIcon,
+        cooldownOverlay   = cooldownOverlay,
+        cooldownCountdown = cdCountdown,
     }
 
     btn.MouseButton1Click:Connect(function()
@@ -262,6 +375,25 @@ _G.HotbarCooldown.start = function(slotIndex, duration)
         TweenInfo.new(duration, Enum.EasingStyle.Linear),
         { Size = UDim2.fromScale(1, 0) }
     ):Play()
+end
+
+-- Numeric countdown that ticks every second on a slot (used by bandage cooldown)
+_G.HotbarCooldown.startCountdown = function(slotIndex, duration)
+    local ui = slotUI[slotIndex]
+    if not ui or not ui.cooldownCountdown then return end
+    local cdLabel = ui.cooldownCountdown
+    cdLabel.Visible = true
+    local endTime = tick() + duration
+    task.spawn(function()
+        while tick() < endTime do
+            local remaining = math.ceil(endTime - tick())
+            if remaining <= 0 then break end
+            cdLabel.Text = tostring(remaining)
+            task.wait(0.5)
+        end
+        cdLabel.Text = ""
+        cdLabel.Visible = false
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -322,8 +454,9 @@ local function refreshSlots()
         local tool = getToolForSlot(idx)
         slotTools[idx] = tool
 
-        local isLocked   = (idx == 3 and not specialUnlocked)
-        local isEquipped = (tool ~= nil and player.Character ~= nil
+        local isUtility  = def.isUtility == true
+        local isLocked   = (idx == 3 and not specialUnlocked and not isUtility)
+        local isEquipped = (not isUtility and tool ~= nil and player.Character ~= nil
                             and tool.Parent == player.Character)
 
         if isEquipped then
@@ -333,13 +466,21 @@ local function refreshSlots()
         end
 
         -- thumbnail
-        local icon = getToolIcon(tool)
-        if #icon > 0 then
-            ui.thumb.Image   = icon
-            ui.thumb.Visible = true
-        else
-            ui.thumb.Image   = ""
+        if isUtility then
+            -- Bandage slot: use programmatic icon, hide image thumbnail
             ui.thumb.Visible = false
+            if ui.bandageIcon then
+                ui.bandageIcon.Visible = true
+            end
+        else
+            local icon = getToolIcon(tool)
+            if #icon > 0 then
+                ui.thumb.Image   = icon
+                ui.thumb.Visible = true
+            else
+                ui.thumb.Image   = ""
+                ui.thumb.Visible = false
+            end
         end
 
         -- colours / text
@@ -359,7 +500,13 @@ local function refreshSlots()
                         strokeSel = teamColor:Lerp(Color3.new(1,1,1), 0.6)
                     end
 
-                    if isLocked then
+                    if isUtility then
+                        -- Bandage utility slot: always looks ready (not locked)
+                        ui.btn.BackgroundColor3 = bgColor
+                        ui.stroke.Color         = strokeColor
+                        ui.nameLabel.TextColor3 = COLOR_TEXT
+                        ui.nameLabel.Text       = "Bandage"
+                    elseif isLocked then
                         ui.btn.BackgroundColor3 = lockBg
                         ui.stroke.Color         = COLOR_STROKE_L
                         ui.nameLabel.Text       = "LOCKED"
@@ -385,7 +532,16 @@ equipSlot = function(idx)
     local def = SLOT_DEFS[idx]
     if not def then return end
 
-    -- Slot 3 locked
+    -- Slot 3 = Bandage utility (not a weapon)
+    if def.isUtility then
+        -- Delegate to BandageClient via global
+        if _G.ActivateBandage then
+            _G.ActivateBandage()
+        end
+        return
+    end
+
+    -- Slot 3 locked (legacy special slot — kept for safety)
     if idx == 3 and not specialUnlocked then
         requestSpecialUnlock:FireServer()
         local ui = slotUI[3]
@@ -396,6 +552,13 @@ equipSlot = function(idx)
             end)
         end
         return
+    end
+
+    -- Cancel bandage if switching to a weapon slot
+    if _G.IsBandaging then
+        if _G.CancelBandage then
+            _G.CancelBandage()
+        end
     end
 
     local char = player.Character

@@ -24,6 +24,10 @@ AssetCodes.images = {
     Dagger = "rbxassetid://949752421",
     Sword = "rbxassetid://10123421106",
     Spear = "rbxassetid://139656815",
+    --UTILITY
+    -- ↓ PLACEHOLDER: replace with a final uploaded bandage icon asset ID later
+    Bandage = "rbxassetid://14029553034",
+
     --RANGED
     Slingshot = "rbxassetid://5830603041",
     Shortbow = "rbxassetid://15950019592",
