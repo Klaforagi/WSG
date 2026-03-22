@@ -1,15 +1,24 @@
 -- GrantNoclip.server.lua
 -- Clones ServerStorage.Tools.Dev.Noclip into each player's StarterGear and Backpack
 -- so the client can equip/unequip it locally.
+-- Developer-only noclip access: only granted to approved UserIds.
 
 local Players = game:GetService("Players")
 local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local DevUserIds = require(ReplicatedStorage:WaitForChild("DevUserIds"))
 
 local TOOLS_ROOT = ServerStorage:WaitForChild("Tools")
 local DEV_FOLDER = TOOLS_ROOT:FindFirstChild("Dev")
 local TEMPLATE_NAME = "Noclip"
 
 local function grantOnce(player)
+    -- Developer-only noclip access
+    if not DevUserIds.IsDev(player) then
+        return
+    end
+
     if not DEV_FOLDER then return end
     local template = DEV_FOLDER:FindFirstChild(TEMPLATE_NAME)
     if not template then return end

@@ -3,6 +3,14 @@ local ContextActionService = game:GetService("ContextActionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
+
+-- Developer-only noclip access
+local DevUserIds = require(ReplicatedStorage:WaitForChild("DevUserIds"))
+if not DevUserIds.IsDev(player) then
+    print("[DevNoclip] Blocked unauthorized noclip attempt — user is not a developer")
+    return -- non-dev players: no UI, no keybind, nothing
+end
+
 local backpack = player:WaitForChild("Backpack")
 local starterGear = player:FindFirstChild("StarterGear") or player:WaitForChild("StarterGear", 5)
 
@@ -20,6 +28,7 @@ local HIGHLIGHT_STROKE = Color3.fromRGB(255,215,80)
 local requestToolCopy = ReplicatedStorage:FindFirstChild("RequestToolCopy")
 
 local function toggleNoclip()
+    print("[DevNoclip] Authorized user toggled noclip")
     local char = player.Character
     if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -70,12 +79,13 @@ backpack.ChildAdded:Connect(function(child)
     end
 end)
 
--- Small bottom-left slot UI
+-- Small bottom-left slot UI (hidden — developer-only noclip, no visible button)
 local playerGui = player:WaitForChild("PlayerGui")
 local slotGui = Instance.new("ScreenGui")
 slotGui.Name = "NoclipSlot"
 slotGui.ResetOnSpawn = false
 slotGui.IgnoreGuiInset = true
+slotGui.Enabled = false -- Developer-only noclip access: UI hidden
 slotGui.Parent = playerGui
 
 local SLOT_SCALE = 0.08 -- 8% of screen width/height (square)

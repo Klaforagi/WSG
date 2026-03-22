@@ -57,8 +57,6 @@ local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
--- SIZE ROLL SYSTEM — track which instanceId is equipped per category
-local chosenInstanceId = {} -- [player] = { Melee = instanceId, Ranged = instanceId }
 
 --------------------------------------------------------------------------------
 -- LOADOUT PERSISTENCE
@@ -459,9 +457,6 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
             warn("[Loadout] Player", player.Name, "does not own ranged weapon:", toolName)
             return
         end
-        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
-        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
-        chosenInstanceId[player].Ranged = instanceId
         chosenRanged[player] = toolName
         grantTool(player, "Ranged", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
@@ -515,9 +510,6 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
             warn("[Loadout] Player", player.Name, "does not own melee weapon:", toolName)
             return
         end
-        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
-        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
-        chosenInstanceId[player].Melee = instanceId
         chosenMelee[player] = toolName
         grantTool(player, "Melee", toolName, instanceId)
         ensureBackpackFromStarterGear(player)

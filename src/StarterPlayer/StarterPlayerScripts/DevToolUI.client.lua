@@ -1,5 +1,5 @@
 -- DevToolUI.client.lua
--- Standalone Studio-only "+10 COINS" button for quick testing.
+-- Standalone Studio-only "+100 COINS" button for quick testing.
 -- Completely independent of SideUI — errors here never affect other HUD.
 --
 -- The server creates ReplicatedStorage.Remotes.RequestAddCoins at startup.
@@ -32,7 +32,7 @@ btn.Position = UDim2.new(0, 12, 1, -48)
 btn.AnchorPoint = Vector2.new(0, 1)
 btn.BackgroundColor3 = GRAY
 btn.Font = Enum.Font.GothamBold
-btn.Text = "+10 (WAITING…)"
+btn.Text = "+100 (WAITING…)"
 btn.TextColor3 = Color3.fromRGB(255, 255, 80)
 btn.TextSize = 16
 btn.BorderSizePixel = 0
@@ -54,11 +54,11 @@ local function enableButton()
     end
     if addCoinsRemote then
         btn.BackgroundColor3 = GREEN
-        btn.Text = "+10 COINS"
+        btn.Text = "+100 COINS"
         print("[DevToolUI] Remote found:", addCoinsRemote:GetFullName())
     else
         btn.BackgroundColor3 = GRAY
-        btn.Text = "+10 (NO REMOTE)"
+        btn.Text = "+100 (NO REMOTE)"
         warn("[DevToolUI] RequestAddCoins not found after waiting."
             .. " Is DevTools.server.lua in ServerScriptService?")
     end
@@ -70,10 +70,10 @@ task.spawn(enableButton)
 -- ── Click handler ─────────────────────────────────────────────────────────
 btn.MouseButton1Click:Connect(function()
     if not addCoinsRemote then return end
-    addCoinsRemote:FireServer(10)
+    addCoinsRemote:FireServer(100)
     btn.Text = "✓ ADDED"
     task.delay(0.5, function()
-        if btn and btn.Parent then btn.Text = "+10 COINS" end
+        if btn and btn.Parent then btn.Text = "+100 COINS" end
     end)
 end)
 
