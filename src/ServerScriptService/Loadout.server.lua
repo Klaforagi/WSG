@@ -65,9 +65,12 @@ local chosenInstanceId = {} -- [player] = { Melee = instanceId, Ranged = instanc
 --------------------------------------------------------------------------------
 local function saveLoadout(player)
     local key = "user_" .. player.UserId
+    local ids = chosenInstanceId[player]
     local data = {
         melee  = chosenMelee[player],
         ranged = chosenRanged[player],
+        meleeInstanceId  = ids and ids.Melee or nil,
+        rangedInstanceId = ids and ids.Ranged or nil,
     }
     local ok, err = pcall(function()
         loadoutStore:SetAsync(key, data)
@@ -88,6 +91,16 @@ local function loadLoadout(player)
         end
         if type(data.ranged) == "string" and #data.ranged > 0 then
             chosenRanged[player] = data.ranged
+        end
+        -- Restore equipped instanceIds
+        if type(data.meleeInstanceId) == "string" or type(data.rangedInstanceId) == "string" then
+            if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
+            if type(data.meleeInstanceId) == "string" then
+                chosenInstanceId[player].Melee = data.meleeInstanceId
+            end
+            if type(data.rangedInstanceId) == "string" then
+                chosenInstanceId[player].Ranged = data.rangedInstanceId
+            end
         end
     elseif not ok then
         warn("[Loadout] Failed to load loadout for", player.Name, data)
@@ -220,7 +233,8 @@ local function grantTool(player, folder, toolName, instanceId)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
-        applyWeaponScale(player, clone, toolName, instanceId)  -- SIZE ROLL SYSTEM
+        local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
+        if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
         clone.Parent = sg
     end
 
@@ -231,7 +245,8 @@ local function grantTool(player, folder, toolName, instanceId)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
-        applyWeaponScale(player, clone, toolName, instanceId)  -- SIZE ROLL SYSTEM
+        local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
+        if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
         clone.Parent = bp
     end
 end
@@ -280,9 +295,12 @@ end
 -- Let the client query the saved loadout so the inventory UI shows correct state
 local getLoadoutRF = getOrCreateRemoteFunction("GetLoadout")
 getLoadoutRF.OnServerInvoke = function(player)
+    local ids = chosenInstanceId[player]
     return {
         melee  = chosenMelee[player],
         ranged = chosenRanged[player],
+        meleeInstanceId  = ids and ids.Melee or nil,
+        rangedInstanceId = ids and ids.Ranged or nil,
     }
 end
 
