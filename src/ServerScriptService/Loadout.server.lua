@@ -57,42 +57,6 @@ local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
--- SIZE ROLL SYSTEM — track which instanceId is equipped per category
-local chosenInstanceId = {} -- [player] = { Melee = instanceId, Ranged = instanceId }
-
---------------------------------------------------------------------------------
--- LOADOUT PERSISTENCE
---------------------------------------------------------------------------------
-local function saveLoadout(player)
-    local key = "user_" .. player.UserId
-    local data = {
-        melee  = chosenMelee[player],
-        ranged = chosenRanged[player],
-    }
-    local ok, err = pcall(function()
-        loadoutStore:SetAsync(key, data)
-    end)
-    if not ok then
-        warn("[Loadout] Failed to save loadout for", player.Name, err)
-    end
-end
-
-local function loadLoadout(player)
-    local key = "user_" .. player.UserId
-    local ok, data = pcall(function()
-        return loadoutStore:GetAsync(key)
-    end)
-    if ok and type(data) == "table" then
-        if type(data.melee) == "string" and #data.melee > 0 then
-            chosenMelee[player] = data.melee
-        end
-        if type(data.ranged) == "string" and #data.ranged > 0 then
-            chosenRanged[player] = data.ranged
-        end
-    elseif not ok then
-        warn("[Loadout] Failed to load loadout for", player.Name, data)
-    end
-end
 
 --------------------------------------------------------------------------------
 -- HELPERS
@@ -437,13 +401,6 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
 
     -- grant the requested ranged tool into StarterGear/Backpack (sets HotbarCategory)
     if type(toolName) == "string" and #toolName > 0 then
-        if not playerOwnsWeapon(player, toolName) then
-            warn("[Loadout] Player", player.Name, "does not own ranged weapon:", toolName)
-            return
-        end
-        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
-        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
-        chosenInstanceId[player].Ranged = instanceId
         chosenRanged[player] = toolName
         grantTool(player, "Ranged", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
@@ -493,13 +450,6 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
 
     -- grant the requested melee tool into StarterGear/Backpack (sets HotbarCategory)
     if type(toolName) == "string" and #toolName > 0 then
-        if not playerOwnsWeapon(player, toolName) then
-            warn("[Loadout] Player", player.Name, "does not own melee weapon:", toolName)
-            return
-        end
-        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
-        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
-        chosenInstanceId[player].Melee = instanceId
         chosenMelee[player] = toolName
         grantTool(player, "Melee", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
