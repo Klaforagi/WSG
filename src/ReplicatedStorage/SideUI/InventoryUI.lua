@@ -420,15 +420,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     for instanceId, data in pairs(weaponInstances) do
         if type(data) == "table" and data.weaponName then
             table.insert(allWeaponItems, {
-                id         = instanceId,
-                name       = data.weaponName,
-                category   = data.category or classifyItem(data.weaponName),
-                rarity     = data.rarity or "Common",
-                isInstance = true,
-                instanceId = instanceId,
-                weaponName = data.weaponName,
-                source     = data.source,
-                favorited  = data.favorited == true,
+                id          = instanceId,
+                name        = data.weaponName,
+                category    = data.category or classifyItem(data.weaponName),
+                rarity      = data.rarity or "Common",
+                isInstance  = true,
+                instanceId  = instanceId,
+                weaponName  = data.weaponName,
+                source      = data.source,
+                favorited   = data.favorited == true,
+                sizePercent = data.sizePercent or 100,   -- SIZE ROLL SYSTEM
+                sizeTier    = data.sizeTier or "Normal", -- SIZE ROLL SYSTEM
             })
         end
     end
@@ -790,6 +792,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailType.Size = UDim2.new(1, 0, 0, px(18))
     detailType.Position = UDim2.new(0, 0, 0, px(238))
 
+    -- SIZE ROLL SYSTEM — size percent + tier in detail panel
+    local detailSize = Instance.new("TextLabel", detailContent)
+    detailSize.Name = "SizeInfo"
+    detailSize.BackgroundTransparency = 1
+    detailSize.Font = Enum.Font.GothamBold
+    detailSize.TextColor3 = GOLD
+    detailSize.TextSize = px(15)
+    detailSize.TextXAlignment = Enum.TextXAlignment.Center
+    detailSize.Size = UDim2.new(1, 0, 0, px(20))
+    detailSize.Position = UDim2.new(0, 0, 0, px(258))
+
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
     detailInstanceId.Name = "InstanceId"
@@ -799,7 +812,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailInstanceId.TextSize = px(10)
     detailInstanceId.TextXAlignment = Enum.TextXAlignment.Center
     detailInstanceId.Size = UDim2.new(1, 0, 0, px(16))
-    detailInstanceId.Position = UDim2.new(0, 0, 0, px(258))
+    detailInstanceId.Position = UDim2.new(0, 0, 0, px(280))
     detailInstanceId.Visible = false
 
     -- Equip button (only place weapons can be equipped)
@@ -1077,6 +1090,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         detailRarity.TextColor3 = rarColor
         detailType.Text = (itemData.category == "Melee") and "Melee Weapon" or "Ranged Weapon"
 
+        -- SIZE ROLL SYSTEM — show size info in detail panel
+        local pct = itemData.sizePercent or 100
+        local tier = itemData.sizeTier or "Normal"
+        detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
+        if tier == "King" then
+            detailSize.TextColor3 = Color3.fromRGB(255, 60, 60)
+        elseif tier == "Giant" then
+            detailSize.TextColor3 = GOLD
+        elseif tier == "Large" then
+            detailSize.TextColor3 = Color3.fromRGB(100, 200, 255)
+        elseif tier == "Tiny" then
+            detailSize.TextColor3 = Color3.fromRGB(160, 160, 170)
+        else
+            detailSize.TextColor3 = DIM_TEXT
+        end
+
         if isDeveloper and itemData.instanceId then
             detailInstanceId.Text = itemData.instanceId
             detailInstanceId.Visible = true
@@ -1147,18 +1176,48 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        -- Small rarity text near bottom
-        local rarLabel = Instance.new("TextLabel", card)
-        rarLabel.Name = "Rarity"
-        rarLabel.BackgroundTransparency = 1
-        rarLabel.Font = Enum.Font.GothamBold
-        rarLabel.TextColor3 = rarColor
-        rarLabel.TextSize = math.max(10, math.floor(px(11)))
-        rarLabel.Size = UDim2.new(1, 0, 0, px(14))
-        rarLabel.AnchorPoint = Vector2.new(0, 1)
-        rarLabel.Position = UDim2.new(0, 0, 1, -px(15))
-        rarLabel.TextXAlignment = Enum.TextXAlignment.Center
-        rarLabel.Text = itemData.rarity or ""
+        -- SIZE ROLL SYSTEM — show tier name + size percent at bottom of card
+        -- Rarity data is preserved on the backend; only the visible card label changes.
+        local pct = itemData.sizePercent or 100
+        local tier = itemData.sizeTier or "Normal"
+
+        -- Tier-based colors for both labels
+        local tierColor = DIM_TEXT
+        if tier == "King" then
+            tierColor = Color3.fromRGB(255, 60, 60)
+        elseif tier == "Giant" then
+            tierColor = GOLD
+        elseif tier == "Large" then
+            tierColor = Color3.fromRGB(100, 200, 255)
+        elseif tier == "Tiny" then
+            tierColor = Color3.fromRGB(160, 160, 170)
+        end
+
+        -- Tier name label (above the percent)
+        local tierLabel = Instance.new("TextLabel", card)
+        tierLabel.Name = "SizeTier"
+        tierLabel.BackgroundTransparency = 1
+        tierLabel.Font = Enum.Font.GothamBold
+        tierLabel.TextColor3 = tierColor
+        tierLabel.TextSize = math.max(9, math.floor(px(10)))
+        tierLabel.Size = UDim2.new(1, 0, 0, px(12))
+        tierLabel.AnchorPoint = Vector2.new(0, 1)
+        tierLabel.Position = UDim2.new(0, 0, 1, -px(26))
+        tierLabel.TextXAlignment = Enum.TextXAlignment.Center
+        tierLabel.Text = tier
+
+        -- Size percent label (bottom of card)
+        local sizeLabel = Instance.new("TextLabel", card)
+        sizeLabel.Name = "SizePercent"
+        sizeLabel.BackgroundTransparency = 1
+        sizeLabel.Font = Enum.Font.GothamBold
+        sizeLabel.TextColor3 = tierColor
+        sizeLabel.TextSize = math.max(11, math.floor(px(12)))
+        sizeLabel.Size = UDim2.new(1, 0, 0, px(14))
+        sizeLabel.AnchorPoint = Vector2.new(0, 1)
+        sizeLabel.Position = UDim2.new(0, 0, 1, -px(14))
+        sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+        sizeLabel.Text = tostring(math.floor(pct)) .. "%"
 
         -- Equipped bar indicator (green bottom strip)
         local eqBar = Instance.new("Frame", card)
@@ -1312,16 +1371,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local itemData = selectedItem
         local toolName = itemData.isInstance and itemData.weaponName or itemData.name
         local cat      = itemData.category
+        -- SIZE ROLL SYSTEM — send instanceId so server uses the correct size
+        local equipInstanceId = itemData.isInstance and itemData.instanceId or nil
 
         if cat == "Ranged" then
             local remote = ReplicatedStorage:FindFirstChild("SetRangedTool")
             if remote and remote:IsA("RemoteEvent") then
-                pcall(function() remote:FireServer(toolName) end)
+                pcall(function() remote:FireServer(toolName, equipInstanceId) end)
             end
         else
             local remote = ReplicatedStorage:FindFirstChild("SetMeleeTool")
             if remote and remote:IsA("RemoteEvent") then
-                pcall(function() remote:FireServer(toolName) end)
+                pcall(function() remote:FireServer(toolName, equipInstanceId) end)
             end
         end
 

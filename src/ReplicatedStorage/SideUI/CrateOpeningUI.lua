@@ -268,6 +268,20 @@ function CrateOpeningUI.Init(playerGui)
     resultRarity.ZIndex = 21
     resultRarity.Parent = resultFrame
 
+    -- SIZE ROLL SYSTEM — shows the exact rolled size percentage below rarity
+    local resultSizeLabel = Instance.new("TextLabel")
+    resultSizeLabel.Name = "SizePercent"
+    resultSizeLabel.BackgroundTransparency = 1
+    resultSizeLabel.Font = Enum.Font.GothamBold
+    resultSizeLabel.Text = ""
+    resultSizeLabel.TextColor3 = GOLD
+    resultSizeLabel.TextSize = math.max(18, math.floor(px(22)))
+    resultSizeLabel.Size = UDim2.new(1, 0, 0, px(26))
+    resultSizeLabel.Position = UDim2.new(0, 0, 0, px(218))
+    resultSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+    resultSizeLabel.ZIndex = 21
+    resultSizeLabel.Parent = resultFrame
+
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "CloseBtn"
     closeBtn.BackgroundColor3 = Color3.fromRGB(48, 55, 82)
@@ -605,6 +619,22 @@ function CrateOpeningUI.Init(playerGui)
             resultRarity.TextColor3 = rc
             rfStroke.Color = rc
 
+            -- SIZE ROLL SYSTEM — display exact rolled size percentage
+            if resultData.sizePercent and resultData.sizePercent ~= 100 then
+                resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
+                -- Tint King/Giant sizes gold, others white
+                if resultData.sizeTier == "King" or resultData.sizeTier == "Giant" then
+                    resultSizeLabel.TextColor3 = GOLD
+                else
+                    resultSizeLabel.TextColor3 = WHITE
+                end
+            elseif resultData.sizePercent then
+                resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
+                resultSizeLabel.TextColor3 = DIM_TEXT
+            else
+                resultSizeLabel.Text = ""
+            end
+
             -- Set weapon image
             resultImage.Image = ""
             pcall(function()
@@ -671,6 +701,7 @@ function CrateOpeningUI.Init(playerGui)
             resultName.Text = errMsg
             resultName.TextColor3 = Color3.fromRGB(255, 80, 80)
             resultRarity.Text = ""
+            resultSizeLabel.Text = ""
             rfStroke.Color = Color3.fromRGB(255, 80, 80)
             resultFrame.BackgroundTransparency = 0.06
 

@@ -57,6 +57,8 @@ local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
+-- SIZE ROLL SYSTEM — track which instanceId is equipped per category
+local chosenInstanceId = {} -- [player] = { Melee = instanceId, Ranged = instanceId }
 
 --------------------------------------------------------------------------------
 -- LOADOUT PERSISTENCE
@@ -158,9 +160,54 @@ local function sanitizeTool(tool)
     end
 end
 
+-- SIZE ROLL SYSTEM — lazy-load WeaponScaleService for tool scaling
+local WeaponScaleService = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponScaleService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponScaleService = require(mod)
+    end
+end)
+
+-- SIZE ROLL SYSTEM — lazy-load WeaponInstanceService early ref for scaling
+-- (The full lazy-load for ownership checks is further down; this forward
+--  declaration lets applyWeaponScale resolve at call time, not parse time.)
+local WeaponInstanceService_scale = nil
+pcall(function()
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("WeaponInstanceService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponInstanceService_scale = require(mod)
+    end
+end)
+
+--- Look up the player's weapon instance and apply visual scaling.
+--- If instanceId is provided, uses that specific instance; otherwise picks
+--- the first matching instance by weapon name.
+local function applyWeaponScale(player, toolClone, toolName, instanceId)
+    if not WeaponScaleService or not WeaponInstanceService_scale then return end
+    local inv = WeaponInstanceService_scale:GetInventory(player)
+    if not inv then return end
+    local bestInstance = nil
+    -- Prefer the specific instanceId if provided
+    if instanceId and inv[instanceId] then
+        bestInstance = inv[instanceId]
+    else
+        for _, data in pairs(inv) do
+            if type(data) == "table" and data.weaponName == toolName then
+                bestInstance = data
+                break
+            end
+        end
+    end
+    if bestInstance and bestInstance.sizePercent and bestInstance.sizePercent ~= 100 then
+        WeaponScaleService.ApplyScale(toolClone, bestInstance.sizePercent)
+    end
+end
+
 --- Clone a tool into both StarterGear (respawn persistence) and Backpack.
 --- Sets HotbarCategory attribute.  Skips duplicates per-container.
-local function grantTool(player, folder, toolName)
+--- instanceId is optional; used by SIZE ROLL SYSTEM to scale the correct copy.
+local function grantTool(player, folder, toolName, instanceId)
     local template = getTemplate(folder, toolName)
     if not template then return end
 
@@ -173,6 +220,7 @@ local function grantTool(player, folder, toolName)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
+        applyWeaponScale(player, clone, toolName, instanceId)  -- SIZE ROLL SYSTEM
         clone.Parent = sg
     end
 
@@ -183,6 +231,7 @@ local function grantTool(player, folder, toolName)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
+        applyWeaponScale(player, clone, toolName, instanceId)  -- SIZE ROLL SYSTEM
         clone.Parent = bp
     end
 end
@@ -347,7 +396,7 @@ forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
 end)
 
 -- Replace the player's Ranged slot tool (StarterGear + Backpack) without equipping.
-setRangedRemote.OnServerEvent:Connect(function(player, toolName)
+setRangedRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
     -- remove existing Ranged tools from StarterGear and Backpack
     local sg = player:FindFirstChild("StarterGear")
     local bp = player:FindFirstChildOfClass("Backpack")
@@ -392,15 +441,18 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName)
             warn("[Loadout] Player", player.Name, "does not own ranged weapon:", toolName)
             return
         end
+        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
+        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
+        chosenInstanceId[player].Ranged = instanceId
         chosenRanged[player] = toolName
-        grantTool(player, "Ranged", toolName)
+        grantTool(player, "Ranged", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
         task.spawn(saveLoadout, player)
     end
 end)
 
 -- Replace the player's Melee slot tool (StarterGear + Backpack) without equipping.
-setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
+setMeleeRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
     -- remove existing Melee tools from StarterGear and Backpack
     local sg = player:FindFirstChild("StarterGear")
     local bp = player:FindFirstChildOfClass("Backpack")
@@ -445,26 +497,33 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
             warn("[Loadout] Player", player.Name, "does not own melee weapon:", toolName)
             return
         end
+        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
+        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
+        chosenInstanceId[player].Melee = instanceId
         chosenMelee[player] = toolName
-        grantTool(player, "Melee", toolName)
+        grantTool(player, "Melee", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
         task.spawn(saveLoadout, player)
     end
 end)
 
 local function giveLoadout(player)
+    local playerInstIds = chosenInstanceId[player] or {}
     for _, entry in ipairs(DEFAULT_LOADOUT) do
         local folder = entry.folder
         local toolName = entry.toolName
+        local instId = nil
         -- honour the player's chosen ranged weapon if they swapped it
         if string.lower(folder) == "ranged" and chosenRanged[player] then
             toolName = chosenRanged[player]
+            instId = playerInstIds.Ranged
         end
         -- honour player's chosen melee weapon if they swapped it
         if string.lower(folder) == "melee" and chosenMelee[player] then
             toolName = chosenMelee[player]
+            instId = playerInstIds.Melee
         end
-        grantTool(player, folder, toolName)
+        grantTool(player, folder, toolName, instId)
     end
     -- grant special tool if unlocked and template exists
     if unlockState[player] then
@@ -523,8 +582,9 @@ local function onPlayerRemoving(player)
     saveLoadout(player)
     unlockState[player]    = nil
     promptDebounce[player] = nil
-    chosenRanged[player]   = nil
-    chosenMelee[player]    = nil
+    chosenRanged[player]     = nil
+    chosenMelee[player]      = nil
+    chosenInstanceId[player] = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)

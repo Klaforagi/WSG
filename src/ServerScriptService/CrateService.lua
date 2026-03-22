@@ -12,7 +12,8 @@
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 
-local CrateConfig = require(ReplicatedStorage:WaitForChild("CrateConfig"))
+local CrateConfig      = require(ReplicatedStorage:WaitForChild("CrateConfig"))
+local SizeRollService  = require(ReplicatedStorage:WaitForChild("SizeRollService"))
 
 -- Lazy-loaded server modules
 local CurrencyService       = nil
@@ -141,7 +142,10 @@ function CrateService:OpenCrate(player, crateId)
         return false, "Empty pool"
     end
 
-    print(string.format("[CrateService] Rolled: %s (%s)", rolled.weapon, rolled.rarity))
+    -- Roll weapon size (80–200%) using weighted tiers
+    local sizePercent, sizeTier = SizeRollService.RollSize()
+
+    print(string.format("[CrateService] Rolled: %s (%s) Size: %d%% [%s]", rolled.weapon, rolled.rarity, sizePercent, sizeTier))
 
     -- Deduct currency BEFORE granting (prevents duplication on disconnect)
     if currencyType == "Keys" then
@@ -153,13 +157,15 @@ function CrateService:OpenCrate(player, crateId)
     -- Determine category from rolled entry or crateDef
     local category = rolled.category or crateDef.category or "Melee"
 
-    -- Create weapon instance
+    -- Create weapon instance with rolled size data
     local instanceData = wis:CreateInstance(
         player,
         rolled.weapon,
         rolled.rarity,
         category,
-        crateId
+        crateId,
+        sizePercent,
+        sizeTier
     )
 
     if not instanceData then
@@ -173,8 +179,9 @@ function CrateService:OpenCrate(player, crateId)
         return false, "Failed to create instance"
     end
 
-    print(string.format("[CrateService] SUCCESS – granted %s (%s) id=%s to %s",
-        instanceData.weaponName, instanceData.rarity, instanceData.instanceId, tostring(player.Name)))
+    print(string.format("[CrateService] SUCCESS – granted %s (%s) %d%% [%s] id=%s to %s",
+        instanceData.weaponName, instanceData.rarity, sizePercent, sizeTier,
+        instanceData.instanceId, tostring(player.Name)))
 
     local newCoinBalance = cs:GetCoins(player)
     local newKeyBalance  = cs:GetKeys(player)
@@ -184,6 +191,8 @@ function CrateService:OpenCrate(player, crateId)
         weaponName     = instanceData.weaponName,
         rarity         = instanceData.rarity,
         category       = instanceData.category,
+        sizePercent    = instanceData.sizePercent,   -- SIZE ROLL SYSTEM
+        sizeTier       = instanceData.sizeTier,      -- SIZE ROLL SYSTEM
         newBalance     = newCoinBalance,
         newKeyBalance  = newKeyBalance,    -- PREMIUM CRATE / KEY SYSTEM
         crateType      = crateId,          -- PREMIUM CRATE / KEY SYSTEM
