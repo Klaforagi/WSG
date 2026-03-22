@@ -125,7 +125,8 @@ end
 --------------------------------------------------------------------------------
 
 --- Create a new weapon instance for a player. Returns the instance data table.
-function WeaponInstanceService:CreateInstance(player, weaponName, rarity, category, source)
+--- sizePercent and sizeTier are optional; if omitted, defaults to 100% / "Normal".
+function WeaponInstanceService:CreateInstance(player, weaponName, rarity, category, source, sizePercent, sizeTier)
     if not player then return nil end
     local inv = playerInventories[player]
     if not inv then
@@ -143,6 +144,8 @@ function WeaponInstanceService:CreateInstance(player, weaponName, rarity, catego
         category    = category or "Melee",
         source      = source or "Crate",
         obtainedAt  = os.time(),
+        sizePercent = sizePercent or 100,   -- SIZE ROLL SYSTEM (80–200)
+        sizeTier    = sizeTier or "Normal", -- SIZE ROLL SYSTEM
     }
 
     inv[id] = instanceData
