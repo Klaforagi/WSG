@@ -78,3 +78,55 @@ btn.MouseButton1Click:Connect(function()
 end)
 
 print("[DevToolUI] Button created (Studio only); waiting for remote…")
+
+--------------------------------------------------------------------------------
+-- PREMIUM CRATE / KEY SYSTEM  – "+5 KEYS" dev button
+-- TO REMOVE LATER: delete this entire section.
+--------------------------------------------------------------------------------
+local KEY_GREEN = Color3.fromRGB(30, 80, 130)
+
+local keyBtn = Instance.new("TextButton")
+keyBtn.Name = "AddKeysBtn"
+keyBtn.Size = UDim2.new(0, 130, 0, 36)
+keyBtn.Position = UDim2.new(0, 12, 1, -90)
+keyBtn.AnchorPoint = Vector2.new(0, 1)
+keyBtn.BackgroundColor3 = GRAY
+keyBtn.Font = Enum.Font.GothamBold
+keyBtn.Text = "+5 KEYS (WAIT…)"
+keyBtn.TextColor3 = Color3.fromRGB(100, 200, 255)
+keyBtn.TextSize = 16
+keyBtn.BorderSizePixel = 0
+keyBtn.AutoButtonColor = true
+keyBtn.Parent = gui
+
+local keyCorner = Instance.new("UICorner")
+keyCorner.CornerRadius = UDim.new(0, 8)
+keyCorner.Parent = keyBtn
+
+local addKeysRemote = nil
+task.spawn(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 15)
+    if remotes then
+        addKeysRemote = remotes:WaitForChild("RequestAddKeys", 15)
+    end
+    if addKeysRemote then
+        keyBtn.BackgroundColor3 = KEY_GREEN
+        keyBtn.Text = "+5 KEYS"
+        print("[DevToolUI] PREMIUM CRATE / KEY SYSTEM – RequestAddKeys found")
+    else
+        keyBtn.BackgroundColor3 = GRAY
+        keyBtn.Text = "+5 KEYS (NO REMOTE)"
+        warn("[DevToolUI] RequestAddKeys not found")
+    end
+end)
+
+keyBtn.MouseButton1Click:Connect(function()
+    if not addKeysRemote then return end
+    addKeysRemote:FireServer(5)
+    keyBtn.Text = "\u{2713} ADDED"
+    task.delay(0.5, function()
+        if keyBtn and keyBtn.Parent then keyBtn.Text = "+5 KEYS" end
+    end)
+end)
+
+print("[DevToolUI] PREMIUM CRATE / KEY SYSTEM – Key button created")

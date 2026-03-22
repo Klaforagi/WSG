@@ -384,10 +384,26 @@ do
     end
 end
 
+-- PREMIUM CRATE / KEY SYSTEM  – KeyDisplay module (mirrors CoinDisplay)
+local KeyDisplayModule = nil
+do
+    local mod = ReplicatedStorage:WaitForChild("KeyDisplay", 10)
+    if mod and mod:IsA("ModuleScript") then
+        local ok, result = pcall(require, mod)
+        if ok then
+            KeyDisplayModule = result
+        else
+            warn("[SideUI] KeyDisplay failed to load:", tostring(result))
+        end
+    else
+        warn("[SideUI] KeyDisplay not found – key row will be unavailable")
+    end
+end
+
 local function CreateMenuGrid(parent)
     local gridContainer = Instance.new("Frame")
     gridContainer.Name = "MenuGridContainer"
-    gridContainer.LayoutOrder = 3
+    gridContainer.LayoutOrder = 4 -- PREMIUM CRATE / KEY SYSTEM  – bumped from 3 to make room for KeyRow
     gridContainer.Size = UDim2.new(1, 0, 0, 0)
     gridContainer.BackgroundTransparency = 1
     gridContainer.Parent = parent
@@ -993,48 +1009,95 @@ titleLabel.ZIndex = 11
 titleLabel.Parent = titlePill
 titleLabel.ZIndex = 275
 
--- Coin display in header (right side)
-local headerCoinFrame = Instance.new("Frame")
-headerCoinFrame.Name = "HeaderCoin"
-headerCoinFrame.Size = UDim2.new(0.28, 0, 0.70, 0)
-headerCoinFrame.AnchorPoint = Vector2.new(1, 0.5)
-headerCoinFrame.Position = UDim2.new(0.92, 0, 0.5, 0)
-headerCoinFrame.BackgroundTransparency = 1
-headerCoinFrame.ZIndex = 10
-headerCoinFrame.Parent = headerBar
-headerCoinFrame.ZIndex = 275
+-- Right-side currency row (Coins + Keys together)
+    local currencyRow = Instance.new("Frame")
+    currencyRow.Name = "CurrencyRow"
+    currencyRow.BackgroundTransparency = 1
+    currencyRow.Size = UDim2.new(0.48, 0, 0.70, 0)
+    currencyRow.AnchorPoint = Vector2.new(1, 0.5)
+    currencyRow.Position = UDim2.new(0.92, 0, 0.5, 0)
+    currencyRow.ZIndex = 275
+    currencyRow.Parent = headerBar
 
-local headerCoinLabel = Instance.new("TextLabel")
-headerCoinLabel.Name = "CoinLabel"
-headerCoinLabel.Size = UDim2.new(0.72, 0, 1, 0)
-headerCoinLabel.Position = UDim2.new(0, 0, 0, 0)
-headerCoinLabel.BackgroundTransparency = 1
-headerCoinLabel.Font = Enum.Font.GothamBold
-headerCoinLabel.TextScaled = true
-headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
-headerCoinLabel.TextXAlignment = Enum.TextXAlignment.Right
-headerCoinLabel.Text = "0"
-headerCoinLabel.ZIndex = 11
-headerCoinLabel.Parent = headerCoinFrame
+    local currencyLayout = Instance.new("UIListLayout")
+    currencyLayout.FillDirection = Enum.FillDirection.Horizontal
+    currencyLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    currencyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    currencyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    currencyLayout.Padding = UDim.new(0, px(12))
+    currencyLayout.Parent = currencyRow
 
--- Coin icon after text
-local headerCoinIcon = Instance.new("ImageLabel")
-headerCoinIcon.Name = "CoinIcon"
--- Bigger and centered vertically to match the header label
-headerCoinIcon.Size = UDim2.new(0.70, 0, 0.92, 0)
-headerCoinIcon.Position = UDim2.new(0.75, 0, 0.5, 1.5)
-headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
-headerCoinIcon.BackgroundTransparency = 1
-headerCoinIcon.ScaleType = Enum.ScaleType.Fit
-headerCoinIcon.SizeConstraint = Enum.SizeConstraint.RelativeYY
-headerCoinIcon.ZIndex = 11
-headerCoinIcon.Parent = headerCoinFrame
-pcall(function()
-    if AssetCodes and type(AssetCodes.Get) == "function" then
-        local ci = AssetCodes.Get("Coin")
-        if ci and #ci > 0 then headerCoinIcon.Image = ci end
-    end
-end)
+    -- Coin display (right side, LayoutOrder 1 = appears first from the left)
+    local headerCoinFrame = Instance.new("Frame")
+    headerCoinFrame.Name = "HeaderCoin"
+    headerCoinFrame.Size = UDim2.new(0, px(80), 1, 0)
+    headerCoinFrame.BackgroundTransparency = 1
+    headerCoinFrame.ZIndex = 275
+    headerCoinFrame.LayoutOrder = 1
+    headerCoinFrame.Parent = currencyRow
+
+    local headerCoinLabel = Instance.new("TextLabel")
+    headerCoinLabel.Name = "CoinLabel"
+    headerCoinLabel.Size = UDim2.new(0.68, 0, 1, 0)
+    headerCoinLabel.Position = UDim2.new(0, 0, 0, 0)
+    headerCoinLabel.BackgroundTransparency = 1
+    headerCoinLabel.Font = Enum.Font.GothamBold
+    headerCoinLabel.TextScaled = true
+    headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
+    headerCoinLabel.TextXAlignment = Enum.TextXAlignment.Right
+    headerCoinLabel.Text = "0"
+    headerCoinLabel.ZIndex = 276
+    headerCoinLabel.Parent = headerCoinFrame
+
+    local headerCoinIcon = Instance.new("ImageLabel")
+    headerCoinIcon.Name = "CoinIcon"
+    headerCoinIcon.Size = UDim2.new(0, px(22), 0, px(22))
+    headerCoinIcon.Position = UDim2.new(0.72, 0, 0.5, 0)
+    headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
+    headerCoinIcon.BackgroundTransparency = 1
+    headerCoinIcon.ScaleType = Enum.ScaleType.Fit
+    headerCoinIcon.ZIndex = 276
+    headerCoinIcon.Parent = headerCoinFrame
+    pcall(function()
+        if AssetCodes and type(AssetCodes.Get) == "function" then
+            local ci = AssetCodes.Get("Coin")
+            if ci and #ci > 0 then headerCoinIcon.Image = ci end
+        end
+    end)
+
+    -- Keys display (right side, LayoutOrder 2 = appears after coins)
+    local headerKeyFrame = Instance.new("Frame")
+    headerKeyFrame.Name = "HeaderKey"
+    headerKeyFrame.Size = UDim2.new(0, px(60), 1, 0)
+    headerKeyFrame.BackgroundTransparency = 1
+    headerKeyFrame.ZIndex = 275
+    headerKeyFrame.LayoutOrder = 2
+    headerKeyFrame.Parent = currencyRow
+
+    local headerKeyIcon = Instance.new("TextLabel")
+    headerKeyIcon.Name = "KeyIcon"
+    headerKeyIcon.Size = UDim2.new(0, px(18), 1, 0)
+    headerKeyIcon.Position = UDim2.new(0, 0, 0, 0)
+    headerKeyIcon.BackgroundTransparency = 1
+    headerKeyIcon.Font = Enum.Font.GothamBold
+    headerKeyIcon.Text = "\u{1F511}"
+    headerKeyIcon.TextScaled = true
+    headerKeyIcon.TextColor3 = Color3.fromRGB(170, 100, 255)
+    headerKeyIcon.ZIndex = 276
+    headerKeyIcon.Parent = headerKeyFrame
+
+    local headerKeyLabel = Instance.new("TextLabel")
+    headerKeyLabel.Name = "KeyLabel"
+    headerKeyLabel.Size = UDim2.new(0.60, 0, 1, 0)
+    headerKeyLabel.Position = UDim2.new(0.38, 0, 0, 0)
+    headerKeyLabel.BackgroundTransparency = 1
+    headerKeyLabel.Font = Enum.Font.GothamBold
+    headerKeyLabel.TextScaled = true
+    headerKeyLabel.TextColor3 = Color3.fromRGB(170, 100, 255)
+    headerKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerKeyLabel.Text = "0"
+    headerKeyLabel.ZIndex = 276
+    headerKeyLabel.Parent = headerKeyFrame
 
 -- Close X (top-right corner of window) — dark + gold style
 local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
@@ -1114,6 +1177,8 @@ contentFrame.ZIndex = 260
 
 -- Forward-declare coinApi so closures below can reference it
 local coinApi = nil
+-- PREMIUM CRATE / KEY SYSTEM  – forward-declare keyApi
+local keyApi = nil
 
 local function clearContent()
     for _, c in ipairs(contentFrame:GetChildren()) do
@@ -1241,14 +1306,42 @@ end
 -- Expose so ShopUI can trigger a refresh after purchase
 _G.UpdateShopHeaderCoins = updateHeaderCoins
 
+local function updateHeaderKeys()
+    local keys = 0
+    if coinApi and coinApi.GetKeys then
+        local ok, val = pcall(function() return coinApi.GetKeys() end)
+        if ok and type(val) == "number" then keys = val end
+    end
+    if keys > 0 then
+        headerKeyLabel.Text = tostring(math.floor(keys))
+    else
+        headerKeyLabel.Text = "0"
+        task.spawn(function()
+            pcall(function()
+                local getKeysFn = ReplicatedStorage:FindFirstChild("GetKeys")
+                if getKeysFn and getKeysFn:IsA("RemoteFunction") then
+                    local res = getKeysFn:InvokeServer()
+                    if type(res) == "number" then
+                        headerKeyLabel.Text = tostring(math.floor(res))
+                    end
+                end
+            end)
+        end)
+    end
+end
+_G.UpdateShopHeaderKeys = updateHeaderKeys
+
 -- Populate modal content without animation (used by MenuController open callbacks)
 local function populateModalContent(mod, label)
     if not mod then return end
     clearContent()
     titleLabel.Text = label or "SHOP"
     local showCoins = (label == "SHOP" or label == "BOOSTS" or label == "UPGRADES")
-    headerCoinFrame.Visible = showCoins
-    if showCoins then updateHeaderCoins() end
+    currencyRow.Visible = showCoins
+    if showCoins then
+        updateHeaderCoins()
+        updateHeaderKeys()
+    end
     pcall(function()
         local ok, loaded = pcall(require, mod)
         if ok and type(loaded.Create) == "function" then
@@ -1351,6 +1444,18 @@ if CoinDisplayModule and CoinDisplayModule.Create then
     pcall(function() updateHeaderCoins() end)
 end
 
+-- PREMIUM CRATE / KEY SYSTEM  – Key row from KeyDisplay module
+local keyRow
+if KeyDisplayModule and KeyDisplayModule.Create then
+    keyRow, keyApi = KeyDisplayModule.Create(panel, 3)
+    -- Attach SetKeys to coinApi so crate opening UI can update keys via _G.CrateOpeningCoinApi
+    if coinApi and keyApi then
+        coinApi.SetKeys = keyApi.SetKeys
+        coinApi.GetKeys = keyApi.GetKeys
+    end
+    print("[SideUI] KeyDisplay module initialized; keyApi =", tostring(keyApi))
+end
+
 -- Initialize CrateOpeningUI (roulette animation overlay)
 if crateOpeningModule and crateOpeningModule:IsA("ModuleScript") then
     pcall(function()
@@ -1374,6 +1479,20 @@ task.spawn(function()
         pcall(updateHeaderCoins)
     else
         warn("[SideUI] CoinsUpdated remote not found – coin header won't auto-update")
+    end
+end)
+
+-- PREMIUM CRATE / KEY SYSTEM  – Listen for server key updates
+task.spawn(function()
+    local keysEvent = ReplicatedStorage:WaitForChild("KeysUpdated", 10)
+    if keysEvent and keysEvent:IsA("RemoteEvent") then
+        keysEvent.OnClientEvent:Connect(function(amount)
+            if keyApi and keyApi.SetKeys then
+                pcall(function() keyApi.SetKeys(amount) end)
+            end
+        end)
+    else
+        warn("[SideUI] KeysUpdated remote not found – key display won't auto-update")
     end
 end)
 

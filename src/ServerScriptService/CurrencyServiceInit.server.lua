@@ -35,6 +35,18 @@ Players.PlayerAdded:Connect(function(player)
 
     -- ensure the module's in-memory table is set and notify the client via RemoteEvent
     CurrencyService:SetCoins(player, coins)
+
+    -- PREMIUM CRATE / KEY SYSTEM  – Load Keys
+    local keys = 0
+    local ok2, keyAmt = pcall(function()
+        return CurrencyService:LoadKeysForPlayer(player)
+    end)
+    if ok2 and type(keyAmt) == "number" then
+        keys = keyAmt
+    else
+        warn("CurrencyServiceInit: failed to load keys for ", tostring(player.Name), "; defaulting to 0")
+    end
+    CurrencyService:SetKeys(player, keys)
 end)
 
 -- Handle players who connected before the PlayerAdded signal was hooked
@@ -50,6 +62,16 @@ for _, player in ipairs(Players:GetPlayers()) do
             coins = amt
         end
         CurrencyService:SetCoins(player, coins)
+
+        -- PREMIUM CRATE / KEY SYSTEM  – Load Keys for late-join players
+        local keys = 0
+        local ok2, keyAmt = pcall(function()
+            return CurrencyService:LoadKeysForPlayer(player)
+        end)
+        if ok2 and type(keyAmt) == "number" then
+            keys = keyAmt
+        end
+        CurrencyService:SetKeys(player, keys)
     end)
 end
 
@@ -60,6 +82,13 @@ Players.PlayerRemoving:Connect(function(player)
     end)
     if not ok then
         warn("CurrencyServiceInit: SaveForPlayer error for ", tostring(player.Name), err)
+    end
+    -- PREMIUM CRATE / KEY SYSTEM  – Save Keys on leave
+    local ok2, err2 = pcall(function()
+        CurrencyService:SaveKeysForPlayer(player)
+    end)
+    if not ok2 then
+        warn("CurrencyServiceInit: SaveKeysForPlayer error for ", tostring(player.Name), err2)
     end
     CurrencyService:RemovePlayer(player)
 end)

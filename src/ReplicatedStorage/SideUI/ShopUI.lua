@@ -1078,34 +1078,32 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     contentContainer.Parent              = root
 
     ---------------------------------------------------------------------------
-    -- WEAPONS content page → CRATE CARDS
+    -- WEAPONS content page → 2×2 CRATE GRID
     ---------------------------------------------------------------------------
     local weaponsPage = Instance.new("Frame")
     weaponsPage.Name                = "WeaponsContent"
     weaponsPage.BackgroundTransparency = 1
-    weaponsPage.Size                = UDim2.new(1, 0, 0, 0)
-    weaponsPage.AutomaticSize       = Enum.AutomaticSize.Y
+    weaponsPage.Size                = UDim2.new(1, 0, 0, px(570))
     weaponsPage.Visible             = true
     weaponsPage.Parent              = contentContainer
 
-    local wpLayout = Instance.new("UIListLayout")
-    wpLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    wpLayout.Padding   = UDim.new(0, px(16))
-    wpLayout.Parent    = weaponsPage
+    -- No UIListLayout – header + grid are absolutely positioned for
+    -- reliable 2×2 sizing inside the ScrollingFrame canvas.
 
     local wpPad = Instance.new("UIPadding")
     wpPad.PaddingTop    = UDim.new(0, px(6))
-    wpPad.PaddingBottom = UDim.new(0, px(12))
+    wpPad.PaddingBottom = UDim.new(0, px(6))
     wpPad.PaddingLeft   = UDim.new(0, px(8))
     wpPad.PaddingRight  = UDim.new(0, px(8))
     wpPad.Parent        = weaponsPage
 
-    -- Header
+    -- Header (absolutely positioned at top of content area)
+    local CRATE_HEADER_H = px(54)
     local crateHeader = Instance.new("Frame")
     crateHeader.Name = "CrateHeader"
     crateHeader.BackgroundTransparency = 1
-    crateHeader.Size = UDim2.new(1, 0, 0, px(54))
-    crateHeader.LayoutOrder = 0
+    crateHeader.Size = UDim2.new(1, 0, 0, CRATE_HEADER_H)
+    crateHeader.Position = UDim2.new(0, 0, 0, 0)
     crateHeader.Parent = weaponsPage
 
     local crateTitle = Instance.new("TextLabel")
@@ -1137,7 +1135,53 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     crateAccent.Position = UDim2.new(0, 0, 1, -px(2))
     crateAccent.Parent = crateHeader
 
-    -- Build crate cards from CrateConfig
+    ---------------------------------------------------------------------------
+    -- 2×2 Grid container for crate cards
+    --
+    -- The grid is absolutely positioned below the header and fills the
+    -- remaining height of weaponsPage.  CellSize is computed dynamically
+    -- from the grid's actual rendered pixel dimensions so that two columns
+    -- always fit regardless of ScrollingFrame canvas-size quirks.
+    --
+    -- >>> To tweak spacing, edit GRID_GAP below.
+    -- >>> Cell size is auto-computed – see recomputeGridCells().
+    ---------------------------------------------------------------------------
+    local GRID_GAP     = px(12)   -- gap between cards (horizontal & vertical)
+    local GRID_TOP_OFF = CRATE_HEADER_H + px(10)  -- header + gap
+
+    local crateGrid = Instance.new("Frame")
+    crateGrid.Name = "CrateGrid"
+    crateGrid.BackgroundTransparency = 1
+    crateGrid.Size     = UDim2.new(1, 0, 1, -GRID_TOP_OFF)
+    crateGrid.Position = UDim2.new(0, 0, 0, GRID_TOP_OFF)
+    crateGrid.ClipsDescendants = false
+    crateGrid.Parent = weaponsPage
+
+    local gridLayout = Instance.new("UIGridLayout")
+    gridLayout.CellPadding            = UDim2.new(0, GRID_GAP, 0, GRID_GAP)
+    gridLayout.CellSize               = UDim2.fromOffset(px(200), px(220)) -- fallback
+    gridLayout.FillDirection           = Enum.FillDirection.Horizontal
+    gridLayout.FillDirectionMaxCells   = 2
+    gridLayout.HorizontalAlignment    = Enum.HorizontalAlignment.Center
+    gridLayout.VerticalAlignment       = Enum.VerticalAlignment.Center
+    gridLayout.SortOrder               = Enum.SortOrder.LayoutOrder
+    gridLayout.Parent                  = crateGrid
+
+    -- Dynamically compute CellSize from the grid's actual rendered size
+    -- so two columns always fit regardless of parent chain sizing.
+    local function recomputeGridCells()
+        local w = crateGrid.AbsoluteSize.X
+        local h = crateGrid.AbsoluteSize.Y
+        if w > 20 and h > 20 then
+            local cellW = math.floor((w - GRID_GAP) / 2)
+            local cellH = math.floor((h - GRID_GAP) / 2)
+            gridLayout.CellSize = UDim2.fromOffset(cellW, cellH)
+        end
+    end
+    crateGrid:GetPropertyChangedSignal("AbsoluteSize"):Connect(recomputeGridCells)
+    task.defer(recomputeGridCells)
+
+    -- Build crate cards from CrateConfig (fills 2×2 grid)
     local crateOrder = (CrateConfig and CrateConfig.CrateOrder) or {}
     local crateOpenDebounce = false
 
@@ -1145,37 +1189,57 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         local crateDef = CrateConfig and CrateConfig.Crates[crateId]
         if not crateDef then continue end
 
+        local crateCurrency = crateDef.currency or "Coins"
+        local cratePrice = crateDef.cost or crateDef.price or 0
+        local isKeyCrate = (crateCurrency == "Keys")
+
+        -- Premium accent colours
+        local PREM_STROKE = Color3.fromRGB(170, 100, 255)
+        local PREM_BG     = Color3.fromRGB(24, 16, 44)
+        local NORM_BG     = CARD_BG
+
+        -------------------------------------------------------------------
+        -- Card frame
+        -------------------------------------------------------------------
         local card = Instance.new("Frame")
         card.Name = "Crate_" .. crateId
-        card.BackgroundColor3 = CARD_BG
-        card.Size = UDim2.new(1, 0, 0, px(180))
+        card.BackgroundColor3 = isKeyCrate and PREM_BG or NORM_BG
         card.LayoutOrder = idx
-        card.Parent = weaponsPage
+        card.Parent = crateGrid
 
         local cCorner = Instance.new("UICorner")
         cCorner.CornerRadius = UDim.new(0, px(14))
         cCorner.Parent = card
 
         local cStroke = Instance.new("UIStroke")
-        cStroke.Color = CARD_STROKE
-        cStroke.Thickness = 1.4
-        cStroke.Transparency = 0.25
+        cStroke.Color = isKeyCrate and PREM_STROKE or CARD_STROKE
+        cStroke.Thickness = isKeyCrate and 2 or 1.4
+        cStroke.Transparency = isKeyCrate and 0.10 or 0.25
         cStroke.Parent = card
 
-        local cPad = Instance.new("UIPadding")
-        cPad.PaddingTop    = UDim.new(0, px(14))
-        cPad.PaddingBottom = UDim.new(0, px(14))
-        cPad.PaddingLeft   = UDim.new(0, px(14))
-        cPad.PaddingRight  = UDim.new(0, px(14))
-        cPad.Parent        = card
+        -- Inner vertical layout
+        local innerLayout = Instance.new("UIListLayout")
+        innerLayout.SortOrder      = Enum.SortOrder.LayoutOrder
+        innerLayout.FillDirection   = Enum.FillDirection.Vertical
+        innerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        innerLayout.Padding        = UDim.new(0, px(3))
+        innerLayout.Parent         = card
 
-        -- Left: icon plate
+        local innerPad = Instance.new("UIPadding")
+        innerPad.PaddingTop    = UDim.new(0, px(8))
+        innerPad.PaddingBottom = UDim.new(0, px(8))
+        innerPad.PaddingLeft   = UDim.new(0, px(8))
+        innerPad.PaddingRight  = UDim.new(0, px(8))
+        innerPad.Parent        = card
+
+        -------------------------------------------------------------------
+        -- 1. Icon plate (centered near top)
+        -------------------------------------------------------------------
         local iconPlate = Instance.new("Frame")
         iconPlate.Name = "IconPlate"
-        iconPlate.BackgroundColor3 = ICON_BG
-        iconPlate.Size = UDim2.new(0, px(100), 0, px(100))
-        iconPlate.Position = UDim2.new(0, 0, 0.5, 0)
-        iconPlate.AnchorPoint = Vector2.new(0, 0.5)
+        iconPlate.BackgroundColor3 = isKeyCrate and Color3.fromRGB(28, 20, 54) or ICON_BG
+        iconPlate.Size = UDim2.new(0, px(52), 0, px(52))
+        iconPlate.LayoutOrder = 1
         iconPlate.Parent = card
 
         local ipCorner = Instance.new("UICorner")
@@ -1183,107 +1247,160 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         ipCorner.Parent = iconPlate
 
         local ipStroke = Instance.new("UIStroke")
-        ipStroke.Color = CARD_STROKE
+        ipStroke.Color = isKeyCrate and PREM_STROKE or CARD_STROKE
         ipStroke.Thickness = 1
-        ipStroke.Transparency = 0.4
+        ipStroke.Transparency = isKeyCrate and 0.2 or 0.4
         ipStroke.Parent = iconPlate
 
         local iconLabel = Instance.new("TextLabel")
         iconLabel.BackgroundTransparency = 1
         iconLabel.Font = Enum.Font.GothamBold
         iconLabel.Text = crateDef.iconGlyph or "?"
-        iconLabel.TextSize = math.max(36, math.floor(px(42)))
-        iconLabel.TextColor3 = GOLD
+        iconLabel.TextSize = math.max(22, math.floor(px(26)))
+        iconLabel.TextColor3 = isKeyCrate and PREM_STROKE or GOLD
         iconLabel.Size = UDim2.new(1, 0, 1, 0)
         iconLabel.TextXAlignment = Enum.TextXAlignment.Center
         iconLabel.TextYAlignment = Enum.TextYAlignment.Center
         iconLabel.Parent = iconPlate
 
-        -- Right: name, description, price, rarity chances, open button
-        local rightX = px(100) + px(14)
-        local rightW = UDim2.new(1, -(rightX), 1, 0)
+        -- Hover-detection button over icon plate for tooltip
+        local iconHoverBtn = Instance.new("TextButton")
+        iconHoverBtn.Name = "IconHoverBtn"
+        iconHoverBtn.Text = ""
+        iconHoverBtn.BackgroundTransparency = 1
+        iconHoverBtn.Size = UDim2.new(1, 0, 1, 0)
+        iconHoverBtn.ZIndex = iconLabel.ZIndex + 1
+        iconHoverBtn.Parent = iconPlate
 
+        -- Tooltip frame (hidden by default, shown on icon hover)
+        local tooltip = Instance.new("Frame")
+        tooltip.Name = "RarityTooltip"
+        tooltip.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
+        tooltip.BackgroundTransparency = 0.05
+        tooltip.Size = UDim2.new(0, px(130), 0, 0)
+        tooltip.AutomaticSize = Enum.AutomaticSize.Y
+        tooltip.AnchorPoint = Vector2.new(0.5, 1)
+        tooltip.Position = UDim2.new(0.5, 0, 0, -px(4))
+        tooltip.Visible = false
+        tooltip.ZIndex = 310
+        tooltip.ClipsDescendants = false
+        tooltip.Parent = iconPlate
+
+        local ttCorner = Instance.new("UICorner")
+        ttCorner.CornerRadius = UDim.new(0, px(8))
+        ttCorner.Parent = tooltip
+
+        local ttStroke = Instance.new("UIStroke")
+        ttStroke.Color = isKeyCrate and PREM_STROKE or GOLD
+        ttStroke.Thickness = 1
+        ttStroke.Transparency = 0.3
+        ttStroke.Parent = tooltip
+
+        local ttPad = Instance.new("UIPadding")
+        ttPad.PaddingTop = UDim.new(0, px(6))
+        ttPad.PaddingBottom = UDim.new(0, px(6))
+        ttPad.PaddingLeft = UDim.new(0, px(8))
+        ttPad.PaddingRight = UDim.new(0, px(8))
+        ttPad.Parent = tooltip
+
+        local ttLayout = Instance.new("UIListLayout")
+        ttLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        ttLayout.Padding = UDim.new(0, px(2))
+        ttLayout.Parent = tooltip
+
+        -- Populate tooltip from crate rarity data
+        if CrateConfig and CrateConfig.Rarities and CrateConfig.RarityOrder then
+            local hasCrateRarities = (type(crateDef.rarities) == "table")
+            local totalW = 0
+            if hasCrateRarities then
+                for _, w in pairs(crateDef.rarities) do totalW = totalW + w end
+            end
+            local ttOrder = 0
+            local hasCommon = hasCrateRarities and crateDef.rarities["Common"]
+            for _, rarName in ipairs(CrateConfig.RarityOrder) do
+                local w = hasCrateRarities and crateDef.rarities[rarName]
+                if w and w > 0 then
+                    local pct = (totalW > 0) and (w / totalW * 100) or 0
+                    local rd = CrateConfig.Rarities[rarName]
+                    local row = Instance.new("TextLabel")
+                    row.BackgroundTransparency = 1
+                    row.Font = Enum.Font.GothamBold
+                    row.TextSize = math.max(9, math.floor(px(10)))
+                    row.Text = string.format("%s %.0f%%", rd.label, pct)
+                    row.TextColor3 = rd.color
+                    row.Size = UDim2.new(1, 0, 0, px(13))
+                    row.TextXAlignment = Enum.TextXAlignment.Left
+                    row.LayoutOrder = ttOrder
+                    row.ZIndex = 311
+                    row.Parent = tooltip
+                    ttOrder = ttOrder + 1
+                end
+            end
+            if not hasCommon and isKeyCrate then
+                local noCommon = Instance.new("TextLabel")
+                noCommon.BackgroundTransparency = 1
+                noCommon.Font = Enum.Font.GothamBold
+                noCommon.TextSize = math.max(9, math.floor(px(10)))
+                noCommon.Text = "No Commons"
+                noCommon.TextColor3 = Color3.fromRGB(180, 180, 180)
+                noCommon.Size = UDim2.new(1, 0, 0, px(13))
+                noCommon.TextXAlignment = Enum.TextXAlignment.Left
+                noCommon.LayoutOrder = ttOrder
+                noCommon.ZIndex = 311
+                noCommon.Parent = tooltip
+            end
+        end
+
+        iconHoverBtn.MouseEnter:Connect(function()
+            tooltip.Visible = true
+        end)
+        iconHoverBtn.MouseLeave:Connect(function()
+            tooltip.Visible = false
+        end)
+
+        -------------------------------------------------------------------
+        -- 2. Crate name
+        -------------------------------------------------------------------
         local nameLabel = Instance.new("TextLabel")
         nameLabel.Name = "CrateName"
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.Text = crateDef.displayName
-        nameLabel.TextColor3 = WHITE
-        nameLabel.TextSize = math.max(16, math.floor(px(18)))
-        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-        nameLabel.Size = UDim2.new(1, -rightX, 0, px(22))
-        nameLabel.Position = UDim2.new(0, rightX, 0, 0)
+        nameLabel.TextColor3 = isKeyCrate and PREM_STROKE or WHITE
+        nameLabel.TextSize = math.max(13, math.floor(px(15)))
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+        nameLabel.Size = UDim2.new(1, 0, 0, px(18))
+        nameLabel.LayoutOrder = 2
         nameLabel.Parent = card
 
+        -------------------------------------------------------------------
+        -- 3. Short description
+        -------------------------------------------------------------------
         local descLabel = Instance.new("TextLabel")
         descLabel.BackgroundTransparency = 1
         descLabel.Font = Enum.Font.GothamMedium
         descLabel.Text = crateDef.description or ""
         descLabel.TextColor3 = DIM_TEXT
-        descLabel.TextSize = math.max(11, math.floor(px(12)))
-        descLabel.TextXAlignment = Enum.TextXAlignment.Left
+        descLabel.TextSize = math.max(9, math.floor(px(10)))
+        descLabel.TextXAlignment = Enum.TextXAlignment.Center
         descLabel.TextWrapped = true
-        descLabel.Size = UDim2.new(1, -rightX, 0, px(16))
-        descLabel.Position = UDim2.new(0, rightX, 0, px(24))
+        descLabel.Size = UDim2.new(1, 0, 0, px(14))
+        descLabel.LayoutOrder = 3
         descLabel.Parent = card
 
-        -- Rarity chances row
-        local rarityRow = Instance.new("Frame")
-        rarityRow.Name = "RarityRow"
-        rarityRow.BackgroundTransparency = 1
-        rarityRow.Size = UDim2.new(1, -rightX, 0, px(18))
-        rarityRow.Position = UDim2.new(0, rightX, 0, px(44))
-        rarityRow.Parent = card
+        -------------------------------------------------------------------
+        -- 4. (Rarity odds removed from card – shown via icon tooltip)
+        -------------------------------------------------------------------
 
-        local rrLayout = Instance.new("UIListLayout")
-        rrLayout.FillDirection = Enum.FillDirection.Horizontal
-        rrLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        rrLayout.Padding = UDim.new(0, px(10))
-        rrLayout.Parent = rarityRow
-
-        -- Show rarity %s for this crate's pool
-        if CrateConfig and CrateConfig.Rarities then
-            -- Compute total weight for this pool
-            local totalW = 0
-            for _, entry in ipairs(crateDef.pool or {}) do
-                local rd = CrateConfig.Rarities[entry.rarity]
-                totalW = totalW + ((rd and rd.weight) or 0)
-            end
-            -- Aggregate by rarity
-            local rarityTotals = {}
-            for _, entry in ipairs(crateDef.pool or {}) do
-                local rd = CrateConfig.Rarities[entry.rarity]
-                local w = (rd and rd.weight) or 0
-                rarityTotals[entry.rarity] = (rarityTotals[entry.rarity] or 0) + w
-            end
-            local order = 0
-            for _, rarName in ipairs(CrateConfig.RarityOrder) do
-                local w = rarityTotals[rarName]
-                if w and w > 0 then
-                    local pct = (totalW > 0) and (w / totalW * 100) or 0
-                    local rd = CrateConfig.Rarities[rarName]
-                    local tag = Instance.new("TextLabel")
-                    tag.BackgroundTransparency = 1
-                    tag.Font = Enum.Font.GothamBold
-                    tag.TextSize = math.max(10, math.floor(px(11)))
-                    tag.Text = string.format("%s %.0f%%", rd.label, pct)
-                    tag.TextColor3 = rd.color
-                    tag.Size = UDim2.new(0, px(80), 1, 0)
-                    tag.TextXAlignment = Enum.TextXAlignment.Left
-                    tag.LayoutOrder = order
-                    tag.Parent = rarityRow
-                    order = order + 1
-                end
-            end
-        end
-
-        -- Price badge
+        -------------------------------------------------------------------
+        -- 5. Price badge
+        -------------------------------------------------------------------
         local priceBadge = Instance.new("Frame")
         priceBadge.Name = "PriceBadge"
-        priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
+        priceBadge.BackgroundColor3 = isKeyCrate and Color3.fromRGB(28, 18, 36) or Color3.fromRGB(36, 33, 18)
         priceBadge.BackgroundTransparency = 0.3
-        priceBadge.Size = UDim2.new(0, px(100), 0, px(28))
-        priceBadge.Position = UDim2.new(0, rightX, 0, px(68))
+        priceBadge.Size = UDim2.new(0.80, 0, 0, px(26))
+        priceBadge.LayoutOrder = 6
         priceBadge.Parent = card
 
         local pbCorner = Instance.new("UICorner")
@@ -1291,41 +1408,71 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         pbCorner.Parent = priceBadge
 
         local pbStroke = Instance.new("UIStroke")
-        pbStroke.Color = Color3.fromRGB(255, 200, 40)
+        pbStroke.Color = isKeyCrate and PREM_STROKE or Color3.fromRGB(255, 200, 40)
         pbStroke.Thickness = 1
         pbStroke.Transparency = 0.55
         pbStroke.Parent = priceBadge
 
+        -- Centered amount + icon group inside the badge
+        local costGroup = Instance.new("Frame")
+        costGroup.Name = "CostGroup"
+        costGroup.BackgroundTransparency = 1
+        costGroup.Size = UDim2.new(0, 0, 1, 0)
+        costGroup.AutomaticSize = Enum.AutomaticSize.X
+        costGroup.AnchorPoint = Vector2.new(0.5, 0)
+        costGroup.Position = UDim2.new(0.5, 0, 0, 0)
+        costGroup.Parent = priceBadge
+
+        local costLayout = Instance.new("UIListLayout")
+        costLayout.FillDirection = Enum.FillDirection.Horizontal
+        costLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        costLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        costLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        costLayout.Padding = UDim.new(0, px(4))
+        costLayout.Parent = costGroup
+
         local priceLabel = Instance.new("TextLabel")
         priceLabel.BackgroundTransparency = 1
         priceLabel.Font = Enum.Font.GothamBold
-        priceLabel.TextScaled = true
-        priceLabel.TextColor3 = GOLD
-        priceLabel.Text = tostring(crateDef.price or 0)
-        priceLabel.Size = UDim2.new(0.55, 0, 1, 0)
-        priceLabel.TextXAlignment = Enum.TextXAlignment.Right
-        priceLabel.Parent = priceBadge
+        priceLabel.TextSize = math.max(12, math.floor(px(14)))
+        priceLabel.TextColor3 = isKeyCrate and PREM_STROKE or GOLD
+        priceLabel.Text = tostring(cratePrice)
+        priceLabel.Size = UDim2.new(0, 0, 1, 0)
+        priceLabel.AutomaticSize = Enum.AutomaticSize.X
+        priceLabel.LayoutOrder = 1
+        priceLabel.Parent = costGroup
 
-        local coinIcon = Instance.new("ImageLabel")
-        coinIcon.BackgroundTransparency = 1
-        coinIcon.Size = UDim2.new(0.26, 0, 0.80, 0)
-        coinIcon.Position = UDim2.new(0.62, 0, 0.5, 0)
-        coinIcon.AnchorPoint = Vector2.new(0, 0.5)
-        coinIcon.ScaleType = Enum.ScaleType.Fit
-        coinIcon.Parent = priceBadge
-        pcall(function()
-            if AssetCodes and type(AssetCodes.Get) == "function" then
-                local ci = AssetCodes.Get("Coin")
-                if ci and #ci > 0 then coinIcon.Image = ci end
-            end
-        end)
+        if isKeyCrate then
+            local keyGlyph = Instance.new("TextLabel")
+            keyGlyph.BackgroundTransparency = 1
+            keyGlyph.Font = Enum.Font.GothamBold
+            keyGlyph.Text = "\u{1F511}"
+            keyGlyph.TextSize = math.max(12, math.floor(px(14)))
+            keyGlyph.TextColor3 = PREM_STROKE
+            keyGlyph.Size = UDim2.new(0, px(18), 0, px(18))
+            keyGlyph.LayoutOrder = 2
+            keyGlyph.Parent = costGroup
+        else
+            local coinIcon = Instance.new("ImageLabel")
+            coinIcon.BackgroundTransparency = 1
+            coinIcon.Size = UDim2.new(0, px(18), 0, px(18))
+            coinIcon.ScaleType = Enum.ScaleType.Fit
+            coinIcon.LayoutOrder = 2
+            coinIcon.Parent = costGroup
+            pcall(function()
+                if AssetCodes and type(AssetCodes.Get) == "function" then
+                    local ci = AssetCodes.Get("Coin")
+                    if ci and #ci > 0 then coinIcon.Image = ci end
+                end
+            end)
+        end
 
-        -- Open button
+        -------------------------------------------------------------------
+        -- 6. Open Crate button
+        -------------------------------------------------------------------
         local openBtn = Instance.new("TextButton")
         openBtn.Name = "OpenBtn"
-        openBtn.Size = UDim2.new(0, px(120), 0, px(36))
-        openBtn.AnchorPoint = Vector2.new(0, 1)
-        openBtn.Position = UDim2.new(0, rightX, 1, 0)
+        openBtn.Size = UDim2.new(0.80, 0, 0, px(32))
         openBtn.BackgroundColor3 = GREEN_BTN
         openBtn.Font = Enum.Font.GothamBold
         openBtn.TextScaled = true
@@ -1333,6 +1480,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         openBtn.Text = "OPEN CRATE"
         openBtn.AutoButtonColor = false
         openBtn.ZIndex = 253
+        openBtn.LayoutOrder = 7
         openBtn.Parent = card
 
         local obCorner = Instance.new("UICorner")
@@ -1359,17 +1507,46 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             end)
         end)
 
-        -- Click: fire crate open
+        -- Click: fire crate open (with client-side balance pre-check)
         openBtn.MouseButton1Click:Connect(function()
             if crateOpenDebounce then return end
             crateOpenDebounce = true
 
-            -- Fire the crate opening event via global callback
-            -- The CrateOpeningUI will handle the animation and server call
+            -- Client-side balance check: flash button red if insufficient
+            local hasEnough = true
+            if isKeyCrate then
+                local keys = 0
+                if coinApi and coinApi.GetKeys then
+                    pcall(function() keys = coinApi.GetKeys() or 0 end)
+                end
+                hasEnough = (keys >= cratePrice)
+            else
+                local coins = 0
+                if coinApi and coinApi.GetCoins then
+                    pcall(function() coins = coinApi.GetCoins() or 0 end)
+                end
+                hasEnough = (coins >= cratePrice)
+            end
+
+            if not hasEnough then
+                local msg = isKeyCrate and "NOT ENOUGH KEYS" or "NOT ENOUGH COINS"
+                openBtn.Text = msg
+                openBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+                obStroke.Color = Color3.fromRGB(200, 40, 40)
+                task.delay(1, function()
+                    if openBtn and openBtn.Parent then
+                        openBtn.Text = "OPEN CRATE"
+                        openBtn.BackgroundColor3 = GREEN_BTN
+                        obStroke.Color = Color3.fromRGB(30, 200, 80)
+                    end
+                    crateOpenDebounce = false
+                end)
+                return
+            end
+
             if _G.OpenCrateRequested then
                 _G.OpenCrateRequested(crateId)
             else
-                -- Fallback: direct server call without animation
                 local openCrateRF = ReplicatedStorage:FindFirstChild("OpenCrate")
                 if openCrateRF and openCrateRF:IsA("RemoteFunction") then
                     local ok, success, result = pcall(function()
@@ -1379,17 +1556,32 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                         if coinApi and coinApi.SetCoins then
                             pcall(function() coinApi.SetCoins(result.newBalance) end)
                         end
+                        if coinApi and coinApi.SetKeys and result.newKeyBalance then
+                            pcall(function() coinApi.SetKeys(result.newKeyBalance) end)
+                        end
                         pcall(function()
                             if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
                         end)
+                        if _G.UpdateShopHeaderKeys then
+                            pcall(function() _G.UpdateShopHeaderKeys() end)
+                        end
                         showToast(weaponsPage,
                             string.format("Got %s (%s)!", result.weaponName, result.rarity),
                             CrateConfig and CrateConfig.Rarities[result.rarity] and CrateConfig.Rarities[result.rarity].color or GOLD,
                             3)
                     elseif ok and not success then
-                        showToast(weaponsPage,
-                            type(result) == "string" and result or "Purchase failed",
-                            RED_TEXT, 2)
+                        -- Server rejected: flash button red
+                        local msg = isKeyCrate and "NOT ENOUGH KEYS" or "NOT ENOUGH COINS"
+                        openBtn.Text = msg
+                        openBtn.BackgroundColor3 = Color3.fromRGB(200, 40, 40)
+                        obStroke.Color = Color3.fromRGB(200, 40, 40)
+                        task.delay(1, function()
+                            if openBtn and openBtn.Parent then
+                                openBtn.Text = "OPEN CRATE"
+                                openBtn.BackgroundColor3 = GREEN_BTN
+                                obStroke.Color = Color3.fromRGB(30, 200, 80)
+                            end
+                        end)
                     end
                 end
             end

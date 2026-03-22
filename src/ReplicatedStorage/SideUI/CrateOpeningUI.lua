@@ -68,7 +68,8 @@ end
 --------------------------------------------------------------------------------
 -- Build a randomized strip of weapon cards with the winner at WINNING_INDEX.
 -- Cards are chosen using weighted rarity selection so the visual strip
--- reflects actual drop rates from CrateConfig.Rarities.
+-- reflects actual drop rates from CrateConfig.
+-- PREMIUM CRATE / KEY SYSTEM  – uses per-crate rarities table if present.
 --------------------------------------------------------------------------------
 local function buildStrip(crateDef, wonWeapon, wonRarity)
     local pool = crateDef.pool or {}
@@ -83,17 +84,23 @@ local function buildStrip(crateDef, wonWeapon, wonRarity)
         table.insert(byRarity[entry.rarity], entry.weapon)
     end
 
-    -- Build weighted rarity list from config (only rarities present in pool)
-    local weightedRarities = {}  -- { {rarity, cumWeight} }
+    -- Build weighted rarity list
+    -- PREMIUM CRATE / KEY SYSTEM  – prefer per-crate rarities over global weights
+    local hasCrateRarities = (type(crateDef.rarities) == "table")
+    local weightedRarities = {}
     local totalWeight = 0
-    if CrateConfig and CrateConfig.Rarities then
-        for rarity, weapons in pairs(byRarity) do
+
+    for rarity, weapons in pairs(byRarity) do
+        local w = 0
+        if hasCrateRarities and crateDef.rarities[rarity] then
+            w = crateDef.rarities[rarity]
+        elseif CrateConfig and CrateConfig.Rarities then
             local def = CrateConfig.Rarities[rarity]
-            local w = (def and def.weight) or 0
-            if w > 0 and #weapons > 0 then
-                totalWeight = totalWeight + w
-                table.insert(weightedRarities, { rarity = rarity, cumWeight = totalWeight })
-            end
+            w = (def and def.weight) or 0
+        end
+        if w > 0 and #weapons > 0 then
+            totalWeight = totalWeight + w
+            table.insert(weightedRarities, { rarity = rarity, cumWeight = totalWeight })
         end
     end
 
@@ -615,6 +622,10 @@ function CrateOpeningUI.Init(playerGui)
             -- Update coins
             if coinApi and coinApi.SetCoins and resultData.newBalance then
                 pcall(function() coinApi.SetCoins(resultData.newBalance) end)
+            end
+            -- PREMIUM CRATE / KEY SYSTEM  – update keys display
+            if coinApi and coinApi.SetKeys and resultData.newKeyBalance then
+                pcall(function() coinApi.SetKeys(resultData.newKeyBalance) end)
             end
             pcall(function()
                 if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
