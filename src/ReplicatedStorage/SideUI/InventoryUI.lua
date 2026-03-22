@@ -292,10 +292,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ──────────────────────────────────────────────────────────────────────
     -- Dimensions
     -- ──────────────────────────────────────────────────────────────────────
-    local TAB_W     = px(100)
-    local TAB_GAP   = px(8)
-    local DETAIL_W  = px(210)
-    local GRID_GAP  = px(8)
+    local TAB_W     = px(140)
+    local TAB_GAP   = px(10)
+    local DETAIL_W  = px(315)
+    local GRID_GAP  = px(10)
 
     local screenY   = 1080
     pcall(function()
@@ -534,7 +534,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         btn.AutoButtonColor = false
         btn.BackgroundColor3 = SIDEBAR_BG
         btn.BorderSizePixel = 0
-        btn.Size = UDim2.new(1, -px(2), 0, px(56))
+        btn.Size = UDim2.new(1, -px(4), 0, px(64))
         btn.LayoutOrder = def.order
         btn.Text = ""
         btn.Parent = sidebar
@@ -555,9 +555,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             iconLbl.Font = Enum.Font.GothamBold
             iconLbl.Text = def.icon
             iconLbl.TextColor3 = DIM_TEXT
-            iconLbl.TextSize = math.max(16, math.floor(px(18)))
-            iconLbl.Size = UDim2.new(1, 0, 0, px(22))
-            iconLbl.Position = UDim2.new(0, 0, 0, px(6))
+            iconLbl.TextSize = math.max(18, math.floor(px(22)))
+            iconLbl.Size = UDim2.new(1, 0, 0, px(26))
+            iconLbl.Position = UDim2.new(0, 0, 0, px(8))
             iconLbl.TextXAlignment = Enum.TextXAlignment.Center
         else
             local custom = buildCustomTabIcon(btn, def.id)
@@ -570,9 +570,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         textLbl.Font = Enum.Font.GothamBold
         textLbl.Text = def.label
         textLbl.TextColor3 = DIM_TEXT
-        textLbl.TextSize = math.max(10, math.floor(px(11)))
-        textLbl.Size = UDim2.new(1, -px(4), 0, px(14))
-        textLbl.Position = UDim2.new(0, px(2), 0, px(32))
+        textLbl.TextSize = math.max(12, math.floor(px(13)))
+        textLbl.Size = UDim2.new(1, -px(6), 0, px(16))
+        textLbl.Position = UDim2.new(0, px(3), 0, px(38))
         textLbl.TextXAlignment = Enum.TextXAlignment.Center
 
         local btnStroke = Instance.new("UIStroke", btn)
@@ -614,17 +614,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     Instance.new("UICorner", gridScroll).CornerRadius = UDim.new(0, px(10))
 
     local gridLayout = Instance.new("UIGridLayout", gridScroll)
-    gridLayout.CellSize = UDim2.new(0, px(108), 0, px(126))
-    gridLayout.CellPadding = UDim2.new(0, px(6), 0, px(6))
+    gridLayout.CellSize = UDim2.new(0, px(140), 0, px(158))
+    gridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
     gridLayout.FillDirection = Enum.FillDirection.Horizontal
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
     gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
     local gridPad = Instance.new("UIPadding", gridScroll)
-    gridPad.PaddingTop    = UDim.new(0, px(6))
-    gridPad.PaddingLeft   = UDim.new(0, px(6))
-    gridPad.PaddingRight  = UDim.new(0, px(6))
-    gridPad.PaddingBottom = UDim.new(0, px(6))
+    gridPad.PaddingTop    = UDim.new(0, px(8))
+    gridPad.PaddingLeft   = UDim.new(0, px(8))
+    gridPad.PaddingRight  = UDim.new(0, px(8))
+    gridPad.PaddingBottom = UDim.new(0, px(8))
 
     -- Empty state overlay (shown when a category has no items)
     local emptyState = Instance.new("Frame")
@@ -717,7 +717,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailPlaceholder.Font = Enum.Font.GothamMedium
     detailPlaceholder.Text = "Select a weapon"
     detailPlaceholder.TextColor3 = DIM_TEXT
-    detailPlaceholder.TextSize = px(16)
+    detailPlaceholder.TextSize = px(22)
     detailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
     detailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
     detailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
@@ -737,7 +737,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local detailImageBg = Instance.new("Frame", detailContent)
     detailImageBg.Name = "ImageBg"
     detailImageBg.BackgroundColor3 = RARITY_BG_COLORS.Common
-    detailImageBg.Size = UDim2.new(1, 0, 0, px(140))
+    detailImageBg.Size = UDim2.new(1, 0, 0, px(170))
     Instance.new("UICorner", detailImageBg).CornerRadius = UDim.new(0, px(10))
     local imgBgStroke = Instance.new("UIStroke", detailImageBg)
     imgBgStroke.Color = RARITY_COLORS.Common; imgBgStroke.Thickness = 1.5; imgBgStroke.Transparency = 0.3
@@ -756,10 +756,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailName.BackgroundTransparency = 1
     detailName.Font = Enum.Font.GothamBold
     detailName.TextColor3 = WHITE
-    detailName.TextSize = px(18)
+    detailName.TextSize = px(22)
     detailName.TextXAlignment = Enum.TextXAlignment.Center
-    detailName.Size = UDim2.new(1, 0, 0, px(24))
-    detailName.Position = UDim2.new(0, 0, 0, px(150))
+    detailName.Size = UDim2.new(1, 0, 0, px(28))
+    detailName.Position = UDim2.new(0, 0, 0, px(180))
     detailName.TextTruncate = Enum.TextTruncate.AtEnd
 
     -- Rarity label
@@ -768,10 +768,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailRarity.BackgroundTransparency = 1
     detailRarity.Font = Enum.Font.GothamBold
     detailRarity.TextColor3 = RARITY_COLORS.Common
-    detailRarity.TextSize = px(13)
+    detailRarity.TextSize = px(16)
     detailRarity.TextXAlignment = Enum.TextXAlignment.Center
-    detailRarity.Size = UDim2.new(1, 0, 0, px(18))
-    detailRarity.Position = UDim2.new(0, 0, 0, px(176))
+    detailRarity.Size = UDim2.new(1, 0, 0, px(22))
+    detailRarity.Position = UDim2.new(0, 0, 0, px(212))
 
     -- Weapon type
     local detailType = Instance.new("TextLabel", detailContent)
@@ -779,10 +779,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailType.BackgroundTransparency = 1
     detailType.Font = Enum.Font.GothamMedium
     detailType.TextColor3 = DIM_TEXT
-    detailType.TextSize = px(12)
+    detailType.TextSize = px(14)
     detailType.TextXAlignment = Enum.TextXAlignment.Center
-    detailType.Size = UDim2.new(1, 0, 0, px(16))
-    detailType.Position = UDim2.new(0, 0, 0, px(196))
+    detailType.Size = UDim2.new(1, 0, 0, px(18))
+    detailType.Position = UDim2.new(0, 0, 0, px(238))
 
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
@@ -790,10 +790,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailInstanceId.BackgroundTransparency = 1
     detailInstanceId.Font = Enum.Font.Code
     detailInstanceId.TextColor3 = DIM_TEXT
-    detailInstanceId.TextSize = px(9)
+    detailInstanceId.TextSize = px(10)
     detailInstanceId.TextXAlignment = Enum.TextXAlignment.Center
-    detailInstanceId.Size = UDim2.new(1, 0, 0, px(14))
-    detailInstanceId.Position = UDim2.new(0, 0, 0, px(214))
+    detailInstanceId.Size = UDim2.new(1, 0, 0, px(16))
+    detailInstanceId.Position = UDim2.new(0, 0, 0, px(258))
     detailInstanceId.Visible = false
 
     -- Equip button (only place weapons can be equipped)
@@ -804,8 +804,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEquipBtn.Font = Enum.Font.GothamBold
     detailEquipBtn.Text = "EQUIP"
     detailEquipBtn.TextColor3 = WHITE
-    detailEquipBtn.TextSize = px(15)
-    detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(42))
+    detailEquipBtn.TextSize = px(18)
+    detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(46))
     detailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
     detailEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
     Instance.new("UICorner", detailEquipBtn).CornerRadius = UDim.new(0, px(10))
@@ -950,9 +950,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.TextColor3 = WHITE
-        nameLabel.TextSize = math.max(10, math.floor(px(11)))
-        nameLabel.Size = UDim2.new(1, -px(8), 0, px(16))
-        nameLabel.Position = UDim2.new(0, px(4), 0, px(4))
+        nameLabel.TextSize = math.max(12, math.floor(px(13)))
+        nameLabel.Size = UDim2.new(1, -px(10), 0, px(20))
+        nameLabel.Position = UDim2.new(0, px(5), 0, px(5))
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
         nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
         nameLabel.Text = itemData.name
@@ -965,9 +965,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             math.clamp(rarBg.G * 0.65, 0, 1),
             math.clamp(rarBg.B * 0.65, 0, 1)
         )
-        iconBg.Size = UDim2.new(0, px(66), 0, px(66))
+        iconBg.Size = UDim2.new(0, px(88), 0, px(88))
         iconBg.AnchorPoint = Vector2.new(0.5, 0)
-        iconBg.Position = UDim2.new(0.5, 0, 0, px(22))
+        iconBg.Position = UDim2.new(0.5, 0, 0, px(26))
         Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, px(6))
 
         local thumb = Instance.new("ImageLabel", iconBg)
@@ -991,8 +991,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         rarLabel.BackgroundTransparency = 1
         rarLabel.Font = Enum.Font.GothamBold
         rarLabel.TextColor3 = rarColor
-        rarLabel.TextSize = math.max(8, math.floor(px(9)))
-        rarLabel.Size = UDim2.new(1, 0, 0, px(12))
+        rarLabel.TextSize = math.max(10, math.floor(px(11)))
+        rarLabel.Size = UDim2.new(1, 0, 0, px(14))
         rarLabel.AnchorPoint = Vector2.new(0, 1)
         rarLabel.Position = UDim2.new(0, 0, 1, -px(15))
         rarLabel.TextXAlignment = Enum.TextXAlignment.Center
