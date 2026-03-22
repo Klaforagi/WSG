@@ -361,7 +361,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function classifyItem(name)
         if not name then return "Ranged" end
         local key = tostring(name):lower()
-        if key == "stick" then return "Melee" end
+        if key == "stick" or key == "starter sword" then return "Melee" end
         if meleePresets  and meleePresets[key]  then return "Melee" end
         if rangedPresets and rangedPresets[key] then return "Ranged" end
         return "Ranged"
@@ -385,7 +385,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local normalized = {}
         for _, id in ipairs(items) do
             if type(id) == "string" and tostring(id):lower() == "stick" then
-                table.insert(normalized, "Wooden Sword")
+                table.insert(normalized, "Starter Sword")
             else
                 table.insert(normalized, id)
             end
@@ -427,6 +427,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 isInstance = true,
                 instanceId = instanceId,
                 weaponName = data.weaponName,
+                source     = data.source,
+                favorited  = data.favorited == true,
             })
         end
     end
@@ -434,7 +436,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ──────────────────────────────────────────────────────────────────────
     -- Equipped state (authoritative from hotbar / server loadout)
     -- ──────────────────────────────────────────────────────────────────────
-    local equippedState = { Melee = "Wooden Sword", Ranged = "Slingshot" }
+    local equippedState = { Melee = "Starter Sword", Ranged = "Starter Slingshot" }
     do
         local player = Players.LocalPlayer
         local found  = { Melee = nil, Ranged = nil }
@@ -479,11 +481,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local cat   = itemData.category
         local eqVal = equippedState[cat]
         if eqVal == nil then return false end
+        -- Direct id match (works for both instance and non-instance items)
         if eqVal == itemData.id then return true end
+        -- Instance item: equipped state may hold the weapon name instead of instanceId
         if itemData.weaponName and itemData.weaponName == eqVal then
             equippedState[cat] = itemData.id
             return true
         end
+        -- Non-instance item: equipped state may hold the tool name that matches our name
+        if not itemData.isInstance and itemData.name == eqVal then return true end
         return false
     end
 
@@ -812,6 +818,126 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local equipStroke = Instance.new("UIStroke", detailEquipBtn)
     equipStroke.Color = BTN_STROKE_C; equipStroke.Thickness = 1.4; equipStroke.Transparency = 0.25
 
+    -- Action buttons row (Favorite + Discard) above equip button
+    local actionRow = Instance.new("Frame", detailContent)
+    actionRow.Name = "ActionRow"
+    actionRow.BackgroundTransparency = 1
+    actionRow.Size = UDim2.new(0.88, 0, 0, px(38))
+    actionRow.AnchorPoint = Vector2.new(0.5, 1)
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(52))
+
+    -- Favorite button (yellow star)
+    local FAV_YELLOW = Color3.fromRGB(255, 210, 50)
+    local FAV_DIM    = Color3.fromRGB(100, 100, 120)
+
+    local favBtn = Instance.new("TextButton", actionRow)
+    favBtn.Name = "FavoriteBtn"
+    favBtn.AutoButtonColor = false
+    favBtn.BackgroundColor3 = Color3.fromRGB(36, 38, 56)
+    favBtn.Font = Enum.Font.GothamBold
+    favBtn.Text = "\u{2606}"  -- empty star ☆
+    favBtn.TextColor3 = FAV_DIM
+    favBtn.TextSize = px(20)
+    favBtn.Size = UDim2.new(0.48, 0, 1, 0)
+    favBtn.Position = UDim2.new(0, 0, 0, 0)
+    Instance.new("UICorner", favBtn).CornerRadius = UDim.new(0, px(8))
+    local favStroke = Instance.new("UIStroke", favBtn)
+    favStroke.Color = FAV_DIM; favStroke.Thickness = 1.2; favStroke.Transparency = 0.3
+
+    -- Discard button (red)
+    local DISCARD_RED  = Color3.fromRGB(220, 60, 60)
+    local DISCARD_BG   = Color3.fromRGB(56, 28, 28)
+    local DISCARD_DIM  = Color3.fromRGB(100, 60, 60)
+
+    local discardBtn = Instance.new("TextButton", actionRow)
+    discardBtn.Name = "DiscardBtn"
+    discardBtn.AutoButtonColor = false
+    discardBtn.BackgroundColor3 = DISCARD_BG
+    discardBtn.Font = Enum.Font.GothamBold
+    discardBtn.Text = "DISCARD"
+    discardBtn.TextColor3 = DISCARD_RED
+    discardBtn.TextSize = px(14)
+    discardBtn.Size = UDim2.new(0.48, 0, 1, 0)
+    discardBtn.AnchorPoint = Vector2.new(1, 0)
+    discardBtn.Position = UDim2.new(1, 0, 0, 0)
+    Instance.new("UICorner", discardBtn).CornerRadius = UDim.new(0, px(8))
+    local discardStroke = Instance.new("UIStroke", discardBtn)
+    discardStroke.Color = DISCARD_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
+
+    -- Discard confirmation overlay
+    local confirmOverlay = Instance.new("Frame", detailsPanel)
+    confirmOverlay.Name = "ConfirmOverlay"
+    confirmOverlay.BackgroundColor3 = Color3.fromRGB(10, 10, 26)
+    confirmOverlay.BackgroundTransparency = 0.08
+    confirmOverlay.Size = UDim2.new(1, 0, 1, 0)
+    confirmOverlay.ZIndex = 50
+    confirmOverlay.Visible = false
+    Instance.new("UICorner", confirmOverlay).CornerRadius = UDim.new(0, px(12))
+
+    local confirmBox = Instance.new("Frame", confirmOverlay)
+    confirmBox.Name = "ConfirmBox"
+    confirmBox.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
+    confirmBox.Size = UDim2.new(0.88, 0, 0, px(160))
+    confirmBox.AnchorPoint = Vector2.new(0.5, 0.5)
+    confirmBox.Position = UDim2.new(0.5, 0, 0.5, 0)
+    confirmBox.ZIndex = 51
+    Instance.new("UICorner", confirmBox).CornerRadius = UDim.new(0, px(10))
+    local cbStroke = Instance.new("UIStroke", confirmBox)
+    cbStroke.Color = DISCARD_RED; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
+
+    local confirmTitle = Instance.new("TextLabel", confirmBox)
+    confirmTitle.BackgroundTransparency = 1
+    confirmTitle.Font = Enum.Font.GothamBold
+    confirmTitle.Text = "Discard Weapon?"
+    confirmTitle.TextColor3 = DISCARD_RED
+    confirmTitle.TextSize = px(18)
+    confirmTitle.Size = UDim2.new(1, 0, 0, px(28))
+    confirmTitle.Position = UDim2.new(0, 0, 0, px(16))
+    confirmTitle.TextXAlignment = Enum.TextXAlignment.Center
+    confirmTitle.ZIndex = 52
+
+    local confirmDesc = Instance.new("TextLabel", confirmBox)
+    confirmDesc.Name = "Desc"
+    confirmDesc.BackgroundTransparency = 1
+    confirmDesc.Font = Enum.Font.GothamMedium
+    confirmDesc.Text = "This action cannot be undone."
+    confirmDesc.TextColor3 = DIM_TEXT
+    confirmDesc.TextSize = px(14)
+    confirmDesc.TextWrapped = true
+    confirmDesc.Size = UDim2.new(0.85, 0, 0, px(36))
+    confirmDesc.AnchorPoint = Vector2.new(0.5, 0)
+    confirmDesc.Position = UDim2.new(0.5, 0, 0, px(48))
+    confirmDesc.TextXAlignment = Enum.TextXAlignment.Center
+    confirmDesc.ZIndex = 52
+
+    local confirmYes = Instance.new("TextButton", confirmBox)
+    confirmYes.Name = "YesBtn"
+    confirmYes.AutoButtonColor = false
+    confirmYes.BackgroundColor3 = DISCARD_RED
+    confirmYes.Font = Enum.Font.GothamBold
+    confirmYes.Text = "YES, DISCARD"
+    confirmYes.TextColor3 = WHITE
+    confirmYes.TextSize = px(14)
+    confirmYes.Size = UDim2.new(0.42, 0, 0, px(36))
+    confirmYes.AnchorPoint = Vector2.new(0, 1)
+    confirmYes.Position = UDim2.new(0.06, 0, 1, -px(14))
+    confirmYes.ZIndex = 52
+    Instance.new("UICorner", confirmYes).CornerRadius = UDim.new(0, px(8))
+
+    local confirmNo = Instance.new("TextButton", confirmBox)
+    confirmNo.Name = "NoBtn"
+    confirmNo.AutoButtonColor = false
+    confirmNo.BackgroundColor3 = BTN_BG
+    confirmNo.Font = Enum.Font.GothamBold
+    confirmNo.Text = "CANCEL"
+    confirmNo.TextColor3 = WHITE
+    confirmNo.TextSize = px(14)
+    confirmNo.Size = UDim2.new(0.42, 0, 0, px(36))
+    confirmNo.AnchorPoint = Vector2.new(1, 1)
+    confirmNo.Position = UDim2.new(0.94, 0, 1, -px(14))
+    confirmNo.ZIndex = 52
+    Instance.new("UICorner", confirmNo).CornerRadius = UDim.new(0, px(8))
+
     -- ══════════════════════════════════════════════════════════════════════
     --  SELECTION & EQUIP STATE
     -- ══════════════════════════════════════════════════════════════════════
@@ -822,12 +948,42 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     ---------------------------------------------------------------------------
     -- updateEquipButton(itemData)
     ---------------------------------------------------------------------------
+    local function updateActionButtons(itemData)
+        -- Favorite & Discard visibility: hide for starter/non-instance weapons
+        local isStarter = itemData and itemData.source == "Starter"
+        local isInstance = itemData and itemData.isInstance
+        local showActions = itemData and isInstance and not isStarter
+
+        actionRow.Visible = showActions == true
+        favBtn.Visible = showActions == true
+        discardBtn.Visible = showActions == true
+
+        if itemData and showActions then
+            local fav = itemData.favorited == true
+            favBtn.Text = fav and "\u{2605}" or "\u{2606}" -- ★ or ☆
+            favBtn.TextColor3 = fav and FAV_YELLOW or FAV_DIM
+            favStroke.Color = fav and FAV_YELLOW or FAV_DIM
+        end
+
+        -- Don't allow discarding the currently equipped weapon
+        if itemData and isItemEquipped(itemData) then
+            discardBtn.BackgroundColor3 = DISABLED_BG
+            discardBtn.TextColor3 = DIM_TEXT
+            discardStroke.Color = DIM_TEXT
+        else
+            discardBtn.BackgroundColor3 = DISCARD_BG
+            discardBtn.TextColor3 = DISCARD_RED
+            discardStroke.Color = DISCARD_DIM
+        end
+    end
+
     local function updateEquipButton(itemData)
         if not itemData then
             detailEquipBtn.Text = "EQUIP"
             detailEquipBtn.BackgroundColor3 = DISABLED_BG
             detailEquipBtn.TextColor3 = DIM_TEXT
             equipStroke.Color = CARD_STROKE
+            actionRow.Visible = false
             return
         end
         if isItemEquipped(itemData) then
@@ -843,6 +999,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             equipStroke.Color = BTN_STROKE_C
             equipStroke.Transparency = 0.25
         end
+        updateActionButtons(itemData)
     end
 
     ---------------------------------------------------------------------------
@@ -853,10 +1010,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local equipped = isItemEquipped(ref.itemData)
             local bar = ref.card:FindFirstChild("EquippedBar")
             if bar then bar.Visible = equipped end
-            if equipped then
-                ref.card.BackgroundColor3 = CARD_EQUIPPED
-            else
-                ref.card.BackgroundColor3 = getRarityBgColor(ref.itemData.rarity)
+            -- No green background for equipped items; always use rarity bg
+            ref.card.BackgroundColor3 = getRarityBgColor(ref.itemData.rarity)
+            -- Update stroke: keep gold for the currently selected card,
+            -- green for equipped, otherwise rarity color
+            local isSelected = selectedItem and selectedItem.id == ref.itemData.id
+            if not isSelected then
+                ref.stroke.Color = equipped and GREEN_GLOW or getRarityColor(ref.itemData.rarity)
+                ref.stroke.Thickness = 1.4
             end
         end
     end
@@ -872,6 +1033,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local eq = isItemEquipped(selectedItem)
                 oldRef.stroke.Color = eq and GREEN_GLOW or getRarityColor(selectedItem.rarity)
                 oldRef.stroke.Thickness = 1.4
+                oldRef.card.BackgroundColor3 = getRarityBgColor(selectedItem.rarity)
             end
         end
 
@@ -935,7 +1097,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local card = Instance.new("Frame")
         card.Name = "Card_" .. tostring(itemData.id)
-        card.BackgroundColor3 = equipped and CARD_EQUIPPED or rarBg
+        card.BackgroundColor3 = rarBg
         card.Size = UDim2.new(1, 0, 1, 0)
         card.ClipsDescendants = true
         Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(8))
@@ -1008,6 +1170,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         eqBar.BorderSizePixel = 0; eqBar.ZIndex = 5
         eqBar.Visible = equipped
 
+        -- Favorite star indicator (top-right corner)
+        if itemData.favorited == true then
+            local favStar = Instance.new("TextLabel", card)
+            favStar.Name = "FavStar"
+            favStar.BackgroundTransparency = 1
+            favStar.Font = Enum.Font.GothamBold
+            favStar.Text = "\u{2605}"  -- ★
+            favStar.TextColor3 = Color3.fromRGB(255, 210, 50)
+            favStar.TextSize = math.max(12, math.floor(px(14)))
+            favStar.Size = UDim2.new(0, px(18), 0, px(18))
+            favStar.AnchorPoint = Vector2.new(1, 0)
+            favStar.Position = UDim2.new(1, -px(4), 0, px(4))
+            favStar.ZIndex = 8
+        end
+
         -- Store ref
         allCardRefs[itemData.id] = { card = card, stroke = stroke, itemData = itemData }
 
@@ -1034,9 +1211,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
         clickBtn.MouseLeave:Connect(function()
             if not selectedItem or selectedItem.id ~= itemData.id then
-                local eq = isItemEquipped(itemData)
                 TweenService:Create(card, TWEEN_QUICK, {
-                    BackgroundColor3 = eq and CARD_EQUIPPED or rarBg
+                    BackgroundColor3 = rarBg
                 }):Play()
             end
         end)
@@ -1066,6 +1242,24 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end
 
+        -- Sort: favorited first, then rarity (rarest first), alphabetical, Starter last
+        local rarityPriority = { Legendary = 1, Epic = 2, Rare = 3, Common = 4, Starter = 5 }
+        table.sort(filtered, function(a, b)
+            -- Starter weapons always go to the very end
+            local aStarter = (a.source == "Starter") and 1 or 0
+            local bStarter = (b.source == "Starter") and 1 or 0
+            if aStarter ~= bStarter then return aStarter < bStarter end
+            -- Favorited items come first
+            local aFav = (a.favorited == true) and 0 or 1
+            local bFav = (b.favorited == true) and 0 or 1
+            if aFav ~= bFav then return aFav < bFav end
+            -- Then by rarity
+            local pa = rarityPriority[a.rarity] or 4
+            local pb = rarityPriority[b.rarity] or 4
+            if pa ~= pb then return pa < pb end
+            return a.name < b.name
+        end)
+
         if #filtered == 0 then
             gridScroll.Visible = false
             emptyState.Visible = true
@@ -1092,6 +1286,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 updateEquipButton(selectedItem)
             else
                 setSelectedItem(nil)
+            end
+        end
+
+        -- Auto-select the equipped item if nothing is selected
+        if not selectedItem then
+            for _, item in ipairs(filtered) do
+                if isItemEquipped(item) then
+                    setSelectedItem(item)
+                    break
+                end
             end
         end
 
@@ -1157,6 +1361,110 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if selectedItem and not isItemEquipped(selectedItem) then
             TweenService:Create(detailEquipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
         end
+    end)
+
+    ---------------------------------------------------------------------------
+    -- Favorite button handler
+    ---------------------------------------------------------------------------
+    favBtn.MouseButton1Click:Connect(function()
+        if not selectedItem then return end
+        if not selectedItem.isInstance then return end
+        if selectedItem.source == "Starter" then return end
+
+        local instanceId = selectedItem.instanceId
+        if not instanceId then return end
+
+        local favoriteRF = ReplicatedStorage:FindFirstChild("FavoriteWeapon")
+        if not favoriteRF or not favoriteRF:IsA("RemoteFunction") then return end
+
+        local ok, newState = pcall(function()
+            return favoriteRF:InvokeServer(instanceId)
+        end)
+
+        if ok then
+            -- Update local item data
+            selectedItem.favorited = (newState == true)
+            -- Update the item in allWeaponItems too
+            for _, item in ipairs(allWeaponItems) do
+                if item.instanceId == instanceId then
+                    item.favorited = selectedItem.favorited
+                    break
+                end
+            end
+            -- Update button visual
+            updateActionButtons(selectedItem)
+            -- Re-render grid to reflect new sort order
+            renderCategory(currentWeaponCategory)
+        end
+    end)
+
+    favBtn.MouseEnter:Connect(function()
+        TweenService:Create(favBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(50, 52, 72)}):Play()
+    end)
+    favBtn.MouseLeave:Connect(function()
+        TweenService:Create(favBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(36, 38, 56)}):Play()
+    end)
+
+    ---------------------------------------------------------------------------
+    -- Discard button handler  (opens confirmation prompt)
+    ---------------------------------------------------------------------------
+    local discardTarget = nil
+
+    discardBtn.MouseButton1Click:Connect(function()
+        if not selectedItem then return end
+        if not selectedItem.isInstance then return end
+        if selectedItem.source == "Starter" then return end
+        if isItemEquipped(selectedItem) then return end
+
+        discardTarget = selectedItem
+        confirmDesc.Text = 'Discard "' .. (selectedItem.name or "?") .. '"?\nThis action cannot be undone.'
+        confirmOverlay.Visible = true
+    end)
+
+    discardBtn.MouseEnter:Connect(function()
+        if selectedItem and not isItemEquipped(selectedItem) and selectedItem.source ~= "Starter" then
+            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(76, 32, 32)}):Play()
+        end
+    end)
+    discardBtn.MouseLeave:Connect(function()
+        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = DISCARD_BG}):Play()
+    end)
+
+    confirmNo.MouseButton1Click:Connect(function()
+        confirmOverlay.Visible = false
+        discardTarget = nil
+    end)
+
+    confirmYes.MouseButton1Click:Connect(function()
+        confirmOverlay.Visible = false
+        if not discardTarget then return end
+
+        local instanceId = discardTarget.instanceId
+        local cat = discardTarget.category
+        if not instanceId then discardTarget = nil return end
+
+        local discardRF = ReplicatedStorage:FindFirstChild("DiscardWeapon")
+        if not discardRF or not discardRF:IsA("RemoteFunction") then discardTarget = nil return end
+
+        local ok, success = pcall(function()
+            return discardRF:InvokeServer(instanceId)
+        end)
+
+        if ok and success then
+            -- Remove from local allWeaponItems
+            for i, item in ipairs(allWeaponItems) do
+                if item.instanceId == instanceId then
+                    table.remove(allWeaponItems, i)
+                    break
+                end
+            end
+            -- Clear selection
+            setSelectedItem(nil)
+            -- Re-render
+            renderCategory(currentWeaponCategory)
+        end
+
+        discardTarget = nil
     end)
 
     -- ══════════════════════════════════════════════════════════════════════

@@ -22,8 +22,8 @@ local GAMEPASS_ID = 0 -- ← replace with your real Game Pass ID
 
 -- Which tools to give every player on spawn (path inside ServerStorage.Tools)
 local DEFAULT_LOADOUT = {
-    { folder = "Melee",  toolName = "Wooden Sword" },
-    { folder = "Ranged", toolName = "Slingshot"   },
+    { folder = "Melee",  toolName = "Starter Sword" },
+    { folder = "Ranged", toolName = "Starter Slingshot" },
 }
 
 -- Optional: tool to give when the special slot is unlocked
@@ -242,6 +242,9 @@ end
 -- Price table lives here so the client can never cheat.
 --------------------------------------------------------------------------------
 local PRICES = {
+    -- Starters (free, everyone gets one instance)
+    ["Starter Sword"]     = 0,
+    ["Starter Slingshot"] = 0,
     -- Melee
     ["Wooden Sword"] = 0,
     Dagger  = 30,

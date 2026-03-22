@@ -21,6 +21,7 @@ AssetCodes.images = {
     --WEAPON icons
     --MELEE
     ["Wooden Sword"] = "rbxassetid://42901975",
+    ["Starter Sword"] = "rbxassetid://42901975",
     Dagger = "rbxassetid://949752421",
     Sword = "rbxassetid://10123421106",
     Spear = "rbxassetid://139656815",
@@ -30,6 +31,7 @@ AssetCodes.images = {
 
     --RANGED
     Slingshot = "rbxassetid://5830603041",
+    ["Starter Slingshot"] = "rbxassetid://5830603041",
     Shortbow = "rbxassetid://15950019592",
     Longbow = "rbxassetid://13303448470",
     Xbow = "rbxassetid://87445004842826",

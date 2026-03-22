@@ -882,15 +882,13 @@ do
     end
 end
 
--- preload Slingshot into the client inventory so player has ranged start
-pcall(function() Inventory:AddItem("Slingshot") end)
--- preload Wooden Sword so it shows as OWNED in the Shop (free starter melee)
-pcall(function() Inventory:AddItem("Wooden Sword") end)
+-- Starter weapons are granted as instances with IDs by the server (CrateServiceInit),
+-- so no need to preload plain items here.
 
 -- Fetch saved loadout from server so inventory shows the correct equipped state
 do
-    local savedMelee = "Wooden Sword"
-    local savedRanged = "Slingshot"
+    local savedMelee = "Starter Sword"
+    local savedRanged = "Starter Slingshot"
     pcall(function()
         local rs = game:GetService("ReplicatedStorage")
         local rf = rs:WaitForChild("GetLoadout", 5)

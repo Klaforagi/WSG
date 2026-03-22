@@ -196,4 +196,12 @@ function WeaponInstanceService:GetByCategory(player, category)
     return results
 end
 
+--- Toggle or set the favorited flag on a weapon instance. Returns the new state.
+function WeaponInstanceService:SetFavorite(player, instanceId, state)
+    local inv = playerInventories[player]
+    if not inv or not inv[instanceId] then return false end
+    inv[instanceId].favorited = (state == true)
+    return inv[instanceId].favorited
+end
+
 return WeaponInstanceService

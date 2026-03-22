@@ -66,19 +66,63 @@ local function rarityColor(rarity)
 end
 
 --------------------------------------------------------------------------------
--- Build a randomized strip of weapon cards with the winner at WINNING_INDEX
+-- Build a randomized strip of weapon cards with the winner at WINNING_INDEX.
+-- Cards are chosen using weighted rarity selection so the visual strip
+-- reflects actual drop rates from CrateConfig.Rarities.
 --------------------------------------------------------------------------------
 local function buildStrip(crateDef, wonWeapon, wonRarity)
     local pool = crateDef.pool or {}
     if #pool == 0 then return {} end
+
+    -- Group weapons by rarity
+    local byRarity = {}
+    for _, entry in ipairs(pool) do
+        if not byRarity[entry.rarity] then
+            byRarity[entry.rarity] = {}
+        end
+        table.insert(byRarity[entry.rarity], entry.weapon)
+    end
+
+    -- Build weighted rarity list from config (only rarities present in pool)
+    local weightedRarities = {}  -- { {rarity, cumWeight} }
+    local totalWeight = 0
+    if CrateConfig and CrateConfig.Rarities then
+        for rarity, weapons in pairs(byRarity) do
+            local def = CrateConfig.Rarities[rarity]
+            local w = (def and def.weight) or 0
+            if w > 0 and #weapons > 0 then
+                totalWeight = totalWeight + w
+                table.insert(weightedRarities, { rarity = rarity, cumWeight = totalWeight })
+            end
+        end
+    end
+
+    -- Fallback: if no valid weights, pick uniformly from pool
+    local function pickWeighted()
+        if totalWeight <= 0 or #weightedRarities == 0 then
+            local p = pool[math.random(1, #pool)]
+            return p.weapon, p.rarity
+        end
+        local roll = math.random() * totalWeight
+        for _, entry in ipairs(weightedRarities) do
+            if roll <= entry.cumWeight then
+                local weapons = byRarity[entry.rarity]
+                return weapons[math.random(1, #weapons)], entry.rarity
+            end
+        end
+        -- Shouldn't reach here, but fallback to last rarity
+        local last = weightedRarities[#weightedRarities]
+        local weapons = byRarity[last.rarity]
+        return weapons[math.random(1, #weapons)], last.rarity
+    end
 
     local strip = {}
     for i = 1, STRIP_CARDS do
         if i == WINNING_INDEX then
             table.insert(strip, { weapon = wonWeapon, rarity = wonRarity, isWinner = true })
         else
-            local pick = pool[math.random(1, #pool)]
-            table.insert(strip, { weapon = pick.weapon, rarity = pick.rarity, isWinner = false })
+            local wep, rar = pickWeighted()
+            table.insert(strip, { weapon = wep, rarity = rar, isWinner = false })
         end
     end
     return strip
@@ -490,15 +534,56 @@ function CrateOpeningUI.Init(playerGui)
             print("[CrateDebug] after reposition: startOffset =", startOffset, "delta2 =", delta2, "targetOffset =", targetOffset)
         end
 
+        -- Locate tick sound in ReplicatedStorage.Sounds
+        local tickSound = nil
+        pcall(function()
+            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+            if soundsFolder then
+                tickSound = soundsFolder:FindFirstChild("Tick")
+            end
+        end)
+
         -- Animate: ease-out quint for deceleration feel
         local spinDuration = 3.5
         local tweenInfo = TweenInfo.new(spinDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
         activeTween = TweenService:Create(strip, tweenInfo, {
             Position = UDim2.new(0, targetOffset, 0, 0)
         })
+
+        -- Per-frame tick: play sound each time a new card crosses the center marker
+        local lastCardIndex = -1
+        local tickConn = nil
+        local cardStep = px(CARD_W) + px(CARD_GAP)
+        tickConn = RunService.Heartbeat:Connect(function()
+            local currentOffset2 = strip.Position.X.Offset
+            -- How far the strip has scrolled left from start
+            local scrolled = startOffset - currentOffset2
+            -- markerCenterX is at screen center; cards start at scrollClip left edge + strip offset
+            -- Determine which card index is currently under the marker
+            local markerLocal = markerCenterX - scrollClip.AbsolutePosition.X - currentOffset2
+            local idx = math.floor(markerLocal / cardStep) + 1
+            if idx ~= lastCardIndex and idx >= 1 and idx <= STRIP_CARDS then
+                lastCardIndex = idx
+                if tickSound and tickSound:IsA("Sound") then
+                    local s = tickSound:Clone()
+                    s.Parent = tickSound.Parent
+                    s:Play()
+                    -- Clean up after playing
+                    s.Ended:Once(function()
+                        pcall(function() s:Destroy() end)
+                    end)
+                end
+            end
+        end)
+
         activeTween:Play()
 
         completedConn = activeTween.Completed:Once(function()
+            -- Disconnect tick listener
+            if tickConn then
+                tickConn:Disconnect()
+                tickConn = nil
+            end
             activeTween = nil
             completedConn = nil
 

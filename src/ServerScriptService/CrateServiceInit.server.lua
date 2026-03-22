@@ -35,8 +35,10 @@ local function getOrCreateRE(name)
     return re
 end
 
-local openCrateRF       = getOrCreateRF("OpenCrate")
-local getWeaponInvRF    = getOrCreateRF("GetWeaponInventory")
+local openCrateRF        = getOrCreateRF("OpenCrate")
+local getWeaponInvRF     = getOrCreateRF("GetWeaponInventory")
+local favoriteWeaponRF   = getOrCreateRF("FavoriteWeapon")
+local discardWeaponRF    = getOrCreateRF("DiscardWeapon")
 local weaponInvUpdatedRE = getOrCreateRE("WeaponInventoryUpdated")
 
 --------------------------------------------------------------------------------
@@ -75,11 +77,57 @@ getWeaponInvRF.OnServerInvoke = function(player)
     return WeaponInstanceService:GetInventory(player)
 end
 
+-- FavoriteWeapon: client toggles the favorite flag on a weapon instance
+favoriteWeaponRF.OnServerInvoke = function(player, instanceId)
+    if type(instanceId) ~= "string" then return false end
+    local inst = WeaponInstanceService:GetInstance(player, instanceId)
+    if not inst then return false end
+    local newState = not (inst.favorited == true)
+    WeaponInstanceService:SetFavorite(player, instanceId, newState)
+    WeaponInstanceService:SaveForPlayer(player)
+    return newState
+end
+
+-- DiscardWeapon: client requests to delete a weapon instance
+discardWeaponRF.OnServerInvoke = function(player, instanceId)
+    if type(instanceId) ~= "string" then return false, "Invalid ID" end
+    local inst = WeaponInstanceService:GetInstance(player, instanceId)
+    if not inst then return false, "Weapon not found" end
+    -- Prevent discarding starter weapons
+    if inst.source == "Starter" then return false, "Cannot discard starter weapons" end
+    WeaponInstanceService:RemoveInstance(player, instanceId)
+    WeaponInstanceService:SaveForPlayer(player)
+    -- Notify client of inventory change
+    pcall(function()
+        weaponInvUpdatedRE:FireClient(player, WeaponInstanceService:GetInventory(player))
+    end)
+    return true, "Discarded"
+end
+
 --------------------------------------------------------------------------------
 -- PLAYER LIFECYCLE
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
     WeaponInstanceService:LoadForPlayer(player)
+
+    -- Grant starter weapon instances if player doesn't already have them
+    local STARTERS = {
+        { weaponName = "Starter Sword",      category = "Melee"  },
+        { weaponName = "Starter Slingshot",   category = "Ranged" },
+    }
+    for _, starter in ipairs(STARTERS) do
+        if WeaponInstanceService:CountWeapon(player, starter.weaponName) == 0 then
+            WeaponInstanceService:CreateInstance(
+                player,
+                starter.weaponName,
+                "Common",
+                starter.category,
+                "Starter"
+            )
+        end
+    end
+    WeaponInstanceService:SaveForPlayer(player)
+
     -- Send initial inventory to client
     pcall(function()
         weaponInvUpdatedRE:FireClient(player, WeaponInstanceService:GetInventory(player))

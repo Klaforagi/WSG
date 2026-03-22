@@ -11,8 +11,8 @@ local CrateConfig = {}
 -- RARITY DEFINITIONS  (color, weight, display label)
 --------------------------------------------------------------------------------
 CrateConfig.Rarities = {
-    Common    = { weight = 90, color = Color3.fromRGB(180, 180, 180), label = "Common"    },
-    Rare      = { weight = 10, color = Color3.fromRGB(60, 140, 255),  label = "Rare"      },
+    Common    = { weight = 75, color = Color3.fromRGB(180, 180, 180), label = "Common"    },
+    Rare      = { weight = 25, color = Color3.fromRGB(60, 140, 255),  label = "Rare"      },
     Epic      = { weight = 0,  color = Color3.fromRGB(180, 60, 255),  label = "Epic"      },
     Legendary = { weight = 0,  color = Color3.fromRGB(255, 180, 30),  label = "Legendary" },
 }
