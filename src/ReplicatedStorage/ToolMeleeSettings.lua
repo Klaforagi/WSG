@@ -3,6 +3,25 @@
 -- e.g. ToolBat or Bat → "bat", ToolSword or Sword → "sword"
 
 local presets = {
+    ["starter sword"] = {
+        damage          = 15,
+        cd              = 0.45,
+        knockback       = 15,
+        hitboxDelay     = 0.27,
+        hitboxActive    = 0.1,
+        showHitbox      = false,
+        hitboxColor     = Color3.fromRGB(255, 100, 50),
+        hitboxSize      = Vector3.new(4, 10, 4),
+        hitboxOffset    = Vector3.new(1, 0, 3.5),
+        swing_anim_id   = "126350429326127",
+        swing_anim_ids  = {
+            "126350429326127",
+            "113012516512867",
+            "105219374085984",
+        },
+        swing_sound     = "SwordSwing",
+        hit_sound       = "SwordHit",
+    },
     ["wooden sword"] = {
         damage          = 15,
         cd              = 0.45,   -- seconds between swings

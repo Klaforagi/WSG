@@ -112,3 +112,42 @@ addCoinsRemote.OnServerEvent:Connect(function(player, amount)
 end)
 
 print("[DevTools] Ready — ReplicatedStorage.Remotes.RequestAddCoins is live")
+
+--------------------------------------------------------------------------------
+-- PREMIUM CRATE / KEY SYSTEM  – Dev command: grant Keys for testing
+-- RemoteEvent: ReplicatedStorage.Remotes.RequestAddKeys
+-- Client fires with (amount), server grants keys. Same IsStudio guard on client.
+-- TO REMOVE LATER: delete this entire section.
+--------------------------------------------------------------------------------
+local addKeysRemote = remotesFolder:FindFirstChild("RequestAddKeys")
+if not addKeysRemote then
+    addKeysRemote = Instance.new("RemoteEvent")
+    addKeysRemote.Name = "RequestAddKeys"
+    addKeysRemote.Parent = remotesFolder
+    print("[DevTools] RequestAddKeys CREATED")
+end
+
+addKeysRemote.OnServerEvent:Connect(function(player, amount)
+    amount = tonumber(amount) or 5
+    if amount <= 0 or amount > 100 then return end
+    print("[DevTools] PREMIUM CRATE / KEY SYSTEM:", player.Name, "requested +" .. amount .. " keys")
+
+    if CurrencyService and type(CurrencyService.AddKeys) == "function" then
+        local oldKeys = 0
+        pcall(function() oldKeys = CurrencyService:GetKeys(player) end)
+        local ok, err = pcall(function()
+            CurrencyService:AddKeys(player, amount)
+        end)
+        if ok then
+            local newKeys = 0
+            pcall(function() newKeys = CurrencyService:GetKeys(player) end)
+            print("[DevTools] CurrencyService:AddKeys OK | old:", oldKeys, "| new:", newKeys)
+        else
+            warn("[DevTools] CurrencyService:AddKeys error:", tostring(err))
+        end
+    else
+        warn("[DevTools] CurrencyService:AddKeys not available")
+    end
+end)
+
+print("[DevTools] PREMIUM CRATE / KEY SYSTEM — RequestAddKeys is live")

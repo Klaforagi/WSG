@@ -11,6 +11,9 @@ local Players            = game:GetService("Players")
 local ServerStorage      = game:GetService("ServerStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local DataStoreService   = game:GetService("DataStoreService")
+
+local loadoutStore = DataStoreService:GetDataStore("Loadout_v1")
 
 --------------------------------------------------------------------------------
 -- CONFIG
@@ -19,8 +22,8 @@ local GAMEPASS_ID = 0 -- ← replace with your real Game Pass ID
 
 -- Which tools to give every player on spawn (path inside ServerStorage.Tools)
 local DEFAULT_LOADOUT = {
-    { folder = "Melee",  toolName = "Wooden Sword" },
-    { folder = "Ranged", toolName = "Slingshot"   },
+    { folder = "Melee",  toolName = "Starter Sword" },
+    { folder = "Ranged", toolName = "Starter Slingshot" },
 }
 
 -- Optional: tool to give when the special slot is unlocked
@@ -54,6 +57,42 @@ local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
+-- SIZE ROLL SYSTEM — track which instanceId is equipped per category
+local chosenInstanceId = {} -- [player] = { Melee = instanceId, Ranged = instanceId }
+
+--------------------------------------------------------------------------------
+-- LOADOUT PERSISTENCE
+--------------------------------------------------------------------------------
+local function saveLoadout(player)
+    local key = "user_" .. player.UserId
+    local data = {
+        melee  = chosenMelee[player],
+        ranged = chosenRanged[player],
+    }
+    local ok, err = pcall(function()
+        loadoutStore:SetAsync(key, data)
+    end)
+    if not ok then
+        warn("[Loadout] Failed to save loadout for", player.Name, err)
+    end
+end
+
+local function loadLoadout(player)
+    local key = "user_" .. player.UserId
+    local ok, data = pcall(function()
+        return loadoutStore:GetAsync(key)
+    end)
+    if ok and type(data) == "table" then
+        if type(data.melee) == "string" and #data.melee > 0 then
+            chosenMelee[player] = data.melee
+        end
+        if type(data.ranged) == "string" and #data.ranged > 0 then
+            chosenRanged[player] = data.ranged
+        end
+    elseif not ok then
+        warn("[Loadout] Failed to load loadout for", player.Name, data)
+    end
+end
 
 --------------------------------------------------------------------------------
 -- HELPERS
@@ -121,9 +160,54 @@ local function sanitizeTool(tool)
     end
 end
 
+-- SIZE ROLL SYSTEM — lazy-load WeaponScaleService for tool scaling
+local WeaponScaleService = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponScaleService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponScaleService = require(mod)
+    end
+end)
+
+-- SIZE ROLL SYSTEM — lazy-load WeaponInstanceService early ref for scaling
+-- (The full lazy-load for ownership checks is further down; this forward
+--  declaration lets applyWeaponScale resolve at call time, not parse time.)
+local WeaponInstanceService_scale = nil
+pcall(function()
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("WeaponInstanceService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponInstanceService_scale = require(mod)
+    end
+end)
+
+--- Look up the player's weapon instance and apply visual scaling.
+--- If instanceId is provided, uses that specific instance; otherwise picks
+--- the first matching instance by weapon name.
+local function applyWeaponScale(player, toolClone, toolName, instanceId)
+    if not WeaponScaleService or not WeaponInstanceService_scale then return end
+    local inv = WeaponInstanceService_scale:GetInventory(player)
+    if not inv then return end
+    local bestInstance = nil
+    -- Prefer the specific instanceId if provided
+    if instanceId and inv[instanceId] then
+        bestInstance = inv[instanceId]
+    else
+        for _, data in pairs(inv) do
+            if type(data) == "table" and data.weaponName == toolName then
+                bestInstance = data
+                break
+            end
+        end
+    end
+    if bestInstance and bestInstance.sizePercent and bestInstance.sizePercent ~= 100 then
+        WeaponScaleService.ApplyScale(toolClone, bestInstance.sizePercent)
+    end
+end
+
 --- Clone a tool into both StarterGear (respawn persistence) and Backpack.
 --- Sets HotbarCategory attribute.  Skips duplicates per-container.
-local function grantTool(player, folder, toolName)
+--- instanceId is optional; used by SIZE ROLL SYSTEM to scale the correct copy.
+local function grantTool(player, folder, toolName, instanceId)
     local template = getTemplate(folder, toolName)
     if not template then return end
 
@@ -136,6 +220,7 @@ local function grantTool(player, folder, toolName)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
+        applyWeaponScale(player, clone, toolName, instanceId)  -- SIZE ROLL SYSTEM
         clone.Parent = sg
     end
 
@@ -146,6 +231,7 @@ local function grantTool(player, folder, toolName)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
+        applyWeaponScale(player, clone, toolName, instanceId)  -- SIZE ROLL SYSTEM
         clone.Parent = bp
     end
 end
@@ -191,11 +277,23 @@ requestToolCopy.OnServerInvoke = function(player, folder, toolName)
     return true
 end
 
+-- Let the client query the saved loadout so the inventory UI shows correct state
+local getLoadoutRF = getOrCreateRemoteFunction("GetLoadout")
+getLoadoutRF.OnServerInvoke = function(player)
+    return {
+        melee  = chosenMelee[player],
+        ranged = chosenRanged[player],
+    }
+end
+
 --------------------------------------------------------------------------------
 -- SERVER-AUTHORITATIVE PURCHASE
 -- Price table lives here so the client can never cheat.
 --------------------------------------------------------------------------------
 local PRICES = {
+    -- Starters (free, everyone gets one instance)
+    ["Starter Sword"]     = 0,
+    ["Starter Slingshot"] = 0,
     -- Melee
     ["Wooden Sword"] = 0,
     Dagger  = 30,
@@ -218,6 +316,31 @@ pcall(function()
 end)
 
 local purchaseTool = getOrCreateRemoteFunction("PurchaseTool")
+
+-- Lazy-load WeaponInstanceService for crate-ownership checks
+local WeaponInstanceService = nil
+pcall(function()
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("WeaponInstanceService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponInstanceService = require(mod)
+    end
+end)
+
+-- Check whether a player owns a weapon (legacy StarterGear OR crate instance)
+local function playerOwnsWeapon(player, toolName)
+    -- Legacy check: tool exists in StarterGear
+    local sg = player:FindFirstChild("StarterGear")
+    if sg and sg:FindFirstChild(toolName) then return true end
+    -- Free starters always allowed
+    local price = PRICES[toolName]
+    if price == 0 then return true end
+    -- Crate instance check
+    if WeaponInstanceService then
+        local count = WeaponInstanceService:CountWeapon(player, toolName)
+        if count > 0 then return true end
+    end
+    return false
+end
 
 -- Returns: success (bool), newBalance (number)
 purchaseTool.OnServerInvoke = function(player, category, toolName)
@@ -273,7 +396,7 @@ forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
 end)
 
 -- Replace the player's Ranged slot tool (StarterGear + Backpack) without equipping.
-setRangedRemote.OnServerEvent:Connect(function(player, toolName)
+setRangedRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
     -- remove existing Ranged tools from StarterGear and Backpack
     local sg = player:FindFirstChild("StarterGear")
     local bp = player:FindFirstChildOfClass("Backpack")
@@ -314,14 +437,22 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName)
 
     -- grant the requested ranged tool into StarterGear/Backpack (sets HotbarCategory)
     if type(toolName) == "string" and #toolName > 0 then
+        if not playerOwnsWeapon(player, toolName) then
+            warn("[Loadout] Player", player.Name, "does not own ranged weapon:", toolName)
+            return
+        end
+        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
+        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
+        chosenInstanceId[player].Ranged = instanceId
         chosenRanged[player] = toolName
-        grantTool(player, "Ranged", toolName)
+        grantTool(player, "Ranged", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
+        task.spawn(saveLoadout, player)
     end
 end)
 
 -- Replace the player's Melee slot tool (StarterGear + Backpack) without equipping.
-setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
+setMeleeRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
     -- remove existing Melee tools from StarterGear and Backpack
     local sg = player:FindFirstChild("StarterGear")
     local bp = player:FindFirstChildOfClass("Backpack")
@@ -362,25 +493,37 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
 
     -- grant the requested melee tool into StarterGear/Backpack (sets HotbarCategory)
     if type(toolName) == "string" and #toolName > 0 then
+        if not playerOwnsWeapon(player, toolName) then
+            warn("[Loadout] Player", player.Name, "does not own melee weapon:", toolName)
+            return
+        end
+        -- SIZE ROLL SYSTEM — store which instance is equipped for scaling
+        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
+        chosenInstanceId[player].Melee = instanceId
         chosenMelee[player] = toolName
-        grantTool(player, "Melee", toolName)
+        grantTool(player, "Melee", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
+        task.spawn(saveLoadout, player)
     end
 end)
 
 local function giveLoadout(player)
+    local playerInstIds = chosenInstanceId[player] or {}
     for _, entry in ipairs(DEFAULT_LOADOUT) do
         local folder = entry.folder
         local toolName = entry.toolName
+        local instId = nil
         -- honour the player's chosen ranged weapon if they swapped it
         if string.lower(folder) == "ranged" and chosenRanged[player] then
             toolName = chosenRanged[player]
+            instId = playerInstIds.Ranged
         end
         -- honour player's chosen melee weapon if they swapped it
         if string.lower(folder) == "melee" and chosenMelee[player] then
             toolName = chosenMelee[player]
+            instId = playerInstIds.Melee
         end
-        grantTool(player, folder, toolName)
+        grantTool(player, folder, toolName, instId)
     end
     -- grant special tool if unlocked and template exists
     if unlockState[player] then
@@ -403,6 +546,9 @@ end
 -- PLAYER LIFECYCLE
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
+    -- load saved loadout choices before first spawn
+    loadLoadout(player)
+
     -- check pass on join
     unlockState[player] = checkGamePass(player)
 
@@ -433,6 +579,7 @@ local function onPlayerAdded(player)
 end
 
 local function onPlayerRemoving(player)
+    saveLoadout(player)
     unlockState[player]    = nil
     promptDebounce[player] = nil
     chosenRanged[player]   = nil
@@ -484,4 +631,14 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passI
     if sf and sf:FindFirstChild(SPECIAL_TOOL.toolName) then
         grantTool(player, SPECIAL_TOOL.folder, SPECIAL_TOOL.toolName)
     end
+end)
+
+--------------------------------------------------------------------------------
+-- SAVE ALL ON SHUTDOWN
+--------------------------------------------------------------------------------
+game:BindToClose(function()
+    for _, player in ipairs(Players:GetPlayers()) do
+        task.spawn(saveLoadout, player)
+    end
+    task.wait(2)
 end)
