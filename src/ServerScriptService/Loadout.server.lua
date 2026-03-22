@@ -219,6 +219,31 @@ end)
 
 local purchaseTool = getOrCreateRemoteFunction("PurchaseTool")
 
+-- Lazy-load WeaponInstanceService for crate-ownership checks
+local WeaponInstanceService = nil
+pcall(function()
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("WeaponInstanceService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponInstanceService = require(mod)
+    end
+end)
+
+-- Check whether a player owns a weapon (legacy StarterGear OR crate instance)
+local function playerOwnsWeapon(player, toolName)
+    -- Legacy check: tool exists in StarterGear
+    local sg = player:FindFirstChild("StarterGear")
+    if sg and sg:FindFirstChild(toolName) then return true end
+    -- Free starters always allowed
+    local price = PRICES[toolName]
+    if price == 0 then return true end
+    -- Crate instance check
+    if WeaponInstanceService then
+        local count = WeaponInstanceService:CountWeapon(player, toolName)
+        if count > 0 then return true end
+    end
+    return false
+end
+
 -- Returns: success (bool), newBalance (number)
 purchaseTool.OnServerInvoke = function(player, category, toolName)
     if type(toolName) ~= "string" or type(category) ~= "string" then
@@ -314,6 +339,10 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName)
 
     -- grant the requested ranged tool into StarterGear/Backpack (sets HotbarCategory)
     if type(toolName) == "string" and #toolName > 0 then
+        if not playerOwnsWeapon(player, toolName) then
+            warn("[Loadout] Player", player.Name, "does not own ranged weapon:", toolName)
+            return
+        end
         chosenRanged[player] = toolName
         grantTool(player, "Ranged", toolName)
         ensureBackpackFromStarterGear(player)
@@ -362,6 +391,10 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
 
     -- grant the requested melee tool into StarterGear/Backpack (sets HotbarCategory)
     if type(toolName) == "string" and #toolName > 0 then
+        if not playerOwnsWeapon(player, toolName) then
+            warn("[Loadout] Player", player.Name, "does not own melee weapon:", toolName)
+            return
+        end
         chosenMelee[player] = toolName
         grantTool(player, "Melee", toolName)
         ensureBackpackFromStarterGear(player)

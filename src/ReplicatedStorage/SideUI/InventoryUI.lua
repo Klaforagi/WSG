@@ -810,6 +810,40 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         items = normalized
     end
 
+    -- Fetch weapon instances from server (crate-obtained weapons)
+    local weaponInstances = {}
+    pcall(function()
+        local getInvRF = ReplicatedStorage:FindFirstChild("GetWeaponInventory")
+        if getInvRF and getInvRF:IsA("RemoteFunction") then
+            local result = getInvRF:InvokeServer()
+            if type(result) == "table" then
+                weaponInstances = result
+            end
+        end
+    end)
+
+    -- CrateConfig for rarity colors and developer IDs
+    local CrateConfig = nil
+    pcall(function()
+        local mod = ReplicatedStorage:FindFirstChild("CrateConfig")
+        if mod and mod:IsA("ModuleScript") then
+            CrateConfig = require(mod)
+        end
+    end)
+
+    local isDeveloper = false
+    if CrateConfig and CrateConfig.DeveloperUserIds then
+        local localPlayer = Players.LocalPlayer
+        if localPlayer then
+            for _, uid in ipairs(CrateConfig.DeveloperUserIds) do
+                if uid == localPlayer.UserId then
+                    isDeveloper = true
+                    break
+                end
+            end
+        end
+    end
+
     -- Assets & presets for classification
     local AssetCodes = nil
     pcall(function()
@@ -1945,7 +1979,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         return card
     end
 
-    -- Populate sections with owned items
+    -- Populate sections with owned items (legacy direct-buy items)
     for _, id in ipairs(items) do
         local cat = classifyItem(id)
         if cat == "Melee" then
@@ -1955,15 +1989,228 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
     end
 
+    -- Populate sections with weapon instances (crate-obtained)
+    local function rarityColor(rarity)
+        if CrateConfig and CrateConfig.Rarities and CrateConfig.Rarities[rarity] then
+            return CrateConfig.Rarities[rarity].color
+        end
+        return DIM_TEXT
+    end
+
+    local instanceCards = {}
+    for instanceId, data in pairs(weaponInstances) do
+        if type(data) == "table" and data.weaponName then
+            local cat = data.category or classifyItem(data.weaponName)
+            local targetGrid = (cat == "Melee") and meleeGrid or rangedGrid
+
+            local card = Instance.new("Frame")
+            card.Name = "InstanceCard_" .. instanceId
+            card.BackgroundColor3 = CARD_BG
+            card.Size = UDim2.new(1, 0, 1, 0)
+            card.AutomaticSize = Enum.AutomaticSize.Y
+            card.Parent = targetGrid
+
+            local corner = Instance.new("UICorner")
+            corner.CornerRadius = UDim.new(0, px(12))
+            corner.Parent = card
+
+            local cStroke = Instance.new("UIStroke")
+            cStroke.Color = rarityColor(data.rarity)
+            cStroke.Thickness = 1.4
+            cStroke.Transparency = 0.3
+            cStroke.Parent = card
+
+            local cardPad = Instance.new("UIPadding")
+            cardPad.PaddingTop = UDim.new(0, px(8))
+            cardPad.PaddingBottom = UDim.new(0, px(8))
+            cardPad.PaddingLeft = UDim.new(0, px(8))
+            cardPad.PaddingRight = UDim.new(0, px(8))
+            cardPad.Parent = card
+
+            -- Rarity bar at top
+            local rBar = Instance.new("Frame")
+            rBar.BackgroundColor3 = rarityColor(data.rarity)
+            rBar.BackgroundTransparency = 0.3
+            rBar.Size = UDim2.new(1, 0, 0, px(3))
+            rBar.Position = UDim2.new(0, 0, 0, 0)
+            rBar.BorderSizePixel = 0
+            rBar.ZIndex = 253
+            rBar.Parent = card
+            local rBarCr = Instance.new("UICorner")
+            rBarCr.CornerRadius = UDim.new(0, px(3))
+            rBarCr.Parent = rBar
+
+            local leftBox = Instance.new("Frame")
+            leftBox.Name = "LeftBox"
+            leftBox.Size = UDim2.new(0.45, 0, 1, 0)
+            leftBox.BackgroundColor3 = ICON_BG
+            leftBox.ZIndex = 251
+            leftBox.Parent = card
+            local lCorner = Instance.new("UICorner")
+            lCorner.CornerRadius = UDim.new(0, px(10))
+            lCorner.Parent = leftBox
+            local lStroke = Instance.new("UIStroke")
+            lStroke.Color = CARD_STROKE
+            lStroke.Thickness = 1
+            lStroke.Transparency = 0.5
+            lStroke.Parent = leftBox
+
+            local thumb = Instance.new("ImageLabel")
+            thumb.Name = "Thumb"
+            thumb.Size = UDim2.new(0.85, 0, 0.85, 0)
+            thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
+            thumb.AnchorPoint = Vector2.new(0.5, 0.5)
+            thumb.BackgroundTransparency = 1
+            thumb.ScaleType = Enum.ScaleType.Fit
+            thumb.ZIndex = 252
+            thumb.Parent = leftBox
+            pcall(function()
+                if AssetCodes and type(AssetCodes.Get) == "function" then
+                    local img = AssetCodes.Get(tostring(data.weaponName))
+                    if img and #img > 0 then thumb.Image = img end
+                end
+            end)
+
+            local rightBox = Instance.new("Frame")
+            rightBox.Name = "RightBox"
+            rightBox.Size = UDim2.new(0.52, 0, 1, 0)
+            rightBox.Position = UDim2.new(0.48, 0, 0, 0)
+            rightBox.BackgroundTransparency = 1
+            rightBox.ZIndex = 251
+            rightBox.Parent = card
+
+            -- Rarity label
+            local rarityLabel = Instance.new("TextLabel")
+            rarityLabel.BackgroundTransparency = 1
+            rarityLabel.Font = Enum.Font.GothamBold
+            rarityLabel.Text = data.rarity or "Common"
+            rarityLabel.TextColor3 = rarityColor(data.rarity)
+            rarityLabel.TextSize = math.max(9, math.floor(px(10)))
+            rarityLabel.Size = UDim2.new(1, 0, 0, px(14))
+            rarityLabel.Position = UDim2.new(0, 0, 0, px(2))
+            rarityLabel.TextXAlignment = Enum.TextXAlignment.Center
+            rarityLabel.ZIndex = 252
+            rarityLabel.Parent = rightBox
+
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Name = "ItemName"
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextScaled = true
+            nameLabel.TextColor3 = WHITE
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+            nameLabel.Text = tostring(data.weaponName)
+            nameLabel.Size = UDim2.new(1, 0, 0, px(24))
+            nameLabel.Position = UDim2.new(0, 0, 0, px(16))
+            nameLabel.ZIndex = 252
+            nameLabel.Parent = rightBox
+
+            -- Instance ID (developer only)
+            if isDeveloper then
+                local idLabel = Instance.new("TextLabel")
+                idLabel.BackgroundTransparency = 1
+                idLabel.Font = Enum.Font.Code
+                idLabel.Text = instanceId
+                idLabel.TextColor3 = DIM_TEXT
+                idLabel.TextSize = math.max(8, math.floor(px(8)))
+                idLabel.Size = UDim2.new(1, 0, 0, px(12))
+                idLabel.Position = UDim2.new(0, 0, 0, px(40))
+                idLabel.TextXAlignment = Enum.TextXAlignment.Center
+                idLabel.ZIndex = 252
+                idLabel.Parent = rightBox
+            end
+
+            local equipBtn = Instance.new("TextButton")
+            equipBtn.Name = "EquipBtn"
+            equipBtn.Size = UDim2.new(0.85, 0, 0.24, 0)
+            equipBtn.AnchorPoint = Vector2.new(0.5, 1)
+            equipBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+            equipBtn.BackgroundColor3 = BTN_BG
+            equipBtn.Font = Enum.Font.GothamBold
+            equipBtn.TextScaled = true
+            equipBtn.TextColor3 = WHITE
+            equipBtn.Text = "EQUIP"
+            equipBtn.AutoButtonColor = false
+            equipBtn.ZIndex = 253
+            equipBtn.Parent = rightBox
+
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, px(10))
+            btnCorner.Parent = equipBtn
+            local btnStroke = Instance.new("UIStroke")
+            btnStroke.Color = BTN_STROKE_C
+            btnStroke.Thickness = 1.4
+            btnStroke.Transparency = 0.25
+            btnStroke.Parent = equipBtn
+
+            -- Use the weaponName for equipping (same mechanism as legacy)
+            local weaponName = data.weaponName
+            allEquipBtns[instanceId] = {
+                btn = equipBtn,
+                stroke = btnStroke,
+                category = cat,
+                card = card,
+                cardStroke = cStroke,
+                weaponName = weaponName,
+            }
+
+            equipBtn.MouseButton1Click:Connect(function()
+                local rs = ReplicatedStorage
+                if cat == "Ranged" then
+                    local setRanged = rs:FindFirstChild("SetRangedTool")
+                    if setRanged and setRanged:IsA("RemoteEvent") then
+                        pcall(function() setRanged:FireServer(weaponName) end)
+                    end
+                else
+                    local setMelee = rs:FindFirstChild("SetMeleeTool")
+                    if setMelee and setMelee:IsA("RemoteEvent") then
+                        pcall(function() setMelee:FireServer(weaponName) end)
+                    end
+                end
+                equippedState[cat] = instanceId
+                if inventoryApi and inventoryApi.SetEquipped then
+                    pcall(function() inventoryApi:SetEquipped(cat, instanceId) end)
+                end
+                refreshAllEquipButtons()
+            end)
+
+            equipBtn.MouseEnter:Connect(function()
+                local info = allEquipBtns[instanceId]
+                local isEquipped = info and equippedState[info.category] == instanceId
+                if not isEquipped then
+                    pcall(function()
+                        TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+                    end)
+                end
+            end)
+            equipBtn.MouseLeave:Connect(function()
+                local info = allEquipBtns[instanceId]
+                local isEquipped = info and equippedState[info.category] == instanceId
+                if not isEquipped then
+                    pcall(function()
+                        TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+                    end)
+                end
+            end)
+
+            table.insert(instanceCards, card)
+        end
+    end
+
+    -- Count total weapons (legacy + instances)
+    local instanceCount = 0
+    for _ in pairs(weaponInstances) do instanceCount = instanceCount + 1 end
+    local totalWeapons = #items + instanceCount
+
     -- If no items, show friendly empty state
-    if #items == 0 then
+    if totalWeapons == 0 then
         createEmptyStateInline(weaponsPage, "weapons", 500)
     end
 
     -- Shop button at the bottom of weapons page
     createShopNavButton(weaponsPage, 9999)
 
-    print(string.format("[InventoryUI] Weapons rendered | ownedCount=%d", #items))
+    print(string.format("[InventoryUI] Weapons rendered | legacyCount=%d instanceCount=%d total=%d", #items, instanceCount, totalWeapons))
 
     -- Apply initial equipped state visually
     refreshAllEquipButtons()

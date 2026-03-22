@@ -40,6 +40,14 @@ local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirect
 
 local ShopUI = {}
 
+local CrateConfig = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("CrateConfig")
+    if mod and mod:IsA("ModuleScript") then
+        CrateConfig = require(mod)
+    end
+end)
+
 local BoostConfig = nil
 local AssetCodes = nil
 local boostRemotes = nil
@@ -1070,7 +1078,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     contentContainer.Parent              = root
 
     ---------------------------------------------------------------------------
-    -- WEAPONS content page (all existing shop content, fully preserved)
+    -- WEAPONS content page → CRATE CARDS
     ---------------------------------------------------------------------------
     local weaponsPage = Instance.new("Frame")
     weaponsPage.Name                = "WeaponsContent"
@@ -1085,26 +1093,312 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     wpLayout.Padding   = UDim.new(0, px(16))
     wpLayout.Parent    = weaponsPage
 
-    -- Weapon sections (moved from old root into weapons page)
-    local meleeSection, meleeGrid     = makeSection(weaponsPage, "Melee", "Melee Weapons")
-    local rangedSection, rangedGrid   = makeSection(weaponsPage, "Ranged", "Ranged Weapons")
+    local wpPad = Instance.new("UIPadding")
+    wpPad.PaddingTop    = UDim.new(0, px(6))
+    wpPad.PaddingBottom = UDim.new(0, px(12))
+    wpPad.PaddingLeft   = UDim.new(0, px(8))
+    wpPad.PaddingRight  = UDim.new(0, px(8))
+    wpPad.Parent        = weaponsPage
 
-    meleeSection.LayoutOrder   = 1
-    rangedSection.LayoutOrder  = 2
+    -- Header
+    local crateHeader = Instance.new("Frame")
+    crateHeader.Name = "CrateHeader"
+    crateHeader.BackgroundTransparency = 1
+    crateHeader.Size = UDim2.new(1, 0, 0, px(54))
+    crateHeader.LayoutOrder = 0
+    crateHeader.Parent = weaponsPage
 
-    -- Populate melee weapons (free starter: Wooden Sword)
-    makeItem(meleeGrid, "Wooden Sword", "Wooden Sword", 0, "Wooden Sword", coinApi, inventoryApi, "Melee")
-    makeItem(meleeGrid, "Dagger", "Dagger", 30, "Dagger", coinApi, inventoryApi, "Melee")
-    makeItem(meleeGrid, "Sword", "Sword", 30, "Sword", coinApi, inventoryApi, "Melee")
-    makeItem(meleeGrid, "Spear", "Spear", 30, "Spear", coinApi, inventoryApi, "Melee")
+    local crateTitle = Instance.new("TextLabel")
+    crateTitle.BackgroundTransparency = 1
+    crateTitle.Font = Enum.Font.GothamBold
+    crateTitle.Text = "WEAPON CRATES"
+    crateTitle.TextColor3 = GOLD
+    crateTitle.TextSize = math.max(20, math.floor(px(24)))
+    crateTitle.TextXAlignment = Enum.TextXAlignment.Left
+    crateTitle.Size = UDim2.new(1, 0, 0, px(30))
+    crateTitle.Parent = crateHeader
 
-    -- Populate ranged weapons (free starter: Slingshot)
-    makeItem(rangedGrid, "Slingshot", "Slingshot", 0, "Slingshot", coinApi, inventoryApi, "Ranged")
-    makeItem(rangedGrid, "Shortbow", "Shortbow", 20, "Shortbow", coinApi, inventoryApi, "Ranged")
-    makeItem(rangedGrid, "Longbow", "Longbow", 30, "Longbow", coinApi, inventoryApi, "Ranged")
-    makeItem(rangedGrid, "Xbow", "Xbow", 40, "Xbow", coinApi, inventoryApi, "Ranged")
+    local crateSubtitle = Instance.new("TextLabel")
+    crateSubtitle.BackgroundTransparency = 1
+    crateSubtitle.Font = Enum.Font.GothamMedium
+    crateSubtitle.Text = "Open crates to get random weapons. You can own duplicates!"
+    crateSubtitle.TextColor3 = DIM_TEXT
+    crateSubtitle.TextSize = math.max(11, math.floor(px(12)))
+    crateSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+    crateSubtitle.Size = UDim2.new(1, 0, 0, px(16))
+    crateSubtitle.Position = UDim2.new(0, 0, 0, px(30))
+    crateSubtitle.Parent = crateHeader
 
-    -- Additional sections can be populated similarly by calling makeItem
+    local crateAccent = Instance.new("Frame")
+    crateAccent.BackgroundColor3 = GOLD
+    crateAccent.BackgroundTransparency = 0.3
+    crateAccent.BorderSizePixel = 0
+    crateAccent.Size = UDim2.new(1, 0, 0, px(2))
+    crateAccent.Position = UDim2.new(0, 0, 1, -px(2))
+    crateAccent.Parent = crateHeader
+
+    -- Build crate cards from CrateConfig
+    local crateOrder = (CrateConfig and CrateConfig.CrateOrder) or {}
+    local crateOpenDebounce = false
+
+    for idx, crateId in ipairs(crateOrder) do
+        local crateDef = CrateConfig and CrateConfig.Crates[crateId]
+        if not crateDef then continue end
+
+        local card = Instance.new("Frame")
+        card.Name = "Crate_" .. crateId
+        card.BackgroundColor3 = CARD_BG
+        card.Size = UDim2.new(1, 0, 0, px(180))
+        card.LayoutOrder = idx
+        card.Parent = weaponsPage
+
+        local cCorner = Instance.new("UICorner")
+        cCorner.CornerRadius = UDim.new(0, px(14))
+        cCorner.Parent = card
+
+        local cStroke = Instance.new("UIStroke")
+        cStroke.Color = CARD_STROKE
+        cStroke.Thickness = 1.4
+        cStroke.Transparency = 0.25
+        cStroke.Parent = card
+
+        local cPad = Instance.new("UIPadding")
+        cPad.PaddingTop    = UDim.new(0, px(14))
+        cPad.PaddingBottom = UDim.new(0, px(14))
+        cPad.PaddingLeft   = UDim.new(0, px(14))
+        cPad.PaddingRight  = UDim.new(0, px(14))
+        cPad.Parent        = card
+
+        -- Left: icon plate
+        local iconPlate = Instance.new("Frame")
+        iconPlate.Name = "IconPlate"
+        iconPlate.BackgroundColor3 = ICON_BG
+        iconPlate.Size = UDim2.new(0, px(100), 0, px(100))
+        iconPlate.Position = UDim2.new(0, 0, 0.5, 0)
+        iconPlate.AnchorPoint = Vector2.new(0, 0.5)
+        iconPlate.Parent = card
+
+        local ipCorner = Instance.new("UICorner")
+        ipCorner.CornerRadius = UDim.new(0, px(12))
+        ipCorner.Parent = iconPlate
+
+        local ipStroke = Instance.new("UIStroke")
+        ipStroke.Color = CARD_STROKE
+        ipStroke.Thickness = 1
+        ipStroke.Transparency = 0.4
+        ipStroke.Parent = iconPlate
+
+        local iconLabel = Instance.new("TextLabel")
+        iconLabel.BackgroundTransparency = 1
+        iconLabel.Font = Enum.Font.GothamBold
+        iconLabel.Text = crateDef.iconGlyph or "?"
+        iconLabel.TextSize = math.max(36, math.floor(px(42)))
+        iconLabel.TextColor3 = GOLD
+        iconLabel.Size = UDim2.new(1, 0, 1, 0)
+        iconLabel.TextXAlignment = Enum.TextXAlignment.Center
+        iconLabel.TextYAlignment = Enum.TextYAlignment.Center
+        iconLabel.Parent = iconPlate
+
+        -- Right: name, description, price, rarity chances, open button
+        local rightX = px(100) + px(14)
+        local rightW = UDim2.new(1, -(rightX), 1, 0)
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Name = "CrateName"
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Font = Enum.Font.GothamBold
+        nameLabel.Text = crateDef.displayName
+        nameLabel.TextColor3 = WHITE
+        nameLabel.TextSize = math.max(16, math.floor(px(18)))
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.Size = UDim2.new(1, -rightX, 0, px(22))
+        nameLabel.Position = UDim2.new(0, rightX, 0, 0)
+        nameLabel.Parent = card
+
+        local descLabel = Instance.new("TextLabel")
+        descLabel.BackgroundTransparency = 1
+        descLabel.Font = Enum.Font.GothamMedium
+        descLabel.Text = crateDef.description or ""
+        descLabel.TextColor3 = DIM_TEXT
+        descLabel.TextSize = math.max(11, math.floor(px(12)))
+        descLabel.TextXAlignment = Enum.TextXAlignment.Left
+        descLabel.TextWrapped = true
+        descLabel.Size = UDim2.new(1, -rightX, 0, px(16))
+        descLabel.Position = UDim2.new(0, rightX, 0, px(24))
+        descLabel.Parent = card
+
+        -- Rarity chances row
+        local rarityRow = Instance.new("Frame")
+        rarityRow.Name = "RarityRow"
+        rarityRow.BackgroundTransparency = 1
+        rarityRow.Size = UDim2.new(1, -rightX, 0, px(18))
+        rarityRow.Position = UDim2.new(0, rightX, 0, px(44))
+        rarityRow.Parent = card
+
+        local rrLayout = Instance.new("UIListLayout")
+        rrLayout.FillDirection = Enum.FillDirection.Horizontal
+        rrLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        rrLayout.Padding = UDim.new(0, px(10))
+        rrLayout.Parent = rarityRow
+
+        -- Show rarity %s for this crate's pool
+        if CrateConfig and CrateConfig.Rarities then
+            -- Compute total weight for this pool
+            local totalW = 0
+            for _, entry in ipairs(crateDef.pool or {}) do
+                local rd = CrateConfig.Rarities[entry.rarity]
+                totalW = totalW + ((rd and rd.weight) or 0)
+            end
+            -- Aggregate by rarity
+            local rarityTotals = {}
+            for _, entry in ipairs(crateDef.pool or {}) do
+                local rd = CrateConfig.Rarities[entry.rarity]
+                local w = (rd and rd.weight) or 0
+                rarityTotals[entry.rarity] = (rarityTotals[entry.rarity] or 0) + w
+            end
+            local order = 0
+            for _, rarName in ipairs(CrateConfig.RarityOrder) do
+                local w = rarityTotals[rarName]
+                if w and w > 0 then
+                    local pct = (totalW > 0) and (w / totalW * 100) or 0
+                    local rd = CrateConfig.Rarities[rarName]
+                    local tag = Instance.new("TextLabel")
+                    tag.BackgroundTransparency = 1
+                    tag.Font = Enum.Font.GothamBold
+                    tag.TextSize = math.max(10, math.floor(px(11)))
+                    tag.Text = string.format("%s %.0f%%", rd.label, pct)
+                    tag.TextColor3 = rd.color
+                    tag.Size = UDim2.new(0, px(80), 1, 0)
+                    tag.TextXAlignment = Enum.TextXAlignment.Left
+                    tag.LayoutOrder = order
+                    tag.Parent = rarityRow
+                    order = order + 1
+                end
+            end
+        end
+
+        -- Price badge
+        local priceBadge = Instance.new("Frame")
+        priceBadge.Name = "PriceBadge"
+        priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
+        priceBadge.BackgroundTransparency = 0.3
+        priceBadge.Size = UDim2.new(0, px(100), 0, px(28))
+        priceBadge.Position = UDim2.new(0, rightX, 0, px(68))
+        priceBadge.Parent = card
+
+        local pbCorner = Instance.new("UICorner")
+        pbCorner.CornerRadius = UDim.new(0, px(8))
+        pbCorner.Parent = priceBadge
+
+        local pbStroke = Instance.new("UIStroke")
+        pbStroke.Color = Color3.fromRGB(255, 200, 40)
+        pbStroke.Thickness = 1
+        pbStroke.Transparency = 0.55
+        pbStroke.Parent = priceBadge
+
+        local priceLabel = Instance.new("TextLabel")
+        priceLabel.BackgroundTransparency = 1
+        priceLabel.Font = Enum.Font.GothamBold
+        priceLabel.TextScaled = true
+        priceLabel.TextColor3 = GOLD
+        priceLabel.Text = tostring(crateDef.price or 0)
+        priceLabel.Size = UDim2.new(0.55, 0, 1, 0)
+        priceLabel.TextXAlignment = Enum.TextXAlignment.Right
+        priceLabel.Parent = priceBadge
+
+        local coinIcon = Instance.new("ImageLabel")
+        coinIcon.BackgroundTransparency = 1
+        coinIcon.Size = UDim2.new(0.26, 0, 0.80, 0)
+        coinIcon.Position = UDim2.new(0.62, 0, 0.5, 0)
+        coinIcon.AnchorPoint = Vector2.new(0, 0.5)
+        coinIcon.ScaleType = Enum.ScaleType.Fit
+        coinIcon.Parent = priceBadge
+        pcall(function()
+            if AssetCodes and type(AssetCodes.Get) == "function" then
+                local ci = AssetCodes.Get("Coin")
+                if ci and #ci > 0 then coinIcon.Image = ci end
+            end
+        end)
+
+        -- Open button
+        local openBtn = Instance.new("TextButton")
+        openBtn.Name = "OpenBtn"
+        openBtn.Size = UDim2.new(0, px(120), 0, px(36))
+        openBtn.AnchorPoint = Vector2.new(0, 1)
+        openBtn.Position = UDim2.new(0, rightX, 1, 0)
+        openBtn.BackgroundColor3 = GREEN_BTN
+        openBtn.Font = Enum.Font.GothamBold
+        openBtn.TextScaled = true
+        openBtn.TextColor3 = WHITE
+        openBtn.Text = "OPEN CRATE"
+        openBtn.AutoButtonColor = false
+        openBtn.ZIndex = 253
+        openBtn.Parent = card
+
+        local obCorner = Instance.new("UICorner")
+        obCorner.CornerRadius = UDim.new(0, px(10))
+        obCorner.Parent = openBtn
+
+        local obStroke = Instance.new("UIStroke")
+        obStroke.Color = Color3.fromRGB(30, 200, 80)
+        obStroke.Thickness = 1.4
+        obStroke.Transparency = 0.25
+        obStroke.Parent = openBtn
+
+        -- Hover
+        openBtn.MouseEnter:Connect(function()
+            pcall(function()
+                TweenService:Create(openBtn, TWEEN_QUICK,
+                    {BackgroundColor3 = Color3.fromRGB(40, 210, 90)}):Play()
+            end)
+        end)
+        openBtn.MouseLeave:Connect(function()
+            pcall(function()
+                TweenService:Create(openBtn, TWEEN_QUICK,
+                    {BackgroundColor3 = GREEN_BTN}):Play()
+            end)
+        end)
+
+        -- Click: fire crate open
+        openBtn.MouseButton1Click:Connect(function()
+            if crateOpenDebounce then return end
+            crateOpenDebounce = true
+
+            -- Fire the crate opening event via global callback
+            -- The CrateOpeningUI will handle the animation and server call
+            if _G.OpenCrateRequested then
+                _G.OpenCrateRequested(crateId)
+            else
+                -- Fallback: direct server call without animation
+                local openCrateRF = ReplicatedStorage:FindFirstChild("OpenCrate")
+                if openCrateRF and openCrateRF:IsA("RemoteFunction") then
+                    local ok, success, result = pcall(function()
+                        return openCrateRF:InvokeServer(crateId)
+                    end)
+                    if ok and success and type(result) == "table" then
+                        if coinApi and coinApi.SetCoins then
+                            pcall(function() coinApi.SetCoins(result.newBalance) end)
+                        end
+                        pcall(function()
+                            if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                        end)
+                        showToast(weaponsPage,
+                            string.format("Got %s (%s)!", result.weaponName, result.rarity),
+                            CrateConfig and CrateConfig.Rarities[result.rarity] and CrateConfig.Rarities[result.rarity].color or GOLD,
+                            3)
+                    elseif ok and not success then
+                        showToast(weaponsPage,
+                            type(result) == "string" and result or "Purchase failed",
+                            RED_TEXT, 2)
+                    end
+                end
+            end
+
+            task.delay(1.5, function()
+                crateOpenDebounce = false
+            end)
+        end)
+    end
 
     contentPages["weapons"] = weaponsPage
 

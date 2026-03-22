@@ -1172,6 +1172,7 @@ local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
 local questsModule = sideUIFolder and sideUIFolder:WaitForChild("DailyQuestsUI", 5)
 local boostsModule = sideUIFolder and sideUIFolder:WaitForChild("BoostsUI", 5)
 local upgradesModule = sideUIFolder and sideUIFolder:WaitForChild("UpgradesUI", 5)
+local crateOpeningModule = sideUIFolder and sideUIFolder:WaitForChild("CrateOpeningUI", 5)
 if not sideUIFolder then
     warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
 end
@@ -1329,6 +1330,18 @@ if CoinDisplayModule and CoinDisplayModule.Create then
     print("[SideUI] CoinDisplay module initialized; coinApi =", tostring(coinApi))
     -- Refresh header immediately once the coin API is available so joins show correct value
     pcall(function() updateHeaderCoins() end)
+end
+
+-- Initialize CrateOpeningUI (roulette animation overlay)
+if crateOpeningModule and crateOpeningModule:IsA("ModuleScript") then
+    pcall(function()
+        local CrateOpeningUI = require(crateOpeningModule)
+        if CrateOpeningUI and CrateOpeningUI.Init then
+            CrateOpeningUI.Init(playerGui)
+            _G.CrateOpeningCoinApi = coinApi
+            print("[SideUI] CrateOpeningUI initialized")
+        end
+    end)
 end
 
 -- Listen for server coin updates. Uses task.spawn + WaitForChild so the remote
