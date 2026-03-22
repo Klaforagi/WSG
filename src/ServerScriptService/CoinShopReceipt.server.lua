@@ -50,6 +50,21 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- AchievementService (lazy-loaded for Robux spending achievements)
+--------------------------------------------------------------------------------
+local AchievementService
+local function getAchievementService()
+	if AchievementService then return AchievementService end
+	pcall(function()
+		local mod = SSS:FindFirstChild("AchievementService")
+		if mod and mod:IsA("ModuleScript") then
+			AchievementService = require(mod)
+		end
+	end)
+	return AchievementService
+end
+
+--------------------------------------------------------------------------------
 -- Receipt tracking DataStore (prevents granting coins more than once per receipt)
 --------------------------------------------------------------------------------
 local RECEIPT_DS_NAME = "CoinShopReceipts_v1"
@@ -148,6 +163,19 @@ local function processReceipt(receiptInfo)
 
 	-- 6) Mark receipt as processed
 	markReceiptProcessed(receiptId, playerId, productId, coinsToAward)
+
+	-- 7) Track Robux spent for achievements
+	if CoinProducts and CoinProducts.PriceByProductId then
+		local robuxPrice = CoinProducts.PriceByProductId[productId]
+		if robuxPrice and robuxPrice > 0 then
+			task.spawn(function()
+				local achSvc = getAchievementService()
+				if achSvc then
+					achSvc:IncrementStat(playerObj, "totalRobuxSpent", robuxPrice)
+				end
+			end)
+		end
+	end
 
 	print("[CoinShopReceipt] Awarded", coinsToAward, "coins to", playerObj.Name,
 		"(receipt:", receiptId, ")")

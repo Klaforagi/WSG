@@ -62,7 +62,17 @@ end
 
 claimWeeklyRF.OnServerInvoke = function(player, questIndex)
     if type(questIndex) ~= "number" then return false end
-    return WeeklyQuestService:ClaimReward(player, questIndex)
+    local result = WeeklyQuestService:ClaimReward(player, questIndex)
+    if result then
+        -- Track weekly quest completion for achievements
+        pcall(function()
+            local AchievementService = require(ServerScriptService:FindFirstChild("AchievementService"))
+            if AchievementService then
+                AchievementService:IncrementStat(player, "weeklyQuestsCompleted", 1)
+            end
+        end)
+    end
+    return result
 end
 
 rerollWeeklyRF.OnServerInvoke = function(player, questIndex)

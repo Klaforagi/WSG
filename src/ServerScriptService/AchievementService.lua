@@ -106,6 +106,12 @@ local STAT_KEYS = {
     "matchMinutes",         -- TODO: wire match-time tracker (minutes)
     "consecutiveLogins",    -- TODO: wire daily login streak
     "flawlessWins",         -- TODO: wire flawless-win detection
+    "dailyQuestsCompleted",
+    "weeklyQuestsCompleted",
+    "eventQuestsCompleted",
+    "meleeUpgradeLevel",      -- set by UpgradeServiceInit when melee level changes
+    "rangedUpgradeLevel",     -- set by UpgradeServiceInit when ranged level changes
+    "totalRobuxSpent",        -- incremented by CoinShopReceipt on Robux purchases
     "achievementsCompleted", -- internal: auto-updated by this service
     "categoriesWithCompletion", -- internal: auto-updated by this service
 }
@@ -175,7 +181,16 @@ local function mergeWithDefaults(saved)
     -- Achievements (merge with defs so new achievements get defaults)
     local sa = (type(saved.achievements) == "table") and saved.achievements or {}
     for _, def in ipairs(AchievementDefs.Achievements) do
+        -- Check current id first, then fall back to any old alias that maps to it
         local prev = sa[def.id]
+        if not prev then
+            for oldId, newId in pairs(AchievementDefs.IdAliases) do
+                if newId == def.id and sa[oldId] then
+                    prev = sa[oldId]
+                    break
+                end
+            end
+        end
         if type(prev) == "table" then
             local maxStage = AchievementDefs.GetMaxStage(def)
             local si = math.clamp(tonumber(prev.stageIndex) or 1, 1, maxStage + 1)

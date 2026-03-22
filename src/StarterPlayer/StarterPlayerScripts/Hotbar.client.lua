@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 -- Hotbar.client.lua
--- 3-slot hotbar: Melee / Ranged / Special (locked behind Game Pass)
+-- 4-slot hotbar: Melee / Ranged / Bandage / Slot 4
 -- Builds the entire UI at runtime — no Studio ScreenGui required.
 -- Equip is INSTANT — always delegates to server ForceEquipTool.
 --------------------------------------------------------------------------------
@@ -38,6 +38,7 @@ local SLOT_DEFS = {
     { index = 1, key = Enum.KeyCode.One,   category = "Melee",   toolName = "Sword",      label = "1" },
     { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Slingshot",   label = "2" },
     { index = 3, key = Enum.KeyCode.Three, category = "Utility", toolName = "Bandage",     label = "3", isUtility = true },
+    { index = 4, key = Enum.KeyCode.Four,  category = "Extra",   toolName = "",            label = "4" },
 }
 
 local SLOT_COUNT = #SLOT_DEFS

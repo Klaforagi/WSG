@@ -17,6 +17,36 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local UpgradeService = require(ServerScriptService:WaitForChild("UpgradeService", 10))
 
 --------------------------------------------------------------------------------
+-- AchievementService (lazy-loaded to avoid require-order issues)
+--------------------------------------------------------------------------------
+local AchievementService
+local function getAchievementService()
+	if AchievementService then return AchievementService end
+	pcall(function()
+		local mod = ServerScriptService:FindFirstChild("AchievementService")
+		if mod and mod:IsA("ModuleScript") then
+			AchievementService = require(mod)
+		end
+	end)
+	return AchievementService
+end
+
+--- Sync a player's current upgrade levels to AchievementService as stats.
+--- Uses SetStat so the achievement only advances when the level is a new high.
+local function syncUpgradeLevelAchievements(player)
+	local achSvc = getAchievementService()
+	if not achSvc then return end
+	local levels = UpgradeService:GetAllLevels(player)
+	if not levels then return end
+	if levels.melee_weapon then
+		achSvc:SetStat(player, "meleeUpgradeLevel", levels.melee_weapon)
+	end
+	if levels.ranged_weapon then
+		achSvc:SetStat(player, "rangedUpgradeLevel", levels.ranged_weapon)
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
 --------------------------------------------------------------------------------
 local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
@@ -63,8 +93,13 @@ purchaseRF.OnServerInvoke = function(player, upgradeId)
 	print(("[UpgradeServiceInit] Purchase request from %s for '%s'"):format(player.Name, upgradeId))
 	local ok, msg = UpgradeService:PurchaseUpgrade(player, upgradeId)
 	if ok then
+		local newLevel = UpgradeService:GetLevel(player, upgradeId)
 		print(("[UpgradeServiceInit] Purchase success: %s → '%s' now level %d"):format(
-			player.Name, upgradeId, UpgradeService:GetLevel(player, upgradeId)))
+			player.Name, upgradeId, newLevel))
+		-- Track upgrade level for achievements
+		task.spawn(function()
+			syncUpgradeLevelAchievements(player)
+		end)
 	else
 		print(("[UpgradeServiceInit] Purchase denied: %s → '%s' reason: %s"):format(
 			player.Name, upgradeId, tostring(msg)))
@@ -73,7 +108,9 @@ purchaseRF.OnServerInvoke = function(player, upgradeId)
 end
 
 getStatesRF.OnServerInvoke = function(player)
-	return UpgradeService:GetAllLevels(player)
+	local levels = UpgradeService:GetAllLevels(player)
+	levels._playerLevel = UpgradeService:GetPlayerLevel(player)
+	return levels
 end
 
 --------------------------------------------------------------------------------
@@ -83,9 +120,14 @@ end
 Players.PlayerAdded:Connect(function(player)
 	task.spawn(function()
 		UpgradeService:LoadForPlayer(player)
+		local state = UpgradeService:GetAllLevels(player)
+		state._playerLevel = UpgradeService:GetPlayerLevel(player)
 		pcall(function()
-			stateUpdatedRE:FireClient(player, UpgradeService:GetAllLevels(player))
+			stateUpdatedRE:FireClient(player, state)
 		end)
+		-- Sync existing upgrade levels to achievement system on join
+		task.wait(1) -- let AchievementService load first
+		syncUpgradeLevelAchievements(player)
 	end)
 end)
 
@@ -93,9 +135,13 @@ end)
 for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(function()
 		UpgradeService:LoadForPlayer(player)
+		local state = UpgradeService:GetAllLevels(player)
+		state._playerLevel = UpgradeService:GetPlayerLevel(player)
 		pcall(function()
-			stateUpdatedRE:FireClient(player, UpgradeService:GetAllLevels(player))
+			stateUpdatedRE:FireClient(player, state)
 		end)
+		task.wait(1)
+		syncUpgradeLevelAchievements(player)
 	end)
 end
 

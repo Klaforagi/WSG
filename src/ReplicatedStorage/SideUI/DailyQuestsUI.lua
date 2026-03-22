@@ -3258,7 +3258,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     -- Build 2x3 showcase grid of category cards (compact medallion style)
     ---------------------------------------------------------------------------
     local GRID_COLS = 2
-    local CARD_H = px(138)  -- scaled-up category cards
+    local CARD_H = px(154)  -- scaled-up category cards
 
     -- Use UIGridLayout for clean 2-column arrangement
     local gridLayout = Instance.new("UIGridLayout")
@@ -3372,51 +3372,58 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         label.ZIndex              = 2
         label.Parent              = catBtn
 
-        -- Percentage (small, subtle below label)
+        -- Percentage (readable below label)
         local pctY = px(12) + iconWellSize + px(5) + px(18) + px(2)
         local progLbl = Instance.new("TextLabel")
         progLbl.Name                = "ProgressLabel"
         progLbl.BackgroundTransparency = 1
-        progLbl.Font                = Enum.Font.GothamMedium
+        progLbl.Font                = Enum.Font.GothamBold
         progLbl.Text                = tostring(pctVal) .. "%"
         progLbl.TextColor3          = Color3.fromRGB(120, 125, 150)
-        progLbl.TextSize            = math.max(10, math.floor(px(11)))
+        progLbl.TextSize            = math.max(13, math.floor(px(15)))
         progLbl.TextXAlignment      = Enum.TextXAlignment.Center
-        progLbl.Size                = UDim2.new(1, 0, 0, px(12))
+        progLbl.Size                = UDim2.new(1, 0, 0, px(16))
         progLbl.AnchorPoint         = Vector2.new(0.5, 0)
         progLbl.Position            = UDim2.new(0.5, 0, 0, pctY)
         progLbl.ZIndex              = 2
         progLbl.Parent              = catBtn
 
-        -- Thin progress bar at bottom of card (subtle, integrated)
-        local miniBarH = px(3)
+        -- Progress bar at bottom of card (visible, integrated)
+        local miniBarH = px(6)
         local miniTrack = Instance.new("Frame")
         miniTrack.Name             = "CatProgressTrack"
         miniTrack.BackgroundColor3 = BAR_BG
-        miniTrack.BackgroundTransparency = 0.3
+        miniTrack.BackgroundTransparency = 0.15
         miniTrack.BorderSizePixel  = 0
         miniTrack.Size             = UDim2.new(0.7, 0, 0, miniBarH)
         miniTrack.AnchorPoint      = Vector2.new(0.5, 1)
-        miniTrack.Position         = UDim2.new(0.5, 0, 1, -px(6))
+        miniTrack.Position         = UDim2.new(0.5, 0, 1, -px(8))
         miniTrack.ZIndex           = 2
         miniTrack.Parent           = catBtn
 
         local miniTrackCr = Instance.new("UICorner")
-        miniTrackCr.CornerRadius = UDim.new(0.5, 0)
+        miniTrackCr.CornerRadius = UDim.new(0, px(3))
         miniTrackCr.Parent = miniTrack
+
+        local miniTrackStroke = Instance.new("UIStroke")
+        miniTrackStroke.Color        = CARD_STROKE
+        miniTrackStroke.Thickness    = 1
+        miniTrackStroke.Transparency = 0.5
+        miniTrackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        miniTrackStroke.Parent       = miniTrack
 
         local miniPct = (total > 0) and math.clamp(completed / total, 0, 1) or 0
         local miniFill = Instance.new("Frame")
         miniFill.Name             = "CatBarFill"
         miniFill.BackgroundColor3 = BAR_FILL
-        miniFill.BackgroundTransparency = 0.1
+        miniFill.BackgroundTransparency = 0
         miniFill.BorderSizePixel  = 0
         miniFill.Size             = UDim2.new(miniPct, 0, 1, 0)
         miniFill.ZIndex           = 3
         miniFill.Parent           = miniTrack
 
         local miniFillCr = Instance.new("UICorner")
-        miniFillCr.CornerRadius = UDim.new(0.5, 0)
+        miniFillCr.CornerRadius = UDim.new(0, px(3))
         miniFillCr.Parent = miniFill
 
         catButtons[def.id] = catBtn

@@ -250,11 +250,11 @@ AchievementDefs.Achievements = {
         hidden      = false,
     },
     {
-        id          = "safe_hands",
+        id          = "flag_bearer",
         category    = "Objectives",
         staged      = true,
         stat        = "flagCarryTime",
-        titleFormat = "Safe Hands %s",
+        titleFormat = "Flag Bearer %s",
         descFormat  = "Carry the enemy flag for %d total seconds.",
         thresholds  = { 120, 300, 600, 1200, 2400 },
         rewards     = { 25, 35, 50, 75, 100 },
@@ -326,6 +326,42 @@ AchievementDefs.Achievements = {
         hidden      = false,
     },
     {
+        id          = "daily_devotion",
+        category    = "Progression",
+        staged      = true,
+        stat        = "dailyQuestsCompleted",
+        titleFormat = "Daily Devotion %s",
+        descFormat  = "Complete %d daily quests.",
+        thresholds  = { 10, 25, 50, 100 },
+        rewards     = { 25, 35, 50, 100 },
+        icon        = "📋",
+        hidden      = false,
+    },
+    {
+        id          = "weekly_warrior",
+        category    = "Progression",
+        staged      = true,
+        stat        = "weeklyQuestsCompleted",
+        titleFormat = "Weekly Warrior %s",
+        descFormat  = "Complete %d weekly quests.",
+        thresholds  = { 5, 15, 30, 60 },
+        rewards     = { 30, 50, 75, 120 },
+        icon        = "📅",
+        hidden      = false,
+    },
+    {
+        id          = "event_challenger",
+        category    = "Progression",
+        staged      = true,
+        stat        = "eventQuestsCompleted",
+        titleFormat = "Event Challenger %s",
+        descFormat  = "Complete %d event quests.",
+        thresholds  = { 5, 15, 30, 50 },
+        rewards     = { 30, 50, 75, 120 },
+        icon        = "🎉",
+        hidden      = false,
+    },
+    {
         id          = "welcome_to_the_front",
         category    = "Progression",
         staged      = false,
@@ -379,6 +415,52 @@ AchievementDefs.Achievements = {
     },
 
     ---------------------------------------------------------------------------
+    -- PROGRESSION (continued) — Upgrade Milestones
+    ---------------------------------------------------------------------------
+    {
+        id          = "close_quarters",
+        category    = "Progression",
+        staged      = true,
+        stat        = "meleeUpgradeLevel",
+        titleFormat = "Close Quarters %s",
+        descFormat  = "Reach Melee Upgrade Level %d.",
+        thresholds  = { 5, 10, 25, 50, 100 },
+        rewards     = { 25, 40, 60, 80, 120 },
+        icon        = "⚔",
+        hidden      = false,
+    },
+    {
+        id          = "deadeye",
+        category    = "Progression",
+        staged      = true,
+        stat        = "rangedUpgradeLevel",
+        titleFormat = "Deadeye %s",
+        descFormat  = "Reach Ranged Upgrade Level %d.",
+        thresholds  = { 5, 10, 25, 50, 100 },
+        rewards     = { 25, 40, 60, 80, 120 },
+        icon        = "🎯",
+        hidden      = false,
+    },
+
+    ---------------------------------------------------------------------------
+    -- ECONOMY (continued) — Robux Spending Milestones
+    ---------------------------------------------------------------------------
+    {
+        id          = "robux_spender",
+        category    = "Economy",
+        staged      = true,
+        stat        = "totalRobuxSpent",
+        titleFormat = "%s",
+        descFormat  = "Spend %d Robux in the shop.",
+        thresholds  = { 50, 250, 500, 1000, 2500 },
+        rewards     = { 30, 50, 75, 100, 150 },
+        icon        = "💎",
+        hidden      = false,
+        -- Custom stage titles (not roman numerals)
+        stageTitles = { "First Purchase", "Supporter", "Big Spender", "Premium Supporter", "Shop Patron" },
+    },
+
+    ---------------------------------------------------------------------------
     -- EVENTS  (placeholder category — no active achievements yet)
     ---------------------------------------------------------------------------
 }
@@ -395,6 +477,10 @@ end
 --------------------------------------------------------------------------------
 function AchievementDefs.GetStageTitle(def, stageIndex)
     if not def.staged then return def.title end
+    -- Support custom per-stage titles (e.g. Robux spending milestones)
+    if def.stageTitles and def.stageTitles[stageIndex] then
+        return def.stageTitles[stageIndex]
+    end
     return string.format(def.titleFormat, ROMAN[stageIndex] or tostring(stageIndex))
 end
 
@@ -439,6 +525,7 @@ AchievementDefs.IdAliases = {
     zombie_hunter = "monster_hunter",
     flag_capturer = "capture_artist",
     flag_returner = "banner_guardian",
+    safe_hands    = "flag_bearer",
 }
 
 --- Resolve an id that may be an old alias to the canonical id

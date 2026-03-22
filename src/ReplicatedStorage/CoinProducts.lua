@@ -57,4 +57,15 @@ for _, pack in ipairs(CoinProducts.Packs) do
 	end
 end
 
+----------------------------------------------------------------------
+-- Lookup: ProductId → Robux price  (used by CoinShopReceipt for
+-- tracking cumulative Robux spent toward achievements)
+----------------------------------------------------------------------
+CoinProducts.PriceByProductId = {}
+for _, pack in ipairs(CoinProducts.Packs) do
+	if pack.ProductId and pack.ProductId > 0 and pack.Price then
+		CoinProducts.PriceByProductId[pack.ProductId] = pack.Price
+	end
+end
+
 return CoinProducts

@@ -218,6 +218,12 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 	end)
 	if type(upgradeLevels) ~= "table" then upgradeLevels = {} end
 
+	-- Extract player level from server response (or fall back to attribute)
+	local playerLevel = upgradeLevels._playerLevel
+		or player:GetAttribute("Level")
+		or 1
+	upgradeLevels._playerLevel = nil  -- strip metadata before iterating as upgrade ids
+
 	---------------------------------------------------------------------------
 	-- Root container
 	---------------------------------------------------------------------------
@@ -640,30 +646,74 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		costCoin.Position = UDim2.new(0.5, (costCoinSize / 2 + px(1)), 0.5, 0)
 		costCoin.ZIndex = 10
 
+		-- Cap hint label (shown when upgrade is capped by player level)
+		local capLabel = Instance.new("TextLabel")
+		capLabel.Name = "CapLabel"
+		capLabel.BackgroundTransparency = 1
+		capLabel.Font = Enum.Font.GothamMedium
+		capLabel.TextColor3 = DIM_TEXT
+		capLabel.TextSize = math.max(10, math.floor(px(11)))
+		capLabel.TextXAlignment = Enum.TextXAlignment.Center
+		capLabel.TextWrapped = true
+		capLabel.Size = UDim2.new(1, 0, 0, px(14))
+		capLabel.AnchorPoint = Vector2.new(0, 1)
+		capLabel.Position = UDim2.new(0, 0, 1, -(btnH + px(4)))
+		capLabel.ZIndex = 10
+		capLabel.Text = ""
+		capLabel.Visible = false
+		capLabel.Parent = card
+
 		-----------------------------------------------------------------------
-		-- Update function for this card
+		-- Update function for this card (cap-aware)
 		-----------------------------------------------------------------------
-		local function updateCard(level)
+		local function updateCard(level, pLevel)
+			if pLevel then playerLevel = pLevel end
 			levelLabel.Text  = "Weapon Level: " .. level
 			local bonusTxt = UpgradeConfig.GetBonusText(level, upgradeId)
 			bonusLabel.Text  = (level == 0) and bonusTxt or ("Bonus: " .. bonusTxt)
 			local cost       = UpgradeConfig.GetCost(level)
-			priceLabel.Text  = tostring(cost)
 
-			print(("[UpgradesUI] Card '%s' updated: level=%d, bonus=%s, nextCost=%d"):format(
-				upgradeId, level, UpgradeConfig.GetBonusText(level, upgradeId), cost))
+			-- Cap check: is the upgrade at or above the player level?
+			local capped = (level >= playerLevel)
+			if capped then
+				btn.Text = "MAXED"
+				btn.Active = false
+				btn.BackgroundColor3 = Color3.fromRGB(45, 48, 62)
+				btnStroke.Color = DIM_TEXT
+				costContainer.Visible = false
+				capLabel.Text = "Reach player level " .. (level + 1) .. " to upgrade further"
+				capLabel.Visible = true
+			else
+				btn.Text = "UPGRADE"
+				btn.Active = true
+				btn.BackgroundColor3 = BTN_BG
+				btnStroke.Color = BTN_STROKE_C
+				costContainer.Visible = true
+				priceLabel.Text = tostring(cost)
+				capLabel.Visible = false
+			end
+
+			print(("[UpgradesUI] Card '%s' updated: level=%d, playerLevel=%d, capped=%s, bonus=%s, nextCost=%d"):format(
+				upgradeId, level, playerLevel, tostring(capped), UpgradeConfig.GetBonusText(level, upgradeId), cost))
 		end
 
-		cardUpdaters[upgradeId] = { updateCard = updateCard, btn = btn }
+		-- Run initial cap check
+		updateCard(currentLevel, playerLevel)
+
+		cardUpdaters[upgradeId] = { updateCard = updateCard, btn = btn, capLabel = capLabel, costContainer = costContainer }
 
 		-----------------------------------------------------------------------
 		-- Hover feedback
 		-----------------------------------------------------------------------
 		trackConn(btn.MouseEnter:Connect(function()
-			TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+			if btn.Active then
+				TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+			end
 		end))
 		trackConn(btn.MouseLeave:Connect(function()
-			TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+			if btn.Active then
+				TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+			end
 		end))
 
 		-----------------------------------------------------------------------
@@ -682,7 +732,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 			if success then
 				currentLevel = currentLevel + 1
 				upgradeLevels[upgradeId] = currentLevel
-				updateCard(currentLevel)
+				updateCard(currentLevel, playerLevel)
 
 				showToast(root, display.Title .. " upgraded to Level " .. currentLevel .. "!", GREEN_BTN, 2.5)
 
@@ -704,13 +754,23 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 				local toastColor = RED_TEXT
 				if tostring(msg):find("Insufficient") then
 					toastMsg = "Not enough coins!"
+				elseif tostring(msg):find("capped") then
+					toastMsg = "Upgrade capped by player level!"
 				end
 				showToast(root, toastMsg, toastColor, 2.5)
 			end
 
-			btn.Text = "UPGRADE"
-			btn.Active = true
-			btn.BackgroundColor3 = BTN_BG
+			-- Restore button state respecting current cap
+			local isCapped = (currentLevel >= playerLevel)
+			if isCapped then
+				btn.Text = "MAXED"
+				btn.Active = false
+				btn.BackgroundColor3 = Color3.fromRGB(45, 48, 62)
+			else
+				btn.Text = "UPGRADE"
+				btn.Active = true
+				btn.BackgroundColor3 = BTN_BG
+			end
 		end))
 	end
 
@@ -720,6 +780,12 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 	if stateUpdatedRE then
 		trackConn(stateUpdatedRE.OnClientEvent:Connect(function(levels)
 			if type(levels) ~= "table" then return end
+
+			-- Update player level from server payload
+			if levels._playerLevel then
+				playerLevel = levels._playerLevel
+				levels._playerLevel = nil
+			end
 			upgradeLevels = levels
 
 			for _, cardDef in ipairs(CARD_DEFS) do
@@ -727,11 +793,29 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 				local level = levels[id] or 0
 				local refs = cardUpdaters[id]
 				if refs then
-					refs.updateCard(level)
+					refs.updateCard(level, playerLevel)
 				end
 			end
 		end))
 	end
+
+	---------------------------------------------------------------------------
+	-- Listen for player level attribute changes (e.g. after leveling up)
+	---------------------------------------------------------------------------
+	trackConn(player:GetAttributeChangedSignal("Level"):Connect(function()
+		local newLevel = player:GetAttribute("Level") or 1
+		if newLevel ~= playerLevel then
+			playerLevel = newLevel
+			for _, cardDef in ipairs(CARD_DEFS) do
+				local id = cardDef.id
+				local level = upgradeLevels[id] or 0
+				local refs = cardUpdaters[id]
+				if refs then
+					refs.updateCard(level, playerLevel)
+				end
+			end
+		end
+	end))
 
 	return root
 end

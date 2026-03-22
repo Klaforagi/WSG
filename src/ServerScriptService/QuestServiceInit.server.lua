@@ -67,8 +67,17 @@ end
 claimQuestRF.OnServerInvoke = function(player, questId)
     if type(questId) ~= "string" then return false end
     local result = QuestService:ClaimReward(player, questId)
-    if result and StatService then
-        pcall(function() StatService:RegisterQuestClaimed(player) end)
+    if result then
+        if StatService then
+            pcall(function() StatService:RegisterQuestClaimed(player) end)
+        end
+        -- Track daily quest completion for achievements
+        pcall(function()
+            local AchievementService = require(ServerScriptService:FindFirstChild("AchievementService"))
+            if AchievementService then
+                AchievementService:IncrementStat(player, "dailyQuestsCompleted", 1)
+            end
+        end)
     end
     return result
 end

@@ -62,6 +62,22 @@ end
 --------------------------------------------------------------------------------
 local playerUpgrades = {}
 
+--------------------------------------------------------------------------------
+-- Reusable cap helper: clamp upgrade level to player level
+--------------------------------------------------------------------------------
+local function clampUpgradeLevel(currentUpgradeLevel, playerLevel)
+	return math.min(currentUpgradeLevel, math.max(0, playerLevel))
+end
+
+--- Returns the player's current XP level (reads the "Level" attribute set by XPService).
+local function getPlayerLevel(player)
+	local level = 1
+	pcall(function()
+		level = player:GetAttribute("Level") or 1
+	end)
+	return math.max(1, level)
+end
+
 -- RemoteEvent handle for pushing state updates to clients
 local upgradeStateEvent
 
@@ -72,6 +88,7 @@ end
 local function pushState(player)
 	if not upgradeStateEvent then return end
 	local levels = UpgradeService:GetAllLevels(player)
+	levels._playerLevel = getPlayerLevel(player)
 	pcall(function()
 		upgradeStateEvent:FireClient(player, levels)
 	end)
@@ -128,6 +145,25 @@ function UpgradeService:LoadForPlayer(player)
 		end
 	end
 
+	-- TEMP TEST RESET START: wipe all weapon upgrades
+	local loadedMelee  = validated.melee_weapon or 0
+	local loadedRanged = validated.ranged_weapon or 0
+	validated.melee_weapon  = 0
+	validated.ranged_weapon = 0
+	print(("[UpgradeReset] %s – loaded melee=%d, ranged=%d → reset to 0, 0"):format(
+		player.Name, loadedMelee, loadedRanged))
+	-- TEMP TEST RESET END
+
+	-- Enforce player-level cap (permanent logic)
+	local pLevel = getPlayerLevel(player)
+	for id, _ in pairs(validated) do
+		validated[id] = clampUpgradeLevel(validated[id], pLevel)
+	end
+	print(("[UpgradeCap] %s – playerLevel=%d, clamped melee=%d, ranged=%d"):format(
+		player.Name, pLevel,
+		validated.melee_weapon or 0,
+		validated.ranged_weapon or 0))
+
 	playerUpgrades[player] = validated
 	print(("[UpgradeService] Loaded for %s: melee=%d, ranged=%d"):format(
 		player.Name,
@@ -182,6 +218,15 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 	if not levels then return false, "Player data not loaded" end
 
 	local currentLevel = levels[upgradeId] or 0
+
+	-- Enforce player-level cap before allowing purchase
+	local pLevel = getPlayerLevel(player)
+	if currentLevel >= pLevel then
+		print(("[UpgradeCap] %s purchase BLOCKED '%s': upgradeLevel=%d >= playerLevel=%d"):format(
+			player.Name, upgradeId, currentLevel, pLevel))
+		return false, "Upgrade capped by player level"
+	end
+
 	local price = config.GetCost(currentLevel)
 
 	local cs = getCurrencyService()
@@ -195,8 +240,9 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 	-- Deduct coins (pass "purchase" source to prevent boost multiplier from applying)
 	cs:AddCoins(player, -price, "purchase")
 
-	-- Increase level
-	levels[upgradeId] = currentLevel + 1
+	-- Increase level (clamped as a safety net)
+	local newLevel = clampUpgradeLevel(currentLevel + 1, pLevel)
+	levels[upgradeId] = newLevel
 	print(("[UpgradeService] %s upgraded '%s' to level %d (cost %d coins)"):format(
 		player.Name, upgradeId, levels[upgradeId], price))
 
@@ -238,6 +284,11 @@ function UpgradeService:GetMeleeMultiplier(player)
 	if not config then return 1 end
 	local level = self:GetLevel(player, config.MELEE)
 	return config.GetPvEMultiplier(level, config.MELEE)
+end
+
+--- Returns the player's XP/player level (for cap checks).
+function UpgradeService:GetPlayerLevel(player)
+	return getPlayerLevel(player)
 end
 
 --- Returns the damage multiplier for ranged weapons (PvE, uncapped).
