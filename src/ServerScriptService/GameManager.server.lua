@@ -15,7 +15,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 ---------------------------------------------------------------------
 -- Config
 ---------------------------------------------------------------------
-local MATCH_DURATION   = 1 * 60   -- seconds
+local MATCH_DURATION   = 10 * 60  -- round duration in seconds (600 s = 10 min)
 local END_SCREEN_TIME  = 10       -- seconds the winner screen stays up
 local MIN_PLAYERS      = 0        -- set >0 if you want a lobby phase
 
@@ -41,6 +41,12 @@ local AdjustMatchTime = ensureRemote("AdjustMatchTime")
 local StatService
 pcall(function()
     StatService = require(ServerScriptService:WaitForChild("StatService", 10))
+end)
+
+-- Event scheduler (timed match events)
+local EventScheduler
+pcall(function()
+    EventScheduler = require(ServerScriptService:WaitForChild("EventScheduler", 10))
 end)
 
 ---------------------------------------------------------------------
@@ -126,6 +132,8 @@ AddScore.Event:Connect(onAddScore)
 function endMatch(winnerTeam)
     if State == "EndGame" then return end
     State = "EndGame"
+    -- Stop event scheduler for this match
+    if EventScheduler then pcall(function() EventScheduler:StopMatch() end) end
     print("[GameManager] END — winner:", winnerTeam, "  Blue:", teamScores.Blue, " Red:", teamScores.Red)
     pcall(function() MatchEnd:FireAllClients("win", winnerTeam) end)
     pcall(function() MatchEndedBE:Fire(winnerTeam) end)
@@ -189,6 +197,9 @@ function startMatch()
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
     pcall(function() MatchStartedBE:Fire() end)
 
+    -- Start event scheduler for this match
+    if EventScheduler then pcall(function() EventScheduler:StartMatch(matchStartTick) end) end
+
     -- Monitor remaining time; sleeps exactly until 0 so it fires instantly.
     -- Re-checks after waking in case matchStartTick was adjusted mid-sleep.
     task.spawn(function()
@@ -238,6 +249,8 @@ Players.PlayerAdded:Connect(function(pl)
         pcall(function()
             MatchStart:FireClient(pl, MATCH_DURATION, matchStartTick)
         end)
+        -- Sync event state to the late-joining player
+        if EventScheduler then pcall(function() EventScheduler:SyncPlayer(pl) end) end
     end
 end)
 
