@@ -10,13 +10,24 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
+local RunService        = game:GetService("RunService")
 local Players           = game:GetService("Players")
+
+local DEBUG_CRATE = false -- set true to print layout diagnostics
 
 local CrateConfig = nil
 pcall(function()
     local mod = ReplicatedStorage:FindFirstChild("CrateConfig")
     if mod and mod:IsA("ModuleScript") then
         CrateConfig = require(mod)
+    end
+end)
+
+local AssetCodes = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("AssetCodes")
+    if mod and mod:IsA("ModuleScript") then
+        AssetCodes = require(mod)
     end
 end)
 
@@ -38,9 +49,9 @@ local DIM_TEXT  = Color3.fromRGB(140, 140, 160)
 local CARD_BG   = Color3.fromRGB(26, 30, 48)
 local OVERLAY_C = Color3.fromRGB(10, 10, 26)
 
-local CARD_W = 120  -- base card width
-local CARD_H = 150  -- base card height
-local CARD_GAP = 8  -- gap between cards
+local CARD_W = 160  -- base card width
+local CARD_H = 200  -- base card height
+local CARD_GAP = 10  -- gap between cards
 local STRIP_CARDS = 40  -- total cards in the roulette strip
 local WINNING_INDEX = 30 -- card index where the winner is placed (near end for nice decel)
 
@@ -83,7 +94,7 @@ function CrateOpeningUI.Init(playerGui)
     local screen = Instance.new("ScreenGui")
     screen.Name = "CrateOpenScreen"
     screen.ResetOnSpawn = false
-    screen.DisplayOrder = 50
+    screen.DisplayOrder = 500
     screen.IgnoreGuiInset = true
     screen.Enabled = false
     screen.Parent = playerGui
@@ -102,7 +113,7 @@ function CrateOpeningUI.Init(playerGui)
     marker.Name = "CenterMarker"
     marker.BackgroundColor3 = GOLD
     marker.BorderSizePixel = 0
-    marker.Size = UDim2.new(0, px(3), 0, px(CARD_H + 30))
+    marker.Size = UDim2.new(0, px(3), 0, px(CARD_H + 40))
     marker.AnchorPoint = Vector2.new(0.5, 0.5)
     marker.Position = UDim2.new(0.5, 0, 0.5, 0)
     marker.ZIndex = 10
@@ -119,7 +130,7 @@ function CrateOpeningUI.Init(playerGui)
     scrollClip.Name = "ScrollClip"
     scrollClip.BackgroundTransparency = 1
     scrollClip.ClipsDescendants = true
-    scrollClip.Size = UDim2.new(1, 0, 0, px(CARD_H + 20))
+    scrollClip.Size = UDim2.new(1, 0, 0, px(CARD_H + 30))
     scrollClip.AnchorPoint = Vector2.new(0.5, 0.5)
     scrollClip.Position = UDim2.new(0.5, 0, 0.5, 0)
     scrollClip.ZIndex = 5
@@ -139,7 +150,7 @@ function CrateOpeningUI.Init(playerGui)
     resultFrame.Name = "ResultFrame"
     resultFrame.BackgroundColor3 = Color3.fromRGB(16, 18, 32)
     resultFrame.BackgroundTransparency = 0.06
-    resultFrame.Size = UDim2.new(0, px(320), 0, px(220))
+    resultFrame.Size = UDim2.new(0, px(360), 0, px(360))
     resultFrame.AnchorPoint = Vector2.new(0.5, 0.5)
     resultFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
     resultFrame.Visible = false
@@ -164,10 +175,20 @@ function CrateOpeningUI.Init(playerGui)
     resultTitle.TextColor3 = DIM_TEXT
     resultTitle.TextSize = math.max(14, math.floor(px(16)))
     resultTitle.Size = UDim2.new(1, 0, 0, px(24))
-    resultTitle.Position = UDim2.new(0, 0, 0, px(20))
+    resultTitle.Position = UDim2.new(0, 0, 0, px(14))
     resultTitle.TextXAlignment = Enum.TextXAlignment.Center
     resultTitle.ZIndex = 21
     resultTitle.Parent = resultFrame
+
+    local resultImage = Instance.new("ImageLabel")
+    resultImage.Name = "WeaponImage"
+    resultImage.BackgroundTransparency = 1
+    resultImage.Size = UDim2.new(0, px(100), 0, px(100))
+    resultImage.AnchorPoint = Vector2.new(0.5, 0)
+    resultImage.Position = UDim2.new(0.5, 0, 0, px(42))
+    resultImage.ScaleType = Enum.ScaleType.Fit
+    resultImage.ZIndex = 21
+    resultImage.Parent = resultFrame
 
     local resultName = Instance.new("TextLabel")
     resultName.Name = "WeaponName"
@@ -176,8 +197,9 @@ function CrateOpeningUI.Init(playerGui)
     resultName.Text = "?"
     resultName.TextColor3 = WHITE
     resultName.TextSize = math.max(24, math.floor(px(28)))
+    resultName.TextWrapped = true
     resultName.Size = UDim2.new(1, 0, 0, px(36))
-    resultName.Position = UDim2.new(0, 0, 0, px(52))
+    resultName.Position = UDim2.new(0, 0, 0, px(150))
     resultName.TextXAlignment = Enum.TextXAlignment.Center
     resultName.ZIndex = 21
     resultName.Parent = resultFrame
@@ -190,7 +212,7 @@ function CrateOpeningUI.Init(playerGui)
     resultRarity.TextColor3 = DIM_TEXT
     resultRarity.TextSize = math.max(14, math.floor(px(16)))
     resultRarity.Size = UDim2.new(1, 0, 0, px(22))
-    resultRarity.Position = UDim2.new(0, 0, 0, px(94))
+    resultRarity.Position = UDim2.new(0, 0, 0, px(192))
     resultRarity.TextXAlignment = Enum.TextXAlignment.Center
     resultRarity.ZIndex = 21
     resultRarity.Parent = resultFrame
@@ -214,6 +236,63 @@ function CrateOpeningUI.Init(playerGui)
     cbCorner.Parent = closeBtn
 
     local isAnimating = false
+    local activeTween = nil           -- current spin tween (cancelled on re-play)
+    local completedConn = nil         -- tween.Completed connection
+
+    ---------------------------------------------------------------------------
+    -- Wait until Roblox layout engine has fully resolved sizes for the strip.
+    -- Returns true when stable, false on timeout.
+    ---------------------------------------------------------------------------
+    local function waitForStableLayout(expectedCardCount, timeoutSec)
+        timeoutSec = timeoutSec or 2
+        local elapsed = 0
+        local stableFrames = 0
+        local lastClipW, lastStripW = 0, 0
+
+        while elapsed < timeoutSec do
+            RunService.Heartbeat:Wait()
+            elapsed += 1 / 60 -- approximate
+
+            local clipW  = scrollClip.AbsoluteSize.X
+            local stripW = strip.AbsoluteSize.X
+            if clipW <= 0 or stripW <= 0 then
+                stableFrames = 0
+                lastClipW, lastStripW = clipW, stripW
+                continue
+            end
+
+            -- Check all card frames exist and have size
+            local cards = {}
+            local allReady = true
+            for _, child in ipairs(strip:GetChildren()) do
+                if child:IsA("Frame") and child.Name:match("^Card_") then
+                    table.insert(cards, child)
+                    if child.AbsoluteSize.X <= 0 then
+                        allReady = false
+                    end
+                end
+            end
+            if #cards < expectedCardCount or not allReady then
+                stableFrames = 0
+                lastClipW, lastStripW = clipW, stripW
+                continue
+            end
+
+            -- Values unchanged from last frame?
+            if clipW == lastClipW and stripW == lastStripW then
+                stableFrames += 1
+            else
+                stableFrames = 0
+            end
+            lastClipW, lastStripW = clipW, stripW
+
+            if stableFrames >= 2 then
+                return true
+            end
+        end
+        warn("[CrateOpeningUI] waitForStableLayout timed out")
+        return false
+    end
 
     ---------------------------------------------------------------------------
     -- Close handler
@@ -269,18 +348,36 @@ function CrateOpeningUI.Init(playerGui)
         barCr.CornerRadius = UDim.new(0, px(4))
         barCr.Parent = bar
 
-        -- Weapon name
+        -- Weapon image
+        local thumb = Instance.new("ImageLabel")
+        thumb.Name = "Thumb"
+        thumb.BackgroundTransparency = 1
+        thumb.Size = UDim2.new(0.6, 0, 0.45, 0)
+        thumb.AnchorPoint = Vector2.new(0.5, 0)
+        thumb.Position = UDim2.new(0.5, 0, 0, px(12))
+        thumb.ScaleType = Enum.ScaleType.Fit
+        thumb.ZIndex = 8
+        thumb.Parent = card
+        pcall(function()
+            if AssetCodes and type(AssetCodes.Get) == "function" then
+                local img = AssetCodes.Get(data.weapon)
+                if img and #img > 0 then thumb.Image = img end
+            end
+        end)
+
+        -- Weapon name (below image, wraps)
         local wname = Instance.new("TextLabel")
         wname.BackgroundTransparency = 1
         wname.Font = Enum.Font.GothamBold
         wname.Text = data.weapon
         wname.TextColor3 = WHITE
-        wname.TextSize = math.max(12, math.floor(px(14)))
+        wname.TextSize = math.max(11, math.floor(px(13)))
         wname.TextWrapped = true
-        wname.Size = UDim2.new(0.9, 0, 0, px(36))
+        wname.Size = UDim2.new(0.9, 0, 0, px(34))
         wname.AnchorPoint = Vector2.new(0.5, 0)
-        wname.Position = UDim2.new(0.5, 0, 0, px(30))
+        wname.Position = UDim2.new(0.5, 0, 0.58, 0)
         wname.TextXAlignment = Enum.TextXAlignment.Center
+        wname.TextYAlignment = Enum.TextYAlignment.Top
         wname.ZIndex = 8
         wname.Parent = card
 
@@ -293,7 +390,7 @@ function CrateOpeningUI.Init(playerGui)
         rlbl.TextSize = math.max(10, math.floor(px(11)))
         rlbl.Size = UDim2.new(1, 0, 0, px(16))
         rlbl.AnchorPoint = Vector2.new(0.5, 1)
-        rlbl.Position = UDim2.new(0.5, 0, 1, -px(10))
+        rlbl.Position = UDim2.new(0.5, 0, 1, -px(6))
         rlbl.TextXAlignment = Enum.TextXAlignment.Center
         rlbl.ZIndex = 8
         rlbl.Parent = card
@@ -322,6 +419,16 @@ function CrateOpeningUI.Init(playerGui)
             return
         end
 
+        -- Cancel any prior tween / disconnect old completion handler
+        if activeTween then
+            pcall(function() activeTween:Cancel() end)
+            activeTween = nil
+        end
+        if completedConn then
+            pcall(function() completedConn:Disconnect() end)
+            completedConn = nil
+        end
+
         -- Clear old cards
         for _, c in ipairs(strip:GetChildren()) do
             pcall(function() c:Destroy() end)
@@ -334,33 +441,67 @@ function CrateOpeningUI.Init(playerGui)
         local totalWidth = #stripData * (cw + gap) - gap
         strip.Size = UDim2.new(0, totalWidth, 1, 0)
 
-        -- Create card UI elements
+        -- Create card UI elements; keep ordered references
+        local cardFrames = {}
         for i, data in ipairs(stripData) do
-            makeStripCard(data, i)
+            cardFrames[i] = makeStripCard(data, i)
         end
+        local winnerCard = cardFrames[WINNING_INDEX]
 
-        -- Calculate where the winning card center should align with screen center
-        local screenW = scrollClip.AbsoluteSize.X
-        if screenW == 0 then screenW = 800 end
-        local winnerCenterX = (WINNING_INDEX - 1) * (cw + gap) + cw / 2
-        local targetOffset = -(winnerCenterX - screenW / 2)
-
-        -- Start offset: strip starts with all cards to the right
-        local startOffset = screenW / 2
-        strip.Position = UDim2.new(0, startOffset, 0, 0)
+        -- Park strip off-screen to the right (rough estimate before layout)
+        local roughScreenW = workspace.CurrentCamera.ViewportSize.X
+        strip.Position = UDim2.new(0, roughScreenW, 0, 0)
 
         -- Show overlay
         screen.Enabled = true
 
-        -- Animate: ease-out cubic for deceleration feel
+        -- Wait for the layout engine to fully resolve
+        waitForStableLayout(#stripData)
+
+        -- Compute target using actual absolute positions
+        local markerCenterX = marker.AbsolutePosition.X + marker.AbsoluteSize.X / 2
+        local winnerCenterX = winnerCard.AbsolutePosition.X + winnerCard.AbsoluteSize.X / 2
+        local currentOffset = strip.Position.X.Offset
+        local delta = winnerCenterX - markerCenterX
+        local targetOffset = currentOffset - delta
+
+        if DEBUG_CRATE then
+            print("[CrateDebug] scrollClip.AbsoluteSize.X =", scrollClip.AbsoluteSize.X)
+            print("[CrateDebug] strip.AbsoluteSize.X      =", strip.AbsoluteSize.X)
+            print("[CrateDebug] winnerCard.AbsPos / Size   =", winnerCard.AbsolutePosition, winnerCard.AbsoluteSize)
+            print("[CrateDebug] marker.AbsPos / Size       =", marker.AbsolutePosition, marker.AbsoluteSize)
+            print("[CrateDebug] currentOffset =", currentOffset, "delta =", delta, "targetOffset =", targetOffset)
+        end
+
+        -- Set the real start position (strip scrolls in from right)
+        local screenW = scrollClip.AbsoluteSize.X
+        if screenW <= 0 then screenW = roughScreenW end
+        local startOffset = screenW / 2
+        strip.Position = UDim2.new(0, startOffset, 0, 0)
+
+        -- Recalculate target from the real start position using the same delta
+        -- (we just moved the strip, so re-derive target relative to the new start)
+        waitForStableLayout(#stripData)
+        local winnerCenterX2 = winnerCard.AbsolutePosition.X + winnerCard.AbsoluteSize.X / 2
+        local delta2 = winnerCenterX2 - markerCenterX
+        targetOffset = startOffset - delta2
+
+        if DEBUG_CRATE then
+            print("[CrateDebug] after reposition: startOffset =", startOffset, "delta2 =", delta2, "targetOffset =", targetOffset)
+        end
+
+        -- Animate: ease-out quint for deceleration feel
         local spinDuration = 3.5
         local tweenInfo = TweenInfo.new(spinDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        local tween = TweenService:Create(strip, tweenInfo, {
+        activeTween = TweenService:Create(strip, tweenInfo, {
             Position = UDim2.new(0, targetOffset, 0, 0)
         })
-        tween:Play()
+        activeTween:Play()
 
-        tween.Completed:Connect(function()
+        completedConn = activeTween.Completed:Once(function()
+            activeTween = nil
+            completedConn = nil
+
             -- Brief pause then show result
             task.wait(0.4)
 
@@ -371,6 +512,15 @@ function CrateOpeningUI.Init(playerGui)
             resultRarity.Text = resultData.rarity
             resultRarity.TextColor3 = rc
             rfStroke.Color = rc
+
+            -- Set weapon image
+            resultImage.Image = ""
+            pcall(function()
+                if AssetCodes and type(AssetCodes.Get) == "function" then
+                    local img = AssetCodes.Get(resultData.weaponName)
+                    if img and #img > 0 then resultImage.Image = img end
+                end
+            end)
 
             -- Fade in result
             resultFrame.Visible = true
@@ -421,6 +571,7 @@ function CrateOpeningUI.Init(playerGui)
             -- Brief flash of the overlay with error text
             screen.Enabled = true
             resultFrame.Visible = true
+            resultImage.Image = ""
             resultName.Text = errMsg
             resultName.TextColor3 = Color3.fromRGB(255, 80, 80)
             resultRarity.Text = ""

@@ -884,10 +884,31 @@ end
 
 -- preload Slingshot into the client inventory so player has ranged start
 pcall(function() Inventory:AddItem("Slingshot") end)
-pcall(function() Inventory:SetEquipped("Ranged", "Slingshot") end)
 -- preload Wooden Sword so it shows as OWNED in the Shop (free starter melee)
 pcall(function() Inventory:AddItem("Wooden Sword") end)
-pcall(function() Inventory:SetEquipped("Melee", "Wooden Sword") end)
+
+-- Fetch saved loadout from server so inventory shows the correct equipped state
+do
+    local savedMelee = "Wooden Sword"
+    local savedRanged = "Slingshot"
+    pcall(function()
+        local rs = game:GetService("ReplicatedStorage")
+        local rf = rs:WaitForChild("GetLoadout", 5)
+        if rf and rf:IsA("RemoteFunction") then
+            local data = rf:InvokeServer()
+            if type(data) == "table" then
+                if type(data.melee) == "string" and #data.melee > 0 then
+                    savedMelee = data.melee
+                end
+                if type(data.ranged) == "string" and #data.ranged > 0 then
+                    savedRanged = data.ranged
+                end
+            end
+        end
+    end)
+    pcall(function() Inventory:SetEquipped("Melee", savedMelee) end)
+    pcall(function() Inventory:SetEquipped("Ranged", savedRanged) end)
+end
 
 -- Create centered modal window (hidden by default)
 local modalOverlay = Instance.new("Frame")

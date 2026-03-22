@@ -11,6 +11,9 @@ local Players            = game:GetService("Players")
 local ServerStorage      = game:GetService("ServerStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local DataStoreService   = game:GetService("DataStoreService")
+
+local loadoutStore = DataStoreService:GetDataStore("Loadout_v1")
 
 --------------------------------------------------------------------------------
 -- CONFIG
@@ -54,6 +57,40 @@ local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
+
+--------------------------------------------------------------------------------
+-- LOADOUT PERSISTENCE
+--------------------------------------------------------------------------------
+local function saveLoadout(player)
+    local key = "user_" .. player.UserId
+    local data = {
+        melee  = chosenMelee[player],
+        ranged = chosenRanged[player],
+    }
+    local ok, err = pcall(function()
+        loadoutStore:SetAsync(key, data)
+    end)
+    if not ok then
+        warn("[Loadout] Failed to save loadout for", player.Name, err)
+    end
+end
+
+local function loadLoadout(player)
+    local key = "user_" .. player.UserId
+    local ok, data = pcall(function()
+        return loadoutStore:GetAsync(key)
+    end)
+    if ok and type(data) == "table" then
+        if type(data.melee) == "string" and #data.melee > 0 then
+            chosenMelee[player] = data.melee
+        end
+        if type(data.ranged) == "string" and #data.ranged > 0 then
+            chosenRanged[player] = data.ranged
+        end
+    elseif not ok then
+        warn("[Loadout] Failed to load loadout for", player.Name, data)
+    end
+end
 
 --------------------------------------------------------------------------------
 -- HELPERS
@@ -189,6 +226,15 @@ requestToolCopy.OnServerInvoke = function(player, folder, toolName)
     grantTool(player, folder, toolName)
     ensureBackpackFromStarterGear(player)
     return true
+end
+
+-- Let the client query the saved loadout so the inventory UI shows correct state
+local getLoadoutRF = getOrCreateRemoteFunction("GetLoadout")
+getLoadoutRF.OnServerInvoke = function(player)
+    return {
+        melee  = chosenMelee[player],
+        ranged = chosenRanged[player],
+    }
 end
 
 --------------------------------------------------------------------------------
@@ -346,6 +392,7 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName)
         chosenRanged[player] = toolName
         grantTool(player, "Ranged", toolName)
         ensureBackpackFromStarterGear(player)
+        task.spawn(saveLoadout, player)
     end
 end)
 
@@ -398,6 +445,7 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName)
         chosenMelee[player] = toolName
         grantTool(player, "Melee", toolName)
         ensureBackpackFromStarterGear(player)
+        task.spawn(saveLoadout, player)
     end
 end)
 
@@ -436,6 +484,9 @@ end
 -- PLAYER LIFECYCLE
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
+    -- load saved loadout choices before first spawn
+    loadLoadout(player)
+
     -- check pass on join
     unlockState[player] = checkGamePass(player)
 
@@ -466,6 +517,7 @@ local function onPlayerAdded(player)
 end
 
 local function onPlayerRemoving(player)
+    saveLoadout(player)
     unlockState[player]    = nil
     promptDebounce[player] = nil
     chosenRanged[player]   = nil
@@ -517,4 +569,14 @@ MarketplaceService.PromptGamePassPurchaseFinished:Connect(function(player, passI
     if sf and sf:FindFirstChild(SPECIAL_TOOL.toolName) then
         grantTool(player, SPECIAL_TOOL.folder, SPECIAL_TOOL.toolName)
     end
+end)
+
+--------------------------------------------------------------------------------
+-- SAVE ALL ON SHUTDOWN
+--------------------------------------------------------------------------------
+game:BindToClose(function()
+    for _, player in ipairs(Players:GetPlayers()) do
+        task.spawn(saveLoadout, player)
+    end
+    task.wait(2)
 end)

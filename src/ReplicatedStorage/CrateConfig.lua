@@ -29,7 +29,7 @@ CrateConfig.Crates = {
         id          = "MeleeCrate",
         displayName = "Melee Crate",
         description = "Contains a random melee weapon.",
-        price       = 25,
+        price       = 1,
         category    = "Melee",   -- tool folder in ServerStorage
         iconGlyph   = "\u{2694}", -- ⚔
 
@@ -47,7 +47,7 @@ CrateConfig.Crates = {
         id          = "RangedCrate",
         displayName = "Ranged Crate",
         description = "Contains a random ranged weapon.",
-        price       = 25,
+        price       = 1,
         category    = "Ranged",
         iconGlyph   = "\u{1F3F9}", -- 🏹
 

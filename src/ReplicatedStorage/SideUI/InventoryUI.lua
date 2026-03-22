@@ -1739,33 +1739,113 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local GREEN_BTN = Color3.fromRGB(35, 190, 75)
     local GREEN_BTN_STR = Color3.fromRGB(50, 230, 110)
-    -- Restore equipped state from inventory API if available (per-category)
-    local equippedState = { Melee = nil, Ranged = nil }
-    if inventoryApi and inventoryApi.GetEquipped then
-        pcall(function()
-            equippedState.Melee = inventoryApi:GetEquipped("Melee")
-            equippedState.Ranged = inventoryApi:GetEquipped("Ranged")
-            -- normalize legacy equipped references
-            if type(equippedState.Melee) == "string" and equippedState.Melee:lower() == "stick" then
-                equippedState.Melee = "Wooden Sword"
+
+    -- Determine equipped state by asking the server what the player's saved loadout is.
+    -- This is authoritative — it matches what the server actually grants on spawn.
+    local equippedState = { Melee = "Wooden Sword", Ranged = "Slingshot" }
+    do
+        -- First try scanning the actual hotbar (fastest, no yield)
+        local player = Players.LocalPlayer
+        local found = { Melee = nil, Ranged = nil }
+        local function scanContainer(container)
+            if not container then return end
+            for _, child in ipairs(container:GetChildren()) do
+                if child:IsA("Tool") then
+                    local cat = child:GetAttribute("HotbarCategory")
+                    if type(cat) == "string" then
+                        local k = cat:sub(1,1):upper() .. cat:sub(2):lower()
+                        if (k == "Melee" or k == "Ranged") and not found[k] then
+                            found[k] = child.Name
+                        end
+                    end
+                end
             end
-            if type(equippedState.Ranged) == "string" and equippedState.Ranged:lower() == "stick" then
-                equippedState.Ranged = "Wooden Sword"
-            end
-        end)
+        end
+        scanContainer(player:FindFirstChildOfClass("Backpack"))
+        if player.Character then scanContainer(player.Character) end
+
+        if found.Melee or found.Ranged then
+            -- Tools are already in the hotbar, use them
+            if found.Melee then equippedState.Melee = found.Melee end
+            if found.Ranged then equippedState.Ranged = found.Ranged end
+        else
+            -- Tools not yet granted — ask the server for saved loadout
+            pcall(function()
+                local rf = game:GetService("ReplicatedStorage"):WaitForChild("GetLoadout", 5)
+                if rf and rf:IsA("RemoteFunction") then
+                    local data = rf:InvokeServer()
+                    if type(data) == "table" then
+                        if type(data.melee) == "string" and #data.melee > 0 then
+                            equippedState.Melee = data.melee
+                        end
+                        if type(data.ranged) == "string" and #data.ranged > 0 then
+                            equippedState.Ranged = data.ranged
+                        end
+                    end
+                end
+            end)
+        end
     end
-    local allEquipBtns = {} -- id -> {btn, stroke, category, card, cardStroke}
+    local allEquipBtns = {} -- id -> {btn, stroke, category, card, cardStroke, weaponName?}
+
+    ---------------------------------------------------------------------------
+    -- BUG FIX: The original code only matched equippedState[cat] == itemId.
+    -- For legacy items the key IS the weapon name, so it matched fine.
+    -- For crate-instance items the key is a unique instanceId while
+    -- equippedState stores the weapon NAME from the hotbar / server loadout.
+    -- That comparison always failed, so instances never showed "Equipped"
+    -- on first load — only after clicking Equip (which set equippedState to
+    -- the instanceId directly).
+    --
+    -- Fix: isItemEquipped() checks both direct key match AND weaponName
+    -- match for instance entries. When a weaponName match is found we
+    -- "upgrade" equippedState to the specific instanceId so only one card
+    -- of a duplicate weapon shows green.
+    ---------------------------------------------------------------------------
+
+    local DEBUG_EQUIP = false -- flip to true for console diagnostics
+
+    local function isItemEquipped(itemId, info)
+        local cat = info.category or "Ranged"
+        local eqVal = equippedState[cat]
+        if eqVal == nil then return false end
+
+        -- Direct match (legacy items keyed by name, or after a manual equip)
+        if eqVal == itemId then return true end
+
+        -- Instance-card fallback: equippedState holds a weapon name but
+        -- allEquipBtns is keyed by instanceId.  Check if the stored
+        -- weaponName matches the equipped value.
+        if info.weaponName and info.weaponName == eqVal then
+            -- "Upgrade" so only THIS instance shows green, not all dupes.
+            equippedState[cat] = itemId
+            if DEBUG_EQUIP then
+                print(string.format("[EquipDebug] Upgraded equippedState.%s from name '%s' to instanceId '%s'", cat, eqVal, itemId))
+            end
+            return true
+        end
+
+        return false
+    end
 
     local function refreshAllEquipButtons()
+        if DEBUG_EQUIP then
+            print(string.format("[EquipDebug] refreshAllEquipButtons() | Melee=%s  Ranged=%s",
+                tostring(equippedState.Melee), tostring(equippedState.Ranged)))
+        end
         for itemId, info in pairs(allEquipBtns) do
-            local cat = info.category or classifyItem(itemId)
-            if equippedState[cat] == itemId then
+            local equipped = isItemEquipped(itemId, info)
+            if DEBUG_EQUIP then
+                print(string.format("[EquipDebug]   item=%s  cat=%s  weaponName=%s  equipped=%s",
+                    tostring(itemId), tostring(info.category),
+                    tostring(info.weaponName or "(legacy)"), tostring(equipped)))
+            end
+            if equipped then
                 info.btn.Text = "\u{2714} EQUIPPED"
                 info.btn.BackgroundColor3 = DISABLED_BG
                 info.btn.TextColor3 = GREEN_GLOW
                 info.stroke.Color = GREEN_GLOW
                 info.stroke.Transparency = 0.45
-                -- Update card visual for equipped state
                 if info.card then
                     info.card.BackgroundColor3 = CARD_EQUIPPED
                 end
@@ -1780,7 +1860,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 info.btn.TextColor3 = WHITE
                 info.stroke.Color = BTN_STROKE_C
                 info.stroke.Transparency = 0.25
-                -- Reset card visual
                 if info.card then
                     info.card.BackgroundColor3 = CARD_BG
                 end
@@ -1959,8 +2038,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- hover: highlight on hover (matches Boosts/Quests/Shop style)
         equipBtn.MouseEnter:Connect(function()
             local info = allEquipBtns[id]
-            local isEquipped = info and equippedState[info.category] == id
-            if not isEquipped then
+            if info and not isItemEquipped(id, info) then
                 pcall(function()
                     TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
                 end)
@@ -1968,8 +2046,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
         equipBtn.MouseLeave:Connect(function()
             local info = allEquipBtns[id]
-            local isEquipped = info and equippedState[info.category] == id
-            if not isEquipped then
+            if info and not isItemEquipped(id, info) then
                 pcall(function()
                     TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
                 end)
@@ -2176,8 +2253,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             equipBtn.MouseEnter:Connect(function()
                 local info = allEquipBtns[instanceId]
-                local isEquipped = info and equippedState[info.category] == instanceId
-                if not isEquipped then
+                if info and not isItemEquipped(instanceId, info) then
                     pcall(function()
                         TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
                     end)
@@ -2185,8 +2261,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end)
             equipBtn.MouseLeave:Connect(function()
                 local info = allEquipBtns[instanceId]
-                local isEquipped = info and equippedState[info.category] == instanceId
-                if not isEquipped then
+                if info and not isItemEquipped(instanceId, info) then
                     pcall(function()
                         TweenService:Create(equipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
                     end)
