@@ -439,6 +439,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- Equipped state (authoritative from hotbar / server loadout)
     -- ──────────────────────────────────────────────────────────────────────
     local equippedState = { Melee = "Starter Sword", Ranged = "Starter Slingshot" }
+    -- Separate table to remember equipped instanceIds so we match the right copy
+    local equippedInstanceIds = { Melee = nil, Ranged = nil }
     do
         local player = Players.LocalPlayer
         local found  = { Melee = nil, Ranged = nil }
@@ -459,20 +461,26 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         scanContainer(player:FindFirstChildOfClass("Backpack"))
         if player.Character then scanContainer(player.Character) end
 
-        if found.Melee or found.Ranged then
-            if found.Melee  then equippedState.Melee  = found.Melee  end
-            if found.Ranged then equippedState.Ranged = found.Ranged end
-        else
-            pcall(function()
-                local rf = ReplicatedStorage:WaitForChild("GetLoadout", 5)
-                if rf and rf:IsA("RemoteFunction") then
-                    local data = rf:InvokeServer()
-                    if type(data) == "table" then
-                        if type(data.melee)  == "string" and #data.melee  > 0 then equippedState.Melee  = data.melee  end
-                        if type(data.ranged) == "string" and #data.ranged > 0 then equippedState.Ranged = data.ranged end
-                    end
+        -- Always query the server for the authoritative loadout (includes instanceIds)
+        pcall(function()
+            local rf = ReplicatedStorage:WaitForChild("GetLoadout", 5)
+            if rf and rf:IsA("RemoteFunction") then
+                local data = rf:InvokeServer()
+                if type(data) == "table" then
+                    if type(data.melee)  == "string" and #data.melee  > 0 then equippedState.Melee  = data.melee  end
+                    if type(data.ranged) == "string" and #data.ranged > 0 then equippedState.Ranged = data.ranged end
+                    if type(data.meleeInstanceId)  == "string" then equippedInstanceIds.Melee  = data.meleeInstanceId  end
+                    if type(data.rangedInstanceId) == "string" then equippedInstanceIds.Ranged = data.rangedInstanceId end
                 end
-            end)
+            end
+        end)
+
+        -- If server didn't return anything, fall back to scanning tools in backpack
+        if not equippedState.Melee or equippedState.Melee == "Starter Sword" then
+            if found.Melee then equippedState.Melee = found.Melee end
+        end
+        if not equippedState.Ranged or equippedState.Ranged == "Starter Slingshot" then
+            if found.Ranged then equippedState.Ranged = found.Ranged end
         end
     end
 
@@ -485,8 +493,23 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if eqVal == nil then return false end
         -- Direct id match (works for both instance and non-instance items)
         if eqVal == itemData.id then return true end
+        -- Instance item: check by instanceId first (most reliable)
+        if itemData.isInstance and itemData.instanceId then
+            local eqInstId = equippedInstanceIds[cat]
+            if eqInstId then
+                -- Only match if instanceId matches exactly
+                if itemData.instanceId == eqInstId then
+                    equippedState[cat] = itemData.id
+                    return true
+                end
+                -- Another instance of the same weapon but wrong instanceId
+                return false
+            end
+            -- No instanceId tracked yet; fall through to name match
+        end
         -- Instance item: equipped state may hold the weapon name instead of instanceId
-        if itemData.weaponName and itemData.weaponName == eqVal then
+        -- Only promote to this item if there's no instanceId tracking
+        if itemData.isInstance and itemData.weaponName and itemData.weaponName == eqVal and not equippedInstanceIds[cat] then
             equippedState[cat] = itemData.id
             return true
         end
@@ -1387,6 +1410,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         equippedState[cat] = itemData.id
+        -- SIZE ROLL SYSTEM — track equipped instanceId for correct matching on reopen
+        equippedInstanceIds[cat] = itemData.isInstance and itemData.instanceId or nil
         if inventoryApi and inventoryApi.SetEquipped then
             pcall(function() inventoryApi:SetEquipped(cat, itemData.id) end)
         end

@@ -243,31 +243,14 @@ local function grantReward(player, rewardEntry)
         return false, "Boost grant failed"
 
     elseif rtype == config.RewardType.QuestReroll then
-        -- Grant free quest reroll tokens by adding quest_reroll to boost inventory
         local bs = getBoostService()
-        if bs then
-            local ok = pcall(function()
-                -- Quest rerolls are instant-use boosts; granting "owned" doesn't apply
-                -- the same way. Instead, we can add a reroll credit.
-                -- The BoostService reroll is coin-based (20 coins each).
-                -- For a "free reroll token", we give coins equivalent to the reroll cost.
-                local rerollCost = 20
-                local cs = getCurrencyService()
-                if cs then
-                    cs:AddCoins(player, rerollCost * amount)
-                    print("[DailyRewardService] Granted reroll equivalent (" .. (rerollCost * amount) .. " coins) to", player.Name)
-                end
-            end)
+        if bs and bs.GrantFreeReroll then
+            bs:GrantFreeReroll(player, amount)
+            print("[DailyRewardService] Granted", amount, "free reroll token(s) to", player.Name)
             return true
-        else
-            -- Fallback: grant coins equivalent
-            local cs = getCurrencyService()
-            if cs then
-                cs:AddCoins(player, 20 * amount)
-                return true
-            end
-            return false, "No service available for quest reroll"
         end
+        warn("[DailyRewardService] Could not grant free reroll – BoostService unavailable")
+        return false, "BoostService unavailable for free reroll"
 
     else
         warn("[DailyRewardService] Unknown reward type:", tostring(rtype))

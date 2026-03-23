@@ -116,6 +116,7 @@ local function makeEmptyState()
         inventory = {},
         active = {},
         bonusClaimed = {},
+        freeRerolls = 0,  -- free quest reroll tokens (from Daily Login Rewards Day 4)
     }
 
     local config = getBoostConfig()
@@ -134,6 +135,9 @@ end
 local function normalizePlayerState(raw)
     local state = makeEmptyState()
     raw = type(raw) == "table" and raw or {}
+
+    -- Free reroll tokens
+    state.freeRerolls = math.max(0, math.floor(tonumber(raw.freeRerolls) or 0))
 
     if type(raw.inventory) == "table" then
         for boostId, count in pairs(raw.inventory) do
@@ -187,6 +191,7 @@ local function serializePlayerState(pd)
         inventory = {},
         active = {},
         bonusClaimed = {},
+        freeRerolls = math.max(0, math.floor(tonumber(pd.freeRerolls) or 0)),
     }
 
     local now = os.time()
@@ -409,10 +414,12 @@ local function setRerollCooldown(player, questType)
 end
 
 function BoostService:GetRerollCooldowns(player)
-    if not player then return { daily = 0, weekly = 0 } end
+    if not player then return { daily = 0, weekly = 0, freeRerolls = 0 } end
+    local pd = ensurePlayerData(player)
     return {
         daily = getRerollCooldownRemaining(player, "daily"),
         weekly = getRerollCooldownRemaining(player, "weekly"),
+        freeRerolls = math.max(0, math.floor(tonumber(pd.freeRerolls) or 0)),
     }
 end
 
@@ -434,12 +441,20 @@ function BoostService:RerollQuest(player, questType, questIndex)
         return false, "Reroll on cooldown", nil, cdRemaining
     end
 
-    -- Validate coins
-    local cs = getCurrencyService()
-    if not cs then return false, "Currency system unavailable" end
-    if cs:GetCoins(player) < def.PriceCoins then
-        print(string.format("[BoostService] Reroll rejected: %s insufficient coins", player.Name))
-        return false, "Insufficient coins"
+    -- Check free reroll entitlement before charging coins
+    local pd = ensurePlayerData(player)
+    local usedFreeReroll = false
+    if pd.freeRerolls and pd.freeRerolls > 0 then
+        print(string.format("[FreeReroll] %s has %d free reroll(s) – using 1 (no coin charge)", player.Name, pd.freeRerolls))
+        usedFreeReroll = true
+    else
+        -- Validate coins only if no free reroll
+        local cs = getCurrencyService()
+        if not cs then return false, "Currency system unavailable" end
+        if cs:GetCoins(player) < def.PriceCoins then
+            print(string.format("[BoostService] Reroll rejected: %s insufficient coins", player.Name))
+            return false, "Insufficient coins"
+        end
     end
 
     local service
@@ -479,16 +494,28 @@ function BoostService:RerollQuest(player, questType, questIndex)
         return false, msg or "Reroll failed"
     end
 
-    -- Deduct coins only after successful reroll
-    cs:AddCoins(player, -def.PriceCoins)
+    -- Consume free reroll OR deduct coins (never both)
+    if usedFreeReroll then
+        pd.freeRerolls = pd.freeRerolls - 1
+        print(string.format("[FreeReroll] %s consumed free reroll – remaining: %d", player.Name, pd.freeRerolls))
+        -- Persist change immediately
+        task.spawn(function() BoostService:SaveForPlayer(player) end)
+    else
+        local cs = getCurrencyService()
+        if cs then
+            cs:AddCoins(player, -def.PriceCoins)
+        end
+    end
 
     -- Set shared category cooldown
     setRerollCooldown(player, questType)
 
-    print(("[BoostService] %s rerolled %s quest index %d (cooldown started: %ds)"):format(
+    print(("[BoostService] %s rerolled %s quest index %d (cost=%s, cooldown=%ds)"):format(
         player.Name, questType, questIndex,
+        usedFreeReroll and "FREE" or (def.PriceCoins .. " coins"),
         questType == "weekly" and WEEKLY_REROLL_COOLDOWN or DAILY_REROLL_COOLDOWN))
 
+    pushBoostState(player)
     return true, "Quest rerolled", updatedQuests
 end
 
@@ -609,6 +636,9 @@ function BoostService:GetPlayerBoostStates(player)
 
     states._serverTime = now
 
+    -- Include free reroll count so client can display "Free" state
+    states._freeRerolls = math.max(0, math.floor(tonumber(pd.freeRerolls) or 0))
+
     return states
 end
 
@@ -617,6 +647,34 @@ end
 ----------------------------------------------------------------------------
 function BoostService:ClearPlayer(player)
     playerBoosts[player] = nil
+end
+
+----------------------------------------------------------------------------
+-- Free quest reroll tokens  (granted by Daily Login Rewards Day 4)
+-- Stored as a simple integer count in the player's boost state.
+-- Persisted to DataStore so they survive across sessions.
+----------------------------------------------------------------------------
+
+--- Grant one or more free quest reroll tokens to the player.
+function BoostService:GrantFreeReroll(player, count)
+    if not player then return false end
+    count = math.max(1, math.floor(tonumber(count) or 1))
+    local pd = ensurePlayerData(player)
+    local before = math.max(0, math.floor(tonumber(pd.freeRerolls) or 0))
+    pd.freeRerolls = before + count
+    print(string.format("[FreeReroll] Granted %d free reroll(s) to %s (before=%d, after=%d)",
+        count, player.Name, before, pd.freeRerolls))
+    pushBoostState(player)
+    -- Persist immediately so the token survives if the player disconnects
+    task.spawn(function() BoostService:SaveForPlayer(player) end)
+    return true
+end
+
+--- Get the number of free quest reroll tokens available.
+function BoostService:GetFreeRerolls(player)
+    if not player then return 0 end
+    local pd = ensurePlayerData(player)
+    return math.max(0, math.floor(tonumber(pd.freeRerolls) or 0))
 end
 
 ----------------------------------------------------------------------------

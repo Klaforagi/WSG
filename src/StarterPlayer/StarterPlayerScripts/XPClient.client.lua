@@ -23,6 +23,13 @@ pcall(function() AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes
 --------------------------------------------------------------------------------
 -- STYLE CONSTANTS
 --------------------------------------------------------------------------------
+
+-- Round floating-point stat values for player-facing UI display
+local function formatInt(v)
+    local n = tonumber(v)
+    if not n then return tostring(v) end
+    return tostring(math.floor(n + 0.5))
+end
 local BAR_WIDTH_SCALE   = 0.34          -- % of screen width (slightly narrower)
 local TRACK_HEIGHT      = 16            -- inner XP track height
 local LABEL_SIZE        = 22            -- level numbers at each side of the track
@@ -294,7 +301,7 @@ local function updateXPCountText()
     end
     cx = cx or 0
     mx = mx or 0
-    xpCountLabel.Text = tostring(cx) .. " / " .. tostring(mx)
+    xpCountLabel.Text = formatInt(cx) .. " / " .. formatInt(mx)
 end
 
 local function showXPCount()
@@ -373,7 +380,7 @@ local function createXPPopup(amount, coinAmount)
     xpLabel.AnchorPoint = Vector2.new(0.5, 0)
     xpLabel.Size = UDim2.new(1, 0, 0.5, 0)
     xpLabel.Position = UDim2.new(0.5, 0, 0, 0)
-    xpLabel.Text = "+" .. tostring(amount) .. " XP"
+    xpLabel.Text = "+" .. formatInt(amount) .. " XP"
     xpLabel.TextTransparency = 0
     xpLabel.Parent = container
     -- thicker outline for XP text to match other UI
@@ -405,7 +412,7 @@ local function createXPPopup(amount, coinAmount)
         coinText.Font = Enum.Font.GothamBold
         coinText.TextSize = 14
         coinText.TextColor3 = COLOR_POPUP
-        coinText.Text = "+" .. tostring(coinAmount) .. " " .. coinWord
+        coinText.Text = "+" .. formatInt(coinAmount) .. " " .. coinWord
         coinText.AutomaticSize = Enum.AutomaticSize.X
         coinText.TextTransparency = 0
         coinText.LayoutOrder = 1

@@ -94,11 +94,25 @@ getRerollCooldownsRF.OnServerInvoke = function(player)
 end
 
 --------------------------------------------------------------------------------
--- Player lifecycle
+-- Player lifecycle – Load on join, Save+Clear on leave
 --------------------------------------------------------------------------------
-Players.PlayerRemoving:Connect(function(player)
-    QuestService:ClearPlayer(player)
-end)
+local function onPlayerAdded(player)
+    task.spawn(function()
+        QuestService:LoadForPlayer(player)
+    end)
+end
+
+local function onPlayerRemoving(player)
+    QuestService:ClearPlayer(player) -- saves then clears memory
+end
+
+-- Handle players already in-game (e.g. late script init)
+for _, p in ipairs(Players:GetPlayers()) do
+    task.spawn(onPlayerAdded, p)
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
 
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events  (replaces ALL legacy hooks)

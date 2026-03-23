@@ -55,6 +55,10 @@ local DEBUG_QUEST_UI = false
 local DEBUG_QUEST_SORT = true
 local DEBUG_REROLL_TOOLTIP = true
 
+-- Round floating-point stat values for player-facing UI display
+local FormatInt      = UITheme.FormatInt
+local FormatProgress = UITheme.FormatProgress
+
 local function debugLog(prefix, message)
     if DEBUG_QUEST_UI then
         print(string.format("[%s] %s", prefix, message))
@@ -363,6 +367,7 @@ local DISABLED_REROLL_BG = Color3.fromRGB(50, 45, 60)
 -- Updated on popup open and after successful reroll
 --------------------------------------------------------------------------------
 local clientCooldowns = { daily = 0, weekly = 0 }   -- os.clock()-based expiry
+local clientFreeRerolls = 0
 
 local function fetchServerCooldowns()
     ensureRerollRemotes()
@@ -374,9 +379,11 @@ local function fetchServerCooldowns()
         local now = os.clock()
         clientCooldowns.daily  = now + (tonumber(result.daily)  or 0)
         clientCooldowns.weekly = now + (tonumber(result.weekly) or 0)
-        print(string.format("[QuestReroll] Cooldowns fetched: daily=%ds weekly=%ds",
+        clientFreeRerolls = tonumber(result.freeRerolls) or 0
+        print(string.format("[QuestReroll] Cooldowns fetched: daily=%ds weekly=%ds freeRerolls=%d",
             math.max(0, math.ceil(tonumber(result.daily) or 0)),
-            math.max(0, math.ceil(tonumber(result.weekly) or 0))))
+            math.max(0, math.ceil(tonumber(result.weekly) or 0)),
+            clientFreeRerolls))
     end
 end
 
@@ -640,6 +647,7 @@ end
 
 -- Read reroll cost from BoostConfig (fallback 20)
 local function getRerollCost()
+    if clientFreeRerolls > 0 then return 0 end
     local cost = 20
     local conf = getBoostConfigQUI()
     if conf and conf.GetById then
@@ -861,7 +869,7 @@ local function showRerollConfirmation(tabId, serverIdx, questName, popupState, o
     local costLbl = Instance.new("TextLabel")
     costLbl.BackgroundTransparency = 1
     costLbl.Font = Enum.Font.GothamBold
-    costLbl.Text = "Cost: " .. tostring(rerollCost)
+    costLbl.Text = rerollCost == 0 and "Cost: FREE" or ("Cost: " .. tostring(rerollCost))
     costLbl.TextColor3 = GOLD
     costLbl.TextSize = math.max(13, math.floor(px(15)))
     costLbl.TextXAlignment = Enum.TextXAlignment.Center
@@ -1061,6 +1069,10 @@ local function showRerollConfirmation(tabId, serverIdx, questName, popupState, o
 
         if success then
             print("[QuestReroll] Reroll success; refreshing quest list")
+            -- Consume local free reroll token so UI updates immediately
+            if clientFreeRerolls > 0 then
+                clientFreeRerolls = clientFreeRerolls - 1
+            end
             -- Set client-side cooldown immediately
             local cdDuration = (tabId == "weekly") and 90 or 45
             setClientCooldown(tabId, cdDuration)
@@ -1169,7 +1181,8 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
         if rerollState.claimed then
             return "Cannot reroll (claimed)"
         end
-        return string.format("Reroll Quest (%d coins)", getRerollCost())
+        local cost = getRerollCost()
+        return cost == 0 and "Reroll Quest (FREE)" or string.format("Reroll Quest (%d coins)", cost)
     end
 
     local function setQuestRerollState(claimed, complete)
@@ -1765,7 +1778,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         amtLbl.Name                = "Amount"
         amtLbl.BackgroundTransparency = 1
         amtLbl.Font                = Enum.Font.GothamBold
-        amtLbl.Text                = tostring(quest.reward)
+        amtLbl.Text                = FormatInt(quest.reward)
         amtLbl.TextColor3          = GOLD
         amtLbl.TextSize            = math.max(13, math.floor(px(14)))
         amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
@@ -1843,7 +1856,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Name               = "ProgressText"
         progText.BackgroundTransparency = 1
         progText.Font               = Enum.Font.GothamBold
-        progText.Text               = tostring(quest.progress) .. "/" .. tostring(quest.goal)
+        progText.Text               = FormatProgress(quest.progress, quest.goal)
         progText.TextColor3         = WHITE
         progText.TextSize           = math.max(11, math.floor(px(12)))
         progText.Size               = UDim2.new(1, 0, 1, 0)
@@ -1919,7 +1932,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 btnStroke.Color      = GREEN_GLOW
                 btnStroke.Transparency = 0.15
             else
-                btn.Text             = tostring(progress) .. "/" .. tostring(goal)
+                btn.Text             = FormatProgress(progress, goal)
                 btn.BackgroundColor3 = BTN_LOCKED
                 btn.TextColor3       = DIM_TEXT
                 btn.Active           = false
@@ -2132,7 +2145,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         amtLbl.Name                = "Amount"
         amtLbl.BackgroundTransparency = 1
         amtLbl.Font                = Enum.Font.GothamBold
-        amtLbl.Text                = tostring(wq.reward)
+        amtLbl.Text                = FormatInt(wq.reward)
         amtLbl.TextColor3          = GOLD
         amtLbl.TextSize            = math.max(13, math.floor(px(14)))
         amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
@@ -2209,7 +2222,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Name               = "ProgressText"
         progText.BackgroundTransparency = 1
         progText.Font               = Enum.Font.GothamBold
-        progText.Text               = tostring(wq.progress) .. "/" .. tostring(wq.goal)
+        progText.Text               = FormatProgress(wq.progress, wq.goal)
         progText.TextColor3         = WHITE
         progText.TextSize           = math.max(11, math.floor(px(12)))
         progText.Size               = UDim2.new(1, 0, 1, 0)
@@ -2284,7 +2297,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 btnStroke.Color      = GREEN_GLOW
                 btnStroke.Transparency = 0.15
             else
-                btn.Text             = tostring(progress) .. "/" .. tostring(goal)
+                btn.Text             = FormatProgress(progress, goal)
                 btn.BackgroundColor3 = BTN_LOCKED
                 btn.TextColor3       = DIM_TEXT
                 btn.Active           = false
@@ -2718,7 +2731,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         amtLbl.Name                = "Amount"
         amtLbl.BackgroundTransparency = 1
         amtLbl.Font                = Enum.Font.GothamBold
-        amtLbl.Text                = tostring(ach.reward)
+        amtLbl.Text                = FormatInt(ach.reward)
         amtLbl.TextColor3          = GOLD
         amtLbl.TextSize            = math.max(13, math.floor(px(14)))
         amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
@@ -2794,7 +2807,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Name               = "ProgressText"
         progText.BackgroundTransparency = 1
         progText.Font               = Enum.Font.GothamBold
-        progText.Text               = tostring(ach.progress) .. "/" .. tostring(ach.target)
+        progText.Text               = FormatProgress(ach.progress, ach.target)
         progText.TextColor3         = WHITE
         progText.TextSize           = math.max(11, math.floor(px(12)))
         progText.Size               = UDim2.new(1, 0, 1, 0)
@@ -2879,7 +2892,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 btn.TextColor3 = WHITE; btn.Active = true
                 btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.15
             else
-                btn.Text = tostring(progress) .. "/" .. tostring(goal)
+                btn.Text = FormatProgress(progress, goal)
                 btn.BackgroundColor3 = BTN_LOCKED; btn.TextColor3 = DIM_TEXT; btn.Active = false
                 btnStroke.Color = BTN_STROKE; btnStroke.Transparency = 0.4
             end
@@ -3082,7 +3095,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             hReward.Name = "Reward"
             hReward.BackgroundTransparency = 1
             hReward.Font      = Enum.Font.GothamBold
-            hReward.Text      = "+" .. tostring(entry.reward or 0) .. " coins"
+            hReward.Text      = "+" .. FormatInt(entry.reward or 0) .. " coins"
             hReward.TextColor3 = GOLD
             hReward.TextSize  = math.max(11, math.floor(px(12)))
             hReward.TextXAlignment = Enum.TextXAlignment.Right
@@ -3502,7 +3515,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             end
                             local txt = achProgressTexts[a.id]
                             if txt and txt.Parent then
-                                txt.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                                txt.Text = FormatProgress(a.progress, a.target)
                             end
                             local cardFrame = achCards[a.id]
                             if cardFrame and cardFrame.Parent then
@@ -3513,7 +3526,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                 local rb = cardFrame:FindFirstChild("RewardBadge")
                                 if rb then
                                     local aLbl = rb:FindFirstChild("Amount")
-                                    if aLbl then aLbl.Text = tostring(a.reward or 0) end
+                                    if aLbl then aLbl.Text = FormatInt(a.reward or 0) end
                                 end
                             end
                             local achievedOnLabel = achAchievedOnLabels[a.id]
@@ -3539,7 +3552,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                     claimB.TextColor3 = WHITE; claimB.Active = true
                                     if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.15 end
                                 else
-                                    claimB.Text = tostring(a.progress) .. "/" .. tostring(a.target)
+                                    claimB.Text = FormatProgress(a.progress, a.target)
                                     claimB.BackgroundColor3 = BTN_LOCKED; claimB.TextColor3 = DIM_TEXT; claimB.Active = false
                                     if bS then bS.Color = BTN_STROKE; bS.Transparency = 0.4 end
                                 end
@@ -3628,7 +3641,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             end
             local txt = achProgressTexts[achId]
             if txt and txt.Parent then
-                txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
+                txt.Text = FormatProgress(math.min(newProgress, goal), goal)
             end
             local aOnLbl = achAchievedOnLabels[achId]
             if aOnLbl and aOnLbl.Parent then
@@ -3707,7 +3720,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             local txt = wkProgressTexts[questIdx]
             if txt and txt.Parent then
-                txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
+                txt.Text = FormatProgress(math.min(newProgress, goal), goal)
             end
 
             local claimBtn3 = wkClaimButtons[questIdx]
@@ -3720,7 +3733,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     claimBtn3.Active           = true
                     if bStr then bStr.Color = GREEN_GLOW; bStr.Transparency = 0.15 end
                 else
-                    claimBtn3.Text             = tostring(newProgress) .. "/" .. tostring(goal)
+                    claimBtn3.Text             = FormatProgress(newProgress, goal)
                     claimBtn3.BackgroundColor3 = BTN_LOCKED
                     claimBtn3.TextColor3       = DIM_TEXT
                     claimBtn3.Active           = false
@@ -3779,7 +3792,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             local txt = progressTexts[questId]
             if txt and txt.Parent then
-                txt.Text = tostring(math.min(newProgress, goal)) .. "/" .. tostring(goal)
+                txt.Text = FormatProgress(math.min(newProgress, goal), goal)
             end
 
             local claimBtn = claimButtons[questId]
@@ -3795,7 +3808,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                         btnStrokeRef.Transparency = 0.15
                     end
                 else
-                    claimBtn.Text             = tostring(newProgress) .. "/" .. tostring(goal)
+                    claimBtn.Text             = FormatProgress(newProgress, goal)
                     claimBtn.BackgroundColor3 = BTN_LOCKED
                     claimBtn.TextColor3       = DIM_TEXT
                     claimBtn.Active           = false

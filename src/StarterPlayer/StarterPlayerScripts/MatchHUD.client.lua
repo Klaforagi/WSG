@@ -28,6 +28,13 @@ local remaining = START_TIME_SECONDS
 local running = true
 local matchStartTick = nil
 local matchDuration = START_TIME_SECONDS
+
+-- Round floating-point stat values for player-facing UI display
+local function formatInt(v)
+    local n = tonumber(v)
+    if not n then return tostring(v) end
+    return tostring(math.floor(n + 0.5))
+end
 local lastIntegerRemaining = nil
 local lastTickSoundTime = 0
 
@@ -208,7 +215,7 @@ end
 -- Score number (large & prominent)
 local blueCountLabel = Instance.new("TextLabel")
 blueCountLabel.Name = "ScoreCount"
-blueCountLabel.Text = tostring(blueScore)
+blueCountLabel.Text = formatInt(blueScore)
 blueCountLabel.Font = Enum.Font.GothamBlack
 blueCountLabel.TextScaled = true
 blueCountLabel.TextColor3 = BLUE_ACCENT
@@ -272,7 +279,7 @@ end
 -- Score number (large & prominent)
 local redCountLabel = Instance.new("TextLabel")
 redCountLabel.Name = "ScoreCount"
-redCountLabel.Text = tostring(redScore)
+redCountLabel.Text = formatInt(redScore)
 redCountLabel.Font = Enum.Font.GothamBlack
 redCountLabel.TextScaled = true
 redCountLabel.TextColor3 = RED_ACCENT
@@ -365,8 +372,8 @@ local function formatTime(sec)
 end
 
 local function refresh()
-    blueCountLabel.Text = tostring(blueScore)
-    redCountLabel.Text = tostring(redScore)
+    blueCountLabel.Text = formatInt(blueScore)
+    redCountLabel.Text = formatInt(redScore)
     timerLabel.Text = formatTime(remaining)
 end
 

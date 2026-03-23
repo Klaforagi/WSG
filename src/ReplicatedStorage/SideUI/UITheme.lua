@@ -108,4 +108,21 @@ UITheme.ROW_GRADIENT = ColorSequence.new(
 	Color3.fromRGB(22, 26, 42)
 )
 
+-- ═══════════════════════════════════════════════════════════════════════════
+-- Numeric display helpers  (round floating-point stat values for UI display)
+-- ═══════════════════════════════════════════════════════════════════════════
+
+--- Round a numeric value to the nearest whole number for player-facing display.
+--- Non-numeric inputs pass through as-is via tostring.
+function UITheme.FormatInt(value)
+	local n = tonumber(value)
+	if not n then return tostring(value) end
+	return tostring(math.floor(n + 0.5))
+end
+
+--- Format a progress / goal pair as "current / goal" with rounded integers.
+function UITheme.FormatProgress(current, goal)
+	return UITheme.FormatInt(current) .. "/" .. UITheme.FormatInt(goal)
+end
+
 return UITheme
