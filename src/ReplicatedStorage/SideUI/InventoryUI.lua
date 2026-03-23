@@ -645,7 +645,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     Instance.new("UICorner", gridScroll).CornerRadius = UDim.new(0, px(10))
 
     local gridLayout = Instance.new("UIGridLayout", gridScroll)
-    gridLayout.CellSize = UDim2.new(0, px(140), 0, px(158))
+    gridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
     gridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
     gridLayout.FillDirection = Enum.FillDirection.Horizontal
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -787,10 +787,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailName.BackgroundTransparency = 1
     detailName.Font = Enum.Font.GothamBold
     detailName.TextColor3 = WHITE
-    detailName.TextSize = px(22)
+    detailName.TextSize = px(26)
     detailName.TextXAlignment = Enum.TextXAlignment.Center
-    detailName.Size = UDim2.new(1, 0, 0, px(28))
-    detailName.Position = UDim2.new(0, 0, 0, px(180))
+    detailName.Size = UDim2.new(1, 0, 0, px(34))
+    detailName.Position = UDim2.new(0, 0, 0, px(178))
     detailName.TextTruncate = Enum.TextTruncate.AtEnd
 
     -- Rarity label
@@ -799,10 +799,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailRarity.BackgroundTransparency = 1
     detailRarity.Font = Enum.Font.GothamBold
     detailRarity.TextColor3 = RARITY_COLORS.Common
-    detailRarity.TextSize = px(16)
+    detailRarity.TextSize = px(19)
     detailRarity.TextXAlignment = Enum.TextXAlignment.Center
-    detailRarity.Size = UDim2.new(1, 0, 0, px(22))
-    detailRarity.Position = UDim2.new(0, 0, 0, px(212))
+    detailRarity.Size = UDim2.new(1, 0, 0, px(26))
+    detailRarity.Position = UDim2.new(0, 0, 0, px(214))
 
     -- Weapon type
     local detailType = Instance.new("TextLabel", detailContent)
@@ -810,10 +810,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailType.BackgroundTransparency = 1
     detailType.Font = Enum.Font.GothamMedium
     detailType.TextColor3 = DIM_TEXT
-    detailType.TextSize = px(14)
+    detailType.TextSize = px(17)
     detailType.TextXAlignment = Enum.TextXAlignment.Center
-    detailType.Size = UDim2.new(1, 0, 0, px(18))
-    detailType.Position = UDim2.new(0, 0, 0, px(238))
+    detailType.Size = UDim2.new(1, 0, 0, px(24))
+    detailType.Position = UDim2.new(0, 0, 0, px(242))
 
     -- SIZE ROLL SYSTEM — size percent + tier in detail panel
     local detailSize = Instance.new("TextLabel", detailContent)
@@ -821,10 +821,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.BackgroundTransparency = 1
     detailSize.Font = Enum.Font.GothamBold
     detailSize.TextColor3 = GOLD
-    detailSize.TextSize = px(15)
+    detailSize.TextSize = px(18)
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
-    detailSize.Size = UDim2.new(1, 0, 0, px(20))
-    detailSize.Position = UDim2.new(0, 0, 0, px(258))
+    detailSize.Size = UDim2.new(1, 0, 0, px(24))
+    detailSize.Position = UDim2.new(0, 0, 0, px(268))
 
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
@@ -832,10 +832,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailInstanceId.BackgroundTransparency = 1
     detailInstanceId.Font = Enum.Font.Code
     detailInstanceId.TextColor3 = DIM_TEXT
-    detailInstanceId.TextSize = px(10)
+    detailInstanceId.TextSize = px(11)
     detailInstanceId.TextXAlignment = Enum.TextXAlignment.Center
     detailInstanceId.Size = UDim2.new(1, 0, 0, px(16))
-    detailInstanceId.Position = UDim2.new(0, 0, 0, px(280))
+    detailInstanceId.Position = UDim2.new(0, 0, 0, px(294))
     detailInstanceId.Visible = false
 
     -- Equip button (only place weapons can be equipped)
@@ -846,8 +846,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEquipBtn.Font = Enum.Font.GothamBold
     detailEquipBtn.Text = "EQUIP"
     detailEquipBtn.TextColor3 = WHITE
-    detailEquipBtn.TextSize = px(18)
-    detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(46))
+    detailEquipBtn.TextSize = px(22)
+    detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
     detailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
     detailEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
     Instance.new("UICorner", detailEquipBtn).CornerRadius = UDim.new(0, px(10))
@@ -858,9 +858,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local actionRow = Instance.new("Frame", detailContent)
     actionRow.Name = "ActionRow"
     actionRow.BackgroundTransparency = 1
-    actionRow.Size = UDim2.new(0.88, 0, 0, px(38))
+    actionRow.Size = UDim2.new(0.88, 0, 0, px(44))
     actionRow.AnchorPoint = Vector2.new(0.5, 1)
-    actionRow.Position = UDim2.new(0.5, 0, 1, -px(52))
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(58))
 
     -- Favorite button (yellow star)
     local FAV_YELLOW = Color3.fromRGB(255, 210, 50)
@@ -873,7 +873,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     favBtn.Font = Enum.Font.GothamBold
     favBtn.Text = "\u{2606}"  -- empty star ☆
     favBtn.TextColor3 = FAV_DIM
-    favBtn.TextSize = px(20)
+    favBtn.TextSize = px(24)
     favBtn.Size = UDim2.new(0.48, 0, 1, 0)
     favBtn.Position = UDim2.new(0, 0, 0, 0)
     Instance.new("UICorner", favBtn).CornerRadius = UDim.new(0, px(8))
@@ -892,7 +892,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     discardBtn.Font = Enum.Font.GothamBold
     discardBtn.Text = "DISCARD"
     discardBtn.TextColor3 = DISCARD_RED
-    discardBtn.TextSize = px(14)
+    discardBtn.TextSize = px(17)
     discardBtn.Size = UDim2.new(0.48, 0, 1, 0)
     discardBtn.AnchorPoint = Vector2.new(1, 0)
     discardBtn.Position = UDim2.new(1, 0, 0, 0)
@@ -1164,9 +1164,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.TextColor3 = WHITE
-        nameLabel.TextSize = math.max(12, math.floor(px(13)))
-        nameLabel.Size = UDim2.new(1, -px(10), 0, px(20))
-        nameLabel.Position = UDim2.new(0, px(5), 0, px(5))
+        nameLabel.TextSize = math.max(13, math.floor(px(15)))
+        nameLabel.Size = UDim2.new(1, -px(10), 0, px(22))
+        nameLabel.Position = UDim2.new(0, px(5), 0, px(4))
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
         nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
         nameLabel.Text = itemData.name
@@ -1181,7 +1181,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         )
         iconBg.Size = UDim2.new(0, px(88), 0, px(88))
         iconBg.AnchorPoint = Vector2.new(0.5, 0)
-        iconBg.Position = UDim2.new(0.5, 0, 0, px(26))
+        iconBg.Position = UDim2.new(0.5, 0, 0, px(28))
         Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, px(6))
 
         local thumb = Instance.new("ImageLabel", iconBg)
@@ -1222,23 +1222,23 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         tierLabel.BackgroundTransparency = 1
         tierLabel.Font = Enum.Font.GothamBold
         tierLabel.TextColor3 = tierColor
-        tierLabel.TextSize = math.max(9, math.floor(px(10)))
-        tierLabel.Size = UDim2.new(1, 0, 0, px(12))
+        tierLabel.TextSize = math.max(11, math.floor(px(12)))
+        tierLabel.Size = UDim2.new(1, 0, 0, px(16))
         tierLabel.AnchorPoint = Vector2.new(0, 1)
-        tierLabel.Position = UDim2.new(0, 0, 1, -px(26))
+        tierLabel.Position = UDim2.new(0, 0, 1, -px(22))
         tierLabel.TextXAlignment = Enum.TextXAlignment.Center
         tierLabel.Text = tier
 
-        -- Size percent label (bottom of card)
+        -- Size percent label (bottom of card, below tier)
         local sizeLabel = Instance.new("TextLabel", card)
         sizeLabel.Name = "SizePercent"
         sizeLabel.BackgroundTransparency = 1
         sizeLabel.Font = Enum.Font.GothamBold
         sizeLabel.TextColor3 = tierColor
-        sizeLabel.TextSize = math.max(11, math.floor(px(12)))
-        sizeLabel.Size = UDim2.new(1, 0, 0, px(14))
+        sizeLabel.TextSize = math.max(12, math.floor(px(14)))
+        sizeLabel.Size = UDim2.new(1, 0, 0, px(18))
         sizeLabel.AnchorPoint = Vector2.new(0, 1)
-        sizeLabel.Position = UDim2.new(0, 0, 1, -px(14))
+        sizeLabel.Position = UDim2.new(0, 0, 1, -px(5))
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
         sizeLabel.Text = tostring(math.floor(pct)) .. "%"
 
@@ -1260,10 +1260,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             favStar.Font = Enum.Font.GothamBold
             favStar.Text = "\u{2605}"  -- ★
             favStar.TextColor3 = Color3.fromRGB(255, 210, 50)
-            favStar.TextSize = math.max(12, math.floor(px(14)))
-            favStar.Size = UDim2.new(0, px(18), 0, px(18))
+            favStar.TextSize = math.max(14, math.floor(px(16)))
+            favStar.Size = UDim2.new(0, px(20), 0, px(20))
             favStar.AnchorPoint = Vector2.new(1, 0)
-            favStar.Position = UDim2.new(1, -px(4), 0, px(4))
+            favStar.Position = UDim2.new(1, -px(4), 0, px(3))
             favStar.ZIndex = 8
         end
 
@@ -1918,20 +1918,25 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     do
         local shopWrap = Instance.new("Frame", skinsPage)
         shopWrap.BackgroundTransparency = 1
-        shopWrap.Size = UDim2.new(1, 0, 0, px(50)); shopWrap.Position = UDim2.new(0, 0, 1, px(10))
+        shopWrap.Size = UDim2.new(1, 0, 0, px(50))
+        shopWrap.AnchorPoint = Vector2.new(0.5, 0)
+        shopWrap.Position = UDim2.new(0.5, 0, 0.5, px(100))
 
         local shopBtn = Instance.new("TextButton", shopWrap)
         shopBtn.AutoButtonColor = false; shopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
         shopBtn.Font = Enum.Font.GothamBold; shopBtn.Text = "\u{1F6D2}  Browse Shop"
         shopBtn.TextColor3 = UITheme.GOLD_DIM; shopBtn.TextSize = math.max(13, math.floor(px(14)))
         shopBtn.AutomaticSize = Enum.AutomaticSize.X
-        shopBtn.Size = UDim2.new(0, 0, 0, px(38)); shopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-        shopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+        shopBtn.Size = UDim2.new(0, 0, 0, px(38)); shopBtn.AnchorPoint = Vector2.new(0.5, 0)
+        shopBtn.Position = UDim2.new(0.5, 0, 0, px(12))
         Instance.new("UICorner", shopBtn).CornerRadius = UDim.new(0, px(8))
         local sp2 = Instance.new("UIPadding", shopBtn)
         sp2.PaddingLeft = UDim.new(0, px(20)); sp2.PaddingRight = UDim.new(0, px(20))
         local ss2 = Instance.new("UIStroke", shopBtn)
         ss2.Color = UITheme.GOLD_DIM; ss2.Thickness = 1.2; ss2.Transparency = 0.45
+
+        shopBtn.MouseEnter:Connect(function() TweenService:Create(shopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
+        shopBtn.MouseLeave:Connect(function() TweenService:Create(shopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
         shopBtn.MouseButton1Click:Connect(function()
             local mc = _G.SideUI and _G.SideUI.MenuController
             if mc then mc.OpenMenu("Shop")
