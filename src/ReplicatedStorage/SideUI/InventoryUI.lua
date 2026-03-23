@@ -2290,6 +2290,41 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ══════════════════════════════════════════════════════════════════════
     setActiveTab("melee")
 
+    -- ──────────────────────────────────────────────────────────────────────
+    -- Listen for server LoadoutChanged to keep equipped state in sync
+    -- ──────────────────────────────────────────────────────────────────────
+    pcall(function()
+        local lcRemote = ReplicatedStorage:FindFirstChild("LoadoutChanged")
+        if not lcRemote then
+            lcRemote = ReplicatedStorage:WaitForChild("LoadoutChanged", 5)
+        end
+        if lcRemote and lcRemote:IsA("RemoteEvent") then
+            trackConn(lcRemote.OnClientEvent:Connect(function(data)
+                if type(data) ~= "table" then return end
+                print("[ToolbarSync] InventoryUI received LoadoutChanged:",
+                    "melee=", data.melee or "(nil)",
+                    "ranged=", data.ranged or "(nil)")
+                if type(data.melee) == "string" and #data.melee > 0 then
+                    equippedState.Melee = data.melee
+                end
+                if type(data.ranged) == "string" and #data.ranged > 0 then
+                    equippedState.Ranged = data.ranged
+                end
+                if type(data.meleeInstanceId) == "string" then
+                    equippedInstanceIds.Melee = data.meleeInstanceId
+                end
+                if type(data.rangedInstanceId) == "string" then
+                    equippedInstanceIds.Ranged = data.rangedInstanceId
+                end
+                refreshEquippedIndicators()
+                -- Also update detail panel if an equipped item is selected
+                if selectedItem then
+                    updateEquipButton(selectedItem)
+                end
+            end))
+        end
+    end)
+
     -- Adapt root height to parent size
     task.defer(function()
         local pH = parent.AbsoluteSize.Y

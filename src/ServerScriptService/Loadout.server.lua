@@ -49,6 +49,7 @@ local specialUnlockGranted = getOrCreateRemote("SpecialUnlockGranted")
 local forceEquipRemote = getOrCreateRemote("ForceEquipTool")
 local setRangedRemote = getOrCreateRemote("SetRangedTool")
 local setMeleeRemote = getOrCreateRemote("SetMeleeTool")
+local loadoutChangedRemote = getOrCreateRemote("LoadoutChanged")
 
 --------------------------------------------------------------------------------
 -- STATE
@@ -57,6 +58,7 @@ local unlockState = {}   -- [player] = true/false
 local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
+local chosenInstanceId = {} -- [player] = { Melee = id, Ranged = id }
 
 --------------------------------------------------------------------------------
 -- LOADOUT PERSISTENCE
@@ -70,11 +72,18 @@ local function saveLoadout(player)
         meleeInstanceId  = ids and ids.Melee or nil,
         rangedInstanceId = ids and ids.Ranged or nil,
     }
+    print("[EquipSave]", player.Name,
+        "melee=", data.melee or "(nil)",
+        "ranged=", data.ranged or "(nil)",
+        "meleeInstId=", data.meleeInstanceId or "(nil)",
+        "rangedInstId=", data.rangedInstanceId or "(nil)")
     local ok, err = pcall(function()
         loadoutStore:SetAsync(key, data)
     end)
     if not ok then
-        warn("[Loadout] Failed to save loadout for", player.Name, err)
+        warn("[EquipSave] Failed to save loadout for", player.Name, err)
+    else
+        print("[EquipSave] Saved successfully for", player.Name)
     end
 end
 
@@ -84,6 +93,11 @@ local function loadLoadout(player)
         return loadoutStore:GetAsync(key)
     end)
     if ok and type(data) == "table" then
+        print("[EquipLoad]", player.Name, "raw data:",
+            "melee=", data.melee or "(nil)",
+            "ranged=", data.ranged or "(nil)",
+            "meleeInstId=", data.meleeInstanceId or "(nil)",
+            "rangedInstId=", data.rangedInstanceId or "(nil)")
         if type(data.melee) == "string" and #data.melee > 0 then
             chosenMelee[player] = data.melee
         end
@@ -100,8 +114,10 @@ local function loadLoadout(player)
                 chosenInstanceId[player].Ranged = data.rangedInstanceId
             end
         end
-    elseif not ok then
-        warn("[Loadout] Failed to load loadout for", player.Name, data)
+    elseif ok then
+        print("[EquipLoad]", player.Name, "no saved loadout (new player or empty data)")
+    else
+        warn("[EquipLoad] Failed to load loadout for", player.Name, data)
     end
 end
 
@@ -294,12 +310,17 @@ end
 local getLoadoutRF = getOrCreateRemoteFunction("GetLoadout")
 getLoadoutRF.OnServerInvoke = function(player)
     local ids = chosenInstanceId[player]
-    return {
-        melee  = chosenMelee[player],
-        ranged = chosenRanged[player],
+    local result = {
+        melee  = chosenMelee[player] or "Starter Sword",
+        ranged = chosenRanged[player] or "Starter Slingshot",
         meleeInstanceId  = ids and ids.Melee or nil,
         rangedInstanceId = ids and ids.Ranged or nil,
     }
+    print("[EquipLoad] GetLoadout invoked by", player.Name,
+        "melee=", result.melee, "ranged=", result.ranged,
+        "meleeInstId=", result.meleeInstanceId or "(nil)",
+        "rangedInstId=", result.rangedInstanceId or "(nil)")
+    return result
 end
 
 --------------------------------------------------------------------------------
@@ -458,9 +479,21 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
             return
         end
         chosenRanged[player] = toolName
+        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
+        chosenInstanceId[player].Ranged = instanceId
+        print("[ToolbarSync]", player.Name, "equipped ranged:", toolName, "instanceId:", instanceId or "(nil)")
         grantTool(player, "Ranged", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
         task.spawn(saveLoadout, player)
+        -- Notify client of loadout change
+        pcall(function()
+            loadoutChangedRemote:FireClient(player, {
+                melee  = chosenMelee[player],
+                ranged = chosenRanged[player],
+                meleeInstanceId  = chosenInstanceId[player] and chosenInstanceId[player].Melee or nil,
+                rangedInstanceId = instanceId,
+            })
+        end)
     end
 end)
 
@@ -511,13 +544,50 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
             return
         end
         chosenMelee[player] = toolName
+        if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
+        chosenInstanceId[player].Melee = instanceId
+        print("[ToolbarSync]", player.Name, "equipped melee:", toolName, "instanceId:", instanceId or "(nil)")
         grantTool(player, "Melee", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
         task.spawn(saveLoadout, player)
+        -- Notify client of loadout change
+        pcall(function()
+            loadoutChangedRemote:FireClient(player, {
+                melee  = chosenMelee[player],
+                ranged = chosenRanged[player],
+                meleeInstanceId  = instanceId,
+                rangedInstanceId = chosenInstanceId[player] and chosenInstanceId[player].Ranged or nil,
+            })
+        end)
     end
 end)
 
+--- Validate that the saved equipped weapons still exist in the player's inventory.
+--- Falls back to starter weapons if the saved weapon is no longer owned.
+local function validateLoadout(player)
+    -- Validate melee
+    local meleeChoice = chosenMelee[player]
+    if meleeChoice then
+        if not playerOwnsWeapon(player, meleeChoice) then
+            warn("[EquipLoad]", player.Name, "saved melee", meleeChoice, "no longer owned, falling back to Starter Sword")
+            chosenMelee[player] = "Starter Sword"
+            if chosenInstanceId[player] then chosenInstanceId[player].Melee = nil end
+        end
+    end
+    -- Validate ranged
+    local rangedChoice = chosenRanged[player]
+    if rangedChoice then
+        if not playerOwnsWeapon(player, rangedChoice) then
+            warn("[EquipLoad]", player.Name, "saved ranged", rangedChoice, "no longer owned, falling back to Starter Slingshot")
+            chosenRanged[player] = "Starter Slingshot"
+            if chosenInstanceId[player] then chosenInstanceId[player].Ranged = nil end
+        end
+    end
+    print("[EquipLoad]", player.Name, "validated: melee=", chosenMelee[player] or "(default)", "ranged=", chosenRanged[player] or "(default)")
+end
+
 local function giveLoadout(player)
+    print("[StarterEquip]", player.Name, "granting loadout: melee=", chosenMelee[player] or "(default)", "ranged=", chosenRanged[player] or "(default)")
     local playerInstIds = chosenInstanceId[player] or {}
     for _, entry in ipairs(DEFAULT_LOADOUT) do
         local folder = entry.folder
@@ -556,8 +626,18 @@ end
 -- PLAYER LIFECYCLE
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
+    print("[EquipLoad]", player.Name, "loading loadout...")
     -- load saved loadout choices before first spawn
     loadLoadout(player)
+
+    -- Validate saved weapons still exist (falls back to starters if not)
+    -- NOTE: validateLoadout calls playerOwnsWeapon which may need
+    -- WeaponInstanceService data; CrateServiceInit loads it on PlayerAdded too.
+    -- We defer validation slightly to let CrateServiceInit grant starters first.
+    task.defer(function()
+        task.wait(0.5)
+        validateLoadout(player)
+    end)
 
     -- check pass on join
     unlockState[player] = checkGamePass(player)
@@ -575,6 +655,17 @@ local function onPlayerAdded(player)
         -- safety net: if the engine's StarterGear → Backpack copy was slow
         task.wait(0.5)
         ensureBackpackFromStarterGear(player)
+        -- Notify client that loadout is ready (ensures hotbar refreshes after tools arrive)
+        print("[ToolbarSync]", player.Name, "loadout granted, notifying client")
+        pcall(function()
+            local ids = chosenInstanceId[player]
+            loadoutChangedRemote:FireClient(player, {
+                melee  = chosenMelee[player] or "Starter Sword",
+                ranged = chosenRanged[player] or "Starter Slingshot",
+                meleeInstanceId  = ids and ids.Melee or nil,
+                rangedInstanceId = ids and ids.Ranged or nil,
+            })
+        end)
     end)
 
     -- handle an already-spawned character (Studio fast-start)
@@ -584,11 +675,23 @@ local function onPlayerAdded(player)
             giveLoadout(player)
             task.wait(0.5)
             ensureBackpackFromStarterGear(player)
+            -- Notify client that loadout is ready
+            print("[ToolbarSync]", player.Name, "loadout granted (fast-start), notifying client")
+            pcall(function()
+                local ids = chosenInstanceId[player]
+                loadoutChangedRemote:FireClient(player, {
+                    melee  = chosenMelee[player] or "Starter Sword",
+                    ranged = chosenRanged[player] or "Starter Slingshot",
+                    meleeInstanceId  = ids and ids.Melee or nil,
+                    rangedInstanceId = ids and ids.Ranged or nil,
+                })
+            end)
         end)
     end
 end
 
 local function onPlayerRemoving(player)
+    print("[EquipSave]", player.Name, "saving on leave...")
     saveLoadout(player)
     unlockState[player]    = nil
     promptDebounce[player] = nil

@@ -638,6 +638,27 @@ specialUnlockGranted.OnClientEvent:Connect(function(unlocked)
 end)
 
 --------------------------------------------------------------------------------
+-- LOADOUT CHANGED (server notifies client after equip changes / load complete)
+--------------------------------------------------------------------------------
+local loadoutChangedRemote = ReplicatedStorage:FindFirstChild("LoadoutChanged")
+if not loadoutChangedRemote then
+    loadoutChangedRemote = ReplicatedStorage:WaitForChild("LoadoutChanged", 10)
+end
+if loadoutChangedRemote and loadoutChangedRemote:IsA("RemoteEvent") then
+    loadoutChangedRemote.OnClientEvent:Connect(function(data)
+        print("[ToolbarSync] LoadoutChanged received:",
+            "melee=", data and data.melee or "(nil)",
+            "ranged=", data and data.ranged or "(nil)")
+        -- Force refresh after a brief wait to let tools arrive in Backpack
+        task.wait(0.15)
+        refreshSlots()
+        -- Second refresh in case tools were still being cloned
+        task.wait(0.5)
+        refreshSlots()
+    end)
+end
+
+--------------------------------------------------------------------------------
 -- KEYBOARD INPUT
 --------------------------------------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, processed)
