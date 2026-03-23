@@ -38,9 +38,10 @@ end
 ---------------------------------------------------------------------
 local EventScheduler = {}
 
-local _running    = false   -- true while a match is active
-local _activeIdx  = nil     -- currently active event index (1 or 2), or nil
-local _thread     = nil     -- the scheduler coroutine
+local _running      = false   -- true while a match is active
+local _activeIdx    = nil     -- currently active event index (1 or 2), or nil
+local _thread       = nil     -- the scheduler coroutine
+local _eventEndTime = nil     -- server timestamp when the active event ends
 local _serverCallbacks = {} -- server-side listeners (registered via OnStateChanged)
 
 ---------------------------------------------------------------------
@@ -52,7 +53,7 @@ end
 
 local function broadcast(active, idx)
     pcall(function()
-        EventStateChanged:FireAllClients(active, idx)
+        EventStateChanged:FireAllClients(active, idx, _eventEndTime)
     end)
 end
 
@@ -66,7 +67,7 @@ end
 --- Send current event state to a single player (for late-joiners).
 local function sendStateTo(player)
     pcall(function()
-        EventStateChanged:FireClient(player, _activeIdx ~= nil, _activeIdx)
+        EventStateChanged:FireClient(player, _activeIdx ~= nil, _activeIdx, _eventEndTime)
     end)
 end
 
@@ -119,6 +120,7 @@ function EventScheduler:StartMatch(matchStartTick)
 
             -- Activate event
             _activeIdx = i
+            _eventEndTime = workspace:GetServerTimeNow() + ev.duration
             print(("[EventScheduler] Event %d ACTIVE"):format(i))
             broadcast(true, i)
             notifyServer(true, i)
@@ -134,6 +136,7 @@ function EventScheduler:StartMatch(matchStartTick)
 
             -- Deactivate event
             _activeIdx = nil
+            _eventEndTime = nil
             print(("[EventScheduler] Event %d ENDED"):format(i))
             broadcast(false, nil)
             notifyServer(false, nil)
@@ -146,8 +149,9 @@ end
 
 --- Call at match end or reset.  Stops the scheduler and clears state.
 function EventScheduler:StopMatch()
-    _running   = false
-    _activeIdx = nil
+    _running      = false
+    _activeIdx    = nil
+    _eventEndTime = nil
 
     if _thread then
         pcall(task.cancel, _thread)

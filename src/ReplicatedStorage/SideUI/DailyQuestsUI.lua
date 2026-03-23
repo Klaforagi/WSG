@@ -1259,6 +1259,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     cleanupConnections()
     closeRerollPopup("create-rebuild")
 
+    -- Clean up AP display from header bar (parented outside content frame)
+    local prevHeaderBar = parent and parent.Parent and parent.Parent:FindFirstChild("HeaderBar")
+    if prevHeaderBar then
+        local prevAP = prevHeaderBar:FindFirstChild("APDisplay")
+        if prevAP then prevAP:Destroy() end
+    end
+
     for _, c in ipairs(parent:GetChildren()) do
         if not c:IsA("UIListLayout") and not c:IsA("UIGridLayout")
             and not c:IsA("UIPadding") then
@@ -1502,6 +1509,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     -- Active-tab state management
     ---------------------------------------------------------------------------
     local currentTab = "daily"
+    local apDisplayFrame  -- forward declaration; created later when Achievements tab builds
 
     local function setActiveTab(tabId)
         currentTab = tabId
@@ -1537,6 +1545,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         }
         if _G.SideUI and type(_G.SideUI.SetTitle) == "function" then
             _G.SideUI.SetTitle(TAB_TITLES[tabId] or "QUESTS")
+        end
+        -- Show/hide AP display in header based on active tab
+        if apDisplayFrame then
+            apDisplayFrame.Visible = (tabId == "achiev")
         end
     end
 
@@ -2408,7 +2420,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
     -- Remotes for achievement system
     local getAchievRF, claimAchievRF2, achievProgressRE
-    local getHistoryRF, getCategoryProgressRF
+    local getHistoryRF, getCategoryProgressRF, getAchievPointsRF
 
     pcall(function()
         local rm = ReplicatedStorage:WaitForChild("Remotes", 5)
@@ -2418,6 +2430,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             achievProgressRE   = rm:FindFirstChild("AchievementProgress")
             getHistoryRF       = rm:FindFirstChild("GetCompletedHistory")
             getCategoryProgressRF = rm:FindFirstChild("GetCategoryProgress")
+            getAchievPointsRF  = rm:FindFirstChild("GetAchievementPoints")
         end
     end)
 
@@ -2427,6 +2440,16 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         pcall(function() achievements = getAchievRF:InvokeServer() end)
     end
     if type(achievements) ~= "table" then achievements = {} end
+
+    -- [AchievementPoints] Fetch AP total via dedicated remote (avoids mixed-table serialization issues)
+    local playerAchievementPoints = 0
+    if getAchievPointsRF then
+        local apOk, apVal = pcall(function() return getAchievPointsRF:InvokeServer() end)
+        if apOk and apVal then
+            playerAchievementPoints = tonumber(apVal) or 0
+        end
+    end
+    print(string.format("[AchievementUI] Initial AP total fetched: %d", playerAchievementPoints))
 
     local completedHistory = {}
     if getHistoryRF then
@@ -2464,6 +2487,67 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     hubRoot.Size                = UDim2.new(1, 0, 1, 0)
     hubRoot.ClipsDescendants    = true
     hubRoot.Parent              = achievPage
+
+    ---------------------------------------------------------------------------
+    -- [AchievementPoints] AP display in the SideUI header bar (same row as title + close)
+    -- Navigate from parent (ModalContent ScrollingFrame) up to the window,
+    -- then into the HeaderBar.
+    ---------------------------------------------------------------------------
+    local headerBar = parent and parent.Parent and parent.Parent:FindFirstChild("HeaderBar")
+    local apLabel  -- forward-declared for use in event handlers
+
+    if headerBar then
+        -- Clean up any previous AP display from a prior UI build
+        local old = headerBar:FindFirstChild("APDisplay")
+        if old then old:Destroy() end
+
+        apDisplayFrame = Instance.new("Frame")
+        apDisplayFrame.Name                = "APDisplay"
+        apDisplayFrame.BackgroundColor3    = Color3.fromRGB(20, 18, 36)
+        apDisplayFrame.BackgroundTransparency = 0.15
+        apDisplayFrame.Size                = UDim2.new(0, px(120), 0.65, 0)
+        apDisplayFrame.AnchorPoint         = Vector2.new(1, 0.5)
+        apDisplayFrame.Position            = UDim2.new(0.92, 0, 0.5, 0)
+        apDisplayFrame.ZIndex              = 275
+        apDisplayFrame.Visible             = false  -- setActiveTab will show when achiev tab selected
+        apDisplayFrame.Parent              = headerBar
+
+        local apCorner = Instance.new("UICorner")
+        apCorner.CornerRadius = UDim.new(0, px(8))
+        apCorner.Parent = apDisplayFrame
+
+        local apStroke = Instance.new("UIStroke")
+        apStroke.Color       = CLAIM_GOLD_GLOW
+        apStroke.Thickness   = 1.2
+        apStroke.Transparency = 0.4
+        apStroke.Parent      = apDisplayFrame
+
+        local apIcon = Instance.new("TextLabel")
+        apIcon.Name                = "APIcon"
+        apIcon.BackgroundTransparency = 1
+        apIcon.Font                = Enum.Font.GothamBold
+        apIcon.Text                = "\u{2B50}"
+        apIcon.TextColor3          = GOLD
+        apIcon.TextSize            = math.max(13, math.floor(px(14)))
+        apIcon.Size                = UDim2.new(0, px(22), 1, 0)
+        apIcon.Position            = UDim2.new(0, px(6), 0, 0)
+        apIcon.ZIndex              = 276
+        apIcon.Parent              = apDisplayFrame
+
+        apLabel = Instance.new("TextLabel")
+        apLabel.Name                = "APLabel"
+        apLabel.BackgroundTransparency = 1
+        apLabel.Font                = Enum.Font.GothamBold
+        apLabel.Text                = FormatInt(playerAchievementPoints) .. " AP"
+        apLabel.TextColor3          = GOLD
+        apLabel.TextSize            = math.max(12, math.floor(px(13)))
+        apLabel.TextXAlignment      = Enum.TextXAlignment.Right
+        apLabel.Size                = UDim2.new(1, -px(34), 1, 0)
+        apLabel.AnchorPoint         = Vector2.new(1, 0)
+        apLabel.Position            = UDim2.new(1, -px(6), 0, 0)
+        apLabel.ZIndex              = 276
+        apLabel.Parent              = apDisplayFrame
+    end
 
     -- Showcase layout: left category cards + right content panel
     local SHOWCASE_W_SCALE = 0.42   -- left showcase takes ~42% width
@@ -2702,12 +2786,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         titleLbl.Position           = UDim2.new(0, px(38), 0, 0)
         titleLbl.Parent             = card
 
-        -- Reward badge
+        -- Reward badge (shows coins + AP)
         local rewardBadge = Instance.new("Frame")
         rewardBadge.Name              = "RewardBadge"
         rewardBadge.BackgroundColor3  = Color3.fromRGB(36, 33, 18)
         rewardBadge.BackgroundTransparency = 0.3
-        rewardBadge.Size              = UDim2.new(0, px(100), 0, px(26))
+        rewardBadge.Size              = UDim2.new(0, px(100), 0, px(46))
         rewardBadge.AnchorPoint       = Vector2.new(1, 0)
         rewardBadge.Position          = UDim2.new(1, 0, 0, -px(2))
         rewardBadge.Parent            = card
@@ -2722,23 +2806,52 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         badgeStroke.Transparency = 0.55
         badgeStroke.Parent      = rewardBadge
 
-        local coinSize = px(18)
+        -- Coin reward line
+        local coinSize = px(16)
         local coinIcon = makeCoinIcon(rewardBadge, coinSize)
         coinIcon.AnchorPoint = Vector2.new(0, 0.5)
-        coinIcon.Position    = UDim2.new(0, px(8), 0.5, 0)
+        coinIcon.Position    = UDim2.new(0, px(8), 0, px(11))
 
         local amtLbl = Instance.new("TextLabel")
         amtLbl.Name                = "Amount"
         amtLbl.BackgroundTransparency = 1
         amtLbl.Font                = Enum.Font.GothamBold
-        amtLbl.Text                = FormatInt(ach.reward)
+        amtLbl.Text                = "+" .. FormatInt(ach.reward)
         amtLbl.TextColor3          = GOLD
-        amtLbl.TextSize            = math.max(13, math.floor(px(14)))
+        amtLbl.TextSize            = math.max(11, math.floor(px(12)))
         amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
-        amtLbl.Size                = UDim2.new(1, -px(30), 1, 0)
+        amtLbl.Size                = UDim2.new(1, -px(28), 0, px(22))
         amtLbl.AnchorPoint         = Vector2.new(1, 0)
-        amtLbl.Position            = UDim2.new(1, -px(8), 0, 0)
+        amtLbl.Position            = UDim2.new(1, -px(6), 0, 0)
         amtLbl.Parent              = rewardBadge
+
+        -- AP reward line
+        local achAP = tonumber(ach.ap) or 0
+        if achAP > 0 then
+            local apIconSmall = Instance.new("TextLabel")
+            apIconSmall.Name                = "APIcon"
+            apIconSmall.BackgroundTransparency = 1
+            apIconSmall.Font                = Enum.Font.GothamBold
+            apIconSmall.Text                = "\u{2B50}"
+            apIconSmall.TextColor3          = GOLD
+            apIconSmall.TextSize            = math.max(10, math.floor(px(11)))
+            apIconSmall.Size                = UDim2.new(0, px(16), 0, px(22))
+            apIconSmall.Position            = UDim2.new(0, px(8), 0, px(22))
+            apIconSmall.Parent              = rewardBadge
+
+            local apAmtLbl = Instance.new("TextLabel")
+            apAmtLbl.Name                = "APAmount"
+            apAmtLbl.BackgroundTransparency = 1
+            apAmtLbl.Font                = Enum.Font.GothamBold
+            apAmtLbl.Text                = "+" .. FormatInt(achAP) .. " AP"
+            apAmtLbl.TextColor3          = Color3.fromRGB(220, 200, 100)
+            apAmtLbl.TextSize            = math.max(10, math.floor(px(11)))
+            apAmtLbl.TextXAlignment      = Enum.TextXAlignment.Right
+            apAmtLbl.Size                = UDim2.new(1, -px(28), 0, px(22))
+            apAmtLbl.AnchorPoint         = Vector2.new(1, 0)
+            apAmtLbl.Position            = UDim2.new(1, -px(6), 0, px(22))
+            apAmtLbl.Parent              = rewardBadge
+        end
 
         -- Description
         local descLbl = Instance.new("TextLabel")
@@ -2841,17 +2954,18 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             end
         end
 
-        -- Claim / status button
+        -- Status indicator (replaces old Claim button — rewards are auto-granted)
         local btnW2 = px(108)
         local btnH2 = px(34)
         local btn = Instance.new("TextButton")
-        btn.Name            = "ClaimBtn"
+        btn.Name            = "StatusBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
         btn.TextSize        = math.max(13, math.floor(px(14)))
         btn.Size            = UDim2.new(0, btnW2, 0, btnH2)
         btn.AnchorPoint     = Vector2.new(1, 0)
         btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
+        btn.Active          = false
         btn.Parent          = card
 
         local btnCorner = Instance.new("UICorner")
@@ -2871,10 +2985,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 card.BackgroundColor3 = ROW_CLAIMED_BG
                 stroke.Color = GREEN_GLOW; stroke.Thickness = 1.8; stroke.Transparency = 0.3
                 accentBar.BackgroundColor3 = GREEN_GLOW; accentBar.BackgroundTransparency = 0.2
-            elseif progress >= goal then
-                card.BackgroundColor3 = ROW_CLAIMABLE_BG
-                stroke.Color = CLAIM_GOLD_GLOW; stroke.Thickness = 2; stroke.Transparency = 0.15
-                accentBar.BackgroundColor3 = CLAIM_GOLD_GLOW; accentBar.BackgroundTransparency = 0
             else
                 card.BackgroundColor3 = ROW_BG
                 stroke.Color = CARD_STROKE; stroke.Thickness = 1.2; stroke.Transparency = 0.35
@@ -2884,13 +2994,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         local function updateAchBtnState(progress, goal, claimed)
             if claimed then
-                btn.Text = "\u{2714} CLAIMED"; btn.BackgroundColor3 = BTN_CLAIMED
+                btn.Text = "\u{2714} COMPLETED"; btn.BackgroundColor3 = BTN_CLAIMED
                 btn.TextColor3 = GREEN_GLOW; btn.Active = false
                 btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.5
-            elseif progress >= goal then
-                btn.Text = "\u{2B50} CLAIM"; btn.BackgroundColor3 = BTN_CLAIM
-                btn.TextColor3 = WHITE; btn.Active = true
-                btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.15
             else
                 btn.Text = FormatProgress(progress, goal)
                 btn.BackgroundColor3 = BTN_LOCKED; btn.TextColor3 = DIM_TEXT; btn.Active = false
@@ -2901,50 +3007,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         updateAchBtnState(ach.progress, ach.target, ach.claimed)
         updateAchievedOnLabel(ach.completed == true, ach.achievedOn)
-
-        -- Hover
-        trackConn(btn.MouseEnter:Connect(function()
-            if btn.Active then
-                TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(45, 210, 90)}):Play()
-            end
-        end))
-        trackConn(btn.MouseLeave:Connect(function()
-            if btn.Active then
-                TweenService:Create(btn, TWEEN_QUICK, {BackgroundColor3 = BTN_CLAIM}):Play()
-            end
-        end))
-
-        -- Claim handler
-        trackConn(btn.MouseButton1Click:Connect(function()
-            if achClaimed[ach.id] then return end
-            if not btn.Active then return end
-            btn.Active = false; btn.Text = "..."
-
-            local success = false
-            if claimAchievRF2 then
-                pcall(function() success = claimAchievRF2:InvokeServer(ach.id) end)
-            end
-            if success then
-                achClaimed[ach.id] = true
-                if achievementDataById[ach.id] then
-                    achievementDataById[ach.id].claimed = true
-                    achievementDataById[ach.id].completed = true
-                    achievementDataById[ach.id].progress = ach.target
-                end
-                updateAchBtnState(ach.target, ach.target, true)
-                local latest = achievementDataById[ach.id]
-                updateAchievedOnLabel(true, latest and latest.achievedOn)
-                TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(60, 55, 25)}):Play()
-                task.delay(0.3, function()
-                    if card and card.Parent then
-                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = ROW_CLAIMED_BG}):Play()
-                    end
-                end)
-                if _G.UpdateShopHeaderCoins then pcall(_G.UpdateShopHeaderCoins) end
-            else
-                updateAchBtnState(ach.progress, ach.target, false)
-            end
-        end))
 
         return card
     end
@@ -3090,17 +3152,27 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             hDesc.Position  = UDim2.new(0, px(30), 0, px(36))
             hDesc.Parent    = histCard
 
-            -- Reward on the right
+            -- Reward on the right (coins + AP)
+            local entryAP = tonumber(entry.ap) or 0
+            local rewardLines = {}
+            if (entry.reward or 0) > 0 then
+                table.insert(rewardLines, "+" .. FormatInt(entry.reward) .. " coins")
+            end
+            if entryAP > 0 then
+                table.insert(rewardLines, "+" .. FormatInt(entryAP) .. " AP")
+            end
+
             local hReward = Instance.new("TextLabel")
             hReward.Name = "Reward"
             hReward.BackgroundTransparency = 1
             hReward.Font      = Enum.Font.GothamBold
-            hReward.Text      = "+" .. FormatInt(entry.reward or 0) .. " coins"
+            hReward.Text      = table.concat(rewardLines, "\n")
             hReward.TextColor3 = GOLD
             hReward.TextSize  = math.max(11, math.floor(px(12)))
             hReward.TextXAlignment = Enum.TextXAlignment.Right
+            hReward.TextYAlignment = Enum.TextYAlignment.Top
             hReward.AnchorPoint = Vector2.new(1, 0)
-            hReward.Size      = UDim2.new(0.3, 0, 0, px(18))
+            hReward.Size      = UDim2.new(0.3, 0, 0, px(36))
             hReward.Position  = UDim2.new(1, 0, 0, 0)
             hReward.Parent    = histCard
         end
@@ -3157,7 +3229,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             return
         end
 
-        -- Filter achievements for this category, sorted (active → claimable → claimed)
+        -- Filter achievements for this category, sorted (active → completed)
         local catAchs = {}
         for _, ach in ipairs(achievements) do
             if ach.category == category then
@@ -3490,7 +3562,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     -- Live achievement progress updates
     ---------------------------------------------------------------------------
     if achievProgressRE then
-        trackConn(achievProgressRE.OnClientEvent:Connect(function(achId, newProgress, completed, achievedOn, claimedFromServer)
+        trackConn(achievProgressRE.OnClientEvent:Connect(function(achId, newProgress, completed, achievedOn, claimedFromServer, stageIndex)
             if type(achId) ~= "string" then return end
 
             -- Full refresh: re-fetch and rebuild
@@ -3544,13 +3616,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             if claimB then
                                 local bS = claimB:FindFirstChildOfClass("UIStroke")
                                 if a.claimed then
-                                    claimB.Text = "\u{2714} CLAIMED"; claimB.BackgroundColor3 = BTN_CLAIMED
+                                    claimB.Text = "\u{2714} COMPLETED"; claimB.BackgroundColor3 = BTN_CLAIMED
                                     claimB.TextColor3 = GREEN_GLOW; claimB.Active = false
                                     if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.5 end
-                                elseif a.progress >= a.target then
-                                    claimB.Text = "\u{2B50} CLAIM"; claimB.BackgroundColor3 = BTN_CLAIM
-                                    claimB.TextColor3 = WHITE; claimB.Active = true
-                                    if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.15 end
                                 else
                                     claimB.Text = FormatProgress(a.progress, a.target)
                                     claimB.BackgroundColor3 = BTN_LOCKED; claimB.TextColor3 = DIM_TEXT; claimB.Active = false
@@ -3565,16 +3633,24 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                                     cFrame.BackgroundColor3 = ROW_CLAIMED_BG
                                     if cStroke then cStroke.Color = GREEN_GLOW; cStroke.Thickness = 1.8; cStroke.Transparency = 0.3 end
                                     if acnt then acnt.BackgroundColor3 = GREEN_GLOW; acnt.BackgroundTransparency = 0.2 end
-                                elseif a.progress >= a.target then
-                                    cFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
-                                    if cStroke then cStroke.Color = CLAIM_GOLD_GLOW; cStroke.Thickness = 2; cStroke.Transparency = 0.15 end
-                                    if acnt then acnt.BackgroundColor3 = CLAIM_GOLD_GLOW; acnt.BackgroundTransparency = 0 end
                                 else
                                     cFrame.BackgroundColor3 = ROW_BG
                                     if cStroke then cStroke.Color = CARD_STROKE; cStroke.Thickness = 1.2; cStroke.Transparency = 0.35 end
                                     if acnt then acnt.BackgroundColor3 = GOLD; acnt.BackgroundTransparency = 0.5 end
                                 end
                             end
+                        end
+
+                        -- [AchievementPoints] Refresh AP total via dedicated remote
+                        if getAchievPointsRF then
+                            local apOk2, apVal2 = pcall(function() return getAchievPointsRF:InvokeServer() end)
+                            if apOk2 and apVal2 then
+                                playerAchievementPoints = tonumber(apVal2) or playerAchievementPoints
+                            end
+                        end
+                        print(string.format("[AchievementUI] Full-refresh AP total: %d", playerAchievementPoints))
+                        if apLabel and apLabel.Parent then
+                            apLabel.Text = FormatInt(playerAchievementPoints) .. " AP"
                         end
                     end
                 end
@@ -3655,13 +3731,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             if claimBtn2 and claimBtn2.Parent then
                 local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
                 if achClaimed[achId] then
-                    claimBtn2.Text = "\u{2714} CLAIMED"; claimBtn2.BackgroundColor3 = BTN_CLAIMED
+                    claimBtn2.Text = "\u{2714} COMPLETED"; claimBtn2.BackgroundColor3 = BTN_CLAIMED
                     claimBtn2.TextColor3 = GREEN_GLOW; claimBtn2.Active = false
                     if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
-                elseif newProgress >= goal then
-                    claimBtn2.Text = "\u{2B50} CLAIM"; claimBtn2.BackgroundColor3 = BTN_CLAIM
-                    claimBtn2.TextColor3 = WHITE; claimBtn2.Active = true
-                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.15 end
                 end
             end
             local cardFrame = achCards[achId]
@@ -3672,15 +3744,28 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     cardFrame.BackgroundColor3 = ROW_CLAIMED_BG
                     if cardStroke then cardStroke.Color = GREEN_GLOW; cardStroke.Thickness = 1.8; cardStroke.Transparency = 0.3 end
                     if accent then accent.BackgroundColor3 = GREEN_GLOW; accent.BackgroundTransparency = 0.2 end
-                elseif newProgress >= goal then
-                    cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
-                    if cardStroke then cardStroke.Color = CLAIM_GOLD_GLOW; cardStroke.Thickness = 2; cardStroke.Transparency = 0.15 end
-                    if accent then accent.BackgroundColor3 = CLAIM_GOLD_GLOW; accent.BackgroundTransparency = 0 end
                 end
             end
 
             if completed and _G.ShowAchievementToast then
-                pcall(function() _G.ShowAchievementToast(achId) end)
+                pcall(function() _G.ShowAchievementToast(achId, stageIndex) end)
+            end
+
+            -- [AchievementUI] Update coin display after auto-reward
+            if achClaimed[achId] then
+                if _G.UpdateShopHeaderCoins then pcall(_G.UpdateShopHeaderCoins) end
+                -- Refresh AP display
+                if getAchievPointsRF then
+                    local ok, pts = pcall(function() return getAchievPointsRF:InvokeServer() end)
+                    print(string.format("[AchievementUI] Single-ach AP fetch: ok=%s pts=%s", tostring(ok), tostring(pts)))
+                    if ok and pts then
+                        playerAchievementPoints = tonumber(pts) or playerAchievementPoints
+                        print(string.format("[AchievementUI] AP total updated to: %d", playerAchievementPoints))
+                        if apLabel and apLabel.Parent then
+                            apLabel.Text = FormatInt(playerAchievementPoints) .. " AP"
+                        end
+                    end
+                end
             end
         end))
     end

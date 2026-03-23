@@ -40,4 +40,21 @@ end
 -- Pulse animation cycle duration (seconds) – used by client indicator
 EventConfig.PULSE_CYCLE = 1.75  -- full pulse cycle duration in seconds
 
+---------------------------------------------------------------------
+-- Event definitions (placeholder data for the info panel)
+-- To add a new event, add an entry here keyed by a unique string id.
+-- The client reads ActiveEventId to look up the matching def.
+---------------------------------------------------------------------
+EventConfig.EventDefs = {
+    MeteorShower = {
+        Name       = "Meteor Shower",
+        Objective  = "Collect 3 Meteor Shards",
+        Reward     = "50 Coins",
+    },
+}
+
+-- Which event definition is used when an event activates.
+-- Swap this value to change the active event type.
+EventConfig.ActiveEventId = "MeteorShower"
+
 return EventConfig

@@ -48,17 +48,18 @@ local AchievementService = {}
 --   playerData[player] = {
 --       achievementDataVersion = 3,
 --       stats = { zombieElims = 0, playerElims = 0, ... },
+--       achievementPoints = 0,  -- lifetime cumulative AP
 --       achievements = {
 --           [achievementId] = {
 --               stageIndex  = 1,       -- current active stage (1-based)
 --               completed   = false,   -- current stage completed?
---               claimed     = false,   -- current stage reward claimed?
+--               claimed     = false,   -- current stage reward auto-granted?
 --               achievedOn  = nil,     -- timestamp of current stage completion
 --               maxedOut    = false,   -- entire staged line finished?
 --           },
 --       },
 --       completedHistory = {
---           { id, displayName, category, stageIndex, achievedOn, desc, reward },
+--           { id, displayName, category, stageIndex, achievedOn, desc, reward, ap },
 --           ...  (newest first)
 --       },
 --   }
@@ -134,6 +135,7 @@ local function defaultData()
     local data = {
         achievementDataVersion = ACHIEVEMENT_DATA_VERSION,
         stats = {},
+        achievementPoints = 0,
         achievements = {},
         completedHistory = {},
     }
@@ -168,6 +170,7 @@ local function mergeWithDefaults(saved)
     local data = {
         achievementDataVersion = ACHIEVEMENT_DATA_VERSION,
         stats = {},
+        achievementPoints = tonumber(saved.achievementPoints) or 0,
         achievements = {},
         completedHistory = {},
     }
@@ -225,6 +228,7 @@ local function mergeWithDefaults(saved)
                     achievedOn  = sanitizeAchievedOn(entry.achievedOn),
                     desc        = entry.desc or "",
                     reward      = tonumber(entry.reward) or 0,
+                    ap          = tonumber(entry.ap) or 0,
                 })
             end
         end
@@ -255,6 +259,7 @@ local function archiveCompletion(data, def, stageIndex, achievedOn)
         achievedOn  = achievedOn,
         desc        = AchievementDefs.GetStageDesc(def, stageIndex),
         reward      = AchievementDefs.GetStageReward(def, stageIndex),
+        ap          = AchievementDefs.GetStageAP(def, stageIndex),
     }
     table.insert(data.completedHistory, 1, entry) -- newest first
 end
@@ -280,15 +285,50 @@ local function recalcMetaStats(data)
 end
 
 --------------------------------------------------------------------------------
--- Internal: try to advance a staged line after claiming
--- Called for staged achievements when the current stage is claimed.
+-- Internal: auto-grant rewards for a completed achievement stage
+-- Server-authoritative: coins + achievement points granted immediately.
+-- Returns true if reward was granted, false if already claimed/skipped.
+--------------------------------------------------------------------------------
+local function autoGrantReward(player, data, def, stageIndex)
+    local ach = data.achievements[def.id]
+    if not ach then return false end
+    if ach.claimed then return false end  -- already rewarded
+
+    -- Grant coins
+    local coinReward = AchievementDefs.GetStageReward(def, stageIndex)
+    if coinReward > 0 then
+        local cs = getCurrencyService()
+        if cs and cs.AddCoins then
+            cs:AddCoins(player, coinReward, "achievement")
+        end
+    end
+
+    -- Grant achievement points
+    local apReward = AchievementDefs.GetStageAP(def, stageIndex)
+    if apReward > 0 then
+        data.achievementPoints = (data.achievementPoints or 0) + apReward
+        print(string.format("[AchievementPoints] %s earned +%d AP (total: %d) from %s",
+            player.Name, apReward, data.achievementPoints, def.id))
+    end
+
+    ach.claimed = true
+
+    print(string.format("[AchievementAutoReward] %s auto-rewarded: %s (coins=%d, AP=%d)",
+        player.Name, AchievementDefs.GetStageTitle(def, stageIndex), coinReward, apReward))
+
+    return true
+end
+
+--------------------------------------------------------------------------------
+-- Internal: try to advance a staged line after auto-rewarding
+-- Called for staged achievements when the current stage is completed and rewarded.
 -- Automatically checks if the stat already exceeds the next threshold.
 --------------------------------------------------------------------------------
 local function tryAdvanceStage(player, data, def)
     if not def.staged then return end
     local ach = data.achievements[def.id]
     if not ach then return end
-    if not ach.claimed then return end -- must claim before advancing
+    if not ach.claimed then return end -- must be rewarded before advancing
 
     local maxStage = AchievementDefs.GetMaxStage(def)
 
@@ -312,9 +352,11 @@ local function tryAdvanceStage(player, data, def)
         ach.achievedOn = os.time()
         archiveCompletion(data, def, ach.stageIndex, ach.achievedOn)
         recalcMetaStats(data)
+        -- Auto-grant reward for carry-over stage
+        autoGrantReward(player, data, def, ach.stageIndex)
         pushProgress(player, def, data)
-        -- Recurse: auto-claim is NOT done, but we mark completed.
-        -- The player must still manually claim each stage.
+        -- Recurse: check if next stage is also met
+        tryAdvanceStage(player, data, def)
     end
 end
 
@@ -348,7 +390,7 @@ pushProgress = function(player, def, data)
     local progress = math.min(statVal, target)
 
     pcall(function()
-        ev:FireClient(player, def.id, progress, ach.completed, ach.achievedOn, ach.claimed == true)
+        ev:FireClient(player, def.id, progress, ach.completed, ach.achievedOn, ach.claimed == true, si)
     end)
 end
 
@@ -380,6 +422,13 @@ function AchievementService:LoadForPlayer(player)
 
     local data, wasResetByVersion = mergeWithDefaults(success and result or nil)
 
+    -- [AchievementLoad] Log loaded data summary
+    print(string.format("[AchievementLoad] %s loaded — AP=%d, completedHistory=%d entries, version=%s",
+        player.Name,
+        data.achievementPoints or 0,
+        #(data.completedHistory or {}),
+        tostring(data.achievementDataVersion)))
+
     -- Retroactively evaluate stat thresholds for all achievements
     for _, def in ipairs(AchievementDefs.Achievements) do
         local ach = data.achievements[def.id]
@@ -394,6 +443,15 @@ function AchievementService:LoadForPlayer(player)
             ach.completed = true
             if not ach.achievedOn then
                 ach.achievedOn = os.time()
+            end
+            -- [AchievementAutoReward] Auto-reward on load for retroactive completions
+            if not ach.claimed then
+                archiveCompletion(data, def, si, ach.achievedOn)
+                autoGrantReward(player, data, def, si)
+                -- Auto-advance staged achievements
+                if def.staged then
+                    tryAdvanceStage(player, data, def)
+                end
             end
         elseif statVal < target then
             ach.completed = false
@@ -416,6 +474,8 @@ function AchievementService:SaveForPlayer(player)
     if not player then return false end
     local data = playerData[player]
     if not data then return false end
+    print(string.format("[AchievementSave] SaveForPlayer(%s): AP=%d, history=%d entries",
+        player.Name, data.achievementPoints or 0, #(data.completedHistory or {})))
     local key = getKey(player)
     local success, err
     for i = 1, RETRIES do
@@ -497,7 +557,16 @@ function AchievementService:_evaluateStatAchievements(player, data, statKey)
             -- Archive into completion history
             archiveCompletion(data, def, si, ach.achievedOn)
             anyCompleted = true
+
+            -- [AchievementAutoReward] Auto-grant reward immediately on completion
+            autoGrantReward(player, data, def, si)
+
             pushProgress(player, def, data)
+
+            -- For staged achievements, auto-advance to next stage
+            if def.staged then
+                tryAdvanceStage(player, data, def)
+            end
         elseif not ach.completed then
             pushProgress(player, def, data)
         end
@@ -520,11 +589,20 @@ function AchievementService:_evaluateStatAchievements(player, data, statKey)
                         end
                         archiveCompletion(data, def, ach.stageIndex, ach.achievedOn)
                         recalcMetaStats(data)
+                        -- [AchievementAutoReward] Auto-grant meta achievement reward
+                        autoGrantReward(player, data, def, ach.stageIndex)
                         pushProgress(player, def, data)
+                        -- Auto-advance staged meta achievements
+                        if def.staged then
+                            tryAdvanceStage(player, data, def)
+                        end
                     end
                 end
             end
         end
+
+        -- Push full refresh to update UI after auto-rewards
+        pushAllAchievements(player)
     end
 end
 
@@ -561,6 +639,7 @@ function AchievementService:GetAchievementsForPlayer(player)
             icon       = def.icon,
             target     = target,
             reward     = AchievementDefs.GetStageReward(def, si),
+            ap         = AchievementDefs.GetStageAP(def, si),
             progress   = progress,
             completed  = ach.completed or ach.maxedOut,
             claimed    = ach.claimed or ach.maxedOut,
@@ -572,59 +651,35 @@ function AchievementService:GetAchievementsForPlayer(player)
             maxedOut   = ach.maxedOut,
         })
     end
+    -- Attach player's total achievement points to the response
+    out.achievementPoints = data.achievementPoints or 0
     return out
 end
 
---- Claim the reward for a completed achievement stage. Returns true on success.
---- For staged achievements, also advances to the next stage after claiming.
+--- ClaimReward is now a no-op — rewards are auto-granted on completion.
+--- Kept for backward compatibility with any lingering client calls.
+--- Always returns false since there is nothing to claim manually.
 function AchievementService:ClaimReward(player, achievementId)
-    if type(achievementId) ~= "string" then return false end
-
-    -- Resolve old id aliases (e.g. first_blood → first_strike)
-    achievementId = AchievementDefs.ResolveId(achievementId)
-
-    local data = playerData[player]
-    if not data then return false end
-
-    local def = AchievementDefs.ById[achievementId]
-    if not def then return false end
-
-    local ach = data.achievements[achievementId]
-    if not ach then return false end
-    if not ach.completed then return false end
-    if ach.claimed then return false end
-    if ach.maxedOut then return false end
-
-    -- Verify stat meets threshold (server-authoritative)
-    local si = ach.stageIndex
-    local target = AchievementDefs.GetStageTarget(def, si)
-    if (data.stats[def.stat] or 0) < target then return false end
-
-    -- Grant coins
-    local reward = AchievementDefs.GetStageReward(def, si)
-    local cs = getCurrencyService()
-    if cs and cs.AddCoins then
-        cs:AddCoins(player, reward, "achievement")
-    end
-
-    ach.claimed = true
-
-    -- Push update showing claimed state
-    pushProgress(player, def, data)
-
-    -- For staged achievements, advance to next stage
-    if def.staged then
-        tryAdvanceStage(player, data, def)
-        -- Push the new stage data to client
-        pushAllAchievements(player)
-    end
-
-    return true
+    print(string.format("[AchievementAutoReward] ClaimReward called by %s for %s — ignored (auto-reward active)",
+        tostring(player), tostring(achievementId)))
+    return false
 end
 
 --------------------------------------------------------------------------------
 -- History / recently completed
 --------------------------------------------------------------------------------
+
+--- Get the player's lifetime achievement points total.
+function AchievementService:GetAchievementPoints(player)
+    local data = playerData[player]
+    if not data then
+        print(string.format("[AchievementPoints] GetAchievementPoints(%s): no data, returning 0", tostring(player)))
+        return 0
+    end
+    local ap = data.achievementPoints or 0
+    print(string.format("[AchievementPoints] GetAchievementPoints(%s): returning %d", player.Name, ap))
+    return ap
+end
 
 --- Get full completed history (newest first).
 function AchievementService:GetCompletedHistory(player)

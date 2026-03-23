@@ -58,7 +58,7 @@ screenGui.Parent        = playerGui
 local toastQueue  = {}
 local isShowing   = false
 
-local function showToast(title, icon, reward)
+local function showToast(title, icon, reward, ap)
     -- Toast frame
     local toast = Instance.new("Frame")
     toast.Name                = "Toast"
@@ -131,12 +131,17 @@ local function showToast(title, icon, reward)
     titleLbl.Position           = UDim2.new(0, px(56), 0, px(28))
     titleLbl.Parent             = toast
 
-    -- Reward text
+    -- Reward text (coins + AP)
+    local rewardParts = {}
+    if (reward or 0) > 0 then table.insert(rewardParts, "+" .. tostring(reward) .. " coins") end
+    if (ap or 0) > 0 then table.insert(rewardParts, "+" .. tostring(ap) .. " AP") end
+    local rewardStr = #rewardParts > 0 and table.concat(rewardParts, "  |  ") or ""
+
     local rewardLbl = Instance.new("TextLabel")
     rewardLbl.Name               = "Reward"
     rewardLbl.BackgroundTransparency = 1
     rewardLbl.Font               = Enum.Font.GothamMedium
-    rewardLbl.Text               = "+" .. tostring(reward or 0) .. " coins"
+    rewardLbl.Text               = rewardStr
     rewardLbl.TextColor3         = DIM_TEXT
     rewardLbl.TextSize           = math.max(10, math.floor(px(11)))
     rewardLbl.TextXAlignment     = Enum.TextXAlignment.Left
@@ -164,7 +169,7 @@ local function showToast(title, icon, reward)
                 if #toastQueue > 0 then
                     local next = table.remove(toastQueue, 1)
                     isShowing = true
-                    showToast(next.title, next.icon, next.reward)
+                    showToast(next.title, next.icon, next.reward, next.ap)
                 end
             end)
         end
@@ -174,7 +179,7 @@ end
 --------------------------------------------------------------------------------
 -- Public function (exposed via _G for DailyQuestsUI to call)
 --------------------------------------------------------------------------------
-_G.ShowAchievementToast = function(achievementId)
+_G.ShowAchievementToast = function(achievementId, stageIndex)
     local def
     if AchievementDefs and AchievementDefs.ById then
         -- Resolve old id aliases (e.g. first_blood → first_strike)
@@ -184,29 +189,29 @@ _G.ShowAchievementToast = function(achievementId)
         end
         def = AchievementDefs.ById[resolvedId]
     end
-    -- For staged achievements, title/reward come from stage 1 fallback
-    -- but we get extra data from the server push, so use helpers when available
+    local si = stageIndex or 1
     local title  = achievementId
     local icon   = "★"
     local reward = 0
+    local ap     = 0
     if def then
         icon = def.icon or icon
         if def.staged then
-            -- Default to stage 1; the actual stage title was computed server-side
-            -- and sent via GetAchievements. The toast just needs something reasonable.
-            title = AchievementDefs.GetStageTitle and AchievementDefs.GetStageTitle(def, 1) or (def.titleFormat and string.format(def.titleFormat, "I") or achievementId)
-            reward = AchievementDefs.GetStageReward and AchievementDefs.GetStageReward(def, 1) or (def.rewards and def.rewards[1] or 0)
+            title = AchievementDefs.GetStageTitle and AchievementDefs.GetStageTitle(def, si) or (def.titleFormat and string.format(def.titleFormat, "I") or achievementId)
+            reward = AchievementDefs.GetStageReward and AchievementDefs.GetStageReward(def, si) or (def.rewards and def.rewards[si] or 0)
+            ap = AchievementDefs.GetStageAP and AchievementDefs.GetStageAP(def, si) or 0
         else
             title = def.title or achievementId
             reward = def.reward or 0
+            ap = tonumber(def.achievementPoints) or 0
         end
     end
 
     if isShowing then
-        table.insert(toastQueue, { title = title, icon = icon, reward = reward })
+        table.insert(toastQueue, { title = title, icon = icon, reward = reward, ap = ap })
     else
         isShowing = true
-        showToast(title, icon, reward)
+        showToast(title, icon, reward, ap)
     end
 end
 
@@ -219,10 +224,10 @@ task.spawn(function()
     local achievProgressRE = remotes:WaitForChild("AchievementProgress", 10)
     if not achievProgressRE or not achievProgressRE:IsA("RemoteEvent") then return end
 
-    achievProgressRE.OnClientEvent:Connect(function(achId, _, completed)
+    achievProgressRE.OnClientEvent:Connect(function(achId, _, completed, _, _, stageIndex)
         if achId == "__full_refresh" then return end
         if completed and _G.ShowAchievementToast then
-            pcall(function() _G.ShowAchievementToast(achId) end)
+            pcall(function() _G.ShowAchievementToast(achId, stageIndex) end)
         end
     end)
 end)

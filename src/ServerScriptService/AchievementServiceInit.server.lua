@@ -35,7 +35,7 @@ local achievProgressRE = Instance.new("RemoteEvent")
 achievProgressRE.Name = "AchievementProgress"
 achievProgressRE.Parent = remotesFolder
 
--- ClaimAchievement: client requests reward claim
+-- ClaimAchievement: kept for backward compatibility, but auto-reward is now active
 local claimAchievRF = Instance.new("RemoteFunction")
 claimAchievRF.Name = "ClaimAchievement"
 claimAchievRF.Parent = remotesFolder
@@ -50,6 +50,11 @@ local getCategoryProgressRF = Instance.new("RemoteFunction")
 getCategoryProgressRF.Name = "GetCategoryProgress"
 getCategoryProgressRF.Parent = remotesFolder
 
+-- GetAchievementPoints: client asks for lifetime AP total
+local getAchievPointsRF = Instance.new("RemoteFunction")
+getAchievPointsRF.Name = "GetAchievementPoints"
+getAchievPointsRF.Parent = remotesFolder
+
 --------------------------------------------------------------------------------
 -- Remote handlers
 --------------------------------------------------------------------------------
@@ -58,12 +63,12 @@ getAchievementsRF.OnServerInvoke = function(player)
 end
 
 claimAchievRF.OnServerInvoke = function(player, achievementId)
+    -- [AchievementAutoReward] Manual claiming is disabled — rewards are auto-granted.
+    -- This handler is kept for backward compatibility; always returns false.
     if type(achievementId) ~= "string" then return false end
-    local result = AchievementService:ClaimReward(player, achievementId)
-    if result and StatService then
-        pcall(function() StatService:RegisterAchievementClaimed(player) end)
-    end
-    return result
+    print(string.format("[AchievementAutoReward] Legacy ClaimAchievement called by %s for %s — ignored",
+        player.Name, achievementId))
+    return false
 end
 
 getHistoryRF.OnServerInvoke = function(player)
@@ -72,6 +77,10 @@ end
 
 getCategoryProgressRF.OnServerInvoke = function(player)
     return AchievementService:GetCategoryProgressSummary(player)
+end
+
+getAchievPointsRF.OnServerInvoke = function(player)
+    return AchievementService:GetAchievementPoints(player)
 end
 
 --------------------------------------------------------------------------------
