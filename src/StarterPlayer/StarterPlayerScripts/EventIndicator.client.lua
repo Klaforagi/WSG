@@ -726,12 +726,12 @@ local function createIndicator()
     local tmrLbl = Instance.new("TextLabel")
     tmrLbl.Name = "EventTimerLabel"
     tmrLbl.LayoutOrder = 101
-    tmrLbl.Size = UDim2.new(1, 0, 0, px(26))
+    tmrLbl.Size = UDim2.new(1, 0, 0, px(36))
     tmrLbl.BackgroundTransparency = 1
     tmrLbl.Font = Enum.Font.GothamBold
     tmrLbl.Text = "--:--"
     tmrLbl.TextColor3 = Color3.fromRGB(235, 235, 245)
-    tmrLbl.TextSize = px(15)
+    tmrLbl.TextSize = px(22)
     tmrLbl.TextXAlignment = Enum.TextXAlignment.Center
     tmrLbl.ZIndex = 10
     tmrLbl.Parent = card.Parent  -- goes into the UIListLayout container
@@ -773,22 +773,22 @@ local function createIndicator()
         -- Main container — anchored to the right side, below the top HUD
         local container = Instance.new("Frame")
         container.Name = "TrackerContainer"
-        container.Size = UDim2.new(0, px(240), 0, px(80))
+        container.Size = UDim2.new(0, px(460), 0, px(120))
         container.AnchorPoint = Vector2.new(1, 0)
-        container.Position = UDim2.new(1, -px(12), 0, px(90))
+        container.Position = UDim2.new(1, -px(14), 0, px(90))
         container.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
-        container.BackgroundTransparency = 0.15
+        container.BackgroundTransparency = 0.10
         container.BorderSizePixel = 0
         container.Parent = trackerGui
 
         local cCorner = Instance.new("UICorner")
-        cCorner.CornerRadius = UDim.new(0, px(8))
+        cCorner.CornerRadius = UDim.new(0, px(12))
         cCorner.Parent = container
 
         local cStroke = Instance.new("UIStroke")
         cStroke.Color = Color3.fromRGB(180, 150, 50)
-        cStroke.Thickness = 1.5
-        cStroke.Transparency = 0.3
+        cStroke.Thickness = 2
+        cStroke.Transparency = 0.2
         cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         cStroke.Parent = container
 
@@ -801,25 +801,25 @@ local function createIndicator()
         cGrad.Parent = container
 
         local cPad = Instance.new("UIPadding")
-        cPad.PaddingTop    = UDim.new(0, px(8))
-        cPad.PaddingBottom = UDim.new(0, px(8))
-        cPad.PaddingLeft   = UDim.new(0, px(12))
-        cPad.PaddingRight  = UDim.new(0, px(12))
+        cPad.PaddingTop    = UDim.new(0, px(20))
+        cPad.PaddingBottom = UDim.new(0, px(20))
+        cPad.PaddingLeft   = UDim.new(0, px(24))
+        cPad.PaddingRight  = UDim.new(0, px(24))
         cPad.Parent = container
 
         local cLayout = Instance.new("UIListLayout")
         cLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        cLayout.Padding = UDim.new(0, px(4))
+        cLayout.Padding = UDim.new(0, px(10))
         cLayout.Parent = container
 
         -- Title line: "Event: Meteor Shower"
         local titleLbl = Instance.new("TextLabel")
         titleLbl.Name = "TrackerTitle"
         titleLbl.LayoutOrder = 1
-        titleLbl.Size = UDim2.new(1, 0, 0, px(20))
+        titleLbl.Size = UDim2.new(1, 0, 0, px(34))
         titleLbl.BackgroundTransparency = 1
         titleLbl.Font = Enum.Font.GothamBold
-        titleLbl.TextSize = px(15)
+        titleLbl.TextSize = px(25)
         titleLbl.TextColor3 = COLORS.gold
         titleLbl.Text = "Event: " .. evtName
         titleLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -836,10 +836,10 @@ local function createIndicator()
         local objLbl = Instance.new("TextLabel")
         objLbl.Name = "TrackerObjective"
         objLbl.LayoutOrder = 2
-        objLbl.Size = UDim2.new(1, 0, 0, px(18))
+        objLbl.Size = UDim2.new(1, 0, 0, px(30))
         objLbl.BackgroundTransparency = 1
         objLbl.Font = Enum.Font.Gotham
-        objLbl.TextSize = px(13)
+        objLbl.TextSize = px(20)
         objLbl.TextColor3 = Color3.fromRGB(220, 220, 230)
         objLbl.Text = "- " .. objective
         objLbl.TextXAlignment = Enum.TextXAlignment.Left
@@ -854,11 +854,11 @@ local function createIndicator()
 
         -- Auto-size container height to fit content
         cLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            container.Size = UDim2.new(0, px(240), 0,
-                cLayout.AbsoluteContentSize.Y + px(16))  -- 8+8 padding
+            container.Size = UDim2.new(0, px(460), 0,
+                cLayout.AbsoluteContentSize.Y + px(40))  -- 20+20 padding
         end)
-        container.Size = UDim2.new(0, px(240), 0,
-            cLayout.AbsoluteContentSize.Y + px(16))
+        container.Size = UDim2.new(0, px(460), 0,
+            cLayout.AbsoluteContentSize.Y + px(40))
 
         objectiveTracker = trackerGui
     end
