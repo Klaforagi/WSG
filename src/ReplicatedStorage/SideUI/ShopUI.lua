@@ -2003,7 +2003,322 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         return page
     end
 
-    makePlaceholderPage("SkinsContent",   "skins",   "\u{2726}", "Skins coming soon")
+    ---------------------------------------------------------------------------
+    -- SKINS content page (real shop page, reads from SkinDefinitions)
+    ---------------------------------------------------------------------------
+    do
+        local SkinDefs = nil
+        pcall(function()
+            local mod = ReplicatedStorage:FindFirstChild("SkinDefinitions")
+            if mod and mod:IsA("ModuleScript") then SkinDefs = require(mod) end
+        end)
+
+        local skinRemotes = nil
+        local function ensureSkinRemotes()
+            if skinRemotes then return skinRemotes end
+            local rf = ReplicatedStorage:FindFirstChild("Remotes")
+            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
+            if not rf then return nil end
+            local sf = rf:FindFirstChild("Skins") or rf:WaitForChild("Skins", 5)
+            if not sf then return nil end
+            skinRemotes = {
+                purchase = sf:FindFirstChild("PurchaseSkin"),
+                getOwned = sf:FindFirstChild("GetOwnedSkins"),
+            }
+            return skinRemotes
+        end
+
+        local shopSkins = SkinDefs and SkinDefs.GetShopSkins() or {}
+
+        if #shopSkins > 0 then
+            local skinsPage = Instance.new("Frame")
+            skinsPage.Name                = "SkinsContent"
+            skinsPage.BackgroundTransparency = 1
+            skinsPage.Size                = UDim2.new(1, 0, 0, 0)
+            skinsPage.AutomaticSize       = Enum.AutomaticSize.Y
+            skinsPage.Visible             = false
+            skinsPage.Parent              = contentContainer
+
+            local spLayout = Instance.new("UIListLayout")
+            spLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            spLayout.Padding   = UDim.new(0, px(16))
+            spLayout.Parent    = skinsPage
+
+            local skinSection, skinGrid = makeSection(skinsPage, "Skins", "Skins")
+            skinSection.LayoutOrder = 1
+
+            local ownedSkinSet = {}
+            local skinRefreshFns = {}
+            task.spawn(function()
+                local remotes = ensureSkinRemotes()
+                if remotes and remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
+                    local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
+                    if ok and type(list) == "table" then
+                        for _, id in ipairs(list) do ownedSkinSet[id] = true end
+                        for _, fn in ipairs(skinRefreshFns) do pcall(fn) end
+                    end
+                end
+            end)
+
+            for i_skin, def in ipairs(shopSkins) do
+                local skinId      = def.Id
+                local displayName = def.DisplayName or skinId
+                local price       = def.Price or 0
+                local description = def.Description or ""
+                local isEpic      = (def.Rarity == "Epic")
+                local skinColor   = def.ArmorColor or Color3.fromRGB(160, 165, 175)
+                local accentColor = def.AccentColor or GOLD
+
+                local card = Instance.new("Frame")
+                card.Name = "Skin_" .. skinId
+                card.BackgroundColor3 = CARD_BG
+                card.Size = UDim2.new(1, 0, 1, 0)
+                card.AutomaticSize = Enum.AutomaticSize.Y
+                card.LayoutOrder = i_skin
+                card.ZIndex = 250
+                card.Parent = skinGrid
+
+                local crn = Instance.new("UICorner")
+                crn.CornerRadius = UDim.new(0, px(12))
+                crn.Parent = card
+                local stk = Instance.new("UIStroke")
+                stk.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+                stk.Thickness = isEpic and 1.6 or 1.2
+                stk.Transparency = isEpic and 0.2 or 0.35
+                stk.Parent = card
+                local cPad = Instance.new("UIPadding")
+                cPad.PaddingTop    = UDim.new(0, px(8))
+                cPad.PaddingBottom = UDim.new(0, px(8))
+                cPad.PaddingLeft   = UDim.new(0, px(8))
+                cPad.PaddingRight  = UDim.new(0, px(8))
+                cPad.Parent = card
+
+                -- LEFT: skin icon preview (armor silhouette glyph)
+                local leftBox = Instance.new("Frame")
+                leftBox.Name = "LeftBox"
+                leftBox.Size = UDim2.new(0.45, 0, 1, 0)
+                leftBox.BackgroundColor3 = ICON_BG
+                leftBox.ZIndex = 251
+                leftBox.Parent = card
+                Instance.new("UICorner", leftBox).CornerRadius = UDim.new(0, px(10))
+                local lStk = Instance.new("UIStroke")
+                lStk.Color = CARD_STROKE; lStk.Thickness = 1; lStk.Transparency = 0.5
+                lStk.Parent = leftBox
+
+                -- Knight shield/armor glyph icon
+                local iconLabel = Instance.new("TextLabel")
+                iconLabel.Name = "SkinIcon"
+                iconLabel.Text = "\u{1F6E1}"  -- shield emoji
+                iconLabel.Font = Enum.Font.GothamBold
+                iconLabel.TextColor3 = skinColor
+                iconLabel.TextScaled = true
+                iconLabel.BackgroundTransparency = 1
+                iconLabel.Size = UDim2.new(0.7, 0, 0.5, 0)
+                iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+                iconLabel.Position = UDim2.new(0.5, 0, 0.35, 0)
+                iconLabel.ZIndex = 252
+                iconLabel.Parent = leftBox
+
+                -- Rarity label below icon
+                local rarLbl = Instance.new("TextLabel")
+                rarLbl.Name = "RarityLabel"
+                rarLbl.Text = def.Rarity or "Common"
+                rarLbl.Font = Enum.Font.GothamBold
+                rarLbl.TextColor3 = isEpic and Color3.fromRGB(180, 120, 255) or DIM_TEXT
+                rarLbl.TextSize = math.max(10, math.floor(px(11)))
+                rarLbl.BackgroundTransparency = 1
+                rarLbl.Size = UDim2.new(0.9, 0, 0.15, 0)
+                rarLbl.AnchorPoint = Vector2.new(0.5, 0)
+                rarLbl.Position = UDim2.new(0.5, 0, 0.68, 0)
+                rarLbl.ZIndex = 252
+                rarLbl.Parent = leftBox
+
+                -- RIGHT: name, description, price, buy button
+                local rightBox = Instance.new("Frame")
+                rightBox.Name = "RightBox"
+                rightBox.Size = UDim2.new(0.52, 0, 1, 0)
+                rightBox.Position = UDim2.new(0.48, 0, 0, 0)
+                rightBox.BackgroundTransparency = 1
+                rightBox.ZIndex = 251
+                rightBox.Parent = card
+
+                -- Price badge
+                local priceBadge = Instance.new("Frame")
+                priceBadge.Name = "PriceBadge"
+                priceBadge.BackgroundColor3 = Color3.fromRGB(36, 33, 18)
+                priceBadge.BackgroundTransparency = 0.3
+                priceBadge.Size = UDim2.new(0.85, 0, 0, px(24))
+                priceBadge.AnchorPoint = Vector2.new(0.5, 0)
+                priceBadge.Position = UDim2.new(0.5, 0, 0.04, 0)
+                priceBadge.ZIndex = 252
+                priceBadge.Parent = rightBox
+                Instance.new("UICorner", priceBadge).CornerRadius = UDim.new(0, px(8))
+                local pbStk = Instance.new("UIStroke")
+                pbStk.Color = Color3.fromRGB(255, 200, 40); pbStk.Thickness = 1; pbStk.Transparency = 0.55
+                pbStk.Parent = priceBadge
+
+                local pbLbl = Instance.new("TextLabel")
+                pbLbl.Name = "PriceText"
+                pbLbl.BackgroundTransparency = 1
+                pbLbl.Font = Enum.Font.GothamBold
+                pbLbl.Text = tostring(price)
+                pbLbl.TextColor3 = GOLD
+                pbLbl.TextScaled = true
+                pbLbl.Size = UDim2.new(0.58, 0, 1, 0)
+                pbLbl.TextXAlignment = Enum.TextXAlignment.Right
+                pbLbl.ZIndex = 253
+                pbLbl.Parent = priceBadge
+
+                local skinCoinIcon = Instance.new("ImageLabel")
+                skinCoinIcon.Name = "CoinIcon"
+                skinCoinIcon.Size = UDim2.new(0.26, 0, 0.80, 0)
+                skinCoinIcon.Position = UDim2.new(0.64, 0, 0.5, 0)
+                skinCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
+                skinCoinIcon.BackgroundTransparency = 1
+                skinCoinIcon.ScaleType = Enum.ScaleType.Fit
+                skinCoinIcon.ZIndex = 253
+                skinCoinIcon.Visible = (price > 0)
+                skinCoinIcon.Parent = priceBadge
+                pcall(function()
+                    if AssetCodes and type(AssetCodes.Get) == "function" then
+                        local ci = AssetCodes.Get("Coin")
+                        if ci and #ci > 0 then skinCoinIcon.Image = ci end
+                    end
+                end)
+
+                -- Name label
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "ItemName"
+                nameLabel.Size = UDim2.new(0.95, 0, 0.22, 0)
+                nameLabel.Position = UDim2.new(0.04, 0, 0.26, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = displayName
+                nameLabel.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+                nameLabel.TextSize = math.max(13, math.floor(px(15)))
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                nameLabel.ZIndex = 252
+                nameLabel.Parent = rightBox
+
+                -- Description label
+                local descLabel = Instance.new("TextLabel")
+                descLabel.Name = "Desc"
+                descLabel.Size = UDim2.new(0.95, 0, 0.18, 0)
+                descLabel.Position = UDim2.new(0.04, 0, 0.48, 0)
+                descLabel.BackgroundTransparency = 1
+                descLabel.Font = Enum.Font.GothamMedium
+                descLabel.Text = description
+                descLabel.TextColor3 = DIM_TEXT
+                descLabel.TextSize = math.max(10, math.floor(px(11)))
+                descLabel.TextXAlignment = Enum.TextXAlignment.Left
+                descLabel.TextWrapped = true
+                descLabel.ZIndex = 252
+                descLabel.Parent = rightBox
+
+                -- Buy button
+                local buyBtn = Instance.new("TextButton")
+                buyBtn.Name = "BuyBtn"
+                buyBtn.Size = UDim2.new(0.85, 0, 0.24, 0)
+                buyBtn.AnchorPoint = Vector2.new(0.5, 1)
+                buyBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+                buyBtn.BackgroundColor3 = BTN_BUY
+                buyBtn.BorderSizePixel = 0
+                buyBtn.AutoButtonColor = false
+                buyBtn.Font = Enum.Font.GothamBold
+                buyBtn.Text = "BUY"
+                buyBtn.TextColor3 = WHITE
+                buyBtn.TextSize = math.max(13, math.floor(px(14)))
+                buyBtn.ZIndex = 253
+                buyBtn.Parent = rightBox
+                Instance.new("UICorner", buyBtn).CornerRadius = UDim.new(0, px(8))
+                local bStk = Instance.new("UIStroke")
+                bStk.Color = BTN_STROKE_C
+                bStk.Thickness = 1.2
+                bStk.Transparency = 0.25
+                bStk.Parent = buyBtn
+
+                local function refreshSkinCard()
+                    local owned = ownedSkinSet[skinId] == true
+                    if owned then
+                        buyBtn.Text = "\u{2714} OWNED"
+                        buyBtn.Active = false
+                        buyBtn.BackgroundColor3 = DISABLED_BG
+                        buyBtn.TextColor3 = GREEN_GLOW
+                        bStk.Color = GREEN_GLOW; bStk.Transparency = 0.45
+                        card.BackgroundColor3 = CARD_OWNED
+                        stk.Color = GREEN_GLOW; stk.Thickness = 1.6; stk.Transparency = 0.35
+                    else
+                        buyBtn.Text = "BUY"
+                        buyBtn.Active = true
+                        buyBtn.BackgroundColor3 = BTN_BUY
+                        buyBtn.TextColor3 = WHITE
+                        bStk.Color = BTN_STROKE_C; bStk.Transparency = 0.25
+                        card.BackgroundColor3 = CARD_BG
+                        stk.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+                        stk.Thickness = isEpic and 1.6 or 1.2
+                        stk.Transparency = isEpic and 0.2 or 0.35
+                    end
+                end
+                refreshSkinCard()
+                table.insert(skinRefreshFns, refreshSkinCard)
+
+                if not game:GetService("UserInputService").TouchEnabled then
+                    buyBtn.MouseEnter:Connect(function()
+                        if buyBtn.Active then
+                            TweenService:Create(buyBtn, TWEEN_QUICK, { BackgroundColor3 = GREEN_BTN }):Play()
+                        end
+                    end)
+                    buyBtn.MouseLeave:Connect(function()
+                        if buyBtn.Active then
+                            TweenService:Create(buyBtn, TWEEN_QUICK, { BackgroundColor3 = BTN_BUY }):Play()
+                        end
+                    end)
+                end
+
+                buyBtn.MouseButton1Click:Connect(function()
+                    if not buyBtn.Active then return end
+                    if ownedSkinSet[skinId] then return end
+
+                    local remotes = ensureSkinRemotes()
+                    if not remotes or not remotes.purchase then
+                        warn("[ShopUI] Skins purchase remote not found")
+                        return
+                    end
+
+                    buyBtn.Active = false
+                    buyBtn.Text = "..."
+
+                    local ok, success, newBalance, msg = pcall(function()
+                        return remotes.purchase:InvokeServer(skinId)
+                    end)
+
+                    if ok and success then
+                        ownedSkinSet[skinId] = true
+                        if coinApi and coinApi.SetCoins then
+                            pcall(function() coinApi.SetCoins(newBalance) end)
+                        end
+                        pcall(function()
+                            if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                        end)
+                        refreshSkinCard()
+                    else
+                        buyBtn.Text = "NOT ENOUGH"
+                        buyBtn.TextColor3 = RED_TEXT
+                        task.delay(1.2, function()
+                            if not ownedSkinSet[skinId] then
+                                refreshSkinCard()
+                            end
+                        end)
+                    end
+                end)
+            end
+
+            contentPages["skins"] = skinsPage
+        else
+            makePlaceholderPage("SkinsContent", "skins", "\u{2726}", "Skins coming soon")
+        end
+    end
 
     ---------------------------------------------------------------------------
     -- EFFECTS content page (real shop page, reads from EffectDefs)

@@ -1864,85 +1864,286 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     -- ══════════════════════════════════════════════════════════════════════
-    --  SKINS PAGE  (placeholder)
+    --  SKINS PAGE  (equip owned skins)
     -- ══════════════════════════════════════════════════════════════════════
-    local skinsPage = Instance.new("Frame")
+    local skinsPage = Instance.new("ScrollingFrame")
     skinsPage.Name = "SkinsPage"; skinsPage.BackgroundTransparency = 1
     skinsPage.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
     skinsPage.Position = UDim2.new(0, CONTENT_X, 0, 0)
+    skinsPage.CanvasSize = UDim2.new(0, 0, 0, 0)
+    skinsPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    skinsPage.ScrollBarThickness = px(4)
+    skinsPage.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
+    skinsPage.BorderSizePixel = 0
     skinsPage.Visible = false; skinsPage.Parent = root
 
-    local skinsCard = Instance.new("Frame", skinsPage)
-    skinsCard.BackgroundColor3 = CARD_BG
-    skinsCard.Size = UDim2.new(0.6, 0, 0, px(190)); skinsCard.AnchorPoint = Vector2.new(0.5, 0.5)
-    skinsCard.Position = UDim2.new(0.5, 0, 0.5, 0)
-    Instance.new("UICorner", skinsCard).CornerRadius = UDim.new(0, px(16))
-    local scStroke = Instance.new("UIStroke", skinsCard)
-    scStroke.Color = CARD_STROKE; scStroke.Thickness = 1.4; scStroke.Transparency = 0.25
-
     do
-        local iconPlate = Instance.new("Frame", skinsCard)
-        iconPlate.BackgroundColor3 = ICON_BG; iconPlate.BackgroundTransparency = 0.15
-        iconPlate.BorderSizePixel = 0
-        iconPlate.Size = UDim2.new(0, px(74), 0, px(74))
-        iconPlate.AnchorPoint = Vector2.new(0.5, 0); iconPlate.Position = UDim2.new(0.5, 0, 0, px(12))
-        Instance.new("UICorner", iconPlate).CornerRadius = UDim.new(0, px(14))
-
-        local sourceBtn    = tabButtons["skins"]
-        local sourceCustom = sourceBtn and sourceBtn:FindFirstChild("IconCustom")
-        if sourceCustom then
-            local iconClone = sourceCustom:Clone()
-            iconClone.AnchorPoint = Vector2.new(0.5, 0.5)
-            iconClone.Position = UDim2.new(0.5, 0, 0.5, 0)
-            iconClone.Parent = iconPlate
-            Instance.new("UIScale", iconClone).Scale = 2.3
-            setTabIconTint(iconClone, getCustomTabIconColor("skins", true))
-        end
-    end
-
-    local skinsTitleLbl = Instance.new("TextLabel", skinsCard)
-    skinsTitleLbl.BackgroundTransparency = 1; skinsTitleLbl.Font = Enum.Font.GothamBold
-    skinsTitleLbl.Text = "SKINS"; skinsTitleLbl.TextColor3 = GOLD
-    skinsTitleLbl.TextSize = math.max(16, math.floor(px(18)))
-    skinsTitleLbl.Size = UDim2.new(1, 0, 0, px(26)); skinsTitleLbl.Position = UDim2.new(0, 0, 0.46, 0)
-    skinsTitleLbl.TextXAlignment = Enum.TextXAlignment.Center
-
-    local skinsSubLbl = Instance.new("TextLabel", skinsCard)
-    skinsSubLbl.BackgroundTransparency = 1; skinsSubLbl.Font = Enum.Font.GothamMedium
-    skinsSubLbl.Text = "You don't own any items in this category yet.\nVisit the shop to unlock more."
-    skinsSubLbl.TextColor3 = DIM_TEXT; skinsSubLbl.TextSize = math.max(12, math.floor(px(13)))
-    skinsSubLbl.Size = UDim2.new(1, -px(20), 0, px(36))
-    skinsSubLbl.Position = UDim2.new(0, px(10), 0.58, 0)
-    skinsSubLbl.TextWrapped = true; skinsSubLbl.TextXAlignment = Enum.TextXAlignment.Center
-
-    do
-        local shopWrap = Instance.new("Frame", skinsPage)
-        shopWrap.BackgroundTransparency = 1
-        shopWrap.Size = UDim2.new(1, 0, 0, px(50))
-        shopWrap.AnchorPoint = Vector2.new(0.5, 0)
-        shopWrap.Position = UDim2.new(0.5, 0, 0.5, px(100))
-
-        local shopBtn = Instance.new("TextButton", shopWrap)
-        shopBtn.AutoButtonColor = false; shopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        shopBtn.Font = Enum.Font.GothamBold; shopBtn.Text = "\u{1F6D2}  Browse Shop"
-        shopBtn.TextColor3 = UITheme.GOLD_DIM; shopBtn.TextSize = math.max(13, math.floor(px(14)))
-        shopBtn.AutomaticSize = Enum.AutomaticSize.X
-        shopBtn.Size = UDim2.new(0, 0, 0, px(38)); shopBtn.AnchorPoint = Vector2.new(0.5, 0)
-        shopBtn.Position = UDim2.new(0.5, 0, 0, px(12))
-        Instance.new("UICorner", shopBtn).CornerRadius = UDim.new(0, px(8))
-        local sp2 = Instance.new("UIPadding", shopBtn)
-        sp2.PaddingLeft = UDim.new(0, px(20)); sp2.PaddingRight = UDim.new(0, px(20))
-        local ss2 = Instance.new("UIStroke", shopBtn)
-        ss2.Color = UITheme.GOLD_DIM; ss2.Thickness = 1.2; ss2.Transparency = 0.45
-
-        shopBtn.MouseEnter:Connect(function() TweenService:Create(shopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
-        shopBtn.MouseLeave:Connect(function() TweenService:Create(shopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
-        shopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("skins") end
-            end
+        local SkinDefs = nil
+        pcall(function()
+            local mod = ReplicatedStorage:FindFirstChild("SkinDefinitions")
+            if mod and mod:IsA("ModuleScript") then SkinDefs = require(mod) end
         end)
+
+        local skinRemotes = nil
+        local function ensureSkinRemotes()
+            if skinRemotes then return skinRemotes end
+            local rf = ReplicatedStorage:FindFirstChild("Remotes")
+            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
+            if not rf then return nil end
+            local sf = rf:FindFirstChild("Skins") or rf:WaitForChild("Skins", 5)
+            if not sf then return nil end
+            skinRemotes = {
+                getOwned    = sf:FindFirstChild("GetOwnedSkins"),
+                equip       = sf:FindFirstChild("EquipSkin"),
+                getEquipped = sf:FindFirstChild("GetEquippedSkin"),
+                changed     = sf:FindFirstChild("EquippedSkinChanged"),
+            }
+            return skinRemotes
+        end
+
+        local allSkinDefs = SkinDefs and SkinDefs.GetInventorySkins() or {}
+
+        if #allSkinDefs > 0 then
+            local spLayout = Instance.new("UIListLayout", skinsPage)
+            spLayout.SortOrder = Enum.SortOrder.LayoutOrder; spLayout.Padding = UDim.new(0, px(16))
+
+            local skinSection = Instance.new("Frame", skinsPage)
+            skinSection.Name = "Skins_Section"; skinSection.BackgroundTransparency = 1
+            skinSection.Size = UDim2.new(1, 0, 0, 0); skinSection.AutomaticSize = Enum.AutomaticSize.Y
+            skinSection.LayoutOrder = 1
+
+            local ssLay = Instance.new("UIListLayout", skinSection)
+            ssLay.SortOrder = Enum.SortOrder.LayoutOrder; ssLay.Padding = UDim.new(0, px(10))
+            local ssP = Instance.new("UIPadding", skinSection)
+            ssP.PaddingTop = UDim.new(0, px(4)); ssP.PaddingBottom = UDim.new(0, px(10))
+            ssP.PaddingLeft = UDim.new(0, px(8)); ssP.PaddingRight = UDim.new(0, px(8))
+
+            local hWrap = Instance.new("Frame", skinSection)
+            hWrap.Name = "HeaderWrap"; hWrap.BackgroundTransparency = 1
+            hWrap.Size = UDim2.new(1, 0, 0, px(40)); hWrap.LayoutOrder = 1
+
+            local hdr = Instance.new("TextLabel", hWrap)
+            hdr.BackgroundTransparency = 1; hdr.Font = Enum.Font.GothamBold
+            hdr.Text = "Skins"; hdr.TextColor3 = GOLD
+            hdr.TextSize = math.max(18, math.floor(px(20)))
+            hdr.TextXAlignment = Enum.TextXAlignment.Left; hdr.Size = UDim2.new(1, 0, 0, px(28))
+
+            local hBar = Instance.new("Frame", hWrap)
+            hBar.BackgroundColor3 = GOLD; hBar.BackgroundTransparency = 0.3
+            hBar.Size = UDim2.new(1, 0, 0, px(2)); hBar.Position = UDim2.new(0, 0, 1, -px(2))
+            hBar.BorderSizePixel = 0
+
+            local skinGrid = Instance.new("Frame", skinSection)
+            skinGrid.Name = "Skins_Grid"; skinGrid.BackgroundTransparency = 1
+            skinGrid.Size = UDim2.new(1, 0, 0, 0); skinGrid.AutomaticSize = Enum.AutomaticSize.Y
+            skinGrid.LayoutOrder = 2
+
+            local sgLay = Instance.new("UIGridLayout", skinGrid)
+            sgLay.CellSize = UDim2.new(0.30, 0, 0, px(160))
+            sgLay.CellPadding = UDim2.new(0.025, 0, 0, px(12))
+            sgLay.FillDirection = Enum.FillDirection.Horizontal; sgLay.FillDirectionMaxCells = 3
+            sgLay.HorizontalAlignment = Enum.HorizontalAlignment.Center
+            sgLay.SortOrder = Enum.SortOrder.LayoutOrder
+
+            local ownedSkinSet = {}
+            local equippedSkinId = "Default"
+            local skinEquipBtns = {}
+            local skinsEmptyState = nil
+
+            local function refreshAllSkinBtns()
+                local visibleCount = 0
+                for sid, info in pairs(skinEquipBtns) do
+                    local sOwned = ownedSkinSet[sid] or info.isDefault
+                    if sOwned then info.card.Parent = skinGrid; visibleCount = visibleCount + 1
+                    else info.card.Parent = nil end
+
+                    if equippedSkinId == sid then
+                        info.btn.Text = "\u{2714} EQUIPPED"
+                        info.btn.BackgroundColor3 = DISABLED_BG; info.btn.TextColor3 = GREEN_GLOW
+                        info.stroke.Color = GREEN_GLOW; info.stroke.Transparency = 0.45
+                        if info.card then info.card.BackgroundColor3 = CARD_EQUIPPED end
+                        if info.cardStroke then info.cardStroke.Color = GREEN_GLOW; info.cardStroke.Thickness = 1.8; info.cardStroke.Transparency = 0.3 end
+                    elseif sOwned then
+                        info.btn.Text = "EQUIP"
+                        info.btn.BackgroundColor3 = BTN_BG; info.btn.TextColor3 = WHITE
+                        info.stroke.Color = BTN_STROKE_C; info.stroke.Transparency = 0.25
+                        if info.card then info.card.BackgroundColor3 = CARD_BG end
+                        if info.cardStroke then info.cardStroke.Color = CARD_STROKE; info.cardStroke.Thickness = 1.2; info.cardStroke.Transparency = 0.35 end
+                    end
+                end
+                if skinsEmptyState then skinsEmptyState.Visible = (visibleCount == 0) end
+            end
+
+            task.spawn(function()
+                local sRemotes = ensureSkinRemotes()
+                if not sRemotes then return end
+                if sRemotes.getOwned and sRemotes.getOwned:IsA("RemoteFunction") then
+                    local ok, list = pcall(function() return sRemotes.getOwned:InvokeServer() end)
+                    if ok and type(list) == "table" then for _, id in ipairs(list) do ownedSkinSet[id] = true end end
+                end
+                if sRemotes.getEquipped and sRemotes.getEquipped:IsA("RemoteFunction") then
+                    local ok, equipped = pcall(function() return sRemotes.getEquipped:InvokeServer() end)
+                    if ok and type(equipped) == "string" then equippedSkinId = equipped end
+                end
+                refreshAllSkinBtns()
+                if sRemotes.changed and sRemotes.changed:IsA("RemoteEvent") then
+                    sRemotes.changed.OnClientEvent:Connect(function(newEquipped)
+                        if type(newEquipped) == "string" then equippedSkinId = newEquipped; refreshAllSkinBtns() end
+                    end)
+                end
+            end)
+
+            for i_sk, def in ipairs(allSkinDefs) do
+                local skinId      = def.Id
+                local displayName = def.DisplayName or skinId
+                local description = def.Description or ""
+                local isDefault   = def.IsDefault or false
+                local isEpic      = (def.Rarity == "Epic")
+                local skinColor   = def.ArmorColor or Color3.fromRGB(150, 150, 155)
+
+                local card = Instance.new("Frame")
+                card.Name = "SkinCard_" .. skinId; card.BackgroundColor3 = CARD_BG
+                card.Size = UDim2.new(1, 0, 1, 0); card.AutomaticSize = Enum.AutomaticSize.Y
+                card.LayoutOrder = isDefault and 0 or i_sk
+                card.Parent = skinGrid
+                Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(12))
+                local sCS = Instance.new("UIStroke", card)
+                sCS.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+                sCS.Thickness = isEpic and 1.6 or 1.2; sCS.Transparency = isEpic and 0.2 or 0.35
+                local sP = Instance.new("UIPadding", card)
+                sP.PaddingTop = UDim.new(0, px(8)); sP.PaddingBottom = UDim.new(0, px(8))
+                sP.PaddingLeft = UDim.new(0, px(8)); sP.PaddingRight = UDim.new(0, px(8))
+
+                local leftBox = Instance.new("Frame", card)
+                leftBox.Name = "LeftBox"; leftBox.Size = UDim2.new(0.45, 0, 1, 0)
+                leftBox.BackgroundColor3 = ICON_BG; leftBox.ZIndex = 251
+                Instance.new("UICorner", leftBox).CornerRadius = UDim.new(0, px(10))
+                local lS = Instance.new("UIStroke", leftBox); lS.Color = CARD_STROKE; lS.Thickness = 1; lS.Transparency = 0.5
+
+                local iconLbl = Instance.new("TextLabel", leftBox)
+                iconLbl.Name = "SkinIcon"
+                iconLbl.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
+                iconLbl.Font = Enum.Font.GothamBold
+                iconLbl.TextColor3 = isDefault and DIM_TEXT or skinColor
+                iconLbl.TextScaled = true; iconLbl.BackgroundTransparency = 1
+                iconLbl.Size = UDim2.new(0.7, 0, 0.5, 0)
+                iconLbl.AnchorPoint = Vector2.new(0.5, 0.5); iconLbl.Position = UDim2.new(0.5, 0, 0.35, 0)
+                iconLbl.ZIndex = 252
+
+                local rarLbl = Instance.new("TextLabel", leftBox)
+                rarLbl.Text = def.Rarity or "Common"
+                rarLbl.Font = Enum.Font.GothamBold
+                rarLbl.TextColor3 = isEpic and Color3.fromRGB(180, 120, 255) or DIM_TEXT
+                rarLbl.TextSize = math.max(10, math.floor(px(11))); rarLbl.BackgroundTransparency = 1
+                rarLbl.Size = UDim2.new(0.9, 0, 0.15, 0)
+                rarLbl.AnchorPoint = Vector2.new(0.5, 0); rarLbl.Position = UDim2.new(0.5, 0, 0.68, 0)
+                rarLbl.ZIndex = 252
+
+                local rightBox = Instance.new("Frame", card)
+                rightBox.Size = UDim2.new(0.52, 0, 1, 0); rightBox.Position = UDim2.new(0.48, 0, 0, 0)
+                rightBox.BackgroundTransparency = 1; rightBox.ZIndex = 251
+
+                local nL = Instance.new("TextLabel", rightBox)
+                nL.Size = UDim2.new(0.95, 0, 0.28, 0); nL.Position = UDim2.new(0.04, 0, 0.08, 0)
+                nL.BackgroundTransparency = 1; nL.Font = Enum.Font.GothamBold
+                nL.Text = displayName; nL.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+                nL.TextSize = math.max(13, math.floor(px(15)))
+                nL.TextXAlignment = Enum.TextXAlignment.Left; nL.TextTruncate = Enum.TextTruncate.AtEnd; nL.ZIndex = 252
+
+                local dL = Instance.new("TextLabel", rightBox)
+                dL.Size = UDim2.new(0.95, 0, 0.22, 0); dL.Position = UDim2.new(0.04, 0, 0.36, 0)
+                dL.BackgroundTransparency = 1; dL.Font = Enum.Font.GothamMedium
+                dL.Text = description; dL.TextColor3 = DIM_TEXT
+                dL.TextSize = math.max(10, math.floor(px(11)))
+                dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextWrapped = true; dL.ZIndex = 252
+
+                local eBtn = Instance.new("TextButton", rightBox)
+                eBtn.Name = "EquipBtn"; eBtn.Size = UDim2.new(0.85, 0, 0.26, 0)
+                eBtn.AnchorPoint = Vector2.new(0.5, 1); eBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
+                eBtn.BackgroundColor3 = BTN_BG; eBtn.BorderSizePixel = 0; eBtn.AutoButtonColor = false
+                eBtn.Font = Enum.Font.GothamBold; eBtn.Text = "EQUIP"; eBtn.TextColor3 = WHITE
+                eBtn.TextSize = math.max(13, math.floor(px(14))); eBtn.ZIndex = 253
+                Instance.new("UICorner", eBtn).CornerRadius = UDim.new(0, px(8))
+                local eSt = Instance.new("UIStroke", eBtn); eSt.Color = BTN_STROKE_C; eSt.Thickness = 1.2; eSt.Transparency = 0.25
+
+                skinEquipBtns[skinId] = { btn = eBtn, stroke = eSt, card = card, cardStroke = sCS, isDefault = isDefault }
+
+                if not game:GetService("UserInputService").TouchEnabled then
+                    eBtn.MouseEnter:Connect(function()
+                        if (ownedSkinSet[skinId] or isDefault) and equippedSkinId ~= skinId then
+                            TweenService:Create(eBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+                        end
+                    end)
+                    eBtn.MouseLeave:Connect(function()
+                        if (ownedSkinSet[skinId] or isDefault) and equippedSkinId ~= skinId then
+                            TweenService:Create(eBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+                        end
+                    end)
+                end
+
+                eBtn.MouseButton1Click:Connect(function()
+                    if not ownedSkinSet[skinId] and not isDefault then return end
+                    if equippedSkinId == skinId then return end
+                    local sRemotes = ensureSkinRemotes()
+                    if sRemotes and sRemotes.equip and sRemotes.equip:IsA("RemoteEvent") then
+                        pcall(function() sRemotes.equip:FireServer(skinId) end)
+                    end
+                    equippedSkinId = skinId; refreshAllSkinBtns()
+                end)
+            end
+
+            skinsEmptyState = Instance.new("Frame", skinsPage)
+            skinsEmptyState.BackgroundTransparency = 1
+            skinsEmptyState.Size = UDim2.new(1, 0, 0, px(160)); skinsEmptyState.LayoutOrder = 500
+            skinsEmptyState.Visible = false
+
+            local seCard = Instance.new("Frame", skinsEmptyState)
+            seCard.BackgroundColor3 = CARD_BG; seCard.Size = UDim2.new(0.7, 0, 0, px(130))
+            seCard.AnchorPoint = Vector2.new(0.5, 0.5); seCard.Position = UDim2.new(0.5, 0, 0.5, 0)
+            Instance.new("UICorner", seCard).CornerRadius = UDim.new(0, px(14))
+            Instance.new("UIStroke", seCard).Color = CARD_STROKE
+
+            local seL = Instance.new("TextLabel", seCard)
+            seL.BackgroundTransparency = 1; seL.Font = Enum.Font.GothamMedium
+            seL.Text = "You don't own any skins yet.\nVisit the shop to unlock more."
+            seL.TextColor3 = DIM_TEXT; seL.TextSize = math.max(13, math.floor(px(14)))
+            seL.TextWrapped = true; seL.Size = UDim2.new(0.85, 0, 0, px(60))
+            seL.AnchorPoint = Vector2.new(0.5, 0.5); seL.Position = UDim2.new(0.5, 0, 0.5, 0)
+            seL.TextXAlignment = Enum.TextXAlignment.Center
+
+            -- Skins shop nav
+            local sShopW = Instance.new("Frame", skinsPage)
+            sShopW.BackgroundTransparency = 1; sShopW.Size = UDim2.new(1, 0, 0, px(50)); sShopW.LayoutOrder = 9999
+            local sShopB = Instance.new("TextButton", sShopW)
+            sShopB.AutoButtonColor = false; sShopB.BackgroundColor3 = UITheme.NAVY_LIGHT
+            sShopB.Font = Enum.Font.GothamBold; sShopB.Text = "\u{1F6D2}  Browse Skins Shop"
+            sShopB.TextColor3 = UITheme.GOLD_DIM; sShopB.TextSize = math.max(13, math.floor(px(14)))
+            sShopB.AutomaticSize = Enum.AutomaticSize.X
+            sShopB.Size = UDim2.new(0, 0, 0, px(38)); sShopB.AnchorPoint = Vector2.new(0.5, 0)
+            sShopB.Position = UDim2.new(0.5, 0, 0, px(6))
+            Instance.new("UICorner", sShopB).CornerRadius = UDim.new(0, px(8))
+            local sSP = Instance.new("UIPadding", sShopB)
+            sSP.PaddingLeft = UDim.new(0, px(20)); sSP.PaddingRight = UDim.new(0, px(20))
+            local sSS = Instance.new("UIStroke", sShopB)
+            sSS.Color = UITheme.GOLD_DIM; sSS.Thickness = 1.2; sSS.Transparency = 0.45
+
+            sShopB.MouseEnter:Connect(function() TweenService:Create(sShopB, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
+            sShopB.MouseLeave:Connect(function() TweenService:Create(sShopB, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
+            sShopB.MouseButton1Click:Connect(function()
+                local mc = _G.SideUI and _G.SideUI.MenuController
+                if mc then mc.OpenMenu("Shop")
+                    if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("skins") end
+                end
+            end)
+        else
+            -- No skin defs at all fallback
+            local noSkinsLbl = Instance.new("TextLabel", skinsPage)
+            noSkinsLbl.BackgroundTransparency = 1; noSkinsLbl.Font = Enum.Font.GothamBold
+            noSkinsLbl.Text = "No skins available yet."; noSkinsLbl.TextColor3 = DIM_TEXT
+            noSkinsLbl.TextSize = px(18); noSkinsLbl.Size = UDim2.new(1, 0, 1, 0)
+            noSkinsLbl.TextXAlignment = Enum.TextXAlignment.Center
+            noSkinsLbl.TextYAlignment = Enum.TextYAlignment.Center
+        end
     end
 
     -- ══════════════════════════════════════════════════════════════════════
