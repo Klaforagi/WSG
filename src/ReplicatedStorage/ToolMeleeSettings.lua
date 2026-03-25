@@ -5,19 +5,19 @@
 local presets = {
     ["starter sword"] = {
         damage          = 15,
-        cd              = 0.45,
+        cd              = 0.5,
         knockback       = 15,
-        hitboxDelay     = 0.27,
+        hitboxDelay     = 0.35,
         hitboxActive    = 0.1,
         showHitbox      = false,
         hitboxColor     = Color3.fromRGB(255, 100, 50),
         hitboxSize      = Vector3.new(4, 10, 4),
         hitboxOffset    = Vector3.new(1, 0, 3.5),
-        swing_anim_id   = "126350429326127",
+        swing_anim_id   = "82015832913253",
         swing_anim_ids  = {
-            "126350429326127",
-            "113012516512867",
-            "105219374085984",
+            "82015832913253",
+            "123046034669489",
+            "95518688900800",
         },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
@@ -32,11 +32,11 @@ local presets = {
         hitboxColor     = Color3.fromRGB(255, 100, 50),
         hitboxSize      = Vector3.new(4, 10, 4),
         hitboxOffset    = Vector3.new(1, 0, 3.5),
-        swing_anim_id   = "126350429326127",    -- fallback: single anim (used if swing_anim_ids is empty)
+        swing_anim_id   = "82015832913253",    -- fallback: single anim (used if swing_anim_ids is empty)
         swing_anim_ids  = {                      -- ordered cycle: plays 1 → 2 → 3 → 1 …
-            "126350429326127",  -- swing 1  (replace with your asset ids)
-            "113012516512867",                 -- swing 2  (fill in)
-            "105219374085984",                -- swing 3  (fill in)
+            "82015832913253",
+            "123046034669489",
+            "95518688900800",        
         },
         swing_sound     = "SwordSwing",    -- key in ReplicatedStorage.Sounds.ToolMelee
         hit_sound       = "SwordHit",
@@ -51,11 +51,11 @@ local presets = {
         hitboxColor     = Color3.fromRGB(255, 100, 50),
         hitboxSize      = Vector3.new(2, 3, 2),
         hitboxOffset    = Vector3.new(1, 1, 3.5),
-        swing_anim_id   = "91239654979526",
+        swing_anim_id   = "82015832913253",
         swing_anim_ids  = {
-            "135263926933355",
-            "84391444206704",
-            "138752532534641",
+            "82015832913253",
+            "123046034669489",
+            "95518688900800",
         },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
@@ -70,11 +70,11 @@ local presets = {
         hitboxColor     = Color3.fromRGB(180, 180, 255),
         hitboxSize      = Vector3.new(2, 8, 4),
         hitboxOffset    = Vector3.new(1, 0, 3.5),
-        swing_anim_id   = "",
+        swing_anim_id   = "82015832913253",
         swing_anim_ids  = {
-            "135263926933355",
-            "84391444206704",
-            "138752532534641",
+            "82015832913253",
+            "123046034669489",
+            "95518688900800",
         },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
@@ -108,5 +108,16 @@ function module.getPreset(toolType)
 end
 
 module.presets = presets
+
+--------------------------------------------------------------------------------
+-- COMBO SYSTEM CONFIG  (shared between client & server)
+-- Tweak these values to tune the feel of sword combo chains.
+--------------------------------------------------------------------------------
+module.comboConfig = {
+    COMBO_WINDOW              = 0.2,              -- seconds after a step ends to chain the next
+    ATTACK_COOLDOWNS          = { 0.5, 0.5, 0.7 },-- per-step cooldowns: Attack1, Attack2, Attack3
+    ATTACK3_DAMAGE_MULTIPLIER = 1.25,             -- Attack3 deals baseDamage * this
+    -- ATTACK3_DAMAGE_BONUS   = 5,                -- alternative flat bonus (set multiplier to 1 to use)
+}
 
 return module
