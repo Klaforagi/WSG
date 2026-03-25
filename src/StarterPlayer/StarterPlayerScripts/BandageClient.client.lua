@@ -127,6 +127,38 @@ local function stopBandageAnimation()
 end
 
 --------------------------------------------------------------------------------
+-- Bandage sound control
+-- Plays the client-side looping "Bandage" sound during bandaging and
+-- stops it when bandaging ends or is interrupted.
+--------------------------------------------------------------------------------
+local bandageSoundInstance = nil
+local function startBandageSound()
+    if bandageSoundInstance then return end
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    if not soundsFolder then return end
+    local template = soundsFolder:FindFirstChild("Bandage", true)
+    if not template or not template:IsA("Sound") then return end
+
+    -- Clone and parent to the camera for consistent client playback
+    local cam = workspace.CurrentCamera
+    local parent = cam or (player.Character and player.Character:FindFirstChild("Head")) or player:FindFirstChild("PlayerGui")
+    if not parent then parent = player end
+
+    local s = template:Clone()
+    s.Looped = true
+    s.Parent = parent
+    pcall(function() s:Play() end)
+    bandageSoundInstance = s
+end
+
+local function stopBandageSound()
+    if not bandageSoundInstance then return end
+    pcall(function() bandageSoundInstance:Stop() end)
+    pcall(function() bandageSoundInstance:Destroy() end)
+    bandageSoundInstance = nil
+end
+
+--------------------------------------------------------------------------------
 -- PROGRESS BAR UI
 --------------------------------------------------------------------------------
 local progressGui = Instance.new("ScreenGui")
@@ -337,6 +369,7 @@ local function cancelBandaging(reason)
     _G.IsBandaging = false
 
     stopBandageAnimation()
+    stopBandageSound()
     hideProgressBar()
     disconnectInterruptListeners()
 
@@ -512,6 +545,7 @@ if bandageStarted then
         isBandaging = true
         _G.IsBandaging = true
         playBandageAnimation()
+        startBandageSound()
         showProgressBar()
         setupInterruptListeners()
         print("[BandageAnim] bandage start sequence complete")
@@ -536,6 +570,7 @@ if bandageEnded then
         _G.IsBandaging = false
 
         stopBandageAnimation()
+        stopBandageSound()
         hideProgressBar()
         disconnectInterruptListeners()
 
@@ -562,6 +597,7 @@ end
 --------------------------------------------------------------------------------
 player.CharacterAdded:Connect(function(newChar)
     stopBandageAnimation()
+    stopBandageSound()
 
     isBandaging = false
     _G.IsBandaging = false

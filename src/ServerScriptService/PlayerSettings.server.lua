@@ -3,6 +3,20 @@
 
 local Players = game:GetService("Players")
 
+-- Load server-side player settings module
+local PlayerSettingsConfig = nil
+do
+	local ok, mod = pcall(function()
+		return require(script.Parent:WaitForChild("PlayerSettingsConfig"))
+	end)
+	if ok and type(mod) == "table" then
+		PlayerSettingsConfig = mod
+	else
+		warn("[PlayerSettings] PlayerSettingsConfig missing or failed to load; using defaults")
+		PlayerSettingsConfig = {}
+	end
+end
+
 -- FallingDown is often reached via Physics/Ragdoll first during torque events.
 -- NOTE: Upright stabilizer and blocked-state enforcement removed per request.
 
@@ -39,7 +53,51 @@ end
 local function applyCharacterSettings(char: Model)
 	-- Keep head/accessory no-collide for safety, but do not force upright or block humanoid states.
 	applyHeadAndAccessoryNoCollide(char)
-	-- Intentionally do not modify humanoid states or add stabilizers here.
+	-- Start server-authoritative passive health regen if enabled in config
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum and PlayerSettingsConfig and PlayerSettingsConfig.HealthRegen and PlayerSettingsConfig.HealthRegen.Enabled then
+		local amt = tonumber(PlayerSettingsConfig.HealthRegen.AmountPerTick) or 1
+		local interval = tonumber(PlayerSettingsConfig.HealthRegen.TickInterval) or 5
+
+		-- Enforce sane minimums to avoid extremely fast ticks
+		if interval < 0.05 then interval = 0.05 end
+		if amt <= 0 then amt = 1 end
+
+		-- Prevent multiple regen loops for the same humanoid by using an attribute flag
+		local regenFlag = "_ps_regen_active"
+		if hum:GetAttribute(regenFlag) then
+			return
+		end
+		hum:SetAttribute(regenFlag, true)
+
+		-- Spawn a loop that heals the humanoid every `interval` seconds while alive.
+		-- The loop exits when the humanoid dies or the character is removed.
+		spawn(function()
+			local conn
+			local alive = true
+			conn = hum.Died:Connect(function()
+				alive = false
+				if conn then conn:Disconnect() end
+			end)
+
+			while alive and hum and hum.Parent do
+				-- Only heal if below MaxHealth
+				local maxHp = hum.MaxHealth or 100
+				if hum.Health > 0 and hum.Health < maxHp then
+					hum.Health = math.min(maxHp, hum.Health + amt)
+				end
+				task.wait(interval)
+			end
+
+			if conn and conn.Connected then
+				conn:Disconnect()
+			end
+			-- Clear the regen flag
+			if hum and hum.Parent then
+				pcall(function() hum:SetAttribute(regenFlag, false) end)
+			end
+		end)
+	end
 end
 
 local function onPlayerAdded(player: Player)
