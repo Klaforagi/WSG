@@ -336,15 +336,23 @@ local function getTargetsInBox(playerChar, boxCFrame, halfSize)
 end
 
 ---------------------------------------------------------------------------
--- Rate limiting
+-- Rate limiting & combo state
 ---------------------------------------------------------------------------
-local lastSwing = {} -- [player] = { [toolName] = tick() }
-local slowState = {} -- [player] = { count = n, base = number, factors = {..} }
+local lastSwing  = {} -- [player] = { [toolName] = tick() }
+local slowState  = {} -- [player] = { count = n, base = number, factors = {..} }
+local comboState = {} -- [player] = { step = 1, lastTime = 0, toolName = "" }
+
+-- Combo config from shared module
+local serverComboCfg = MeleeCfg and MeleeCfg.comboConfig or {}
+local SRV_COMBO_WINDOW   = serverComboCfg.COMBO_WINDOW or 0.2
+local SRV_ATTACK_CDS     = serverComboCfg.ATTACK_COOLDOWNS or { 0.5, 0.5, 0.8 }
+local SRV_ATK3_DMG_MULT  = serverComboCfg.ATTACK3_DAMAGE_MULTIPLIER or 1.25
+local SRV_ATK3_DMG_BONUS = serverComboCfg.ATTACK3_DAMAGE_BONUS  -- nil unless set
 
 ---------------------------------------------------------------------------
 -- Handle incoming swing
 ---------------------------------------------------------------------------
-swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
+swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientComboStep)
     -- basic validation
     if type(toolName) ~= "string" then return end
     if typeof(lookDir) ~= "Vector3" then return end
@@ -360,11 +368,55 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
 
     -- resolve config
     local cfg = getServerMeleeCfg(toolName)
-    local damage    = cfg.damage or 30
+    local baseDamage = cfg.damage or 30
+    local knockback  = cfg.knockback or 0
+
+    -- ── COMBO VALIDATION ──────────────────────────────────────────────
+    -- Server tracks its own combo state so clients can't skip to Attack3.
+    local hasCombo = cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table"
+        and #cfg.swing_anim_ids >= 3
+
+    local now = tick()
+    if not comboState[player] then
+        comboState[player] = { step = 1, lastTime = 0, toolName = "" }
+    end
+    local cs = comboState[player]
+
+    -- Determine validated combo step
+    local validStep = 1
+    if hasCombo then
+        -- Reset if weapon changed or combo window expired
+        local prevCd = SRV_ATTACK_CDS[cs.step] or 0.5
+        local comboDeadline = cs.lastTime + prevCd + SRV_COMBO_WINDOW
+        if cs.toolName ~= toolName or now > comboDeadline then
+            cs.step = 1
+        end
+
+        -- Clamp clientComboStep to the expected next step
+        if type(clientComboStep) == "number" then
+            clientComboStep = math.clamp(math.floor(clientComboStep), 1, 3)
+        else
+            clientComboStep = 1
+        end
+
+        -- Accept the client step only if it matches what the server expects
+        validStep = cs.step
+    end
+
+    local stepCd = hasCombo and (SRV_ATTACK_CDS[validStep] or 0.5) or (cfg.cd or 0.5)
+    local cd     = stepCd  -- used later by slowdown, animation timing, etc.
+
+    -- Apply Attack3 damage bonus
+    local damage = baseDamage
+    if hasCombo and validStep == 3 then
+        if SRV_ATK3_DMG_BONUS and SRV_ATK3_DMG_MULT == 1 then
+            damage = baseDamage + SRV_ATK3_DMG_BONUS
+        else
+            damage = baseDamage * SRV_ATK3_DMG_MULT
+        end
+    end
     -- Melee upgrade multiplier is applied at hit time in applyMeleeDamage
     -- so PvP vs PvE targets get the correct (capped vs uncapped) scaling.
-    local cd        = cfg.cd or 0.5
-    local knockback = cfg.knockback or 0
 
     -- Server-side SwordTrail: enable only during the downswing window.
     -- Trail visual props are already set by sanitizeTool in Loadout; we just toggle.
@@ -386,18 +438,29 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
         end
     end
 
-    -- rate limit (small tolerance so network jitter doesn't silently drop held swings)
-    -- Snaps lastSwing to the cadence beat (last + cd) rather than wall-clock
-    -- receipt time, preventing cumulative drift at any cooldown value.
-    local now = tick()
+    -- rate limit: enforce the PREVIOUS step's cooldown (the one recorded in
+    -- lastSwing), not the upcoming step's.  This prevents Attack3 (0.8s cd)
+    -- from blocking a chain that follows Attack2 (0.5s cd).
     if not lastSwing[player] then lastSwing[player] = {} end
-    local last = lastSwing[player][toolName] or 0
-    if now - last < cd * 0.85 then return end
-    -- snap to expected cadence beat; reset fresh if player hasn't swung recently
-    if last > 0 and (now - last) < cd * 1.5 then
-        lastSwing[player][toolName] = last + cd
+    local last    = lastSwing[player][toolName] or 0
+    local prevStepCd = lastSwing[player][toolName .. "_cd"] or cd
+    if now - last < prevStepCd * 0.85 then return end
+    if last > 0 and (now - last) < prevStepCd * 1.5 then
+        lastSwing[player][toolName] = last + prevStepCd
     else
         lastSwing[player][toolName] = now
+    end
+    lastSwing[player][toolName .. "_cd"] = cd  -- remember this step's cd for next check
+
+    -- Advance server combo state AFTER rate-limit passes
+    if hasCombo then
+        cs.lastTime = now
+        cs.toolName = toolName
+        if validStep >= 3 then
+            cs.step = 1  -- hard reset after Attack3
+        else
+            cs.step = validStep + 1
+        end
     end
 
     -- apply a stacked, robust slowdown that ensures WalkSpeed is restored
@@ -485,7 +548,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
 
         -- play swing animation on the server humanoid (module config only)
         local animObj = nil
-        -- Resolve animation id: cycle through swing_anim_ids if available
+        -- Resolve animation id: use combo step for combo weapons, else cycle
         local resolvedAnimId = nil
         if cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids > 0 then
             local validIds = {}
@@ -493,11 +556,16 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir)
                 if id and tostring(id) ~= "" then table.insert(validIds, tostring(id)) end
             end
             if #validIds > 0 then
-                if not lastSwing[player] then lastSwing[player] = {} end
-                local cycleKey = toolName .. "_animIdx"
-                local idx = lastSwing[player][cycleKey] or 1
-                resolvedAnimId = validIds[((idx - 1) % #validIds) + 1]
-                lastSwing[player][cycleKey] = idx + 1
+                if hasCombo then
+                    -- Pick the animation that matches the validated combo step
+                    resolvedAnimId = validIds[((validStep - 1) % #validIds) + 1]
+                else
+                    if not lastSwing[player] then lastSwing[player] = {} end
+                    local cycleKey = toolName .. "_animIdx"
+                    local idx = lastSwing[player][cycleKey] or 1
+                    resolvedAnimId = validIds[((idx - 1) % #validIds) + 1]
+                    lastSwing[player][cycleKey] = idx + 1
+                end
             end
         end
         if (not resolvedAnimId or resolvedAnimId == "") and cfg.swing_anim_id and cfg.swing_anim_id ~= "" then
@@ -729,6 +797,7 @@ end)
 -- clean up on leave
 Players.PlayerRemoving:Connect(function(player)
     lastSwing[player] = nil
+    comboState[player] = nil
     if slowState[player] then
         -- attempt to restore WalkSpeed if possible
         local st = slowState[player]

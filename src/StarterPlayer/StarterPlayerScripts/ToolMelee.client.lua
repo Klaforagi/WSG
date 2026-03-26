@@ -389,26 +389,84 @@ local function attachMelee(tool)
     end
 
     local cfg = getCfg(tool)
-    local cooldown = cfg.cd or 0.6
-    local lastSwing = 0
-    local swingLock = false
 
-    local mouse = player:GetMouse()
+    --------------------------------------------------------------------------
+    -- COMBO SYSTEM CONFIG
+    -- Pulled from ToolMeleeSettings.comboConfig so tuning is centralized.
+    --------------------------------------------------------------------------
+    local comboCfg       = MeleeCfgModule and MeleeCfgModule.comboConfig or {}
+    local COMBO_WINDOW   = comboCfg.COMBO_WINDOW or 0.2
+    local ATTACK_CDS     = comboCfg.ATTACK_COOLDOWNS or { 0.5, 0.5, 0.8 }
+    -- Weapons with 3+ swing_anim_ids use the combo chain; others keep flat cd.
+    local hasCombo = cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table"
+        and #cfg.swing_anim_ids >= 3
+
+    --------------------------------------------------------------------------
+    -- COMBO STATE
+    --------------------------------------------------------------------------
+    local currentComboStep = 1   -- 1-based (Attack1, Attack2, Attack3)
+    local comboExpireTime  = 0   -- tick() deadline; combo resets to 1 after this
+    local isSwinging       = false
+    local lastAttackTime   = 0
+    local lastStepCooldown = 0   -- cooldown of the step that set lastAttackTime
+    local bufferedClick    = false
+
+    local function getStepCooldown(step)
+        if not hasCombo then return cfg.cd or 0.5 end
+        return ATTACK_CDS[step] or ATTACK_CDS[1] or 0.5
+    end
+
+    local function resetCombo()
+        currentComboStep = 1
+        comboExpireTime  = 0
+        bufferedClick    = false
+        lastStepCooldown = 0
+    end
+
+    --------------------------------------------------------------------------
+    -- INPUT & SWING  (combo-aware)
+    --------------------------------------------------------------------------
+    local mouse     = player:GetMouse()
     local mouseConns = {}
-    local holding = false
 
-    local function doSwing()
-        -- prevent reentry
-        if swingLock then return end
-        -- Cancel bandage if player tries to attack
+    local function executeAttack()
+        -- Cancel if bandaging
         if _G.IsBandaging then return end
-        local now = tick()
-        if now - lastSwing < cooldown then return end
-        swingLock = true
-        lastSwing = now
 
-        -- (audio/animation now played server-side for authoritative playback)
-        -- debug: optionally show hitbox visual after hitboxDelay
+        -- Buffer click if a swing is already active
+        if isSwinging then
+            bufferedClick = true
+            return
+        end
+
+        local now = tick()
+
+        -- Check combo window — if expired, reset to Attack1
+        if comboExpireTime > 0 and now > comboExpireTime then
+            resetCombo()
+        end
+
+        local step        = currentComboStep
+        local stepCooldown = getStepCooldown(step)
+
+        -- Rate-limit: use the cooldown of the PREVIOUS step (the one that
+        -- set lastAttackTime), not the upcoming step.  This prevents
+        -- Attack3 (0.8s cd) from blocking a chain that follows Attack2 (0.5s cd).
+        local enforcedCd = lastStepCooldown > 0 and lastStepCooldown or stepCooldown
+        if now - lastAttackTime < enforcedCd * 0.85 then return end
+
+        -- Lock swing
+        isSwinging     = true
+        bufferedClick  = false
+        lastAttackTime = now
+        lastStepCooldown = stepCooldown
+
+        -- Force animation index to match combo step
+        if hasCombo then
+            swingCycleIndex[tool.Name or "_default"] = step
+        end
+
+        -- Debug hitbox visual (unchanged logic, per-step cooldown aware)
         local showGlobal = false
         local globalVal = ReplicatedStorage:FindFirstChild("ToolMeleeShowHitbox")
         if globalVal and globalVal:IsA("BoolValue") then showGlobal = globalVal.Value end
@@ -420,10 +478,8 @@ local function attachMelee(tool)
             spawn(function()
                 task.wait(hd)
                 local startTime = tick()
-                local boxSize = cfg.hitboxSize or Vector3.new(4,3,7)
+                local boxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
                 local offset = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
-
-                -- create a single client-side debug part and update it every frame
                 local part = workspace:FindFirstChild("_MeleeHitboxDebug")
                 if not part or not part:IsA("BasePart") then
                     part = Instance.new("Part")
@@ -436,7 +492,6 @@ local function attachMelee(tool)
                     part.Material = Enum.Material.Neon
                     part.Parent = workspace
                 end
-
                 local conn
                 conn = RunService.Heartbeat:Connect(function()
                     if not part or not part.Parent then
@@ -464,52 +519,72 @@ local function attachMelee(tool)
             end)
         end
 
-        -- trigger sword trail (downswing window). These defaults are 0.22→0.36s.
+        -- Trigger sword trail
         local startOffset = cfg.trail_start or 0.22
-        local endOffset = cfg.trail_end or 0.36
+        local endOffset   = cfg.trail_end   or 0.36
         pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
 
-        -- tell the server we swung
+        -- Tell the server we swung (include combo step for validation/damage)
         local char = player.Character
         if char then
             local hrp = char:FindFirstChild("HumanoidRootPart")
             if hrp then
-                swingEvent:FireServer(tool.Name, hrp.CFrame.LookVector)
+                swingEvent:FireServer(tool.Name, hrp.CFrame.LookVector, step)
             end
         end
 
-        -- play local configured animation for immediate feedback, fallback to procedural
+        -- Play local animation for immediate feedback
         local playedAnim = nil
         pcall(function() playedAnim = playLocalCfgAnimation(cfg, tool.Name) end)
         if not playedAnim then
             playSwingVisual(tool)
         end
 
-        -- trigger hotbar cooldown overlay (slot 1 = Melee)
+        -- Hotbar cooldown overlay (slot 1 = Melee)
         if _G.HotbarCooldown then
-            _G.HotbarCooldown.start(1, cooldown)
+            _G.HotbarCooldown.start(1, stepCooldown)
         end
 
-        -- small delay to avoid immediate reentry; actual cooldown enforced by lastSwing
-        task.delay(0.05, function() swingLock = false end)
-    end
+        -- Advance or reset combo, then schedule cooldown end
+        local nextStep = (step >= 3) and 1 or (step + 1)
 
-    local function startHolding()
-        -- single-click behavior: trigger one swing per button down
-        doSwing()
-    end
+        task.delay(stepCooldown, function()
+            isSwinging = false
 
-    local function stopHolding()
-        holding = false
+            if step >= 3 then
+                -- Attack3 finished: hard reset, no combo chain allowed
+                resetCombo()
+            else
+                -- Open the combo chain window for the next step
+                currentComboStep = nextStep
+                comboExpireTime  = tick() + COMBO_WINDOW
+            end
+
+            -- Process buffered click if still within the combo window
+            if bufferedClick then
+                bufferedClick = false
+                -- Only auto-advance; don't start a new Attack1 from buffer
+                -- to stop spam-clicking from bypassing the Attack3 recovery.
+                if currentComboStep > 1 and tick() <= comboExpireTime then
+                    task.defer(executeAttack)
+                end
+            end
+        end)
     end
 
     tool.Equipped:Connect(function()
-        table.insert(mouseConns, mouse.Button1Down:Connect(startHolding))
-        table.insert(mouseConns, mouse.Button1Up:Connect(stopHolding))
+        -- Always start fresh at Attack1 on equip
+        resetCombo()
+        isSwinging     = false
+        lastAttackTime = 0
+        table.insert(mouseConns, mouse.Button1Down:Connect(executeAttack))
     end)
 
     tool.Unequipped:Connect(function()
-        stopHolding()
+        -- Full reset on unequip / death / weapon switch
+        resetCombo()
+        isSwinging     = false
+        lastAttackTime = 0
         for _, c in ipairs(mouseConns) do c:Disconnect() end
         mouseConns = {}
     end)

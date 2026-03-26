@@ -88,182 +88,75 @@ local function px(base)
 end
 
 --------------------------------------------------------------------------------
--- PROCEDURAL BANDAGE ANIMATION CONTROLLER
--- Manipulates Motor6D.Transform on shoulder joints to create a visible
--- "wrapping / rubbing hands" pose without needing an uploaded Animation asset.
--- Works on R15 rigs.  R6 is handled gracefully (no-ops).
---
--- IMPORTANT: Uses BindToRenderStep at priority AFTER Roblox's Animator
--- (Enum.RenderPriority.Character.Value + 1) so our transforms are NOT
--- overwritten by the default idle/walk animation system.
+-- BANDAGE ANIMATION
 --------------------------------------------------------------------------------
+local BANDAGE_ANIM_ID = "rbxassetid://139297808237661"
 
--- ══════════════════════════════════════════════════════════════════════════════
--- TUNING CONSTANTS (adjust these to taste once the anim is confirmed working)
--- ══════════════════════════════════════════════════════════════════════════════
-local BASE_SHOULDER_INWARD_ANGLE  = 55   -- degrees – how far arms rotate inward
-local BASE_SHOULDER_FORWARD_ANGLE = 70   -- degrees – how far arms pitch forward
-local BASE_ELBOW_BEND             = 75   -- degrees – forearm bend
-local BASE_WAIST_LEAN             = 12   -- degrees – torso forward lean
-local LOOP_AMPLITUDE              = 15   -- degrees – oscillation range on top of base
-local LOOP_SPEED                  = 3.5  -- Hz – primary oscillation frequency
-local LOOP_SECONDARY_SPEED        = 7.0  -- Hz – secondary wobble frequency
-local LOOP_SECONDARY_SCALE        = 0.35 -- multiplier for secondary wave
-local RENDER_STEP_NAME            = "BandageProceduralAnim"
-local RENDER_STEP_PRIORITY        = Enum.RenderPriority.Character.Value + 1
+local bandageAnimTrack = nil  -- currently playing AnimationTrack
 
-local bandageAnimActive = false  -- true while the procedural loop is bound
-local bandageAnimTime   = 0     -- accumulated time for sinusoidal motion
-local bandageAnimJoints = {}    -- {RightShoulder, LeftShoulder, RightElbow, LeftElbow, Waist}
-
--- Robustly finds Motor6D descendants by name anywhere inside the character.
--- Uses FindFirstChild with recursive=true so it works regardless of hierarchy.
-local function findR15Joints(char)
-    local joints = {}
-    for _, desc in ipairs(char:GetDescendants()) do
-        if desc:IsA("Motor6D") then
-            local n = desc.Name
-            if n == "RightShoulder" then joints.RightShoulder = desc
-            elseif n == "LeftShoulder" then joints.LeftShoulder = desc
-            elseif n == "RightElbow" then joints.RightElbow = desc
-            elseif n == "LeftElbow" then joints.LeftElbow = desc
-            elseif n == "Waist" then joints.Waist = desc
-            end
-        end
-    end
-    -- Debug: report what we found
-    print("[BandageAnim] findR15Joints results:")
-    print("  RightShoulder:", joints.RightShoulder and joints.RightShoulder:GetFullName() or "NOT FOUND")
-    print("  LeftShoulder: ", joints.LeftShoulder and joints.LeftShoulder:GetFullName() or "NOT FOUND")
-    print("  RightElbow:   ", joints.RightElbow and joints.RightElbow:GetFullName() or "NOT FOUND")
-    print("  LeftElbow:    ", joints.LeftElbow and joints.LeftElbow:GetFullName() or "NOT FOUND")
-    print("  Waist:        ", joints.Waist and joints.Waist:GetFullName() or "NOT FOUND")
-    return joints
-end
-
-local function resetJointTransforms()
-    for name, motor in pairs(bandageAnimJoints) do
-        if motor and motor.Parent then
-            motor.Transform = CFrame.new()
-            print("[BandageAnim] reset Transform on", name)
-        end
-    end
-    bandageAnimJoints = {}
-end
-
-local function startBandageProceduralAnim()
-    print("[BandageAnim] start requested")
-
-    -- Prevent duplicate loops
-    if bandageAnimActive then
-        print("[BandageAnim] already active, skipping duplicate start")
-        return
-    end
-
+local function playBandageAnimation()
     local char = player.Character
-    if not char then
-        warn("[BandageAnim] no Character – anim skipped")
-        return
-    end
-
+    if not char then return end
     local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum then
-        warn("[BandageAnim] no Humanoid – anim skipped")
-        return
+    if not hum then return end
+    local animator = hum:FindFirstChildOfClass("Animator")
+    if not animator then return end
+
+    -- Stop any existing track first
+    if bandageAnimTrack then
+        bandageAnimTrack:Stop()
+        bandageAnimTrack:Destroy()
+        bandageAnimTrack = nil
     end
 
-    -- Detect rig type
-    local rigType = hum.RigType
-    print("[BandageAnim] rig type:", tostring(rigType))
-    if rigType ~= Enum.HumanoidRigType.R15 then
-        warn("[BandageAnim] unsupported rig / not R15 – procedural anim skipped")
-        return
-    end
-
-    local joints = findR15Joints(char)
-    if not joints.RightShoulder or not joints.LeftShoulder then
-        warn("[BandageAnim] R15 shoulder joints not found – procedural anim skipped")
-        return
-    end
-    print("[BandageAnim] found R15 shoulders ✓")
-    bandageAnimJoints = joints
-    bandageAnimTime = 0
-    bandageAnimActive = true
-
-    -- BindToRenderStep at priority AFTER the Animator so our transforms stick.
-    -- This is the critical fix: RenderStepped:Connect runs at default priority
-    -- which the Animator can overwrite. BindToRenderStep with priority
-    -- Character+1 runs AFTER the Animator finishes writing transforms.
-    print("[BandageAnim] BindToRenderStep connected (priority", RENDER_STEP_PRIORITY, ")")
-    RunService:BindToRenderStep(RENDER_STEP_NAME, RENDER_STEP_PRIORITY, function(dt)
-        -- Safety: bail if joints became invalid (respawn, etc.)
-        if not bandageAnimActive then return end
-        if not joints.RightShoulder or not joints.RightShoulder.Parent then
-            print("[BandageAnim] joints lost mid-loop, stopping")
-            stopBandageProceduralAnim()
-            return
-        end
-
-        bandageAnimTime = bandageAnimTime + dt
-        local t = bandageAnimTime
-
-        -- ── Oscillation wave components ──────────────────────────────────
-        local wave1 = math.sin(t * LOOP_SPEED)
-        local wave2 = math.sin(t * LOOP_SECONDARY_SPEED) * LOOP_SECONDARY_SCALE
-        local combined = wave1 + wave2  -- range roughly -1.35 .. 1.35
-
-        -- ── RIGHT SHOULDER (bring arm inward + forward) ─────────────────
-        local rPitch = math.rad(-BASE_SHOULDER_FORWARD_ANGLE + combined * LOOP_AMPLITUDE)
-        local rYaw   = math.rad(-BASE_SHOULDER_INWARD_ANGLE + combined * (LOOP_AMPLITUDE * 0.6))
-        local rRoll  = math.rad(15)
-        if joints.RightShoulder and joints.RightShoulder.Parent then
-            joints.RightShoulder.Transform = CFrame.Angles(rPitch, rYaw, rRoll)
-        end
-
-        -- ── LEFT SHOULDER (mirror, offset phase so arms alternate) ──────
-        local lWave1 = math.sin(t * LOOP_SPEED + 1.0)
-        local lWave2 = math.sin(t * LOOP_SECONDARY_SPEED + 1.0) * LOOP_SECONDARY_SCALE
-        local lCombined = lWave1 + lWave2
-
-        local lPitch = math.rad(-BASE_SHOULDER_FORWARD_ANGLE + lCombined * LOOP_AMPLITUDE)
-        local lYaw   = math.rad(BASE_SHOULDER_INWARD_ANGLE - lCombined * (LOOP_AMPLITUDE * 0.6))
-        local lRoll  = math.rad(-15)
-        if joints.LeftShoulder and joints.LeftShoulder.Parent then
-            joints.LeftShoulder.Transform = CFrame.Angles(lPitch, lYaw, lRoll)
-        end
-
-        -- ── Elbows (bend forearms inward) ────────────────────────────────
-        if joints.RightElbow and joints.RightElbow.Parent then
-            joints.RightElbow.Transform = CFrame.Angles(math.rad(-BASE_ELBOW_BEND + combined * (LOOP_AMPLITUDE * 0.7)), 0, 0)
-        end
-        if joints.LeftElbow and joints.LeftElbow.Parent then
-            joints.LeftElbow.Transform = CFrame.Angles(math.rad(-BASE_ELBOW_BEND + lCombined * (LOOP_AMPLITUDE * 0.7)), 0, 0)
-        end
-
-        -- ── Waist (forward lean) ─────────────────────────────────────────
-        if joints.Waist and joints.Waist.Parent then
-            joints.Waist.Transform = CFrame.Angles(math.rad(-BASE_WAIST_LEAN + math.sin(t * 2.0) * 3), 0, 0)
-        end
-    end)
-    print("[BandageAnim] procedural anim STARTED – applying transforms")
+    local anim = Instance.new("Animation")
+    anim.AnimationId = BANDAGE_ANIM_ID
+    bandageAnimTrack = animator:LoadAnimation(anim)
+    bandageAnimTrack.Looped = true
+    bandageAnimTrack.Priority = Enum.AnimationPriority.Action
+    bandageAnimTrack:Play()
+    anim:Destroy()
 end
 
-local function stopBandageProceduralAnim()
-    print("[BandageAnim] stop requested (was active:", bandageAnimActive, ")")
-    if bandageAnimActive then
-        -- Unbind the render step callback
-        pcall(function() RunService:UnbindFromRenderStep(RENDER_STEP_NAME) end)
-        print("[BandageAnim] UnbindFromRenderStep done")
+local function stopBandageAnimation()
+    if bandageAnimTrack then
+        bandageAnimTrack:Stop()
+        bandageAnimTrack:Destroy()
+        bandageAnimTrack = nil
     end
-    bandageAnimActive = false
-    resetJointTransforms()
-    bandageAnimTime = 0
-    print("[BandageAnim] procedural anim STOPPED and transforms reset")
 end
 
--- Convenience aliases matching old naming so hook sites stay clean
-local playBandageAnimation = startBandageProceduralAnim
-local stopBandageAnimation = stopBandageProceduralAnim
+--------------------------------------------------------------------------------
+-- Bandage sound control
+-- Plays the client-side looping "Bandage" sound during bandaging and
+-- stops it when bandaging ends or is interrupted.
+--------------------------------------------------------------------------------
+local bandageSoundInstance = nil
+local function startBandageSound()
+    if bandageSoundInstance then return end
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    if not soundsFolder then return end
+    local template = soundsFolder:FindFirstChild("Bandage", true)
+    if not template or not template:IsA("Sound") then return end
+
+    -- Clone and parent to the camera for consistent client playback
+    local cam = workspace.CurrentCamera
+    local parent = cam or (player.Character and player.Character:FindFirstChild("Head")) or player:FindFirstChild("PlayerGui")
+    if not parent then parent = player end
+
+    local s = template:Clone()
+    s.Looped = true
+    s.Parent = parent
+    pcall(function() s:Play() end)
+    bandageSoundInstance = s
+end
+
+local function stopBandageSound()
+    if not bandageSoundInstance then return end
+    pcall(function() bandageSoundInstance:Stop() end)
+    pcall(function() bandageSoundInstance:Destroy() end)
+    bandageSoundInstance = nil
+end
 
 --------------------------------------------------------------------------------
 -- PROGRESS BAR UI
@@ -476,6 +369,7 @@ local function cancelBandaging(reason)
     _G.IsBandaging = false
 
     stopBandageAnimation()
+    stopBandageSound()
     hideProgressBar()
     disconnectInterruptListeners()
 
@@ -651,6 +545,7 @@ if bandageStarted then
         isBandaging = true
         _G.IsBandaging = true
         playBandageAnimation()
+        startBandageSound()
         showProgressBar()
         setupInterruptListeners()
         print("[BandageAnim] bandage start sequence complete")
@@ -675,6 +570,7 @@ if bandageEnded then
         _G.IsBandaging = false
 
         stopBandageAnimation()
+        stopBandageSound()
         hideProgressBar()
         disconnectInterruptListeners()
 
@@ -700,9 +596,8 @@ end
 -- RESPAWN CLEANUP
 --------------------------------------------------------------------------------
 player.CharacterAdded:Connect(function(newChar)
-    print("[BandageAnim] CharacterAdded – cleaning up previous bandage state")
-    -- Force-kill any procedural animation from previous life
-    stopBandageProceduralAnim()
+    stopBandageAnimation()
+    stopBandageSound()
 
     isBandaging = false
     _G.IsBandaging = false
@@ -711,20 +606,4 @@ player.CharacterAdded:Connect(function(newChar)
     hideProgressBar()
     disconnectInterruptListeners()
     statusLabel.Visible = false
-
-    -- Pre-validate joints on the new character so we know early if they exist
-    task.defer(function()
-        if newChar and newChar.Parent then
-            local hum = newChar:FindFirstChildOfClass("Humanoid")
-            if hum then
-                print("[BandageAnim] new character rig type:", tostring(hum.RigType))
-            end
-            local testJoints = findR15Joints(newChar)
-            if testJoints.RightShoulder and testJoints.LeftShoulder then
-                print("[BandageAnim] new character has valid R15 shoulders ✓")
-            else
-                warn("[BandageAnim] new character MISSING R15 shoulders – anim will not work")
-            end
-        end
-    end)
 end)

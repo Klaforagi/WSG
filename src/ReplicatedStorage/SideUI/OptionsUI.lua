@@ -63,16 +63,11 @@ local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirect
 -- Default settings
 --------------------------------------------------------------------------------
 local DEFAULT_SETTINGS = {
-	-- Audio
-	MasterVolume      = 1.0,
+	-- Audio (renamed to Sound in UI)
 	MusicVolume       = 0.5,
 	SFXVolume         = 0.8,
-	UISounds          = true,
-	-- Graphics
-	ReduceEffects     = false,
-	Shadows           = true,
-	GraphicsPreset    = "High",
-	-- Gameplay
+	-- Graphics (removed from options)
+	-- Gameplay (kept as defaults but not shown in options)
 	CameraSensitivity = 0.5,   -- 0.1 .. 2.0
 	InvertCamera      = false,
 	SprintMode        = "Hold",
@@ -80,7 +75,7 @@ local DEFAULT_SETTINGS = {
 	-- UI
 	ShowMinimap       = true,
 	ShowGameState     = true,
-	UIScale           = "100%",
+	-- UIScale removed from options
 }
 
 --------------------------------------------------------------------------------
@@ -134,21 +129,25 @@ end
 --------------------------------------------------------------------------------
 local function ApplySettings(settings)
 	-- AUDIO ──────────────────────────────────────────────────────────────
-	-- Master Volume – SoundGroup "Master" under SoundService, or fall back
-	pcall(function()
-		local masterGroup = SoundService:FindFirstChild("Master")
-		if masterGroup and masterGroup:IsA("SoundGroup") then
-			masterGroup.Volume = settings.MasterVolume
-		end
-	end)
-
 	-- Music Volume – SoundGroup "Music" under SoundService
-	-- PLACEHOLDER: Create a SoundGroup called "Music" and parent music sounds
-	-- to it for this slider to take effect.
+	-- (Master volume removed; tune SoundService groups directly if needed)
+
+	-- Music Volume – update any Sound instances placed under
+	-- ReplicatedStorage.Sounds.Music so the slider takes immediate effect.
 	pcall(function()
-		local musicGroup = SoundService:FindFirstChild("Music")
-		if musicGroup and musicGroup:IsA("SoundGroup") then
-			musicGroup.Volume = settings.MusicVolume
+		local rs = game:GetService("ReplicatedStorage")
+		local soundsRoot = rs:FindFirstChild("Sounds")
+		if soundsRoot then
+			local musicFolder = soundsRoot:FindFirstChild("Music")
+			if musicFolder then
+				-- Map slider 0..1 -> actual volume 0..0.5 so 100% = 0.5
+				local mapped = math.clamp(tonumber(settings.MusicVolume) or 0.5, 0, 1) * 0.5
+				for _, obj in ipairs(musicFolder:GetDescendants()) do
+					if obj:IsA("Sound") then
+						pcall(function() obj.Volume = mapped end)
+					end
+				end
+			end
 		end
 	end)
 
@@ -162,34 +161,7 @@ local function ApplySettings(settings)
 		end
 	end)
 
-	-- GRAPHICS ───────────────────────────────────────────────────────────
-	pcall(function()
-		Lighting.GlobalShadows = settings.Shadows
-	end)
-
-	-- Reduce Effects – PLACEHOLDER
-	-- Tag your particle / trail / beam instances with CollectionService tag
-	-- "GameEffect" and uncomment the block below to toggle them.
-	-- pcall(function()
-	--     local CollectionService = game:GetService("CollectionService")
-	--     for _, obj in ipairs(CollectionService:GetTagged("GameEffect")) do
-	--         if obj:IsA("ParticleEmitter") or obj:IsA("Trail")
-	--            or obj:IsA("Beam") or obj:IsA("Fire")
-	--            or obj:IsA("Smoke") or obj:IsA("Sparkles") then
-	--             obj.Enabled = not settings.ReduceEffects
-	--         end
-	--     end
-	-- end)
-
-	-- Graphics Preset overrides
-	pcall(function()
-		if settings.GraphicsPreset == "Low" then
-			Lighting.GlobalShadows = false
-		elseif settings.GraphicsPreset == "High" then
-			Lighting.GlobalShadows = true
-		end
-		-- "Medium" keeps the Shadows toggle value as-is
-	end)
+	-- Graphics handling removed from options UI (manage graphics elsewhere)
 
 	-- GAMEPLAY ───────────────────────────────────────────────────────────
 	-- Camera & sprint values are exposed via _G.PlayerSettings for
@@ -212,19 +184,18 @@ local function ApplySettings(settings)
 		if gui then gui.Enabled = settings.ShowGameState end
 	end)
 
-	-- UI Scale – adjust UIScale on the main ScreenGui
-	pcall(function()
-		local mainGui = playerGui:FindFirstChild("MainUI")
-		if mainGui then
-			local uiScale = mainGui:FindFirstChildOfClass("UIScale")
-			if not uiScale then
-				uiScale = Instance.new("UIScale")
-				uiScale.Parent = mainGui
-			end
-			local map = { ["90%"] = 0.9, ["100%"] = 1.0, ["110%"] = 1.1 }
-			uiScale.Scale = map[settings.UIScale] or 1.0
+	-- Try to persist settings to the server if remote exists
+	local success, err = pcall(function()
+		local rs = game:GetService("ReplicatedStorage")
+		local setRF = rs:FindFirstChild("SetPlayerSettings")
+		if setRF and setRF:IsA("RemoteFunction") then
+			setRF:InvokeServer(settings)
 		end
 	end)
+	if not success then
+		warn("[OptionsUI] Failed to persist PlayerSettings:", tostring(err))
+	end
+	-- UI Scale removed from options (control MainUI UIScale directly if needed)
 
 	-- Show Tooltips – PLACEHOLDER
 	-- If you have tooltip frames, iterate and set Visible here.
@@ -897,36 +868,17 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	end
 
 	---------------------------------------------------------------------------
-	-- AUDIO section
+	-- SOUND section (formerly Audio)
 	---------------------------------------------------------------------------
-	createSectionHeader(root, "AUDIO", nextOrder())
-	createSlider(root, "Master Volume", "MasterVolume", 0, 1, 0.01,
-		function(v) return math.floor(v * 100) .. "%" end, nextOrder())
+	createSectionHeader(root, "SOUND", nextOrder())
 	createSlider(root, "Music Volume", "MusicVolume", 0, 1, 0.01,
 		function(v) return math.floor(v * 100) .. "%" end, nextOrder())
 	createSlider(root, "SFX Volume", "SFXVolume", 0, 1, 0.01,
 		function(v) return math.floor(v * 100) .. "%" end, nextOrder())
-	createToggle(root, "UI Sounds", "UISounds", nextOrder())
+
 
 	---------------------------------------------------------------------------
-	-- GRAPHICS section
-	---------------------------------------------------------------------------
-	createSectionHeader(root, "GRAPHICS", nextOrder())
-	createToggle(root, "Reduce Effects", "ReduceEffects", nextOrder())
-	createToggle(root, "Shadows", "Shadows", nextOrder())
-	createChoiceButtons(root, "Graphics Preset", "GraphicsPreset",
-		{ "Low", "Medium", "High" }, nextOrder())
-
-	---------------------------------------------------------------------------
-	-- GAMEPLAY section
-	---------------------------------------------------------------------------
-	createSectionHeader(root, "GAMEPLAY", nextOrder())
-	createSlider(root, "Camera Sensitivity", "CameraSensitivity", 0.1, 2.0, 0.1,
-		function(v) return string.format("%.1f", v) end, nextOrder())
-	createToggle(root, "Invert Camera", "InvertCamera", nextOrder())
-	createChoiceButtons(root, "Sprint Mode", "SprintMode",
-		{ "Hold", "Toggle" }, nextOrder())
-	createToggle(root, "Show Tooltips", "ShowTooltips", nextOrder())
+	-- GAMEPLAY section removed per request (keep menu minimal)
 
 	---------------------------------------------------------------------------
 	-- UI section
@@ -934,74 +886,10 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	createSectionHeader(root, "UI", nextOrder())
 	createToggle(root, "Show Minimap", "ShowMinimap", nextOrder())
 	createToggle(root, "Show Scoreboard", "ShowGameState", nextOrder())
-	createChoiceButtons(root, "UI Scale", "UIScale",
-		{ "90%", "100%", "110%" }, nextOrder())
+	-- UI Scale removed per request
 
 	---------------------------------------------------------------------------
-	-- OTHER section
-	---------------------------------------------------------------------------
-	createSectionHeader(root, "OTHER", nextOrder())
-
-	local btnRow = Instance.new("Frame")
-	btnRow.Name = "ActionButtonRow"
-	btnRow.BackgroundTransparency = 1
-	btnRow.Size = UDim2.new(1, 0, 0, px(38))
-	btnRow.LayoutOrder = nextOrder()
-	btnRow.Parent = root
-
-	local btnRowLayout = Instance.new("UIListLayout")
-	btnRowLayout.FillDirection = Enum.FillDirection.Horizontal
-	btnRowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	btnRowLayout.Padding = UDim.new(0, px(8))
-	btnRowLayout.Parent = btnRow
-
-	createActionButton(btnRow, "Controls", BTN_BG, function()
-		showPopup("CONTROLS", {
-			"WASD  –  Move",
-			"Space  –  Jump",
-			"Shift  –  Sprint",
-			"E  –  Interact / Pick Up",
-			"Q  –  Drop / Release",
-			"1-9  –  Hotbar Slots",
-			"Tab  –  Scoreboard",
-			"M  –  Toggle Minimap",
-			"Esc  –  Pause / Menu",
-			"",
-			"Mouse1  –  Attack / Fire",
-			"Mouse2  –  Aim / Block",
-			"R  –  Reload",
-		})
-	end, 1)
-
-	createActionButton(btnRow, "Credits", BTN_BG, function()
-		showPopup("CREDITS", {
-			"KingsGround: WSG",
-			"",
-			"Game Design & Programming",
-			"   Your Name Here",
-			"",
-			"Art & Assets",
-			"   Your Name Here",
-			"",
-			"Sound & Music",
-			"   Your Name Here",
-			"",
-			"Special Thanks",
-			"   The Roblox Community",
-			"",
-			"Built with Roblox Studio",
-		})
-	end, 2)
-
-	createActionButton(btnRow, "Reset Defaults", RED_BTN, function()
-		for k, v in pairs(DEFAULT_SETTINGS) do
-			PlayerSettings[k] = v
-		end
-		for key, updater in pairs(uiUpdaters) do
-			pcall(updater, PlayerSettings[key])
-		end
-		ApplySettings(PlayerSettings)
-	end, 3)
+	-- OTHER section removed per request
 
 	---------------------------------------------------------------------------
 	-- Apply current state on open
