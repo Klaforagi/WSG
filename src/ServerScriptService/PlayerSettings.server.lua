@@ -53,11 +53,26 @@ end
 local function applyCharacterSettings(char: Model)
 	-- Keep head/accessory no-collide for safety, but do not force upright or block humanoid states.
 	applyHeadAndAccessoryNoCollide(char)
+
+	-- Remove default Roblox health regen script if present
+	local healthScript = char:FindFirstChild("Health")
+	if healthScript and healthScript:IsA("Script") then
+		healthScript:Destroy()
+	end
+
 	-- Start server-authoritative passive health regen if enabled in config
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum and PlayerSettingsConfig and PlayerSettingsConfig.HealthRegen and PlayerSettingsConfig.HealthRegen.Enabled then
 		local amt = tonumber(PlayerSettingsConfig.HealthRegen.AmountPerTick) or 1
 		local interval = tonumber(PlayerSettingsConfig.HealthRegen.TickInterval) or 5
+
+		-- Warn if settings are so low that regen appears non-functional
+		if amt <= 0 then
+			warn("[PlayerSettings] HealthRegen.AmountPerTick is <= 0; regen will not occur!")
+		end
+		if interval > 30 then
+			warn("[PlayerSettings] HealthRegen.TickInterval is very high (>", interval, ") – regen may appear non-functional.")
+		end
 
 		-- Enforce sane minimums to avoid extremely fast ticks
 		if interval < 0.05 then interval = 0.05 end
@@ -72,12 +87,17 @@ local function applyCharacterSettings(char: Model)
 
 		-- Spawn a loop that heals the humanoid every `interval` seconds while alive.
 		-- The loop exits when the humanoid dies or the character is removed.
-		spawn(function()
-			local conn
+		task.spawn(function()
+			-- Listen for death to stop regen
 			local alive = true
-			conn = hum.Died:Connect(function()
+			local diedConn = hum.Died:Connect(function()
 				alive = false
-				if conn then conn:Disconnect() end
+			end)
+			-- Listen for character removal to stop regen
+			local ancestryConn = char.AncestryChanged:Connect(function(_, parent)
+				if not parent then
+					alive = false
+				end
 			end)
 
 			while alive and hum and hum.Parent do
@@ -89,9 +109,9 @@ local function applyCharacterSettings(char: Model)
 				task.wait(interval)
 			end
 
-			if conn and conn.Connected then
-				conn:Disconnect()
-			end
+			-- Clean up connections
+			if diedConn.Connected then diedConn:Disconnect() end
+			if ancestryConn.Connected then ancestryConn:Disconnect() end
 			-- Clear the regen flag
 			if hum and hum.Parent then
 				pcall(function() hum:SetAttribute(regenFlag, false) end)
