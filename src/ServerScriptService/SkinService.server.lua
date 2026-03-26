@@ -881,4 +881,41 @@ equipSkinRE.OnServerEvent:Connect(function(player, skinId)
     pushEquippedToClient(player)
 end)
 
+--------------------------------------------------------------------------------
+-- BINDABLE API  (server-to-server, used by SalvageShopService)
+--------------------------------------------------------------------------------
+do
+    local ServerScriptService = game:GetService("ServerScriptService")
+
+    -- CheckSkinOwnership(player, skinId) -> bool
+    local checkBF = Instance.new("BindableFunction")
+    checkBF.Name = "CheckSkinOwnership"
+    checkBF.Parent = ServerScriptService
+    checkBF.OnInvoke = function(player, skinId)
+        if not player or type(skinId) ~= "string" then return false end
+        return isOwned(player, skinId)
+    end
+
+    -- GrantSkin(player, skinId) -> bool
+    local grantBF = Instance.new("BindableFunction")
+    grantBF.Name = "GrantSkin"
+    grantBF.Parent = ServerScriptService
+    grantBF.OnInvoke = function(player, skinId)
+        if not player or type(skinId) ~= "string" then return false end
+        if isOwned(player, skinId) then return true end -- already owned, success
+        local def = SkinDefs.GetById(skinId)
+        if not def then
+            warn("[SkinService] GrantSkin: unknown skinId:", skinId)
+            return false
+        end
+        local data = getOrCreateData(player)
+        data.owned[skinId] = true
+        dprint("Granted skin", skinId, "to", player.Name, "(via BindableFunction)")
+        task.spawn(function() saveData(player) end)
+        return true
+    end
+
+    dprint("BindableFunction API registered (CheckSkinOwnership, GrantSkin)")
+end
+
 dprint("fully initialized")

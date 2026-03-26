@@ -61,6 +61,20 @@ local chosenMelee = {}   -- [player] = toolName override for melee
 local chosenInstanceId = {} -- [player] = { Melee = id, Ranged = id }
 
 --------------------------------------------------------------------------------
+-- SALVAGE SYSTEM  – BindableFunction so SalvageService can check equipped state
+--------------------------------------------------------------------------------
+local isEquippedBF = Instance.new("BindableFunction")
+isEquippedBF.Name = "IsInstanceEquipped"
+isEquippedBF.Parent = game:GetService("ServerScriptService")
+
+isEquippedBF.OnInvoke = function(player, instanceId)
+    if not player or type(instanceId) ~= "string" then return false end
+    local ids = chosenInstanceId[player]
+    if not ids then return false end
+    return ids.Melee == instanceId or ids.Ranged == instanceId
+end
+
+--------------------------------------------------------------------------------
 -- LOADOUT PERSISTENCE
 --------------------------------------------------------------------------------
 local function saveLoadout(player)

@@ -47,6 +47,18 @@ Players.PlayerAdded:Connect(function(player)
         warn("CurrencyServiceInit: failed to load keys for ", tostring(player.Name), "; defaulting to 0")
     end
     CurrencyService:SetKeys(player, keys)
+
+    -- SALVAGE SYSTEM  – Load Salvage
+    local salvage = 0
+    local ok3, salvageAmt = pcall(function()
+        return CurrencyService:LoadSalvageForPlayer(player)
+    end)
+    if ok3 and type(salvageAmt) == "number" then
+        salvage = salvageAmt
+    else
+        warn("CurrencyServiceInit: failed to load salvage for ", tostring(player.Name), "; defaulting to 0")
+    end
+    CurrencyService:SetSalvage(player, salvage)
 end)
 
 -- Handle players who connected before the PlayerAdded signal was hooked
@@ -72,6 +84,16 @@ for _, player in ipairs(Players:GetPlayers()) do
             keys = keyAmt
         end
         CurrencyService:SetKeys(player, keys)
+
+        -- SALVAGE SYSTEM  – Load Salvage for late-join players
+        local salvage = 0
+        local ok3, salvageAmt = pcall(function()
+            return CurrencyService:LoadSalvageForPlayer(player)
+        end)
+        if ok3 and type(salvageAmt) == "number" then
+            salvage = salvageAmt
+        end
+        CurrencyService:SetSalvage(player, salvage)
     end)
 end
 
@@ -89,6 +111,13 @@ Players.PlayerRemoving:Connect(function(player)
     end)
     if not ok2 then
         warn("CurrencyServiceInit: SaveKeysForPlayer error for ", tostring(player.Name), err2)
+    end
+    -- SALVAGE SYSTEM  – Save Salvage on leave
+    local ok3, err3 = pcall(function()
+        CurrencyService:SaveSalvageForPlayer(player)
+    end)
+    if not ok3 then
+        warn("CurrencyServiceInit: SaveSalvageForPlayer error for ", tostring(player.Name), err3)
     end
     CurrencyService:RemovePlayer(player)
 end)

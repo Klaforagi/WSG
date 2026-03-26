@@ -187,30 +187,5 @@ end
 setProgress(status, barFill, "Opening menu...", 1)
 task.wait(0.15)
 
--- Apply saved player settings from server (if available) so audio starts at correct volume
-pcall(function()
-	local getRF = ReplicatedStorage:FindFirstChild("GetPlayerSettings")
-	if getRF and getRF:IsA("RemoteFunction") then
-		local ok, data = pcall(function() return getRF:InvokeServer() end)
-		if ok and type(data) == "table" then
-			_G.PlayerSettings = data
-			-- Apply music volume mapping (0..1 slider -> 0..0.5 actual)
-			local mv = data.MusicVolume or data.Music or 0.5
-			local mapped = math.clamp(tonumber(mv) or 0.5, 0, 1) * 0.5
-			local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")
-			if soundsRoot then
-				local musicFolder = soundsRoot:FindFirstChild("Music")
-				if musicFolder then
-					for _, obj in ipairs(musicFolder:GetDescendants()) do
-						if obj:IsA("Sound") then
-							pcall(function() obj.Volume = mapped end)
-						end
-					end
-				end
-			end
-		end
-	end
-end)
-
 openMenu()
 fadeOut(gui, bg, title, status, barBg, barFill)

@@ -234,7 +234,7 @@ function CoinDisplay.Create(parent, layoutOrder)
                 if shopMod and shopMod:IsA("ModuleScript") then
                     local ok, ShopUI = pcall(require, shopMod)
                     if ok and ShopUI and ShopUI.getActiveTab then
-                        onCoins = (ShopUI.getActiveTab() == "coins")
+                        onCoins = (ShopUI.getActiveTab() == "currency")
                     end
                 end
 
@@ -245,7 +245,7 @@ function CoinDisplay.Create(parent, layoutOrder)
                     -- Open on another tab → switch to Coins
                     local ok2, ShopUI2 = pcall(require, ReplicatedStorage:FindFirstChild("SideUI"):FindFirstChild("ShopUI"))
                     if ok2 and ShopUI2 and ShopUI2.setActiveTab then
-                        ShopUI2.setActiveTab("coins")
+                        ShopUI2.setActiveTab("currency")
                     end
                 end
             else
@@ -256,7 +256,7 @@ function CoinDisplay.Create(parent, layoutOrder)
                 if shopMod and shopMod:IsA("ModuleScript") then
                     local ok, ShopUI = pcall(require, shopMod)
                     if ok and ShopUI and ShopUI.setActiveTab then
-                        ShopUI.setActiveTab("coins")
+                        ShopUI.setActiveTab("currency")
                     end
                 end
             end

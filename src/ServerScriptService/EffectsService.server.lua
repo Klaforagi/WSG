@@ -324,4 +324,41 @@ equipEffectRE.OnServerEvent:Connect(function(player, effectId, subType)
     pushEquippedToClient(player)
 end)
 
+--------------------------------------------------------------------------------
+-- BINDABLE API  (server-to-server, used by SalvageShopService)
+--------------------------------------------------------------------------------
+do
+    local ServerScriptService = game:GetService("ServerScriptService")
+
+    -- CheckEffectOwnership(player, effectId) -> bool
+    local checkBF = Instance.new("BindableFunction")
+    checkBF.Name = "CheckEffectOwnership"
+    checkBF.Parent = ServerScriptService
+    checkBF.OnInvoke = function(player, effectId)
+        if not player or type(effectId) ~= "string" then return false end
+        return isOwned(player, effectId)
+    end
+
+    -- GrantEffect(player, effectId) -> bool
+    local grantBF = Instance.new("BindableFunction")
+    grantBF.Name = "GrantEffect"
+    grantBF.Parent = ServerScriptService
+    grantBF.OnInvoke = function(player, effectId)
+        if not player or type(effectId) ~= "string" then return false end
+        if isOwned(player, effectId) then return true end -- already owned, success
+        local def = EffectDefs.GetById(effectId)
+        if not def then
+            warn("[EffectsService] GrantEffect: unknown effectId:", effectId)
+            return false
+        end
+        local data = getOrCreateData(player)
+        data.owned[effectId] = true
+        dprint("Granted effect", effectId, "to", player.Name, "(via BindableFunction)")
+        task.spawn(function() saveData(player) end)
+        return true
+    end
+
+    dprint("BindableFunction API registered (CheckEffectOwnership, GrantEffect)")
+end
+
 dprint("fully initialized")

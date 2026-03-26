@@ -246,7 +246,8 @@ local TAB_DEFS = {
     { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 3 },
     { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 4 },
     { id = "effects", icon = "\u{2738}", label = "Effects", order = 5 },
-    { id = "coins",   icon = "\u{1FA99}", label = "Coins",   order = 6 },
+    { id = "salvage", icon = "\u{2699}", label = "Salvage", order = 6 },
+    { id = "currency", icon = "\u{1FA99}", label = "Currency", order = 7 },
 }
 
 -- Debug: final Shop categories after Trails removal
@@ -298,6 +299,7 @@ local CUSTOM_TAB_ICON_COLORS = {
     emotes = { active = Color3.fromRGB(223, 176, 96), inactive = Color3.fromRGB(145, 116, 74) },
     effects = { active = Color3.fromRGB(214, 138, 206), inactive = Color3.fromRGB(136, 90, 131) },
     coins  = { active = Color3.fromRGB(255, 215, 80), inactive = Color3.fromRGB(160, 140, 60) },
+    currency = { active = Color3.fromRGB(255, 215, 80), inactive = Color3.fromRGB(160, 140, 60) },
 }
 
 local function getCustomTabIconColor(tabId, active)
@@ -450,8 +452,8 @@ local function buildCustomTabIcon(parentBtn, tabId)
         local miniDotCorner = Instance.new("UICorner")
         miniDotCorner.CornerRadius = UDim.new(1, 0)
         miniDotCorner.Parent = miniDot
-    elseif tabId == "coins" then
-        -- Coin circle icon
+    elseif tabId == "currency" then
+        -- Currency circle icon
         local coinOuter = markIconPart(Instance.new("Frame"))
         coinOuter.BackgroundTransparency = 0
         coinOuter.BorderSizePixel = 0
@@ -889,7 +891,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
         -- Keep original glyph rendering for Weapons/Boosts only.
         -- Other tabs get custom vector-style icons for clarity at small size.
-        if def.id == "weapons" or def.id == "boosts" then
+        if def.id == "weapons" or def.id == "boosts" or def.id == "salvage" then
             local iconLbl = Instance.new("TextLabel")
             iconLbl.Name                = "Icon"
             iconLbl.BackgroundTransparency = 1
@@ -2350,7 +2352,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         local allEffects = {}
         if EffectDefs then
             for _, def in ipairs(EffectDefs.GetAll()) do
-                if not def.IsFree then
+                if not def.IsFree and def.ShopVisible ~= false then
                     table.insert(allEffects, def)
                 end
             end
@@ -3046,7 +3048,433 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     end
 
     ---------------------------------------------------------------------------
-    -- COINS content page (Robux coin packs via Developer Products)
+    -- SALVAGE SHOP content page
+    ---------------------------------------------------------------------------
+    do
+        local SalvageShopConfig = nil
+        pcall(function()
+            local mod = ReplicatedStorage:FindFirstChild("SalvageShopConfig")
+            if mod and mod:IsA("ModuleScript") then
+                SalvageShopConfig = require(mod)
+            end
+        end)
+
+        local SALVAGE_GREEN = Color3.fromRGB(35, 190, 75)
+        local SALVAGE_BG    = Color3.fromRGB(24, 56, 32)
+
+        local salvagePage = Instance.new("Frame")
+        salvagePage.Name = "SalvageContent"
+        salvagePage.BackgroundTransparency = 1
+        salvagePage.Size = UDim2.new(1, 0, 0, 0)
+        salvagePage.AutomaticSize = Enum.AutomaticSize.Y
+        salvagePage.Visible = false
+        salvagePage.Parent = contentContainer
+
+        local salvageLayout = Instance.new("UIListLayout")
+        salvageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        salvageLayout.Padding = UDim.new(0, px(12))
+        salvageLayout.Parent = salvagePage
+
+        local salvagePad = Instance.new("UIPadding")
+        salvagePad.PaddingTop = UDim.new(0, px(6))
+        salvagePad.PaddingBottom = UDim.new(0, px(12))
+        salvagePad.PaddingLeft = UDim.new(0, px(8))
+        salvagePad.PaddingRight = UDim.new(0, px(8))
+        salvagePad.Parent = salvagePage
+
+        -- Header
+        local salvageHeader = Instance.new("Frame")
+        salvageHeader.Name = "SalvageHeader"
+        salvageHeader.BackgroundTransparency = 1
+        salvageHeader.Size = UDim2.new(1, 0, 0, px(54))
+        salvageHeader.LayoutOrder = 1
+        salvageHeader.Parent = salvagePage
+
+        local salvageTitle = Instance.new("TextLabel")
+        salvageTitle.BackgroundTransparency = 1
+        salvageTitle.Font = Enum.Font.GothamBold
+        salvageTitle.Text = "SALVAGE SHOP"
+        salvageTitle.TextColor3 = SALVAGE_GREEN
+        salvageTitle.TextSize = math.max(20, math.floor(px(24)))
+        salvageTitle.TextXAlignment = Enum.TextXAlignment.Left
+        salvageTitle.Size = UDim2.new(1, 0, 0, px(30))
+        salvageTitle.Parent = salvageHeader
+
+        local salvageSubtitle = Instance.new("TextLabel")
+        salvageSubtitle.BackgroundTransparency = 1
+        salvageSubtitle.Font = Enum.Font.GothamMedium
+        salvageSubtitle.Text = "Spend Salvage earned from recycling weapons."
+        salvageSubtitle.TextColor3 = DIM_TEXT
+        salvageSubtitle.TextSize = math.max(11, math.floor(px(12)))
+        salvageSubtitle.TextXAlignment = Enum.TextXAlignment.Left
+        salvageSubtitle.Size = UDim2.new(1, 0, 0, px(16))
+        salvageSubtitle.Position = UDim2.new(0, 0, 0, px(30))
+        salvageSubtitle.Parent = salvageHeader
+
+        local salvageAccent = Instance.new("Frame")
+        salvageAccent.BackgroundColor3 = SALVAGE_GREEN
+        salvageAccent.BackgroundTransparency = 0.3
+        salvageAccent.BorderSizePixel = 0
+        salvageAccent.Size = UDim2.new(1, 0, 0, px(2))
+        salvageAccent.Position = UDim2.new(0, 0, 1, -px(2))
+        salvageAccent.Parent = salvageHeader
+
+        -- Rarity colors for card styling
+        local SALVAGE_RARITY_COLORS = {
+            Common    = Color3.fromRGB(180, 180, 180),
+            Uncommon  = Color3.fromRGB(120, 200, 120),
+            Rare      = Color3.fromRGB(60, 140, 255),
+            Epic      = Color3.fromRGB(180, 60, 255),
+            Legendary = Color3.fromRGB(255, 180, 30),
+        }
+
+        -- Fetch ownership state from server
+        local ownedItems = {}
+        pcall(function()
+            local ownershipRF = ReplicatedStorage:FindFirstChild("GetSalvageShopOwnership")
+            if not ownershipRF then
+                ownershipRF = ReplicatedStorage:WaitForChild("GetSalvageShopOwnership", 6)
+            end
+            if ownershipRF and ownershipRF:IsA("RemoteFunction") then
+                local result = ownershipRF:InvokeServer()
+                if type(result) == "table" then
+                    ownedItems = result
+                end
+            end
+        end)
+
+        -- Fetch current salvage balance for button state
+        local currentSalvage = 0
+        pcall(function()
+            local getSalvageFn = ReplicatedStorage:FindFirstChild("GetSalvage")
+            if getSalvageFn and getSalvageFn:IsA("RemoteFunction") then
+                local result = getSalvageFn:InvokeServer()
+                if type(result) == "number" then
+                    currentSalvage = result
+                end
+            end
+        end)
+
+        -- Listen for live salvage balance updates
+        pcall(function()
+            local salvageEvent = ReplicatedStorage:FindFirstChild("SalvageUpdated")
+            if salvageEvent and salvageEvent:IsA("RemoteEvent") then
+                trackConn(salvageEvent.OnClientEvent:Connect(function(amount)
+                    if type(amount) == "number" then
+                        currentSalvage = amount
+                    end
+                end))
+            end
+        end)
+
+        local purchaseDebounce = false
+        local salvageCardRefs = {} -- [itemId] = { buyBtn, ownedLabel, priceLabel }
+
+        local function updateSalvageCardStates()
+            for itemId, refs in pairs(salvageCardRefs) do
+                local isOwned = ownedItems[itemId] == true
+                if isOwned and refs.unique then
+                    refs.buyBtn.Visible = false
+                    refs.ownedLabel.Visible = true
+                    refs.card.BackgroundColor3 = CARD_OWNED or Color3.fromRGB(20, 38, 24)
+                    refs.stroke.Color = GREEN_GLOW
+                else
+                    refs.buyBtn.Visible = true
+                    refs.ownedLabel.Visible = false
+                    refs.card.BackgroundColor3 = CARD_BG
+                    refs.stroke.Color = CARD_STROKE
+                    -- Update affordability
+                    if currentSalvage >= refs.price then
+                        refs.buyBtn.BackgroundColor3 = SALVAGE_BG
+                        refs.buyBtn.TextColor3 = SALVAGE_GREEN
+                        refs.buyBtn.Text = refs.priceText
+                    else
+                        refs.buyBtn.BackgroundColor3 = DISABLED_BG
+                        refs.buyBtn.TextColor3 = DIM_TEXT
+                        refs.buyBtn.Text = refs.priceText
+                    end
+                end
+            end
+        end
+
+        if SalvageShopConfig then
+            local enabledItems = SalvageShopConfig.GetEnabled()
+
+            if #enabledItems == 0 then
+                local empty = Instance.new("TextLabel")
+                empty.BackgroundTransparency = 1
+                empty.Font = Enum.Font.GothamMedium
+                empty.Text = "No items available in the Salvage Shop yet."
+                empty.TextColor3 = DIM_TEXT
+                empty.TextSize = math.max(14, math.floor(px(15)))
+                empty.Size = UDim2.new(1, 0, 0, px(50))
+                empty.LayoutOrder = 10
+                empty.Parent = salvagePage
+            else
+                for index, item in ipairs(enabledItems) do
+                    local rarColor = SALVAGE_RARITY_COLORS[item.Rarity] or SALVAGE_RARITY_COLORS.Common
+                    local isOwned = item.Unique and ownedItems[item.Id] == true
+
+                    local card = Instance.new("Frame")
+                    card.Name = "Salvage_" .. item.Id
+                    card.BackgroundColor3 = isOwned and (CARD_OWNED or Color3.fromRGB(20, 38, 24)) or CARD_BG
+                    card.Size = UDim2.new(1, 0, 0, px(110))
+                    card.LayoutOrder = 10 + index
+                    card.Parent = salvagePage
+
+                    local corner = Instance.new("UICorner")
+                    corner.CornerRadius = UDim.new(0, px(12))
+                    corner.Parent = card
+
+                    local cardStroke = Instance.new("UIStroke")
+                    cardStroke.Color = isOwned and GREEN_GLOW or CARD_STROKE
+                    cardStroke.Thickness = 1.2
+                    cardStroke.Transparency = 0.35
+                    cardStroke.Parent = card
+
+                    local pad = Instance.new("UIPadding")
+                    pad.PaddingTop = UDim.new(0, px(10))
+                    pad.PaddingBottom = UDim.new(0, px(10))
+                    pad.PaddingLeft = UDim.new(0, px(14))
+                    pad.PaddingRight = UDim.new(0, px(14))
+                    pad.Parent = card
+
+                    -- Icon plate (left side)
+                    local iconFrame = Instance.new("Frame")
+                    iconFrame.Name = "ItemIcon"
+                    iconFrame.Size = UDim2.new(0, px(56), 0, px(56))
+                    iconFrame.Position = UDim2.new(0, 0, 0.5, 0)
+                    iconFrame.AnchorPoint = Vector2.new(0, 0.5)
+                    iconFrame.BackgroundColor3 = rarColor
+                    iconFrame.BackgroundTransparency = 0.7
+                    iconFrame.BorderSizePixel = 0
+                    iconFrame.Parent = card
+
+                    local iconCorner = Instance.new("UICorner")
+                    iconCorner.CornerRadius = UDim.new(0, px(8))
+                    iconCorner.Parent = iconFrame
+
+                    local iconStroke = Instance.new("UIStroke")
+                    iconStroke.Color = rarColor
+                    iconStroke.Thickness = 1.2
+                    iconStroke.Transparency = 0.4
+                    iconStroke.Parent = iconFrame
+
+                    local iconGlyph = Instance.new("TextLabel")
+                    iconGlyph.Name = "Glyph"
+                    iconGlyph.BackgroundTransparency = 1
+                    iconGlyph.Size = UDim2.new(1, 0, 1, 0)
+                    iconGlyph.Font = Enum.Font.GothamBold
+                    iconGlyph.Text = item.IconGlyph or "\u{2699}"
+                    iconGlyph.TextSize = math.max(16, math.floor(px(28)))
+                    iconGlyph.TextColor3 = WHITE
+                    iconGlyph.Parent = iconFrame
+
+                    -- Item name
+                    local nameLabel = Instance.new("TextLabel")
+                    nameLabel.BackgroundTransparency = 1
+                    nameLabel.Font = Enum.Font.GothamBold
+                    nameLabel.Text = item.DisplayName
+                    nameLabel.TextColor3 = WHITE
+                    nameLabel.TextSize = math.max(15, math.floor(px(17)))
+                    nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    nameLabel.Size = UDim2.new(0.55, -px(70), 0, px(22))
+                    nameLabel.Position = UDim2.new(0, px(70), 0, 0)
+                    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+                    nameLabel.Parent = card
+
+                    -- Rarity tag
+                    local rarTag = Instance.new("TextLabel")
+                    rarTag.BackgroundTransparency = 1
+                    rarTag.Font = Enum.Font.GothamBold
+                    rarTag.Text = item.Rarity or ""
+                    rarTag.TextColor3 = rarColor
+                    rarTag.TextSize = math.max(10, math.floor(px(11)))
+                    rarTag.TextXAlignment = Enum.TextXAlignment.Left
+                    rarTag.Size = UDim2.new(0.3, 0, 0, px(16))
+                    rarTag.Position = UDim2.new(0, px(70), 0, px(22))
+                    rarTag.Parent = card
+
+                    -- Description
+                    local desc = Instance.new("TextLabel")
+                    desc.BackgroundTransparency = 1
+                    desc.Font = Enum.Font.GothamMedium
+                    desc.Text = item.Description
+                    desc.TextColor3 = DIM_TEXT
+                    desc.TextSize = math.max(11, math.floor(px(12)))
+                    desc.TextWrapped = true
+                    desc.TextXAlignment = Enum.TextXAlignment.Left
+                    desc.TextYAlignment = Enum.TextYAlignment.Top
+                    desc.Size = UDim2.new(0.55, -px(70), 0, px(36))
+                    desc.Position = UDim2.new(0, px(70), 0, px(40))
+                    desc.Parent = card
+
+                    -- Price label
+                    local priceText = tostring(item.SalvagePrice) .. " \u{2699}"
+                    local priceLabel = Instance.new("TextLabel")
+                    priceLabel.BackgroundTransparency = 1
+                    priceLabel.Font = Enum.Font.GothamBold
+                    priceLabel.Text = priceText
+                    priceLabel.TextColor3 = SALVAGE_GREEN
+                    priceLabel.TextSize = math.max(12, math.floor(px(13)))
+                    priceLabel.TextXAlignment = Enum.TextXAlignment.Left
+                    priceLabel.Size = UDim2.new(0.3, -px(70), 0, px(18))
+                    priceLabel.Position = UDim2.new(0, px(70), 1, -px(18))
+                    priceLabel.Parent = card
+
+                    -- Buy button (right side)
+                    local buyBtn = Instance.new("TextButton")
+                    buyBtn.Name = "BuyBtn"
+                    buyBtn.AutoButtonColor = false
+                    buyBtn.Font = Enum.Font.GothamBold
+                    buyBtn.TextSize = math.max(12, math.floor(px(13)))
+                    buyBtn.Size = UDim2.new(0, px(130), 0, px(36))
+                    buyBtn.AnchorPoint = Vector2.new(1, 1)
+                    buyBtn.Position = UDim2.new(1, 0, 1, 0)
+                    buyBtn.Parent = card
+                    buyBtn.Visible = not isOwned
+
+                    if currentSalvage >= item.SalvagePrice then
+                        buyBtn.BackgroundColor3 = SALVAGE_BG
+                        buyBtn.TextColor3 = SALVAGE_GREEN
+                        buyBtn.Text = priceText
+                    else
+                        buyBtn.BackgroundColor3 = DISABLED_BG
+                        buyBtn.TextColor3 = DIM_TEXT
+                        buyBtn.Text = priceText
+                    end
+
+                    local btnCorner = Instance.new("UICorner")
+                    btnCorner.CornerRadius = UDim.new(0, px(10))
+                    btnCorner.Parent = buyBtn
+
+                    local btnStroke = Instance.new("UIStroke")
+                    btnStroke.Color = SALVAGE_GREEN
+                    btnStroke.Thickness = 1.2
+                    btnStroke.Transparency = 0.4
+                    btnStroke.Parent = buyBtn
+
+                    -- Owned indicator (hidden unless unique + owned)
+                    local ownedLabel = Instance.new("TextLabel")
+                    ownedLabel.Name = "OwnedBadge"
+                    ownedLabel.BackgroundTransparency = 1
+                    ownedLabel.Font = Enum.Font.GothamBold
+                    ownedLabel.Text = "\u{2714} OWNED"
+                    ownedLabel.TextColor3 = GREEN_GLOW
+                    ownedLabel.TextSize = math.max(13, math.floor(px(14)))
+                    ownedLabel.TextXAlignment = Enum.TextXAlignment.Right
+                    ownedLabel.Size = UDim2.new(0.35, 0, 0, px(24))
+                    ownedLabel.AnchorPoint = Vector2.new(1, 1)
+                    ownedLabel.Position = UDim2.new(1, 0, 1, 0)
+                    ownedLabel.Visible = isOwned
+                    ownedLabel.Parent = card
+
+                    -- Hover feedback
+                    buyBtn.MouseEnter:Connect(function()
+                        if currentSalvage >= item.SalvagePrice then
+                            TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(32, 76, 42)}):Play()
+                        end
+                    end)
+                    buyBtn.MouseLeave:Connect(function()
+                        local bg = (currentSalvage >= item.SalvagePrice) and SALVAGE_BG or DISABLED_BG
+                        TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = bg}):Play()
+                    end)
+
+                    -- Purchase click handler
+                    buyBtn.MouseButton1Click:Connect(function()
+                        if purchaseDebounce then return end
+                        if currentSalvage < item.SalvagePrice then
+                            showToast(salvagePage, "Not enough Salvage!", RED_TEXT, 2)
+                            return
+                        end
+
+                        purchaseDebounce = true
+
+                        local purchaseRF = ReplicatedStorage:FindFirstChild("PurchaseSalvageItem")
+                        if not purchaseRF or not purchaseRF:IsA("RemoteFunction") then
+                            showToast(salvagePage, "Purchase unavailable", RED_TEXT, 2)
+                            purchaseDebounce = false
+                            return
+                        end
+
+                        buyBtn.Text = "..."
+                        local ok, success, result = pcall(function()
+                            return purchaseRF:InvokeServer(item.Id)
+                        end)
+
+                        if ok and success then
+                            -- Update balance
+                            if type(result) == "table" and result.newBalance then
+                                currentSalvage = result.newBalance
+                            end
+
+                            -- Mark owned if unique
+                            if item.Unique then
+                                ownedItems[item.Id] = true
+                            end
+
+                            -- Refresh all card states
+                            updateSalvageCardStates()
+
+                            -- Update header
+                            pcall(function()
+                                if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
+                            end)
+
+                            local displayName = (type(result) == "table" and result.displayName) or item.DisplayName
+                            showToast(salvagePage, "Purchased " .. displayName .. "!", GREEN_GLOW, 2.5)
+
+                            print("[SalvageShop] Purchase success:", item.Id)
+                        else
+                            local reason = "Purchase failed"
+                            if type(result) == "table" and result.reason then
+                                reason = result.reason
+                            elseif type(result) == "string" then
+                                reason = result
+                            end
+                            showToast(salvagePage, reason, RED_TEXT, 3)
+                            print("[SalvageShop] Purchase denied:", item.Id, reason)
+                        end
+
+                        buyBtn.Text = priceText
+                        task.delay(1.0, function()
+                            purchaseDebounce = false
+                        end)
+                    end)
+
+                    -- Store refs for state updates
+                    salvageCardRefs[item.Id] = {
+                        card = card,
+                        buyBtn = buyBtn,
+                        ownedLabel = ownedLabel,
+                        priceLabel = priceLabel,
+                        stroke = cardStroke,
+                        price = item.SalvagePrice,
+                        priceText = priceText,
+                        unique = item.Unique == true,
+                    }
+                end
+
+                -- Initial card state update
+                updateSalvageCardStates()
+            end
+        else
+            local empty = Instance.new("TextLabel")
+            empty.BackgroundTransparency = 1
+            empty.Font = Enum.Font.GothamMedium
+            empty.Text = "Salvage Shop coming soon."
+            empty.TextColor3 = DIM_TEXT
+            empty.TextSize = math.max(14, math.floor(px(15)))
+            empty.Size = UDim2.new(1, 0, 0, px(50))
+            empty.LayoutOrder = 10
+            empty.Parent = salvagePage
+        end
+
+        contentPages["salvage"] = salvagePage
+    end
+
+    ---------------------------------------------------------------------------
+    -- CURRENCY content page (Robux coin packs + key packs via Developer Products)
     ---------------------------------------------------------------------------
     do
         local CoinProducts = nil
@@ -3057,8 +3485,16 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
+        local KeyProducts = nil
+        pcall(function()
+            local mod = ReplicatedStorage:FindFirstChild("KeyProducts")
+            if mod and mod:IsA("ModuleScript") then
+                KeyProducts = require(mod)
+            end
+        end)
+
         local coinsPage = Instance.new("Frame")
-        coinsPage.Name = "CoinsContent"
+        coinsPage.Name = "CurrencyContent"
         coinsPage.BackgroundTransparency = 1
         coinsPage.Size = UDim2.new(1, 0, 0, 0)
         coinsPage.AutomaticSize = Enum.AutomaticSize.Y
@@ -3247,7 +3683,190 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             end
         end
 
-        contentPages["coins"] = coinsPage
+        -----------------------------------------------------------------------
+        -- KEY PACKS section (within the same Currency tab)
+        -----------------------------------------------------------------------
+        local KEY_BLUE = Color3.fromRGB(100, 200, 255)
+
+        -- Spacer between coin packs and key packs
+        local keySpacer = Instance.new("Frame")
+        keySpacer.Name = "KeySpacer"
+        keySpacer.BackgroundTransparency = 1
+        keySpacer.Size = UDim2.new(1, 0, 0, px(6))
+        keySpacer.LayoutOrder = 100
+        keySpacer.Parent = coinsPage
+
+        -- Key packs header
+        local keysHeader = Instance.new("TextLabel")
+        keysHeader.Name = "KeysHeader"
+        keysHeader.BackgroundTransparency = 1
+        keysHeader.Font = Enum.Font.GothamBlack
+        keysHeader.Text = "Key Packs"
+        keysHeader.TextColor3 = KEY_BLUE
+        keysHeader.TextSize = math.max(16, math.floor(px(20)))
+        keysHeader.Size = UDim2.new(1, 0, 0, px(30))
+        keysHeader.TextXAlignment = Enum.TextXAlignment.Left
+        keysHeader.LayoutOrder = 101
+        keysHeader.Parent = coinsPage
+
+        local keysAccent = Instance.new("Frame")
+        keysAccent.Name = "KeyAccentBar"
+        keysAccent.BackgroundColor3 = KEY_BLUE
+        keysAccent.BackgroundTransparency = 0.3
+        keysAccent.Size = UDim2.new(1, 0, 0, px(2))
+        keysAccent.BorderSizePixel = 0
+        keysAccent.LayoutOrder = 102
+        keysAccent.Parent = coinsPage
+
+        local keyPromptDebounce = false
+
+        if KeyProducts and KeyProducts.Packs then
+            for i, pack in ipairs(KeyProducts.Packs) do
+                local card = Instance.new("Frame")
+                card.Name = "KeyPack_" .. tostring(i)
+                card.Size = UDim2.new(1, -px(4), 0, px(115))
+                card.BackgroundColor3 = CARD_BG
+                card.BorderSizePixel = 0
+                card.LayoutOrder = 102 + i
+                card.ZIndex = 250
+                card.ClipsDescendants = true
+                card.Parent = coinsPage
+
+                local cardCorner = Instance.new("UICorner")
+                cardCorner.CornerRadius = UDim.new(0, px(10))
+                cardCorner.Parent = card
+
+                local cardStroke = Instance.new("UIStroke")
+                cardStroke.Color = CARD_STROKE
+                cardStroke.Thickness = 1.2
+                cardStroke.Transparency = 0.35
+                cardStroke.Parent = card
+
+                local cardPad = Instance.new("UIPadding")
+                cardPad.PaddingLeft = UDim.new(0, px(20))
+                cardPad.PaddingRight = UDim.new(0, px(18))
+                cardPad.Parent = card
+
+                -- Key icon (diamond/key glyph circle)
+                local keyIconSize = px(54)
+                local keyCircle = Instance.new("Frame")
+                keyCircle.Name = "KeyIcon"
+                keyCircle.Size = UDim2.new(0, keyIconSize, 0, keyIconSize)
+                keyCircle.AnchorPoint = Vector2.new(0, 0.5)
+                keyCircle.Position = UDim2.new(0, 0, 0.5, 0)
+                keyCircle.BackgroundColor3 = KEY_BLUE
+                keyCircle.BackgroundTransparency = 0.15
+                keyCircle.BorderSizePixel = 0
+                keyCircle.ZIndex = 252
+                keyCircle.Parent = card
+                local kcc = Instance.new("UICorner")
+                kcc.CornerRadius = UDim.new(0.5, 0)
+                kcc.Parent = keyCircle
+
+                local keyGlyph = Instance.new("TextLabel")
+                keyGlyph.Name = "KeyGlyph"
+                keyGlyph.BackgroundTransparency = 1
+                keyGlyph.Font = Enum.Font.GothamBold
+                keyGlyph.Text = "\u{1F511}"
+                keyGlyph.TextSize = math.max(18, math.floor(px(24)))
+                keyGlyph.TextColor3 = WHITE
+                keyGlyph.Size = UDim2.new(1, 0, 1, 0)
+                keyGlyph.ZIndex = 253
+                keyGlyph.Parent = keyCircle
+
+                -- Key amount label
+                local keyLabel = Instance.new("TextLabel")
+                keyLabel.Name = "KeyAmount"
+                keyLabel.Size = UDim2.new(0.50, -keyIconSize, 0.50, 0)
+                keyLabel.Position = UDim2.new(0, keyIconSize + px(16), 0, px(10))
+                keyLabel.BackgroundTransparency = 1
+                keyLabel.Font = Enum.Font.GothamBlack
+                keyLabel.Text = tostring(pack.Keys) .. " Keys"
+                keyLabel.TextColor3 = KEY_BLUE
+                keyLabel.TextSize = math.max(18, math.floor(px(22)))
+                keyLabel.TextXAlignment = Enum.TextXAlignment.Left
+                keyLabel.ZIndex = 252
+                keyLabel.Parent = card
+
+                -- Pack name subtitle
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Name = "PackName"
+                nameLabel.Size = UDim2.new(0.50, -keyIconSize, 0.35, 0)
+                nameLabel.Position = UDim2.new(0, keyIconSize + px(16), 0.50, px(4))
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Text = pack.Name
+                nameLabel.TextColor3 = DIM_TEXT
+                nameLabel.TextSize = math.max(13, math.floor(px(15)))
+                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+                nameLabel.ZIndex = 252
+                nameLabel.Parent = card
+
+                -- Buy button (right side)
+                local buyBtn = Instance.new("TextButton")
+                buyBtn.Name = "BuyBtn"
+                buyBtn.Size = UDim2.new(0, px(140), 0, px(48))
+                buyBtn.AnchorPoint = Vector2.new(1, 0.5)
+                buyBtn.Position = UDim2.new(1, 0, 0.5, 0)
+                buyBtn.BackgroundColor3 = GREEN_BTN
+                buyBtn.BorderSizePixel = 0
+                buyBtn.Font = Enum.Font.GothamBold
+                buyBtn.Text = "R$ " .. tostring(pack.Price or "??")
+                buyBtn.TextColor3 = WHITE
+                buyBtn.TextSize = math.max(15, math.floor(px(18)))
+                buyBtn.AutoButtonColor = false
+                buyBtn.ZIndex = 253
+                buyBtn.Parent = card
+
+                local buyCorner = Instance.new("UICorner")
+                buyCorner.CornerRadius = UDim.new(0, px(8))
+                buyCorner.Parent = buyBtn
+
+                local buyStroke = Instance.new("UIStroke")
+                buyStroke.Color = Color3.fromRGB(25, 140, 50)
+                buyStroke.Thickness = 1.2
+                buyStroke.Parent = buyBtn
+
+                -- Hover feedback
+                buyBtn.MouseEnter:Connect(function()
+                    TweenService:Create(buyBtn, TWEEN_QUICK, {
+                        BackgroundColor3 = Color3.fromRGB(50, 220, 90),
+                    }):Play()
+                end)
+                buyBtn.MouseLeave:Connect(function()
+                    TweenService:Create(buyBtn, TWEEN_QUICK, {
+                        BackgroundColor3 = GREEN_BTN,
+                    }):Play()
+                end)
+
+                -- Purchase click handler
+                buyBtn.MouseButton1Click:Connect(function()
+                    if keyPromptDebounce then return end
+
+                    local productId = pack.ProductId
+                    if not productId or productId == 0 then
+                        warn("[ShopUI][Keys] Product ID not set for '" .. pack.Name .. "'. Set it in KeyProducts.lua")
+                        return
+                    end
+
+                    keyPromptDebounce = true
+                    print("[ShopUI][Keys] Prompting purchase:", pack.Name, "ProductId:", productId)
+
+                    local ok, err = pcall(function()
+                        MarketplaceService:PromptProductPurchase(Players.LocalPlayer, productId)
+                    end)
+                    if not ok then
+                        warn("[ShopUI][Keys] PromptProductPurchase failed:", tostring(err))
+                    end
+
+                    task.delay(2, function()
+                        keyPromptDebounce = false
+                    end)
+                end)
+            end
+        end
+
+        contentPages["currency"] = coinsPage
     end
 
     ---------------------------------------------------------------------------

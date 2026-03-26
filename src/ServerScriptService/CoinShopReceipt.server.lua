@@ -3,7 +3,8 @@
 -- Place in ServerScriptService.
 --
 -- Handles MarketplaceService.ProcessReceipt for coin packs defined in
--- ReplicatedStorage.CoinProducts.  Awards coins via the existing
+-- ReplicatedStorage.CoinProducts and key packs defined in
+-- ReplicatedStorage.KeyProducts.  Awards currency via the existing
 -- CurrencyService module and persists receipt IDs to prevent duplicates.
 --------------------------------------------------------------------------------
 
@@ -27,7 +28,25 @@ do
 			warn("[CoinShopReceipt] Failed to require CoinProducts:", tostring(result))
 		end
 	else
-		warn("[CoinShopReceipt] CoinProducts module not found – receipt handler disabled")
+		warn("[CoinShopReceipt] CoinProducts module not found – coin receipt handler disabled")
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Load shared KeyProducts config
+--------------------------------------------------------------------------------
+local KeyProducts
+do
+	local mod = ReplicatedStorage:WaitForChild("KeyProducts", 15)
+	if mod and mod:IsA("ModuleScript") then
+		local ok, result = pcall(require, mod)
+		if ok then
+			KeyProducts = result
+		else
+			warn("[CoinShopReceipt] Failed to require KeyProducts:", tostring(result))
+		end
+	else
+		warn("[CoinShopReceipt] KeyProducts module not found – key receipt handler disabled")
 	end
 end
 
@@ -112,15 +131,12 @@ local function processReceipt(receiptInfo)
 	print("[CoinShopReceipt] Processing receipt:", receiptId,
 		"Player:", playerId, "Product:", productId)
 
-	-- 1) Determine how many coins this product grants
-	if not CoinProducts or not CoinProducts.CoinsByProductId then
-		warn("[CoinShopReceipt] CoinProducts not loaded; cannot process receipt", receiptId)
-		return Enum.ProductPurchaseDecision.NotProcessedYet
-	end
+	-- 1) Determine what this product grants (coins or keys)
+	local coinsToAward = CoinProducts and CoinProducts.CoinsByProductId and CoinProducts.CoinsByProductId[productId]
+	local keysToAward  = KeyProducts and KeyProducts.KeysByProductId and KeyProducts.KeysByProductId[productId]
 
-	local coinsToAward = CoinProducts.CoinsByProductId[productId]
-	if not coinsToAward then
-		-- Not one of our coin products – another ProcessReceipt handler may
+	if not coinsToAward and not keysToAward then
+		-- Not one of our products – another ProcessReceipt handler may
 		-- handle it if you add one later. Return NotProcessedYet so Roblox
 		-- retries and the correct handler can pick it up (or it times out).
 		warn("[CoinShopReceipt] Unknown product ID:", productId, "– skipping")
@@ -142,18 +158,30 @@ local function processReceipt(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- 4) Award coins via CurrencyService
+	-- 4) Award currency via CurrencyService
 	if not CurrencyService then
-		warn("[CoinShopReceipt] CurrencyService unavailable – cannot award coins")
+		warn("[CoinShopReceipt] CurrencyService unavailable – cannot award currency")
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	local awardOk, awardErr = pcall(function()
-		CurrencyService:AddCoins(playerObj, coinsToAward, "purchase")
-	end)
-	if not awardOk then
-		warn("[CoinShopReceipt] AddCoins failed for", playerObj.Name, ":", tostring(awardErr))
-		return Enum.ProductPurchaseDecision.NotProcessedYet
+	if coinsToAward then
+		local awardOk, awardErr = pcall(function()
+			CurrencyService:AddCoins(playerObj, coinsToAward, "purchase")
+		end)
+		if not awardOk then
+			warn("[CoinShopReceipt] AddCoins failed for", playerObj.Name, ":", tostring(awardErr))
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+	end
+
+	if keysToAward then
+		local awardOk, awardErr = pcall(function()
+			CurrencyService:AddKeys(playerObj, keysToAward, "purchase")
+		end)
+		if not awardOk then
+			warn("[CoinShopReceipt] AddKeys failed for", playerObj.Name, ":", tostring(awardErr))
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
 	end
 
 	-- 5) Save immediately so the balance is persisted
@@ -162,22 +190,27 @@ local function processReceipt(receiptInfo)
 	end)
 
 	-- 6) Mark receipt as processed
-	markReceiptProcessed(receiptId, playerId, productId, coinsToAward)
+	local awardedAmount = coinsToAward or keysToAward
+	local awardedType = coinsToAward and "coins" or "keys"
+	markReceiptProcessed(receiptId, playerId, productId, awardedAmount)
 
 	-- 7) Track Robux spent for achievements
-	if CoinProducts and CoinProducts.PriceByProductId then
-		local robuxPrice = CoinProducts.PriceByProductId[productId]
-		if robuxPrice and robuxPrice > 0 then
-			task.spawn(function()
-				local achSvc = getAchievementService()
-				if achSvc then
-					achSvc:IncrementStat(playerObj, "totalRobuxSpent", robuxPrice)
-				end
-			end)
-		end
+	local robuxPrice = nil
+	if coinsToAward and CoinProducts and CoinProducts.PriceByProductId then
+		robuxPrice = CoinProducts.PriceByProductId[productId]
+	elseif keysToAward and KeyProducts and KeyProducts.PriceByProductId then
+		robuxPrice = KeyProducts.PriceByProductId[productId]
+	end
+	if robuxPrice and robuxPrice > 0 then
+		task.spawn(function()
+			local achSvc = getAchievementService()
+			if achSvc then
+				achSvc:IncrementStat(playerObj, "totalRobuxSpent", robuxPrice)
+			end
+		end)
 	end
 
-	print("[CoinShopReceipt] Awarded", coinsToAward, "coins to", playerObj.Name,
+	print("[CoinShopReceipt] Awarded", awardedAmount, awardedType, "to", playerObj.Name,
 		"(receipt:", receiptId, ")")
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted
