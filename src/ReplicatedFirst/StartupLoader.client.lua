@@ -166,6 +166,67 @@ local gui, bg, title, status, barBg, barFill = createGui()
 if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
+-- Load saved player settings early so audio/UI honor user's preferences
+pcall(function()
+	local rs = ReplicatedStorage
+	-- WaitForChild with timeout: server may not have created the remote yet
+	local getRF = rs:WaitForChild("GetPlayerSettings", 10)
+	if getRF and getRF:IsA("RemoteFunction") then
+		   local ok, data = pcall(function()
+			   return getRF:InvokeServer()
+		   end)
+		   local defaults = {
+			   MusicVolume = 1.0,
+			   SFXVolume = 1.0,
+			   CameraSensitivity = 0.5,
+			   InvertCamera = false,
+			   SprintMode = "Hold",
+			   ShowTooltips = true,
+			   ShowMinimap = true,
+			   ShowGameState = true,
+		   }
+		   local settings = {}
+		   for k, v in pairs(defaults) do settings[k] = v end
+		   if ok and type(data) == "table" then
+			   for k, v in pairs(data) do settings[k] = v end
+		   end
+		   _G.PlayerSettings = settings
+		   -- Prevent music from playing until after volume is set
+		   pcall(function()
+			   local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")
+			   if soundsRoot then
+				   local musicFolder = soundsRoot:FindFirstChild("Music")
+				   if musicFolder then
+					   -- First, stop all music from playing
+					   for _, obj in ipairs(musicFolder:GetDescendants()) do
+						   if obj:IsA("Sound") then
+							   obj.Playing = false
+						   end
+					   end
+					   -- Now set the correct volume
+					   local mapped = math.clamp(tonumber(settings.MusicVolume) or 1.0, 0, 1) * 0.5
+					   for _, obj in ipairs(musicFolder:GetDescendants()) do
+						   if obj:IsA("Sound") then
+							   pcall(function() obj.Volume = mapped end)
+						   end
+					   end
+					   -- Only now, start 'Ancient Castle Halls' if volume > 0
+					   if mapped > 0 then
+						   local ach = musicFolder:FindFirstChild("Ancient Castle Halls")
+						   if ach and ach:IsA("Sound") then
+							   ach.Playing = true
+						   end
+					   end
+				   end
+			   end
+			   local SoundService = game:GetService("SoundService")
+			   local sfxGroup = SoundService:FindFirstChild("SFX")
+			   if sfxGroup and sfxGroup:IsA("SoundGroup") then
+				   sfxGroup.Volume = math.clamp(tonumber(settings.SFXVolume) or 1.0, 0, 1)
+			   end
+		   end)
+	end
+end)
 
 setProgress(status, barFill, "Collecting assets...", 0.2)
 

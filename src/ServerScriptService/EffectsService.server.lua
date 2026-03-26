@@ -234,8 +234,13 @@ Players.PlayerAdded:Connect(function(player)
     end
 end)
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-    saveData(player)
+    if SaveGuard:ClaimSave(player, "Effects") then
+        saveData(player)
+        SaveGuard:ReleaseSave(player, "Effects")
+    end
     playerData[player] = nil
 end)
 
@@ -254,10 +259,16 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 
 game:BindToClose(function()
+    SaveGuard:BeginShutdown()
     for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function() saveData(p) end)
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "Effects") then
+                saveData(p)
+                SaveGuard:ReleaseSave(p, "Effects")
+            end
+        end)
     end
-    task.wait(2)
+    SaveGuard:WaitForAll(5)
 end)
 
 -- ── Remote handlers ────────────────────────────────────────────────────────
@@ -323,5 +334,42 @@ equipEffectRE.OnServerEvent:Connect(function(player, effectId, subType)
     task.spawn(function() saveData(player) end)
     pushEquippedToClient(player)
 end)
+
+--------------------------------------------------------------------------------
+-- BINDABLE API  (server-to-server, used by SalvageShopService)
+--------------------------------------------------------------------------------
+do
+    local ServerScriptService = game:GetService("ServerScriptService")
+
+    -- CheckEffectOwnership(player, effectId) -> bool
+    local checkBF = Instance.new("BindableFunction")
+    checkBF.Name = "CheckEffectOwnership"
+    checkBF.Parent = ServerScriptService
+    checkBF.OnInvoke = function(player, effectId)
+        if not player or type(effectId) ~= "string" then return false end
+        return isOwned(player, effectId)
+    end
+
+    -- GrantEffect(player, effectId) -> bool
+    local grantBF = Instance.new("BindableFunction")
+    grantBF.Name = "GrantEffect"
+    grantBF.Parent = ServerScriptService
+    grantBF.OnInvoke = function(player, effectId)
+        if not player or type(effectId) ~= "string" then return false end
+        if isOwned(player, effectId) then return true end -- already owned, success
+        local def = EffectDefs.GetById(effectId)
+        if not def then
+            warn("[EffectsService] GrantEffect: unknown effectId:", effectId)
+            return false
+        end
+        local data = getOrCreateData(player)
+        data.owned[effectId] = true
+        dprint("Granted effect", effectId, "to", player.Name, "(via BindableFunction)")
+        task.spawn(function() saveData(player) end)
+        return true
+    end
+
+    dprint("BindableFunction API registered (CheckEffectOwnership, GrantEffect)")
+end
 
 dprint("fully initialized")

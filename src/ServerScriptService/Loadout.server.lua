@@ -61,6 +61,20 @@ local chosenMelee = {}   -- [player] = toolName override for melee
 local chosenInstanceId = {} -- [player] = { Melee = id, Ranged = id }
 
 --------------------------------------------------------------------------------
+-- SALVAGE SYSTEM  – BindableFunction so SalvageService can check equipped state
+--------------------------------------------------------------------------------
+local isEquippedBF = Instance.new("BindableFunction")
+isEquippedBF.Name = "IsInstanceEquipped"
+isEquippedBF.Parent = game:GetService("ServerScriptService")
+
+isEquippedBF.OnInvoke = function(player, instanceId)
+    if not player or type(instanceId) ~= "string" then return false end
+    local ids = chosenInstanceId[player]
+    if not ids then return false end
+    return ids.Melee == instanceId or ids.Ranged == instanceId
+end
+
+--------------------------------------------------------------------------------
 -- LOADOUT PERSISTENCE
 --------------------------------------------------------------------------------
 local function saveLoadout(player)
@@ -690,9 +704,14 @@ local function onPlayerAdded(player)
     end
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 local function onPlayerRemoving(player)
     print("[EquipSave]", player.Name, "saving on leave...")
-    saveLoadout(player)
+    if SaveGuard:ClaimSave(player, "Loadout") then
+        saveLoadout(player)
+        SaveGuard:ReleaseSave(player, "Loadout")
+    end
     unlockState[player]    = nil
     promptDebounce[player] = nil
     chosenRanged[player]     = nil
@@ -751,8 +770,14 @@ end)
 -- SAVE ALL ON SHUTDOWN
 --------------------------------------------------------------------------------
 game:BindToClose(function()
+    SaveGuard:BeginShutdown()
     for _, player in ipairs(Players:GetPlayers()) do
-        task.spawn(saveLoadout, player)
+        task.spawn(function()
+            if SaveGuard:ClaimSave(player, "Loadout") then
+                saveLoadout(player)
+                SaveGuard:ReleaseSave(player, "Loadout")
+            end
+        end)
     end
-    task.wait(2)
+    SaveGuard:WaitForAll(5)
 end)

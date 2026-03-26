@@ -145,24 +145,38 @@ for _, player in ipairs(Players:GetPlayers()) do
 	end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-	local ok, err = pcall(function()
-		UpgradeService:SaveForPlayer(player)
-	end)
-	if not ok then
-		warn("[UpgradeServiceInit] SaveForPlayer error for", player.Name, err)
+	if SaveGuard:ClaimSave(player, "Upgrade") then
+		local ok, err = pcall(function()
+			UpgradeService:SaveForPlayer(player)
+		end)
+		if not ok then
+			warn("[UpgradeServiceInit] SaveForPlayer error for", player.Name, err)
+		end
+		SaveGuard:ReleaseSave(player, "Upgrade")
 	end
 	UpgradeService:ClearPlayer(player)
 end)
 
 -- BindToClose: save all on shutdown
 game:BindToClose(function()
-	local ok, err = pcall(function()
-		UpgradeService:SaveAll()
-	end)
-	if not ok then
-		warn("[UpgradeServiceInit] SaveAll on shutdown failed:", tostring(err))
+	SaveGuard:BeginShutdown()
+	for _, p in ipairs(Players:GetPlayers()) do
+		task.spawn(function()
+			if SaveGuard:ClaimSave(p, "Upgrade") then
+				local ok, err = pcall(function()
+					UpgradeService:SaveForPlayer(p)
+				end)
+				if not ok then
+					warn("[UpgradeServiceInit] SaveAll shutdown error for", p.Name, err)
+				end
+				SaveGuard:ReleaseSave(p, "Upgrade")
+			end
+		end)
 	end
+	SaveGuard:WaitForAll(5)
 end)
 
 --------------------------------------------------------------------------------

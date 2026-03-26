@@ -49,6 +49,15 @@ local RED_TEXT       = UITheme.RED_TEXT or Color3.fromRGB(255, 80, 80)
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
+-- SALVAGE SYSTEM  – load SalvageConfig for client-side value preview
+local SalvageConfig = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("SalvageConfig")
+    if mod and mod:IsA("ModuleScript") then
+        SalvageConfig = require(mod)
+    end
+end)
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Rarity colour palette
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -854,11 +863,57 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local equipStroke = Instance.new("UIStroke", detailEquipBtn)
     equipStroke.Color = BTN_STROKE_C; equipStroke.Thickness = 1.4; equipStroke.Transparency = 0.25
 
-    -- Action buttons row (Favorite + Discard) above equip button
+    -- Action buttons row (Favorite + Salvage) above equip button
     local actionRow = Instance.new("Frame", detailContent)
     actionRow.Name = "ActionRow"
     actionRow.BackgroundTransparency = 1
     actionRow.Size = UDim2.new(0.88, 0, 0, px(44))
+    actionRow.AnchorPoint = Vector2.new(0.5, 1)
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(58))
+
+    -- Salvage value preview label (shown above action row for salvageable items)
+    local SALVAGE_GREEN = Color3.fromRGB(35, 190, 75)
+    local salvageValueLabel = Instance.new("TextLabel", detailContent)
+    salvageValueLabel.Name = "SalvageValuePreview"
+    salvageValueLabel.BackgroundTransparency = 1
+    salvageValueLabel.Font = Enum.Font.GothamBold
+    salvageValueLabel.TextColor3 = SALVAGE_GREEN
+    salvageValueLabel.TextSize = px(14)
+    salvageValueLabel.TextXAlignment = Enum.TextXAlignment.Center
+    salvageValueLabel.Size = UDim2.new(0.88, 0, 0, px(20))
+    salvageValueLabel.AnchorPoint = Vector2.new(0.5, 1)
+    salvageValueLabel.Position = UDim2.new(0.5, 0, 1, -px(106))
+    salvageValueLabel.Text = ""
+    salvageValueLabel.Visible = false
+
+    -- Feedback label (transient success/error message after salvage)
+    local salvageFeedback = Instance.new("TextLabel", detailContent)
+    salvageFeedback.Name = "SalvageFeedback"
+    salvageFeedback.BackgroundColor3 = Color3.fromRGB(20, 40, 26)
+    salvageFeedback.BackgroundTransparency = 0.15
+    salvageFeedback.Font = Enum.Font.GothamBold
+    salvageFeedback.TextColor3 = SALVAGE_GREEN
+    salvageFeedback.TextSize = px(14)
+    salvageFeedback.TextWrapped = true
+    salvageFeedback.TextXAlignment = Enum.TextXAlignment.Center
+    salvageFeedback.Size = UDim2.new(0.88, 0, 0, px(28))
+    salvageFeedback.AnchorPoint = Vector2.new(0.5, 0.5)
+    salvageFeedback.Position = UDim2.new(0.5, 0, 0.5, px(20))
+    salvageFeedback.ZIndex = 55
+    salvageFeedback.Visible = false
+    Instance.new("UICorner", salvageFeedback).CornerRadius = UDim.new(0, px(6))
+
+    local function showSalvageFeedback(text, color, duration)
+        salvageFeedback.Text = text
+        salvageFeedback.TextColor3 = color or SALVAGE_GREEN
+        salvageFeedback.BackgroundColor3 = color == RED_TEXT and Color3.fromRGB(50, 20, 20) or Color3.fromRGB(20, 40, 26)
+        salvageFeedback.Visible = true
+        task.delay(duration or 2.5, function()
+            if salvageFeedback and salvageFeedback.Parent then
+                salvageFeedback.Visible = false
+            end
+        end)
+    end
     actionRow.AnchorPoint = Vector2.new(0.5, 1)
     actionRow.Position = UDim2.new(0.5, 0, 1, -px(58))
 
@@ -880,27 +935,26 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local favStroke = Instance.new("UIStroke", favBtn)
     favStroke.Color = FAV_DIM; favStroke.Thickness = 1.2; favStroke.Transparency = 0.3
 
-    -- Discard button (red)
-    local DISCARD_RED  = Color3.fromRGB(220, 60, 60)
-    local DISCARD_BG   = Color3.fromRGB(56, 28, 28)
-    local DISCARD_DIM  = Color3.fromRGB(100, 60, 60)
+    -- Salvage button (green – replaces old Discard)
+    local SALVAGE_BG    = Color3.fromRGB(24, 56, 32)
+    local SALVAGE_DIM   = Color3.fromRGB(60, 100, 70)
 
     local discardBtn = Instance.new("TextButton", actionRow)
-    discardBtn.Name = "DiscardBtn"
+    discardBtn.Name = "SalvageBtn"
     discardBtn.AutoButtonColor = false
-    discardBtn.BackgroundColor3 = DISCARD_BG
+    discardBtn.BackgroundColor3 = SALVAGE_BG
     discardBtn.Font = Enum.Font.GothamBold
-    discardBtn.Text = "DISCARD"
-    discardBtn.TextColor3 = DISCARD_RED
+    discardBtn.Text = "SALVAGE"
+    discardBtn.TextColor3 = SALVAGE_GREEN
     discardBtn.TextSize = px(17)
     discardBtn.Size = UDim2.new(0.48, 0, 1, 0)
     discardBtn.AnchorPoint = Vector2.new(1, 0)
     discardBtn.Position = UDim2.new(1, 0, 0, 0)
     Instance.new("UICorner", discardBtn).CornerRadius = UDim.new(0, px(8))
     local discardStroke = Instance.new("UIStroke", discardBtn)
-    discardStroke.Color = DISCARD_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
+    discardStroke.Color = SALVAGE_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
 
-    -- Discard confirmation overlay
+    -- Salvage confirmation overlay
     local confirmOverlay = Instance.new("Frame", detailsPanel)
     confirmOverlay.Name = "ConfirmOverlay"
     confirmOverlay.BackgroundColor3 = Color3.fromRGB(10, 10, 26)
@@ -919,13 +973,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmBox.ZIndex = 51
     Instance.new("UICorner", confirmBox).CornerRadius = UDim.new(0, px(10))
     local cbStroke = Instance.new("UIStroke", confirmBox)
-    cbStroke.Color = DISCARD_RED; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
+    cbStroke.Color = SALVAGE_GREEN; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
 
     local confirmTitle = Instance.new("TextLabel", confirmBox)
     confirmTitle.BackgroundTransparency = 1
     confirmTitle.Font = Enum.Font.GothamBold
-    confirmTitle.Text = "Discard Weapon?"
-    confirmTitle.TextColor3 = DISCARD_RED
+    confirmTitle.Text = "Salvage Weapon?"
+    confirmTitle.TextColor3 = SALVAGE_GREEN
     confirmTitle.TextSize = px(18)
     confirmTitle.Size = UDim2.new(1, 0, 0, px(28))
     confirmTitle.Position = UDim2.new(0, 0, 0, px(16))
@@ -949,9 +1003,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local confirmYes = Instance.new("TextButton", confirmBox)
     confirmYes.Name = "YesBtn"
     confirmYes.AutoButtonColor = false
-    confirmYes.BackgroundColor3 = DISCARD_RED
+    confirmYes.BackgroundColor3 = SALVAGE_GREEN
     confirmYes.Font = Enum.Font.GothamBold
-    confirmYes.Text = "YES, DISCARD"
+    confirmYes.Text = "YES, SALVAGE"
     confirmYes.TextColor3 = WHITE
     confirmYes.TextSize = px(14)
     confirmYes.Size = UDim2.new(0.42, 0, 0, px(36))
@@ -985,7 +1039,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- updateEquipButton(itemData)
     ---------------------------------------------------------------------------
     local function updateActionButtons(itemData)
-        -- Favorite & Discard visibility: hide for starter/non-instance weapons
+        -- Favorite & Salvage visibility: hide for starter/non-instance weapons
         local isStarter = itemData and itemData.source == "Starter"
         local isInstance = itemData and itemData.isInstance
         local showActions = itemData and isInstance and not isStarter
@@ -1001,15 +1055,40 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             favStroke.Color = fav and FAV_YELLOW or FAV_DIM
         end
 
-        -- Don't allow discarding the currently equipped weapon
-        if itemData and isItemEquipped(itemData) then
+        -- Salvage eligibility: equipped or favorited items can't be salvaged
+        local canSalvage = showActions and itemData
+            and not isItemEquipped(itemData)
+            and itemData.favorited ~= true
+        if itemData and not canSalvage and showActions then
             discardBtn.BackgroundColor3 = DISABLED_BG
             discardBtn.TextColor3 = DIM_TEXT
             discardStroke.Color = DIM_TEXT
+            -- Show reason
+            if isItemEquipped(itemData) then
+                discardBtn.Text = "EQUIPPED"
+            elseif itemData.favorited == true then
+                discardBtn.Text = "FAVORITED"
+            else
+                discardBtn.Text = "SALVAGE"
+            end
+        elseif showActions then
+            discardBtn.BackgroundColor3 = SALVAGE_BG
+            discardBtn.TextColor3 = SALVAGE_GREEN
+            discardStroke.Color = SALVAGE_DIM
+            discardBtn.Text = "SALVAGE"
+        end
+
+        -- Salvage value preview
+        if canSalvage and SalvageConfig and itemData.rarity then
+            local val = SalvageConfig.GetValueForRarity(itemData.rarity)
+            if val and val > 0 then
+                salvageValueLabel.Text = "Salvage value: " .. tostring(val) .. " \u{2699}"
+                salvageValueLabel.Visible = true
+            else
+                salvageValueLabel.Visible = false
+            end
         else
-            discardBtn.BackgroundColor3 = DISCARD_BG
-            discardBtn.TextColor3 = DISCARD_RED
-            discardStroke.Color = DISCARD_DIM
+            salvageValueLabel.Visible = false
         end
     end
 
@@ -1020,6 +1099,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             detailEquipBtn.TextColor3 = DIM_TEXT
             equipStroke.Color = CARD_STROKE
             actionRow.Visible = false
+            salvageValueLabel.Visible = false
             return
         end
         if isItemEquipped(itemData) then
@@ -1492,7 +1572,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end)
 
     ---------------------------------------------------------------------------
-    -- Discard button handler  (opens confirmation prompt)
+    -- Salvage button handler  (opens confirmation prompt with value preview)
     ---------------------------------------------------------------------------
     local discardTarget = nil
 
@@ -1501,19 +1581,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if not selectedItem.isInstance then return end
         if selectedItem.source == "Starter" then return end
         if isItemEquipped(selectedItem) then return end
+        if selectedItem.favorited == true then return end
 
         discardTarget = selectedItem
-        confirmDesc.Text = 'Discard "' .. (selectedItem.name or "?") .. '"?\nThis action cannot be undone.'
+
+        -- Show salvage value preview from SalvageConfig (client-side read; server is authoritative)
+        local salvageValue = 0
+        if SalvageConfig and selectedItem.rarity then
+            salvageValue = SalvageConfig.GetValueForRarity(selectedItem.rarity) or 0
+        end
+        local valueStr = salvageValue > 0 and (" for " .. tostring(salvageValue) .. " \u{2699}") or ""
+        confirmTitle.Text = "Salvage " .. (selectedItem.name or "Weapon") .. "?"
+        confirmDesc.Text = "Salvage" .. valueStr .. "\nThis action cannot be undone."
         confirmOverlay.Visible = true
     end)
 
     discardBtn.MouseEnter:Connect(function()
-        if selectedItem and not isItemEquipped(selectedItem) and selectedItem.source ~= "Starter" then
-            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(76, 32, 32)}):Play()
+        if selectedItem and not isItemEquipped(selectedItem) and selectedItem.source ~= "Starter" and selectedItem.favorited ~= true then
+            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(32, 76, 42)}):Play()
         end
     end)
     discardBtn.MouseLeave:Connect(function()
-        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = DISCARD_BG}):Play()
+        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = SALVAGE_BG}):Play()
     end)
 
     confirmNo.MouseButton1Click:Connect(function()
@@ -1526,17 +1615,33 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if not discardTarget then return end
 
         local instanceId = discardTarget.instanceId
+        local itemName = discardTarget.name or "?"
         local cat = discardTarget.category
         if not instanceId then discardTarget = nil return end
 
-        local discardRF = ReplicatedStorage:FindFirstChild("DiscardWeapon")
-        if not discardRF or not discardRF:IsA("RemoteFunction") then discardTarget = nil return end
+        local salvageRF = ReplicatedStorage:FindFirstChild("SalvageWeapon")
+        if not salvageRF or not salvageRF:IsA("RemoteFunction") then discardTarget = nil return end
 
-        local ok, success = pcall(function()
-            return discardRF:InvokeServer(instanceId)
+        local ok, success, result = pcall(function()
+            return salvageRF:InvokeServer(instanceId)
         end)
 
         if ok and success then
+            -- Show success feedback with awarded amount
+            local awarded = (type(result) == "table" and result.awarded) or 0
+            if awarded > 0 then
+                showSalvageFeedback("Salvaged for +" .. tostring(awarded) .. " \u{2699}", SALVAGE_GREEN, 2.5)
+            else
+                showSalvageFeedback("Salvaged!", SALVAGE_GREEN, 2)
+            end
+
+            -- Update header salvage display immediately
+            if type(result) == "table" and result.newBalance then
+                pcall(function()
+                    if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
+                end)
+            end
+
             -- Remove from local allWeaponItems
             for i, item in ipairs(allWeaponItems) do
                 if item.instanceId == instanceId then
@@ -1548,6 +1653,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             setSelectedItem(nil)
             -- Re-render
             renderCategory(currentWeaponCategory)
+        else
+            -- Salvage failed – show error feedback
+            local reason = "Salvage failed"
+            if type(result) == "table" and result.reason then
+                reason = result.reason
+            end
+            showSalvageFeedback(reason, RED_TEXT, 3)
         end
 
         discardTarget = nil

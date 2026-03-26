@@ -134,8 +134,13 @@ local function onPlayerAdded(player)
     end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 local function onPlayerRemoving(player)
-    WeaponInstanceService:SaveForPlayer(player)
+    if SaveGuard:ClaimSave(player, "WeaponInstance") then
+        WeaponInstanceService:SaveForPlayer(player)
+        SaveGuard:ReleaseSave(player, "WeaponInstance")
+    end
     WeaponInstanceService:RemovePlayer(player)
     openDebounce[player] = nil
 end
@@ -150,7 +155,16 @@ end
 
 -- Save all on shutdown
 game:BindToClose(function()
-    WeaponInstanceService:SaveAll()
+    SaveGuard:BeginShutdown()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "WeaponInstance") then
+                WeaponInstanceService:SaveForPlayer(p)
+                SaveGuard:ReleaseSave(p, "WeaponInstance")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
 end)
 
 print("[CrateServiceInit] Crate system ready")

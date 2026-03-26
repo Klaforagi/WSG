@@ -95,6 +95,38 @@ EffectDefs.Effects = {
             Color3.fromRGB(200,  60, 255),
         },
     },
+
+    ---------------------------------------------------------------------------
+    -- SALVAGE SHOP TRAILS  (purchased with Salvage currency)
+    ---------------------------------------------------------------------------
+    {
+        Id          = "EmeraldTrail",
+        DisplayName = "Emerald Trail",
+        Description = "A vivid green dash trail that gleams like gemstone.",
+        Category    = "Effects",
+        SubType     = "DashTrail",
+        Color       = Color3.fromRGB(35, 190, 75),
+        CoinCost    = 0,       -- not sold for coins
+        IsFree      = false,
+        ShopVisible = false,   -- Salvage Shop exclusive
+        Rarity      = "Rare",
+        SortOrder   = 10,
+        IconGlyph   = "\u{2550}",
+    },
+    {
+        Id          = "GoldenTrail",
+        DisplayName = "Golden Trail",
+        Description = "A luxurious golden dash trail worthy of royalty.",
+        Category    = "Effects",
+        SubType     = "DashTrail",
+        Color       = Color3.fromRGB(255, 200, 50),
+        CoinCost    = 0,       -- not sold for coins
+        IsFree      = false,
+        ShopVisible = false,   -- Salvage Shop exclusive
+        Rarity      = "Epic",
+        SortOrder   = 11,
+        IconGlyph   = "\u{2550}",
+    },
 }
 
 function EffectDefs.GetAll()

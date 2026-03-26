@@ -50,6 +50,29 @@ SkinDefinitions.Skins = {
         HelmetColor     = Color3.fromRGB(140, 145, 155),
         VisorColor      = Color3.fromRGB(30, 30, 35),
     },
+
+    ---------------------------------------------------------------------------
+    -- IRON KNIGHT  –  Salvage Shop exclusive skin
+    ---------------------------------------------------------------------------
+    {
+        Id              = "IronKnight",
+        DisplayName     = "Iron Knight",
+        Description     = "A battle-worn suit of dark iron plate armor.",
+        Price           = 0,         -- not sold for coins
+        Rarity          = "Epic",
+        Category        = "Skin",
+        ShopVisible     = false,     -- sold via Salvage Shop, not coin shop
+        InventoryVisible = true,
+        IsDefault       = false,
+        ApplicationType = "Cosmetic",
+
+        ShirtColor      = Color3.fromRGB(35, 35, 40),
+        PantsColor      = Color3.fromRGB(30, 28, 32),
+        ArmorColor      = Color3.fromRGB(90, 95, 100),
+        AccentColor     = Color3.fromRGB(35, 190, 75),   -- salvage green trim
+        HelmetColor     = Color3.fromRGB(80, 85, 90),
+        VisorColor      = Color3.fromRGB(20, 22, 25),
+    },
 }
 
 --------------------------------------------------------------------------------

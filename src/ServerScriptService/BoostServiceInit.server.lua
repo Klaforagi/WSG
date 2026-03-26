@@ -111,8 +111,13 @@ end
 --------------------------------------------------------------------------------
 -- Player lifecycle
 --------------------------------------------------------------------------------
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-    BoostService:SaveForPlayer(player)
+    if SaveGuard:ClaimSave(player, "Boost") then
+        BoostService:SaveForPlayer(player)
+        SaveGuard:ReleaseSave(player, "Boost")
+    end
     BoostService:ClearPlayer(player)
 end)
 
@@ -127,7 +132,16 @@ for _, player in ipairs(Players:GetPlayers()) do
 end
 
 game:BindToClose(function()
-    BoostService:SaveAll()
+    SaveGuard:BeginShutdown()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "Boost") then
+                BoostService:SaveForPlayer(p)
+                SaveGuard:ReleaseSave(p, "Boost")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
 end)
 
 --------------------------------------------------------------------------------

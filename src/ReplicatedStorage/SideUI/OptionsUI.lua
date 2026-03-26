@@ -64,8 +64,8 @@ local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirect
 --------------------------------------------------------------------------------
 local DEFAULT_SETTINGS = {
 	-- Audio (renamed to Sound in UI)
-	MusicVolume       = 0.5,
-	SFXVolume         = 0.8,
+	MusicVolume       = 1.0,
+	SFXVolume         = 1.0,
 	-- Graphics (removed from options)
 	-- Gameplay (kept as defaults but not shown in options)
 	CameraSensitivity = 0.5,   -- 0.1 .. 2.0
@@ -84,17 +84,21 @@ local DEFAULT_SETTINGS = {
 local PlayerSettings  -- initialised lazily
 
 local function ensureSettings()
-	if not PlayerSettings then
-		PlayerSettings = {}
-		for k, v in pairs(DEFAULT_SETTINGS) do
+	-- If the startup loader or another script already populated _G.PlayerSettings,
+	-- merge it with defaults instead of overwriting so saved values persist.
+	local existing = (_G.PlayerSettings and type(_G.PlayerSettings) == "table") and _G.PlayerSettings or nil
+	PlayerSettings = {}
+	for k, v in pairs(DEFAULT_SETTINGS) do
+		if existing and existing[k] ~= nil then
+			PlayerSettings[k] = existing[k]
+		else
 			PlayerSettings[k] = v
 		end
 	end
+	-- Expose globally so other scripts (camera, sprint, etc.) can read them
+	_G.PlayerSettings = PlayerSettings
 end
 ensureSettings()
-
--- Expose globally so other scripts (camera, sprint, etc.) can read them
-_G.PlayerSettings = PlayerSettings
 
 --------------------------------------------------------------------------------
 -- Connection cleanup (prevents leaks across repeated Create calls)
@@ -184,17 +188,16 @@ local function ApplySettings(settings)
 		if gui then gui.Enabled = settings.ShowGameState end
 	end)
 
-	-- Try to persist settings to the server if remote exists
-	local success, err = pcall(function()
+	-- Sync changed settings to server via lightweight RemoteEvent (no DataStore write)
+	pcall(function()
 		local rs = game:GetService("ReplicatedStorage")
-		local setRF = rs:FindFirstChild("SetPlayerSettings")
-		if setRF and setRF:IsA("RemoteFunction") then
-			setRF:InvokeServer(settings)
+		local updateEV = rs:FindFirstChild("UpdatePlayerSetting")
+		if updateEV and updateEV:IsA("RemoteEvent") then
+			for key, value in pairs(settings) do
+				updateEV:FireServer(key, value)
+			end
 		end
 	end)
-	if not success then
-		warn("[OptionsUI] Failed to persist PlayerSettings:", tostring(err))
-	end
 	-- UI Scale removed from options (control MainUI UIScale directly if needed)
 
 	-- Show Tooltips – PLACEHOLDER

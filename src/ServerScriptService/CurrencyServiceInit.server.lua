@@ -47,6 +47,18 @@ Players.PlayerAdded:Connect(function(player)
         warn("CurrencyServiceInit: failed to load keys for ", tostring(player.Name), "; defaulting to 0")
     end
     CurrencyService:SetKeys(player, keys)
+
+    -- SALVAGE SYSTEM  – Load Salvage
+    local salvage = 0
+    local ok3, salvageAmt = pcall(function()
+        return CurrencyService:LoadSalvageForPlayer(player)
+    end)
+    if ok3 and type(salvageAmt) == "number" then
+        salvage = salvageAmt
+    else
+        warn("CurrencyServiceInit: failed to load salvage for ", tostring(player.Name), "; defaulting to 0")
+    end
+    CurrencyService:SetSalvage(player, salvage)
 end)
 
 -- Handle players who connected before the PlayerAdded signal was hooked
@@ -72,35 +84,41 @@ for _, player in ipairs(Players:GetPlayers()) do
             keys = keyAmt
         end
         CurrencyService:SetKeys(player, keys)
+
+        -- SALVAGE SYSTEM  – Load Salvage for late-join players
+        local salvage = 0
+        local ok3, salvageAmt = pcall(function()
+            return CurrencyService:LoadSalvageForPlayer(player)
+        end)
+        if ok3 and type(salvageAmt) == "number" then
+            salvage = salvageAmt
+        end
+        CurrencyService:SetSalvage(player, salvage)
     end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
+local function saveCurrencyPlayer(player)
+    if not SaveGuard:ClaimSave(player, "Currency") then return end
+    pcall(function() CurrencyService:SaveForPlayer(player) end)
+    pcall(function() CurrencyService:SaveKeysForPlayer(player) end)
+    pcall(function() CurrencyService:SaveSalvageForPlayer(player) end)
+    SaveGuard:ReleaseSave(player, "Currency")
+end
+
 Players.PlayerRemoving:Connect(function(player)
-    -- save and cleanup
-    local ok, err = pcall(function()
-        CurrencyService:SaveForPlayer(player)
-    end)
-    if not ok then
-        warn("CurrencyServiceInit: SaveForPlayer error for ", tostring(player.Name), err)
-    end
-    -- PREMIUM CRATE / KEY SYSTEM  – Save Keys on leave
-    local ok2, err2 = pcall(function()
-        CurrencyService:SaveKeysForPlayer(player)
-    end)
-    if not ok2 then
-        warn("CurrencyServiceInit: SaveKeysForPlayer error for ", tostring(player.Name), err2)
-    end
+    saveCurrencyPlayer(player)
     CurrencyService:RemovePlayer(player)
 end)
 
 -- BindToClose: attempt to save all players
 if RunService:IsServer() then
     game:BindToClose(function()
-        local ok, err = pcall(function()
-            CurrencyService:SaveAll()
-        end)
-        if not ok then
-            warn("CurrencyServiceInit: SaveAll on shutdown failed:", tostring(err))
+        SaveGuard:BeginShutdown()
+        for _, player in ipairs(Players:GetPlayers()) do
+            task.spawn(saveCurrencyPlayer, player)
         end
+        SaveGuard:WaitForAll(5)
     end)
 end

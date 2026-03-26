@@ -400,10 +400,26 @@ do
     end
 end
 
+-- SALVAGE SYSTEM  – SalvageDisplay module (mirrors KeyDisplay)
+local SalvageDisplayModule = nil
+do
+    local mod = ReplicatedStorage:WaitForChild("SalvageDisplay", 10)
+    if mod and mod:IsA("ModuleScript") then
+        local ok, result = pcall(require, mod)
+        if ok then
+            SalvageDisplayModule = result
+        else
+            warn("[SideUI] SalvageDisplay failed to load:", tostring(result))
+        end
+    else
+        warn("[SideUI] SalvageDisplay not found – salvage row will be unavailable")
+    end
+end
+
 local function CreateMenuGrid(parent)
     local gridContainer = Instance.new("Frame")
     gridContainer.Name = "MenuGridContainer"
-    gridContainer.LayoutOrder = 4 -- PREMIUM CRATE / KEY SYSTEM  – bumped from 3 to make room for KeyRow
+    gridContainer.LayoutOrder = 3 -- Keys/Salvage no longer in HUD; follows CoinRow (2)
     gridContainer.Size = UDim2.new(1, 0, 0, 0)
     gridContainer.BackgroundTransparency = 1
     gridContainer.Parent = parent
@@ -1099,6 +1115,40 @@ titleLabel.ZIndex = 275
     headerKeyLabel.ZIndex = 276
     headerKeyLabel.Parent = headerKeyFrame
 
+    -- Salvage display (header currency row, LayoutOrder 3 = after keys)
+    local headerSalvageFrame = Instance.new("Frame")
+    headerSalvageFrame.Name = "HeaderSalvage"
+    headerSalvageFrame.Size = UDim2.new(0, px(70), 1, 0)
+    headerSalvageFrame.BackgroundTransparency = 1
+    headerSalvageFrame.ZIndex = 275
+    headerSalvageFrame.LayoutOrder = 3
+    headerSalvageFrame.Parent = currencyRow
+
+    local headerSalvageIcon = Instance.new("TextLabel")
+    headerSalvageIcon.Name = "SalvageIcon"
+    headerSalvageIcon.Size = UDim2.new(0, px(18), 1, 0)
+    headerSalvageIcon.Position = UDim2.new(0, 0, 0, 0)
+    headerSalvageIcon.BackgroundTransparency = 1
+    headerSalvageIcon.Font = Enum.Font.GothamBold
+    headerSalvageIcon.Text = "\u{2699}"
+    headerSalvageIcon.TextScaled = true
+    headerSalvageIcon.TextColor3 = Color3.fromRGB(35, 190, 75)
+    headerSalvageIcon.ZIndex = 276
+    headerSalvageIcon.Parent = headerSalvageFrame
+
+    local headerSalvageLabel = Instance.new("TextLabel")
+    headerSalvageLabel.Name = "SalvageLabel"
+    headerSalvageLabel.Size = UDim2.new(0.60, 0, 1, 0)
+    headerSalvageLabel.Position = UDim2.new(0.38, 0, 0, 0)
+    headerSalvageLabel.BackgroundTransparency = 1
+    headerSalvageLabel.Font = Enum.Font.GothamBold
+    headerSalvageLabel.TextScaled = true
+    headerSalvageLabel.TextColor3 = Color3.fromRGB(35, 190, 75)
+    headerSalvageLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerSalvageLabel.Text = "0"
+    headerSalvageLabel.ZIndex = 276
+    headerSalvageLabel.Parent = headerSalvageFrame
+
 -- Close X (top-right corner of window) — dark + gold style
 local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
 local CLOSE_HOVER   = Color3.fromRGB(55, 30, 38)
@@ -1331,16 +1381,50 @@ local function updateHeaderKeys()
 end
 _G.UpdateShopHeaderKeys = updateHeaderKeys
 
+local function updateHeaderSalvage()
+    local salvage = 0
+    if salvageApi and salvageApi.GetSalvage then
+        local ok, val = pcall(function() return salvageApi.GetSalvage() end)
+        if ok and type(val) == "number" then salvage = val end
+    end
+    if salvage > 0 then
+        headerSalvageLabel.Text = tostring(math.floor(salvage))
+    else
+        headerSalvageLabel.Text = "0"
+        task.spawn(function()
+            pcall(function()
+                local getSalvageFn = ReplicatedStorage:FindFirstChild("GetSalvage")
+                if getSalvageFn and getSalvageFn:IsA("RemoteFunction") then
+                    local res = getSalvageFn:InvokeServer()
+                    if type(res) == "number" then
+                        headerSalvageLabel.Text = tostring(math.floor(res))
+                    end
+                end
+            end)
+        end)
+    end
+end
+_G.UpdateShopHeaderSalvage = updateHeaderSalvage
+
 -- Populate modal content without animation (used by MenuController open callbacks)
 local function populateModalContent(mod, label)
     if not mod then return end
     clearContent()
     titleLabel.Text = label or "SHOP"
-    local showCoins = (label == "SHOP" or label == "BOOSTS" or label == "UPGRADES")
-    currencyRow.Visible = showCoins
-    if showCoins then
+    -- Currency row visibility rules:
+    -- Shop: show Coins + Keys + Salvage
+    -- Inventory: show Coins + Keys + Salvage
+    local isShop = (label == "SHOP" or label == "BOOSTS" or label == "UPGRADES")
+    local isInventory = (label == "INVENTORY")
+    local showCurrency = isShop or isInventory
+    currencyRow.Visible = showCurrency
+    headerCoinFrame.Visible = isShop or isInventory
+    headerKeyFrame.Visible = isShop or isInventory
+    headerSalvageFrame.Visible = isShop or isInventory
+    if isShop or isInventory then
         updateHeaderCoins()
         updateHeaderKeys()
+        updateHeaderSalvage()
     end
     pcall(function()
         local ok, loaded = pcall(require, mod)
@@ -1444,16 +1528,35 @@ if CoinDisplayModule and CoinDisplayModule.Create then
     pcall(function() updateHeaderCoins() end)
 end
 
--- PREMIUM CRATE / KEY SYSTEM  – Key row from KeyDisplay module
-local keyRow
+-- PREMIUM CRATE / KEY SYSTEM  – Key API (no HUD row; displayed in Shop header only)
+local keyApi
 if KeyDisplayModule and KeyDisplayModule.Create then
-    keyRow, keyApi = KeyDisplayModule.Create(panel, 3)
-    -- Attach SetKeys to coinApi so crate opening UI can update keys via _G.CrateOpeningCoinApi
+    -- Create off-screen to initialize the key API without showing the row in the HUD
+    local hiddenHost = Instance.new("Frame")
+    hiddenHost.Name = "KeyApiHost"
+    hiddenHost.Visible = false
+    hiddenHost.Size = UDim2.new(0, 0, 0, 0)
+    hiddenHost.Parent = panel
+    local _keyRow
+    _keyRow, keyApi = KeyDisplayModule.Create(hiddenHost, 1)
     if coinApi and keyApi then
         coinApi.SetKeys = keyApi.SetKeys
         coinApi.GetKeys = keyApi.GetKeys
     end
-    print("[SideUI] KeyDisplay module initialized; keyApi =", tostring(keyApi))
+    print("[SideUI] KeyDisplay API initialized (no HUD row)")
+end
+
+-- SALVAGE SYSTEM  – Salvage API (no HUD row; displayed in Inventory/Shop only)
+local salvageApi
+if SalvageDisplayModule and SalvageDisplayModule.Create then
+    local hiddenHost = Instance.new("Frame")
+    hiddenHost.Name = "SalvageApiHost"
+    hiddenHost.Visible = false
+    hiddenHost.Size = UDim2.new(0, 0, 0, 0)
+    hiddenHost.Parent = panel
+    local _salvageRow
+    _salvageRow, salvageApi = SalvageDisplayModule.Create(hiddenHost, 1)
+    print("[SideUI] SalvageDisplay API initialized (no HUD row)")
 end
 
 -- Initialize CrateOpeningUI (roulette animation overlay)
@@ -1490,9 +1593,22 @@ task.spawn(function()
             if keyApi and keyApi.SetKeys then
                 pcall(function() keyApi.SetKeys(amount) end)
             end
+            headerKeyLabel.Text = tostring(math.floor(tonumber(amount) or 0))
         end)
     else
         warn("[SideUI] KeysUpdated remote not found – key display won't auto-update")
+    end
+end)
+
+-- SALVAGE SYSTEM  – Listen for server salvage updates (header label + API)
+task.spawn(function()
+    local salvageEvent = ReplicatedStorage:WaitForChild("SalvageUpdated", 10)
+    if salvageEvent and salvageEvent:IsA("RemoteEvent") then
+        salvageEvent.OnClientEvent:Connect(function(amount)
+            headerSalvageLabel.Text = tostring(math.floor(tonumber(amount) or 0))
+        end)
+    else
+        warn("[SideUI] SalvageUpdated remote not found – salvage header won't auto-update")
     end
 end)
 

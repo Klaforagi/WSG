@@ -1506,6 +1506,43 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     end
 
     ---------------------------------------------------------------------------
+    -- Claimable-quest indicators (small gold dots on Daily / Weekly tabs)
+    ---------------------------------------------------------------------------
+    local dailyIndicator, weeklyIndicator
+    do
+        local function makeClaimIndicator(tabBtn)
+            local dot = Instance.new("Frame")
+            dot.Name                  = "ClaimIndicator"
+            dot.BackgroundColor3      = GOLD
+            dot.BorderSizePixel       = 0
+            dot.Size                  = UDim2.new(0, px(9), 0, px(9))
+            dot.AnchorPoint           = Vector2.new(0.5, 0.5)
+            dot.Position              = UDim2.new(1, -px(10), 0, px(10))
+            dot.Visible               = false
+            dot.ZIndex                = 2
+
+            local cr = Instance.new("UICorner")
+            cr.CornerRadius = UDim.new(0.5, 0)
+            cr.Parent = dot
+
+            local glow = Instance.new("UIStroke")
+            glow.Color        = CLAIM_GOLD_GLOW
+            glow.Thickness    = 1.5
+            glow.Transparency = 0.35
+            glow.Parent       = dot
+
+            dot.Parent = tabBtn
+            return dot
+        end
+
+        dailyIndicator  = makeClaimIndicator(tabButtons["daily"])
+        weeklyIndicator = makeClaimIndicator(tabButtons["weekly"])
+    end
+
+    -- Forward declaration; body assigned after weekly quest data is available.
+    local updateTabIndicators
+
+    ---------------------------------------------------------------------------
     -- Active-tab state management
     ---------------------------------------------------------------------------
     local currentTab = "daily"
@@ -2009,6 +2046,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 applySortedCardLayoutOrders("daily", quests, function(displayQuest)
                     return questCards[displayQuest.id]
                 end)
+                if updateTabIndicators then updateTabIndicators() end
             else
                 updateButtonState(quest.progress, quest.goal, false)
             end
@@ -2068,6 +2106,47 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local wkCards         = {}
     local wkCardStrokes   = {}
     local weeklyRerollStateUpdaters = {}
+
+    ---------------------------------------------------------------------------
+    -- updateTabIndicators: show/hide claimable-quest dots on Daily/Weekly tabs
+    ---------------------------------------------------------------------------
+    updateTabIndicators = function()
+        -- Daily
+        local hasDaily = false
+        for _, q in ipairs(quests) do
+            if type(q) == "table" and not q.claimed then
+                local goal     = tonumber(q.goal) or 0
+                local progress = tonumber(q.progress) or 0
+                if goal > 0 and progress >= goal then
+                    hasDaily = true
+                    break
+                end
+            end
+        end
+        if dailyIndicator and dailyIndicator.Parent then
+            dailyIndicator.Visible = hasDaily
+        end
+
+        -- Weekly
+        local hasWeekly = false
+        for _, wq in ipairs(weeklyQuests) do
+            if type(wq) == "table" and not wq.claimed then
+                local goal     = tonumber(wq.goal) or 0
+                local progress = tonumber(wq.progress) or 0
+                if goal > 0 and progress >= goal then
+                    hasWeekly = true
+                    break
+                end
+            end
+        end
+        if weeklyIndicator and weeklyIndicator.Parent then
+            weeklyIndicator.Visible = hasWeekly
+        end
+    end
+
+    -- Initial indicator refresh (both daily & weekly data loaded)
+    updateTabIndicators()
+
     local weeklyDisplayQuests = sortQuestsForDisplay("weekly", weeklyQuests)
 
     for i, wq in ipairs(weeklyDisplayQuests) do
@@ -2376,6 +2455,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 applySortedCardLayoutOrders("weekly", weeklyQuests, function(displayQuest)
                     return wkCards[displayQuest.index]
                 end)
+                if updateTabIndicators then updateTabIndicators() end
             else
                 updateWkBtnState(wq.progress, wq.goal, false)
             end
@@ -3845,6 +3925,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             applySortedCardLayoutOrders("weekly", weeklyQuests, function(displayQuest)
                 return wkCards[displayQuest.index]
             end)
+            if updateTabIndicators then updateTabIndicators() end
         end))
     end
 
@@ -3937,6 +4018,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             applySortedCardLayoutOrders("daily", quests, function(displayQuest)
                 return questCards[displayQuest.id]
             end)
+            if updateTabIndicators then updateTabIndicators() end
         end))
     end
 

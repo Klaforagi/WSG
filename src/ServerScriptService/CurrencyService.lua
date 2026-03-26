@@ -1,6 +1,6 @@
 -- CurrencyService Module
--- Server-only. Keeps an in-memory table of coin/key balances keyed by Player
--- and persists them to DataStores named "Coins_v1" and "Keys_v1".
+-- Server-only. Keeps an in-memory table of coin/key/salvage balances keyed by Player
+-- and persists them to DataStores named "Coins_v1", "Keys_v1", and "Salvage_v1".
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players = game:GetService("Players")
@@ -13,14 +13,19 @@ local RETRY_DELAY = 0.5
 -- PREMIUM CRATE / KEY SYSTEM  – Keys DataStore
 local KEYS_DATASTORE_NAME = "Keys_v1"
 
+-- SALVAGE SYSTEM  – Salvage DataStore
+local SALVAGE_DATASTORE_NAME = "Salvage_v1"
+
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 local keysDs = DataStoreService:GetDataStore(KEYS_DATASTORE_NAME) -- PREMIUM CRATE / KEY SYSTEM
+local salvageDs = DataStoreService:GetDataStore(SALVAGE_DATASTORE_NAME) -- SALVAGE SYSTEM
 
 local CurrencyService = {}
 
 -- in-memory balances keyed by Player (the Player object)
 local balances = {}
 local keyBalances = {} -- PREMIUM CRATE / KEY SYSTEM
+local salvageBalances = {} -- SALVAGE SYSTEM
 
 local function getKey(player)
     return "User_" .. tostring(player.UserId)
@@ -74,10 +79,27 @@ local function ensureRemoteObjects()
         return CurrencyService:GetKeys(player)
     end
 
-    return event, fn, keysEvent, keysFn
+    -- SALVAGE SYSTEM  – Salvage remotes
+    local salvageEvent = ReplicatedStorage:FindFirstChild("SalvageUpdated")
+    if not salvageEvent then
+        salvageEvent = Instance.new("RemoteEvent")
+        salvageEvent.Name = "SalvageUpdated"
+        salvageEvent.Parent = ReplicatedStorage
+    end
+    local salvageFn = ReplicatedStorage:FindFirstChild("GetSalvage")
+    if not salvageFn then
+        salvageFn = Instance.new("RemoteFunction")
+        salvageFn.Name = "GetSalvage"
+        salvageFn.Parent = ReplicatedStorage
+    end
+    salvageFn.OnServerInvoke = function(player)
+        return CurrencyService:GetSalvage(player)
+    end
+
+    return event, fn, keysEvent, keysFn, salvageEvent, salvageFn
 end
 
-local CoinsUpdatedEvent, _, KeysUpdatedEvent = ensureRemoteObjects()
+local CoinsUpdatedEvent, _, KeysUpdatedEvent, _, SalvageUpdatedEvent = ensureRemoteObjects()
 
 function CurrencyService:GetCoins(player)
     if not player then return 0 end
@@ -276,6 +298,58 @@ function CurrencyService:SaveKeysForPlayer(player)
     return success
 end
 
+--------------------------------------------------------------------------------
+-- SALVAGE SYSTEM  – Load Salvage from DataStore
+--------------------------------------------------------------------------------
+function CurrencyService:LoadSalvageForPlayer(player)
+    if not player then return 0 end
+    local key = getKey(player)
+    local success, result
+    for i = 1, RETRIES do
+        success, result = pcall(function()
+            return salvageDs:GetAsync(key)
+        end)
+        if success then break end
+        warn("CurrencyService: Salvage GetAsync failed (attempt ", i, "): ", tostring(result))
+        task.wait(RETRY_DELAY * i)
+    end
+    local salvage = 0
+    if success and type(result) == "number" then
+        salvage = result
+    else
+        if not success then
+            warn("CurrencyService: failed to load salvage for ", tostring(player.Name), "; defaulting to 0")
+        end
+    end
+    salvageBalances[player] = math.max(0, math.floor(salvage))
+    if SalvageUpdatedEvent and SalvageUpdatedEvent.FireClient then
+        pcall(function()
+            SalvageUpdatedEvent:FireClient(player, salvageBalances[player])
+        end)
+    end
+    return salvageBalances[player]
+end
+
+-- SALVAGE SYSTEM  – Save Salvage to DataStore
+function CurrencyService:SaveSalvageForPlayer(player)
+    if not player then return false end
+    local key = getKey(player)
+    local amount = salvageBalances[player] or 0
+    local success, err
+    for i = 1, RETRIES do
+        success, err = pcall(function()
+            salvageDs:SetAsync(key, amount)
+        end)
+        if success then break end
+        warn("CurrencyService: Salvage SetAsync failed (attempt ", i, "): ", tostring(err))
+        task.wait(RETRY_DELAY * i)
+    end
+    if not success then
+        warn("CurrencyService: failed to save salvage for ", tostring(player.Name))
+    end
+    return success
+end
+
 -- Saves coins for a player to the datastore (with retries). Returns boolean success.
 function CurrencyService:SaveForPlayer(player)
     if not player then return false end
@@ -308,6 +382,11 @@ function CurrencyService:SaveAll()
         if not ok2 then
             warn("CurrencyService: SaveAll keys failed for ", tostring(player.Name))
         end
+        -- SALVAGE SYSTEM  – also save salvage
+        local ok3 = CurrencyService:SaveSalvageForPlayer(player)
+        if not ok3 then
+            warn("CurrencyService: SaveAll salvage failed for ", tostring(player.Name))
+        end
     end
 end
 
@@ -319,6 +398,10 @@ function CurrencyService:RemovePlayer(player)
     -- PREMIUM CRATE / KEY SYSTEM
     if keyBalances[player] ~= nil then
         keyBalances[player] = nil
+    end
+    -- SALVAGE SYSTEM
+    if salvageBalances[player] ~= nil then
+        salvageBalances[player] = nil
     end
 end
 

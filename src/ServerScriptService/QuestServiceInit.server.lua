@@ -102,8 +102,16 @@ local function onPlayerAdded(player)
     end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 local function onPlayerRemoving(player)
-    QuestService:ClearPlayer(player) -- saves then clears memory
+    if SaveGuard:ClaimSave(player, "Quest") then
+        QuestService:ClearPlayer(player) -- saves then clears memory
+        SaveGuard:ReleaseSave(player, "Quest")
+    else
+        -- Already saved by BindToClose, just clear memory
+        pcall(function() QuestService:ClearPlayer(player) end)
+    end
 end
 
 -- Handle players already in-game (e.g. late script init)
@@ -113,6 +121,20 @@ end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
+
+-- Save all on shutdown (was missing – data loss risk)
+game:BindToClose(function()
+    SaveGuard:BeginShutdown()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "Quest") then
+                QuestService:ClearPlayer(p)
+                SaveGuard:ReleaseSave(p, "Quest")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
+end)
 
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events  (replaces ALL legacy hooks)
