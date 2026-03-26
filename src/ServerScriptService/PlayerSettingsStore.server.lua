@@ -1,31 +1,18 @@
-local DataStoreService = game:GetService("DataStoreService")
-
-local store = DataStoreService:GetDataStore("PlayerSettings_v1")
+-- PlayerSettingsStore.server.lua
+-- DEPRECATED: Direct DataStore access moved to PlayerSettingsManager.server.lua
+-- This file is kept as a no-op to prevent errors from any legacy require() calls.
+-- It does NOT open any DataStore connections.
 
 local PlayerSettingsStore = {}
 
 function PlayerSettingsStore:Load(player)
-    local key = "user_" .. tostring(player.UserId)
-    local ok, data = pcall(function()
-        return store:GetAsync(key)
-    end)
-    if ok and type(data) == "table" then
-        return data
-    end
+    warn("[PlayerSettingsStore.server] Load() is deprecated. Use GetPlayerSettings remote instead.")
     return nil
 end
 
 function PlayerSettingsStore:Save(player, settings)
-    if type(settings) ~= "table" then return false end
-    local key = "user_" .. tostring(player.UserId)
-    local ok, err = pcall(function()
-        store:SetAsync(key, settings)
-    end)
-    if not ok then
-        warn("[PlayerSettingsStore] Failed to save settings for", player.Name, err)
-        return false
-    end
-    return true
+    warn("[PlayerSettingsStore.server] Save() is deprecated. Use UpdatePlayerSetting remote instead.")
+    return false
 end
 
 return PlayerSettingsStore

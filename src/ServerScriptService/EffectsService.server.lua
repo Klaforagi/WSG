@@ -234,8 +234,13 @@ Players.PlayerAdded:Connect(function(player)
     end
 end)
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-    saveData(player)
+    if SaveGuard:ClaimSave(player, "Effects") then
+        saveData(player)
+        SaveGuard:ReleaseSave(player, "Effects")
+    end
     playerData[player] = nil
 end)
 
@@ -254,10 +259,16 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 
 game:BindToClose(function()
+    SaveGuard:BeginShutdown()
     for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function() saveData(p) end)
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "Effects") then
+                saveData(p)
+                SaveGuard:ReleaseSave(p, "Effects")
+            end
+        end)
     end
-    task.wait(2)
+    SaveGuard:WaitForAll(5)
 end)
 
 -- ── Remote handlers ────────────────────────────────────────────────────────

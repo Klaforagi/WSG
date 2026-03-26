@@ -97,39 +97,28 @@ for _, player in ipairs(Players:GetPlayers()) do
     end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
+local function saveCurrencyPlayer(player)
+    if not SaveGuard:ClaimSave(player, "Currency") then return end
+    pcall(function() CurrencyService:SaveForPlayer(player) end)
+    pcall(function() CurrencyService:SaveKeysForPlayer(player) end)
+    pcall(function() CurrencyService:SaveSalvageForPlayer(player) end)
+    SaveGuard:ReleaseSave(player, "Currency")
+end
+
 Players.PlayerRemoving:Connect(function(player)
-    -- save and cleanup
-    local ok, err = pcall(function()
-        CurrencyService:SaveForPlayer(player)
-    end)
-    if not ok then
-        warn("CurrencyServiceInit: SaveForPlayer error for ", tostring(player.Name), err)
-    end
-    -- PREMIUM CRATE / KEY SYSTEM  – Save Keys on leave
-    local ok2, err2 = pcall(function()
-        CurrencyService:SaveKeysForPlayer(player)
-    end)
-    if not ok2 then
-        warn("CurrencyServiceInit: SaveKeysForPlayer error for ", tostring(player.Name), err2)
-    end
-    -- SALVAGE SYSTEM  – Save Salvage on leave
-    local ok3, err3 = pcall(function()
-        CurrencyService:SaveSalvageForPlayer(player)
-    end)
-    if not ok3 then
-        warn("CurrencyServiceInit: SaveSalvageForPlayer error for ", tostring(player.Name), err3)
-    end
+    saveCurrencyPlayer(player)
     CurrencyService:RemovePlayer(player)
 end)
 
 -- BindToClose: attempt to save all players
 if RunService:IsServer() then
     game:BindToClose(function()
-        local ok, err = pcall(function()
-            CurrencyService:SaveAll()
-        end)
-        if not ok then
-            warn("CurrencyServiceInit: SaveAll on shutdown failed:", tostring(err))
+        SaveGuard:BeginShutdown()
+        for _, player in ipairs(Players:GetPlayers()) do
+            task.spawn(saveCurrencyPlayer, player)
         end
+        SaveGuard:WaitForAll(5)
     end)
 end

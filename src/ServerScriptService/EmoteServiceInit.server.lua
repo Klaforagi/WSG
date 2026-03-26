@@ -338,9 +338,14 @@ Players.PlayerAdded:Connect(function(player)
     print("[EmoteService] player joined, emote state loaded:", player.Name)
 end)
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
     stopEmoteForPlayer(player, "leaving")
-    saveEmoteData(player)
+    if SaveGuard:ClaimSave(player, "Emote") then
+        saveEmoteData(player)
+        SaveGuard:ReleaseSave(player, "Emote")
+    end
     playerEmoteData[player]  = nil
     activeEmoteTracks[player]= nil
     emoteCooldowns[player]   = nil
@@ -354,10 +359,16 @@ end
 
 -- BindToClose: save all on shutdown
 game:BindToClose(function()
+    SaveGuard:BeginShutdown()
     for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function() saveEmoteData(p) end)
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "Emote") then
+                saveEmoteData(p)
+                SaveGuard:ReleaseSave(p, "Emote")
+            end
+        end)
     end
-    task.wait(2)
+    SaveGuard:WaitForAll(5)
 end)
 
 -- ── Remote handlers ────────────────────────────────────────────────────────

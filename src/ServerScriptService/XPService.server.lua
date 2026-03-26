@@ -260,9 +260,28 @@ Players.PlayerAdded:Connect(function(player)
     end)
 end)
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-    savePlayer(player.UserId)
+    if SaveGuard:ClaimSave(player, "XP") then
+        savePlayer(player.UserId)
+        SaveGuard:ReleaseSave(player, "XP")
+    end
     data[player.UserId] = nil
+end)
+
+-- Save all on shutdown (was missing – data loss risk)
+game:BindToClose(function()
+    SaveGuard:BeginShutdown()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "XP") then
+                savePlayer(p.UserId)
+                SaveGuard:ReleaseSave(p, "XP")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
 end)
 
 -- Periodic autosave

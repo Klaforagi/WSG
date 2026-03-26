@@ -91,8 +91,15 @@ local function onPlayerAdded(player)
     end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 local function onPlayerRemoving(player)
-    WeeklyQuestService:ClearPlayer(player)
+    if SaveGuard:ClaimSave(player, "WeeklyQuest") then
+        WeeklyQuestService:ClearPlayer(player)
+        SaveGuard:ReleaseSave(player, "WeeklyQuest")
+    else
+        pcall(function() WeeklyQuestService:ClearPlayer(player) end)
+    end
 end
 
 for _, p in ipairs(Players:GetPlayers()) do
@@ -100,6 +107,20 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
+
+-- Save all on shutdown (was missing – data loss risk)
+game:BindToClose(function()
+    SaveGuard:BeginShutdown()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "WeeklyQuest") then
+                WeeklyQuestService:ClearPlayer(p)
+                SaveGuard:ReleaseSave(p, "WeeklyQuest")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
+end)
 
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events

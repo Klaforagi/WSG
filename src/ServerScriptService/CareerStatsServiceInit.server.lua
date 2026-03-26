@@ -131,19 +131,33 @@ local function flushPlaytime(player)
     end
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
     flushPlaytime(player)
-    pcall(function() CareerStatsService:SaveForPlayer(player) end)
+    if SaveGuard:ClaimSave(player, "CareerStats") then
+        pcall(function() CareerStatsService:SaveForPlayer(player) end)
+        SaveGuard:ReleaseSave(player, "CareerStats")
+    end
     CareerStatsService:ClearPlayer(player)
     joinTimes[player] = nil
     currentStreaks[player] = nil
 end)
 
 game:BindToClose(function()
+    SaveGuard:BeginShutdown()
     for player, _ in pairs(joinTimes) do
         flushPlaytime(player)
     end
-    CareerStatsService:SaveAll()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "CareerStats") then
+                pcall(function() CareerStatsService:SaveForPlayer(p) end)
+                SaveGuard:ReleaseSave(p, "CareerStats")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
 end)
 
 for _, p in ipairs(Players:GetPlayers()) do

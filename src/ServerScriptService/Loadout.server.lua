@@ -704,9 +704,14 @@ local function onPlayerAdded(player)
     end
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 local function onPlayerRemoving(player)
     print("[EquipSave]", player.Name, "saving on leave...")
-    saveLoadout(player)
+    if SaveGuard:ClaimSave(player, "Loadout") then
+        saveLoadout(player)
+        SaveGuard:ReleaseSave(player, "Loadout")
+    end
     unlockState[player]    = nil
     promptDebounce[player] = nil
     chosenRanged[player]     = nil
@@ -765,8 +770,14 @@ end)
 -- SAVE ALL ON SHUTDOWN
 --------------------------------------------------------------------------------
 game:BindToClose(function()
+    SaveGuard:BeginShutdown()
     for _, player in ipairs(Players:GetPlayers()) do
-        task.spawn(saveLoadout, player)
+        task.spawn(function()
+            if SaveGuard:ClaimSave(player, "Loadout") then
+                saveLoadout(player)
+                SaveGuard:ReleaseSave(player, "Loadout")
+            end
+        end)
     end
-    task.wait(2)
+    SaveGuard:WaitForAll(5)
 end)

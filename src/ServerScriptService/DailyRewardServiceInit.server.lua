@@ -113,13 +113,27 @@ for _, player in ipairs(Players:GetPlayers()) do
     end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-    DailyRewardService:SaveForPlayer(player)
+    if SaveGuard:ClaimSave(player, "DailyReward") then
+        DailyRewardService:SaveForPlayer(player)
+        SaveGuard:ReleaseSave(player, "DailyReward")
+    end
     DailyRewardService:ClearPlayer(player)
 end)
 
 game:BindToClose(function()
-    DailyRewardService:SaveAll()
+    SaveGuard:BeginShutdown()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "DailyReward") then
+                DailyRewardService:SaveForPlayer(p)
+                SaveGuard:ReleaseSave(p, "DailyReward")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
 end)
 
 print("[DailyRewardServiceInit] Daily Reward system initialized")

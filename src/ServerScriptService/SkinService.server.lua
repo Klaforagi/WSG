@@ -788,8 +788,13 @@ end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-    saveData(player)
+    if SaveGuard:ClaimSave(player, "Skin") then
+        saveData(player)
+        SaveGuard:ReleaseSave(player, "Skin")
+    end
     playerData[player] = nil
     applyingLock[player] = nil
 end)
@@ -802,10 +807,16 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 
 game:BindToClose(function()
+    SaveGuard:BeginShutdown()
     for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function() saveData(p) end)
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "Skin") then
+                saveData(p)
+                SaveGuard:ReleaseSave(p, "Skin")
+            end
+        end)
     end
-    task.wait(2)
+    SaveGuard:WaitForAll(5)
 end)
 
 --------------------------------------------------------------------------------

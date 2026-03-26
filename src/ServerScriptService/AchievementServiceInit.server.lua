@@ -95,13 +95,27 @@ local function onPlayerAdded(player)
     end)
 end
 
+local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+
 Players.PlayerRemoving:Connect(function(player)
-    pcall(function() AchievementService:SaveForPlayer(player) end)
+    if SaveGuard:ClaimSave(player, "Achievements") then
+        pcall(function() AchievementService:SaveForPlayer(player) end)
+        SaveGuard:ReleaseSave(player, "Achievements")
+    end
     AchievementService:ClearPlayer(player)
 end)
 
 game:BindToClose(function()
-    AchievementService:SaveAll()
+    SaveGuard:BeginShutdown()
+    for _, p in ipairs(Players:GetPlayers()) do
+        task.spawn(function()
+            if SaveGuard:ClaimSave(p, "Achievements") then
+                pcall(function() AchievementService:SaveForPlayer(p) end)
+                SaveGuard:ReleaseSave(p, "Achievements")
+            end
+        end)
+    end
+    SaveGuard:WaitForAll(5)
 end)
 
 for _, p in ipairs(Players:GetPlayers()) do
