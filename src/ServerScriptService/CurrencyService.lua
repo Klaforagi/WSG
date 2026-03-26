@@ -149,6 +149,49 @@ function CurrencyService:HasEnoughKeys(player, amount)
 end
 -- END PREMIUM CRATE / KEY SYSTEM (Keys helpers)
 
+--------------------------------------------------------------------------------
+-- SALVAGE SYSTEM  – Salvage currency helpers
+--------------------------------------------------------------------------------
+function CurrencyService:GetSalvage(player)
+    if not player then return 0 end
+    return salvageBalances[player] or 0
+end
+
+function CurrencyService:SetSalvage(player, amount)
+    if not player then return end
+    amount = math.floor(tonumber(amount) or 0)
+    if amount < 0 then amount = 0 end
+    salvageBalances[player] = amount
+    if SalvageUpdatedEvent and SalvageUpdatedEvent.FireClient then
+        pcall(function()
+            SalvageUpdatedEvent:FireClient(player, amount)
+        end)
+    end
+end
+
+function CurrencyService:AddSalvage(player, amount)
+    if not player then return end
+    amount = math.floor(tonumber(amount) or 0)
+    if amount == 0 then return end
+    local cur = CurrencyService:GetSalvage(player)
+    CurrencyService:SetSalvage(player, cur + amount)
+end
+
+function CurrencyService:RemoveSalvage(player, amount)
+    if not player then return end
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then return end
+    local cur = CurrencyService:GetSalvage(player)
+    CurrencyService:SetSalvage(player, math.max(0, cur - amount))
+end
+
+function CurrencyService:HasEnoughSalvage(player, amount)
+    if not player then return false end
+    amount = math.floor(tonumber(amount) or 0)
+    return CurrencyService:GetSalvage(player) >= amount
+end
+-- END SALVAGE SYSTEM (Salvage helpers)
+
 -- Loads coins for a player from the datastore (with retries). Returns the loaded amount (or 0).
 function CurrencyService:LoadForPlayer(player)
     if not player then return 0 end
