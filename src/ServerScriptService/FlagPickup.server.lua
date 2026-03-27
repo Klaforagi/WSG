@@ -54,6 +54,10 @@ end
 local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=CFrame}
 local carrying = {} -- map player -> data {team, modelClone}
 local captureDebounce = {}
+local lastCarrierPos = {} -- player -> Vector3 (tracked for disconnect safety)
+
+-- Global: seconds before a dropped flag auto-returns to base (all drop reasons)
+local FLAG_RETURN_TIME = 15
 
 local function removeScriptsFromModel(model)
     if not model then return end
@@ -408,7 +412,7 @@ function setupFlagModel(model)
                     flags[team].dropModel = dropModel
 
                     -- create a visible countdown above the dropped flag and return it to the stand
-                    -- only if nobody picks it up within 15 seconds
+                    -- only if nobody picks it up within FLAG_RETURN_TIME seconds
                     -- ensure a PrimaryPart exists for GUI attachment
                     if not dropModel.PrimaryPart then
                         for _, d in ipairs(dropModel:GetDescendants()) do
@@ -449,7 +453,7 @@ function setupFlagModel(model)
                     end
 
                     task.spawn(function()
-                        for i = 15, 1, -1 do
+                        for i = FLAG_RETURN_TIME, 1, -1 do
                             -- if flag is no longer marked as dropped, abort countdown
                             if not flags[team] or not flags[team].dropped then
                                 if gui then pcall(function() gui:Destroy() end) end
@@ -467,39 +471,22 @@ function setupFlagModel(model)
                             return
                         end
 
-                        local standName = team .. "FlagStand"
-                        local stand = Workspace:FindFirstChild(standName, true)
-                        if stand and stand:IsA("BasePart") then
-                            local carryRot = CFrame.Angles(math.rad(180), math.rad(180), math.rad(90)) * CFrame.Angles(math.rad(180), 0, 0)
-                            if flags[team] and flags[team].dropModel and flags[team].dropModel.PrimaryPart then
-                                -- remove interfering scripts before moving the model
-                                removeScriptsFromModel(flags[team].dropModel)
-                                flags[team].dropModel:SetPrimaryPartCFrame(stand.CFrame * CFrame.new(0, 6, 0) * carryRot)
-                                -- restore canonical stand scripts from the stored original
-                                if flags[team].original then
-                                    restoreScriptsFromOriginal(flags[team].original, flags[team].dropModel)
-                                end
-                                setupFlagModel(flags[team].dropModel)
-                            else
-                                respawnFlag(team)
-                            end
-                            flags[team].dropped = false
-                            flags[team].dropModel = nil
-                            FlagStatus:FireAllClients("playSound", "Flag_return")
-                            FlagStatus:FireAllClients("returned", nil, nil, team)
-                        else
-                            respawnFlag(team)
-                            flags[team].dropped = false
-                            flags[team].dropModel = nil
-                            FlagStatus:FireAllClients("playSound", "Flag_return")
-                            FlagStatus:FireAllClients("returned", nil, nil, team)
+                        -- destroy dropped model and respawn at authoritative base position
+                        if flags[team].dropModel then
+                            pcall(function() flags[team].dropModel:Destroy() end)
                         end
+                        flags[team].dropped = false
+                        flags[team].dropModel = nil
+                        respawnFlag(team)
+                        print("[FlagPickup] flag returned to exact base transform:", team)
+                        FlagStatus:FireAllClients("playSound", "Flag_return")
+                        FlagStatus:FireAllClients("returned", nil, nil, team)
 
                         if gui then pcall(function() gui:Destroy() end) end
                     end)
                     else
                     -- ensure original eventually respawns if something went wrong
-                    task.delay(15, function()
+                    task.delay(FLAG_RETURN_TIME, function()
                         respawnFlag(team)
                         FlagStatus:FireAllClients("playSound", "Flag_return")
                         FlagStatus:FireAllClients("returned", nil, nil, team)
@@ -678,6 +665,10 @@ local function resetAllFlags()
     end
     carrying = {}
     captureDebounce = {}
+    -- clear tracked positions from disconnect safety system
+    for pl, _ in pairs(lastCarrierPos) do
+        lastCarrierPos[pl] = nil
+    end
 
     -- 2) Remove any flag models currently in Workspace (dropped or leftover)
     for _, child in ipairs(Workspace:GetChildren()) do
@@ -709,5 +700,193 @@ if not ResetFlags then
     ResetFlags.Parent = ServerScriptService
 end
 ResetFlags.Event:Connect(resetAllFlags)
+
+---------------------------------------------------------------------
+-- DISCONNECT / STALE-CARRIER SAFETY
+-- If a player leaves while carrying a flag, force-drop it so the flag
+-- never vanishes with them.
+---------------------------------------------------------------------
+
+-- Force-drop a flag for a given player.  Works for disconnects, stale
+-- carrier cleanup, or any situation where the carrier is no longer valid.
+-- `lastPos` is an optional fallback Vector3 if HRP is already gone.
+local function forceDropFlag(pl, lastPos)
+    local carry = carrying[pl]
+    if not carry then return end
+    local team = carry.team
+
+    -- Clean up carried model & connections immediately
+    if carry.model then
+        pcall(function() carry.model:Destroy() end)
+    end
+    if carry.deathConn then
+        pcall(function() carry.deathConn:Disconnect() end)
+    end
+    carrying[pl] = nil
+    pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+
+    -- Determine drop position
+    local dropCFrame
+    local char = pl.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        dropCFrame = hrp.CFrame * CFrame.new(0, 0.5, 0)
+    elseif lastPos then
+        dropCFrame = CFrame.new(lastPos + Vector3.new(0, 0.5, 0))
+    end
+
+    -- If we have a valid position, drop the flag there with a return timer.
+    -- Otherwise, return it directly to base.
+    if dropCFrame and flags[team] and flags[team].original then
+        print("[FlagPickup] force-dropping", team, "flag for", pl.Name, "at", tostring(dropCFrame.Position))
+
+        local dropModel = flags[team].original:Clone()
+        dropModel.Parent = Workspace
+
+        if not dropModel.PrimaryPart then
+            for _, d in ipairs(dropModel:GetDescendants()) do
+                if d:IsA("BasePart") then dropModel.PrimaryPart = d; break end
+            end
+        end
+
+        if dropModel.PrimaryPart then
+            local carryRot = CFrame.Angles(math.rad(180), math.rad(180), math.rad(90))
+                           * CFrame.Angles(math.rad(180), 0, 0)
+            dropModel:SetPrimaryPartCFrame(dropCFrame * carryRot)
+        end
+
+        setupFlagModel(dropModel)
+        flags[team].dropped = true
+        flags[team].dropModel = dropModel
+
+        -- Announce that the flag was dropped (show as auto-returned message)
+        FlagStatus:FireAllClients("returned", nil, nil, team)
+        FlagStatus:FireAllClients("playSound", "Flag_return")
+
+        -- bump a version token so stale timers are harmless
+        local dropVersion = (flags[team]._dropVersion or 0) + 1
+        flags[team]._dropVersion = dropVersion
+
+        -- Start auto-return timer (uses global FLAG_RETURN_TIME)
+        print("[FlagPickup] auto-return timer started for", team, "flag (" .. FLAG_RETURN_TIME .. "s)")
+        task.spawn(function()
+            -- countdown BillboardGui
+            local gui, label
+            if dropModel.PrimaryPart then
+                gui = Instance.new("BillboardGui")
+                gui.Name = "ReturnCountdown"
+                gui.Adornee = dropModel.PrimaryPart
+                gui.AlwaysOnTop = false
+                gui.Size = UDim2.new(6, 0, 3, 0)
+                gui.StudsOffset = Vector3.new(0, 10, 0)
+                gui.MaxDistance = 200
+                local teamColor = Color3.new(1, 1, 1)
+                if team == "Blue" then teamColor = Color3.fromRGB(0, 162, 255)
+                elseif team == "Red" then teamColor = Color3.fromRGB(255, 75, 75) end
+                label = Instance.new("TextLabel")
+                label.Size = UDim2.new(1, 0, 1, 0)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = teamColor
+                label.TextStrokeTransparency = 0
+                label.TextStrokeColor3 = Color3.new(0, 0, 0)
+                label.Font = Enum.Font.SourceSansBold
+                label.TextScaled = true
+                label.Parent = gui
+                gui.Parent = dropModel.PrimaryPart
+            end
+
+            for i = FLAG_RETURN_TIME, 1, -1 do
+                -- stale check: if flag state changed, abort
+                if not flags[team] or not flags[team].dropped
+                    or flags[team]._dropVersion ~= dropVersion then
+                    if gui then pcall(function() gui:Destroy() end) end
+                    print("[FlagPickup] auto-return timer aborted (flag picked up)")
+                    return
+                end
+                if label then label.Text = tostring(i) end
+                task.wait(1)
+            end
+
+            -- Final stale check before returning
+            if not flags[team] or not flags[team].dropped
+                or flags[team]._dropVersion ~= dropVersion then
+                if gui then pcall(function() gui:Destroy() end) end
+                return
+            end
+
+            -- Return flag to base using authoritative respawnFlag
+            if gui then pcall(function() gui:Destroy() end) end
+
+            if flags[team].dropModel then
+                pcall(function() flags[team].dropModel:Destroy() end)
+            end
+            flags[team].dropped = false
+            flags[team].dropModel = nil
+            respawnFlag(team)
+            print("[FlagPickup] flag returned to exact base transform:", team)
+            FlagStatus:FireAllClients("playSound", "Flag_return")
+            FlagStatus:FireAllClients("returned", nil, nil, team)
+            print("[FlagPickup] auto-return timer completed –", team, "flag returned to base")
+        end)
+    else
+        -- No valid position: return directly to base
+        print("[FlagPickup] no valid drop position for", team, "flag – returning to base")
+        respawnFlag(team)
+        if flags[team] then
+            flags[team].dropped = false
+            flags[team].dropModel = nil
+        end
+        FlagStatus:FireAllClients("returned", nil, nil, team)
+        FlagStatus:FireAllClients("playSound", "Flag_return")
+    end
+end
+
+-- Track last-known server position for each player carrying a flag,
+-- so we have a fallback if HRP is gone by the time PlayerRemoving fires.
+RunService.Heartbeat:Connect(function()
+    for pl, data in pairs(carrying) do
+        local char = pl.Character
+        local hrp = char and char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            lastCarrierPos[pl] = hrp.Position
+        end
+    end
+end)
+
+-- Handle player disconnect: force-drop any carried flag
+Players.PlayerRemoving:Connect(function(pl)
+    if not carrying[pl] then
+        lastCarrierPos[pl] = nil
+        captureDebounce[pl] = nil
+        return
+    end
+    print("[FlagPickup]", pl.Name, "disconnected while carrying flag")
+    forceDropFlag(pl, lastCarrierPos[pl])
+    lastCarrierPos[pl] = nil
+    captureDebounce[pl] = nil
+end)
+
+-- Periodic stale-carrier check: every 5 seconds, verify all carriers are
+-- still valid players with live characters. Catches edge cases where
+-- PlayerRemoving or Died events were missed.
+task.spawn(function()
+    while true do
+        task.wait(5)
+        for pl, data in pairs(carrying) do
+            -- Player object is invalid or no longer in game
+            local valid = pl and pl.Parent ~= nil
+            if valid then
+                local char = pl.Character
+                local hum = char and char:FindFirstChildOfClass("Humanoid")
+                valid = char ~= nil and hum ~= nil and hum.Health > 0
+            end
+            if not valid then
+                warn("[FlagPickup] stale carrier detected:", tostring(pl), "– force dropping")
+                forceDropFlag(pl, lastCarrierPos[pl])
+                lastCarrierPos[pl] = nil
+            end
+        end
+    end
+end)
 
 return nil

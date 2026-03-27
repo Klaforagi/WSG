@@ -278,6 +278,8 @@ local function createArmorPiece(character, limbPart, name, size, offset, color, 
     armor.Material = Enum.Material.SmoothPlastic
     armor.CanCollide = false
     armor.Massless = true
+    armor.CanTouch = false
+    armor.CanQuery = false
     armor.Anchored = false
     if shape then
         armor.Shape = shape
@@ -296,6 +298,63 @@ local function createArmorPiece(character, limbPart, name, size, offset, color, 
     -- Parent LAST – part enters workspace at correct position with weld active
     armor.Parent = character
     return armor
+end
+
+-- Tag name used to identify team-colored accent parts for live recolor
+local ACCENT_TAG = "_SkinAccent"
+
+-- Wrapper: creates an armor piece AND tags it as an accent/trim piece.
+local function createAccentPiece(character, limbPart, name, size, offset, color, shape)
+    local part = createArmorPiece(character, limbPart, name, size, offset, color, shape)
+    if part then
+        part:SetAttribute(ACCENT_TAG, true)
+    end
+    return part
+end
+
+-- Resolve team accent color for armor trim.
+-- Blue team → blue trim, Red team → red trim, else → fallback (gold).
+local TEAM_ACCENT_COLORS = {
+    Blue = Color3.fromRGB(40, 90, 220),
+    Red  = Color3.fromRGB(220, 45, 45),
+}
+
+-- Darker team colors for the cape body.
+local TEAM_CAPE_COLORS = {
+    Blue = Color3.fromRGB(20, 30, 120),
+    Red  = Color3.fromRGB(120, 20, 20),
+}
+
+local function getTeamAccentColor(player, fallback)
+    local team = player.Team
+    if team and TEAM_ACCENT_COLORS[team.Name] then
+        return TEAM_ACCENT_COLORS[team.Name]
+    end
+    return fallback or Color3.fromRGB(200, 170, 50)
+end
+
+local function getTeamCapeColor(player, fallback)
+    local team = player.Team
+    if team and TEAM_CAPE_COLORS[team.Name] then
+        return TEAM_CAPE_COLORS[team.Name]
+    end
+    return fallback or Color3.fromRGB(25, 35, 85)
+end
+
+-- Recolor all accent-tagged parts on an existing character.
+local CAPE_TAG = "_SkinCape"
+
+local function updateSkinAccentColor(character, accentColor, capeColor)
+    if not character then return end
+    for _, child in ipairs(character:GetDescendants()) do
+        if child:IsA("BasePart") then
+            if child:GetAttribute(ACCENT_TAG) then
+                child.Color = accentColor
+            elseif capeColor and child:GetAttribute(CAPE_TAG) then
+                child.Color = capeColor
+            end
+        end
+    end
 end
 
 -- Apply Knight skin: COSMETIC OVERLAY ONLY
@@ -320,9 +379,11 @@ local function applyKnightSkin(player, character)
     end
 
     local armorColor  = def.ArmorColor  or Color3.fromRGB(160, 165, 175)
-    local accentColor = def.AccentColor or Color3.fromRGB(200, 170, 50)
+    local accentColor = getTeamAccentColor(player, def.AccentColor or Color3.fromRGB(200, 170, 50))
     local helmetColor = def.HelmetColor or Color3.fromRGB(140, 145, 155)
     local visorColor  = def.VisorColor  or Color3.fromRGB(30, 30, 35)
+
+    dprint(player.Name, "accent color:", tostring(accentColor))
 
     -- ── Step 1: Save + override body colors (reversible) ─────────────────
     saveOriginalBodyColors(character)
@@ -371,7 +432,7 @@ local function applyKnightSkin(player, character)
                 visorColor
             )
             -- Helmet crest (top ridge)
-            createArmorPiece(
+            createAccentPiece(
                 character, helmet, "KnightCrest",
                 Vector3.new(0.25, 0.35, 1.2),
                 CFrame.new(0, 0.65, 0),
@@ -390,8 +451,8 @@ local function applyKnightSkin(player, character)
             armorColor
         )
         if chest then
-            -- Gold trim band
-            createArmorPiece(
+            -- Team trim band
+            createAccentPiece(
                 character, chest, "KnightChestTrim",
                 Vector3.new(2.25, 0.15, 1.25),
                 CFrame.new(0, 0.4, 0),
@@ -412,7 +473,7 @@ local function applyKnightSkin(player, character)
             armorColor
         )
         if pad then
-            createArmorPiece(
+            createAccentPiece(
                 character, pad, "KnightShoulderEdge_" .. armName,
                 Vector3.new(1.35, 0.1, 1.35),
                 CFrame.new(0, -0.25, 0),
@@ -441,8 +502,8 @@ local function applyKnightSkin(player, character)
             armorColor
         )
         if bracer then
-            -- Gold trim ring at the elbow end of the bracer
-            createArmorPiece(
+            -- Team trim ring at the elbow end of the bracer
+            createAccentPiece(
                 character, bracer, "KnightBracerTrim_" .. lowerArmName,
                 Vector3.new(1.2, 0.08, 1.2),
                 CFrame.new(0, 0.4, 0),
@@ -479,7 +540,7 @@ local function applyKnightSkin(player, character)
             CFrame.new(0, -0.35, 0),
             armorColor
         )
-        createArmorPiece(
+        createAccentPiece(
             character, arm, "KnightBracerTrim_" .. armName,
             Vector3.new(1.2, 0.08, 1.2),
             CFrame.new(0, 0.05, 0),
@@ -493,7 +554,7 @@ local function applyKnightSkin(player, character)
     -- Belt / waist armor
     local lowerTorso = character:FindFirstChild("LowerTorso") or torso
     if lowerTorso and lowerTorso:IsA("BasePart") then
-        createArmorPiece(
+        createAccentPiece(
             character, lowerTorso, "KnightBelt",
             Vector3.new(2.1, 0.3, 1.15),
             CFrame.new(0, 0.3, -0.05),
@@ -516,8 +577,8 @@ local function applyKnightSkin(player, character)
                 CFrame.new(0, 0, 0),
                 darkerArmor
             )
-            -- Gold stripe at the top of the thigh plate
-            createArmorPiece(
+            -- Team stripe at the top of the thigh plate
+            createAccentPiece(
                 character, upperLeg, "KnightThighTrim_" .. side,
                 Vector3.new(1.2, 0.08, 1.2),
                 CFrame.new(0, 0.48, 0),
@@ -584,8 +645,8 @@ local function applyKnightSkin(player, character)
             CFrame.new(0, -0.45, -0.05),
             armorColor
         )
-        -- Gold trim at top of thigh
-        createArmorPiece(
+        -- Team trim at top of thigh
+        createAccentPiece(
             character, leg, "KnightThighTrim_" .. legName,
             Vector3.new(1.2, 0.08, 1.2),
             CFrame.new(0, 0.7, 0),
@@ -619,8 +680,8 @@ local function applyKnightSkin(player, character)
                 CFrame.new(0, 0, 0.15),
                 Color3.fromRGB(130, 135, 145) -- slightly darker than main armor
             )
-            -- Gold trim border at the top edge of the back plate
-            createArmorPiece(
+            -- Team trim border at the top edge of the back plate
+            createAccentPiece(
                 character, backPlate, "KnightBackTrim",
                 Vector3.new(1.85, 0.12, 0.3),
                 CFrame.new(0, 0.75, 0),
@@ -629,24 +690,24 @@ local function applyKnightSkin(player, character)
         end
 
         -- Short cape – hangs from upper-back, stops above the knees.
-        -- Deep royal blue with a gold bottom hem.
-        local capeColor = Color3.fromRGB(25, 35, 85) -- dark royal blue
+        local capeColor = getTeamCapeColor(player)
         local cape = createArmorPiece(
             character, torso, "KnightCape",
-            Vector3.new(1.5, 2.2, 0.08),
-            CFrame.new(0, -1.2, 0.6),
+            Vector3.new(1.5, 2.3, 0.08),
+            CFrame.new(0, -0.8, 0.6),
             capeColor
         )
         if cape then
-            -- Gold hem at the bottom edge of the cape
-            createArmorPiece(
+            cape:SetAttribute(CAPE_TAG, true)
+            -- Team hem at the bottom edge of the cape
+            createAccentPiece(
                 character, cape, "KnightCapeHem",
                 Vector3.new(1.55, 0.1, 0.12),
-                CFrame.new(0, -1.05, 0),
+                CFrame.new(0, -1.1, 0),
                 accentColor
             )
-            -- Cape clasp at the top – small gold piece connecting cape to armor
-            createArmorPiece(
+            -- Cape clasp at the top – small team-colored piece connecting cape to armor
+            createAccentPiece(
                 character, torso, "KnightCapeClasp",
                 Vector3.new(0.5, 0.2, 0.18),
                 CFrame.new(0, 0.85, 0.58),
@@ -711,29 +772,6 @@ local function applySkin(player, character)
         return
     end
 
-    -- Death failsafe: if the player dies within 3 seconds of a non-Default skin
-    -- being applied, auto-revert to Default to break potential death loops
-    if equipped ~= "Default" then
-        task.spawn(function()
-            local deathConn
-            local reverted = false
-
-            deathConn = humanoid.Died:Connect(function()
-                if reverted then return end
-                reverted = true
-                warn("[SkinService] FAILSAFE: " .. player.Name .. " died within 3s of skin '" .. equipped .. "' – reverting to Default")
-                local data = getOrCreateData(player)
-                data.equipped = "Default"
-                task.spawn(function() saveData(player) end)
-                pushEquippedToClient(player)
-            end)
-
-            task.wait(3)
-            if deathConn then
-                deathConn:Disconnect()
-            end
-        end)
-    end
 end
 
 --------------------------------------------------------------------------------
@@ -751,36 +789,125 @@ local function onPlayerAdded(player)
 
     dprint(player.Name, "joined – equipped:", data.equipped)
 
-    -- Apply skin on every character spawn (including respawns)
+    -- ── Live team-color update: recolor accent trim when team changes ────
+    player:GetPropertyChangedSignal("Team"):Connect(function()
+        local character = player.Character
+        if not character then return end
+        local eq = getEquipped(player)
+        if eq == "Default" then return end
+        local newColor = getTeamAccentColor(player)
+        local newCape = getTeamCapeColor(player)
+        updateSkinAccentColor(character, newColor, newCape)
+        dprint(player.Name, "team changed – accent recolored to", tostring(newColor))
+    end)
+
+    -- Apply skin on every character spawn (including respawns).
+    -- For non-Default skins the character is hidden until the cosmetic layer
+    -- is fully attached so the player never sees a flash of the bare avatar.
     player.CharacterAdded:Connect(function(character)
-        -- Wait for the character to fully load
+        dprint(player.Name, "CharacterAdded – starting skin pipeline")
+
         local humanoid = character:WaitForChild("Humanoid", 10)
         if not humanoid then
             dprint(player.Name, "WARN: Humanoid not found after 10s")
             return
         end
 
-        -- Wait for appearance to load before applying
-        if not player:HasAppearanceLoaded() then
-            player.CharacterAppearanceLoaded:Wait()
+        local equipped = getEquipped(player)
+        local needsSkin = equipped ~= "Default"
+
+        -- ── Visibility suppression for non-Default skins ─────────────
+        -- Hide every BasePart + accessory handle so the bare Roblox avatar
+        -- is never visible while we wait for appearance data to arrive.
+        local hiddenParts = {} -- { BasePart = originalTransparency }
+        if needsSkin then
+            dprint(player.Name, "hiding character pending skin apply")
+            for _, desc in ipairs(character:GetDescendants()) do
+                if desc:IsA("BasePart") and desc.Transparency < 1 then
+                    hiddenParts[desc] = desc.Transparency
+                    desc.Transparency = 1
+                end
+            end
+            -- Also catch parts/accessories that replicate slightly later
+            local hideConn
+            hideConn = character.DescendantAdded:Connect(function(desc)
+                if desc:IsA("BasePart") and desc.Transparency < 1
+                    and not desc:GetAttribute("_SkinCosmetic") then
+                    hiddenParts[desc] = desc.Transparency
+                    desc.Transparency = 1
+                end
+            end)
+            task.delay(3, function()
+                -- Safety: if something goes wrong, reveal after 3s max
+                if hideConn.Connected then
+                    hideConn:Disconnect()
+                    for part, orig in pairs(hiddenParts) do
+                        if part and part.Parent and not part:GetAttribute("_OrigTransparency") then
+                            part.Transparency = orig
+                        end
+                    end
+                    hiddenParts = {}
+                end
+            end)
+
+            local function revealCharacter()
+                if hideConn.Connected then hideConn:Disconnect() end
+                for part, orig in pairs(hiddenParts) do
+                    if part and part.Parent then
+                        -- Skip parts the skin intentionally keeps hidden (e.g. accessory handles)
+                        if not part:GetAttribute("_OrigTransparency") then
+                            part.Transparency = orig
+                        end
+                    end
+                end
+                hiddenParts = {}
+                dprint(player.Name, "character revealed with skin")
+            end
+
+            -- Wait for body parts to exist so the skin can attach properly
+            if not player:HasAppearanceLoaded() then
+                player.CharacterAppearanceLoaded:Wait()
+            end
+
+            -- Pre-save correct original transparency for accessory handles before
+            -- the skin runs, so applyKnightSkin records the true value (not our
+            -- temporary hidden transparency of 1).
+            for _, acc in ipairs(character:GetChildren()) do
+                if acc:IsA("Accessory") then
+                    local handle = acc:FindFirstChild("Handle")
+                    if handle and handle:IsA("BasePart") and hiddenParts[handle] ~= nil then
+                        handle:SetAttribute("_OrigTransparency", hiddenParts[handle])
+                    end
+                end
+            end
+
+            -- Verify character is still alive
+            if humanoid.Health <= 0 then
+                revealCharacter()
+                dprint(player.Name, "WARN: humanoid dead after appearance wait – skipping")
+                return
+            end
+
+            applySkin(player, character)
+            revealCharacter()
+        else
+            -- Default skin: no hiding needed, just wait for appearance normally
+            if not player:HasAppearanceLoaded() then
+                player.CharacterAppearanceLoaded:Wait()
+            end
+            if humanoid.Health <= 0 then
+                dprint(player.Name, "WARN: humanoid dead – skipping default skin apply")
+                return
+            end
+            applySkin(player, character)
         end
 
-        -- Yield to let character fully settle
-        task.wait(0.5)
-
-        -- Verify character is still alive after the wait
-        if humanoid.Health <= 0 then
-            dprint(player.Name, "WARN: humanoid dead after wait – skipping skin apply")
-            return
-        end
-
-        applySkin(player, character)
+        dprint(player.Name, "skin pipeline complete")
     end)
 
     -- If already spawned, apply immediately
     if player.Character then
         task.spawn(function()
-            task.wait(0.5)
             applySkin(player, player.Character)
         end)
     end

@@ -7,11 +7,21 @@ local Workspace = game:GetService("Workspace")
 -- Note: RunService was used in an experimental change; not required for minimal network ownership fix.
 
 local function makePartsPhysical(model)
-    -- Restore original behavior: make all BaseParts physical and collidable.
+    -- Make real body parts physical and collidable.
+    -- Skip cosmetic skin overlays (tagged _SkinCosmetic) so they stay
+    -- massless / non-collidable and don't cause chaotic ragdoll physics.
     for _, p in ipairs(model:GetDescendants()) do
         if p:IsA("BasePart") then
-            p.CanCollide = true
-            p.Massless = false
+            if p:GetAttribute("_SkinCosmetic") then
+                -- Ensure cosmetic parts NEVER participate in death physics
+                p.CanCollide = false
+                p.Massless   = true
+                p.CanTouch   = false
+                p.CanQuery   = false
+            else
+                p.CanCollide = true
+                p.Massless = false
+            end
         end
     end
 end

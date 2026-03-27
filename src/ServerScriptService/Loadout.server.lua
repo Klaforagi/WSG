@@ -169,6 +169,30 @@ end
 -- Ensure a tool's physical parts won't collide when equipped/backpacked.
 local function sanitizeTool(tool)
     if not tool then return end
+    -- Convert WeldConstraints to Welds so we can scale offsets (WeldConstraint has no C0/C1)
+    for _, wc in ipairs(tool:GetDescendants()) do
+        if wc and wc:IsA("WeldConstraint") then
+            local p0 = wc.Part0
+            local p1 = wc.Part1
+            if p0 and p1 then
+                local w = Instance.new("Weld")
+                w.Name = wc.Name or "Weld_from_WeldConstraint"
+                w.Part0 = p0
+                w.Part1 = p1
+                -- Compute C0 as Part0.CFrame:ToObjectSpace(Part1.CFrame)
+                local ok, c0 = pcall(function() return p0.CFrame:ToObjectSpace(p1.CFrame) end)
+                if ok and c0 then
+                    w.C0 = c0
+                else
+                    w.C0 = CFrame.new()
+                end
+                w.C1 = CFrame.new()
+                -- Parent the weld to Part0 to mirror typical Weld placement
+                w.Parent = p0
+            end
+            wc:Destroy()
+        end
+    end
     for _, d in ipairs(tool:GetDescendants()) do
         if d and d:IsA("BasePart") then
             pcall(function()
@@ -261,9 +285,10 @@ local function grantTool(player, folder, toolName, instanceId)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
+        -- Parent first so relative CFrames and pivot math are correct, then scale
+        clone.Parent = sg
         local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
         if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
-        clone.Parent = sg
     end
 
     -- 2) Backpack — skip if already in Backpack or equipped in Character
@@ -273,9 +298,10 @@ local function grantTool(player, folder, toolName, instanceId)
         local clone = template:Clone()
         clone:SetAttribute("HotbarCategory", folder)
         sanitizeTool(clone)
+        -- Parent into Backpack first so the tool's world/relative CFrames are stable
+        clone.Parent = bp
         local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
         if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
-        clone.Parent = bp
     end
 end
 
