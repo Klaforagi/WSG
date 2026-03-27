@@ -668,6 +668,14 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     -- Wire up the global callback for ShopUI
     ---------------------------------------------------------------------------
+
+    -- Direct animation trigger (no server call) for pre-rolled results
+    -- Used by salvage crate purchases that already handled payment + rolling.
+    _G.PlayCrateAnimation = function(crateId, resultData)
+        if isAnimating then return end
+        CrateOpeningUI.Play(crateId, resultData, _G.CrateOpeningCoinApi)
+    end
+
     _G.OpenCrateRequested = function(crateId)
         if isAnimating then return end
         isAnimating = true

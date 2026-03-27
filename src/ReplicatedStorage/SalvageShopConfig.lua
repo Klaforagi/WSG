@@ -49,7 +49,7 @@ SalvageShopConfig.Items = {
     {
         Id           = "salvage_crate_melee",
         DisplayName  = "Salvage Melee Crate",
-        Description  = "A free melee weapon crate, paid with salvage.",
+        Description  = "A melee weapon crate, paid with salvage.",
         Category     = "Crate",
         SalvagePrice = 60,
         RewardType   = "Crate",
@@ -62,7 +62,7 @@ SalvageShopConfig.Items = {
     {
         Id           = "salvage_crate_ranged",
         DisplayName  = "Salvage Ranged Crate",
-        Description  = "A free ranged weapon crate, paid with salvage.",
+        Description  = "A ranged weapon crate, paid with salvage.",
         Category     = "Crate",
         SalvagePrice = 60,
         RewardType   = "Crate",

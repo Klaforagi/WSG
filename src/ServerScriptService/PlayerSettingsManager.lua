@@ -23,6 +23,7 @@ local DEFAULTS = {
     ShowTooltips = true,
     ShowMinimap = true,
     ShowGameState = true,
+    ShowHelm = true,
 }
 
 -- In-memory structures

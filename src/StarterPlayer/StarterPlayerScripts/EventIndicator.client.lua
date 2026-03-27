@@ -103,6 +103,7 @@ end
 -- State
 ---------------------------------------------------------------------
 local currentCard       = nil   -- the Frame inserted into the panel
+local eventSlot         = nil   -- wrapper frame anchored below the panel (avoids layout reflow)
 local pulseThread       = nil   -- coroutine running the pulse loop
 local pulseTweens       = {}    -- current active tweens (for cleanup)
 local eventPopup        = nil   -- the popup ScreenGui (overlay + window)
@@ -177,6 +178,10 @@ local function destroyIndicator()
     if currentCard then
         pcall(function() currentCard:Destroy() end)
         currentCard = nil
+    end
+    if eventSlot then
+        pcall(function() eventSlot:Destroy() end)
+        eventSlot = nil
     end
 end
 
@@ -595,19 +600,56 @@ local function createIndicator()
     local cardH = calcCardHeight()
 
     -----------------------------------------------------------------
+    -- Event slot: a separate frame anchored just below the panel.
+    -- This keeps the EventCard OUT of the panel's UIListLayout so
+    -- the main button stack never shifts when the event appears.
+    -----------------------------------------------------------------
+    local slot = Instance.new("Frame")
+    slot.Name = "EventSlot"
+    slot.Size = UDim2.new(1, 0, 0, 0)
+    slot.AutomaticSize = Enum.AutomaticSize.Y
+    slot.AnchorPoint = Vector2.new(0, 0)
+    slot.BackgroundTransparency = 1
+    slot.BorderSizePixel = 0
+    slot.Parent = mainUI
+
+    -- Position the slot directly beneath the panel with a small gap
+    local GAP = px(4)
+    local function repositionSlot()
+        local panelPos = panel.AbsolutePosition
+        local panelSize = panel.AbsoluteSize
+        -- MainUI uses IgnoreGuiInset=true, so AbsolutePosition is already
+        -- in the same coordinate space as offset-based UDim2 positioning.
+        slot.Position = UDim2.new(0, panelPos.X, 0, panelPos.Y + panelSize.Y + GAP)
+        slot.Size = UDim2.new(0, panelSize.X, 0, 0)
+    end
+    repositionSlot()
+
+    -- Keep slot aligned if panel layout changes (e.g. boost icons appear/vanish)
+    local slotConn1 = panel:GetPropertyChangedSignal("AbsolutePosition"):Connect(repositionSlot)
+    local slotConn2 = panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionSlot)
+    eventSlotConns = { slotConn1, slotConn2 }
+
+    -- UIListLayout for card + timer inside the slot
+    local slotLayout = Instance.new("UIListLayout")
+    slotLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    slotLayout.Padding = UDim.new(0, 0)
+    slotLayout.Parent = slot
+
+    eventSlot = slot
+
+    -----------------------------------------------------------------
     -- LAYER 1: Base frame (dark background + gradient)
-    -- Inserted into panel's UIListLayout; LayoutOrder 100 places it
-    -- below Boosts/ShopInv/Coins/Grid (all < 100).
     -----------------------------------------------------------------
     local card = Instance.new("Frame")
     card.Name = "EventCard"
-    card.LayoutOrder = 100
+    card.LayoutOrder = 1
     card.Size = UDim2.new(1, 0, 0, cardH)
     card.BackgroundColor3 = COLORS.darkBase
     card.BackgroundTransparency = 0
     card.BorderSizePixel = 0
     card.ClipsDescendants = true
-    card.Parent = panel
+    card.Parent = slot
     currentCard = card
 
     local cardCorner = Instance.new("UICorner")
@@ -725,7 +767,7 @@ local function createIndicator()
     -----------------------------------------------------------------
     local tmrLbl = Instance.new("TextLabel")
     tmrLbl.Name = "EventTimerLabel"
-    tmrLbl.LayoutOrder = 101
+    tmrLbl.LayoutOrder = 2
     tmrLbl.Size = UDim2.new(1, 0, 0, px(36))
     tmrLbl.BackgroundTransparency = 1
     tmrLbl.Font = Enum.Font.GothamBold
@@ -734,7 +776,7 @@ local function createIndicator()
     tmrLbl.TextSize = px(22)
     tmrLbl.TextXAlignment = Enum.TextXAlignment.Center
     tmrLbl.ZIndex = 10
-    tmrLbl.Parent = card.Parent  -- goes into the UIListLayout container
+    tmrLbl.Parent = slot  -- goes into the event slot layout, below the card
     timerLabel = tmrLbl
 
     local tmrStroke = Instance.new("UIStroke")

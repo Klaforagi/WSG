@@ -1508,6 +1508,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Claimable-quest indicators (small gold dots on Daily / Weekly tabs)
     ---------------------------------------------------------------------------
+
+    -- Shared reference table for achievement data (forward-declared so updateTabIndicators can access)
+    local achDataRef = { achievements = {}, achTabIndicator = nil, achCatIndicators = {} }
+
     local dailyIndicator, weeklyIndicator
     do
         local function makeClaimIndicator(tabBtn)
@@ -1537,6 +1541,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         dailyIndicator  = makeClaimIndicator(tabButtons["daily"])
         weeklyIndicator = makeClaimIndicator(tabButtons["weekly"])
+        -- Achievement tab indicator (dot for unclaimed achievement rewards)
+        achDataRef.achTabIndicator = makeClaimIndicator(tabButtons["achiev"])
     end
 
     -- Forward declaration; body assigned after weekly quest data is available.
@@ -2108,7 +2114,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local weeklyRerollStateUpdaters = {}
 
     ---------------------------------------------------------------------------
-    -- updateTabIndicators: show/hide claimable-quest dots on Daily/Weekly tabs
+    -- updateTabIndicators: show/hide claimable-quest dots on Daily/Weekly/Achievements tabs
     ---------------------------------------------------------------------------
     updateTabIndicators = function()
         -- Daily
@@ -2141,6 +2147,39 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end
         if weeklyIndicator and weeklyIndicator.Parent then
             weeklyIndicator.Visible = hasWeekly
+        end
+
+        -- Achievements: check if any achievement is completed but unclaimed
+        local hasAchievClaimable = false
+        local achClaimablePerCat = {}
+        local achList = achDataRef and achDataRef.achievements or {}
+        if type(achList) == "table" then
+            for _, a in ipairs(achList) do
+                if type(a) == "table" and not a.claimed and not a.maxedOut then
+                    local isComplete = a.completed == true
+                    local aGoal    = tonumber(a.target) or 0
+                    local aProg    = tonumber(a.progress) or 0
+                    if isComplete or (aGoal > 0 and aProg >= aGoal) then
+                        hasAchievClaimable = true
+                        if a.category then
+                            achClaimablePerCat[a.category] = true
+                        end
+                    end
+                end
+            end
+        end
+        local achTabDot = achDataRef.achTabIndicator
+        if achTabDot and achTabDot.Parent then
+            achTabDot.Visible = hasAchievClaimable
+        end
+        -- Update category card indicator dots
+        local catIndicators = achDataRef.achCatIndicators
+        if type(catIndicators) == "table" then
+            for catId, catDot in pairs(catIndicators) do
+                if catDot and catDot.Parent then
+                    catDot.Visible = achClaimablePerCat[catId] == true
+                end
+            end
         end
     end
 
@@ -2520,6 +2559,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         pcall(function() achievements = getAchievRF:InvokeServer() end)
     end
     if type(achievements) ~= "table" then achievements = {} end
+    achDataRef.achievements = achievements
 
     -- [AchievementPoints] Fetch AP total via dedicated remote (avoids mixed-table serialization issues)
     local playerAchievementPoints = 0
@@ -3060,11 +3100,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         achClaimButtons[ach.id] = btn
 
-        local function updateAchCardVisuals(progress, goal, claimed)
+        local function updateAchCardVisuals(progress, goal, claimed, completed)
             if claimed then
                 card.BackgroundColor3 = ROW_CLAIMED_BG
                 stroke.Color = GREEN_GLOW; stroke.Thickness = 1.8; stroke.Transparency = 0.3
                 accentBar.BackgroundColor3 = GREEN_GLOW; accentBar.BackgroundTransparency = 0.2
+            elseif completed or (goal > 0 and progress >= goal) then
+                card.BackgroundColor3 = ROW_CLAIMABLE_BG
+                stroke.Color = CLAIM_GOLD_GLOW; stroke.Thickness = 2; stroke.Transparency = 0.15
+                accentBar.BackgroundColor3 = CLAIM_GOLD_GLOW; accentBar.BackgroundTransparency = 0
             else
                 card.BackgroundColor3 = ROW_BG
                 stroke.Color = CARD_STROKE; stroke.Thickness = 1.2; stroke.Transparency = 0.35
@@ -3072,20 +3116,73 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             end
         end
 
-        local function updateAchBtnState(progress, goal, claimed)
+        local function updateAchBtnState(progress, goal, claimed, completed)
+            local isClaimable = (not claimed) and (completed or (goal > 0 and progress >= goal))
             if claimed then
                 btn.Text = "\u{2714} COMPLETED"; btn.BackgroundColor3 = BTN_CLAIMED
                 btn.TextColor3 = GREEN_GLOW; btn.Active = false
                 btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.5
+            elseif isClaimable then
+                btn.Text = "\u{2B50} CLAIM"; btn.BackgroundColor3 = BTN_CLAIM
+                btn.TextColor3 = WHITE; btn.Active = true
+                btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.15
             else
                 btn.Text = FormatProgress(progress, goal)
                 btn.BackgroundColor3 = BTN_LOCKED; btn.TextColor3 = DIM_TEXT; btn.Active = false
                 btnStroke.Color = BTN_STROKE; btnStroke.Transparency = 0.4
             end
-            updateAchCardVisuals(progress, goal, claimed)
+            updateAchCardVisuals(progress, goal, claimed, completed)
         end
 
-        updateAchBtnState(ach.progress, ach.target, ach.claimed)
+        -- Claim click handler
+        trackConn(btn.MouseButton1Click:Connect(function()
+            if achClaimed[ach.id] then return end
+            local achData = achievementDataById[ach.id]
+            local isComplete = (achData and achData.completed) or false
+            local goal = achGoals[ach.id] or 0
+            local prog = achData and achData.progress or 0
+            if not isComplete and not (goal > 0 and prog >= goal) then return end
+            if not claimAchievRF2 then return end
+
+            -- Disable button immediately to prevent double-click
+            btn.Active = false
+            btn.Text = "..."
+
+            local ok, success = pcall(function() return claimAchievRF2:InvokeServer(ach.id) end)
+            if ok and success then
+                achClaimed[ach.id] = true
+                if achData then achData.claimed = true end
+                updateAchBtnState(prog, goal, true, true)
+                updateAchievedOnLabel(true, achData and achData.achievedOn)
+
+                -- Gold flash animation on card
+                pcall(function()
+                    local origBG = card.BackgroundColor3
+                    card.BackgroundColor3 = CLAIM_GOLD_GLOW
+                    TweenService:Create(card, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundColor3 = ROW_CLAIMED_BG}):Play()
+                end)
+
+                -- Update coin display
+                if _G.UpdateShopHeaderCoins then pcall(_G.UpdateShopHeaderCoins) end
+                -- Refresh AP display
+                if getAchievPointsRF then
+                    local apOk, apVal = pcall(function() return getAchievPointsRF:InvokeServer() end)
+                    if apOk and apVal then
+                        playerAchievementPoints = tonumber(apVal) or playerAchievementPoints
+                        if apLabel and apLabel.Parent then
+                            apLabel.Text = FormatInt(playerAchievementPoints) .. " AP"
+                        end
+                    end
+                end
+                -- Update indicator dots after claim
+                if updateTabIndicators then updateTabIndicators() end
+            else
+                -- Re-enable button on failure
+                updateAchBtnState(prog, goal, false, true)
+            end
+        end))
+
+        updateAchBtnState(ach.progress, ach.target, ach.claimed, ach.completed == true)
         updateAchievedOnLabel(ach.completed == true, ach.achievedOn)
 
         return card
@@ -3593,6 +3690,32 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         catButtons[def.id] = catBtn
 
+        -- Category claimable indicator dot (small gold dot, top-right corner)
+        do
+            local catDot = Instance.new("Frame")
+            catDot.Name                  = "CatClaimIndicator"
+            catDot.BackgroundColor3      = GOLD
+            catDot.BorderSizePixel       = 0
+            catDot.Size                  = UDim2.new(0, px(9), 0, px(9))
+            catDot.AnchorPoint           = Vector2.new(0.5, 0.5)
+            catDot.Position              = UDim2.new(1, -px(8), 0, px(8))
+            catDot.Visible               = false
+            catDot.ZIndex                = 10
+
+            local catDotCr = Instance.new("UICorner")
+            catDotCr.CornerRadius = UDim.new(0.5, 0)
+            catDotCr.Parent = catDot
+
+            local catDotGlow = Instance.new("UIStroke")
+            catDotGlow.Color        = CLAIM_GOLD_GLOW
+            catDotGlow.Thickness    = 1.5
+            catDotGlow.Transparency = 0.35
+            catDotGlow.Parent       = catDot
+
+            catDot.Parent = catBtn
+            achDataRef.achCatIndicators[def.id] = catDot
+        end
+
         -- Click handler
         trackConn(catBtn.MouseButton1Click:Connect(function()
             showAchievementCategoryView(def.id)
@@ -3638,6 +3761,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     showAchievementsHomeView()
     updateCatButtonStates("Home")
 
+    -- Refresh indicator dots now that achievement data is loaded
+    if updateTabIndicators then updateTabIndicators() end
+
     ---------------------------------------------------------------------------
     -- Live achievement progress updates
     ---------------------------------------------------------------------------
@@ -3652,6 +3778,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     pcall(function() newData = getAchievRF:InvokeServer() end)
                     if type(newData) == "table" then
                         achievements = newData
+                        achDataRef.achievements = newData
                         achievementDataById = {}
                         for _, a in ipairs(achievements) do
                             achievementDataById[a.id] = a
@@ -3695,10 +3822,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             local claimB = achClaimButtons[a.id]
                             if claimB then
                                 local bS = claimB:FindFirstChildOfClass("UIStroke")
+                                local isClaimable = (not a.claimed) and (a.completed == true or (a.target > 0 and a.progress >= a.target))
                                 if a.claimed then
                                     claimB.Text = "\u{2714} COMPLETED"; claimB.BackgroundColor3 = BTN_CLAIMED
                                     claimB.TextColor3 = GREEN_GLOW; claimB.Active = false
                                     if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.5 end
+                                elseif isClaimable then
+                                    claimB.Text = "\u{2B50} CLAIM"; claimB.BackgroundColor3 = BTN_CLAIM
+                                    claimB.TextColor3 = WHITE; claimB.Active = true
+                                    if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.15 end
                                 else
                                     claimB.Text = FormatProgress(a.progress, a.target)
                                     claimB.BackgroundColor3 = BTN_LOCKED; claimB.TextColor3 = DIM_TEXT; claimB.Active = false
@@ -3709,10 +3841,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             local cStroke = achCardStrokes[a.id]
                             if cFrame and cFrame.Parent then
                                 local acnt = cFrame:FindFirstChild("StateAccent")
+                                local isClaimable2 = (not a.claimed) and (a.completed == true or (a.target > 0 and a.progress >= a.target))
                                 if a.claimed then
                                     cFrame.BackgroundColor3 = ROW_CLAIMED_BG
                                     if cStroke then cStroke.Color = GREEN_GLOW; cStroke.Thickness = 1.8; cStroke.Transparency = 0.3 end
                                     if acnt then acnt.BackgroundColor3 = GREEN_GLOW; acnt.BackgroundTransparency = 0.2 end
+                                elseif isClaimable2 then
+                                    cFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
+                                    if cStroke then cStroke.Color = CLAIM_GOLD_GLOW; cStroke.Thickness = 2; cStroke.Transparency = 0.15 end
+                                    if acnt then acnt.BackgroundColor3 = CLAIM_GOLD_GLOW; acnt.BackgroundTransparency = 0 end
                                 else
                                     cFrame.BackgroundColor3 = ROW_BG
                                     if cStroke then cStroke.Color = CARD_STROKE; cStroke.Thickness = 1.2; cStroke.Transparency = 0.35 end
@@ -3768,6 +3905,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     showAchievementCategoryView(achSelectedCategory)
                     updateCatButtonStates(achSelectedCategory)
                 end
+                -- Refresh indicator dots after full achievement refresh
+                if updateTabIndicators then updateTabIndicators() end
                 return
             end
 
@@ -3810,20 +3949,40 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             local claimBtn2 = achClaimButtons[achId]
             if claimBtn2 and claimBtn2.Parent then
                 local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
+                local isComplete2 = (achData and achData.completed == true) or newProgress >= goal
+                local isClaimable = (not achClaimed[achId]) and isComplete2
                 if achClaimed[achId] then
                     claimBtn2.Text = "\u{2714} COMPLETED"; claimBtn2.BackgroundColor3 = BTN_CLAIMED
                     claimBtn2.TextColor3 = GREEN_GLOW; claimBtn2.Active = false
                     if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
+                elseif isClaimable then
+                    claimBtn2.Text = "\u{2B50} CLAIM"; claimBtn2.BackgroundColor3 = BTN_CLAIM
+                    claimBtn2.TextColor3 = WHITE; claimBtn2.Active = true
+                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.15 end
+                else
+                    claimBtn2.Text = FormatProgress(math.min(newProgress, goal), goal)
+                    claimBtn2.BackgroundColor3 = BTN_LOCKED; claimBtn2.TextColor3 = DIM_TEXT; claimBtn2.Active = false
+                    if bStroke then bStroke.Color = BTN_STROKE; bStroke.Transparency = 0.4 end
                 end
             end
             local cardFrame = achCards[achId]
             local cardStroke = achCardStrokes[achId]
             if cardFrame and cardFrame.Parent then
                 local accent = cardFrame:FindFirstChild("StateAccent")
+                local isComplete3 = (achData and achData.completed == true) or newProgress >= goal
+                local isClaimable2 = (not achClaimed[achId]) and isComplete3
                 if achClaimed[achId] then
                     cardFrame.BackgroundColor3 = ROW_CLAIMED_BG
                     if cardStroke then cardStroke.Color = GREEN_GLOW; cardStroke.Thickness = 1.8; cardStroke.Transparency = 0.3 end
                     if accent then accent.BackgroundColor3 = GREEN_GLOW; accent.BackgroundTransparency = 0.2 end
+                elseif isClaimable2 then
+                    cardFrame.BackgroundColor3 = ROW_CLAIMABLE_BG
+                    if cardStroke then cardStroke.Color = CLAIM_GOLD_GLOW; cardStroke.Thickness = 2; cardStroke.Transparency = 0.15 end
+                    if accent then accent.BackgroundColor3 = CLAIM_GOLD_GLOW; accent.BackgroundTransparency = 0 end
+                else
+                    cardFrame.BackgroundColor3 = ROW_BG
+                    if cardStroke then cardStroke.Color = CARD_STROKE; cardStroke.Thickness = 1.2; cardStroke.Transparency = 0.35 end
+                    if accent then accent.BackgroundColor3 = GOLD; accent.BackgroundTransparency = 0.5 end
                 end
             end
 
@@ -3831,7 +3990,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 pcall(function() _G.ShowAchievementToast(achId, stageIndex) end)
             end
 
-            -- [AchievementUI] Update coin display after auto-reward
+            -- Update indicator dots on progress changes
+            if updateTabIndicators then updateTabIndicators() end
+
+            -- [AchievementUI] Update coin display after claim
             if achClaimed[achId] then
                 if _G.UpdateShopHeaderCoins then pcall(_G.UpdateShopHeaderCoins) end
                 -- Refresh AP display

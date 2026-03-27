@@ -1236,6 +1236,9 @@ local function clearContent()
             pcall(function() c:Destroy() end)
         end
     end
+    -- Clean up AP display (parented to headerBar, outside contentFrame)
+    local apDisp = headerBar:FindFirstChild("APDisplay")
+    if apDisp then apDisp:Destroy() end
 end
 local currentModule = nil
 local isAnimating = false

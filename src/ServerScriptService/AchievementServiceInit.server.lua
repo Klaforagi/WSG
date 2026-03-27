@@ -35,7 +35,7 @@ local achievProgressRE = Instance.new("RemoteEvent")
 achievProgressRE.Name = "AchievementProgress"
 achievProgressRE.Parent = remotesFolder
 
--- ClaimAchievement: kept for backward compatibility, but auto-reward is now active
+-- ClaimAchievement: player manually claims a completed achievement reward
 local claimAchievRF = Instance.new("RemoteFunction")
 claimAchievRF.Name = "ClaimAchievement"
 claimAchievRF.Parent = remotesFolder
@@ -63,12 +63,8 @@ getAchievementsRF.OnServerInvoke = function(player)
 end
 
 claimAchievRF.OnServerInvoke = function(player, achievementId)
-    -- [AchievementAutoReward] Manual claiming is disabled — rewards are auto-granted.
-    -- This handler is kept for backward compatibility; always returns false.
     if type(achievementId) ~= "string" then return false end
-    print(string.format("[AchievementAutoReward] Legacy ClaimAchievement called by %s for %s — ignored",
-        player.Name, achievementId))
-    return false
+    return AchievementService:ClaimReward(player, achievementId)
 end
 
 getHistoryRF.OnServerInvoke = function(player)

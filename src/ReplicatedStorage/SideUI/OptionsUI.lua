@@ -75,6 +75,7 @@ local DEFAULT_SETTINGS = {
 	-- UI
 	ShowMinimap       = true,
 	ShowGameState     = true,
+	ShowHelm          = true,
 	-- UIScale removed from options
 }
 
@@ -889,6 +890,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	createSectionHeader(root, "UI", nextOrder())
 	createToggle(root, "Show Minimap", "ShowMinimap", nextOrder())
 	createToggle(root, "Show Scoreboard", "ShowGameState", nextOrder())
+	createToggle(root, "Show Helm", "ShowHelm", nextOrder())
 	-- UI Scale removed per request
 
 	---------------------------------------------------------------------------

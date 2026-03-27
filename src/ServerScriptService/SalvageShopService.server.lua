@@ -11,7 +11,23 @@ local ServerScriptService = game:GetService("ServerScriptService")
 --------------------------------------------------------------------------------
 -- DEPENDENCIES (lazy-loaded)
 --------------------------------------------------------------------------------
-local _CurrencyService, _SalvageShopConfig, _WeaponInstanceService, _CrateConfig
+local _CurrencyService, _SalvageShopConfig, _WeaponInstanceService, _CrateConfig, _AchievementService, _CrateService
+
+local function getCrateService()
+    if not _CrateService then
+        local mod = ServerScriptService:FindFirstChild("CrateService")
+        if mod and mod:IsA("ModuleScript") then _CrateService = require(mod) end
+    end
+    return _CrateService
+end
+
+local function getAchievementService()
+    if not _AchievementService then
+        local mod = ServerScriptService:FindFirstChild("AchievementService")
+        if mod and mod:IsA("ModuleScript") then _AchievementService = require(mod) end
+    end
+    return _AchievementService
+end
 
 local function getCurrencyService()
     if not _CurrencyService then
@@ -105,79 +121,39 @@ local function grantReward(player, shopItem)
         return true
 
     elseif shopItem.RewardType == "Crate" then
-        -- Grant a crate opening (spawn a random weapon from the crate pool)
-        local wis = getWeaponInstanceService()
-        local cc = getCrateConfig()
-        if not wis or not cc then
-            warn("[SalvageShopService] WeaponInstanceService or CrateConfig unavailable")
+        -- Route into the real CrateService pipeline (same roll + size + grant)
+        local cs = getCrateService()
+        if not cs then
+            warn("[SalvageShopService] CrateService unavailable")
             return false
         end
 
-        local crateDef = cc.Crates and cc.Crates[shopItem.RewardId]
-        if not crateDef then
-            warn("[SalvageShopService] Crate not found in CrateConfig:", shopItem.RewardId)
+        print("[SalvageCrate] Routing into normal crate flow:", shopItem.RewardId)
+        local ok, result = cs:RollAndGrant(player, shopItem.RewardId)
+        if not ok then
+            warn("[SalvageCrate] RollAndGrant failed:", tostring(result))
             return false
         end
 
-        -- Roll a random weapon from the crate pool (same logic as CrateService)
-        local weaponName, rarity = nil, nil
-        if cc.RollCrate then
-            weaponName, rarity = cc.RollCrate(shopItem.RewardId)
-        else
-            -- Manual roll if RollCrate doesn't exist
-            local pool = crateDef.pool or {}
-            if #pool > 0 then
-                local totalWeight = 0
-                for _, entry in ipairs(pool) do totalWeight = totalWeight + (entry.weight or 1) end
-                local roll = math.random() * totalWeight
-                local cumulative = 0
-                for _, entry in ipairs(pool) do
-                    cumulative = cumulative + (entry.weight or 1)
-                    if roll <= cumulative then
-                        weaponName = entry.weapon
-                        rarity = entry.rarity
-                        break
-                    end
-                end
-            end
-        end
-
-        if not weaponName then
-            warn("[SalvageShopService] Failed to roll weapon from crate:", shopItem.RewardId)
-            return false
-        end
-
-        -- Add the weapon to the player's inventory
-        local category = "Ranged"
-        if cc.WeaponsByRarity then
-            for r, weapons in pairs(cc.WeaponsByRarity) do
-                for _, w in ipairs(weapons) do
-                    if w.weapon == weaponName then
-                        category = w.category or "Ranged"
-                    end
-                end
-            end
-        end
-
-        local instanceId = wis:AddInstance(player, {
-            weaponName = weaponName,
-            category = category,
-            rarity = rarity or "Common",
-            source = "SalvageShop",
-        })
-
-        if instanceId then
-            wis:SaveForPlayer(player)
-            -- Notify client of inventory change
-            local weaponInvUpdated = ReplicatedStorage:FindFirstChild("WeaponInventoryUpdated")
-            if weaponInvUpdated and weaponInvUpdated:IsA("RemoteEvent") then
+        -- Notify client of inventory change
+        local weaponInvUpdated = ReplicatedStorage:FindFirstChild("WeaponInventoryUpdated")
+        if weaponInvUpdated and weaponInvUpdated:IsA("RemoteEvent") then
+            local wis = getWeaponInstanceService()
+            if wis then
                 pcall(function()
                     weaponInvUpdated:FireClient(player, wis:GetInventory(player))
                 end)
             end
-            return true, { weaponName = weaponName, rarity = rarity }
         end
-        return false
+
+        print("[SalvageCrate] Reward granted:", result.weaponName, "(" .. result.rarity .. ")")
+        return true, {
+            weaponName  = result.weaponName,
+            rarity      = result.rarity,
+            sizePercent = result.sizePercent,
+            sizeTier    = result.sizeTier,
+            crateType   = result.crateType,
+        }
     end
 
     return false
@@ -281,6 +257,12 @@ purchaseSalvageItemRF.OnServerInvoke = function(player, itemId)
     local newBalance = cs:GetSalvage(player)
     print("[SalvageShopService] SUCCESS:", player.Name, "purchased", shopItem.DisplayName,
         "for", price, "salvage. New balance:", newBalance)
+
+    -- Track purchase for achievements
+    local achSvc = getAchievementService()
+    if achSvc then
+        pcall(function() achSvc:IncrementStat(player, "totalPurchases", 1) end)
+    end
 
     return true, {
         itemId = itemId,

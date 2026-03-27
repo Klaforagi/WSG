@@ -3185,8 +3185,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     refs.stroke.Color = CARD_STROKE
                     -- Update affordability
                     if currentSalvage >= refs.price then
-                        refs.buyBtn.BackgroundColor3 = SALVAGE_BG
-                        refs.buyBtn.TextColor3 = SALVAGE_GREEN
+                        refs.buyBtn.BackgroundColor3 = Color3.fromRGB(30, 48, 36)
+                        refs.buyBtn.TextColor3 = Color3.fromRGB(180, 230, 190)
                         refs.buyBtn.Text = refs.priceText
                     else
                         refs.buyBtn.BackgroundColor3 = DISABLED_BG
@@ -3315,8 +3315,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     priceLabel.BackgroundTransparency = 1
                     priceLabel.Font = Enum.Font.GothamBold
                     priceLabel.Text = priceText
-                    priceLabel.TextColor3 = SALVAGE_GREEN
-                    priceLabel.TextSize = math.max(12, math.floor(px(13)))
+                    priceLabel.TextColor3 = Color3.fromRGB(140, 210, 160)
+                    priceLabel.TextSize = math.max(13, math.floor(px(14)))
                     priceLabel.TextXAlignment = Enum.TextXAlignment.Left
                     priceLabel.Size = UDim2.new(0.3, -px(70), 0, px(18))
                     priceLabel.Position = UDim2.new(0, px(70), 1, -px(18))
@@ -3327,16 +3327,16 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     buyBtn.Name = "BuyBtn"
                     buyBtn.AutoButtonColor = false
                     buyBtn.Font = Enum.Font.GothamBold
-                    buyBtn.TextSize = math.max(12, math.floor(px(13)))
-                    buyBtn.Size = UDim2.new(0, px(130), 0, px(36))
+                    buyBtn.TextSize = math.max(14, math.floor(px(15)))
+                    buyBtn.Size = UDim2.new(0, px(140), 0, px(38))
                     buyBtn.AnchorPoint = Vector2.new(1, 1)
-                    buyBtn.Position = UDim2.new(1, 0, 1, 0)
+                    buyBtn.Position = UDim2.new(1, -px(4), 1, -px(4))
                     buyBtn.Parent = card
                     buyBtn.Visible = not isOwned
 
                     if currentSalvage >= item.SalvagePrice then
-                        buyBtn.BackgroundColor3 = SALVAGE_BG
-                        buyBtn.TextColor3 = SALVAGE_GREEN
+                        buyBtn.BackgroundColor3 = Color3.fromRGB(30, 48, 36)
+                        buyBtn.TextColor3 = Color3.fromRGB(180, 230, 190)
                         buyBtn.Text = priceText
                     else
                         buyBtn.BackgroundColor3 = DISABLED_BG
@@ -3349,10 +3349,15 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     btnCorner.Parent = buyBtn
 
                     local btnStroke = Instance.new("UIStroke")
-                    btnStroke.Color = SALVAGE_GREEN
+                    btnStroke.Color = Color3.fromRGB(80, 130, 90)
                     btnStroke.Thickness = 1.2
-                    btnStroke.Transparency = 0.4
+                    btnStroke.Transparency = 0.5
                     btnStroke.Parent = buyBtn
+
+                    local btnPad = Instance.new("UIPadding")
+                    btnPad.PaddingLeft = UDim.new(0, px(6))
+                    btnPad.PaddingRight = UDim.new(0, px(6))
+                    btnPad.Parent = buyBtn
 
                     -- Owned indicator (hidden unless unique + owned)
                     local ownedLabel = Instance.new("TextLabel")
@@ -3372,11 +3377,11 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     -- Hover feedback
                     buyBtn.MouseEnter:Connect(function()
                         if currentSalvage >= item.SalvagePrice then
-                            TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(32, 76, 42)}):Play()
+                            TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 60, 44)}):Play()
                         end
                     end)
                     buyBtn.MouseLeave:Connect(function()
-                        local bg = (currentSalvage >= item.SalvagePrice) and SALVAGE_BG or DISABLED_BG
+                        local bg = (currentSalvage >= item.SalvagePrice) and Color3.fromRGB(30, 48, 36) or DISABLED_BG
                         TweenService:Create(buyBtn, TWEEN_QUICK, {BackgroundColor3 = bg}):Play()
                     end)
 
@@ -3421,8 +3426,23 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                                 if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
                             end)
 
-                            local displayName = (type(result) == "table" and result.displayName) or item.DisplayName
-                            showToast(salvagePage, "Purchased " .. displayName .. "!", GREEN_GLOW, 2.5)
+                            -- Trigger crate opening animation for crate purchases
+                            if item.RewardType == "Crate" and type(result) == "table"
+                                and result.rewardData and result.rewardData.weaponName
+                                and _G.PlayCrateAnimation then
+                                local rd = result.rewardData
+                                _G.PlayCrateAnimation(item.RewardId, {
+                                    weaponName  = rd.weaponName,
+                                    rarity      = rd.rarity,
+                                    sizePercent = rd.sizePercent,
+                                    sizeTier    = rd.sizeTier,
+                                    crateType   = rd.crateType or item.RewardId,
+                                })
+                                print("[SalvageCrate] Firing normal crate animation event")
+                            else
+                                local displayName = (type(result) == "table" and result.displayName) or item.DisplayName
+                                showToast(salvagePage, "Purchased " .. displayName .. "!", GREEN_GLOW, 2.5)
+                            end
 
                             print("[SalvageShop] Purchase success:", item.Id)
                         else

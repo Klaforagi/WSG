@@ -200,6 +200,71 @@ function CrateService:OpenCrate(player, crateId)
 end
 
 --------------------------------------------------------------------------------
+-- ROLL AND GRANT  (no currency deduction — used by SalvageShopService)
+-- Runs the same roll + size + grant pipeline as OpenCrate but skips payment.
+-- Returns:  success, resultData
+--------------------------------------------------------------------------------
+function CrateService:RollAndGrant(player, crateId)
+    if type(crateId) ~= "string" then
+        return false, "Invalid crate id"
+    end
+
+    local crateDef = CrateConfig.Crates[crateId]
+    if not crateDef then
+        return false, "Unknown crate"
+    end
+
+    local wis = ensureWeaponInstanceService()
+    if not wis then
+        return false, "Instance service unavailable"
+    end
+
+    -- Roll weapon (same weighted logic as OpenCrate)
+    local rolled = rollWeapon(crateDef)
+    if not rolled then
+        print("[CrateService] RollAndGrant FAILED – empty pool for " .. crateId)
+        return false, "Empty pool"
+    end
+
+    -- Roll weapon size
+    local sizePercent, sizeTier = SizeRollService.RollSize()
+
+    print(string.format("[CrateService] RollAndGrant: %s (%s) Size: %d%% [%s]",
+        rolled.weapon, rolled.rarity, sizePercent, sizeTier))
+
+    local category = rolled.category or crateDef.category or "Melee"
+
+    local instanceData = wis:CreateInstance(
+        player,
+        rolled.weapon,
+        rolled.rarity,
+        category,
+        crateId,
+        sizePercent,
+        sizeTier
+    )
+
+    if not instanceData then
+        print("[CrateService] RollAndGrant FAILED – CreateInstance failed")
+        return false, "Failed to create instance"
+    end
+
+    print(string.format("[CrateService] RollAndGrant SUCCESS – granted %s (%s) %d%% [%s] id=%s to %s",
+        instanceData.weaponName, instanceData.rarity, sizePercent, sizeTier,
+        instanceData.instanceId, tostring(player.Name)))
+
+    return true, {
+        instanceId  = instanceData.instanceId,
+        weaponName  = instanceData.weaponName,
+        rarity      = instanceData.rarity,
+        category    = instanceData.category,
+        sizePercent = instanceData.sizePercent,
+        sizeTier    = instanceData.sizeTier,
+        crateType   = crateId,
+    }
+end
+
+--------------------------------------------------------------------------------
 -- GET POOL INFO  (for client display of drop chances)
 -- PREMIUM CRATE / KEY SYSTEM  – uses per-crate rarities if available
 --------------------------------------------------------------------------------

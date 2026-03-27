@@ -392,6 +392,15 @@ pcall(function()
     end
 end)
 
+-- Lazy-load AchievementService for purchase stat tracking
+local AchievementService = nil
+pcall(function()
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("AchievementService")
+    if mod and mod:IsA("ModuleScript") then
+        AchievementService = require(mod)
+    end
+end)
+
 local purchaseTool = getOrCreateRemoteFunction("PurchaseTool")
 
 -- Lazy-load WeaponInstanceService for crate-ownership checks
@@ -445,6 +454,11 @@ purchaseTool.OnServerInvoke = function(player, category, toolName)
     CurrencyService:SetCoins(player, balance - price)
     grantTool(player, category, toolName)
     ensureBackpackFromStarterGear(player)
+
+    -- Track purchase for achievements (e.g. First Purchase)
+    if AchievementService then
+        pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
+    end
 
     local newBalance = CurrencyService:GetCoins(player)
     return true, newBalance

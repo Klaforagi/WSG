@@ -22,6 +22,10 @@ local QuestService
 pcall(function()
     QuestService = require(ServerScriptService:WaitForChild("QuestService", 10))
 end)
+local AchievementService
+pcall(function()
+    AchievementService = require(ServerScriptService:WaitForChild("AchievementService", 10))
+end)
 
 local function ensureInstance(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -86,12 +90,20 @@ BoostService:Init()
 
 buyBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
-    return BoostService:PurchaseOwnedBoost(player, boostId)
+    local ok, msg = BoostService:PurchaseOwnedBoost(player, boostId)
+    if ok and AchievementService then
+        pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
+    end
+    return ok, msg
 end
 
 purchaseBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
-    return BoostService:PurchaseOwnedBoost(player, boostId)
+    local ok, msg = BoostService:PurchaseOwnedBoost(player, boostId)
+    if ok and AchievementService then
+        pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
+    end
+    return ok, msg
 end
 
 activateBoostRF.OnServerInvoke = function(player, boostId)

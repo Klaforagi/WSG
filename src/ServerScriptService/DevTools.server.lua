@@ -151,3 +151,42 @@ addKeysRemote.OnServerEvent:Connect(function(player, amount)
 end)
 
 print("[DevTools] PREMIUM CRATE / KEY SYSTEM — RequestAddKeys is live")
+
+--------------------------------------------------------------------------------
+-- SALVAGE SYSTEM  – Dev command: grant Salvage for testing
+-- RemoteEvent: ReplicatedStorage.Remotes.RequestAddSalvage
+-- Client fires with (amount), server grants salvage. Same IsStudio guard on client.
+-- TO REMOVE LATER: delete this entire section.
+--------------------------------------------------------------------------------
+local addSalvageRemote = remotesFolder:FindFirstChild("RequestAddSalvage")
+if not addSalvageRemote then
+    addSalvageRemote = Instance.new("RemoteEvent")
+    addSalvageRemote.Name = "RequestAddSalvage"
+    addSalvageRemote.Parent = remotesFolder
+    print("[DevTools] RequestAddSalvage CREATED")
+end
+
+addSalvageRemote.OnServerEvent:Connect(function(player, amount)
+    amount = tonumber(amount) or 50
+    if amount <= 0 or amount > 1000 then return end
+    print("[DevCurrency] +50 Salvage requested by", player.Name)
+
+    if CurrencyService and type(CurrencyService.AddSalvage) == "function" then
+        local oldSalvage = 0
+        pcall(function() oldSalvage = CurrencyService:GetSalvage(player) end)
+        local ok, err = pcall(function()
+            CurrencyService:AddSalvage(player, amount)
+        end)
+        if ok then
+            local newSalvage = 0
+            pcall(function() newSalvage = CurrencyService:GetSalvage(player) end)
+            print("[DevCurrency] Granted", amount, "Salvage to", player.Name, "| old:", oldSalvage, "| new:", newSalvage)
+        else
+            warn("[DevTools] CurrencyService:AddSalvage error:", tostring(err))
+        end
+    else
+        warn("[DevTools] CurrencyService:AddSalvage not available")
+    end
+end)
+
+print("[DevTools] SALVAGE SYSTEM — RequestAddSalvage is live")

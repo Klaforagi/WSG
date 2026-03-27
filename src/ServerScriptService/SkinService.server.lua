@@ -193,6 +193,20 @@ end
 
 -- Tag name used to identify skin-applied cosmetic parts
 local SKIN_TAG = "_SkinCosmetic"
+local HELMET_TAG = "_SkinHelmet"
+
+-- ── PlayerSettingsManager (for ShowHelm) ───────────────────────────────────
+local PlayerSettingsManager = require(script.Parent:WaitForChild("PlayerSettingsManager"))
+
+local function getShowHelm(player)
+    local settings = PlayerSettingsManager.GetCachedSettings(player)
+    if settings and settings.ShowHelm ~= nil then
+        dprint("[ShowHelm] Loaded setting for", player.Name, ":", tostring(settings.ShowHelm))
+        return settings.ShowHelm
+    end
+    dprint("[ShowHelm] No saved setting for", player.Name, ", defaulting to true")
+    return true -- default ON
+end
 
 -- Re-entry guard: prevents double-application
 local applyingLock = {}
@@ -254,6 +268,59 @@ local function restoreAccessories(character)
                 end
             end
         end
+    end
+end
+
+-- ── ShowHelm helpers ───────────────────────────────────────────────────────
+
+-- Names of helmet cosmetic parts (used as fallback if tags are missing)
+local HELMET_PART_NAMES = {
+    KnightHelmet = true,
+    KnightVisor = true,
+    KnightCrest = true,
+    IronHelmet = true,
+    IronVisor = true,
+}
+
+-- Remove only helmet cosmetic parts from a character (by tag OR name)
+local function clearSkinHelmetParts(character)
+    if not character then return end
+    local removed = 0
+    -- Collect first to avoid mutating during iteration
+    local toRemove = {}
+    for _, child in ipairs(character:GetChildren()) do
+        if child:GetAttribute(HELMET_TAG) or HELMET_PART_NAMES[child.Name] then
+            table.insert(toRemove, child)
+        end
+    end
+    for _, part in ipairs(toRemove) do
+        part:Destroy()
+        removed = removed + 1
+    end
+    dprint("[ShowHelm] clearSkinHelmetParts removed", removed, "parts")
+end
+
+-- Restore original head body color (when ShowHelm is OFF but skin is equipped)
+local function restoreHeadColor(character)
+    local bc = character:FindFirstChildOfClass("BodyColors")
+    if not bc then
+        dprint("[ShowHelm] restoreHeadColor: no BodyColors found")
+        return
+    end
+    local origHead = bc:GetAttribute("_OrigHeadColor3")
+    if origHead then
+        bc.HeadColor3 = origHead
+        dprint("[ShowHelm] restored head color to", tostring(origHead))
+    else
+        dprint("[ShowHelm] restoreHeadColor: no _OrigHeadColor3 saved")
+    end
+end
+
+-- Set head body color to undersuit dark (when ShowHelm is ON with a skin)
+local function setHeadUndersuitColor(character)
+    local bc = character:FindFirstChildOfClass("BodyColors")
+    if bc then
+        bc.HeadColor = BrickColor.new(Color3.fromRGB(50, 50, 55))
     end
 end
 
@@ -357,6 +424,83 @@ local function updateSkinAccentColor(character, accentColor, capeColor)
     end
 end
 
+-- Apply only the knight helmet parts to a character (used for live toggle ON)
+local function applyKnightHelmetParts(player, character)
+    local def = SkinDefs.GetById("Knight")
+    if not def then return end
+
+    local helmetColor = def.HelmetColor or Color3.fromRGB(140, 145, 155)
+    local visorColor  = def.VisorColor  or Color3.fromRGB(30, 30, 35)
+    local accentColor = getTeamAccentColor(player, def.AccentColor or Color3.fromRGB(200, 170, 50))
+
+    local head = character:FindFirstChild("Head")
+    if not head or not head:IsA("BasePart") then return end
+
+    local helmet = createArmorPiece(
+        character, head, "KnightHelmet",
+        Vector3.new(1.4, 1.4, 1.4),
+        CFrame.new(0, 0.05, 0),
+        helmetColor, Enum.PartType.Block
+    )
+    if helmet then
+        helmet:SetAttribute(HELMET_TAG, true)
+        local visor = createArmorPiece(
+            character, helmet, "KnightVisor",
+            Vector3.new(1.1, 0.2, 0.2),
+            CFrame.new(0, 0.05, -0.62),
+            visorColor
+        )
+        if visor then visor:SetAttribute(HELMET_TAG, true) end
+        local crest = createAccentPiece(
+            character, helmet, "KnightCrest",
+            Vector3.new(0.25, 0.35, 1.2),
+            CFrame.new(0, 0.65, 0),
+            accentColor
+        )
+        if crest then crest:SetAttribute(HELMET_TAG, true) end
+    end
+
+    setHeadUndersuitColor(character)
+    dprint(player.Name, "knight helmet parts applied")
+end
+
+-- Apply only the iron knight helmet parts to a character (used for live toggle ON)
+local function applyIronKnightHelmetParts(player, character)
+    local def = SkinDefs.GetById("IronKnight")
+    if not def then return end
+
+    local helmetColor = def.HelmetColor or Color3.fromRGB(80, 85, 90)
+    local visorColor  = def.VisorColor  or Color3.fromRGB(20, 22, 25)
+    local accentColor = getTeamAccentColor(player, def.AccentColor)
+
+    local head = character:FindFirstChild("Head")
+    if not head or not head:IsA("BasePart") then return end
+
+    local helmet = createArmorPiece(
+        character, head, "IronHelmet",
+        Vector3.new(1.45, 1.45, 1.45),
+        CFrame.new(0, 0.05, 0),
+        helmetColor, Enum.PartType.Block
+    )
+    if helmet then
+        helmet.Material = Enum.Material.Metal
+        helmet:SetAttribute(HELMET_TAG, true)
+        local visor = createArmorPiece(
+            character, helmet, "IronVisor",
+            Vector3.new(1.0, 0.12, 0.2),
+            CFrame.new(0, 0.0, -0.64),
+            visorColor
+        )
+        if visor then visor:SetAttribute(HELMET_TAG, true) end
+    end
+
+    local bc = character:FindFirstChildOfClass("BodyColors")
+    if bc then
+        bc.HeadColor = BrickColor.new(Color3.fromRGB(30, 30, 35))
+    end
+    dprint(player.Name, "[IronKnight] helmet parts applied (team accent)")
+end
+
 -- Apply Knight skin: COSMETIC OVERLAY ONLY
 -- • Hides accessories (transparency) instead of destroying them
 -- • Saves + overrides body colors (reversible)
@@ -414,8 +558,10 @@ local function applyKnightSkin(player, character)
     -- ── Step 3: Weld cosmetic armor pieces ───────────────────────────────
     local head = character:FindFirstChild("Head")
 
-    -- Helmet
-    if head and head:IsA("BasePart") then
+    -- Helmet (conditional on ShowHelm setting)
+    local showHelm = getShowHelm(player)
+    dprint(player.Name, "ShowHelm at spawn:", tostring(showHelm))
+    if head and head:IsA("BasePart") and showHelm then
         local helmet = createArmorPiece(
             character, head, "KnightHelmet",
             Vector3.new(1.4, 1.4, 1.4),
@@ -424,21 +570,29 @@ local function applyKnightSkin(player, character)
         )
 
         if helmet then
+            helmet:SetAttribute(HELMET_TAG, true)
             -- Visor strip
-            createArmorPiece(
+            local visor = createArmorPiece(
                 character, helmet, "KnightVisor",
                 Vector3.new(1.1, 0.2, 0.2),
                 CFrame.new(0, 0.05, -0.62),
                 visorColor
             )
+            if visor then visor:SetAttribute(HELMET_TAG, true) end
             -- Helmet crest (top ridge)
-            createAccentPiece(
+            local crest = createAccentPiece(
                 character, helmet, "KnightCrest",
                 Vector3.new(0.25, 0.35, 1.2),
                 CFrame.new(0, 0.65, 0),
                 accentColor
             )
+            if crest then crest:SetAttribute(HELMET_TAG, true) end
         end
+    end
+
+    -- If ShowHelm is OFF, restore original head color so the player's face is visible
+    if not showHelm then
+        restoreHeadColor(character)
     end
 
     -- Chestplate
@@ -719,6 +873,351 @@ local function applyKnightSkin(player, character)
     dprint(player.Name, "Knight skin applied successfully –", #character:GetChildren(), "total children")
 end
 
+-- Apply Iron Knight skin: COSMETIC OVERLAY ONLY
+-- Dark iron battle-worn armor with team-colored accents.
+-- Uses Metal material for a distinct heavy iron feel.
+local function applyIronKnightSkin(player, character)
+    dprint(player.Name, "[IronKnight] applying skin")
+    clearSkinCosmetics(character)
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        dprint(player.Name, "[IronKnight] WARN: no Humanoid – aborting")
+        return
+    end
+
+    local def = SkinDefs.GetById("IronKnight")
+    if not def then
+        dprint(player.Name, "[IronKnight] WARN: definition not found")
+        return
+    end
+
+    local armorColor  = def.ArmorColor  or Color3.fromRGB(90, 95, 100)
+    local accentColor = getTeamAccentColor(player, def.AccentColor)
+    local helmetColor = def.HelmetColor or Color3.fromRGB(80, 85, 90)
+    local visorColor  = def.VisorColor  or Color3.fromRGB(20, 22, 25)
+    local darkerArmor = Color3.fromRGB(70, 75, 80)
+
+    dprint(player.Name, "[IronKnight] team accent color:", tostring(accentColor))
+
+    -- Helper to set Metal material on a piece for the battle-worn iron look
+    local function setMetal(part)
+        if part then part.Material = Enum.Material.Metal end
+        return part
+    end
+
+    -- ── Step 1: Save + override body colors (very dark undersuit) ────────
+    saveOriginalBodyColors(character)
+    local bodyColors = character:FindFirstChildOfClass("BodyColors")
+    if bodyColors then
+        local undersuitColor = BrickColor.new(Color3.fromRGB(30, 30, 35))
+        bodyColors.HeadColor      = undersuitColor
+        bodyColors.TorsoColor     = undersuitColor
+        bodyColors.LeftArmColor   = undersuitColor
+        bodyColors.RightArmColor  = undersuitColor
+        bodyColors.LeftLegColor   = undersuitColor
+        bodyColors.RightLegColor  = undersuitColor
+    end
+
+    -- ── Step 2: Hide accessories (transparency, NOT destroy) ─────────────
+    for _, acc in ipairs(character:GetChildren()) do
+        if acc:IsA("Accessory") then
+            local handle = acc:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                if not handle:GetAttribute("_OrigTransparency") then
+                    handle:SetAttribute("_OrigTransparency", handle.Transparency)
+                end
+                handle.Transparency = 1
+            end
+        end
+    end
+
+    -- ── Step 3: Weld cosmetic armor pieces ───────────────────────────────
+    local head = character:FindFirstChild("Head")
+
+    -- Helmet (conditional on ShowHelm setting)
+    local showHelm = getShowHelm(player)
+    dprint(player.Name, "[IronKnight] ShowHelm:", tostring(showHelm))
+    if head and head:IsA("BasePart") and showHelm then
+        local helmet = createArmorPiece(
+            character, head, "IronHelmet",
+            Vector3.new(1.45, 1.45, 1.45),
+            CFrame.new(0, 0.05, 0),
+            helmetColor, Enum.PartType.Block
+        )
+        if helmet then
+            helmet.Material = Enum.Material.Metal
+            helmet:SetAttribute(HELMET_TAG, true)
+            local visor = createArmorPiece(
+                character, helmet, "IronVisor",
+                Vector3.new(1.0, 0.12, 0.2),
+                CFrame.new(0, 0.0, -0.64),
+                visorColor
+            )
+            if visor then visor:SetAttribute(HELMET_TAG, true) end
+        end
+    end
+
+    if not showHelm then
+        restoreHeadColor(character)
+    end
+
+    -- Chestplate – heavy dark iron
+    local torso = character:FindFirstChild("UpperTorso") or character:FindFirstChild("Torso")
+    if torso and torso:IsA("BasePart") then
+        local chest = setMetal(createArmorPiece(
+            character, torso, "IronChestplate",
+            Vector3.new(2.3, 2.15, 1.25),
+            CFrame.new(0, 0, -0.1),
+            armorColor
+        ))
+        if chest then
+            setMetal(createAccentPiece(
+                character, chest, "IronChestTrim",
+                Vector3.new(2.35, 0.12, 1.3),
+                CFrame.new(0, 0.45, 0),
+                accentColor
+            ))
+            setMetal(createArmorPiece(
+                character, chest, "IronChestRidge",
+                Vector3.new(0.2, 1.6, 0.15),
+                CFrame.new(0, 0, -0.1),
+                Color3.fromRGB(75, 80, 85)
+            ))
+        end
+    end
+
+    -- Shoulder pads – heavier than Knight
+    local function makeIronShoulder(armName, xMirror)
+        local arm = character:FindFirstChild(armName)
+        if not arm or not arm:IsA("BasePart") then return end
+
+        local pad = setMetal(createArmorPiece(
+            character, arm, "IronShoulder_" .. armName,
+            Vector3.new(1.4, 0.55, 1.4),
+            CFrame.new(xMirror * 0.1, 0.55, 0),
+            armorColor
+        ))
+        if pad then
+            setMetal(createAccentPiece(
+                character, pad, "IronShoulderEdge_" .. armName,
+                Vector3.new(1.45, 0.08, 1.45),
+                CFrame.new(0, -0.27, 0),
+                accentColor
+            ))
+            setMetal(createArmorPiece(
+                character, pad, "IronShoulderRivet_" .. armName,
+                Vector3.new(0.2, 0.15, 0.2),
+                CFrame.new(0, 0.25, 0),
+                Color3.fromRGB(60, 65, 70), Enum.PartType.Cylinder
+            ))
+        end
+    end
+
+    makeIronShoulder("RightUpperArm", 1)
+    makeIronShoulder("LeftUpperArm", -1)
+    makeIronShoulder("Right Arm", 1)
+    makeIronShoulder("Left Arm", -1)
+
+    -- ── Gauntlets / forearm armor ────────────────────────────────────────
+    local function makeIronGauntlet(lowerArmName, handName)
+        local lowerArm = character:FindFirstChild(lowerArmName)
+        if not lowerArm or not lowerArm:IsA("BasePart") then return end
+
+        local bracer = setMetal(createArmorPiece(
+            character, lowerArm, "IronBracer_" .. lowerArmName,
+            Vector3.new(1.2, 0.9, 1.2),
+            CFrame.new(0, 0, 0),
+            armorColor
+        ))
+        if bracer then
+            setMetal(createAccentPiece(
+                character, bracer, "IronBracerTrim_" .. lowerArmName,
+                Vector3.new(1.25, 0.08, 1.25),
+                CFrame.new(0, 0.42, 0),
+                accentColor
+            ))
+        end
+
+        local hand = character:FindFirstChild(handName)
+        if hand and hand:IsA("BasePart") then
+            setMetal(createArmorPiece(
+                character, hand, "IronHandGuard_" .. handName,
+                Vector3.new(1.1, 0.55, 0.5),
+                CFrame.new(0, 0.05, -0.2),
+                armorColor
+            ))
+        end
+    end
+
+    makeIronGauntlet("RightLowerArm", "RightHand")
+    makeIronGauntlet("LeftLowerArm", "LeftHand")
+
+    local function makeR6IronGauntlet(armName)
+        local arm = character:FindFirstChild(armName)
+        if not arm or not arm:IsA("BasePart") then return end
+        if character:FindFirstChild("RightLowerArm") or character:FindFirstChild("LeftLowerArm") then return end
+
+        setMetal(createArmorPiece(
+            character, arm, "IronBracer_" .. armName,
+            Vector3.new(1.2, 0.85, 1.2),
+            CFrame.new(0, -0.35, 0),
+            armorColor
+        ))
+        setMetal(createAccentPiece(
+            character, arm, "IronBracerTrim_" .. armName,
+            Vector3.new(1.25, 0.08, 1.25),
+            CFrame.new(0, 0.05, 0),
+            accentColor
+        ))
+    end
+
+    makeR6IronGauntlet("Right Arm")
+    makeR6IronGauntlet("Left Arm")
+
+    -- Belt / waist armor
+    local lowerTorso = character:FindFirstChild("LowerTorso") or torso
+    if lowerTorso and lowerTorso:IsA("BasePart") then
+        setMetal(createAccentPiece(
+            character, lowerTorso, "IronBelt",
+            Vector3.new(2.15, 0.35, 1.2),
+            CFrame.new(0, 0.3, -0.05),
+            accentColor
+        ))
+    end
+
+    -- ── Full leg armor ───────────────────────────────────────────────────
+    local function makeIronLeg_R15(side)
+        local upperLeg = character:FindFirstChild(side .. "UpperLeg")
+        if upperLeg and upperLeg:IsA("BasePart") then
+            setMetal(createArmorPiece(
+                character, upperLeg, "IronThigh_" .. side,
+                Vector3.new(1.2, 1.05, 1.2),
+                CFrame.new(0, 0, 0),
+                darkerArmor
+            ))
+            setMetal(createAccentPiece(
+                character, upperLeg, "IronThighTrim_" .. side,
+                Vector3.new(1.25, 0.08, 1.25),
+                CFrame.new(0, 0.5, 0),
+                accentColor
+            ))
+        end
+
+        local lowerLeg = character:FindFirstChild(side .. "LowerLeg")
+        if lowerLeg and lowerLeg:IsA("BasePart") then
+            setMetal(createArmorPiece(
+                character, lowerLeg, "IronKnee_" .. side,
+                Vector3.new(1.2, 0.45, 1.3),
+                CFrame.new(0, 0.45, -0.05),
+                armorColor
+            ))
+            setMetal(createArmorPiece(
+                character, lowerLeg, "IronShin_" .. side,
+                Vector3.new(1.15, 0.95, 1.2),
+                CFrame.new(0, -0.15, -0.05),
+                armorColor
+            ))
+        end
+
+        local foot = character:FindFirstChild(side .. "Foot")
+        if foot and foot:IsA("BasePart") then
+            setMetal(createArmorPiece(
+                character, foot, "IronSabaton_" .. side,
+                Vector3.new(1.15, 0.5, 1.25),
+                CFrame.new(0, 0.05, -0.05),
+                darkerArmor
+            ))
+        end
+    end
+
+    local function makeIronLeg_R6(legName)
+        local leg = character:FindFirstChild(legName)
+        if not leg or not leg:IsA("BasePart") then return end
+        if character:FindFirstChild("RightUpperLeg") or character:FindFirstChild("LeftUpperLeg") then return end
+
+        setMetal(createArmorPiece(
+            character, leg, "IronThigh_" .. legName,
+            Vector3.new(1.2, 0.75, 1.2),
+            CFrame.new(0, 0.35, 0),
+            darkerArmor
+        ))
+        setMetal(createArmorPiece(
+            character, leg, "IronKnee_" .. legName,
+            Vector3.new(1.2, 0.4, 1.25),
+            CFrame.new(0, 0.0, -0.05),
+            armorColor
+        ))
+        setMetal(createArmorPiece(
+            character, leg, "IronShin_" .. legName,
+            Vector3.new(1.15, 0.75, 1.2),
+            CFrame.new(0, -0.45, -0.05),
+            armorColor
+        ))
+        setMetal(createAccentPiece(
+            character, leg, "IronThighTrim_" .. legName,
+            Vector3.new(1.25, 0.08, 1.25),
+            CFrame.new(0, 0.72, 0),
+            accentColor
+        ))
+    end
+
+    makeIronLeg_R15("Right")
+    makeIronLeg_R15("Left")
+    makeIronLeg_R6("Right Leg")
+    makeIronLeg_R6("Left Leg")
+
+    -- ── Back armor & short cape ──────────────────────────────────────────
+    if torso and torso:IsA("BasePart") then
+        local backPlate = setMetal(createArmorPiece(
+            character, torso, "IronBackPlate",
+            Vector3.new(1.9, 1.7, 0.3),
+            CFrame.new(0, 0.1, 0.55),
+            armorColor
+        ))
+        if backPlate then
+            setMetal(createArmorPiece(
+                character, backPlate, "IronSpineRidge",
+                Vector3.new(0.25, 1.5, 0.15),
+                CFrame.new(0, 0, 0.15),
+                Color3.fromRGB(65, 70, 75)
+            ))
+            setMetal(createAccentPiece(
+                character, backPlate, "IronBackTrim",
+                Vector3.new(1.95, 0.1, 0.35),
+                CFrame.new(0, 0.8, 0),
+                accentColor
+            ))
+        end
+
+        -- Short cape using team color (mirrors regular Knight cape logic)
+        local capeColor = getTeamCapeColor(player)
+        local cape = createArmorPiece(
+            character, torso, "IronCape",
+            Vector3.new(1.4, 2.0, 0.08),
+            CFrame.new(0, -0.7, 0.6),
+            capeColor
+        )
+        if cape then
+            cape:SetAttribute(CAPE_TAG, true)
+            createAccentPiece(
+                character, cape, "IronCapeHem",
+                Vector3.new(1.45, 0.08, 0.12),
+                CFrame.new(0, -0.96, 0),
+                accentColor
+            )
+            setMetal(createAccentPiece(
+                character, torso, "IronCapeClasp",
+                Vector3.new(0.45, 0.2, 0.18),
+                CFrame.new(0, 0.85, 0.58),
+                accentColor
+            ))
+        end
+    end
+
+    dprint(player.Name, "[IronKnight] skin applied successfully –", #character:GetChildren(), "total children")
+end
+
 -- Master apply function: protected call with death-revert failsafe
 local function applySkin(player, character)
     if not character then
@@ -749,6 +1248,8 @@ local function applySkin(player, character)
             applyDefaultSkin(player, character)
         elseif equipped == "Knight" then
             applyKnightSkin(player, character)
+        elseif equipped == "IronKnight" then
+            applyIronKnightSkin(player, character)
         else
             dprint(player.Name, "unknown skin '" .. tostring(equipped) .. "' – falling back to Default")
             applyDefaultSkin(player, character)
@@ -1054,6 +1555,58 @@ do
     end
 
     dprint("BindableFunction API registered (CheckSkinOwnership, GrantSkin)")
+end
+
+--------------------------------------------------------------------------------
+-- SHOWHELM LIVE TOGGLE
+-- Listen for ShowHelm setting changes and update the character in real-time.
+--------------------------------------------------------------------------------
+do
+    local updateEV = ReplicatedStorage:WaitForChild("UpdatePlayerSetting", 10)
+    if updateEV and updateEV:IsA("RemoteEvent") then
+        updateEV.OnServerEvent:Connect(function(player, key, value)
+            if key ~= "ShowHelm" then return end
+
+            dprint("[ShowHelm] Toggle received from", player.Name, "value:", tostring(value))
+
+            local character = player.Character
+            if not character then
+                dprint("[ShowHelm] No character for", player.Name)
+                return
+            end
+            local humanoid = character:FindFirstChildOfClass("Humanoid")
+            if not humanoid or humanoid.Health <= 0 then
+                dprint("[ShowHelm] Humanoid dead or missing for", player.Name)
+                return
+            end
+
+            local equipped = getEquipped(player)
+            dprint("[ShowHelm] Found equipped skin:", tostring(equipped))
+            if equipped == "Default" then
+                dprint("[ShowHelm] Default skin, nothing to toggle")
+                return
+            end
+
+            if value then
+                -- ShowHelm ON: rebuild helmet parts
+                dprint("[ShowHelm] Restoring skin helm for", player.Name)
+                clearSkinHelmetParts(character) -- prevent duplicates
+                if equipped == "Knight" then
+                    applyKnightHelmetParts(player, character)
+                elseif equipped == "IronKnight" then
+                    applyIronKnightHelmetParts(player, character)
+                end
+            else
+                -- ShowHelm OFF: remove helmet parts, restore head appearance
+                dprint("[ShowHelm] Removing helmet cosmetics from", player.Name)
+                clearSkinHelmetParts(character)
+                restoreHeadColor(character)
+            end
+        end)
+        dprint("[ShowHelm] live toggle listener registered on UpdatePlayerSetting")
+    else
+        warn("[SkinService] UpdatePlayerSetting remote not found after 10s – ShowHelm live toggle disabled")
+    end
 end
 
 dprint("fully initialized")

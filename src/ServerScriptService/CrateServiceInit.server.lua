@@ -11,6 +11,10 @@ local ServerScriptService = game:GetService("ServerScriptService")
 -- Require server modules
 local CrateService          = require(ServerScriptService:WaitForChild("CrateService"))
 local WeaponInstanceService = require(ServerScriptService:WaitForChild("WeaponInstanceService"))
+local AchievementService
+pcall(function()
+    AchievementService = require(ServerScriptService:WaitForChild("AchievementService", 10))
+end)
 
 --------------------------------------------------------------------------------
 -- REMOTE CREATION
@@ -67,6 +71,10 @@ openCrateRF.OnServerInvoke = function(player, crateId)
         pcall(function()
             weaponInvUpdatedRE:FireClient(player, WeaponInstanceService:GetInventory(player))
         end)
+        -- Track purchase for achievements
+        if AchievementService then
+            pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
+        end
     end
 
     return success, result

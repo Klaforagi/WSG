@@ -285,14 +285,15 @@ local function recalcMetaStats(data)
 end
 
 --------------------------------------------------------------------------------
--- Internal: auto-grant rewards for a completed achievement stage
--- Server-authoritative: coins + achievement points granted immediately.
+-- Internal: grant reward for a completed achievement stage (manual claim).
+-- Server-authoritative: coins + achievement points granted on claim.
 -- Returns true if reward was granted, false if already claimed/skipped.
 --------------------------------------------------------------------------------
-local function autoGrantReward(player, data, def, stageIndex)
+local function grantReward(player, data, def, stageIndex)
     local ach = data.achievements[def.id]
     if not ach then return false end
     if ach.claimed then return false end  -- already rewarded
+    if not ach.completed then return false end -- must be completed first
 
     -- Grant coins
     local coinReward = AchievementDefs.GetStageReward(def, stageIndex)
@@ -313,22 +314,28 @@ local function autoGrantReward(player, data, def, stageIndex)
 
     ach.claimed = true
 
-    print(string.format("[AchievementAutoReward] %s auto-rewarded: %s (coins=%d, AP=%d)",
+    -- Archive into completion history now that reward is claimed
+    archiveCompletion(data, def, stageIndex, ach.achievedOn)
+    recalcMetaStats(data)
+
+    print(string.format("[AchievementClaim] %s claimed: %s (coins=%d, AP=%d)",
         player.Name, AchievementDefs.GetStageTitle(def, stageIndex), coinReward, apReward))
 
     return true
 end
 
 --------------------------------------------------------------------------------
--- Internal: try to advance a staged line after auto-rewarding
--- Called for staged achievements when the current stage is completed and rewarded.
--- Automatically checks if the stat already exceeds the next threshold.
+-- Internal: advance a staged line after manual claim.
+-- Called for staged achievements when the current stage is claimed.
+-- Does NOT auto-complete or auto-claim the next stage — only makes it active.
+-- If the stat already exceeds the next threshold, marks it completed (claimable)
+-- but does NOT grant the reward.
 --------------------------------------------------------------------------------
 local function tryAdvanceStage(player, data, def)
     if not def.staged then return end
     local ach = data.achievements[def.id]
     if not ach then return end
-    if not ach.claimed then return end -- must be rewarded before advancing
+    if not ach.claimed then return end -- must be claimed before advancing
 
     local maxStage = AchievementDefs.GetMaxStage(def)
 
@@ -345,18 +352,13 @@ local function tryAdvanceStage(player, data, def)
     end
 
     -- Check if stat already meets the next stage threshold (carry-over)
+    -- Mark as completed (claimable) but do NOT grant reward or archive
     local statVal = data.stats[def.stat] or 0
     local nextTarget = AchievementDefs.GetStageTarget(def, ach.stageIndex)
     if statVal >= nextTarget then
         ach.completed = true
         ach.achievedOn = os.time()
-        archiveCompletion(data, def, ach.stageIndex, ach.achievedOn)
-        recalcMetaStats(data)
-        -- Auto-grant reward for carry-over stage
-        autoGrantReward(player, data, def, ach.stageIndex)
         pushProgress(player, def, data)
-        -- Recurse: check if next stage is also met
-        tryAdvanceStage(player, data, def)
     end
 end
 
@@ -430,6 +432,8 @@ function AchievementService:LoadForPlayer(player)
         tostring(data.achievementDataVersion)))
 
     -- Retroactively evaluate stat thresholds for all achievements
+    -- Mark completed if threshold met, but do NOT auto-grant or auto-advance.
+    -- Completed-but-unclaimed achievements remain claimable.
     for _, def in ipairs(AchievementDefs.Achievements) do
         local ach = data.achievements[def.id]
         if not ach then continue end
@@ -444,16 +448,9 @@ function AchievementService:LoadForPlayer(player)
             if not ach.achievedOn then
                 ach.achievedOn = os.time()
             end
-            -- [AchievementAutoReward] Auto-reward on load for retroactive completions
-            if not ach.claimed then
-                archiveCompletion(data, def, si, ach.achievedOn)
-                autoGrantReward(player, data, def, si)
-                -- Auto-advance staged achievements
-                if def.staged then
-                    tryAdvanceStage(player, data, def)
-                end
-            end
-        elseif statVal < target then
+            -- Do NOT auto-grant or auto-advance — player must manually claim
+        elseif statVal < target and not ach.claimed then
+            -- Only reset if not already claimed (claimed achievements stay claimed)
             ach.completed = false
             ach.claimed = false
             ach.achievedOn = nil
@@ -554,19 +551,12 @@ function AchievementService:_evaluateStatAchievements(player, data, statKey)
             if not ach.achievedOn then
                 ach.achievedOn = os.time()
             end
-            -- Archive into completion history
-            archiveCompletion(data, def, si, ach.achievedOn)
             anyCompleted = true
 
-            -- [AchievementAutoReward] Auto-grant reward immediately on completion
-            autoGrantReward(player, data, def, si)
+            -- Do NOT auto-grant reward or archive — player must manually claim
+            -- Do NOT auto-advance staged achievements — wait for claim
 
             pushProgress(player, def, data)
-
-            -- For staged achievements, auto-advance to next stage
-            if def.staged then
-                tryAdvanceStage(player, data, def)
-            end
         elseif not ach.completed then
             pushProgress(player, def, data)
         end
@@ -587,21 +577,14 @@ function AchievementService:_evaluateStatAchievements(player, data, statKey)
                         if not ach.achievedOn then
                             ach.achievedOn = os.time()
                         end
-                        archiveCompletion(data, def, ach.stageIndex, ach.achievedOn)
-                        recalcMetaStats(data)
-                        -- [AchievementAutoReward] Auto-grant meta achievement reward
-                        autoGrantReward(player, data, def, ach.stageIndex)
+                        -- Do NOT auto-grant or archive — player must manually claim
                         pushProgress(player, def, data)
-                        -- Auto-advance staged meta achievements
-                        if def.staged then
-                            tryAdvanceStage(player, data, def)
-                        end
                     end
                 end
             end
         end
 
-        -- Push full refresh to update UI after auto-rewards
+        -- Push full refresh to update UI after completions
         pushAllAchievements(player)
     end
 end
@@ -656,13 +639,62 @@ function AchievementService:GetAchievementsForPlayer(player)
     return out
 end
 
---- ClaimReward is now a no-op — rewards are auto-granted on completion.
---- Kept for backward compatibility with any lingering client calls.
---- Always returns false since there is nothing to claim manually.
+--- ClaimReward: manually claim a completed achievement's reward.
+--- Grants coins + AP, archives to history, advances staged lines.
+--- Returns true, reward, ap on success; false on failure.
 function AchievementService:ClaimReward(player, achievementId)
-    print(string.format("[AchievementAutoReward] ClaimReward called by %s for %s — ignored (auto-reward active)",
-        tostring(player), tostring(achievementId)))
-    return false
+    if type(achievementId) ~= "string" then return false end
+    local data = playerData[player]
+    if not data then return false end
+
+    -- Find the definition
+    local def
+    for _, d in ipairs(AchievementDefs.Achievements) do
+        if d.id == achievementId then def = d; break end
+    end
+    if not def then return false end
+
+    local ach = data.achievements[achievementId]
+    if not ach then return false end
+    if not ach.completed then return false end
+    if ach.claimed then return false end
+
+    local si = ach.stageIndex
+
+    -- Grant reward (marks claimed, archives, recalcs meta)
+    local granted = grantReward(player, data, def, si)
+    if not granted then return false end
+
+    local coinReward = AchievementDefs.GetStageReward(def, si)
+    local apReward = AchievementDefs.GetStageAP(def, si)
+
+    -- For staged achievements, advance to the next stage
+    if def.staged then
+        tryAdvanceStage(player, data, def)
+    end
+
+    -- Re-evaluate meta achievements after claim changes history
+    for _, metaDef in ipairs(AchievementDefs.Achievements) do
+        if metaDef.stat == "achievementsCompleted" or metaDef.stat == "categoriesWithCompletion" then
+            local metaAch = data.achievements[metaDef.id]
+            if metaAch and not metaAch.completed and not metaAch.maxedOut then
+                local target = AchievementDefs.GetStageTarget(metaDef, metaAch.stageIndex)
+                local val = data.stats[metaDef.stat] or 0
+                if val >= target then
+                    metaAch.completed = true
+                    if not metaAch.achievedOn then
+                        metaAch.achievedOn = os.time()
+                    end
+                    pushProgress(player, metaDef, data)
+                end
+            end
+        end
+    end
+
+    -- Push full refresh to update UI
+    pushAllAchievements(player)
+
+    return true, coinReward, apReward
 end
 
 --------------------------------------------------------------------------------

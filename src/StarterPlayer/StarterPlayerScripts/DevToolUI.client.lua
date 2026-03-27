@@ -130,3 +130,55 @@ keyBtn.MouseButton1Click:Connect(function()
 end)
 
 print("[DevToolUI] PREMIUM CRATE / KEY SYSTEM – Key button created")
+
+--------------------------------------------------------------------------------
+-- SALVAGE SYSTEM  – "+50 SALVAGE" dev button
+-- TO REMOVE LATER: delete this entire section.
+--------------------------------------------------------------------------------
+local SALVAGE_GREEN_BTN = Color3.fromRGB(30, 110, 50)
+
+local salvBtn = Instance.new("TextButton")
+salvBtn.Name = "AddSalvageBtn"
+salvBtn.Size = UDim2.new(0, 130, 0, 36)
+salvBtn.Position = UDim2.new(0, 12, 1, -132)
+salvBtn.AnchorPoint = Vector2.new(0, 1)
+salvBtn.BackgroundColor3 = GRAY
+salvBtn.Font = Enum.Font.GothamBold
+salvBtn.Text = "+50 SALV (WAIT…)"
+salvBtn.TextColor3 = Color3.fromRGB(60, 220, 100)
+salvBtn.TextSize = 16
+salvBtn.BorderSizePixel = 0
+salvBtn.AutoButtonColor = true
+salvBtn.Parent = gui
+
+local salvCorner = Instance.new("UICorner")
+salvCorner.CornerRadius = UDim.new(0, 8)
+salvCorner.Parent = salvBtn
+
+local addSalvageRemote = nil
+task.spawn(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 15)
+    if remotes then
+        addSalvageRemote = remotes:WaitForChild("RequestAddSalvage", 15)
+    end
+    if addSalvageRemote then
+        salvBtn.BackgroundColor3 = SALVAGE_GREEN_BTN
+        salvBtn.Text = "+50 SALVAGE"
+        print("[DevToolUI] RequestAddSalvage found")
+    else
+        salvBtn.BackgroundColor3 = GRAY
+        salvBtn.Text = "+50 SALV (NO REMOTE)"
+        warn("[DevToolUI] RequestAddSalvage not found")
+    end
+end)
+
+salvBtn.MouseButton1Click:Connect(function()
+    if not addSalvageRemote then return end
+    addSalvageRemote:FireServer(50)
+    salvBtn.Text = "\u{2713} ADDED"
+    task.delay(0.5, function()
+        if salvBtn and salvBtn.Parent then salvBtn.Text = "+50 SALVAGE" end
+    end)
+end)
+
+print("[DevToolUI] Salvage button created")
