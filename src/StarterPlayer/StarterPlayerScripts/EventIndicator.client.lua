@@ -115,6 +115,8 @@ local timerLabel        = nil   -- separate timer TextLabel below the Event card
 local popupTimerLabel   = nil   -- timer TextLabel inside the popup
 local popupVisible      = false -- whether the popup is shown
 local objectiveTracker  = nil   -- right-side objective tracker ScreenGui
+local trackerObjLabel   = nil   -- TextLabel that shows shard progress
+local shardProgressConn = nil   -- connection for EventShardProgress remote
 
 ---------------------------------------------------------------------
 -- Current event definition (read from EventConfig)
@@ -147,6 +149,10 @@ end
 -- Cleanup — stops pulse, cancels tweens, destroys card/timer/popup
 ---------------------------------------------------------------------
 local function destroyIndicator()
+    if shardProgressConn then
+        pcall(function() shardProgressConn:Disconnect() end)
+        shardProgressConn = nil
+    end
     if timerConnection then
         pcall(function() timerConnection:Disconnect() end)
         timerConnection = nil
@@ -167,6 +173,7 @@ local function destroyIndicator()
         pcall(function() objectiveTracker:Destroy() end)
         objectiveTracker = nil
     end
+    trackerObjLabel = nil
     popupVisible = false
     popupTimerLabel = nil
     eventEndTime = nil
@@ -842,7 +849,7 @@ local function createIndicator()
         titleStroke.Transparency = 0.15
         titleStroke.Parent = titleLbl
 
-        -- Objective line: "- Collect 3 Meteor Shards"
+        -- Objective line: "- Collect 3 Meteor Shards (0/3)"
         local objLbl = Instance.new("TextLabel")
         objLbl.Name = "TrackerObjective"
         objLbl.LayoutOrder = 2
@@ -851,10 +858,11 @@ local function createIndicator()
         objLbl.Font = Enum.Font.Gotham
         objLbl.TextSize = px(20)
         objLbl.TextColor3 = Color3.fromRGB(220, 220, 230)
-        objLbl.Text = "- " .. objective
+        objLbl.Text = "- " .. objective .. "  (0/" .. (def and def.RequiredShards or "3") .. ")"
         objLbl.TextXAlignment = Enum.TextXAlignment.Left
         objLbl.TextTruncate = Enum.TextTruncate.AtEnd
         objLbl.Parent = container
+        trackerObjLabel = objLbl
 
         local objStroke = Instance.new("UIStroke")
         objStroke.Color = Color3.fromRGB(0, 0, 0)
@@ -871,6 +879,32 @@ local function createIndicator()
             cLayout.AbsoluteContentSize.Y + px(40))
 
         objectiveTracker = trackerGui
+    end
+
+    -----------------------------------------------------------------
+    -- Listen for shard progress updates from server
+    -----------------------------------------------------------------
+    do
+        if shardProgressConn then
+            pcall(function() shardProgressConn:Disconnect() end)
+            shardProgressConn = nil
+        end
+
+        local progressRemote = ReplicatedStorage:FindFirstChild("EventShardProgress")
+        if progressRemote then
+            shardProgressConn = progressRemote.OnClientEvent:Connect(function(current, required)
+                if trackerObjLabel then
+                    local def = getEventDef()
+                    local objective = def and def.Objective or "..."
+                    if current >= required then
+                        trackerObjLabel.Text = "- " .. objective .. "  (" .. current .. "/" .. required .. ")  COMPLETE!"
+                        trackerObjLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
+                    else
+                        trackerObjLabel.Text = "- " .. objective .. "  (" .. current .. "/" .. required .. ")"
+                    end
+                end
+            end)
+        end
     end
 
     -----------------------------------------------------------------

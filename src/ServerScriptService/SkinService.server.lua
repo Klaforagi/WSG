@@ -79,11 +79,13 @@ local getOwnedRF         = ensureInstance(skinsFolder, "RemoteFunction", "GetOwn
 local equipSkinRE        = ensureInstance(skinsFolder, "RemoteEvent",    "EquipSkin")
 local getEquippedRF      = ensureInstance(skinsFolder, "RemoteFunction", "GetEquippedSkin")
 local equippedChangedRE  = ensureInstance(skinsFolder, "RemoteEvent",    "EquippedSkinChanged")
+local favoriteSkinRF     = ensureInstance(skinsFolder, "RemoteFunction", "FavoriteSkin")
+local getSkinFavoritesRF = ensureInstance(skinsFolder, "RemoteFunction", "GetSkinFavorites")
 
 dprint("Remotes created")
 
 -- ── Per-player state ───────────────────────────────────────────────────────
--- playerData[player] = { owned = { [skinId] = true }, equipped = skinId }
+-- playerData[player] = { owned = { [skinId] = true }, equipped = skinId, favorited = { [skinId] = true } }
 local playerData = {}
 
 -- ── Persistence helpers ────────────────────────────────────────────────────
@@ -121,9 +123,18 @@ local function loadData(player)
         end
         -- Always grant default
         owned["Default"] = true
-        return { owned = owned, equipped = equipped }
+        -- Load favorited map
+        local favorited = {}
+        if type(result.favorited) == "table" then
+            for k, v in pairs(result.favorited) do
+                if type(v) == "boolean" then
+                    favorited[k] = v
+                end
+            end
+        end
+        return { owned = owned, equipped = equipped, favorited = favorited }
     end
-    return { owned = { Default = true }, equipped = "Default" }
+    return { owned = { Default = true }, equipped = "Default", favorited = {} }
 end
 
 local function saveData(player)
@@ -136,7 +147,7 @@ local function saveData(player)
             table.insert(ownedArr, id)
         end
     end
-    local payload = { owned = ownedArr, equipped = data.equipped or "Default" }
+    local payload = { owned = ownedArr, equipped = data.equipped or "Default", favorited = data.favorited or {} }
     for i = 1, RETRIES do
         local ok, err = pcall(function() ds:SetAsync(dsKey(player), payload) end)
         if ok then
@@ -1590,6 +1601,26 @@ equipSkinRE.OnServerEvent:Connect(function(player, skinId)
     task.spawn(function() saveData(player) end)
     pushEquippedToClient(player)
 end)
+
+--------------------------------------------------------------------------------
+-- SKIN FAVORITES
+--------------------------------------------------------------------------------
+favoriteSkinRF.OnServerInvoke = function(player, skinId, state)
+    if type(skinId) ~= "string" or type(state) ~= "boolean" then return false end
+    local def = SkinDefs.GetById(skinId)
+    if not def then return false end
+    local data = getOrCreateData(player)
+    if not data.favorited then data.favorited = {} end
+    data.favorited[skinId] = state or nil
+    dprint("FavoriteSkin:", skinId, "=", tostring(state), "for", player.Name)
+    task.spawn(function() saveData(player) end)
+    return true
+end
+
+getSkinFavoritesRF.OnServerInvoke = function(player)
+    local data = getOrCreateData(player)
+    return data.favorited or {}
+end
 
 --------------------------------------------------------------------------------
 -- BINDABLE API  (server-to-server, used by SalvageShopService)

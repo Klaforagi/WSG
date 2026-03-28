@@ -23,11 +23,34 @@
         - Terrain craters: deform terrain at the impact position
 ]]
 
-local TweenService      = game:GetService("TweenService")
-local Debris            = game:GetService("Debris")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players              = game:GetService("Players")
+local TweenService         = game:GetService("TweenService")
+local Debris               = game:GetService("Debris")
+local ReplicatedStorage    = game:GetService("ReplicatedStorage")
+local ServerScriptService  = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage:WaitForChild("MeteorShowerConfig"))
+
+---------------------------------------------------------------------
+-- Currency integration (for reward payout)
+---------------------------------------------------------------------
+local CurrencyService
+pcall(function()
+    CurrencyService = require(ServerScriptService:WaitForChild("CurrencyService", 10))
+end)
+if not CurrencyService then
+    warn("[MeteorShower] CurrencyService not found – rewards will not be granted")
+end
+
+---------------------------------------------------------------------
+-- Progress remote (server → client)
+---------------------------------------------------------------------
+local ShardProgressRemote = ReplicatedStorage:FindFirstChild("EventShardProgress")
+if not ShardProgressRemote then
+    ShardProgressRemote = Instance.new("RemoteEvent")
+    ShardProgressRemote.Name = "EventShardProgress"
+    ShardProgressRemote.Parent = ReplicatedStorage
+end
 
 ---------------------------------------------------------------------
 -- Module
@@ -38,6 +61,9 @@ local _active          = false   -- true while shower is running
 local _spawnThread     = nil     -- coroutine running the spawn loop
 local _currentMeteors  = {}      -- references to in-flight meteor parts
 local _generation      = 0       -- bumped on each Start(); prevents stale cleanup
+local _activeShards    = {}      -- { part, connection } pairs for cleanup
+local _playerProgress  = {}      -- [userId] = number of shards collected this event
+local _playerRewarded  = {}      -- [userId] = true if reward already granted this event
 
 ---------------------------------------------------------------------
 -- Target zone helpers
@@ -208,8 +234,116 @@ local function createImpactEffect(position)
 end
 
 ---------------------------------------------------------------------
--- Single meteor lifecycle (spawn → fall → impact → cleanup)
+-- Impact damage (server-authoritative, MaxHealth-based)
 ---------------------------------------------------------------------
+
+local function applyImpactDamage(impactPos)
+    local directR = Config.DIRECT_HIT_RADIUS
+    local splashR = Config.SPLASH_RADIUS
+
+    for _, plr in ipairs(Players:GetPlayers()) do
+        local char = plr.Character
+        if not char then continue end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then continue end
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if not hrp then continue end
+
+        local dist = (hrp.Position - impactPos).Magnitude
+
+        if dist <= directR then
+            hum:TakeDamage(hum.MaxHealth * Config.DIRECT_HIT_DAMAGE_PCT)
+        elseif dist <= splashR then
+            hum:TakeDamage(hum.MaxHealth * Config.SPLASH_DAMAGE_PCT)
+        end
+    end
+end
+
+---------------------------------------------------------------------
+-- Meteor shard spawning & collection
+---------------------------------------------------------------------
+
+local function spawnShard(position)
+    if not _active then return end
+    if math.random() > Config.SHARD_SPAWN_CHANCE then return end
+
+    local shard = Instance.new("Part")
+    shard.Name = "MeteorShard"
+    shard.Size = Config.SHARD_SIZE
+    shard.Material = Enum.Material.Neon
+    shard.Color = Config.SHARD_COLOR
+    shard.Anchored = true
+    shard.CanCollide = false
+    shard.CFrame = CFrame.new(position + Vector3.new(0, Config.SHARD_Y_OFFSET, 0))
+        * CFrame.Angles(0, math.rad(math.random(0, 360)), 0)
+    shard.Parent = workspace
+
+    local light = Instance.new("PointLight")
+    light.Color = Config.SHARD_COLOR
+    light.Brightness = Config.SHARD_LIGHT_BRIGHTNESS
+    light.Range = Config.SHARD_LIGHT_RANGE
+    light.Parent = shard
+
+    local bobInfo = TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+    local bobTween = TweenService:Create(shard, bobInfo, {
+        CFrame = shard.CFrame + Vector3.new(0, 1.5, 0),
+    })
+    bobTween:Play()
+
+    local collected = false
+
+    local conn
+    conn = shard.Touched:Connect(function(hit)
+        if collected then return end
+        if not _active then return end
+
+        local char = hit.Parent
+        if not char then return end
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if not hum or hum.Health <= 0 then return end
+        local plr = Players:GetPlayerFromCharacter(char)
+        if not plr then return end
+
+        local userId = plr.UserId
+        local current = _playerProgress[userId] or 0
+        if current >= Config.REQUIRED_SHARDS then return end
+
+        collected = true
+        current = current + 1
+        _playerProgress[userId] = current
+
+        pcall(function()
+            ShardProgressRemote:FireClient(plr, current, Config.REQUIRED_SHARDS)
+        end)
+
+        -- Grant reward on objective completion (exactly once per event)
+        if current >= Config.REQUIRED_SHARDS and not _playerRewarded[userId] then
+            _playerRewarded[userId] = true
+            local rewardAmount = Config.REWARD_COINS
+            if CurrencyService and CurrencyService.AddCoins then
+                local ok, err = pcall(function()
+                    CurrencyService:AddCoins(plr, rewardAmount, "MeteorShowerEvent")
+                end)
+                if ok then
+                    print("[MeteorShower] Granted", rewardAmount, "coins to", plr.Name, "for completing event objective")
+                else
+                    warn("[MeteorShower] Failed to grant coins to", plr.Name, ":", err)
+                end
+            else
+                warn("[MeteorShower] CurrencyService unavailable – could not grant", rewardAmount, "coins to", plr.Name)
+            end
+        elseif current >= Config.REQUIRED_SHARDS and _playerRewarded[userId] then
+            print("[MeteorShower] Reward already granted to", plr.Name, "– skipping duplicate")
+        end
+
+        pcall(function() conn:Disconnect() end)
+        pcall(function() bobTween:Cancel() end)
+        pcall(function() shard:Destroy() end)
+    end)
+
+    Debris:AddItem(shard, Config.SHARD_LIFETIME)
+    table.insert(_activeShards, { part = shard, connection = conn, tween = bobTween })
+end
 
 local function spawnOneMeteor()
     if not _active then return end
@@ -247,6 +381,12 @@ local function spawnOneMeteor()
     tween.Completed:Connect(function()
         -- Impact flash
         createImpactEffect(target)
+
+        -- Deal AoE damage at impact site
+        applyImpactDamage(target)
+
+        -- Spawn a collectible shard
+        spawnShard(target)
 
         -- Turn off emitters so they fade naturally before removal
         pcall(function()
@@ -303,6 +443,21 @@ function MeteorShowerService:Stop()
         pcall(task.cancel, _spawnThread)
         _spawnThread = nil
     end
+
+    -- Clean up all active shards
+    for _, entry in ipairs(_activeShards) do
+        pcall(function()
+            if entry.connection then entry.connection:Disconnect() end
+        end)
+        pcall(function()
+            if entry.tween then entry.tween:Cancel() end
+        end)
+        pcall(function()
+            if entry.part and entry.part.Parent then entry.part:Destroy() end
+        end)
+    end
+    _activeShards = {}
+    _playerProgress = {}
 
     -- Capture this batch for the delayed force-cleanup.
     -- A new :Start() call creates a fresh _currentMeteors table,

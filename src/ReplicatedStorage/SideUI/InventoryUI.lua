@@ -1976,24 +1976,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     -- ══════════════════════════════════════════════════════════════════════
-    --  SKINS PAGE  (equip owned skins)
+    --  SKINS PAGE  (grid + details panel, mirrors weapon tab pattern)
     -- ══════════════════════════════════════════════════════════════════════
-    local skinsPage = Instance.new("ScrollingFrame")
-    skinsPage.Name = "SkinsPage"; skinsPage.BackgroundTransparency = 1
-    skinsPage.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
-    skinsPage.Position = UDim2.new(0, CONTENT_X, 0, 0)
-    skinsPage.CanvasSize = UDim2.new(0, 0, 0, 0)
-    skinsPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    skinsPage.ScrollBarThickness = px(4)
-    skinsPage.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
-    skinsPage.BorderSizePixel = 0
-    skinsPage.Visible = false; skinsPage.Parent = root
+    local skinsArea = Instance.new("Frame")
+    skinsArea.Name = "SkinsArea"
+    skinsArea.BackgroundTransparency = 1
+    skinsArea.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
+    skinsArea.Position = UDim2.new(0, CONTENT_X, 0, 0)
+    skinsArea.Visible = false
+    skinsArea.Parent = root
 
     do
+        -- ── Skin modules & remotes ──────────────────────────────────────
         local SkinDefs = nil
         pcall(function()
             local mod = ReplicatedStorage:FindFirstChild("SkinDefinitions")
             if mod and mod:IsA("ModuleScript") then SkinDefs = require(mod) end
+        end)
+
+        local SkinPreview = nil
+        pcall(function()
+            local mod = script.Parent:FindFirstChild("SkinPreview")
+            if mod and mod:IsA("ModuleScript") then SkinPreview = require(mod) end
         end)
 
         local skinRemotes = nil
@@ -2005,272 +2009,661 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local sf = rf:FindFirstChild("Skins") or rf:WaitForChild("Skins", 5)
             if not sf then return nil end
             skinRemotes = {
-                getOwned    = sf:FindFirstChild("GetOwnedSkins"),
-                equip       = sf:FindFirstChild("EquipSkin"),
-                getEquipped = sf:FindFirstChild("GetEquippedSkin"),
-                changed     = sf:FindFirstChild("EquippedSkinChanged"),
+                getOwned      = sf:FindFirstChild("GetOwnedSkins"),
+                equip         = sf:FindFirstChild("EquipSkin"),
+                getEquipped   = sf:FindFirstChild("GetEquippedSkin"),
+                changed       = sf:FindFirstChild("EquippedSkinChanged"),
+                favorite      = sf:FindFirstChild("FavoriteSkin"),
+                getFavorites  = sf:FindFirstChild("GetSkinFavorites"),
             }
             return skinRemotes
         end
 
         local allSkinDefs = SkinDefs and SkinDefs.GetInventorySkins() or {}
 
-        if #allSkinDefs > 0 then
-            local spLayout = Instance.new("UIListLayout", skinsPage)
-            spLayout.SortOrder = Enum.SortOrder.LayoutOrder; spLayout.Padding = UDim.new(0, px(16))
+        -- ── State ───────────────────────────────────────────────────────
+        local ownedSkinSet    = {}
+        local equippedSkinId  = "Default"
+        local favoritedSkins  = {}
+        local selectedSkinId  = nil
+        local skinCards       = {} -- [skinId] = { card, cardStroke, isDefault }
 
-            local skinSection = Instance.new("Frame", skinsPage)
-            skinSection.Name = "Skins_Section"; skinSection.BackgroundTransparency = 1
-            skinSection.Size = UDim2.new(1, 0, 0, 0); skinSection.AutomaticSize = Enum.AutomaticSize.Y
-            skinSection.LayoutOrder = 1
+        -- ── Grid (left side) ────────────────────────────────────────────
+        local skinGridScroll = Instance.new("ScrollingFrame")
+        skinGridScroll.Name = "SkinGridScroll"
+        skinGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
+        skinGridScroll.BackgroundTransparency = 0.5
+        skinGridScroll.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        skinGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        skinGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        skinGridScroll.ScrollBarThickness = px(4)
+        skinGridScroll.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
+        skinGridScroll.BorderSizePixel = 0
+        skinGridScroll.Parent = skinsArea
+        Instance.new("UICorner", skinGridScroll).CornerRadius = UDim.new(0, px(10))
 
-            local ssLay = Instance.new("UIListLayout", skinSection)
-            ssLay.SortOrder = Enum.SortOrder.LayoutOrder; ssLay.Padding = UDim.new(0, px(10))
-            local ssP = Instance.new("UIPadding", skinSection)
-            ssP.PaddingTop = UDim.new(0, px(4)); ssP.PaddingBottom = UDim.new(0, px(10))
-            ssP.PaddingLeft = UDim.new(0, px(8)); ssP.PaddingRight = UDim.new(0, px(8))
+        local skinGridLayout = Instance.new("UIGridLayout", skinGridScroll)
+        skinGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
+        skinGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
+        skinGridLayout.FillDirection = Enum.FillDirection.Horizontal
+        skinGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        skinGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-            local hWrap = Instance.new("Frame", skinSection)
-            hWrap.Name = "HeaderWrap"; hWrap.BackgroundTransparency = 1
-            hWrap.Size = UDim2.new(1, 0, 0, px(40)); hWrap.LayoutOrder = 1
+        local skinGridPad = Instance.new("UIPadding", skinGridScroll)
+        skinGridPad.PaddingTop    = UDim.new(0, px(8))
+        skinGridPad.PaddingLeft   = UDim.new(0, px(8))
+        skinGridPad.PaddingRight  = UDim.new(0, px(8))
+        skinGridPad.PaddingBottom = UDim.new(0, px(8))
 
-            local hdr = Instance.new("TextLabel", hWrap)
-            hdr.BackgroundTransparency = 1; hdr.Font = Enum.Font.GothamBold
-            hdr.Text = "Skins"; hdr.TextColor3 = GOLD
-            hdr.TextSize = math.max(18, math.floor(px(20)))
-            hdr.TextXAlignment = Enum.TextXAlignment.Left; hdr.Size = UDim2.new(1, 0, 0, px(28))
+        -- Empty state (shown when no owned skins)
+        local skinEmptyState = Instance.new("Frame")
+        skinEmptyState.Name = "SkinEmptyState"
+        skinEmptyState.BackgroundTransparency = 1
+        skinEmptyState.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        skinEmptyState.Visible = false
+        skinEmptyState.Parent = skinsArea
 
-            local hBar = Instance.new("Frame", hWrap)
-            hBar.BackgroundColor3 = GOLD; hBar.BackgroundTransparency = 0.3
-            hBar.Size = UDim2.new(1, 0, 0, px(2)); hBar.Position = UDim2.new(0, 0, 1, -px(2))
-            hBar.BorderSizePixel = 0
+        local skinEmptyCard = Instance.new("Frame")
+        skinEmptyCard.BackgroundColor3 = CARD_BG
+        skinEmptyCard.Size = UDim2.new(0.7, 0, 0, px(130))
+        skinEmptyCard.AnchorPoint = Vector2.new(0.5, 0.5)
+        skinEmptyCard.Position = UDim2.new(0.5, 0, 0.45, 0)
+        skinEmptyCard.Parent = skinEmptyState
+        Instance.new("UICorner", skinEmptyCard).CornerRadius = UDim.new(0, px(14))
+        local secStroke = Instance.new("UIStroke", skinEmptyCard)
+        secStroke.Color = CARD_STROKE; secStroke.Thickness = 1.2; secStroke.Transparency = 0.3
 
-            local skinGrid = Instance.new("Frame", skinSection)
-            skinGrid.Name = "Skins_Grid"; skinGrid.BackgroundTransparency = 1
-            skinGrid.Size = UDim2.new(1, 0, 0, 0); skinGrid.AutomaticSize = Enum.AutomaticSize.Y
-            skinGrid.LayoutOrder = 2
+        local skinEmptyLbl = Instance.new("TextLabel", skinEmptyCard)
+        skinEmptyLbl.BackgroundTransparency = 1
+        skinEmptyLbl.Font = Enum.Font.GothamMedium
+        skinEmptyLbl.Text = "You don't own any skins yet.\nVisit the shop to unlock more."
+        skinEmptyLbl.TextColor3 = DIM_TEXT
+        skinEmptyLbl.TextSize = math.max(13, math.floor(px(14)))
+        skinEmptyLbl.TextWrapped = true
+        skinEmptyLbl.Size = UDim2.new(0.85, 0, 0, px(60))
+        skinEmptyLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+        skinEmptyLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
+        skinEmptyLbl.TextXAlignment = Enum.TextXAlignment.Center
 
-            local sgLay = Instance.new("UIGridLayout", skinGrid)
-            sgLay.CellSize = UDim2.new(0.30, 0, 0, px(160))
-            sgLay.CellPadding = UDim2.new(0.025, 0, 0, px(12))
-            sgLay.FillDirection = Enum.FillDirection.Horizontal; sgLay.FillDirectionMaxCells = 3
-            sgLay.HorizontalAlignment = Enum.HorizontalAlignment.Center
-            sgLay.SortOrder = Enum.SortOrder.LayoutOrder
+        local skinEmptyShopBtn = Instance.new("TextButton", skinEmptyState)
+        skinEmptyShopBtn.Name = "ShopNavBtn"
+        skinEmptyShopBtn.AutoButtonColor = false
+        skinEmptyShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        skinEmptyShopBtn.Font = Enum.Font.GothamBold
+        skinEmptyShopBtn.Text = "\u{1F6D2}  Browse Skins Shop"
+        skinEmptyShopBtn.TextColor3 = UITheme.GOLD_DIM
+        skinEmptyShopBtn.TextSize = math.max(13, math.floor(px(14)))
+        skinEmptyShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        skinEmptyShopBtn.Size = UDim2.new(0, 0, 0, px(36))
+        skinEmptyShopBtn.AnchorPoint = Vector2.new(0.5, 0)
+        skinEmptyShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
+        Instance.new("UICorner", skinEmptyShopBtn).CornerRadius = UDim.new(0, px(8))
+        local sesBtnPad = Instance.new("UIPadding", skinEmptyShopBtn)
+        sesBtnPad.PaddingLeft = UDim.new(0, px(20)); sesBtnPad.PaddingRight = UDim.new(0, px(20))
+        local sesBtnStroke = Instance.new("UIStroke", skinEmptyShopBtn)
+        sesBtnStroke.Color = UITheme.GOLD_DIM; sesBtnStroke.Thickness = 1.2; sesBtnStroke.Transparency = 0.45
 
-            local ownedSkinSet = {}
-            local equippedSkinId = "Default"
-            local skinEquipBtns = {}
-            local skinsEmptyState = nil
+        skinEmptyShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("skins") end
+            end
+        end)
 
-            local function refreshAllSkinBtns()
-                local visibleCount = 0
-                for sid, info in pairs(skinEquipBtns) do
-                    local sOwned = ownedSkinSet[sid] or info.isDefault
-                    if sOwned then info.card.Parent = skinGrid; visibleCount = visibleCount + 1
-                    else info.card.Parent = nil end
+        -- ── Details panel (right side) ──────────────────────────────────
+        local skinDetailsPanel = Instance.new("Frame")
+        skinDetailsPanel.Name = "SkinDetailsPanel"
+        skinDetailsPanel.BackgroundColor3 = CARD_BG
+        skinDetailsPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
+        skinDetailsPanel.AnchorPoint = Vector2.new(1, 0)
+        skinDetailsPanel.Position = UDim2.new(1, 0, 0, 0)
+        skinDetailsPanel.Parent = skinsArea
+        Instance.new("UICorner", skinDetailsPanel).CornerRadius = UDim.new(0, px(12))
+        local sdpStroke = Instance.new("UIStroke", skinDetailsPanel)
+        sdpStroke.Color = CARD_STROKE; sdpStroke.Thickness = 1.4; sdpStroke.Transparency = 0.2
 
-                    if equippedSkinId == sid then
-                        info.btn.Text = "\u{2714} EQUIPPED"
-                        info.btn.BackgroundColor3 = DISABLED_BG; info.btn.TextColor3 = GREEN_GLOW
-                        info.stroke.Color = GREEN_GLOW; info.stroke.Transparency = 0.45
-                        if info.card then info.card.BackgroundColor3 = CARD_EQUIPPED end
-                        if info.cardStroke then info.cardStroke.Color = GREEN_GLOW; info.cardStroke.Thickness = 1.8; info.cardStroke.Transparency = 0.3 end
-                    elseif sOwned then
-                        info.btn.Text = "EQUIP"
-                        info.btn.BackgroundColor3 = BTN_BG; info.btn.TextColor3 = WHITE
-                        info.stroke.Color = BTN_STROKE_C; info.stroke.Transparency = 0.25
-                        if info.card then info.card.BackgroundColor3 = CARD_BG end
-                        if info.cardStroke then info.cardStroke.Color = CARD_STROKE; info.cardStroke.Thickness = 1.2; info.cardStroke.Transparency = 0.35 end
-                    end
+        -- Placeholder
+        local skinDetailPlaceholder = Instance.new("TextLabel", skinDetailsPanel)
+        skinDetailPlaceholder.Name = "Placeholder"
+        skinDetailPlaceholder.BackgroundTransparency = 1
+        skinDetailPlaceholder.Font = Enum.Font.GothamMedium
+        skinDetailPlaceholder.Text = "Select a skin"
+        skinDetailPlaceholder.TextColor3 = DIM_TEXT
+        skinDetailPlaceholder.TextSize = px(22)
+        skinDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
+        skinDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
+        skinDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
+
+        -- Detail content
+        local skinDetailContent = Instance.new("Frame", skinDetailsPanel)
+        skinDetailContent.Name = "DetailContent"
+        skinDetailContent.BackgroundTransparency = 1
+        skinDetailContent.Size = UDim2.new(1, 0, 1, 0)
+        skinDetailContent.Visible = false
+
+        local sdPad = Instance.new("UIPadding", skinDetailContent)
+        sdPad.PaddingTop  = UDim.new(0, px(12)); sdPad.PaddingBottom = UDim.new(0, px(12))
+        sdPad.PaddingLeft = UDim.new(0, px(12)); sdPad.PaddingRight  = UDim.new(0, px(12))
+
+        -- 3D preview area with rarity background
+        local skinPreviewVP = Instance.new("ViewportFrame", skinDetailContent)
+        skinPreviewVP.Name = "PreviewViewport"
+        skinPreviewVP.BackgroundColor3 = RARITY_BG_COLORS.Common
+        skinPreviewVP.Size = UDim2.new(1, 0, 0, px(170))
+        skinPreviewVP.Ambient = Color3.fromRGB(100, 100, 120)
+        Instance.new("UICorner", skinPreviewVP).CornerRadius = UDim.new(0, px(10))
+        local skinIconStroke = Instance.new("UIStroke", skinPreviewVP)
+        skinIconStroke.Color = RARITY_COLORS.Common; skinIconStroke.Thickness = 1.5; skinIconStroke.Transparency = 0.3
+
+        -- Skin name
+        local skinDetailName = Instance.new("TextLabel", skinDetailContent)
+        skinDetailName.Name = "SkinName"
+        skinDetailName.BackgroundTransparency = 1
+        skinDetailName.Font = Enum.Font.GothamBold
+        skinDetailName.TextColor3 = WHITE
+        skinDetailName.TextSize = px(26)
+        skinDetailName.TextXAlignment = Enum.TextXAlignment.Center
+        skinDetailName.Size = UDim2.new(1, 0, 0, px(34))
+        skinDetailName.Position = UDim2.new(0, 0, 0, px(178))
+        skinDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+
+        -- Rarity label
+        local skinDetailRarity = Instance.new("TextLabel", skinDetailContent)
+        skinDetailRarity.Name = "Rarity"
+        skinDetailRarity.BackgroundTransparency = 1
+        skinDetailRarity.Font = Enum.Font.GothamBold
+        skinDetailRarity.TextColor3 = RARITY_COLORS.Common
+        skinDetailRarity.TextSize = px(19)
+        skinDetailRarity.TextXAlignment = Enum.TextXAlignment.Center
+        skinDetailRarity.Size = UDim2.new(1, 0, 0, px(26))
+        skinDetailRarity.Position = UDim2.new(0, 0, 0, px(214))
+
+        -- Description
+        local skinDetailDesc = Instance.new("TextLabel", skinDetailContent)
+        skinDetailDesc.Name = "Description"
+        skinDetailDesc.BackgroundTransparency = 1
+        skinDetailDesc.Font = Enum.Font.GothamMedium
+        skinDetailDesc.TextColor3 = DIM_TEXT
+        skinDetailDesc.TextSize = px(14)
+        skinDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
+        skinDetailDesc.TextWrapped = true
+        skinDetailDesc.Size = UDim2.new(1, 0, 0, px(40))
+        skinDetailDesc.Position = UDim2.new(0, 0, 0, px(244))
+
+        -- ShowHelm toggle row
+        local TOGGLE_ON_C  = Color3.fromRGB(35, 190, 75)
+        local TOGGLE_OFF_C = Color3.fromRGB(45, 48, 65)
+        local KNOB_C       = Color3.fromRGB(255, 255, 255)
+
+        local helmRow = Instance.new("Frame", skinDetailContent)
+        helmRow.Name = "HelmToggleRow"
+        helmRow.BackgroundTransparency = 1
+        helmRow.Size = UDim2.new(1, 0, 0, px(32))
+        helmRow.Position = UDim2.new(0, 0, 0, px(292))
+
+        local helmLabel = Instance.new("TextLabel", helmRow)
+        helmLabel.BackgroundTransparency = 1
+        helmLabel.Font = Enum.Font.GothamMedium
+        helmLabel.Text = "Show Helm"
+        helmLabel.TextColor3 = DIM_TEXT
+        helmLabel.TextSize = px(14)
+        helmLabel.TextXAlignment = Enum.TextXAlignment.Left
+        helmLabel.Size = UDim2.new(0.6, 0, 1, 0)
+
+        local helmToggleBg = Instance.new("TextButton", helmRow)
+        helmToggleBg.Name = "ToggleBg"
+        helmToggleBg.Text = ""
+        helmToggleBg.AutoButtonColor = false
+        helmToggleBg.Size = UDim2.new(0, px(44), 0, px(24))
+        helmToggleBg.AnchorPoint = Vector2.new(1, 0.5)
+        helmToggleBg.Position = UDim2.new(1, 0, 0.5, 0)
+        helmToggleBg.BorderSizePixel = 0
+        Instance.new("UICorner", helmToggleBg).CornerRadius = UDim.new(1, 0)
+
+        local helmKnob = Instance.new("Frame", helmToggleBg)
+        helmKnob.Name = "Knob"
+        helmKnob.BackgroundColor3 = KNOB_C
+        helmKnob.Size = UDim2.new(0, px(18), 0, px(18))
+        helmKnob.AnchorPoint = Vector2.new(0, 0.5)
+        helmKnob.BorderSizePixel = 0
+        Instance.new("UICorner", helmKnob).CornerRadius = UDim.new(1, 0)
+
+        local function syncHelmToggle()
+            local on = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
+            if on == nil then on = true end
+            helmToggleBg.BackgroundColor3 = on and TOGGLE_ON_C or TOGGLE_OFF_C
+            helmKnob.Position = on and UDim2.new(1, -px(21), 0.5, 0) or UDim2.new(0, px(3), 0.5, 0)
+        end
+        syncHelmToggle()
+
+        helmToggleBg.MouseButton1Click:Connect(function()
+            if not _G.PlayerSettings then return end
+            local newVal = not (_G.PlayerSettings.ShowHelm ~= false)
+            _G.PlayerSettings.ShowHelm = newVal
+            syncHelmToggle()
+            -- Fire to server (same as OptionsUI)
+            local updateEV = ReplicatedStorage:FindFirstChild("UpdatePlayerSetting")
+            if updateEV and updateEV:IsA("RemoteEvent") then
+                updateEV:FireServer("ShowHelm", newVal)
+            end
+            -- Call global ApplySettings if available
+            if _G.ApplySettings then
+                pcall(_G.ApplySettings, _G.PlayerSettings)
+            end
+            -- Refresh skin preview on helm toggle
+            if SkinPreview and selectedSkinId then
+                SkinPreview.Update(skinPreviewVP, selectedSkinId, newVal)
+            end
+        end)
+
+        -- Equip button
+        local skinEquipBtn = Instance.new("TextButton", skinDetailContent)
+        skinEquipBtn.Name = "EquipBtn"
+        skinEquipBtn.AutoButtonColor = false
+        skinEquipBtn.BackgroundColor3 = BTN_BG
+        skinEquipBtn.Font = Enum.Font.GothamBold
+        skinEquipBtn.Text = "EQUIP"
+        skinEquipBtn.TextColor3 = WHITE
+        skinEquipBtn.TextSize = px(22)
+        skinEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+        skinEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
+        skinEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
+        Instance.new("UICorner", skinEquipBtn).CornerRadius = UDim.new(0, px(10))
+        local skinEquipStroke = Instance.new("UIStroke", skinEquipBtn)
+        skinEquipStroke.Color = BTN_STROKE_C; skinEquipStroke.Thickness = 1.4; skinEquipStroke.Transparency = 0.25
+
+        -- Action row (Favorite only – no salvage for skins)
+        local skinActionRow = Instance.new("Frame", skinDetailContent)
+        skinActionRow.Name = "ActionRow"
+        skinActionRow.BackgroundTransparency = 1
+        skinActionRow.Size = UDim2.new(0.88, 0, 0, px(44))
+        skinActionRow.AnchorPoint = Vector2.new(0.5, 1)
+        skinActionRow.Position = UDim2.new(0.5, 0, 1, -px(58))
+
+        local SKIN_FAV_YELLOW = Color3.fromRGB(255, 210, 50)
+        local SKIN_FAV_DIM    = Color3.fromRGB(100, 100, 120)
+
+        local skinFavBtn = Instance.new("TextButton", skinActionRow)
+        skinFavBtn.Name = "FavoriteBtn"
+        skinFavBtn.AutoButtonColor = false
+        skinFavBtn.BackgroundColor3 = Color3.fromRGB(36, 38, 56)
+        skinFavBtn.Font = Enum.Font.GothamBold
+        skinFavBtn.Text = "\u{2606}"
+        skinFavBtn.TextColor3 = SKIN_FAV_DIM
+        skinFavBtn.TextSize = px(24)
+        skinFavBtn.Size = UDim2.new(1, 0, 1, 0)
+        Instance.new("UICorner", skinFavBtn).CornerRadius = UDim.new(0, px(8))
+        local skinFavStroke = Instance.new("UIStroke", skinFavBtn)
+        skinFavStroke.Color = SKIN_FAV_DIM; skinFavStroke.Thickness = 1.2; skinFavStroke.Transparency = 0.3
+
+        -- Shop nav button under the grid
+        local skinShopNavW = Instance.new("Frame", skinDetailContent)
+        skinShopNavW.Name = "ShopNavWrap"
+        skinShopNavW.BackgroundTransparency = 1
+        skinShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
+        skinShopNavW.AnchorPoint = Vector2.new(0.5, 1)
+        skinShopNavW.Position = UDim2.new(0.5, 0, 1, -px(108))
+
+        local skinShopBtn = Instance.new("TextButton", skinShopNavW)
+        skinShopBtn.AutoButtonColor = false
+        skinShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        skinShopBtn.Font = Enum.Font.GothamBold
+        skinShopBtn.Text = "\u{1F6D2}  Browse Skins Shop"
+        skinShopBtn.TextColor3 = UITheme.GOLD_DIM
+        skinShopBtn.TextSize = math.max(11, math.floor(px(12)))
+        skinShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        skinShopBtn.Size = UDim2.new(0, 0, 1, 0)
+        skinShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+        skinShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+        Instance.new("UICorner", skinShopBtn).CornerRadius = UDim.new(0, px(8))
+        local ssnPad = Instance.new("UIPadding", skinShopBtn)
+        ssnPad.PaddingLeft = UDim.new(0, px(14)); ssnPad.PaddingRight = UDim.new(0, px(14))
+        local ssnStroke = Instance.new("UIStroke", skinShopBtn)
+        ssnStroke.Color = UITheme.GOLD_DIM; ssnStroke.Thickness = 1.2; ssnStroke.Transparency = 0.45
+
+        skinShopBtn.MouseEnter:Connect(function() TweenService:Create(skinShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
+        skinShopBtn.MouseLeave:Connect(function() TweenService:Create(skinShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
+        skinShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("skins") end
+            end
+        end)
+
+        -- ── Helper: update equip button state ───────────────────────────
+        local function updateSkinEquipButton()
+            if not selectedSkinId then return end
+            local isEquipped = (equippedSkinId == selectedSkinId)
+            if isEquipped then
+                skinEquipBtn.Text = "\u{2714} EQUIPPED"
+                skinEquipBtn.BackgroundColor3 = DISABLED_BG
+                skinEquipBtn.TextColor3 = GREEN_GLOW
+                skinEquipStroke.Color = GREEN_GLOW; skinEquipStroke.Transparency = 0.45
+            else
+                skinEquipBtn.Text = "EQUIP"
+                skinEquipBtn.BackgroundColor3 = BTN_BG
+                skinEquipBtn.TextColor3 = WHITE
+                skinEquipStroke.Color = BTN_STROKE_C; skinEquipStroke.Transparency = 0.25
+            end
+        end
+
+        -- ── Helper: update favorite button state ────────────────────────
+        local function updateSkinFavButton()
+            if not selectedSkinId then return end
+            local isFav = favoritedSkins[selectedSkinId] == true
+            skinFavBtn.Text = isFav and "\u{2605}" or "\u{2606}"
+            skinFavBtn.TextColor3 = isFav and SKIN_FAV_YELLOW or SKIN_FAV_DIM
+            skinFavStroke.Color   = isFav and SKIN_FAV_YELLOW or SKIN_FAV_DIM
+        end
+
+        -- ── Helper: update card highlights ──────────────────────────────
+        local function refreshSkinCards()
+            local visibleCount = 0
+            for sid, info in pairs(skinCards) do
+                local sOwned = ownedSkinSet[sid] or info.isDefault
+                if sOwned then
+                    info.card.Visible = true
+                    visibleCount = visibleCount + 1
+                else
+                    info.card.Visible = false
                 end
-                if skinsEmptyState then skinsEmptyState.Visible = (visibleCount == 0) end
+
+                -- Selection highlight
+                local isSelected = (selectedSkinId == sid)
+                local isEquippedCard = (equippedSkinId == sid)
+
+                if isSelected then
+                    info.cardStroke.Color = GOLD
+                    info.cardStroke.Thickness = 2.0
+                    info.cardStroke.Transparency = 0
+                elseif isEquippedCard then
+                    info.cardStroke.Color = GREEN_GLOW
+                    info.cardStroke.Thickness = 1.8
+                    info.cardStroke.Transparency = 0.3
+                    info.card.BackgroundColor3 = CARD_EQUIPPED
+                else
+                    info.cardStroke.Color = info.baseStrokeColor
+                    info.cardStroke.Thickness = info.baseStrokeThickness
+                    info.cardStroke.Transparency = info.baseStrokeTransparency
+                    info.card.BackgroundColor3 = CARD_BG
+                end
+
+                -- Equipped bar at bottom of card
+                local eqBar = info.card:FindFirstChild("EquippedBar")
+                if eqBar then eqBar.Visible = isEquippedCard end
+
+                -- Favorite star on card
+                local favStar = info.card:FindFirstChild("FavStar")
+                if favStar then favStar.Visible = (favoritedSkins[sid] == true) end
+            end
+            skinEmptyState.Visible = (visibleCount == 0)
+            skinGridScroll.Visible = (visibleCount > 0)
+        end
+
+        -- ── Helper: select a skin (update details panel) ────────────────
+        local function setSelectedSkin(skinId)
+            selectedSkinId = skinId
+            if not skinId then
+                skinDetailPlaceholder.Visible = true
+                skinDetailContent.Visible = false
+                refreshSkinCards()
+                return
+            end
+            skinDetailPlaceholder.Visible = false
+            skinDetailContent.Visible = true
+
+            local def = SkinDefs and SkinDefs.GetById(skinId)
+            if not def then return end
+
+            local isDefault = def.IsDefault or false
+            local rarity = def.Rarity or "Common"
+            local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
+            local rarityBg = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
+            local skinColor = def.ArmorColor or Color3.fromRGB(150, 150, 155)
+
+            skinDetailName.Text = def.DisplayName or skinId
+            skinDetailName.TextColor3 = (rarity == "Epic") and Color3.fromRGB(210, 170, 255) or WHITE
+            skinDetailRarity.Text = rarity
+            skinDetailRarity.TextColor3 = rarityColor
+            skinDetailDesc.Text = def.Description or ""
+            skinPreviewVP.BackgroundColor3 = rarityBg
+            skinIconStroke.Color = rarityColor
+
+            -- Update 3D preview
+            local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
+            if previewShowHelm == nil then previewShowHelm = true end
+            if SkinPreview then
+                SkinPreview.Update(skinPreviewVP, skinId, previewShowHelm)
             end
 
-            task.spawn(function()
-                local sRemotes = ensureSkinRemotes()
-                if not sRemotes then return end
-                if sRemotes.getOwned and sRemotes.getOwned:IsA("RemoteFunction") then
-                    local ok, list = pcall(function() return sRemotes.getOwned:InvokeServer() end)
-                    if ok and type(list) == "table" then for _, id in ipairs(list) do ownedSkinSet[id] = true end end
-                end
-                if sRemotes.getEquipped and sRemotes.getEquipped:IsA("RemoteFunction") then
-                    local ok, equipped = pcall(function() return sRemotes.getEquipped:InvokeServer() end)
-                    if ok and type(equipped) == "string" then equippedSkinId = equipped end
-                end
-                refreshAllSkinBtns()
-                if sRemotes.changed and sRemotes.changed:IsA("RemoteEvent") then
-                    sRemotes.changed.OnClientEvent:Connect(function(newEquipped)
-                        if type(newEquipped) == "string" then equippedSkinId = newEquipped; refreshAllSkinBtns() end
-                    end)
+            updateSkinEquipButton()
+            updateSkinFavButton()
+            syncHelmToggle()
+            refreshSkinCards()
+        end
+
+        -- ── Equip click ─────────────────────────────────────────────────
+        skinEquipBtn.MouseButton1Click:Connect(function()
+            if not selectedSkinId then return end
+            if equippedSkinId == selectedSkinId then return end
+            local def = SkinDefs and SkinDefs.GetById(selectedSkinId)
+            if not def then return end
+            local isOwn = ownedSkinSet[selectedSkinId] or (def.IsDefault == true)
+            if not isOwn then return end
+
+            local sRemotes = ensureSkinRemotes()
+            if sRemotes and sRemotes.equip and sRemotes.equip:IsA("RemoteEvent") then
+                pcall(function() sRemotes.equip:FireServer(selectedSkinId) end)
+            end
+            equippedSkinId = selectedSkinId
+            updateSkinEquipButton()
+            refreshSkinCards()
+        end)
+
+        -- Equip button hover
+        if not game:GetService("UserInputService").TouchEnabled then
+            skinEquipBtn.MouseEnter:Connect(function()
+                if selectedSkinId and equippedSkinId ~= selectedSkinId then
+                    TweenService:Create(skinEquipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
                 end
             end)
-
-            for i_sk, def in ipairs(allSkinDefs) do
-                local skinId      = def.Id
-                local displayName = def.DisplayName or skinId
-                local description = def.Description or ""
-                local isDefault   = def.IsDefault or false
-                local isEpic      = (def.Rarity == "Epic")
-                local skinColor   = def.ArmorColor or Color3.fromRGB(150, 150, 155)
-
-                local card = Instance.new("Frame")
-                card.Name = "SkinCard_" .. skinId; card.BackgroundColor3 = CARD_BG
-                card.Size = UDim2.new(1, 0, 1, 0); card.AutomaticSize = Enum.AutomaticSize.Y
-                card.LayoutOrder = isDefault and 0 or i_sk
-                card.Parent = skinGrid
-                Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(12))
-                local sCS = Instance.new("UIStroke", card)
-                sCS.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
-                sCS.Thickness = isEpic and 1.6 or 1.2; sCS.Transparency = isEpic and 0.2 or 0.35
-                local sP = Instance.new("UIPadding", card)
-                sP.PaddingTop = UDim.new(0, px(8)); sP.PaddingBottom = UDim.new(0, px(8))
-                sP.PaddingLeft = UDim.new(0, px(8)); sP.PaddingRight = UDim.new(0, px(8))
-
-                local leftBox = Instance.new("Frame", card)
-                leftBox.Name = "LeftBox"; leftBox.Size = UDim2.new(0.45, 0, 1, 0)
-                leftBox.BackgroundColor3 = ICON_BG; leftBox.ZIndex = 251
-                Instance.new("UICorner", leftBox).CornerRadius = UDim.new(0, px(10))
-                local lS = Instance.new("UIStroke", leftBox); lS.Color = CARD_STROKE; lS.Thickness = 1; lS.Transparency = 0.5
-
-                local iconLbl = Instance.new("TextLabel", leftBox)
-                iconLbl.Name = "SkinIcon"
-                iconLbl.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
-                iconLbl.Font = Enum.Font.GothamBold
-                iconLbl.TextColor3 = isDefault and DIM_TEXT or skinColor
-                iconLbl.TextScaled = true; iconLbl.BackgroundTransparency = 1
-                iconLbl.Size = UDim2.new(0.7, 0, 0.5, 0)
-                iconLbl.AnchorPoint = Vector2.new(0.5, 0.5); iconLbl.Position = UDim2.new(0.5, 0, 0.35, 0)
-                iconLbl.ZIndex = 252
-
-                local rarLbl = Instance.new("TextLabel", leftBox)
-                rarLbl.Text = def.Rarity or "Common"
-                rarLbl.Font = Enum.Font.GothamBold
-                rarLbl.TextColor3 = isEpic and Color3.fromRGB(180, 120, 255) or DIM_TEXT
-                rarLbl.TextSize = math.max(10, math.floor(px(11))); rarLbl.BackgroundTransparency = 1
-                rarLbl.Size = UDim2.new(0.9, 0, 0.15, 0)
-                rarLbl.AnchorPoint = Vector2.new(0.5, 0); rarLbl.Position = UDim2.new(0.5, 0, 0.68, 0)
-                rarLbl.ZIndex = 252
-
-                local rightBox = Instance.new("Frame", card)
-                rightBox.Size = UDim2.new(0.52, 0, 1, 0); rightBox.Position = UDim2.new(0.48, 0, 0, 0)
-                rightBox.BackgroundTransparency = 1; rightBox.ZIndex = 251
-
-                local nL = Instance.new("TextLabel", rightBox)
-                nL.Size = UDim2.new(0.95, 0, 0.28, 0); nL.Position = UDim2.new(0.04, 0, 0.08, 0)
-                nL.BackgroundTransparency = 1; nL.Font = Enum.Font.GothamBold
-                nL.Text = displayName; nL.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
-                nL.TextSize = math.max(13, math.floor(px(15)))
-                nL.TextXAlignment = Enum.TextXAlignment.Left; nL.TextTruncate = Enum.TextTruncate.AtEnd; nL.ZIndex = 252
-
-                local dL = Instance.new("TextLabel", rightBox)
-                dL.Size = UDim2.new(0.95, 0, 0.22, 0); dL.Position = UDim2.new(0.04, 0, 0.36, 0)
-                dL.BackgroundTransparency = 1; dL.Font = Enum.Font.GothamMedium
-                dL.Text = description; dL.TextColor3 = DIM_TEXT
-                dL.TextSize = math.max(10, math.floor(px(11)))
-                dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextWrapped = true; dL.ZIndex = 252
-
-                local eBtn = Instance.new("TextButton", rightBox)
-                eBtn.Name = "EquipBtn"; eBtn.Size = UDim2.new(0.85, 0, 0.26, 0)
-                eBtn.AnchorPoint = Vector2.new(0.5, 1); eBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
-                eBtn.BackgroundColor3 = BTN_BG; eBtn.BorderSizePixel = 0; eBtn.AutoButtonColor = false
-                eBtn.Font = Enum.Font.GothamBold; eBtn.Text = "EQUIP"; eBtn.TextColor3 = WHITE
-                eBtn.TextSize = math.max(13, math.floor(px(14))); eBtn.ZIndex = 253
-                Instance.new("UICorner", eBtn).CornerRadius = UDim.new(0, px(8))
-                local eSt = Instance.new("UIStroke", eBtn); eSt.Color = BTN_STROKE_C; eSt.Thickness = 1.2; eSt.Transparency = 0.25
-
-                skinEquipBtns[skinId] = { btn = eBtn, stroke = eSt, card = card, cardStroke = sCS, isDefault = isDefault }
-
-                if not game:GetService("UserInputService").TouchEnabled then
-                    eBtn.MouseEnter:Connect(function()
-                        if (ownedSkinSet[skinId] or isDefault) and equippedSkinId ~= skinId then
-                            TweenService:Create(eBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
-                        end
-                    end)
-                    eBtn.MouseLeave:Connect(function()
-                        if (ownedSkinSet[skinId] or isDefault) and equippedSkinId ~= skinId then
-                            TweenService:Create(eBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
-                        end
-                    end)
+            skinEquipBtn.MouseLeave:Connect(function()
+                if selectedSkinId and equippedSkinId ~= selectedSkinId then
+                    TweenService:Create(skinEquipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
                 end
+            end)
+        end
 
-                eBtn.MouseButton1Click:Connect(function()
-                    if not ownedSkinSet[skinId] and not isDefault then return end
-                    if equippedSkinId == skinId then return end
-                    local sRemotes = ensureSkinRemotes()
-                    if sRemotes and sRemotes.equip and sRemotes.equip:IsA("RemoteEvent") then
-                        pcall(function() sRemotes.equip:FireServer(skinId) end)
-                    end
-                    equippedSkinId = skinId; refreshAllSkinBtns()
+        -- ── Favorite click ──────────────────────────────────────────────
+        skinFavBtn.MouseButton1Click:Connect(function()
+            if not selectedSkinId then return end
+            local newState = not (favoritedSkins[selectedSkinId] == true)
+            favoritedSkins[selectedSkinId] = newState or nil
+            updateSkinFavButton()
+            refreshSkinCards()
+            -- Persist to server
+            local sRemotes = ensureSkinRemotes()
+            if sRemotes and sRemotes.favorite and sRemotes.favorite:IsA("RemoteFunction") then
+                task.spawn(function()
+                    pcall(function() sRemotes.favorite:InvokeServer(selectedSkinId, newState) end)
                 end)
             end
+        end)
 
-            skinsEmptyState = Instance.new("Frame", skinsPage)
-            skinsEmptyState.BackgroundTransparency = 1
-            skinsEmptyState.Size = UDim2.new(1, 0, 0, px(160)); skinsEmptyState.LayoutOrder = 500
-            skinsEmptyState.Visible = false
+        -- ── Create skin cards ───────────────────────────────────────────
+        for i_sk, def in ipairs(allSkinDefs) do
+            local skinId      = def.Id
+            local displayName = def.DisplayName or skinId
+            local isDefault   = def.IsDefault or false
+            local isEpic      = (def.Rarity == "Epic")
+            local skinColor   = def.ArmorColor or Color3.fromRGB(150, 150, 155)
+            local rarity      = def.Rarity or "Common"
+            local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
 
-            local seCard = Instance.new("Frame", skinsEmptyState)
-            seCard.BackgroundColor3 = CARD_BG; seCard.Size = UDim2.new(0.7, 0, 0, px(130))
-            seCard.AnchorPoint = Vector2.new(0.5, 0.5); seCard.Position = UDim2.new(0.5, 0, 0.5, 0)
-            Instance.new("UICorner", seCard).CornerRadius = UDim.new(0, px(14))
-            Instance.new("UIStroke", seCard).Color = CARD_STROKE
+            local card = Instance.new("TextButton")
+            card.Name = "SkinCard_" .. skinId
+            card.BackgroundColor3 = CARD_BG
+            card.Size = UDim2.new(1, 0, 1, 0)
+            card.Text = ""
+            card.AutoButtonColor = false
+            card.BorderSizePixel = 0
+            card.LayoutOrder = isDefault and 0 or i_sk
+            card.Parent = skinGridScroll
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(10))
 
-            local seL = Instance.new("TextLabel", seCard)
-            seL.BackgroundTransparency = 1; seL.Font = Enum.Font.GothamMedium
-            seL.Text = "You don't own any skins yet.\nVisit the shop to unlock more."
-            seL.TextColor3 = DIM_TEXT; seL.TextSize = math.max(13, math.floor(px(14)))
-            seL.TextWrapped = true; seL.Size = UDim2.new(0.85, 0, 0, px(60))
-            seL.AnchorPoint = Vector2.new(0.5, 0.5); seL.Position = UDim2.new(0.5, 0, 0.5, 0)
-            seL.TextXAlignment = Enum.TextXAlignment.Center
+            local baseStrokeColor = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+            local baseStrokeThickness = isEpic and 1.6 or 1.2
+            local baseStrokeTransparency = isEpic and 0.2 or 0.35
+            local sCS = Instance.new("UIStroke", card)
+            sCS.Color = baseStrokeColor
+            sCS.Thickness = baseStrokeThickness
+            sCS.Transparency = baseStrokeTransparency
 
-            -- Skins shop nav
-            local sShopW = Instance.new("Frame", skinsPage)
-            sShopW.BackgroundTransparency = 1; sShopW.Size = UDim2.new(1, 0, 0, px(50)); sShopW.LayoutOrder = 9999
-            local sShopB = Instance.new("TextButton", sShopW)
-            sShopB.AutoButtonColor = false; sShopB.BackgroundColor3 = UITheme.NAVY_LIGHT
-            sShopB.Font = Enum.Font.GothamBold; sShopB.Text = "\u{1F6D2}  Browse Skins Shop"
-            sShopB.TextColor3 = UITheme.GOLD_DIM; sShopB.TextSize = math.max(13, math.floor(px(14)))
-            sShopB.AutomaticSize = Enum.AutomaticSize.X
-            sShopB.Size = UDim2.new(0, 0, 0, px(38)); sShopB.AnchorPoint = Vector2.new(0.5, 0)
-            sShopB.Position = UDim2.new(0.5, 0, 0, px(6))
-            Instance.new("UICorner", sShopB).CornerRadius = UDim.new(0, px(8))
-            local sSP = Instance.new("UIPadding", sShopB)
-            sSP.PaddingLeft = UDim.new(0, px(20)); sSP.PaddingRight = UDim.new(0, px(20))
-            local sSS = Instance.new("UIStroke", sShopB)
-            sSS.Color = UITheme.GOLD_DIM; sSS.Thickness = 1.2; sSS.Transparency = 0.45
+            -- Icon area (top)
+            local iconArea = Instance.new("Frame", card)
+            iconArea.Name = "IconArea"
+            iconArea.BackgroundColor3 = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
+            iconArea.Size = UDim2.new(1, -px(8), 0, px(100))
+            iconArea.Position = UDim2.new(0, px(4), 0, px(4))
+            iconArea.BorderSizePixel = 0
+            Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, px(8))
 
-            sShopB.MouseEnter:Connect(function() TweenService:Create(sShopB, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
-            sShopB.MouseLeave:Connect(function() TweenService:Create(sShopB, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
-            sShopB.MouseButton1Click:Connect(function()
-                local mc = _G.SideUI and _G.SideUI.MenuController
-                if mc then mc.OpenMenu("Shop")
-                    if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("skins") end
-                end
+            local cardIcon = Instance.new("TextLabel", iconArea)
+            cardIcon.Name = "Icon"
+            cardIcon.BackgroundTransparency = 1
+            cardIcon.Font = Enum.Font.GothamBold
+            cardIcon.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
+            cardIcon.TextScaled = true
+            cardIcon.TextColor3 = isDefault and DIM_TEXT or skinColor
+            cardIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+            cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+            cardIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+            -- Name label (bottom)
+            local cardName = Instance.new("TextLabel", card)
+            cardName.Name = "NameLabel"
+            cardName.BackgroundTransparency = 1
+            cardName.Font = Enum.Font.GothamBold
+            cardName.Text = displayName
+            cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+            cardName.TextSize = math.max(12, math.floor(px(13)))
+            cardName.TextTruncate = Enum.TextTruncate.AtEnd
+            cardName.TextXAlignment = Enum.TextXAlignment.Center
+            cardName.Size = UDim2.new(1, -px(8), 0, px(22))
+            cardName.Position = UDim2.new(0, px(4), 0, px(110))
+
+            -- Rarity label
+            local cardRarity = Instance.new("TextLabel", card)
+            cardRarity.Name = "RarityLabel"
+            cardRarity.BackgroundTransparency = 1
+            cardRarity.Font = Enum.Font.GothamBold
+            cardRarity.Text = rarity
+            cardRarity.TextColor3 = rarityColor
+            cardRarity.TextSize = math.max(10, math.floor(px(11)))
+            cardRarity.TextXAlignment = Enum.TextXAlignment.Center
+            cardRarity.Size = UDim2.new(1, -px(8), 0, px(18))
+            cardRarity.Position = UDim2.new(0, px(4), 0, px(132))
+
+            -- Equipped bar at bottom
+            local eqBar = Instance.new("Frame", card)
+            eqBar.Name = "EquippedBar"
+            eqBar.BackgroundColor3 = GREEN_GLOW
+            eqBar.Size = UDim2.new(0.7, 0, 0, px(3))
+            eqBar.AnchorPoint = Vector2.new(0.5, 1)
+            eqBar.Position = UDim2.new(0.5, 0, 1, -px(4))
+            eqBar.BorderSizePixel = 0
+            eqBar.Visible = false
+            Instance.new("UICorner", eqBar).CornerRadius = UDim.new(0, px(2))
+
+            -- Favorite star overlay (top-right)
+            local favStar = Instance.new("TextLabel", card)
+            favStar.Name = "FavStar"
+            favStar.BackgroundTransparency = 1
+            favStar.Font = Enum.Font.GothamBold
+            favStar.Text = "\u{2605}"
+            favStar.TextColor3 = SKIN_FAV_YELLOW
+            favStar.TextSize = math.max(14, math.floor(px(16)))
+            favStar.Size = UDim2.new(0, px(20), 0, px(20))
+            favStar.AnchorPoint = Vector2.new(1, 0)
+            favStar.Position = UDim2.new(1, -px(6), 0, px(6))
+            favStar.ZIndex = 5
+            favStar.Visible = false
+
+            skinCards[skinId] = {
+                card = card,
+                cardStroke = sCS,
+                isDefault = isDefault,
+                baseStrokeColor = baseStrokeColor,
+                baseStrokeThickness = baseStrokeThickness,
+                baseStrokeTransparency = baseStrokeTransparency,
+            }
+
+            -- Click to select
+            card.MouseButton1Click:Connect(function()
+                setSelectedSkin(skinId)
             end)
-        else
-            -- No skin defs at all fallback
-            local noSkinsLbl = Instance.new("TextLabel", skinsPage)
-            noSkinsLbl.BackgroundTransparency = 1; noSkinsLbl.Font = Enum.Font.GothamBold
-            noSkinsLbl.Text = "No skins available yet."; noSkinsLbl.TextColor3 = DIM_TEXT
-            noSkinsLbl.TextSize = px(18); noSkinsLbl.Size = UDim2.new(1, 0, 1, 0)
-            noSkinsLbl.TextXAlignment = Enum.TextXAlignment.Center
-            noSkinsLbl.TextYAlignment = Enum.TextYAlignment.Center
+
+            -- Hover effect
+            if not game:GetService("UserInputService").TouchEnabled then
+                card.MouseEnter:Connect(function()
+                    if selectedSkinId ~= skinId then
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 40, 58)}):Play()
+                    end
+                end)
+                card.MouseLeave:Connect(function()
+                    if selectedSkinId ~= skinId then
+                        local isEq = (equippedSkinId == skinId)
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = isEq and CARD_EQUIPPED or CARD_BG}):Play()
+                    end
+                end)
+            end
         end
+
+        -- ── Fetch data from server ──────────────────────────────────────
+        task.spawn(function()
+            local sRemotes = ensureSkinRemotes()
+            if not sRemotes then return end
+            -- Owned skins
+            if sRemotes.getOwned and sRemotes.getOwned:IsA("RemoteFunction") then
+                local ok, list = pcall(function() return sRemotes.getOwned:InvokeServer() end)
+                if ok and type(list) == "table" then
+                    for _, id in ipairs(list) do ownedSkinSet[id] = true end
+                end
+            end
+            -- Equipped skin
+            if sRemotes.getEquipped and sRemotes.getEquipped:IsA("RemoteFunction") then
+                local ok, equipped = pcall(function() return sRemotes.getEquipped:InvokeServer() end)
+                if ok and type(equipped) == "string" then equippedSkinId = equipped end
+            end
+            -- Favorites
+            if sRemotes.getFavorites and sRemotes.getFavorites:IsA("RemoteFunction") then
+                local ok, favs = pcall(function() return sRemotes.getFavorites:InvokeServer() end)
+                if ok and type(favs) == "table" then favoritedSkins = favs end
+            end
+            refreshSkinCards()
+            -- Listen for equip changes
+            if sRemotes.changed and sRemotes.changed:IsA("RemoteEvent") then
+                sRemotes.changed.OnClientEvent:Connect(function(newEquipped)
+                    if type(newEquipped) == "string" then
+                        equippedSkinId = newEquipped
+                        updateSkinEquipButton()
+                        refreshSkinCards()
+                    end
+                end)
+            end
+        end)
     end
 
     -- ══════════════════════════════════════════════════════════════════════
-    --  EFFECTS PAGE  (dash trail equip)
+    --  EFFECTS PAGE  (dash trail equip – split layout with preview)
     -- ══════════════════════════════════════════════════════════════════════
-    local effectsPage = Instance.new("ScrollingFrame")
+    local effectsPage = Instance.new("Frame")
     effectsPage.Name = "EffectsPage"; effectsPage.BackgroundTransparency = 1
     effectsPage.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
     effectsPage.Position = UDim2.new(0, CONTENT_X, 0, 0)
-    effectsPage.CanvasSize = UDim2.new(0, 0, 0, 0)
-    effectsPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    effectsPage.ScrollBarThickness = px(4)
-    effectsPage.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
-    effectsPage.BorderSizePixel = 0
     effectsPage.Visible = false; effectsPage.Parent = root
+
+    local _stopEffectsPreview = nil  -- set inside do block, called on tab switch
 
     do
         local EffectDefs = nil
@@ -2279,6 +2672,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local mod = sideUI and sideUI:FindFirstChild("EffectDefs")
             if mod and mod:IsA("ModuleScript") then EffectDefs = require(mod) end
         end)
+
+        local EffectsPreview = nil
+        pcall(function()
+            local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+            local mod = sideUI and sideUI:FindFirstChild("EffectsPreview")
+            if mod and mod:IsA("ModuleScript") then EffectsPreview = require(mod) end
+        end)
+        if EffectsPreview then
+            _stopEffectsPreview = function() EffectsPreview.Stop() end
+        end
 
         local effectRemotes = nil
         local function ensureEffectRemotes()
@@ -2300,201 +2703,44 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local allTrailDefs = EffectDefs and EffectDefs.GetBySubType("DashTrail") or {}
 
         if #allTrailDefs > 0 then
-            local epLayout = Instance.new("UIListLayout", effectsPage)
-            epLayout.SortOrder = Enum.SortOrder.LayoutOrder; epLayout.Padding = UDim.new(0, px(16))
+            -- ── Left side: scrolling card grid ──────────────────────────
+            local trailGridScroll = Instance.new("ScrollingFrame")
+            trailGridScroll.Name = "TrailGridScroll"
+            trailGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
+            trailGridScroll.BackgroundTransparency = 0.5
+            trailGridScroll.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+            trailGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+            trailGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+            trailGridScroll.ScrollBarThickness = px(4)
+            trailGridScroll.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
+            trailGridScroll.BorderSizePixel = 0
+            trailGridScroll.Parent = effectsPage
+            Instance.new("UICorner", trailGridScroll).CornerRadius = UDim.new(0, px(10))
 
-            local trailSection = Instance.new("Frame", effectsPage)
-            trailSection.Name = "DashTrails_Section"; trailSection.BackgroundTransparency = 1
-            trailSection.Size = UDim2.new(1, 0, 0, 0); trailSection.AutomaticSize = Enum.AutomaticSize.Y
-            trailSection.LayoutOrder = 1
+            local trailGridLayout = Instance.new("UIGridLayout", trailGridScroll)
+            trailGridLayout.CellSize = UDim2.new(0, px(140), 0, px(130))
+            trailGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
+            trailGridLayout.FillDirection = Enum.FillDirection.Horizontal
+            trailGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+            trailGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
 
-            local tsLay = Instance.new("UIListLayout", trailSection)
-            tsLay.SortOrder = Enum.SortOrder.LayoutOrder; tsLay.Padding = UDim.new(0, px(10))
-            local tsP = Instance.new("UIPadding", trailSection)
-            tsP.PaddingTop = UDim.new(0, px(4)); tsP.PaddingBottom = UDim.new(0, px(10))
-            tsP.PaddingLeft = UDim.new(0, px(8)); tsP.PaddingRight = UDim.new(0, px(8))
+            local trailGridPad = Instance.new("UIPadding", trailGridScroll)
+            trailGridPad.PaddingTop    = UDim.new(0, px(8))
+            trailGridPad.PaddingLeft   = UDim.new(0, px(8))
+            trailGridPad.PaddingRight  = UDim.new(0, px(8))
+            trailGridPad.PaddingBottom = UDim.new(0, px(8))
 
-            local hWrap = Instance.new("Frame", trailSection)
-            hWrap.Name = "HeaderWrap"; hWrap.BackgroundTransparency = 1
-            hWrap.Size = UDim2.new(1, 0, 0, px(40)); hWrap.LayoutOrder = 1
-
-            local hdr = Instance.new("TextLabel", hWrap)
-            hdr.BackgroundTransparency = 1; hdr.Font = Enum.Font.GothamBold
-            hdr.Text = "Dash Trails"; hdr.TextColor3 = GOLD
-            hdr.TextSize = math.max(18, math.floor(px(20)))
-            hdr.TextXAlignment = Enum.TextXAlignment.Left; hdr.Size = UDim2.new(1, 0, 0, px(28))
-
-            local hBar = Instance.new("Frame", hWrap)
-            hBar.BackgroundColor3 = GOLD; hBar.BackgroundTransparency = 0.3
-            hBar.Size = UDim2.new(1, 0, 0, px(2)); hBar.Position = UDim2.new(0, 0, 1, -px(2))
-            hBar.BorderSizePixel = 0
-
-            local trailGrid = Instance.new("Frame", trailSection)
-            trailGrid.Name = "DashTrails_Grid"; trailGrid.BackgroundTransparency = 1
-            trailGrid.Size = UDim2.new(1, 0, 0, 0); trailGrid.AutomaticSize = Enum.AutomaticSize.Y
-            trailGrid.LayoutOrder = 2
-
-            local tgLay = Instance.new("UIGridLayout", trailGrid)
-            tgLay.CellSize = UDim2.new(0.30, 0, 0, px(160))
-            tgLay.CellPadding = UDim2.new(0.025, 0, 0, px(12))
-            tgLay.FillDirection = Enum.FillDirection.Horizontal; tgLay.FillDirectionMaxCells = 3
-            tgLay.HorizontalAlignment = Enum.HorizontalAlignment.Center
-            tgLay.SortOrder = Enum.SortOrder.LayoutOrder
-
-            local ownedSet = {}
-            local equippedTrailId = nil
-            local effectEquipBtns = {}
-            local effectsEmptyState = nil
-
-            local function refreshAllEffectBtns()
-                local visibleCount = 0
-                for eid, info in pairs(effectEquipBtns) do
-                    local isOwned = ownedSet[eid] or info.isFree
-                    if isOwned then info.card.Parent = trailGrid; visibleCount = visibleCount + 1
-                    else info.card.Parent = nil end
-
-                    if equippedTrailId == eid then
-                        info.btn.Text = "\u{2714} EQUIPPED"
-                        info.btn.BackgroundColor3 = DISABLED_BG; info.btn.TextColor3 = GREEN_GLOW
-                        info.stroke.Color = GREEN_GLOW; info.stroke.Transparency = 0.45
-                        if info.card then info.card.BackgroundColor3 = CARD_EQUIPPED end
-                        if info.cardStroke then info.cardStroke.Color = GREEN_GLOW; info.cardStroke.Thickness = 1.8; info.cardStroke.Transparency = 0.3 end
-                    elseif isOwned then
-                        info.btn.Text = "EQUIP"
-                        info.btn.BackgroundColor3 = BTN_BG; info.btn.TextColor3 = WHITE
-                        info.stroke.Color = BTN_STROKE_C; info.stroke.Transparency = 0.25
-                        if info.card then info.card.BackgroundColor3 = CARD_BG end
-                        if info.cardStroke then info.cardStroke.Color = CARD_STROKE; info.cardStroke.Thickness = 1.2; info.cardStroke.Transparency = 0.35 end
-                    end
-                end
-                if effectsEmptyState then effectsEmptyState.Visible = (visibleCount == 0) end
-            end
-
-            task.spawn(function()
-                local eRemotes = ensureEffectRemotes()
-                if not eRemotes then return end
-                if eRemotes.getOwned and eRemotes.getOwned:IsA("RemoteFunction") then
-                    local ok, list = pcall(function() return eRemotes.getOwned:InvokeServer() end)
-                    if ok and type(list) == "table" then for _, id in ipairs(list) do ownedSet[id] = true end end
-                end
-                if eRemotes.getEquipped and eRemotes.getEquipped:IsA("RemoteFunction") then
-                    local ok, equipped = pcall(function() return eRemotes.getEquipped:InvokeServer() end)
-                    if ok and type(equipped) == "table" then equippedTrailId = equipped.DashTrail end
-                end
-                refreshAllEffectBtns()
-                if eRemotes.changed and eRemotes.changed:IsA("RemoteEvent") then
-                    eRemotes.changed.OnClientEvent:Connect(function(newEquipped)
-                        if type(newEquipped) == "table" then equippedTrailId = newEquipped.DashTrail; refreshAllEffectBtns() end
-                    end)
-                end
-            end)
-
-            for _, def in ipairs(allTrailDefs) do
-                local effectId    = def.Id
-                local displayName = def.DisplayName or effectId
-                local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
-                local description = def.Description or ""
-                local isFree      = def.IsFree or false
-                local isRainbow   = def.IsRainbow == true
-                local isEpic      = (def.Rarity == "Epic")
-
-                local card = Instance.new("Frame")
-                card.Name = "EffectCard_" .. effectId; card.BackgroundColor3 = CARD_BG
-                card.Size = UDim2.new(1, 0, 1, 0); card.AutomaticSize = Enum.AutomaticSize.Y
-                card.Parent = trailGrid
-                Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(12))
-                local eCS = Instance.new("UIStroke", card)
-                eCS.Color = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
-                eCS.Thickness = isEpic and 1.6 or 1.2; eCS.Transparency = isEpic and 0.2 or 0.35
-                local eP = Instance.new("UIPadding", card)
-                eP.PaddingTop = UDim.new(0, px(8)); eP.PaddingBottom = UDim.new(0, px(8))
-                eP.PaddingLeft = UDim.new(0, px(8)); eP.PaddingRight = UDim.new(0, px(8))
-
-                local leftBox = Instance.new("Frame", card)
-                leftBox.Name = "LeftBox"; leftBox.Size = UDim2.new(0.45, 0, 1, 0)
-                leftBox.BackgroundColor3 = ICON_BG; leftBox.ZIndex = 251
-                Instance.new("UICorner", leftBox).CornerRadius = UDim.new(0, px(10))
-                local lS = Instance.new("UIStroke", leftBox); lS.Color = CARD_STROKE; lS.Thickness = 1; lS.Transparency = 0.5
-
-                local swatch = Instance.new("Frame", leftBox)
-                swatch.Name = "ColorSwatch"; swatch.Size = UDim2.new(0.6, 0, 0.15, 0)
-                swatch.AnchorPoint = Vector2.new(0.5, 0.5); swatch.Position = UDim2.new(0.5, 0, 0.4, 0)
-                swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
-                swatch.BorderSizePixel = 0; swatch.ZIndex = 252
-                Instance.new("UICorner", swatch).CornerRadius = UDim.new(0.5, 0)
-                if isRainbow and def.TrailColorSequence then Instance.new("UIGradient", swatch).Color = def.TrailColorSequence end
-                local swS = Instance.new("UIStroke", swatch)
-                swS.Color = isRainbow and Color3.fromRGB(200, 160, 255) or effectColor; swS.Thickness = px(2); swS.Transparency = 0.3
-
-                local tG = Instance.new("TextLabel", leftBox)
-                tG.Text = "\u{2550}\u{2550}\u{2550}"; tG.Font = Enum.Font.GothamBold
-                tG.TextColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
-                tG.TextScaled = true; tG.BackgroundTransparency = 1
-                tG.Size = UDim2.new(0.8, 0, 0.2, 0); tG.AnchorPoint = Vector2.new(0.5, 0)
-                tG.Position = UDim2.new(0.5, 0, 0.6, 0); tG.ZIndex = 252
-                if isRainbow and def.TrailColorSequence then Instance.new("UIGradient", tG).Color = def.TrailColorSequence end
-
-                local rightBox = Instance.new("Frame", card)
-                rightBox.Size = UDim2.new(0.52, 0, 1, 0); rightBox.Position = UDim2.new(0.48, 0, 0, 0)
-                rightBox.BackgroundTransparency = 1; rightBox.ZIndex = 251
-
-                local nL = Instance.new("TextLabel", rightBox)
-                nL.Size = UDim2.new(0.95, 0, 0.28, 0); nL.Position = UDim2.new(0.04, 0, 0.08, 0)
-                nL.BackgroundTransparency = 1; nL.Font = Enum.Font.GothamBold
-                nL.Text = displayName; nL.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
-                nL.TextSize = math.max(13, math.floor(px(15)))
-                nL.TextXAlignment = Enum.TextXAlignment.Left; nL.TextTruncate = Enum.TextTruncate.AtEnd; nL.ZIndex = 252
-
-                local dL = Instance.new("TextLabel", rightBox)
-                dL.Size = UDim2.new(0.95, 0, 0.22, 0); dL.Position = UDim2.new(0.04, 0, 0.36, 0)
-                dL.BackgroundTransparency = 1; dL.Font = Enum.Font.GothamMedium
-                dL.Text = isFree and "Free (default)" or description; dL.TextColor3 = DIM_TEXT
-                dL.TextSize = math.max(10, math.floor(px(11)))
-                dL.TextXAlignment = Enum.TextXAlignment.Left; dL.TextWrapped = true; dL.ZIndex = 252
-
-                local eBtn = Instance.new("TextButton", rightBox)
-                eBtn.Name = "EquipBtn"; eBtn.Size = UDim2.new(0.85, 0, 0.26, 0)
-                eBtn.AnchorPoint = Vector2.new(0.5, 1); eBtn.Position = UDim2.new(0.5, 0, 1, -px(2))
-                eBtn.BackgroundColor3 = BTN_BG; eBtn.BorderSizePixel = 0; eBtn.AutoButtonColor = false
-                eBtn.Font = Enum.Font.GothamBold; eBtn.Text = "EQUIP"; eBtn.TextColor3 = WHITE
-                eBtn.TextSize = math.max(13, math.floor(px(14))); eBtn.ZIndex = 253
-                Instance.new("UICorner", eBtn).CornerRadius = UDim.new(0, px(8))
-                local eSt = Instance.new("UIStroke", eBtn); eSt.Color = BTN_STROKE_C; eSt.Thickness = 1.2; eSt.Transparency = 0.25
-
-                effectEquipBtns[effectId] = { btn = eBtn, stroke = eSt, card = card, cardStroke = eCS, isFree = isFree }
-
-                if not game:GetService("UserInputService").TouchEnabled then
-                    eBtn.MouseEnter:Connect(function()
-                        if (ownedSet[effectId] or isFree) and equippedTrailId ~= effectId then
-                            TweenService:Create(eBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
-                        end
-                    end)
-                    eBtn.MouseLeave:Connect(function()
-                        if (ownedSet[effectId] or isFree) and equippedTrailId ~= effectId then
-                            TweenService:Create(eBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
-                        end
-                    end)
-                end
-
-                eBtn.MouseButton1Click:Connect(function()
-                    if not ownedSet[effectId] and not isFree then return end
-                    if equippedTrailId == effectId then return end
-                    local eRemotes = ensureEffectRemotes()
-                    if eRemotes and eRemotes.equip and eRemotes.equip:IsA("RemoteEvent") then
-                        pcall(function() eRemotes.equip:FireServer(effectId, "DashTrail") end)
-                    end
-                    equippedTrailId = effectId; refreshAllEffectBtns()
-                end)
-            end
-
-            effectsEmptyState = Instance.new("Frame", effectsPage)
+            -- Empty state (overlays the grid area)
+            local effectsEmptyState = Instance.new("Frame")
+            effectsEmptyState.Name = "EffectsEmptyState"
             effectsEmptyState.BackgroundTransparency = 1
-            effectsEmptyState.Size = UDim2.new(1, 0, 0, px(160)); effectsEmptyState.LayoutOrder = 500
+            effectsEmptyState.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
             effectsEmptyState.Visible = false
+            effectsEmptyState.Parent = effectsPage
 
             local eeCard = Instance.new("Frame", effectsEmptyState)
             eeCard.BackgroundColor3 = CARD_BG; eeCard.Size = UDim2.new(0.7, 0, 0, px(130))
-            eeCard.AnchorPoint = Vector2.new(0.5, 0.5); eeCard.Position = UDim2.new(0.5, 0, 0.5, 0)
+            eeCard.AnchorPoint = Vector2.new(0.5, 0.5); eeCard.Position = UDim2.new(0.5, 0, 0.45, 0)
             Instance.new("UICorner", eeCard).CornerRadius = UDim.new(0, px(14))
             Instance.new("UIStroke", eeCard).Color = CARD_STROKE
 
@@ -2506,23 +2752,441 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             eeL.AnchorPoint = Vector2.new(0.5, 0.5); eeL.Position = UDim2.new(0.5, 0, 0.5, 0)
             eeL.TextXAlignment = Enum.TextXAlignment.Center
 
-            -- Effects shop nav
-            local eShopW = Instance.new("Frame", effectsPage)
-            eShopW.BackgroundTransparency = 1; eShopW.Size = UDim2.new(1, 0, 0, px(50)); eShopW.LayoutOrder = 9999
-            local eShopB = Instance.new("TextButton", eShopW)
-            eShopB.AutoButtonColor = false; eShopB.BackgroundColor3 = UITheme.NAVY_LIGHT
-            eShopB.Font = Enum.Font.GothamBold; eShopB.Text = "\u{1F6D2}  Browse Shop"
-            eShopB.TextColor3 = UITheme.GOLD_DIM; eShopB.TextSize = math.max(13, math.floor(px(14)))
-            eShopB.AutomaticSize = Enum.AutomaticSize.X
-            eShopB.Size = UDim2.new(0, 0, 0, px(38)); eShopB.AnchorPoint = Vector2.new(0.5, 0)
-            eShopB.Position = UDim2.new(0.5, 0, 0, px(12))
-            Instance.new("UICorner", eShopB).CornerRadius = UDim.new(0, px(8))
-            local esp = Instance.new("UIPadding", eShopB); esp.PaddingLeft = UDim.new(0, px(20)); esp.PaddingRight = UDim.new(0, px(20))
-            local ess = Instance.new("UIStroke", eShopB); ess.Color = UITheme.GOLD_DIM; ess.Thickness = 1.2; ess.Transparency = 0.45
-            eShopB.MouseButton1Click:Connect(function()
+            local eeShopBtn = Instance.new("TextButton", effectsEmptyState)
+            eeShopBtn.Name = "ShopNavBtn"; eeShopBtn.AutoButtonColor = false
+            eeShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT; eeShopBtn.Font = Enum.Font.GothamBold
+            eeShopBtn.Text = "\u{1F6D2}  Browse Effects Shop"; eeShopBtn.TextColor3 = UITheme.GOLD_DIM
+            eeShopBtn.TextSize = math.max(13, math.floor(px(14))); eeShopBtn.AutomaticSize = Enum.AutomaticSize.X
+            eeShopBtn.Size = UDim2.new(0, 0, 0, px(36)); eeShopBtn.AnchorPoint = Vector2.new(0.5, 0)
+            eeShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
+            Instance.new("UICorner", eeShopBtn).CornerRadius = UDim.new(0, px(8))
+            local eesPad = Instance.new("UIPadding", eeShopBtn)
+            eesPad.PaddingLeft = UDim.new(0, px(20)); eesPad.PaddingRight = UDim.new(0, px(20))
+            local eesStroke = Instance.new("UIStroke", eeShopBtn)
+            eesStroke.Color = UITheme.GOLD_DIM; eesStroke.Thickness = 1.2; eesStroke.Transparency = 0.45
+            eeShopBtn.MouseButton1Click:Connect(function()
                 local mc = _G.SideUI and _G.SideUI.MenuController
                 if mc then mc.OpenMenu("Shop")
                     if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("effects") end
+                end
+            end)
+
+            -- ── Right side: details panel ───────────────────────────────
+            local trailDetailsPanel = Instance.new("Frame")
+            trailDetailsPanel.Name = "TrailDetailsPanel"
+            trailDetailsPanel.BackgroundColor3 = CARD_BG
+            trailDetailsPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
+            trailDetailsPanel.AnchorPoint = Vector2.new(1, 0)
+            trailDetailsPanel.Position = UDim2.new(1, 0, 0, 0)
+            trailDetailsPanel.Parent = effectsPage
+            Instance.new("UICorner", trailDetailsPanel).CornerRadius = UDim.new(0, px(12))
+            local tdpStroke = Instance.new("UIStroke", trailDetailsPanel)
+            tdpStroke.Color = CARD_STROKE; tdpStroke.Thickness = 1.4; tdpStroke.Transparency = 0.2
+
+            -- Placeholder text
+            local trailDetailPlaceholder = Instance.new("TextLabel", trailDetailsPanel)
+            trailDetailPlaceholder.Name = "Placeholder"
+            trailDetailPlaceholder.BackgroundTransparency = 1
+            trailDetailPlaceholder.Font = Enum.Font.GothamMedium
+            trailDetailPlaceholder.Text = "Select a trail"
+            trailDetailPlaceholder.TextColor3 = DIM_TEXT
+            trailDetailPlaceholder.TextSize = px(22)
+            trailDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
+            trailDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
+            trailDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
+
+            -- Detail content (hidden until selection)
+            local trailDetailContent = Instance.new("Frame", trailDetailsPanel)
+            trailDetailContent.Name = "DetailContent"
+            trailDetailContent.BackgroundTransparency = 1
+            trailDetailContent.Size = UDim2.new(1, 0, 1, 0)
+            trailDetailContent.Visible = false
+
+            local tdPad = Instance.new("UIPadding", trailDetailContent)
+            tdPad.PaddingTop  = UDim.new(0, px(12)); tdPad.PaddingBottom = UDim.new(0, px(12))
+            tdPad.PaddingLeft = UDim.new(0, px(12)); tdPad.PaddingRight  = UDim.new(0, px(12))
+
+            -- 3D trail preview viewport
+            local trailPreviewVP = Instance.new("ViewportFrame", trailDetailContent)
+            trailPreviewVP.Name = "PreviewViewport"
+            trailPreviewVP.BackgroundColor3 = RARITY_BG_COLORS.Common
+            trailPreviewVP.Size = UDim2.new(1, 0, 0, px(200))
+            trailPreviewVP.Ambient = Color3.fromRGB(100, 100, 120)
+            Instance.new("UICorner", trailPreviewVP).CornerRadius = UDim.new(0, px(10))
+            local trailVPStroke = Instance.new("UIStroke", trailPreviewVP)
+            trailVPStroke.Color = RARITY_COLORS.Common; trailVPStroke.Thickness = 1.5; trailVPStroke.Transparency = 0.3
+
+            -- Trail name
+            local trailDetailName = Instance.new("TextLabel", trailDetailContent)
+            trailDetailName.Name = "TrailName"
+            trailDetailName.BackgroundTransparency = 1
+            trailDetailName.Font = Enum.Font.GothamBold
+            trailDetailName.TextColor3 = WHITE
+            trailDetailName.TextSize = px(26)
+            trailDetailName.TextXAlignment = Enum.TextXAlignment.Center
+            trailDetailName.Size = UDim2.new(1, 0, 0, px(34))
+            trailDetailName.Position = UDim2.new(0, 0, 0, px(208))
+            trailDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+
+            -- Rarity label
+            local trailDetailRarity = Instance.new("TextLabel", trailDetailContent)
+            trailDetailRarity.Name = "Rarity"
+            trailDetailRarity.BackgroundTransparency = 1
+            trailDetailRarity.Font = Enum.Font.GothamBold
+            trailDetailRarity.TextColor3 = RARITY_COLORS.Common
+            trailDetailRarity.TextSize = px(19)
+            trailDetailRarity.TextXAlignment = Enum.TextXAlignment.Center
+            trailDetailRarity.Size = UDim2.new(1, 0, 0, px(26))
+            trailDetailRarity.Position = UDim2.new(0, 0, 0, px(244))
+
+            -- Description
+            local trailDetailDesc = Instance.new("TextLabel", trailDetailContent)
+            trailDetailDesc.Name = "Description"
+            trailDetailDesc.BackgroundTransparency = 1
+            trailDetailDesc.Font = Enum.Font.GothamMedium
+            trailDetailDesc.TextColor3 = DIM_TEXT
+            trailDetailDesc.TextSize = px(14)
+            trailDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
+            trailDetailDesc.TextWrapped = true
+            trailDetailDesc.Size = UDim2.new(1, 0, 0, px(40))
+            trailDetailDesc.Position = UDim2.new(0, 0, 0, px(274))
+
+            -- Equip button (bottom of detail panel)
+            local trailEquipBtn = Instance.new("TextButton", trailDetailContent)
+            trailEquipBtn.Name = "EquipBtn"
+            trailEquipBtn.AutoButtonColor = false
+            trailEquipBtn.BackgroundColor3 = BTN_BG
+            trailEquipBtn.Font = Enum.Font.GothamBold
+            trailEquipBtn.Text = "EQUIP"
+            trailEquipBtn.TextColor3 = WHITE
+            trailEquipBtn.TextSize = px(22)
+            trailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+            trailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
+            trailEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
+            Instance.new("UICorner", trailEquipBtn).CornerRadius = UDim.new(0, px(10))
+            local trailEquipStroke = Instance.new("UIStroke", trailEquipBtn)
+            trailEquipStroke.Color = BTN_STROKE_C; trailEquipStroke.Thickness = 1.4; trailEquipStroke.Transparency = 0.25
+
+            -- Shop nav button in detail panel
+            local trailShopNavW = Instance.new("Frame", trailDetailContent)
+            trailShopNavW.Name = "ShopNavWrap"
+            trailShopNavW.BackgroundTransparency = 1
+            trailShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
+            trailShopNavW.AnchorPoint = Vector2.new(0.5, 1)
+            trailShopNavW.Position = UDim2.new(0.5, 0, 1, -px(58))
+
+            local trailShopBtn = Instance.new("TextButton", trailShopNavW)
+            trailShopBtn.AutoButtonColor = false
+            trailShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+            trailShopBtn.Font = Enum.Font.GothamBold
+            trailShopBtn.Text = "\u{1F6D2}  Browse Shop"
+            trailShopBtn.TextColor3 = UITheme.GOLD_DIM
+            trailShopBtn.TextSize = math.max(11, math.floor(px(12)))
+            trailShopBtn.AutomaticSize = Enum.AutomaticSize.X
+            trailShopBtn.Size = UDim2.new(0, 0, 1, 0)
+            trailShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+            trailShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+            Instance.new("UICorner", trailShopBtn).CornerRadius = UDim.new(0, px(8))
+            local tsnPad = Instance.new("UIPadding", trailShopBtn)
+            tsnPad.PaddingLeft = UDim.new(0, px(14)); tsnPad.PaddingRight = UDim.new(0, px(14))
+            local tsnStroke = Instance.new("UIStroke", trailShopBtn)
+            tsnStroke.Color = UITheme.GOLD_DIM; tsnStroke.Thickness = 1.2; tsnStroke.Transparency = 0.45
+
+            trailShopBtn.MouseEnter:Connect(function() TweenService:Create(trailShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
+            trailShopBtn.MouseLeave:Connect(function() TweenService:Create(trailShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
+            trailShopBtn.MouseButton1Click:Connect(function()
+                local mc = _G.SideUI and _G.SideUI.MenuController
+                if mc then mc.OpenMenu("Shop")
+                    if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("effects") end
+                end
+            end)
+
+            -- ── State ───────────────────────────────────────────────────
+            local ownedSet = {}
+            local equippedTrailId = nil
+            local selectedEffectId = nil
+            local effectCards = {}
+
+            -- ── Helper: update equip button ─────────────────────────────
+            local function updateTrailEquipButton()
+                if not selectedEffectId then return end
+                local isEquipped = (equippedTrailId == selectedEffectId)
+                if isEquipped then
+                    trailEquipBtn.Text = "\u{2714} EQUIPPED"
+                    trailEquipBtn.BackgroundColor3 = DISABLED_BG
+                    trailEquipBtn.TextColor3 = GREEN_GLOW
+                    trailEquipStroke.Color = GREEN_GLOW; trailEquipStroke.Transparency = 0.45
+                else
+                    trailEquipBtn.Text = "EQUIP"
+                    trailEquipBtn.BackgroundColor3 = BTN_BG
+                    trailEquipBtn.TextColor3 = WHITE
+                    trailEquipStroke.Color = BTN_STROKE_C; trailEquipStroke.Transparency = 0.25
+                end
+            end
+
+            -- ── Helper: refresh card highlights ─────────────────────────
+            local function refreshEffectCards()
+                local visibleCount = 0
+                for eid, info in pairs(effectCards) do
+                    local isOwned = ownedSet[eid] or info.isFree
+                    if isOwned then
+                        info.card.Visible = true
+                        visibleCount = visibleCount + 1
+                    else
+                        info.card.Visible = false
+                    end
+
+                    local isSelected = (selectedEffectId == eid)
+                    local isEquipped = (equippedTrailId == eid)
+
+                    if isSelected then
+                        info.cardStroke.Color = GOLD
+                        info.cardStroke.Thickness = 2.0
+                        info.cardStroke.Transparency = 0
+                    elseif isEquipped then
+                        info.cardStroke.Color = GREEN_GLOW
+                        info.cardStroke.Thickness = 1.8
+                        info.cardStroke.Transparency = 0.3
+                        info.card.BackgroundColor3 = CARD_EQUIPPED
+                    else
+                        info.cardStroke.Color = info.baseStrokeColor
+                        info.cardStroke.Thickness = info.baseStrokeThickness
+                        info.cardStroke.Transparency = info.baseStrokeTransparency
+                        info.card.BackgroundColor3 = CARD_BG
+                    end
+
+                    local eqBar = info.card:FindFirstChild("EquippedBar")
+                    if eqBar then eqBar.Visible = isEquipped end
+                end
+                effectsEmptyState.Visible = (visibleCount == 0)
+                trailGridScroll.Visible = (visibleCount > 0)
+            end
+
+            -- ── Helper: select a trail (update detail panel + preview) ──
+            local function setSelectedEffect(effectId)
+                selectedEffectId = effectId
+                if not effectId then
+                    trailDetailPlaceholder.Visible = true
+                    trailDetailContent.Visible = false
+                    if EffectsPreview then EffectsPreview.Stop() end
+                    refreshEffectCards()
+                    return
+                end
+                trailDetailPlaceholder.Visible = false
+                trailDetailContent.Visible = true
+
+                local def = EffectDefs and EffectDefs.GetById(effectId)
+                if not def then return end
+
+                local rarity = def.Rarity or "Common"
+                local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
+                local rarityBg = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
+                local isEpic = (rarity == "Epic")
+                local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
+
+                trailDetailName.Text = def.DisplayName or effectId
+                trailDetailName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+                trailDetailRarity.Text = rarity
+                trailDetailRarity.TextColor3 = rarityColor
+                trailDetailDesc.Text = def.IsFree and "Free (default)" or (def.Description or "")
+                trailPreviewVP.BackgroundColor3 = rarityBg
+                trailVPStroke.Color = rarityColor
+
+                -- Launch 3D trail preview
+                if EffectsPreview then
+                    EffectsPreview.Update(trailPreviewVP, effectId)
+                end
+
+                updateTrailEquipButton()
+                refreshEffectCards()
+            end
+
+            -- ── Equip click ─────────────────────────────────────────────
+            trailEquipBtn.MouseButton1Click:Connect(function()
+                if not selectedEffectId then return end
+                if equippedTrailId == selectedEffectId then return end
+                local def = EffectDefs and EffectDefs.GetById(selectedEffectId)
+                if not def then return end
+                local isOwn = ownedSet[selectedEffectId] or (def.IsFree == true)
+                if not isOwn then return end
+
+                local eRemotes = ensureEffectRemotes()
+                if eRemotes and eRemotes.equip and eRemotes.equip:IsA("RemoteEvent") then
+                    pcall(function() eRemotes.equip:FireServer(selectedEffectId, "DashTrail") end)
+                end
+                equippedTrailId = selectedEffectId
+                updateTrailEquipButton()
+                refreshEffectCards()
+            end)
+
+            -- Equip button hover
+            if not game:GetService("UserInputService").TouchEnabled then
+                trailEquipBtn.MouseEnter:Connect(function()
+                    if selectedEffectId and equippedTrailId ~= selectedEffectId then
+                        TweenService:Create(trailEquipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+                    end
+                end)
+                trailEquipBtn.MouseLeave:Connect(function()
+                    if selectedEffectId and equippedTrailId ~= selectedEffectId then
+                        TweenService:Create(trailEquipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+                    end
+                end)
+            end
+
+            -- ── Create trail cards ──────────────────────────────────────
+            for i_ef, def in ipairs(allTrailDefs) do
+                local effectId    = def.Id
+                local displayName = def.DisplayName or effectId
+                local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
+                local isFree      = def.IsFree or false
+                local isRainbow   = def.IsRainbow == true
+                local isEpic      = (def.Rarity == "Epic")
+                local rarity      = def.Rarity or "Common"
+                local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
+
+                local card = Instance.new("TextButton")
+                card.Name = "EffectCard_" .. effectId
+                card.BackgroundColor3 = CARD_BG
+                card.Size = UDim2.new(1, 0, 1, 0)
+                card.Text = ""
+                card.AutoButtonColor = false
+                card.BorderSizePixel = 0
+                card.LayoutOrder = isFree and 0 or i_ef
+                card.Parent = trailGridScroll
+                Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(10))
+
+                local baseStrokeColor = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
+                local baseStrokeThickness = isEpic and 1.6 or 1.2
+                local baseStrokeTransparency = isEpic and 0.2 or 0.35
+                local eCS = Instance.new("UIStroke", card)
+                eCS.Color = baseStrokeColor
+                eCS.Thickness = baseStrokeThickness
+                eCS.Transparency = baseStrokeTransparency
+
+                -- Color swatch area (top)
+                local iconArea = Instance.new("Frame", card)
+                iconArea.Name = "IconArea"
+                iconArea.BackgroundColor3 = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
+                iconArea.Size = UDim2.new(1, -px(8), 0, px(60))
+                iconArea.Position = UDim2.new(0, px(4), 0, px(4))
+                iconArea.BorderSizePixel = 0
+                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, px(8))
+
+                local swatch = Instance.new("Frame", iconArea)
+                swatch.Name = "ColorSwatch"
+                swatch.Size = UDim2.new(0.5, 0, 0, px(6))
+                swatch.AnchorPoint = Vector2.new(0.5, 0.5)
+                swatch.Position = UDim2.new(0.5, 0, 0.45, 0)
+                swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
+                swatch.BorderSizePixel = 0
+                Instance.new("UICorner", swatch).CornerRadius = UDim.new(0.5, 0)
+                if isRainbow and def.TrailColorSequence then
+                    Instance.new("UIGradient", swatch).Color = def.TrailColorSequence
+                end
+                local swS = Instance.new("UIStroke", swatch)
+                swS.Color = isRainbow and Color3.fromRGB(200,160,255) or effectColor
+                swS.Thickness = px(2); swS.Transparency = 0.3
+
+                local trailGlyph = Instance.new("TextLabel", iconArea)
+                trailGlyph.Text = "\u{2550}\u{2550}\u{2550}"
+                trailGlyph.Font = Enum.Font.GothamBold
+                trailGlyph.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
+                trailGlyph.TextScaled = true
+                trailGlyph.BackgroundTransparency = 1
+                trailGlyph.Size = UDim2.new(0.7, 0, 0.3, 0)
+                trailGlyph.AnchorPoint = Vector2.new(0.5, 0)
+                trailGlyph.Position = UDim2.new(0.5, 0, 0.6, 0)
+                if isRainbow and def.TrailColorSequence then
+                    Instance.new("UIGradient", trailGlyph).Color = def.TrailColorSequence
+                end
+
+                -- Name label
+                local cardName = Instance.new("TextLabel", card)
+                cardName.Name = "NameLabel"
+                cardName.BackgroundTransparency = 1
+                cardName.Font = Enum.Font.GothamBold
+                cardName.Text = displayName
+                cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+                cardName.TextSize = math.max(12, math.floor(px(13)))
+                cardName.TextTruncate = Enum.TextTruncate.AtEnd
+                cardName.TextXAlignment = Enum.TextXAlignment.Center
+                cardName.Size = UDim2.new(1, -px(8), 0, px(22))
+                cardName.Position = UDim2.new(0, px(4), 0, px(70))
+
+                -- Rarity label
+                local cardRarity = Instance.new("TextLabel", card)
+                cardRarity.Name = "RarityLabel"
+                cardRarity.BackgroundTransparency = 1
+                cardRarity.Font = Enum.Font.GothamBold
+                cardRarity.Text = rarity
+                cardRarity.TextColor3 = rarityColor
+                cardRarity.TextSize = math.max(10, math.floor(px(11)))
+                cardRarity.TextXAlignment = Enum.TextXAlignment.Center
+                cardRarity.Size = UDim2.new(1, -px(8), 0, px(18))
+                cardRarity.Position = UDim2.new(0, px(4), 0, px(90))
+
+                -- Equipped bar at bottom
+                local eqBar = Instance.new("Frame", card)
+                eqBar.Name = "EquippedBar"
+                eqBar.BackgroundColor3 = GREEN_GLOW
+                eqBar.Size = UDim2.new(0.7, 0, 0, px(3))
+                eqBar.AnchorPoint = Vector2.new(0.5, 1)
+                eqBar.Position = UDim2.new(0.5, 0, 1, -px(4))
+                eqBar.BorderSizePixel = 0
+                eqBar.Visible = false
+                Instance.new("UICorner", eqBar).CornerRadius = UDim.new(0, px(2))
+
+                effectCards[effectId] = {
+                    card = card,
+                    cardStroke = eCS,
+                    isFree = isFree,
+                    baseStrokeColor = baseStrokeColor,
+                    baseStrokeThickness = baseStrokeThickness,
+                    baseStrokeTransparency = baseStrokeTransparency,
+                }
+
+                -- Click to select
+                card.MouseButton1Click:Connect(function()
+                    setSelectedEffect(effectId)
+                end)
+
+                -- Hover effect
+                if not game:GetService("UserInputService").TouchEnabled then
+                    card.MouseEnter:Connect(function()
+                        if selectedEffectId ~= effectId then
+                            TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 40, 58)}):Play()
+                        end
+                    end)
+                    card.MouseLeave:Connect(function()
+                        if selectedEffectId ~= effectId then
+                            local isEq = (equippedTrailId == effectId)
+                            TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = isEq and CARD_EQUIPPED or CARD_BG}):Play()
+                        end
+                    end)
+                end
+            end
+
+            -- ── Fetch data from server ──────────────────────────────────
+            task.spawn(function()
+                local eRemotes = ensureEffectRemotes()
+                if not eRemotes then return end
+                if eRemotes.getOwned and eRemotes.getOwned:IsA("RemoteFunction") then
+                    local ok, list = pcall(function() return eRemotes.getOwned:InvokeServer() end)
+                    if ok and type(list) == "table" then for _, id in ipairs(list) do ownedSet[id] = true end end
+                end
+                if eRemotes.getEquipped and eRemotes.getEquipped:IsA("RemoteFunction") then
+                    local ok, equipped = pcall(function() return eRemotes.getEquipped:InvokeServer() end)
+                    if ok and type(equipped) == "table" then equippedTrailId = equipped.DashTrail end
+                end
+                refreshEffectCards()
+                if eRemotes.changed and eRemotes.changed:IsA("RemoteEvent") then
+                    eRemotes.changed.OnClientEvent:Connect(function(newEquipped)
+                        if type(newEquipped) == "table" then
+                            equippedTrailId = newEquipped.DashTrail
+                            updateTrailEquipButton()
+                            refreshEffectCards()
+                        end
+                    end)
                 end
             end)
         else
@@ -2576,8 +3240,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local isWeaponTab = (tabId == "melee" or tabId == "ranged")
         weaponArea.Visible  = isWeaponTab
         boostsPage.Visible  = (tabId == "boosts")
-        skinsPage.Visible   = (tabId == "skins")
+        skinsArea.Visible   = (tabId == "skins")
         effectsPage.Visible = (tabId == "effects")
+
+        -- Stop trail preview animation when leaving effects tab
+        if tabId ~= "effects" and _stopEffectsPreview then
+            _stopEffectsPreview()
+        end
 
         -- Render weapon grid for weapon tabs
         if tabId == "melee" then

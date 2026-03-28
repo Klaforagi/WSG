@@ -51,6 +51,29 @@ MeteorShowerConfig.IMPACT_FLASH_DURATION  = 0.5  -- seconds for the flash expand
 MeteorShowerConfig.IMPACT_CLEANUP_DELAY   = 0.6  -- seconds after impact before meteor part is removed
 
 ---------------------------------------------------------------------
+-- Impact damage
+-- Damage is expressed as a fraction of the victim's MaxHealth so it
+-- scales with any future HP changes.
+---------------------------------------------------------------------
+MeteorShowerConfig.DIRECT_HIT_RADIUS       = 8    -- studs – full damage zone
+MeteorShowerConfig.DIRECT_HIT_DAMAGE_PCT   = 0.85 -- 85 % of MaxHealth
+MeteorShowerConfig.SPLASH_RADIUS           = 20   -- studs – outer splash zone
+MeteorShowerConfig.SPLASH_DAMAGE_PCT       = 0.35 -- 35 % of MaxHealth
+
+---------------------------------------------------------------------
+-- Meteor Shards (collectible drops)
+---------------------------------------------------------------------
+MeteorShowerConfig.SHARD_SPAWN_CHANCE      = 1.0  -- 1.0 = every impact drops a shard
+MeteorShowerConfig.SHARD_LIFETIME          = 15   -- seconds before uncollected shard despawns
+MeteorShowerConfig.REQUIRED_SHARDS         = 3    -- shards to collect for the objective
+MeteorShowerConfig.REWARD_COINS            = 50   -- coins granted on objective completion
+MeteorShowerConfig.SHARD_SIZE              = Vector3.new(2.2, 3, 2.2)
+MeteorShowerConfig.SHARD_COLOR             = Color3.fromRGB(255, 140, 40)  -- warm amber glow
+MeteorShowerConfig.SHARD_LIGHT_RANGE       = 18
+MeteorShowerConfig.SHARD_LIGHT_BRIGHTNESS  = 1.5
+MeteorShowerConfig.SHARD_Y_OFFSET          = 2    -- studs above ground level
+
+---------------------------------------------------------------------
 -- Target zones
 -- Meteors land inside invisible anchored parts placed in this folder.
 -- If the folder is missing, a default 200x200 fallback zone is created
