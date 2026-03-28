@@ -90,11 +90,11 @@ local STAT_KEYS = {
     "totalElims",
     "zombieElims",
     "playerElims",
-    "flagCarrierElims",     -- TODO: wire when flag-carrier-kill detection exists
+    "flagCarrierElims",     -- wired: checked on Elimination when victim has CarryingFlag
     "totalDamage",          -- TODO: wire DamageDealt stat events
-    "bestElimStreak",       -- special: set (not increment) by streak tracker
-    "doubleElims",          -- TODO: wire multi-elim detection
-    "tripleElims",          -- TODO: wire multi-elim detection
+    "bestElimStreak",       -- wired: set by streak tracker in AchievementServiceInit
+    "doubleElims",          -- wired: multi-elim detection in AchievementServiceInit
+    "tripleElims",          -- wired: multi-elim detection in AchievementServiceInit
     "totalCoinsEarned",
     "totalCoinsSpent",      -- wired: SetCoins wrapper in AchievementServiceInit
     "totalPurchases",       -- TODO: wire shop purchase counter

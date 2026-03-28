@@ -123,8 +123,9 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 -- Subscribe to centralized stat events
 --
 -- Mapping:
---   Elimination  → totalElims + playerElims
+--   Elimination  → totalElims + playerElims + streak/multi-kill/flag-carrier
 --   MobKill      → totalElims + zombieElims
+--   Death        → streak reset + multi-kill window reset
 --   FlagCapture  → flagCaptures
 --   FlagReturn   → flagReturns
 --   MatchPlayed  → matchesPlayed
@@ -132,15 +133,32 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 --   DamageDealt  → totalDamage
 --
 -- Stats not yet wired (TODO in future phases):
---   flagCarrierElims, bestElimStreak, doubleElims, tripleElims,
 --   totalPurchases
 -- Wired elsewhere:
 --   consecutiveLogins (via DailyRewardServiceInit), flagCarryTime (via CarryingFlag poll below)
 -- Wired in this file:
 --   totalCoinsSpent (via SetCoins wrapper), itemsOwned (via BindableFunction queries),
---   matchMinutes (via MatchStartedBE/MatchEndedBE)
+--   matchMinutes (via MatchStartedBE/MatchEndedBE),
+--   flagCarrierElims, bestElimStreak, doubleElims, tripleElims (below)
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
+
+--------------------------------------------------------------------------------
+-- Per-player combat achievement tracking state
+--   elimStreaks:  current kill-streak counter (reset on death)
+--   recentElims: array of os.clock() timestamps for multi-kill window
+--------------------------------------------------------------------------------
+local elimStreaks  = {} -- [Player] = number
+local recentElims = {} -- [Player] = { clock1, clock2, ... }
+
+local DOUBLE_KILL_WINDOW = 10  -- seconds (matches Double Trouble description)
+local TRIPLE_KILL_WINDOW = 15  -- seconds (matches Triple Threat description)
+
+-- Cleanup tracking state when players leave
+Players.PlayerRemoving:Connect(function(player)
+    elimStreaks[player]  = nil
+    recentElims[player] = nil
+end)
 
 StatService:OnStatEvent(function(payload)
     local player = payload.player
@@ -150,6 +168,74 @@ StatService:OnStatEvent(function(payload)
     if action == Actions.Elimination then
         AchievementService:IncrementStat(player, "totalElims", 1)
         AchievementService:IncrementStat(player, "playerElims", 1)
+
+        --------------------------------------------------------------------
+        -- Unstoppable: elimination streak (reset on death, see below)
+        --------------------------------------------------------------------
+        elimStreaks[player] = (elimStreaks[player] or 0) + 1
+        local streak = elimStreaks[player]
+        AchievementService:SetStat(player, "bestElimStreak", streak)
+        print(string.format("[Achievements] Unstoppable streak for %s: %d", player.Name, streak))
+
+        --------------------------------------------------------------------
+        -- Double Trouble / Triple Threat: timed multi-kill window
+        --------------------------------------------------------------------
+        local now = os.clock()
+        if not recentElims[player] then recentElims[player] = {} end
+        table.insert(recentElims[player], now)
+
+        -- Prune timestamps older than the longest window (15s)
+        local pruned = {}
+        for _, t in ipairs(recentElims[player]) do
+            if now - t <= TRIPLE_KILL_WINDOW then
+                table.insert(pruned, t)
+            end
+        end
+        recentElims[player] = pruned
+
+        -- Count kills within each window
+        local countIn10s = 0
+        for _, t in ipairs(pruned) do
+            if now - t <= DOUBLE_KILL_WINDOW then
+                countIn10s = countIn10s + 1
+            end
+        end
+        local countIn15s = #pruned
+
+        -- Trigger exactly when the threshold is reached (== not >=)
+        -- to avoid repeated increments from the same burst
+        if countIn10s == 2 then
+            AchievementService:IncrementStat(player, "doubleElims", 1)
+            print(string.format("[Achievements] Double Trouble window count for %s: 2", player.Name))
+        end
+        if countIn15s == 3 then
+            AchievementService:IncrementStat(player, "tripleElims", 1)
+            print(string.format("[Achievements] Triple Threat window count for %s: 3", player.Name))
+        end
+
+        --------------------------------------------------------------------
+        -- Flagbreaker: check if victim was carrying a flag
+        --------------------------------------------------------------------
+        local victim = payload.metadata and payload.metadata.target
+        if victim and typeof(victim) == "Instance" and victim:IsA("Player") then
+            local victimCarrier = victim:GetAttribute("CarryingFlag")
+            if victimCarrier then
+                AchievementService:IncrementStat(player, "flagCarrierElims", 1)
+                print(string.format("[Achievements] Flagbreaker check: victim=%s victimCarrier=true", victim.Name))
+            end
+        end
+
+    elseif action == Actions.Death then
+        --------------------------------------------------------------------
+        -- Reset streak and multi-kill window on death
+        --------------------------------------------------------------------
+        local prevStreak = elimStreaks[player] or 0
+        if prevStreak > 0 then
+            print(string.format("[Achievements] Streak reset for %s (was %d)", player.Name, prevStreak))
+        end
+        elimStreaks[player] = 0
+        recentElims[player] = {}
+
     elseif action == Actions.MobKill then
         AchievementService:IncrementStat(player, "totalElims", 1)
         AchievementService:IncrementStat(player, "zombieElims", 1)
