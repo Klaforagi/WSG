@@ -25,7 +25,8 @@ AssetCodes.images = {
     Dagger = "rbxassetid://949752421",
     Sword = "rbxassetid://10123421106",
     Spear = "rbxassetid://139656815",
-    Punisher = "rbxassetid://138201447014592",
+    Punisher = "rbxassetid://120062027388705",
+    Kingsblade = "rbxassetid://129149156143490",
     --UTILITY
     -- ↓ PLACEHOLDER: replace with a final uploaded bandage icon asset ID later
     Bandage = "rbxassetid://14029553034",

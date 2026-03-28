@@ -374,6 +374,7 @@ local PRICES = {
     -- Melee
     ["Wooden Sword"] = 0,
     ["Punisher"] = 0,
+    ["Kingsblade"] = 0,
     Dagger  = 30,
     Sword   = 30,
     Spear   = 30,
