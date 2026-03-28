@@ -2200,13 +2200,17 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local skinDetailDesc = Instance.new("TextLabel", skinDetailContent)
             skinDetailDesc.Name = "Description"
             skinDetailDesc.BackgroundTransparency = 1
-            skinDetailDesc.Font = Enum.Font.GothamMedium
+            skinDetailDesc.Font = Enum.Font.GothamBold
             skinDetailDesc.TextColor3 = DIM_TEXT
-            skinDetailDesc.TextSize = px(15)
+            skinDetailDesc.TextSize = px(17)
             skinDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
             skinDetailDesc.TextWrapped = true
             skinDetailDesc.Size = UDim2.new(1, 0, 0, px(48))
             skinDetailDesc.Position = UDim2.new(0, 0, 0, px(330))
+            local skinDescStroke = Instance.new("UIStroke", skinDetailDesc)
+            skinDescStroke.Color = Color3.fromRGB(0, 0, 0)
+            skinDescStroke.Thickness = 1.5
+            skinDescStroke.Transparency = 0.15
 
             -- Price row (between desc and button)
             local skinPriceRow = Instance.new("Frame", skinDetailContent)
@@ -2255,12 +2259,16 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
             local helmLabel = Instance.new("TextLabel", helmRow)
             helmLabel.BackgroundTransparency = 1
-            helmLabel.Font = Enum.Font.GothamMedium
+            helmLabel.Font = Enum.Font.GothamBold
             helmLabel.Text = "Show Helm"
             helmLabel.TextColor3 = DIM_TEXT
-            helmLabel.TextSize = px(15)
+            helmLabel.TextSize = px(17)
             helmLabel.TextXAlignment = Enum.TextXAlignment.Left
             helmLabel.Size = UDim2.new(0.6, 0, 1, 0)
+            local helmLabelStroke = Instance.new("UIStroke", helmLabel)
+            helmLabelStroke.Color = Color3.fromRGB(0, 0, 0)
+            helmLabelStroke.Thickness = 1.5
+            helmLabelStroke.Transparency = 0.15
 
             local helmToggleBg = Instance.new("TextButton", helmRow)
             helmToggleBg.Name = "ToggleBg"
@@ -2843,13 +2851,17 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local efxDetailDesc = Instance.new("TextLabel", efxDetailContent)
             efxDetailDesc.Name = "Description"
             efxDetailDesc.BackgroundTransparency = 1
-            efxDetailDesc.Font = Enum.Font.GothamMedium
+            efxDetailDesc.Font = Enum.Font.GothamBold
             efxDetailDesc.TextColor3 = DIM_TEXT
-            efxDetailDesc.TextSize = px(15)
+            efxDetailDesc.TextSize = px(17)
             efxDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
             efxDetailDesc.TextWrapped = true
             efxDetailDesc.Size = UDim2.new(1, 0, 0, px(48))
             efxDetailDesc.Position = UDim2.new(0, 0, 0, px(342))
+            local efxDescStroke = Instance.new("UIStroke", efxDetailDesc)
+            efxDescStroke.Color = Color3.fromRGB(0, 0, 0)
+            efxDescStroke.Thickness = 1.5
+            efxDescStroke.Transparency = 0.15
 
             -- Price row
             local efxPriceRow = Instance.new("Frame", efxDetailContent)

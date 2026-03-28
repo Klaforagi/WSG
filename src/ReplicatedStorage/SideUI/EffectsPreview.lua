@@ -51,8 +51,8 @@ local MAX_RIBBONS        = 60      -- safety cap
 --------------------------------------------------------------------------------
 -- MOTION / CAMERA CONFIGURATION
 --------------------------------------------------------------------------------
--- Movement direction is the camera's right vector (horizontal across viewport)
-local MOVE_DIR   = Vector3.new(0.781, 0, -0.625)
+-- Movement direction aligned with rig facing (160° Y rotation)
+local MOVE_DIR   = Vector3.new(-0.781, 0, 0.625)
 local BASE_POS   = Vector3.new(0, 3, 0)
 local RIG_Y_ROT  = math.rad(160)
 local DASH_DURATION = 1.0  -- seconds for one forward dash
@@ -393,13 +393,17 @@ function EffectsPreview.Update(viewportFrame, effectId)
                 end
             end
         else
-            -- Reset phase: rig back at start, no ribbons spawned
+            -- Reset phase: clear leftover ribbons then reposition rig
+            cleanupAllRibbons()
             rig:PivotTo(CFrame.new(startPos) * baseRot)
             lastSpawnPos = nil
+            ribbonColorIdx = 0
         end
 
-        -- Fade existing ribbons (they persist across reset with natural fade-out)
-        updateRibbonFade()
+        -- Fade existing ribbons during dash
+        if isDashing then
+            updateRibbonFade()
+        end
     end)
 
     dprint("Preview started — one-way dash ribbon trail active")
