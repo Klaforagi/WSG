@@ -714,8 +714,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     emptyShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
     emptyShopBtn.Font = Enum.Font.GothamBold
     emptyShopBtn.Text = "\u{1F6D2}  Browse Shop"
-    emptyShopBtn.TextColor3 = UITheme.GOLD_DIM
-    emptyShopBtn.TextSize = math.max(13, math.floor(px(14)))
+    emptyShopBtn.TextColor3 = WHITE
+    emptyShopBtn.TextTransparency = 0
+    emptyShopBtn.TextSize = math.max(14, math.floor(px(15)))
     emptyShopBtn.AutomaticSize = Enum.AutomaticSize.X
     emptyShopBtn.Size = UDim2.new(0, 0, 0, px(36))
     emptyShopBtn.AnchorPoint = Vector2.new(0.5, 0)
@@ -724,7 +725,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local esBtnPad = Instance.new("UIPadding", emptyShopBtn)
     esBtnPad.PaddingLeft = UDim.new(0, px(20)); esBtnPad.PaddingRight = UDim.new(0, px(20))
     local esBtnStroke = Instance.new("UIStroke", emptyShopBtn)
-    esBtnStroke.Color = UITheme.GOLD_DIM; esBtnStroke.Thickness = 1.2; esBtnStroke.Transparency = 0.45
+    esBtnStroke.Color = Color3.fromRGB(0, 0, 0); esBtnStroke.Thickness = 1.5; esBtnStroke.Transparency = 0.15
 
     emptyShopBtn.MouseButton1Click:Connect(function()
         local mc = _G.SideUI and _G.SideUI.MenuController
@@ -855,13 +856,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEquipBtn.Font = Enum.Font.GothamBold
     detailEquipBtn.Text = "EQUIP"
     detailEquipBtn.TextColor3 = WHITE
+    detailEquipBtn.TextTransparency = 0
     detailEquipBtn.TextSize = px(22)
     detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
     detailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
     detailEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
     Instance.new("UICorner", detailEquipBtn).CornerRadius = UDim.new(0, px(10))
     local equipStroke = Instance.new("UIStroke", detailEquipBtn)
-    equipStroke.Color = BTN_STROKE_C; equipStroke.Thickness = 1.4; equipStroke.Transparency = 0.25
+    equipStroke.Color = Color3.fromRGB(0, 0, 0); equipStroke.Thickness = 1.5; equipStroke.Transparency = 0.15
+    print("[UIPolish] Applied browse-style typography to Equip button: detailEquipBtn")
 
     -- Action buttons row (Favorite + Salvage) above equip button
     local actionRow = Instance.new("Frame", detailContent)
@@ -878,13 +881,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     salvageValueLabel.BackgroundTransparency = 1
     salvageValueLabel.Font = Enum.Font.GothamBold
     salvageValueLabel.TextColor3 = SALVAGE_GREEN
-    salvageValueLabel.TextSize = px(14)
+    salvageValueLabel.TextSize = px(18)
     salvageValueLabel.TextXAlignment = Enum.TextXAlignment.Center
-    salvageValueLabel.Size = UDim2.new(0.88, 0, 0, px(20))
+    salvageValueLabel.Size = UDim2.new(0.88, 0, 0, px(24))
     salvageValueLabel.AnchorPoint = Vector2.new(0.5, 1)
-    salvageValueLabel.Position = UDim2.new(0.5, 0, 1, -px(106))
+    salvageValueLabel.Position = UDim2.new(0.5, 0, 1, -px(108))
     salvageValueLabel.Text = ""
     salvageValueLabel.Visible = false
+    local salvageValueStroke = Instance.new("UIStroke", salvageValueLabel)
+    salvageValueStroke.Color = Color3.fromRGB(0, 0, 0)
+    salvageValueStroke.Thickness = 1.5
+    salvageValueStroke.Transparency = 0.15
 
     -- Feedback label (transient success/error message after salvage)
     local salvageFeedback = Instance.new("TextLabel", detailContent)
@@ -1007,12 +1014,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmYes.Font = Enum.Font.GothamBold
     confirmYes.Text = "YES, SALVAGE"
     confirmYes.TextColor3 = WHITE
+    confirmYes.TextTransparency = 0
     confirmYes.TextSize = px(14)
     confirmYes.Size = UDim2.new(0.42, 0, 0, px(36))
     confirmYes.AnchorPoint = Vector2.new(0, 1)
     confirmYes.Position = UDim2.new(0.06, 0, 1, -px(14))
     confirmYes.ZIndex = 52
     Instance.new("UICorner", confirmYes).CornerRadius = UDim.new(0, px(8))
+    local confirmYesStroke = Instance.new("UIStroke", confirmYes)
+    confirmYesStroke.Color = Color3.fromRGB(0, 0, 0); confirmYesStroke.Thickness = 1.5; confirmYesStroke.Transparency = 0.15
 
     local confirmNo = Instance.new("TextButton", confirmBox)
     confirmNo.Name = "NoBtn"
@@ -1021,12 +1031,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmNo.Font = Enum.Font.GothamBold
     confirmNo.Text = "CANCEL"
     confirmNo.TextColor3 = WHITE
+    confirmNo.TextTransparency = 0
     confirmNo.TextSize = px(14)
     confirmNo.Size = UDim2.new(0.42, 0, 0, px(36))
     confirmNo.AnchorPoint = Vector2.new(1, 1)
     confirmNo.Position = UDim2.new(0.94, 0, 1, -px(14))
     confirmNo.ZIndex = 52
     Instance.new("UICorner", confirmNo).CornerRadius = UDim.new(0, px(8))
+    local confirmNoStroke = Instance.new("UIStroke", confirmNo)
+    confirmNoStroke.Color = Color3.fromRGB(0, 0, 0); confirmNoStroke.Thickness = 1.5; confirmNoStroke.Transparency = 0.15
 
     -- ══════════════════════════════════════════════════════════════════════
     --  SELECTION & EQUIP STATE
@@ -1062,7 +1075,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if itemData and not canSalvage and showActions then
             discardBtn.BackgroundColor3 = DISABLED_BG
             discardBtn.TextColor3 = DIM_TEXT
-            discardStroke.Color = DIM_TEXT
+            discardStroke.Color = Color3.fromRGB(0, 0, 0)
+            discardStroke.Transparency = 0.15
             -- Show reason
             if isItemEquipped(itemData) then
                 discardBtn.Text = "EQUIPPED"
@@ -1074,7 +1088,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         elseif showActions then
             discardBtn.BackgroundColor3 = SALVAGE_BG
             discardBtn.TextColor3 = SALVAGE_GREEN
-            discardStroke.Color = SALVAGE_DIM
+            discardStroke.Color = Color3.fromRGB(0, 0, 0)
+            discardStroke.Transparency = 0.15
             discardBtn.Text = "SALVAGE"
         end
 
@@ -1097,7 +1112,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             detailEquipBtn.Text = "EQUIP"
             detailEquipBtn.BackgroundColor3 = DISABLED_BG
             detailEquipBtn.TextColor3 = DIM_TEXT
-            equipStroke.Color = CARD_STROKE
+            equipStroke.Color = Color3.fromRGB(0, 0, 0)
+            equipStroke.Transparency = 0.15
             actionRow.Visible = false
             salvageValueLabel.Visible = false
             return
@@ -1106,14 +1122,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             detailEquipBtn.Text = "\u{2714} EQUIPPED"
             detailEquipBtn.BackgroundColor3 = DISABLED_BG
             detailEquipBtn.TextColor3 = GREEN_GLOW
-            equipStroke.Color = GREEN_GLOW
-            equipStroke.Transparency = 0.45
+            equipStroke.Color = Color3.fromRGB(0, 0, 0)
+            equipStroke.Transparency = 0.15
         else
             detailEquipBtn.Text = "EQUIP"
             detailEquipBtn.BackgroundColor3 = BTN_BG
             detailEquipBtn.TextColor3 = WHITE
-            equipStroke.Color = BTN_STROKE_C
-            equipStroke.Transparency = 0.25
+            equipStroke.Color = Color3.fromRGB(0, 0, 0)
+            equipStroke.Transparency = 0.15
         end
         updateActionButtons(itemData)
     end
@@ -1666,314 +1682,663 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end)
 
     -- ══════════════════════════════════════════════════════════════════════
-    --  BOOSTS PAGE
+    --  BOOSTS PAGE  (card grid + right-side details panel)
     -- ══════════════════════════════════════════════════════════════════════
-    local boostsPage = Instance.new("ScrollingFrame")
+    local boostsPage = Instance.new("Frame")
     boostsPage.Name = "BoostsPage"
     boostsPage.BackgroundTransparency = 1
     boostsPage.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
     boostsPage.Position = UDim2.new(0, CONTENT_X, 0, 0)
-    boostsPage.CanvasSize = UDim2.new(0, 0, 0, 0)
-    boostsPage.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    boostsPage.ScrollBarThickness = px(4)
-    boostsPage.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
-    boostsPage.BorderSizePixel = 0
     boostsPage.Visible = false
     boostsPage.Parent = root
 
-    local boostsLayout = Instance.new("UIListLayout", boostsPage)
-    boostsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    boostsLayout.Padding = UDim.new(0, px(12))
-
-    local bPad = Instance.new("UIPadding", boostsPage)
-    bPad.PaddingTop = UDim.new(0, px(6)); bPad.PaddingBottom = UDim.new(0, px(12))
-    bPad.PaddingLeft = UDim.new(0, px(8)); bPad.PaddingRight = UDim.new(0, px(8))
-
-    -- Boosts header
-    local boostsHeader = Instance.new("Frame", boostsPage)
-    boostsHeader.Name = "BoostsHeader"
-    boostsHeader.BackgroundTransparency = 1
-    boostsHeader.Size = UDim2.new(1, 0, 0, px(54)); boostsHeader.LayoutOrder = 1
-
-    local boostsTitle = Instance.new("TextLabel", boostsHeader)
-    boostsTitle.BackgroundTransparency = 1; boostsTitle.Font = Enum.Font.GothamBold
-    boostsTitle.Text = "BOOSTS"; boostsTitle.TextColor3 = GOLD
-    boostsTitle.TextSize = math.max(20, math.floor(px(24)))
-    boostsTitle.TextXAlignment = Enum.TextXAlignment.Left
-    boostsTitle.Size = UDim2.new(1, 0, 0, px(30))
-
-    local boostsSub = Instance.new("TextLabel", boostsHeader)
-    boostsSub.BackgroundTransparency = 1; boostsSub.Font = Enum.Font.GothamMedium
-    boostsSub.Text = "Activate owned boosts when you need them. Activation consumes one stored boost."
-    boostsSub.TextColor3 = DIM_TEXT
-    boostsSub.TextSize = math.max(11, math.floor(px(12)))
-    boostsSub.TextXAlignment = Enum.TextXAlignment.Left
-    boostsSub.Size = UDim2.new(1, 0, 0, px(16)); boostsSub.Position = UDim2.new(0, 0, 0, px(30))
-
-    local boostsAccent = Instance.new("Frame", boostsHeader)
-    boostsAccent.BackgroundColor3 = GOLD; boostsAccent.BackgroundTransparency = 0.3
-    boostsAccent.BorderSizePixel = 0
-    boostsAccent.Size = UDim2.new(1, 0, 0, px(2)); boostsAccent.Position = UDim2.new(0, 0, 1, -px(2))
-
-    local helperNote = Instance.new("TextLabel", boostsPage)
-    helperNote.BackgroundTransparency = 1; helperNote.Font = Enum.Font.GothamMedium
-    helperNote.Text = "Active boosts continue to drive coin and quest multipliers. Owning a boost does nothing until you activate it here."
-    helperNote.TextColor3 = DIM_TEXT
-    helperNote.TextSize = math.max(10, math.floor(px(11)))
-    helperNote.TextXAlignment = Enum.TextXAlignment.Left
-    helperNote.Size = UDim2.new(1, 0, 0, px(14)); helperNote.LayoutOrder = 2
-
-    local boostDefs = {}
-    if BoostConfig and BoostConfig.Boosts then
-        for _, def in ipairs(BoostConfig.Boosts) do
-            if not def.InstantUse then table.insert(boostDefs, def) end
-        end
-        table.sort(boostDefs, function(a, b) return (a.SortOrder or 0) < (b.SortOrder or 0) end)
-    end
-
-    local remotes = ensureBoostRemotes()
-    local boostStates = {}
-    local timeDelta = 0
-    local boostCards = {}
-
-    local function ingestStates(states)
-        if type(states) ~= "table" then return end
-        boostStates = states
-        timeDelta = os.time() - (states._serverTime or os.time())
-    end
-
-    if remotes and remotes.getStates then
-        pcall(function() ingestStates(remotes.getStates:InvokeServer()) end)
-    end
-
-    -- Boosts empty state
-    local boostsEmptyState = Instance.new("Frame", boostsPage)
-    boostsEmptyState.Name = "EmptyState"; boostsEmptyState.BackgroundTransparency = 1
-    boostsEmptyState.Size = UDim2.new(1, 0, 0, px(160)); boostsEmptyState.LayoutOrder = 500
-    boostsEmptyState.Visible = false
-
-    local beCard = Instance.new("Frame", boostsEmptyState)
-    beCard.BackgroundColor3 = CARD_BG; beCard.Size = UDim2.new(0.7, 0, 0, px(130))
-    beCard.AnchorPoint = Vector2.new(0.5, 0.5); beCard.Position = UDim2.new(0.5, 0, 0.5, 0)
-    Instance.new("UICorner", beCard).CornerRadius = UDim.new(0, px(14))
-    local beStroke = Instance.new("UIStroke", beCard)
-    beStroke.Color = CARD_STROKE; beStroke.Thickness = 1.2; beStroke.Transparency = 0.3
-
-    local beLine1 = Instance.new("TextLabel", beCard)
-    beLine1.BackgroundTransparency = 1; beLine1.Font = Enum.Font.GothamMedium
-    beLine1.Text = "You don't own any boosts yet."
-    beLine1.TextColor3 = DIM_TEXT; beLine1.TextSize = math.max(13, math.floor(px(14)))
-    beLine1.TextWrapped = true; beLine1.Size = UDim2.new(0.85, 0, 0, px(40))
-    beLine1.AnchorPoint = Vector2.new(0.5, 0); beLine1.Position = UDim2.new(0.5, 0, 0, px(28))
-    beLine1.TextXAlignment = Enum.TextXAlignment.Center
-
-    local beLine2 = Instance.new("TextLabel", beCard)
-    beLine2.BackgroundTransparency = 1; beLine2.Font = Enum.Font.GothamMedium
-    beLine2.Text = "Visit the shop to unlock more."
-    beLine2.TextColor3 = UITheme.GOLD_DIM; beLine2.TextSize = math.max(11, math.floor(px(12)))
-    beLine2.Size = UDim2.new(0.85, 0, 0, px(20)); beLine2.AnchorPoint = Vector2.new(0.5, 0)
-    beLine2.Position = UDim2.new(0.5, 0, 0, px(74)); beLine2.TextXAlignment = Enum.TextXAlignment.Center
-
-    local function refreshBoostCards()
-        local visibleCount = 0
-        for _, def in ipairs(boostDefs) do
-            local refs = boostCards[def.Id]
-            local state = boostStates[def.Id] or {}
-            if refs then
-                local owned = math.max(0, math.floor(tonumber(state.owned) or 0))
-                local expiresAt = math.floor(tonumber(state.expiresAt) or 0) + timeDelta
-                local active = expiresAt > os.time()
-
-                if owned > 0 or active then
-                    refs.card.Parent = boostsPage; visibleCount = visibleCount + 1
-                else
-                    refs.card.Parent = nil
-                end
-
-                refs.card.BackgroundColor3 = active and CARD_EQUIPPED or CARD_BG
-                refs.cardStroke.Color = active and GREEN_GLOW or CARD_STROKE
-                refs.cardStroke.Thickness = active and 1.8 or 1.2
-                refs.cardStroke.Transparency = active and 0.3 or 0.35
-                refs.owned.Text = string.format("Owned: %d", owned)
-
-                if active then
-                    local remaining = math.max(0, expiresAt - os.time())
-                    refs.status.Text = string.format("Time Remaining: %02d:%02d", math.floor(remaining / 60), remaining % 60)
-                    refs.status.TextColor3 = GREEN_GLOW
-                    refs.button.Text = "ACTIVE"; refs.button.Active = false
-                    refs.button.BackgroundColor3 = DISABLED_BG; refs.button.TextColor3 = GREEN_GLOW
-                    refs.buttonStroke.Color = GREEN_GLOW
-                elseif owned > 0 then
-                    refs.status.Text = "Ready to activate"; refs.status.TextColor3 = DIM_TEXT
-                    refs.button.Text = "ACTIVATE"; refs.button.Active = true
-                    refs.button.BackgroundColor3 = BTN_BG; refs.button.TextColor3 = WHITE
-                    refs.buttonStroke.Color = BTN_STROKE_C
-                end
+    do -- Boosts scope block
+        local boostDefs = {}
+        if BoostConfig and BoostConfig.Boosts then
+            for _, def in ipairs(BoostConfig.Boosts) do
+                if not def.InstantUse then table.insert(boostDefs, def) end
             end
+            table.sort(boostDefs, function(a, b) return (a.SortOrder or 0) < (b.SortOrder or 0) end)
         end
-        boostsEmptyState.Visible = (visibleCount == 0)
-    end
 
-    if #boostDefs == 0 or not remotes then
-        local unavailable = Instance.new("TextLabel", boostsPage)
-        unavailable.BackgroundTransparency = 1; unavailable.Font = Enum.Font.GothamMedium
-        unavailable.Text = "Boost inventory is currently unavailable."
-        unavailable.TextColor3 = DIM_TEXT; unavailable.TextSize = math.max(14, math.floor(px(15)))
-        unavailable.Size = UDim2.new(1, 0, 0, px(50)); unavailable.LayoutOrder = 10
-    else
-        for index, def in ipairs(boostDefs) do
-            local card = Instance.new("Frame")
-            card.Name = "Boost_" .. def.Id; card.BackgroundColor3 = CARD_BG
-            card.Size = UDim2.new(1, 0, 0, px(122)); card.LayoutOrder = 10 + index
-            card.Parent = boostsPage
-            Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(12))
-            local cStroke = Instance.new("UIStroke", card)
-            cStroke.Color = CARD_STROKE; cStroke.Thickness = 1.2; cStroke.Transparency = 0.35
+        local remotes = ensureBoostRemotes()
+        local boostStates = {}
+        local timeDelta = 0
+        local boostCards = {}
+        local selectedBoostId = nil
 
-            local cPad = Instance.new("UIPadding", card)
-            cPad.PaddingTop = UDim.new(0, px(12)); cPad.PaddingBottom = UDim.new(0, px(12))
-            cPad.PaddingLeft = UDim.new(0, px(14)); cPad.PaddingRight = UDim.new(0, px(14))
+        local function ingestStates(states)
+            if type(states) ~= "table" then return end
+            boostStates = states
+            timeDelta = os.time() - (states._serverTime or os.time())
+        end
+
+        if remotes and remotes.getStates then
+            pcall(function() ingestStates(remotes.getStates:InvokeServer()) end)
+        end
+
+        -- ── Grid scroll (left side) ─────────────────────────────────────
+        local boostGridScroll = Instance.new("ScrollingFrame")
+        boostGridScroll.Name = "BoostGridScroll"
+        boostGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
+        boostGridScroll.BackgroundTransparency = 0.5
+        boostGridScroll.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        boostGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        boostGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        boostGridScroll.ScrollBarThickness = px(4)
+        boostGridScroll.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
+        boostGridScroll.BorderSizePixel = 0
+        boostGridScroll.Parent = boostsPage
+        Instance.new("UICorner", boostGridScroll).CornerRadius = UDim.new(0, px(10))
+
+        local boostGridLayout = Instance.new("UIGridLayout", boostGridScroll)
+        boostGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
+        boostGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
+        boostGridLayout.FillDirection = Enum.FillDirection.Horizontal
+        boostGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        boostGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local boostGridPad = Instance.new("UIPadding", boostGridScroll)
+        boostGridPad.PaddingTop    = UDim.new(0, px(8))
+        boostGridPad.PaddingLeft   = UDim.new(0, px(8))
+        boostGridPad.PaddingRight  = UDim.new(0, px(8))
+        boostGridPad.PaddingBottom = UDim.new(0, px(8))
+
+        -- Empty state (shown when no boosts owned)
+        local boostEmptyState = Instance.new("Frame")
+        boostEmptyState.Name = "BoostEmptyState"
+        boostEmptyState.BackgroundTransparency = 1
+        boostEmptyState.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        boostEmptyState.Visible = false
+        boostEmptyState.Parent = boostsPage
+
+        local beCard = Instance.new("Frame")
+        beCard.BackgroundColor3 = CARD_BG
+        beCard.Size = UDim2.new(0.7, 0, 0, px(130))
+        beCard.AnchorPoint = Vector2.new(0.5, 0.5)
+        beCard.Position = UDim2.new(0.5, 0, 0.45, 0)
+        beCard.Parent = boostEmptyState
+        Instance.new("UICorner", beCard).CornerRadius = UDim.new(0, px(14))
+        local beStroke = Instance.new("UIStroke", beCard)
+        beStroke.Color = CARD_STROKE; beStroke.Thickness = 1.2; beStroke.Transparency = 0.3
+
+        local beLine1 = Instance.new("TextLabel", beCard)
+        beLine1.BackgroundTransparency = 1; beLine1.Font = Enum.Font.GothamMedium
+        beLine1.Text = "You don't own any boosts yet."
+        beLine1.TextColor3 = DIM_TEXT; beLine1.TextSize = math.max(13, math.floor(px(14)))
+        beLine1.TextWrapped = true; beLine1.Size = UDim2.new(0.85, 0, 0, px(40))
+        beLine1.AnchorPoint = Vector2.new(0.5, 0); beLine1.Position = UDim2.new(0.5, 0, 0, px(28))
+        beLine1.TextXAlignment = Enum.TextXAlignment.Center
+
+        local beLine2 = Instance.new("TextLabel", beCard)
+        beLine2.BackgroundTransparency = 1; beLine2.Font = Enum.Font.GothamMedium
+        beLine2.Text = "Visit the shop to unlock more."
+        beLine2.TextColor3 = UITheme.GOLD_DIM; beLine2.TextSize = math.max(11, math.floor(px(12)))
+        beLine2.Size = UDim2.new(0.85, 0, 0, px(20)); beLine2.AnchorPoint = Vector2.new(0.5, 0)
+        beLine2.Position = UDim2.new(0.5, 0, 0, px(74)); beLine2.TextXAlignment = Enum.TextXAlignment.Center
+
+        local boostEmptyShopBtn = Instance.new("TextButton", boostEmptyState)
+        boostEmptyShopBtn.Name = "ShopNavBtn"
+        boostEmptyShopBtn.AutoButtonColor = false
+        boostEmptyShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        boostEmptyShopBtn.Font = Enum.Font.GothamBold
+        boostEmptyShopBtn.Text = "\u{1F6D2}  Browse Shop"
+        boostEmptyShopBtn.TextColor3 = WHITE
+        boostEmptyShopBtn.TextTransparency = 0
+        boostEmptyShopBtn.TextSize = math.max(14, math.floor(px(15)))
+        boostEmptyShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        boostEmptyShopBtn.Size = UDim2.new(0, 0, 0, px(36))
+        boostEmptyShopBtn.AnchorPoint = Vector2.new(0.5, 0)
+        boostEmptyShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
+        Instance.new("UICorner", boostEmptyShopBtn).CornerRadius = UDim.new(0, px(8))
+        local besBtnPad = Instance.new("UIPadding", boostEmptyShopBtn)
+        besBtnPad.PaddingLeft = UDim.new(0, px(20)); besBtnPad.PaddingRight = UDim.new(0, px(20))
+        local besBtnStroke = Instance.new("UIStroke", boostEmptyShopBtn)
+        besBtnStroke.Color = Color3.fromRGB(0, 0, 0); besBtnStroke.Thickness = 1.5; besBtnStroke.Transparency = 0.15
+
+        boostEmptyShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("boosts") end
+            end
+        end)
+
+        -- ── Details panel (right side) ──────────────────────────────────
+        local boostDetailsPanel = Instance.new("Frame")
+        boostDetailsPanel.Name = "BoostDetailsPanel"
+        boostDetailsPanel.BackgroundColor3 = CARD_BG
+        boostDetailsPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
+        boostDetailsPanel.AnchorPoint = Vector2.new(1, 0)
+        boostDetailsPanel.Position = UDim2.new(1, 0, 0, 0)
+        boostDetailsPanel.Parent = boostsPage
+        Instance.new("UICorner", boostDetailsPanel).CornerRadius = UDim.new(0, px(12))
+        local bdpStroke = Instance.new("UIStroke", boostDetailsPanel)
+        bdpStroke.Color = CARD_STROKE; bdpStroke.Thickness = 1.4; bdpStroke.Transparency = 0.2
+
+        -- Placeholder
+        local boostDetailPlaceholder = Instance.new("TextLabel", boostDetailsPanel)
+        boostDetailPlaceholder.Name = "Placeholder"
+        boostDetailPlaceholder.BackgroundTransparency = 1
+        boostDetailPlaceholder.Font = Enum.Font.GothamMedium
+        boostDetailPlaceholder.Text = "Select a boost"
+        boostDetailPlaceholder.TextColor3 = DIM_TEXT
+        boostDetailPlaceholder.TextSize = px(22)
+        boostDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
+        boostDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
+        boostDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
+
+        -- Detail content
+        local boostDetailContent = Instance.new("Frame", boostDetailsPanel)
+        boostDetailContent.Name = "DetailContent"
+        boostDetailContent.BackgroundTransparency = 1
+        boostDetailContent.Size = UDim2.new(1, 0, 1, 0)
+        boostDetailContent.Visible = false
+
+        local bdPad = Instance.new("UIPadding", boostDetailContent)
+        bdPad.PaddingTop  = UDim.new(0, px(12)); bdPad.PaddingBottom = UDim.new(0, px(12))
+        bdPad.PaddingLeft = UDim.new(0, px(12)); bdPad.PaddingRight  = UDim.new(0, px(12))
+
+        -- Large icon area
+        local boostDetailIconBg = Instance.new("Frame", boostDetailContent)
+        boostDetailIconBg.Name = "IconBg"
+        boostDetailIconBg.BackgroundColor3 = Color3.fromRGB(30, 34, 55)
+        boostDetailIconBg.Size = UDim2.new(1, 0, 0, px(170))
+        Instance.new("UICorner", boostDetailIconBg).CornerRadius = UDim.new(0, px(10))
+        local bdIconStroke = Instance.new("UIStroke", boostDetailIconBg)
+        bdIconStroke.Color = CARD_STROKE; bdIconStroke.Thickness = 1.5; bdIconStroke.Transparency = 0.3
+
+        local boostDetailIconImage = Instance.new("ImageLabel", boostDetailIconBg)
+        boostDetailIconImage.Name = "IconImage"
+        boostDetailIconImage.BackgroundTransparency = 1
+        boostDetailIconImage.Size = UDim2.new(0.45, 0, 0.45, 0)
+        boostDetailIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+        boostDetailIconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+        boostDetailIconImage.ScaleType = Enum.ScaleType.Fit
+
+        local boostDetailIconGlyph = Instance.new("TextLabel", boostDetailIconBg)
+        boostDetailIconGlyph.Name = "IconGlyph"
+        boostDetailIconGlyph.BackgroundTransparency = 1
+        boostDetailIconGlyph.Size = UDim2.new(1, 0, 1, 0)
+        boostDetailIconGlyph.Font = Enum.Font.GothamBold
+        boostDetailIconGlyph.TextSize = math.max(40, math.floor(px(60)))
+        boostDetailIconGlyph.TextColor3 = WHITE
+        boostDetailIconGlyph.Text = ""
+
+        -- Boost name
+        local boostDetailName = Instance.new("TextLabel", boostDetailContent)
+        boostDetailName.Name = "BoostName"
+        boostDetailName.BackgroundTransparency = 1
+        boostDetailName.Font = Enum.Font.GothamBold
+        boostDetailName.TextColor3 = WHITE
+        boostDetailName.TextSize = px(26)
+        boostDetailName.TextXAlignment = Enum.TextXAlignment.Center
+        boostDetailName.Size = UDim2.new(1, 0, 0, px(34))
+        boostDetailName.Position = UDim2.new(0, 0, 0, px(178))
+        boostDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+
+        -- Description
+        local boostDetailDesc = Instance.new("TextLabel", boostDetailContent)
+        boostDetailDesc.Name = "Description"
+        boostDetailDesc.BackgroundTransparency = 1
+        boostDetailDesc.Font = Enum.Font.GothamMedium
+        boostDetailDesc.TextColor3 = DIM_TEXT
+        boostDetailDesc.TextSize = px(17)
+        boostDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
+        boostDetailDesc.TextWrapped = true
+        boostDetailDesc.Size = UDim2.new(1, 0, 0, px(44))
+        boostDetailDesc.Position = UDim2.new(0, 0, 0, px(214))
+
+        -- Duration label
+        local boostDetailDuration = Instance.new("TextLabel", boostDetailContent)
+        boostDetailDuration.Name = "Duration"
+        boostDetailDuration.BackgroundTransparency = 1
+        boostDetailDuration.Font = Enum.Font.GothamBold
+        boostDetailDuration.TextColor3 = DIM_TEXT
+        boostDetailDuration.TextSize = px(17)
+        boostDetailDuration.TextXAlignment = Enum.TextXAlignment.Center
+        boostDetailDuration.Size = UDim2.new(1, 0, 0, px(24))
+        boostDetailDuration.Position = UDim2.new(0, 0, 0, px(262))
+
+        -- Owned count
+        local boostDetailOwned = Instance.new("TextLabel", boostDetailContent)
+        boostDetailOwned.Name = "OwnedCount"
+        boostDetailOwned.BackgroundTransparency = 1
+        boostDetailOwned.Font = Enum.Font.GothamBold
+        boostDetailOwned.TextColor3 = WHITE
+        boostDetailOwned.TextSize = px(19)
+        boostDetailOwned.TextXAlignment = Enum.TextXAlignment.Center
+        boostDetailOwned.Size = UDim2.new(1, 0, 0, px(26))
+        boostDetailOwned.Position = UDim2.new(0, 0, 0, px(290))
+
+        -- Status label (Ready / Active / Not Owned)
+        local boostDetailStatus = Instance.new("TextLabel", boostDetailContent)
+        boostDetailStatus.Name = "Status"
+        boostDetailStatus.BackgroundTransparency = 1
+        boostDetailStatus.Font = Enum.Font.GothamBold
+        boostDetailStatus.TextColor3 = DIM_TEXT
+        boostDetailStatus.TextSize = px(18)
+        boostDetailStatus.TextXAlignment = Enum.TextXAlignment.Center
+        boostDetailStatus.Size = UDim2.new(1, 0, 0, px(26))
+        boostDetailStatus.Position = UDim2.new(0, 0, 0, px(320))
+
+        -- Remaining time label (visible only when active)
+        local boostDetailTimer = Instance.new("TextLabel", boostDetailContent)
+        boostDetailTimer.Name = "Timer"
+        boostDetailTimer.BackgroundTransparency = 1
+        boostDetailTimer.Font = Enum.Font.GothamBold
+        boostDetailTimer.TextColor3 = GREEN_GLOW
+        boostDetailTimer.TextSize = px(18)
+        boostDetailTimer.TextXAlignment = Enum.TextXAlignment.Center
+        boostDetailTimer.Size = UDim2.new(1, 0, 0, px(24))
+        boostDetailTimer.Position = UDim2.new(0, 0, 0, px(350))
+        boostDetailTimer.Visible = false
+
+        -- Activate button
+        local boostActivateBtn = Instance.new("TextButton", boostDetailContent)
+        boostActivateBtn.Name = "ActivateBtn"
+        boostActivateBtn.AutoButtonColor = false
+        boostActivateBtn.BackgroundColor3 = BTN_BG
+        boostActivateBtn.Font = Enum.Font.GothamBold
+        boostActivateBtn.Text = "ACTIVATE"
+        boostActivateBtn.TextColor3 = WHITE
+        boostActivateBtn.TextTransparency = 0
+        boostActivateBtn.TextSize = px(22)
+        boostActivateBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+        boostActivateBtn.AnchorPoint = Vector2.new(0.5, 1)
+        boostActivateBtn.Position = UDim2.new(0.5, 0, 1, 0)
+        Instance.new("UICorner", boostActivateBtn).CornerRadius = UDim.new(0, px(10))
+        local boostActivateStroke = Instance.new("UIStroke", boostActivateBtn)
+        boostActivateStroke.Color = Color3.fromRGB(0, 0, 0); boostActivateStroke.Thickness = 1.5; boostActivateStroke.Transparency = 0.15
+
+        -- Browse Shop button (above activate)
+        local boostShopNavW = Instance.new("Frame", boostDetailContent)
+        boostShopNavW.Name = "ShopNavWrap"
+        boostShopNavW.BackgroundTransparency = 1
+        boostShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
+        boostShopNavW.AnchorPoint = Vector2.new(0.5, 1)
+        boostShopNavW.Position = UDim2.new(0.5, 0, 1, -px(58))
+
+        local boostShopBtn = Instance.new("TextButton", boostShopNavW)
+        boostShopBtn.AutoButtonColor = false
+        boostShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        boostShopBtn.Font = Enum.Font.GothamBold
+        boostShopBtn.Text = "\u{1F6D2}  Browse Boosts Shop"
+        boostShopBtn.TextColor3 = WHITE
+        boostShopBtn.TextTransparency = 0
+        boostShopBtn.TextSize = math.max(13, math.floor(px(15)))
+        boostShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        boostShopBtn.Size = UDim2.new(0, 0, 1, 0)
+        boostShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+        boostShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+        Instance.new("UICorner", boostShopBtn).CornerRadius = UDim.new(0, px(8))
+        local bsnPad = Instance.new("UIPadding", boostShopBtn)
+        bsnPad.PaddingLeft = UDim.new(0, px(14)); bsnPad.PaddingRight = UDim.new(0, px(14))
+        local bsnStroke = Instance.new("UIStroke", boostShopBtn)
+        bsnStroke.Color = Color3.fromRGB(0, 0, 0); bsnStroke.Thickness = 1.5; bsnStroke.Transparency = 0.15
+
+        boostShopBtn.MouseEnter:Connect(function() TweenService:Create(boostShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
+        boostShopBtn.MouseLeave:Connect(function() TweenService:Create(boostShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
+        boostShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("boosts") end
+            end
+        end)
+
+        print("[UIPolish] Boost detail text size updated")
+        print("[UIPolish] Achievement progress text style sampled")
+        print("[UIPolish] Applied achievement-style typography to browse button: boostShopBtn")
+
+        -- ── Helpers ─────────────────────────────────────────────────────
+
+        local function getBoostState(boostId)
+            local state = boostStates[boostId] or {}
+            local owned = math.max(0, math.floor(tonumber(state.owned) or 0))
+            local expiresAt = math.floor(tonumber(state.expiresAt) or 0) + timeDelta
+            local active = expiresAt > os.time()
+            local remaining = active and math.max(0, expiresAt - os.time()) or 0
+            return owned, active, remaining
+        end
+
+        -- ── Update details panel for selected boost ─────────────────────
+        local function updateBoostDetailsPanel()
+            if not selectedBoostId then
+                boostDetailPlaceholder.Visible = true
+                boostDetailContent.Visible = false
+                return
+            end
+            boostDetailPlaceholder.Visible = false
+            boostDetailContent.Visible = true
+
+            local def = BoostConfig and BoostConfig.GetById(selectedBoostId)
+            if not def then return end
+
+            print("[BoostsTab] Updating details panel")
 
             local iconColor = BOOST_ACCENT_COLORS[def.Id] or GOLD
             if type(def.IconColor) == "table" and #def.IconColor >= 3 then
                 iconColor = Color3.fromRGB(def.IconColor[1], def.IconColor[2], def.IconColor[3])
             end
 
-            local iconFrame = Instance.new("Frame", card)
-            iconFrame.Name = "BoostIcon"
-            iconFrame.Size = UDim2.new(0, px(60), 0, px(60))
-            iconFrame.Position = UDim2.new(0, 0, 0.5, 0); iconFrame.AnchorPoint = Vector2.new(0, 0.5)
-            iconFrame.BackgroundColor3 = iconColor; iconFrame.BorderSizePixel = 0
-            Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, px(8))
-            local iStroke = Instance.new("UIStroke", iconFrame)
-            iStroke.Color = WHITE; iStroke.Thickness = 1.2; iStroke.Transparency = 0.75
+            -- Icon background tint
+            boostDetailIconBg.BackgroundColor3 = Color3.new(
+                math.clamp(iconColor.R * 0.15 + 0.08, 0, 1),
+                math.clamp(iconColor.G * 0.15 + 0.08, 0, 1),
+                math.clamp(iconColor.B * 0.15 + 0.08, 0, 1)
+            )
+            bdIconStroke.Color = iconColor
 
-            local iconImage = Instance.new("ImageLabel", iconFrame)
-            iconImage.Name = "BoostIconImage"; iconImage.BackgroundTransparency = 1
-            iconImage.AnchorPoint = Vector2.new(0.5, 0.5); iconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
-            iconImage.Size = UDim2.new(0.72, 0, 0.72, 0); iconImage.ScaleType = Enum.ScaleType.Fit
-            iconImage.Image = getBoostIconImage(def) or ""; iconImage.Visible = iconImage.Image ~= ""
+            -- Icon image or glyph
+            local img = getBoostIconImage(def)
+            if img and #img > 0 then
+                boostDetailIconImage.Image = img
+                boostDetailIconImage.Visible = true
+                boostDetailIconGlyph.Visible = false
+            else
+                boostDetailIconImage.Visible = false
+                boostDetailIconGlyph.Text = def.IconGlyph or "\u{26A1}"
+                boostDetailIconGlyph.TextColor3 = iconColor
+                boostDetailIconGlyph.Visible = true
+            end
 
-            local iconGlyph = Instance.new("TextLabel", iconFrame)
-            iconGlyph.Name = "BoostIconGlyph"; iconGlyph.BackgroundTransparency = 1
-            iconGlyph.Size = UDim2.new(1, 0, 1, 0); iconGlyph.Font = Enum.Font.GothamBold
-            iconGlyph.Text = def.IconGlyph or "?"; iconGlyph.TextSize = math.max(16, math.floor(px(33)))
-            iconGlyph.TextColor3 = WHITE; iconGlyph.Visible = not iconImage.Visible
+            boostDetailName.Text = def.DisplayName or def.Id
+            boostDetailDesc.Text = def.Description or ""
 
-            local title = Instance.new("TextLabel", card)
-            title.BackgroundTransparency = 1; title.Font = Enum.Font.GothamBold
-            title.Text = def.DisplayName; title.TextColor3 = WHITE
-            title.TextSize = math.max(16, math.floor(px(18)))
-            title.TextXAlignment = Enum.TextXAlignment.Left
-            title.Size = UDim2.new(0.58, -px(74), 0, px(24)); title.Position = UDim2.new(0, px(74), 0, 0)
+            -- Duration
+            local durSec = def.DurationSeconds or 0
+            if durSec > 0 then
+                local durMin = math.floor(durSec / 60)
+                boostDetailDuration.Text = "Duration: " .. tostring(durMin) .. " minutes"
+            else
+                boostDetailDuration.Text = ""
+            end
 
-            local desc = Instance.new("TextLabel", card)
-            desc.BackgroundTransparency = 1; desc.Font = Enum.Font.GothamMedium
-            desc.Text = def.Description; desc.TextColor3 = DIM_TEXT
-            desc.TextSize = math.max(11, math.floor(px(12))); desc.TextWrapped = true
-            desc.TextXAlignment = Enum.TextXAlignment.Left; desc.TextYAlignment = Enum.TextYAlignment.Top
-            desc.Size = UDim2.new(0.58, -px(74), 0, px(42)); desc.Position = UDim2.new(0, px(74), 0, px(28))
+            -- State-dependent fields
+            local owned, active, remaining = getBoostState(def.Id)
+            boostDetailOwned.Text = "Owned: " .. tostring(owned)
+            print("[BoostsTab] Owned count:", owned)
 
-            local owned = Instance.new("TextLabel", card)
-            owned.BackgroundTransparency = 1; owned.Font = Enum.Font.GothamBold
-            owned.Text = "Owned: 0"; owned.TextColor3 = WHITE
-            owned.TextSize = math.max(11, math.floor(px(12)))
-            owned.TextXAlignment = Enum.TextXAlignment.Right
-            owned.Size = UDim2.new(0.34, 0, 0, px(18)); owned.Position = UDim2.new(0.66, 0, 0, px(12))
-
-            local status = Instance.new("TextLabel", card)
-            status.BackgroundTransparency = 1; status.Font = Enum.Font.GothamMedium
-            status.Text = "Not owned"; status.TextColor3 = DIM_TEXT
-            status.TextSize = math.max(10, math.floor(px(11)))
-            status.TextXAlignment = Enum.TextXAlignment.Right
-            status.Size = UDim2.new(0.34, 0, 0, px(16)); status.Position = UDim2.new(0.66, 0, 0, px(34))
-
-            local activateBtn = Instance.new("TextButton", card)
-            activateBtn.Name = "ActivateBtn"; activateBtn.AutoButtonColor = false
-            activateBtn.BackgroundColor3 = BTN_BG; activateBtn.Font = Enum.Font.GothamBold
-            activateBtn.Text = "ACTIVATE"; activateBtn.TextColor3 = WHITE
-            activateBtn.TextSize = math.max(12, math.floor(px(13)))
-            activateBtn.Size = UDim2.new(0, px(132), 0, px(36))
-            activateBtn.AnchorPoint = Vector2.new(1, 1); activateBtn.Position = UDim2.new(1, 0, 1, 0)
-            Instance.new("UICorner", activateBtn).CornerRadius = UDim.new(0, px(10))
-            local bStroke = Instance.new("UIStroke", activateBtn)
-            bStroke.Color = BTN_STROKE_C; bStroke.Thickness = 1.3; bStroke.Transparency = 0.25
-
-            activateBtn.MouseEnter:Connect(function()
-                if activateBtn.Active then TweenService:Create(activateBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play() end
-            end)
-            activateBtn.MouseLeave:Connect(function()
-                if activateBtn.Active then TweenService:Create(activateBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play() end
-            end)
-
-            activateBtn.MouseButton1Click:Connect(function()
-                local ok, success, message, states = pcall(function()
-                    return remotes.activate:InvokeServer(def.Id)
-                end)
-                if ok and success then
-                    ingestStates(states); refreshBoostCards()
-                    showToast(boostsPage, "Boost activated.", GREEN_GLOW, 2.2)
-                else
-                    if ok and type(states) == "table" then ingestStates(states) end
-                    refreshBoostCards()
-                    if ok and message == "Already active" then
-                        local r = boostCards[def.Id]
-                        if r then r.status.Text = "Already Active"; r.status.TextColor3 = GOLD
-                            task.delay(1.2, function() if r.card and r.card.Parent then refreshBoostCards() end end)
-                        end
-                    end
-                    showToast(boostsPage, tostring((ok and message) or "Activation failed"), RED_TEXT, 2.2)
-                end
-            end)
-
-            boostCards[def.Id] = {
-                card = card, cardStroke = cStroke,
-                owned = owned, status = status,
-                button = activateBtn, buttonStroke = bStroke,
-            }
+            if active then
+                boostDetailStatus.Text = "\u{2714} ACTIVE"
+                boostDetailStatus.TextColor3 = GREEN_GLOW
+                boostDetailTimer.Text = string.format("Remaining: %02d:%02d", math.floor(remaining / 60), remaining % 60)
+                boostDetailTimer.Visible = true
+                boostActivateBtn.Text = "\u{2714} ACTIVE"
+                boostActivateBtn.Active = false
+                boostActivateBtn.BackgroundColor3 = DISABLED_BG
+                boostActivateBtn.TextColor3 = GREEN_GLOW
+                boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
+                boostActivateStroke.Transparency = 0.15
+                print("[BoostsTab] Status: Active")
+            elseif owned > 0 then
+                boostDetailStatus.Text = "Ready to Activate"
+                boostDetailStatus.TextColor3 = WHITE
+                boostDetailTimer.Visible = false
+                boostActivateBtn.Text = "ACTIVATE"
+                boostActivateBtn.Active = true
+                boostActivateBtn.BackgroundColor3 = BTN_BG
+                boostActivateBtn.TextColor3 = WHITE
+                boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
+                boostActivateStroke.Transparency = 0.15
+                print("[BoostsTab] Status: Ready")
+            else
+                boostDetailStatus.Text = "Not Owned"
+                boostDetailStatus.TextColor3 = DIM_TEXT
+                boostDetailTimer.Visible = false
+                boostActivateBtn.Text = "ACTIVATE"
+                boostActivateBtn.Active = false
+                boostActivateBtn.BackgroundColor3 = DISABLED_BG
+                boostActivateBtn.TextColor3 = DIM_TEXT
+                boostActivateStroke.Color = CARD_STROKE
+                boostActivateStroke.Transparency = 0.45
+                print("[BoostsTab] Status: NotOwned")
+            end
         end
 
-        refreshBoostCards()
+        -- ── Refresh all boost card visuals ──────────────────────────────
+        local function refreshBoostCards()
+            for _, def in ipairs(boostDefs) do
+                local refs = boostCards[def.Id]
+                if not refs then continue end
+                local owned, active, remaining = getBoostState(def.Id)
 
-        trackConn(remotes.stateUpdated.OnClientEvent:Connect(function(states)
-            ingestStates(states); refreshBoostCards()
-        end))
+                local isSelected = (selectedBoostId == def.Id)
 
-        local lastTick = 0
-        trackConn(RunService.Heartbeat:Connect(function()
-            local now = os.time(); if now == lastTick then return end
-            lastTick = now; refreshBoostCards()
-        end))
-    end
+                -- Card background
+                if isSelected then
+                    refs.card.BackgroundColor3 = active and CARD_EQUIPPED or CARD_BG
+                elseif active then
+                    refs.card.BackgroundColor3 = CARD_EQUIPPED
+                else
+                    refs.card.BackgroundColor3 = CARD_BG
+                end
 
-    -- Boosts shop nav
-    do
-        local shopWrap = Instance.new("Frame", boostsPage)
-        shopWrap.BackgroundTransparency = 1
-        shopWrap.Size = UDim2.new(1, 0, 0, px(50)); shopWrap.LayoutOrder = 9999
+                -- Card stroke
+                if isSelected then
+                    refs.cardStroke.Color = GOLD
+                    refs.cardStroke.Thickness = 2.5
+                    refs.cardStroke.Transparency = 0
+                elseif active then
+                    refs.cardStroke.Color = GREEN_GLOW
+                    refs.cardStroke.Thickness = 1.8
+                    refs.cardStroke.Transparency = 0.3
+                else
+                    refs.cardStroke.Color = CARD_STROKE
+                    refs.cardStroke.Thickness = 1.2
+                    refs.cardStroke.Transparency = 0.35
+                end
 
-        local shopBtn = Instance.new("TextButton", shopWrap)
-        shopBtn.AutoButtonColor = false; shopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        shopBtn.Font = Enum.Font.GothamBold; shopBtn.Text = "\u{1F6D2}  Browse Shop"
-        shopBtn.TextColor3 = UITheme.GOLD_DIM; shopBtn.TextSize = math.max(13, math.floor(px(14)))
-        shopBtn.AutomaticSize = Enum.AutomaticSize.X
-        shopBtn.Size = UDim2.new(0, 0, 0, px(38)); shopBtn.AnchorPoint = Vector2.new(0.5, 0)
-        shopBtn.Position = UDim2.new(0.5, 0, 0, px(12))
-        Instance.new("UICorner", shopBtn).CornerRadius = UDim.new(0, px(8))
-        local sp = Instance.new("UIPadding", shopBtn)
-        sp.PaddingLeft = UDim.new(0, px(20)); sp.PaddingRight = UDim.new(0, px(20))
-        local ss = Instance.new("UIStroke", shopBtn)
-        ss.Color = UITheme.GOLD_DIM; ss.Thickness = 1.2; ss.Transparency = 0.45
+                -- Active bar indicator
+                local eqBar = refs.card:FindFirstChild("ActiveBar")
+                if eqBar then eqBar.Visible = active end
 
-        shopBtn.MouseEnter:Connect(function() TweenService:Create(shopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
-        shopBtn.MouseLeave:Connect(function() TweenService:Create(shopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
-        shopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("boosts") end
+                -- Card status label
+                if active then
+                    refs.statusLabel.Text = string.format("%02d:%02d", math.floor(remaining / 60), remaining % 60)
+                    refs.statusLabel.TextColor3 = GREEN_GLOW
+                elseif owned > 0 then
+                    refs.statusLabel.Text = "Owned: " .. tostring(owned)
+                    refs.statusLabel.TextColor3 = WHITE
+                else
+                    refs.statusLabel.Text = "Not Owned"
+                    refs.statusLabel.TextColor3 = DIM_TEXT
+                end
+            end
+
+            -- Update details panel timer if it's visible
+            updateBoostDetailsPanel()
+        end
+
+        -- ── Select a boost ──────────────────────────────────────────────
+        local function setSelectedBoost(boostId)
+            selectedBoostId = boostId
+            print("[BoostsTab] Selected boost:", boostId or "(none)")
+            refreshBoostCards()
+        end
+
+        -- ── Create boost cards ──────────────────────────────────────────
+        if #boostDefs == 0 or not remotes then
+            local unavailable = Instance.new("TextLabel", boostGridScroll)
+            unavailable.BackgroundTransparency = 1; unavailable.Font = Enum.Font.GothamMedium
+            unavailable.Text = "Boost inventory is currently unavailable."
+            unavailable.TextColor3 = DIM_TEXT; unavailable.TextSize = math.max(14, math.floor(px(15)))
+            unavailable.Size = UDim2.new(1, 0, 0, px(50)); unavailable.LayoutOrder = 1
+        else
+            for i_b, def in ipairs(boostDefs) do
+                local iconColor = BOOST_ACCENT_COLORS[def.Id] or GOLD
+                if type(def.IconColor) == "table" and #def.IconColor >= 3 then
+                    iconColor = Color3.fromRGB(def.IconColor[1], def.IconColor[2], def.IconColor[3])
+                end
+
+                local card = Instance.new("TextButton")
+                card.Name = "BoostCard_" .. def.Id
+                card.BackgroundColor3 = CARD_BG
+                card.Size = UDim2.new(1, 0, 1, 0)
+                card.Text = ""
+                card.AutoButtonColor = false
+                card.BorderSizePixel = 0
+                card.LayoutOrder = i_b
+                card.Parent = boostGridScroll
+                Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(10))
+
+                local cStroke = Instance.new("UIStroke", card)
+                cStroke.Color = CARD_STROKE; cStroke.Thickness = 1.2; cStroke.Transparency = 0.35
+
+                -- Icon area (top portion of card)
+                local iconArea = Instance.new("Frame", card)
+                iconArea.Name = "IconArea"
+                iconArea.BackgroundColor3 = Color3.new(
+                    math.clamp(iconColor.R * 0.15 + 0.06, 0, 1),
+                    math.clamp(iconColor.G * 0.15 + 0.06, 0, 1),
+                    math.clamp(iconColor.B * 0.15 + 0.06, 0, 1)
+                )
+                iconArea.Size = UDim2.new(1, -px(8), 0, px(100))
+                iconArea.Position = UDim2.new(0, px(4), 0, px(4))
+                iconArea.BorderSizePixel = 0
+                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, px(8))
+
+                -- Icon glyph centered in icon area
+                local cardIconImage = Instance.new("ImageLabel", iconArea)
+                cardIconImage.Name = "IconImage"
+                cardIconImage.BackgroundTransparency = 1
+                cardIconImage.Size = UDim2.new(0.5, 0, 0.5, 0)
+                cardIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+                cardIconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+                cardIconImage.ScaleType = Enum.ScaleType.Fit
+
+                local img = getBoostIconImage(def)
+                if img and #img > 0 then
+                    cardIconImage.Image = img
+                    cardIconImage.Visible = true
+                else
+                    cardIconImage.Visible = false
+                end
+
+                local cardIconGlyph = Instance.new("TextLabel", iconArea)
+                cardIconGlyph.Name = "IconGlyph"
+                cardIconGlyph.BackgroundTransparency = 1
+                cardIconGlyph.Size = UDim2.new(1, 0, 1, 0)
+                cardIconGlyph.Font = Enum.Font.GothamBold
+                cardIconGlyph.Text = def.IconGlyph or "\u{26A1}"
+                cardIconGlyph.TextScaled = true
+                cardIconGlyph.TextColor3 = iconColor
+                cardIconGlyph.Visible = not cardIconImage.Visible
+
+                -- Name label (below icon area)
+                local cardName = Instance.new("TextLabel", card)
+                cardName.Name = "NameLabel"
+                cardName.BackgroundTransparency = 1
+                cardName.Font = Enum.Font.GothamBold
+                cardName.Text = def.DisplayName or def.Id
+                cardName.TextColor3 = WHITE
+                cardName.TextSize = math.max(12, math.floor(px(13)))
+                cardName.TextTruncate = Enum.TextTruncate.AtEnd
+                cardName.TextXAlignment = Enum.TextXAlignment.Center
+                cardName.Size = UDim2.new(1, -px(8), 0, px(22))
+                cardName.Position = UDim2.new(0, px(4), 0, px(110))
+
+                -- Status / owned count label (bottom of card)
+                local cardStatus = Instance.new("TextLabel", card)
+                cardStatus.Name = "StatusLabel"
+                cardStatus.BackgroundTransparency = 1
+                cardStatus.Font = Enum.Font.GothamBold
+                cardStatus.Text = "Not Owned"
+                cardStatus.TextColor3 = DIM_TEXT
+                cardStatus.TextSize = math.max(10, math.floor(px(11)))
+                cardStatus.TextXAlignment = Enum.TextXAlignment.Center
+                cardStatus.Size = UDim2.new(1, -px(8), 0, px(18))
+                cardStatus.Position = UDim2.new(0, px(4), 0, px(132))
+
+                -- Active bar at bottom (green strip when boost is running)
+                local activeBar = Instance.new("Frame", card)
+                activeBar.Name = "ActiveBar"
+                activeBar.BackgroundColor3 = GREEN_GLOW
+                activeBar.Size = UDim2.new(0.7, 0, 0, px(3))
+                activeBar.AnchorPoint = Vector2.new(0.5, 1)
+                activeBar.Position = UDim2.new(0.5, 0, 1, -px(4))
+                activeBar.BorderSizePixel = 0
+                activeBar.Visible = false
+                Instance.new("UICorner", activeBar).CornerRadius = UDim.new(0, px(2))
+
+                boostCards[def.Id] = {
+                    card = card,
+                    cardStroke = cStroke,
+                    statusLabel = cardStatus,
+                }
+
+                -- Click to select
+                card.MouseButton1Click:Connect(function()
+                    setSelectedBoost(def.Id)
+                end)
+
+                -- Hover effect
+                card.MouseEnter:Connect(function()
+                    if selectedBoostId ~= def.Id then
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 40, 58)}):Play()
+                    end
+                end)
+                card.MouseLeave:Connect(function()
+                    if selectedBoostId ~= def.Id then
+                        local _, isActive = getBoostState(def.Id)
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = isActive and CARD_EQUIPPED or CARD_BG}):Play()
+                    end
+                end)
+            end
+
+            -- Initial card refresh
+            refreshBoostCards()
+
+            -- Auto-select first boost
+            if boostDefs[1] then
+                setSelectedBoost(boostDefs[1].Id)
+            end
+
+            -- Listen for server state updates
+            trackConn(remotes.stateUpdated.OnClientEvent:Connect(function(states)
+                ingestStates(states); refreshBoostCards()
+            end))
+
+            -- Heartbeat timer refresh
+            local lastTick = 0
+            trackConn(RunService.Heartbeat:Connect(function()
+                local now = os.time(); if now == lastTick then return end
+                lastTick = now; refreshBoostCards()
+            end))
+        end
+
+        -- ── Activate button click ───────────────────────────────────────
+        boostActivateBtn.MouseButton1Click:Connect(function()
+            if not selectedBoostId then return end
+            if not boostActivateBtn.Active then return end
+            if not remotes then return end
+
+            print("[BoostsTab] Activate clicked for:", selectedBoostId)
+
+            local ok, success, message, states = pcall(function()
+                return remotes.activate:InvokeServer(selectedBoostId)
+            end)
+            if ok and success then
+                ingestStates(states); refreshBoostCards()
+                showToast(boostsPage, "Boost activated!", GREEN_GLOW, 2.2)
+            else
+                if ok and type(states) == "table" then ingestStates(states) end
+                refreshBoostCards()
+                showToast(boostsPage, tostring((ok and message) or "Activation failed"), RED_TEXT, 2.2)
             end
         end)
-    end
+
+        -- Activate button hover
+        boostActivateBtn.MouseEnter:Connect(function()
+            if boostActivateBtn.Active then
+                TweenService:Create(boostActivateBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+            end
+        end)
+        boostActivateBtn.MouseLeave:Connect(function()
+            if boostActivateBtn.Active then
+                TweenService:Create(boostActivateBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+            end
+        end)
+    end -- end Boosts scope block
 
     -- ══════════════════════════════════════════════════════════════════════
     --  SKINS PAGE  (grid + details panel, mirrors weapon tab pattern)
@@ -2091,8 +2456,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinEmptyShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
         skinEmptyShopBtn.Font = Enum.Font.GothamBold
         skinEmptyShopBtn.Text = "\u{1F6D2}  Browse Skins Shop"
-        skinEmptyShopBtn.TextColor3 = UITheme.GOLD_DIM
-        skinEmptyShopBtn.TextSize = math.max(13, math.floor(px(14)))
+        skinEmptyShopBtn.TextColor3 = WHITE
+        skinEmptyShopBtn.TextTransparency = 0
+        skinEmptyShopBtn.TextSize = math.max(14, math.floor(px(15)))
         skinEmptyShopBtn.AutomaticSize = Enum.AutomaticSize.X
         skinEmptyShopBtn.Size = UDim2.new(0, 0, 0, px(36))
         skinEmptyShopBtn.AnchorPoint = Vector2.new(0.5, 0)
@@ -2101,7 +2467,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local sesBtnPad = Instance.new("UIPadding", skinEmptyShopBtn)
         sesBtnPad.PaddingLeft = UDim.new(0, px(20)); sesBtnPad.PaddingRight = UDim.new(0, px(20))
         local sesBtnStroke = Instance.new("UIStroke", skinEmptyShopBtn)
-        sesBtnStroke.Color = UITheme.GOLD_DIM; sesBtnStroke.Thickness = 1.2; sesBtnStroke.Transparency = 0.45
+        sesBtnStroke.Color = Color3.fromRGB(0, 0, 0); sesBtnStroke.Thickness = 1.5; sesBtnStroke.Transparency = 0.15
 
         skinEmptyShopBtn.MouseButton1Click:Connect(function()
             local mc = _G.SideUI and _G.SideUI.MenuController
@@ -2182,13 +2548,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local skinDetailDesc = Instance.new("TextLabel", skinDetailContent)
         skinDetailDesc.Name = "Description"
         skinDetailDesc.BackgroundTransparency = 1
-        skinDetailDesc.Font = Enum.Font.GothamMedium
+        skinDetailDesc.Font = Enum.Font.GothamBold
         skinDetailDesc.TextColor3 = DIM_TEXT
-        skinDetailDesc.TextSize = px(14)
+        skinDetailDesc.TextSize = px(17)
         skinDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
         skinDetailDesc.TextWrapped = true
-        skinDetailDesc.Size = UDim2.new(1, 0, 0, px(40))
+        skinDetailDesc.Size = UDim2.new(1, 0, 0, px(46))
         skinDetailDesc.Position = UDim2.new(0, 0, 0, px(244))
+        local skinDescStroke = Instance.new("UIStroke", skinDetailDesc)
+        skinDescStroke.Color = Color3.fromRGB(0, 0, 0)
+        skinDescStroke.Thickness = 1.5
+        skinDescStroke.Transparency = 0.15
 
         -- ShowHelm toggle row
         local TOGGLE_ON_C  = Color3.fromRGB(35, 190, 75)
@@ -2199,16 +2569,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         helmRow.Name = "HelmToggleRow"
         helmRow.BackgroundTransparency = 1
         helmRow.Size = UDim2.new(1, 0, 0, px(32))
-        helmRow.Position = UDim2.new(0, 0, 0, px(292))
+        helmRow.Position = UDim2.new(0, 0, 0, px(296))
 
         local helmLabel = Instance.new("TextLabel", helmRow)
         helmLabel.BackgroundTransparency = 1
-        helmLabel.Font = Enum.Font.GothamMedium
+        helmLabel.Font = Enum.Font.GothamBold
         helmLabel.Text = "Show Helm"
         helmLabel.TextColor3 = DIM_TEXT
-        helmLabel.TextSize = px(14)
+        helmLabel.TextSize = px(17)
         helmLabel.TextXAlignment = Enum.TextXAlignment.Left
         helmLabel.Size = UDim2.new(0.6, 0, 1, 0)
+        local helmLabelStroke = Instance.new("UIStroke", helmLabel)
+        helmLabelStroke.Color = Color3.fromRGB(0, 0, 0)
+        helmLabelStroke.Thickness = 1.5
+        helmLabelStroke.Transparency = 0.15
 
         local helmToggleBg = Instance.new("TextButton", helmRow)
         helmToggleBg.Name = "ToggleBg"
@@ -2264,13 +2638,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinEquipBtn.Font = Enum.Font.GothamBold
         skinEquipBtn.Text = "EQUIP"
         skinEquipBtn.TextColor3 = WHITE
+        skinEquipBtn.TextTransparency = 0
         skinEquipBtn.TextSize = px(22)
         skinEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
         skinEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
         skinEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
         Instance.new("UICorner", skinEquipBtn).CornerRadius = UDim.new(0, px(10))
         local skinEquipStroke = Instance.new("UIStroke", skinEquipBtn)
-        skinEquipStroke.Color = BTN_STROKE_C; skinEquipStroke.Thickness = 1.4; skinEquipStroke.Transparency = 0.25
+        skinEquipStroke.Color = Color3.fromRGB(0, 0, 0); skinEquipStroke.Thickness = 1.5; skinEquipStroke.Transparency = 0.15
 
         -- Action row (Favorite only – no salvage for skins)
         local skinActionRow = Instance.new("Frame", skinDetailContent)
@@ -2309,8 +2684,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
         skinShopBtn.Font = Enum.Font.GothamBold
         skinShopBtn.Text = "\u{1F6D2}  Browse Skins Shop"
-        skinShopBtn.TextColor3 = UITheme.GOLD_DIM
-        skinShopBtn.TextSize = math.max(11, math.floor(px(12)))
+        skinShopBtn.TextColor3 = WHITE
+        skinShopBtn.TextTransparency = 0
+        skinShopBtn.TextSize = math.max(13, math.floor(px(15)))
         skinShopBtn.AutomaticSize = Enum.AutomaticSize.X
         skinShopBtn.Size = UDim2.new(0, 0, 1, 0)
         skinShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -2319,7 +2695,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local ssnPad = Instance.new("UIPadding", skinShopBtn)
         ssnPad.PaddingLeft = UDim.new(0, px(14)); ssnPad.PaddingRight = UDim.new(0, px(14))
         local ssnStroke = Instance.new("UIStroke", skinShopBtn)
-        ssnStroke.Color = UITheme.GOLD_DIM; ssnStroke.Thickness = 1.2; ssnStroke.Transparency = 0.45
+        ssnStroke.Color = Color3.fromRGB(0, 0, 0); ssnStroke.Thickness = 1.5; ssnStroke.Transparency = 0.15
 
         skinShopBtn.MouseEnter:Connect(function() TweenService:Create(skinShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
         skinShopBtn.MouseLeave:Connect(function() TweenService:Create(skinShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
@@ -2330,6 +2706,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
+        print("[UIPolish] Applied achievement-style typography to browse button: skinShopBtn")
+
         -- ── Helper: update equip button state ───────────────────────────
         local function updateSkinEquipButton()
             if not selectedSkinId then return end
@@ -2338,12 +2716,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 skinEquipBtn.Text = "\u{2714} EQUIPPED"
                 skinEquipBtn.BackgroundColor3 = DISABLED_BG
                 skinEquipBtn.TextColor3 = GREEN_GLOW
-                skinEquipStroke.Color = GREEN_GLOW; skinEquipStroke.Transparency = 0.45
+                skinEquipStroke.Color = Color3.fromRGB(0, 0, 0); skinEquipStroke.Transparency = 0.15
             else
                 skinEquipBtn.Text = "EQUIP"
                 skinEquipBtn.BackgroundColor3 = BTN_BG
                 skinEquipBtn.TextColor3 = WHITE
-                skinEquipStroke.Color = BTN_STROKE_C; skinEquipStroke.Transparency = 0.25
+                skinEquipStroke.Color = Color3.fromRGB(0, 0, 0); skinEquipStroke.Transparency = 0.15
             end
         end
 
@@ -2755,15 +3133,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local eeShopBtn = Instance.new("TextButton", effectsEmptyState)
             eeShopBtn.Name = "ShopNavBtn"; eeShopBtn.AutoButtonColor = false
             eeShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT; eeShopBtn.Font = Enum.Font.GothamBold
-            eeShopBtn.Text = "\u{1F6D2}  Browse Effects Shop"; eeShopBtn.TextColor3 = UITheme.GOLD_DIM
-            eeShopBtn.TextSize = math.max(13, math.floor(px(14))); eeShopBtn.AutomaticSize = Enum.AutomaticSize.X
+            eeShopBtn.Text = "\u{1F6D2}  Browse Effects Shop"; eeShopBtn.TextColor3 = WHITE
+            eeShopBtn.TextTransparency = 0
+            eeShopBtn.TextSize = math.max(14, math.floor(px(15))); eeShopBtn.AutomaticSize = Enum.AutomaticSize.X
             eeShopBtn.Size = UDim2.new(0, 0, 0, px(36)); eeShopBtn.AnchorPoint = Vector2.new(0.5, 0)
             eeShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
             Instance.new("UICorner", eeShopBtn).CornerRadius = UDim.new(0, px(8))
             local eesPad = Instance.new("UIPadding", eeShopBtn)
             eesPad.PaddingLeft = UDim.new(0, px(20)); eesPad.PaddingRight = UDim.new(0, px(20))
             local eesStroke = Instance.new("UIStroke", eeShopBtn)
-            eesStroke.Color = UITheme.GOLD_DIM; eesStroke.Thickness = 1.2; eesStroke.Transparency = 0.45
+            eesStroke.Color = Color3.fromRGB(0, 0, 0); eesStroke.Thickness = 1.5; eesStroke.Transparency = 0.15
             eeShopBtn.MouseButton1Click:Connect(function()
                 local mc = _G.SideUI and _G.SideUI.MenuController
                 if mc then mc.OpenMenu("Shop")
@@ -2843,13 +3222,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local trailDetailDesc = Instance.new("TextLabel", trailDetailContent)
             trailDetailDesc.Name = "Description"
             trailDetailDesc.BackgroundTransparency = 1
-            trailDetailDesc.Font = Enum.Font.GothamMedium
+            trailDetailDesc.Font = Enum.Font.GothamBold
             trailDetailDesc.TextColor3 = DIM_TEXT
-            trailDetailDesc.TextSize = px(14)
+            trailDetailDesc.TextSize = px(17)
             trailDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
             trailDetailDesc.TextWrapped = true
-            trailDetailDesc.Size = UDim2.new(1, 0, 0, px(40))
+            trailDetailDesc.Size = UDim2.new(1, 0, 0, px(46))
             trailDetailDesc.Position = UDim2.new(0, 0, 0, px(274))
+            local trailDescStroke = Instance.new("UIStroke", trailDetailDesc)
+            trailDescStroke.Color = Color3.fromRGB(0, 0, 0)
+            trailDescStroke.Thickness = 1.5
+            trailDescStroke.Transparency = 0.15
 
             -- Equip button (bottom of detail panel)
             local trailEquipBtn = Instance.new("TextButton", trailDetailContent)
@@ -2859,13 +3242,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailEquipBtn.Font = Enum.Font.GothamBold
             trailEquipBtn.Text = "EQUIP"
             trailEquipBtn.TextColor3 = WHITE
+            trailEquipBtn.TextTransparency = 0
             trailEquipBtn.TextSize = px(22)
             trailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
             trailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
             trailEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
             Instance.new("UICorner", trailEquipBtn).CornerRadius = UDim.new(0, px(10))
             local trailEquipStroke = Instance.new("UIStroke", trailEquipBtn)
-            trailEquipStroke.Color = BTN_STROKE_C; trailEquipStroke.Thickness = 1.4; trailEquipStroke.Transparency = 0.25
+            trailEquipStroke.Color = Color3.fromRGB(0, 0, 0); trailEquipStroke.Thickness = 1.5; trailEquipStroke.Transparency = 0.15
 
             -- Shop nav button in detail panel
             local trailShopNavW = Instance.new("Frame", trailDetailContent)
@@ -2879,9 +3263,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailShopBtn.AutoButtonColor = false
             trailShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
             trailShopBtn.Font = Enum.Font.GothamBold
-            trailShopBtn.Text = "\u{1F6D2}  Browse Shop"
-            trailShopBtn.TextColor3 = UITheme.GOLD_DIM
-            trailShopBtn.TextSize = math.max(11, math.floor(px(12)))
+            trailShopBtn.Text = "\u{1F6D2}  Browse Effects Shop"
+            trailShopBtn.TextColor3 = WHITE
+            trailShopBtn.TextTransparency = 0
+            trailShopBtn.TextSize = math.max(13, math.floor(px(15)))
             trailShopBtn.AutomaticSize = Enum.AutomaticSize.X
             trailShopBtn.Size = UDim2.new(0, 0, 1, 0)
             trailShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -2890,7 +3275,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local tsnPad = Instance.new("UIPadding", trailShopBtn)
             tsnPad.PaddingLeft = UDim.new(0, px(14)); tsnPad.PaddingRight = UDim.new(0, px(14))
             local tsnStroke = Instance.new("UIStroke", trailShopBtn)
-            tsnStroke.Color = UITheme.GOLD_DIM; tsnStroke.Thickness = 1.2; tsnStroke.Transparency = 0.45
+            tsnStroke.Color = Color3.fromRGB(0, 0, 0); tsnStroke.Thickness = 1.5; tsnStroke.Transparency = 0.15
 
             trailShopBtn.MouseEnter:Connect(function() TweenService:Create(trailShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
             trailShopBtn.MouseLeave:Connect(function() TweenService:Create(trailShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
@@ -2900,6 +3285,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("effects") end
                 end
             end)
+
+            print("[UIPolish] Effects browse label updated to Browse Effects Shop")
+            print("[UIPolish] Applied achievement-style typography to browse button: trailShopBtn")
 
             -- ── State ───────────────────────────────────────────────────
             local ownedSet = {}
@@ -2915,12 +3303,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     trailEquipBtn.Text = "\u{2714} EQUIPPED"
                     trailEquipBtn.BackgroundColor3 = DISABLED_BG
                     trailEquipBtn.TextColor3 = GREEN_GLOW
-                    trailEquipStroke.Color = GREEN_GLOW; trailEquipStroke.Transparency = 0.45
+                    trailEquipStroke.Color = Color3.fromRGB(0, 0, 0); trailEquipStroke.Transparency = 0.15
                 else
                     trailEquipBtn.Text = "EQUIP"
                     trailEquipBtn.BackgroundColor3 = BTN_BG
                     trailEquipBtn.TextColor3 = WHITE
-                    trailEquipStroke.Color = BTN_STROKE_C; trailEquipStroke.Transparency = 0.25
+                    trailEquipStroke.Color = Color3.fromRGB(0, 0, 0); trailEquipStroke.Transparency = 0.15
                 end
             end
 
