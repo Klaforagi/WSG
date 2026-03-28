@@ -524,14 +524,20 @@ local function playDashEffects(targetPlayer, effectId)
     trail.Attachment0 = trailAttach0
     trail.Attachment1 = trailAttach1
     trail.Color = trailColorSeq
+
+    -- Dark trails (e.g. Black Trail) need lower LightEmission and less
+    -- starting transparency so the dark color reads clearly in gameplay.
+    local isDarkTrail = (not isRainbow) and solidColor
+        and (solidColor.R + solidColor.G + solidColor.B) < 0.75
+
     trail.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, isRainbow and 0.2 or 0.3),
+        NumberSequenceKeypoint.new(0, isRainbow and 0.2 or (isDarkTrail and 0.1 or 0.3)),
         NumberSequenceKeypoint.new(1, 1),
     })
     trail.Lifetime = isRainbow and (DashConfig.TrailLifetime * 1.15) or DashConfig.TrailLifetime
     trail.MinLength = 0.05
     trail.FaceCamera = true
-    trail.LightEmission = isRainbow and 0.7 or 0.6
+    trail.LightEmission = isRainbow and 0.7 or (isDarkTrail and 0.08 or 0.6)
     trail.WidthScale = NumberSequence.new({
         NumberSequenceKeypoint.new(0, 1),
         NumberSequenceKeypoint.new(1, isRainbow and 0.4 or 0.3),
