@@ -185,6 +185,7 @@ pcall(function()
 			   ShowMinimap = true,
 			   ShowGameState = true,
 			   ShowHelm = true,
+			   ShowPlayerHighlights = true,
 		   }
 		   local settings = {}
 		   for k, v in pairs(defaults) do settings[k] = v end
@@ -192,6 +193,7 @@ pcall(function()
 			   for k, v in pairs(data) do settings[k] = v end
 		   end
 		   _G.PlayerSettings = settings
+		   _G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
 		   -- Prevent music from playing until after volume is set
 		   pcall(function()
 			   local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")

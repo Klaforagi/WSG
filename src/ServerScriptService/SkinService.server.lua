@@ -324,6 +324,75 @@ local function setHeadUndersuitColor(character)
     end
 end
 
+-- Head-attachment names used by Roblox for accessories on the head/face
+local HEAD_ATTACHMENT_NAMES = {
+    HatAttachment = true,
+    HairAttachment = true,
+    FaceFrontAttachment = true,
+    FaceCenterAttachment = true,
+}
+
+-- Check if an Accessory attaches to the head area
+local function isHeadAccessory(acc)
+    local handle = acc:FindFirstChild("Handle")
+    if not handle or not handle:IsA("BasePart") then return false end
+    -- Check for attachment points on the handle that correspond to head slots
+    for _, child in ipairs(handle:GetChildren()) do
+        if child:IsA("Attachment") and HEAD_ATTACHMENT_NAMES[child.Name] then
+            return true
+        end
+    end
+    -- Fallback: Roblox classic hat accessories don't always have named attachments
+    -- but are welded to the Head part
+    local head = acc.Parent and acc.Parent:FindFirstChild("Head")
+    if head then
+        for _, child in ipairs(handle:GetChildren()) do
+            if child:IsA("Weld") or child:IsA("WeldConstraint") then
+                if child.Part0 == head or child.Part1 == head then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+-- Restore visibility of head accessories only (hair, hats, face items)
+local function restoreHeadAccessories(character)
+    if not character then return end
+    for _, acc in ipairs(character:GetChildren()) do
+        if acc:IsA("Accessory") and isHeadAccessory(acc) then
+            local handle = acc:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                local orig = handle:GetAttribute("_OrigTransparency")
+                if orig ~= nil then
+                    handle.Transparency = orig
+                else
+                    handle.Transparency = 0
+                end
+            end
+        end
+    end
+    dprint("[ShowHelm] restored head accessory visibility")
+end
+
+-- Hide head accessories (when helmet is ON and covering the head)
+local function hideHeadAccessories(character)
+    if not character then return end
+    for _, acc in ipairs(character:GetChildren()) do
+        if acc:IsA("Accessory") and isHeadAccessory(acc) then
+            local handle = acc:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                if not handle:GetAttribute("_OrigTransparency") then
+                    handle:SetAttribute("_OrigTransparency", handle.Transparency)
+                end
+                handle.Transparency = 1
+            end
+        end
+    end
+    dprint("[ShowHelm] hid head accessories under helmet")
+end
+
 -- Apply Default skin: simply remove cosmetic overlays and restore originals
 local function applyDefaultSkin(player, character)
     dprint(player.Name, "applying Default skin")
@@ -593,6 +662,7 @@ local function applyKnightSkin(player, character)
     -- If ShowHelm is OFF, restore original head color so the player's face is visible
     if not showHelm then
         restoreHeadColor(character)
+        restoreHeadAccessories(character)
     end
 
     -- Chestplate
@@ -960,6 +1030,7 @@ local function applyIronKnightSkin(player, character)
 
     if not showHelm then
         restoreHeadColor(character)
+        restoreHeadAccessories(character)
     end
 
     -- Chestplate – heavy dark iron
@@ -1602,19 +1673,21 @@ do
             end
 
             if value then
-                -- ShowHelm ON: rebuild helmet parts
+                -- ShowHelm ON: rebuild helmet parts, re-hide head accessories
                 dprint("[ShowHelm] Restoring skin helm for", player.Name)
                 clearSkinHelmetParts(character) -- prevent duplicates
+                hideHeadAccessories(character)
                 if equipped == "Knight" then
                     applyKnightHelmetParts(player, character)
                 elseif equipped == "IronKnight" then
                     applyIronKnightHelmetParts(player, character)
                 end
             else
-                -- ShowHelm OFF: remove helmet parts, restore head appearance
+                -- ShowHelm OFF: remove helmet parts, restore head appearance + accessories
                 dprint("[ShowHelm] Removing helmet cosmetics from", player.Name)
                 clearSkinHelmetParts(character)
                 restoreHeadColor(character)
+                restoreHeadAccessories(character)
             end
         end)
         dprint("[ShowHelm] live toggle listener registered on UpdatePlayerSetting")

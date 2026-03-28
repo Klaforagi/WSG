@@ -76,6 +76,7 @@ local DEFAULT_SETTINGS = {
 	ShowMinimap       = true,
 	ShowGameState     = true,
 	ShowHelm          = true,
+	ShowPlayerHighlights = true,
 	-- UIScale removed from options
 }
 
@@ -188,6 +189,9 @@ local function ApplySettings(settings)
 			or playerGui:FindFirstChild("MatchHUD")
 		if gui then gui.Enabled = settings.ShowGameState end
 	end)
+
+	-- Player Highlights toggle – expose globally for TeamHighlight script
+	_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
 
 	-- Sync changed settings to server via lightweight RemoteEvent (no DataStore write)
 	pcall(function()
@@ -891,6 +895,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	createToggle(root, "Show Minimap", "ShowMinimap", nextOrder())
 	createToggle(root, "Show Scoreboard", "ShowGameState", nextOrder())
 	createToggle(root, "Show Helm", "ShowHelm", nextOrder())
+	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
 	-- UI Scale removed per request
 
 	---------------------------------------------------------------------------

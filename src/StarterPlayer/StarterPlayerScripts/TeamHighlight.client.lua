@@ -4,12 +4,28 @@ local Workspace = game:GetService("Workspace")
 local localPlayer = Players.LocalPlayer
 local HIGHLIGHT_NAME = "WSG_TeamHighlight"
 
+-- Read the player-highlights preference (defaults to true)
+local function highlightsEnabled()
+    return _G.ShowPlayerHighlights ~= false
+end
 
+local function removeHighlightFromModel(model)
+    if not model or not model:IsA("Model") then return end
+    local existing = model:FindFirstChild(HIGHLIGHT_NAME)
+    if existing and existing:IsA("Highlight") then
+        existing:Destroy()
+    end
+end
 
-local function addHighlightToModel(model, color)
+local function addHighlightToModel(model, color, isDummy)
     if not model or not model:IsA("Model") then return end
     -- avoid adding to local player's character
     if localPlayer.Character and model == localPlayer.Character then return end
+    -- If this is a player highlight and the preference is OFF, remove and bail
+    if not isDummy and not highlightsEnabled() then
+        removeHighlightFromModel(model)
+        return
+    end
     -- remove existing
     for _, child in ipairs(model:GetChildren()) do
         if child:IsA("Highlight") and child.Name == HIGHLIGHT_NAME then
@@ -32,14 +48,6 @@ local function addHighlightToModel(model, color)
         h.DepthMode = Enum.HighlightDepthMode.Occluded
     end
     h.Parent = model
-end
-
-local function removeHighlightFromModel(model)
-    if not model or not model:IsA("Model") then return end
-    local existing = model:FindFirstChild(HIGHLIGHT_NAME)
-    if existing and existing:IsA("Highlight") then
-        existing:Destroy()
-    end
 end
 
 local function isEnemy(player)
@@ -88,8 +96,8 @@ local function handleDummyModel(model)
         humanoid = model:WaitForChild("Humanoid", 3)
     end
     if not humanoid then return end
-    -- attach red highlight
-    addHighlightToModel(model, Color3.fromRGB(255, 75, 75))
+    -- attach red highlight (always shown regardless of player highlight toggle)
+    addHighlightToModel(model, Color3.fromRGB(255, 75, 75), true)
 end
 
 local function handleDescendant(desc)
@@ -165,6 +173,34 @@ end)
 Workspace.DescendantRemoving:Connect(function(desc)
     if desc:IsA("Model") then
         removeHighlightFromModel(desc)
+    end
+end)
+
+--------------------------------------------------------------------------------
+-- Watch for Player Highlights toggle changes and refresh immediately
+--------------------------------------------------------------------------------
+local lastHighlightState = highlightsEnabled()
+
+local function refreshAllPlayerHighlights()
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= localPlayer and pl.Character then
+            if highlightsEnabled() then
+                handlePlayerCharacter(pl)
+            else
+                removeHighlightFromModel(pl.Character)
+            end
+        end
+    end
+end
+
+task.spawn(function()
+    while true do
+        task.wait(0.25)
+        local current = highlightsEnabled()
+        if current ~= lastHighlightState then
+            lastHighlightState = current
+            refreshAllPlayerHighlights()
+        end
     end
 end)
 

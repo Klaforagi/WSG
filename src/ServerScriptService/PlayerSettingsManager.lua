@@ -24,6 +24,7 @@ local DEFAULTS = {
     ShowMinimap = true,
     ShowGameState = true,
     ShowHelm = true,
+    ShowPlayerHighlights = true,
 }
 
 -- In-memory structures
