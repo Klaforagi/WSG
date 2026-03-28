@@ -75,6 +75,10 @@ local State = "Idle"   -- Idle | Game | SuddenDeath | EndGame
 local teamScores = { Blue = 0, Red = 0 }
 local matchStartTick = nil
 
+-- Expose match state as an attribute so other server scripts can poll it
+-- without race conditions on BindableEvent subscriptions.
+ServerScriptService:SetAttribute("MatchState", State)
+
 ---------------------------------------------------------------------
 -- RemoteFunction for clients to request current match state
 ---------------------------------------------------------------------
@@ -132,6 +136,7 @@ AddScore.Event:Connect(onAddScore)
 function endMatch(winnerTeam)
     if State == "EndGame" then return end
     State = "EndGame"
+    ServerScriptService:SetAttribute("MatchState", State)
     -- Stop event scheduler for this match
     if EventScheduler then pcall(function() EventScheduler:StopMatch() end) end
     print("[GameManager] END — winner:", winnerTeam, "  Blue:", teamScores.Blue, " Red:", teamScores.Red)
@@ -192,6 +197,7 @@ function startMatch()
     teamScores.Blue = 0
     teamScores.Red = 0
     State = "Game"
+    ServerScriptService:SetAttribute("MatchState", State)
     matchStartTick = workspace:GetServerTimeNow()
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
@@ -209,6 +215,7 @@ function startMatch()
             if remaining <= 1 then
                 if teamScores.Blue == teamScores.Red then
                     State = "SuddenDeath"
+                    ServerScriptService:SetAttribute("MatchState", State)
                     print("[GameManager] SUDDEN DEATH — scores tied at", teamScores.Blue)
                     pcall(function() MatchEnd:FireAllClients("sudden") end)
                 else

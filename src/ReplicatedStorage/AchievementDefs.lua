@@ -209,6 +209,19 @@ AchievementDefs.Achievements = {
         icon        = "🎒",
         hidden      = false,
     },
+    {
+        id          = "salvage_specialist",
+        category    = "Economy",
+        staged      = true,
+        stat        = "salvageEarnedFromRecycling",
+        titleFormat = "Salvage Specialist %s",
+        descFormat  = "Earn %d salvage by salvaging items.",
+        thresholds  = { 100, 500, 1500, 5000 },
+        rewards     = { 25, 40, 60, 100 },
+        achievementPoints = { 5, 10, 15, 25 },
+        icon        = "⚙",
+        hidden      = false,
+    },
 
     ---------------------------------------------------------------------------
     -- OBJECTIVES

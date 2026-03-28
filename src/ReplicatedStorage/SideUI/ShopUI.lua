@@ -38,6 +38,18 @@ local TAB_ACTIVE_BG = UITheme.TAB_ACTIVE
 
 local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
+-- Ownership sort helper: pushes owned items to the bottom of their grid/list
+-- cardEntries = { { card = GuiObject, originalOrder = int, id = string }, ... }
+-- isOwnedFn(id) → bool
+local function reorderByOwnership(cardEntries, isOwnedFn)
+    for _, entry in ipairs(cardEntries) do
+        if entry.card and entry.card.Parent then
+            local owned = isOwnedFn(entry.id)
+            entry.card.LayoutOrder = owned and (1000 + entry.originalOrder) or entry.originalOrder
+        end
+    end
+end
+
 local ShopUI = {}
 
 local CrateConfig = nil
@@ -825,7 +837,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     sidebar.Name             = "TabSidebar"
     sidebar.BackgroundColor3 = SIDEBAR_BG
     sidebar.BorderSizePixel  = 0
-    sidebar.Size             = UDim2.new(0, TAB_W, 1, 0)
+    sidebar.Size             = UDim2.new(0, TAB_W, 0, 0)
+    sidebar.AutomaticSize    = Enum.AutomaticSize.Y
     sidebar.Position         = UDim2.new(0, 0, 0, 0)
     sidebar.ClipsDescendants = false
     sidebar.Parent           = root
@@ -2051,6 +2064,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
             local ownedSkinSet = {}
             local skinRefreshFns = {}
+            local skinCardEntries = {}
             task.spawn(function()
                 local remotes = ensureSkinRemotes()
                 if remotes and remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
@@ -2058,6 +2072,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     if ok and type(list) == "table" then
                         for _, id in ipairs(list) do ownedSkinSet[id] = true end
                         for _, fn in ipairs(skinRefreshFns) do pcall(fn) end
+                        reorderByOwnership(skinCardEntries, function(id) return ownedSkinSet[id] == true end)
                     end
                 end
             end)
@@ -2079,6 +2094,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 card.LayoutOrder = i_skin
                 card.ZIndex = 250
                 card.Parent = skinGrid
+
+                table.insert(skinCardEntries, { card = card, originalOrder = i_skin, id = skinId })
 
                 local crn = Instance.new("UICorner")
                 crn.CornerRadius = UDim.new(0, px(12))
@@ -2304,6 +2321,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                             if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
                         end)
                         refreshSkinCard()
+                        reorderByOwnership(skinCardEntries, function(id) return ownedSkinSet[id] == true end)
                     else
                         buyBtn.Text = "NOT ENOUGH"
                         buyBtn.TextColor3 = RED_TEXT
@@ -2735,6 +2753,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local ownedSet = {}
             -- Build a card for each emote
             local emoteRefreshFns = {}
+            local emoteCardEntries = {}
             task.spawn(function()
                 local remotes = ensureEmoteRemotes()
                 if remotes and remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
@@ -2745,11 +2764,12 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                         for _, fn in ipairs(emoteRefreshFns) do
                             pcall(fn)
                         end
+                        reorderByOwnership(emoteCardEntries, function(id) return ownedSet[id] == true end)
                     end
                 end
             end)
 
-            for _, def in ipairs(allEmotes) do
+            for i_emote, def in ipairs(allEmotes) do
                 local emoteId     = def.Id
                 local displayName = def.DisplayName or emoteId
                 local price       = def.CoinCost or 0
@@ -2761,8 +2781,11 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 card.BackgroundColor3 = CARD_BG
                 card.Size = UDim2.new(1, 0, 1, 0)
                 card.AutomaticSize = Enum.AutomaticSize.Y
+                card.LayoutOrder = i_emote
                 card.ZIndex = 250
                 card.Parent = emoteGrid
+
+                table.insert(emoteCardEntries, { card = card, originalOrder = i_emote, id = emoteId })
 
                 local crn = Instance.new("UICorner")
                 crn.CornerRadius = UDim.new(0, px(12))
@@ -3024,6 +3047,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                         end)
                         print("[ShopUI] emote purchase accepted:", emoteId)
                         refreshEmoteCard()
+                        reorderByOwnership(emoteCardEntries, function(id) return ownedSet[id] == true end)
                     else
                         buyBtn.Text = "NOT ENOUGH"
                         buyBtn.TextColor3 = RED_TEXT
@@ -3173,6 +3197,12 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         local function updateSalvageCardStates()
             for itemId, refs in pairs(salvageCardRefs) do
                 local isOwned = ownedItems[itemId] == true
+                -- Sort owned unique items to the bottom
+                if refs.card and refs.card.Parent and refs.originalOrder then
+                    refs.card.LayoutOrder = (isOwned and refs.unique)
+                        and (1000 + refs.originalOrder)
+                        or refs.originalOrder
+                end
                 if isOwned and refs.unique then
                     refs.buyBtn.Visible = false
                     refs.ownedLabel.Visible = true
@@ -3472,6 +3502,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                         price = item.SalvagePrice,
                         priceText = priceText,
                         unique = item.Unique == true,
+                        originalOrder = 10 + index,
                     }
                 end
 
@@ -3902,11 +3933,13 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     -- Dynamic root height: keep root tall enough for content (sidebar fills it)
     ---------------------------------------------------------------------------
     local function updateRootHeight()
-        local h = contentContainer.AbsoluteSize.Y
+        local contentH = contentContainer.AbsoluteSize.Y
+        local sidebarH = sidebar.AbsoluteSize.Y
         local minH = px(400)
-        root.Size = UDim2.new(1, 0, 0, math.max(h, minH))
+        root.Size = UDim2.new(1, 0, 0, math.max(contentH, sidebarH, minH))
     end
     contentContainer:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootHeight)
+    sidebar:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootHeight)
     task.defer(updateRootHeight)
 
     root.AncestryChanged:Connect(function(_, newParent)

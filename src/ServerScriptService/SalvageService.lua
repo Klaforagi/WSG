@@ -194,6 +194,20 @@ function SalvageService:SalvageItem(player, instanceId)
     cs:AddSalvage(player, value)
     local newBalance = cs:GetSalvage(player)
 
+    -- 4b. Track salvage earned from recycling for achievements
+    task.spawn(function()
+        local AchievementService
+        pcall(function()
+            local mod = ServerScriptService:FindFirstChild("AchievementService")
+            if mod and mod:IsA("ModuleScript") then
+                AchievementService = require(mod)
+            end
+        end)
+        if AchievementService and type(AchievementService.IncrementStat) == "function" then
+            AchievementService:IncrementStat(player, "salvageEarnedFromRecycling", value)
+        end
+    end)
+
     -- 5. Save inventory to DataStore
     wis:SaveForPlayer(player)
 

@@ -1555,6 +1555,20 @@ do
     end
 
     dprint("BindableFunction API registered (CheckSkinOwnership, GrantSkin)")
+
+    -- GetSkinOwnedCount(player) -> number (excludes Default)
+    local countBF = Instance.new("BindableFunction")
+    countBF.Name = "GetSkinOwnedCount"
+    countBF.Parent = ServerScriptService
+    countBF.OnInvoke = function(player)
+        if not player then return 0 end
+        local list = getOwnedList(player)
+        local count = 0
+        for _, id in ipairs(list) do
+            if id ~= "Default" then count = count + 1 end
+        end
+        return count
+    end
 end
 
 --------------------------------------------------------------------------------

@@ -14,6 +14,31 @@ local ServerScriptService = game:GetService("ServerScriptService")
 --------------------------------------------------------------------------------
 local DailyRewardService = require(ServerScriptService:WaitForChild("DailyRewardService", 10))
 
+-- Lazy-load AchievementService (may not be ready yet at require time)
+local AchievementService
+local function getAchievementService()
+    if AchievementService then return AchievementService end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("AchievementService")
+        if mod and mod:IsA("ModuleScript") then
+            AchievementService = require(mod)
+        end
+    end)
+    return AchievementService
+end
+
+--- Sync the daily reward streak into the achievement stat "consecutiveLogins".
+--- Uses SetStat (only-go-up) since achievements care about best streak reached.
+local function syncStreakToAchievement(player)
+    local achSvc = getAchievementService()
+    if not achSvc then return end
+    local state = DailyRewardService:GetState(player)
+    local streak = state and state.currentStreak or 0
+    if streak > 0 then
+        achSvc:SetStat(player, "consecutiveLogins", streak)
+    end
+end
+
 local function ensureInstance(parent, className, name)
     local existing = parent:FindFirstChild(name)
     if existing and not existing:IsA(className) then
@@ -77,6 +102,10 @@ claimRF.OnServerInvoke = function(player)
         task.defer(function()
             pushState(player)
         end)
+        -- Sync updated streak into achievement stat
+        task.defer(function()
+            syncStreakToAchievement(player)
+        end)
     end
     -- Return the updated state along with success/message so client can
     -- update immediately without a second round-trip
@@ -89,6 +118,12 @@ end
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
     DailyRewardService:LoadForPlayer(player)
+
+    -- Sync login streak into achievement stat after both services have loaded
+    task.delay(2, function()
+        if not player or not player.Parent then return end
+        syncStreakToAchievement(player)
+    end)
 
     -- Small delay to let client scripts initialize before pushing auto-popup state
     task.delay(3, function()

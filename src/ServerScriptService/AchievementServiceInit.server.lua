@@ -133,8 +133,12 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 --
 -- Stats not yet wired (TODO in future phases):
 --   flagCarrierElims, bestElimStreak, doubleElims, tripleElims,
---   totalCoinsSpent, totalPurchases, itemsOwned, flagCarryTime,
---   matchMinutes, consecutiveLogins, flawlessWins
+--   totalPurchases
+-- Wired elsewhere:
+--   consecutiveLogins (via DailyRewardServiceInit), flagCarryTime (via CarryingFlag poll below)
+-- Wired in this file:
+--   totalCoinsSpent (via SetCoins wrapper), itemsOwned (via BindableFunction queries),
+--   matchMinutes (via MatchStartedBE/MatchEndedBE)
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
@@ -157,6 +161,13 @@ StatService:OnStatEvent(function(payload)
         AchievementService:IncrementStat(player, "matchesPlayed", 1)
     elseif action == Actions.MatchWon then
         AchievementService:IncrementStat(player, "matchWins", 1)
+        -- Flawless win detection (Untouchable achievement):
+        -- StatService per-match Deaths is still readable here because
+        -- ResetMatchStats hasn't been called yet in GameManager's endMatch flow.
+        local matchDeaths = StatService:GetStat(player, "Deaths")
+        if matchDeaths == 0 then
+            AchievementService:IncrementStat(player, "flawlessWins", 1)
+        end
     elseif action == Actions.DamageDealt then
         local amount = tonumber(payload.amount) or 0
         if amount > 0 then
@@ -185,9 +196,16 @@ task.spawn(function()
 
     if CurrencyService then
         local _prevAddCoins = CurrencyService.AddCoins
+        local _suppressSpendTracking = false   -- set true inside AddCoins for non-shop sources
 
         function CurrencyService:AddCoins(player, amount, source)
+            -- Suppress Big Spender tracking for upgrade spending
+            local suppress = (source == "upgrade") and (tonumber(amount) or 0) < 0
+            if suppress then _suppressSpendTracking = true end
+
             local result = _prevAddCoins(self, player, amount, source)
+
+            if suppress then _suppressSpendTracking = false end
 
             -- Track positive coin earnings for achievements
             local earned = tonumber(result) or tonumber(amount) or 0
@@ -203,9 +221,171 @@ task.spawn(function()
             return result
         end
         print("[AchievementServiceInit] CurrencyService.AddCoins wrapped for coin tracking")
+
+        -----------------------------------------------------------------------
+        -- Hook: Coins spent  (wrap CurrencyService.SetCoins)
+        -- All coin purchases flow through SetCoins (called directly by
+        -- CrateService, SkinService, EffectsService, EmoteService, Loadout)
+        -- or indirectly via AddCoins (BoostService, UpgradeService).
+        -- We detect when the balance decreases and track the delta.
+        -----------------------------------------------------------------------
+        local _prevSetCoins = CurrencyService.SetCoins
+
+        function CurrencyService:SetCoins(player, amount)
+            local prevBalance = self:GetCoins(player)
+            _prevSetCoins(self, player, amount)
+            local newBalance = self:GetCoins(player)
+            local spent = prevBalance - newBalance
+            if spent > 0 and typeof(player) == "Instance" and player:IsA("Player") then
+                -- Only count shop spending, not upgrades (suppressed via AddCoins wrapper)
+                if not _suppressSpendTracking then
+                    task.spawn(function()
+                        AchievementService:IncrementStat(player, "totalCoinsSpent", spent)
+                    end)
+                end
+                -- Schedule an itemsOwned recount after purchase
+                task.spawn(function()
+                    task.wait(0.5) -- let ownership data settle
+                    recalcItemsOwned(player)
+                end)
+            end
+        end
+        print("[AchievementServiceInit] CurrencyService.SetCoins wrapped for spending + itemsOwned tracking")
     else
         warn("[AchievementServiceInit] CurrencyService not found – coin achievement won't track")
     end
 end)
 
+--------------------------------------------------------------------------------
+-- Hook: itemsOwned  (Collector achievement)
+-- Queries ownership counts from SkinService, EffectsService, EmoteServiceInit
+-- via dedicated BindableFunctions. Called on player load and after purchases.
+--------------------------------------------------------------------------------
+function recalcItemsOwned(player)
+    if not player or not player:IsA("Player") or not player.Parent then return end
+    local total = 0
+    pcall(function()
+        local bf = ServerScriptService:FindFirstChild("GetSkinOwnedCount")
+        if bf then total = total + (bf:Invoke(player) or 0) end
+    end)
+    pcall(function()
+        local bf = ServerScriptService:FindFirstChild("GetEffectOwnedCount")
+        if bf then total = total + (bf:Invoke(player) or 0) end
+    end)
+    pcall(function()
+        local bf = ServerScriptService:FindFirstChild("GetEmoteOwnedCount")
+        if bf then total = total + (bf:Invoke(player) or 0) end
+    end)
+    if total > 0 then
+        AchievementService:SetStat(player, "itemsOwned", total)
+    end
+end
+
+-- Recount on player load  (delayed to let all services load data first)
+task.spawn(function()
+    local function onPlayerReady(player)
+        task.spawn(function()
+            task.wait(4) -- let SkinService, EffectsService, EmoteService load
+            recalcItemsOwned(player)
+        end)
+    end
+    for _, p in ipairs(Players:GetPlayers()) do onPlayerReady(p) end
+    Players.PlayerAdded:Connect(onPlayerReady)
+end)
+
+-- Also recount when items are granted via SalvageShop BindableFunctions
+task.spawn(function()
+    task.wait(3)
+    local grantSkinBF = ServerScriptService:FindFirstChild("GrantSkin")
+    if grantSkinBF and grantSkinBF:IsA("BindableFunction") then
+        local _prevGrantSkin = grantSkinBF.OnInvoke
+        grantSkinBF.OnInvoke = function(player, skinId)
+            local result = _prevGrantSkin(player, skinId)
+            if result then
+                task.spawn(function()
+                    task.wait(0.5)
+                    recalcItemsOwned(player)
+                end)
+            end
+            return result
+        end
+        print("[AchievementServiceInit] GrantSkin wrapped for itemsOwned tracking")
+    end
+    local grantEffectBF = ServerScriptService:FindFirstChild("GrantEffect")
+    if grantEffectBF and grantEffectBF:IsA("BindableFunction") then
+        local _prevGrantEffect = grantEffectBF.OnInvoke
+        grantEffectBF.OnInvoke = function(player, effectId)
+            local result = _prevGrantEffect(player, effectId)
+            if result then
+                task.spawn(function()
+                    task.wait(0.5)
+                    recalcItemsOwned(player)
+                end)
+            end
+            return result
+        end
+        print("[AchievementServiceInit] GrantEffect wrapped for itemsOwned tracking")
+    end
+end)
+
+--------------------------------------------------------------------------------
+-- Hook: matchMinutes  (Battle Tested achievement)
+-- Polls the MatchState attribute (set by GameManager) every TICK seconds and
+-- increments matchMinutes for each player on a real team (Red/Blue).
+-- This avoids the old race condition where the BindableEvent-based approach
+-- missed the first match because GameManager fires MatchStarted before this
+-- script connects.
+--------------------------------------------------------------------------------
+task.spawn(function()
+    local TICK = 10  -- seconds between each check
+    local INCREMENT = TICK / 60  -- fractional minutes per tick
+
+    local Teams = game:GetService("Teams")
+
+    print("[BattleTested] matchMinutes tracker started — tick every", TICK, "s, increment", string.format("%.4f", INCREMENT), "min/tick")
+
+    while true do
+        task.wait(TICK)
+
+        local state = ServerScriptService:GetAttribute("MatchState")
+        local isActive = (state == "Game" or state == "SuddenDeath")
+
+        if isActive then
+            for _, player in ipairs(Players:GetPlayers()) do
+                -- Only credit players assigned to a real team
+                local team = player.Team
+                if team and (team.Name == "Red" or team.Name == "Blue") then
+                    task.spawn(function()
+                        AchievementService:IncrementStat(player, "matchMinutes", INCREMENT)
+                    end)
+                end
+            end
+        end
+    end
+end)
+
 print("[AchievementServiceInit] Achievement system initialized (via StatService)")
+
+--------------------------------------------------------------------------------
+-- Hook: flagCarryTime  (Flag Bearer achievement)
+-- Polls each player's "CarryingFlag" attribute (set/cleared by FlagPickup.server)
+-- every TICK seconds. If set, the player is actively carrying a flag and we
+-- increment their flagCarryTime stat by TICK seconds.
+--------------------------------------------------------------------------------
+task.spawn(function()
+    local TICK = 5  -- seconds between each check
+
+    print("[FlagBearer] flagCarryTime tracker started — tick every", TICK, "s")
+
+    while true do
+        task.wait(TICK)
+        for _, player in ipairs(Players:GetPlayers()) do
+            local carryingFlag = player:GetAttribute("CarryingFlag")
+            if carryingFlag then
+                task.spawn(function()
+                    AchievementService:IncrementStat(player, "flagCarryTime", TICK)
+                end)
+            end
+        end
+    end
+end)

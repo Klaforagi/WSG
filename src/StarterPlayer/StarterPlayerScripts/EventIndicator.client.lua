@@ -3,9 +3,12 @@
     Shows a clickable "EVENT" card inside the left-side menu panel
     whenever the server signals that a timed event is active.
 
-    The card is inserted into the MainUICard panel at LayoutOrder 100
-    so it sits below the existing buttons (Quests, Upgrade, Team).
-    A separate timer label sits at LayoutOrder 101 directly below the card.
+    The card is inserted directly into the MainUICard panel's
+    UIListLayout at LayoutOrder 100, so it sits below the existing
+    buttons (Quests, Upgrade, Team) as part of the natural stack.
+    A timer label sits at LayoutOrder 101 directly below the card.
+    The panel's AutomaticSize.Y grows/shrinks cleanly when the
+    event activates or ends — no manual absolute positioning needed.
 
     Features:
       - Clickable event card that toggles a modal-style event popup
@@ -103,7 +106,6 @@ end
 -- State
 ---------------------------------------------------------------------
 local currentCard       = nil   -- the Frame inserted into the panel
-local eventSlot         = nil   -- wrapper frame anchored below the panel (avoids layout reflow)
 local pulseThread       = nil   -- coroutine running the pulse loop
 local pulseTweens       = {}    -- current active tweens (for cleanup)
 local eventPopup        = nil   -- the popup ScreenGui (overlay + window)
@@ -139,10 +141,7 @@ local function formatTime(seconds)
     return tostring(seconds)
 end
 
----------------------------------------------------------------------
--- Panel width scale (matches SideUI.client.lua)
----------------------------------------------------------------------
-local PANEL_WIDTH_SCALE = UserInputService.TouchEnabled and 0.16 or 0.11
+
 
 ---------------------------------------------------------------------
 -- Cleanup — stops pulse, cancels tweens, destroys card/timer/popup
@@ -178,10 +177,6 @@ local function destroyIndicator()
     if currentCard then
         pcall(function() currentCard:Destroy() end)
         currentCard = nil
-    end
-    if eventSlot then
-        pcall(function() eventSlot:Destroy() end)
-        eventSlot = nil
     end
 end
 
@@ -600,56 +595,29 @@ local function createIndicator()
     local cardH = calcCardHeight()
 
     -----------------------------------------------------------------
-    -- Event slot: a separate frame anchored just below the panel.
-    -- This keeps the EventCard OUT of the panel's UIListLayout so
-    -- the main button stack never shifts when the event appears.
+    -- Clean up any stale EventCard / EventTimerLabel left over from
+    -- a previous indicator (prevents duplicates).
     -----------------------------------------------------------------
-    local slot = Instance.new("Frame")
-    slot.Name = "EventSlot"
-    slot.Size = UDim2.new(1, 0, 0, 0)
-    slot.AutomaticSize = Enum.AutomaticSize.Y
-    slot.AnchorPoint = Vector2.new(0, 0)
-    slot.BackgroundTransparency = 1
-    slot.BorderSizePixel = 0
-    slot.Parent = mainUI
-
-    -- Position the slot directly beneath the panel with a small gap
-    local GAP = px(4)
-    local function repositionSlot()
-        local panelPos = panel.AbsolutePosition
-        local panelSize = panel.AbsoluteSize
-        -- MainUI uses IgnoreGuiInset=true, so AbsolutePosition is already
-        -- in the same coordinate space as offset-based UDim2 positioning.
-        slot.Position = UDim2.new(0, panelPos.X, 0, panelPos.Y + panelSize.Y + GAP)
-        slot.Size = UDim2.new(0, panelSize.X, 0, 0)
+    for _, child in ipairs(panel:GetChildren()) do
+        if child.Name == "EventCard" or child.Name == "EventTimerLabel" then
+            pcall(function() child:Destroy() end)
+        end
     end
-    repositionSlot()
-
-    -- Keep slot aligned if panel layout changes (e.g. boost icons appear/vanish)
-    local slotConn1 = panel:GetPropertyChangedSignal("AbsolutePosition"):Connect(repositionSlot)
-    local slotConn2 = panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionSlot)
-    eventSlotConns = { slotConn1, slotConn2 }
-
-    -- UIListLayout for card + timer inside the slot
-    local slotLayout = Instance.new("UIListLayout")
-    slotLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    slotLayout.Padding = UDim.new(0, 0)
-    slotLayout.Parent = slot
-
-    eventSlot = slot
 
     -----------------------------------------------------------------
     -- LAYER 1: Base frame (dark background + gradient)
+    -- Inserted directly into MainUICard's UIListLayout at
+    -- LayoutOrder 100 so it sits below the menu grid.
     -----------------------------------------------------------------
     local card = Instance.new("Frame")
     card.Name = "EventCard"
-    card.LayoutOrder = 1
+    card.LayoutOrder = 100
     card.Size = UDim2.new(1, 0, 0, cardH)
     card.BackgroundColor3 = COLORS.darkBase
     card.BackgroundTransparency = 0
     card.BorderSizePixel = 0
     card.ClipsDescendants = true
-    card.Parent = slot
+    card.Parent = panel
     currentCard = card
 
     local cardCorner = Instance.new("UICorner")
@@ -767,16 +735,16 @@ local function createIndicator()
     -----------------------------------------------------------------
     local tmrLbl = Instance.new("TextLabel")
     tmrLbl.Name = "EventTimerLabel"
-    tmrLbl.LayoutOrder = 2
-    tmrLbl.Size = UDim2.new(1, 0, 0, px(36))
+    tmrLbl.LayoutOrder = 101
+    tmrLbl.Size = UDim2.new(1, 0, 0, px(26))
     tmrLbl.BackgroundTransparency = 1
     tmrLbl.Font = Enum.Font.GothamBold
     tmrLbl.Text = "--:--"
     tmrLbl.TextColor3 = Color3.fromRGB(235, 235, 245)
-    tmrLbl.TextSize = px(22)
+    tmrLbl.TextSize = px(15)
     tmrLbl.TextXAlignment = Enum.TextXAlignment.Center
     tmrLbl.ZIndex = 10
-    tmrLbl.Parent = slot  -- goes into the event slot layout, below the card
+    tmrLbl.Parent = panel  -- inside the panel UIListLayout, below the card
     timerLabel = tmrLbl
 
     local tmrStroke = Instance.new("UIStroke")

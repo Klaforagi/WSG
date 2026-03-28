@@ -520,3 +520,15 @@ stopEmoteRE.OnServerEvent:Connect(function(player)
 end)
 
 print("[EmoteService] fully initialized")
+
+-- BindableFunction: GetEmoteOwnedCount(player) -> number
+do
+    local countBF = Instance.new("BindableFunction")
+    countBF.Name = "GetEmoteOwnedCount"
+    countBF.Parent = game:GetService("ServerScriptService")
+    countBF.OnInvoke = function(player)
+        if not player then return 0 end
+        local list = getOwnedList(player)
+        return #list
+    end
+end

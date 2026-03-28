@@ -120,6 +120,13 @@ end
 Players.PlayerAdded:Connect(function(player)
 	task.spawn(function()
 		UpgradeService:LoadForPlayer(player)
+		-- Wait for XPService to set the Level attribute so we send the
+		-- correct player level to the client and purchase validation works.
+		local waited = 0
+		while not player:GetAttribute("Level") and waited < 10 and player.Parent do
+			task.wait(0.2)
+			waited = waited + 0.2
+		end
 		local state = UpgradeService:GetAllLevels(player)
 		state._playerLevel = UpgradeService:GetPlayerLevel(player)
 		pcall(function()
@@ -135,6 +142,12 @@ end)
 for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(function()
 		UpgradeService:LoadForPlayer(player)
+		-- Wait for XPService to set the Level attribute
+		local waited = 0
+		while not player:GetAttribute("Level") and waited < 10 and player.Parent do
+			task.wait(0.2)
+			waited = waited + 0.2
+		end
 		local state = UpgradeService:GetAllLevels(player)
 		state._playerLevel = UpgradeService:GetPlayerLevel(player)
 		pcall(function()

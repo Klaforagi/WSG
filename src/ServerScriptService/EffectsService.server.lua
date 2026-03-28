@@ -370,6 +370,20 @@ do
     end
 
     dprint("BindableFunction API registered (CheckEffectOwnership, GrantEffect)")
+
+    -- GetEffectOwnedCount(player) -> number (excludes DefaultTrail)
+    local countBF = Instance.new("BindableFunction")
+    countBF.Name = "GetEffectOwnedCount"
+    countBF.Parent = ServerScriptService
+    countBF.OnInvoke = function(player)
+        if not player then return 0 end
+        local list = getOwnedList(player)
+        local count = 0
+        for _, id in ipairs(list) do
+            if id ~= "DefaultTrail" then count = count + 1 end
+        end
+        return count
+    end
 end
 
 dprint("fully initialized")

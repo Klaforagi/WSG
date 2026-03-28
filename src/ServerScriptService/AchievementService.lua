@@ -96,23 +96,24 @@ local STAT_KEYS = {
     "doubleElims",          -- TODO: wire multi-elim detection
     "tripleElims",          -- TODO: wire multi-elim detection
     "totalCoinsEarned",
-    "totalCoinsSpent",      -- TODO: wire coin spending tracker
+    "totalCoinsSpent",      -- wired: SetCoins wrapper in AchievementServiceInit
     "totalPurchases",       -- TODO: wire shop purchase counter
-    "itemsOwned",           -- TODO: wire inventory count
+    "itemsOwned",           -- wired: recalcItemsOwned in AchievementServiceInit
     "flagCaptures",
     "flagReturns",
-    "flagCarryTime",        -- TODO: wire flag carry time tracker (seconds)
+    "flagCarryTime",        -- wired: polled from CarryingFlag attribute in AchievementServiceInit
     "matchesPlayed",
     "matchWins",
-    "matchMinutes",         -- TODO: wire match-time tracker (minutes)
-    "consecutiveLogins",    -- TODO: wire daily login streak
-    "flawlessWins",         -- TODO: wire flawless-win detection
+    "matchMinutes",         -- wired: MatchStarted/MatchEnded in AchievementServiceInit
+    "consecutiveLogins",    -- wired: synced from DailyRewardService in DailyRewardServiceInit
+    "flawlessWins",         -- wired: checked at MatchWon when Deaths == 0 in AchievementServiceInit
     "dailyQuestsCompleted",
     "weeklyQuestsCompleted",
     "eventQuestsCompleted",
     "meleeUpgradeLevel",      -- set by UpgradeServiceInit when melee level changes
     "rangedUpgradeLevel",     -- set by UpgradeServiceInit when ranged level changes
     "totalRobuxSpent",        -- incremented by CoinShopReceipt on Robux purchases
+    "salvageEarnedFromRecycling", -- incremented by SalvageService on salvage action
     "achievementsCompleted", -- internal: auto-updated by this service
     "categoriesWithCompletion", -- internal: auto-updated by this service
 }

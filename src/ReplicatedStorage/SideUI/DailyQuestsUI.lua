@@ -2862,7 +2862,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         local pad = Instance.new("UIPadding")
         pad.PaddingLeft   = UDim.new(0, px(14))
-        pad.PaddingRight  = UDim.new(0, px(14))
+        pad.PaddingRight  = UDim.new(0, px(18))
         pad.PaddingTop    = UDim.new(0, px(12))
         pad.PaddingBottom = UDim.new(0, px(12))
         pad.Parent        = card
@@ -2993,7 +2993,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         local track = Instance.new("Frame")
         track.Name             = "BarTrack"
         track.BackgroundColor3 = BAR_BG
-        track.Size             = UDim2.new(0.62, 0, 0, barH)
+        track.Size             = UDim2.new(0.55, 0, 0, barH)
         track.Position         = UDim2.new(0, 0, 0, barY)
         track.Parent           = card
 
@@ -3042,9 +3042,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Font               = Enum.Font.GothamBold
         progText.Text               = FormatProgress(ach.progress, ach.target)
         progText.TextColor3         = WHITE
-        progText.TextSize           = math.max(11, math.floor(px(12)))
+        progText.TextSize           = math.max(12, math.floor(px(13)))
         progText.Size               = UDim2.new(1, 0, 1, 0)
         progText.Parent             = track
+
+        -- Stroke for readability over filled bar
+        local progStroke = Instance.new("UIStroke")
+        progStroke.Color        = Color3.fromRGB(0, 0, 0)
+        progStroke.Thickness    = 1.5
+        progStroke.Transparency = 0.15
+        progStroke.Parent       = progText
+
         achProgressTexts[ach.id] = progText
 
         -- Achieved on date
@@ -3058,7 +3066,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         achievedOnLbl.TextXAlignment      = Enum.TextXAlignment.Left
         achievedOnLbl.TextTransparency    = 0.1
         achievedOnLbl.Visible             = false
-        achievedOnLbl.Size                = UDim2.new(0.62, 0, 0, px(14))
+        achievedOnLbl.Size                = UDim2.new(0.55, 0, 0, px(14))
         achievedOnLbl.Position            = UDim2.new(0, 0, 0, barY + barH + px(6))
         achievedOnLbl.Parent              = card
         achAchievedOnLabels[ach.id]       = achievedOnLbl
@@ -3075,7 +3083,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         end
 
         -- Status indicator (replaces old Claim button — rewards are auto-granted)
-        local btnW2 = px(108)
+        local btnW2 = px(130)
         local btnH2 = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "StatusBtn"

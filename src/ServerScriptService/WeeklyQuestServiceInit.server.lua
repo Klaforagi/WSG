@@ -156,33 +156,16 @@ end)
 
 --------------------------------------------------------------------------------
 -- Hook: Time Played (heartbeat every 60 seconds during active matches)
--- Uses MatchStarted/MatchEnded BindableEvents to track match state.
--- NOTE: Time tracking stays here because it's timer-based, not event-based.
+-- Polls the MatchState attribute (set by GameManager) instead of relying on
+-- BindableEvents, which suffer from a race condition where the first match
+-- fires MatchStarted before this script connects.
 --------------------------------------------------------------------------------
 task.spawn(function()
-    local matchActive = false
-
-    local matchStartedBE = ServerScriptService:WaitForChild("MatchStarted", 30)
-    local matchEndedBE   = ServerScriptService:WaitForChild("MatchEnded", 5)
-
-    if matchStartedBE and matchStartedBE:IsA("BindableEvent") then
-        matchStartedBE.Event:Connect(function()
-            matchActive = true
-        end)
-    else
-        warn("[WeeklyQuestServiceInit] MatchStarted BindableEvent not found – time quest won't auto-track")
-    end
-
-    if matchEndedBE and matchEndedBE:IsA("BindableEvent") then
-        matchEndedBE.Event:Connect(function()
-            matchActive = false
-        end)
-    end
-
     -- Credit 1 minute of play time every 60 seconds while match is active
     while true do
         task.wait(60)
-        if matchActive then
+        local state = ServerScriptService:GetAttribute("MatchState")
+        if state == "Game" or state == "SuddenDeath" then
             for _, player in ipairs(Players:GetPlayers()) do
                 WeeklyQuestService:IncrementByType(player, "time_played", 1)
             end

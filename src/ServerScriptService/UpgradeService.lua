@@ -145,24 +145,10 @@ function UpgradeService:LoadForPlayer(player)
 		end
 	end
 
-	-- TEMP TEST RESET START: wipe all weapon upgrades
-	local loadedMelee  = validated.melee_weapon or 0
-	local loadedRanged = validated.ranged_weapon or 0
-	validated.melee_weapon  = 0
-	validated.ranged_weapon = 0
-	print(("[UpgradeReset] %s – loaded melee=%d, ranged=%d → reset to 0, 0"):format(
-		player.Name, loadedMelee, loadedRanged))
-	-- TEMP TEST RESET END
-
-	-- Enforce player-level cap (permanent logic)
-	local pLevel = getPlayerLevel(player)
-	for id, _ in pairs(validated) do
-		validated[id] = clampUpgradeLevel(validated[id], pLevel)
-	end
-	print(("[UpgradeCap] %s – playerLevel=%d, clamped melee=%d, ranged=%d"):format(
-		player.Name, pLevel,
-		validated.melee_weapon or 0,
-		validated.ranged_weapon or 0))
+	-- Note: We do NOT clamp upgrade levels on load. The player-level cap
+	-- is enforced only at purchase time. Clamping on load caused a race
+	-- condition where XPService hadn't set the "Level" attribute yet,
+	-- resulting in getPlayerLevel returning 1 and destroying saved progress.
 
 	playerUpgrades[player] = validated
 	print(("[UpgradeService] Loaded for %s: melee=%d, ranged=%d"):format(
@@ -237,8 +223,8 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 		return false, "Insufficient coins"
 	end
 
-	-- Deduct coins (pass "purchase" source to prevent boost multiplier from applying)
-	cs:AddCoins(player, -price, "purchase")
+	-- Deduct coins (source "upgrade" prevents Big Spender achievement from counting this)
+	cs:AddCoins(player, -price, "upgrade")
 
 	-- Increase level (clamped as a safety net)
 	local newLevel = clampUpgradeLevel(currentLevel + 1, pLevel)
