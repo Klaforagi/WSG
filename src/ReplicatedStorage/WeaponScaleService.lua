@@ -31,6 +31,24 @@ local function getHandle(tool)
     return nil
 end
 
+-- Find and update the character's right-hand grip Motor6D to match the tool Grip.
+local function refreshCharacterRightGrip(tool)
+    if not tool or not tool.Parent then return end
+    local char = tool.Parent
+    if not char:IsA("Model") then return end
+    -- find a Motor6D whose Part1 is the tool's Handle
+    for _, obj in ipairs(char:GetDescendants()) do
+        if obj and obj:IsA("Motor6D") and obj.Part1 == tool:FindFirstChild("Handle") then
+            -- Update only the C1 so the held position follows the tool.Grip
+            pcall(function()
+                obj.C1 = tool.Grip
+            end)
+            print("[WeaponScale] Updated character Motor6D C1 for", tool.Name, "->", obj:GetFullName())
+            return
+        end
+    end
+end
+
 -- Collect BaseParts that are the Handle or descendants of the Handle
 local function collectHandleParts(handle)
     local parts = {}
@@ -67,22 +85,57 @@ function WeaponScaleService.CacheOriginals(tool)
     local entry = {
         tool = tool,
         handle = handle,
-        parts = {},     -- [part] = { Size, MeshScale, RelCFrame }
+        parts = {},     -- [part] = { Size, MeshScale, RelCFrame, RelToGrip }
         welds = {},     -- [weld] = { C0, C1, Part0, Part1, inside0, inside1 }
         weldControlled = {}, -- set of parts controlled by welds
     }
+
+    -- Grip attachment (pivot). Cache original Tool.Grip and attachment CFrame.
+    local gripAtt = handle:FindFirstChild("Grip")
+    if not gripAtt or not gripAtt:IsA("Attachment") then
+        warn("[WeaponScale] Grip attachment missing on Handle for tool:", tool.Name)
+        entry.grip = nil
+        entry.originalGripLocalCF = nil
+        entry.originalGripWorldCF = nil
+    else
+        entry.grip = gripAtt
+        entry.originalGripLocalCF = gripAtt.CFrame
+        entry.originalGripWorldCF = handle.CFrame * gripAtt.CFrame
+    end
+    entry.originalToolGrip = tool.Grip
 
     -- Parts: handle + descendants of handle
     local parts = collectHandleParts(handle)
     for _, part in ipairs(parts) do
         if part and part:IsA("BasePart") then
             local mesh = part:FindFirstChildOfClass("SpecialMesh")
+            -- Compute part CFrame relative to Grip pivot if available, otherwise relative to Handle
             local relCF = handle.CFrame:ToObjectSpace(part.CFrame)
-            entry.parts[part] = {
+            local relToGrip = nil
+            if entry.originalGripWorldCF then
+                relToGrip = entry.originalGripWorldCF:ToObjectSpace(part.CFrame)
+            else
+                relToGrip = relCF
+            end
+            local partEntry = {
                 Size = part.Size,
                 MeshScale = mesh and mesh.Scale or nil,
                 RelCFrame = relCF,
+                RelToGrip = relToGrip,
+                Attachments = {},
             }
+            -- Cache attachments (Grip, Trail anchors, etc.) so their local positions scale with the part
+            for _, child in ipairs(part:GetChildren()) do
+                if child and child:IsA("Attachment") then
+                    local ok, pos = pcall(function() return child.Position end)
+                    local ok2, ori = pcall(function() return child.Orientation end)
+                    partEntry.Attachments[child] = {
+                        Position = (ok and pos) and pos or Vector3.new(),
+                        Orientation = (ok2 and ori) and ori or Vector3.new(),
+                    }
+                end
+            end
+            entry.parts[part] = partEntry
         end
     end
 
@@ -149,6 +202,16 @@ local function applyScaleFromCache(entry, scale)
                 local mesh = part:FindFirstChildOfClass("SpecialMesh")
                 if mesh then pcall(function() mesh.Scale = pd.MeshScale * scale end) end
             end
+            -- Scale attachments (Grip, Trail anchors) so they move with the part size
+            if pd.Attachments then
+                for att, adot in pairs(pd.Attachments) do
+                    if att and att.Parent then
+                        pcall(function() att.Position = adot.Position * scale end)
+                        pcall(function() att.Orientation = adot.Orientation end)
+                        print("[WeaponScale] Scaled attachment:", att:GetFullName(), "on part", part:GetFullName())
+                    end
+                end
+            end
         end
     end
 
@@ -170,17 +233,37 @@ local function applyScaleFromCache(entry, scale)
     -- 4) For parts not controlled by welds, set world CFrame relative to Handle
     for part, pd in pairs(entry.parts) do
         if part and part.Parent then
-            if not entry.weldControlled[part] then
-                local rel = pd.RelCFrame
-                local rot = CFrame.new(rel.Position):Inverse() * rel -- preserve rotation exactly
-                local newRel = CFrame.new(rel.Position * scale) * rot
-                local world = handle.CFrame * newRel
-                pcall(function() part.CFrame = world end)
-                print("[WeaponScale] Free-part positioned:", part:GetFullName())
+                if not entry.weldControlled[part] then
+                    -- Position free parts relative to the Handle (never reposition the Handle itself)
+                    if part ~= handle then
+                        local rel = pd.RelCFrame
+                        local rot = CFrame.new(rel.Position):Inverse() * rel -- preserve rotation exactly
+                        local newRel = CFrame.new(rel.Position * scale) * rot
+                        local world = handle.CFrame * newRel
+                        pcall(function() part.CFrame = world end)
+                        print("[WeaponScale] Free-part positioned:", part:GetFullName())
+                    end
             else
                 print("[WeaponScale] Weld-driven part left to weld system:", part:GetFullName())
             end
         end
+    end
+    
+    -- 5) After scaling parts/welds/attachments, compensate Tool.Grip so player's hand remains on the Grip attachment
+    if entry.originalToolGrip and entry.originalGripLocalCF and entry.grip then
+        local currentGripLocalCF = entry.grip.CFrame
+        -- Correct formula: keep the same transform from Grip -> hand.
+        -- original grip->hand = originalGripLocalCF:Inverse() * originalToolGrip
+        -- new Tool.Grip should be: currentGripLocalCF * (originalGripLocalCF:Inverse() * originalToolGrip)
+        -- i.e. newToolGrip = currentGripLocalCF * originalGripLocalCF:Inverse() * entry.originalToolGrip
+        local newToolGrip = currentGripLocalCF * entry.originalGripLocalCF:Inverse() * entry.originalToolGrip
+        pcall(function() entry.tool.Grip = newToolGrip end)
+        print("[WeaponScale] Adjusted Tool.Grip for", entry.tool:GetFullName())
+
+        -- If tool is currently equipped, update the character's RightGrip Motor6D C1 instead of unequipping
+        refreshCharacterRightGrip(entry.tool)
+    elseif entry.originalToolGrip and entry.originalGripLocalCF and not entry.grip then
+        warn("[WeaponScale] Grip attachment not present; Tool.Grip not adjusted for", entry.tool.Name)
     end
 end
 
