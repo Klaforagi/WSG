@@ -121,38 +121,33 @@ local function grantReward(player, shopItem)
         return true
 
     elseif shopItem.RewardType == "Crate" then
-        -- Route into the real CrateService pipeline (same roll + size + grant)
+        -- Route into the CrateService pending-reward pipeline so the player
+        -- gets the same Keep/Salvage decision popup as gold crates.
         local cs = getCrateService()
         if not cs then
             warn("[SalvageShopService] CrateService unavailable")
             return false
         end
 
-        print("[SalvageCrate] Routing into normal crate flow:", shopItem.RewardId)
-        local ok, result = cs:RollAndGrant(player, shopItem.RewardId)
+        print("[SalvageCrate] Routing into pending crate flow:", shopItem.RewardId)
+        local ok, result = cs:RollAndPend(player, shopItem.RewardId)
         if not ok then
-            warn("[SalvageCrate] RollAndGrant failed:", tostring(result))
+            warn("[SalvageCrate] RollAndPend failed:", tostring(result))
             return false
         end
 
-        -- Notify client of inventory change
-        local weaponInvUpdated = ReplicatedStorage:FindFirstChild("WeaponInventoryUpdated")
-        if weaponInvUpdated and weaponInvUpdated:IsA("RemoteEvent") then
-            local wis = getWeaponInstanceService()
-            if wis then
-                pcall(function()
-                    weaponInvUpdated:FireClient(player, wis:GetInventory(player))
-                end)
-            end
-        end
+        -- Do NOT fire WeaponInventoryUpdated here — weapon is pending until
+        -- the player chooses Keep or Salvage in the shared decision popup.
 
-        print("[SalvageCrate] Reward granted:", result.weaponName, "(" .. result.rarity .. ")")
+        print("[SalvageCrate] Pending reward created:", result.weaponName, "(" .. result.rarity .. ")")
         return true, {
-            weaponName  = result.weaponName,
-            rarity      = result.rarity,
-            sizePercent = result.sizePercent,
-            sizeTier    = result.sizeTier,
-            crateType   = result.crateType,
+            weaponName   = result.weaponName,
+            rarity       = result.rarity,
+            sizePercent  = result.sizePercent,
+            sizeTier     = result.sizeTier,
+            salvageValue = result.salvageValue,
+            isPending    = result.isPending,
+            crateType    = result.crateType,
         }
     end
 

@@ -3462,13 +3462,15 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                                 and _G.PlayCrateAnimation then
                                 local rd = result.rewardData
                                 _G.PlayCrateAnimation(item.RewardId, {
-                                    weaponName  = rd.weaponName,
-                                    rarity      = rd.rarity,
-                                    sizePercent = rd.sizePercent,
-                                    sizeTier    = rd.sizeTier,
-                                    crateType   = rd.crateType or item.RewardId,
+                                    weaponName   = rd.weaponName,
+                                    rarity       = rd.rarity,
+                                    sizePercent  = rd.sizePercent,
+                                    sizeTier     = rd.sizeTier,
+                                    salvageValue = rd.salvageValue,
+                                    isPending    = rd.isPending,
+                                    crateType    = rd.crateType or item.RewardId,
                                 })
-                                print("[SalvageCrate] Firing normal crate animation event")
+                                print("[SalvageCrate] Routing to shared reward popup")
                             else
                                 local displayName = (type(result) == "table" and result.displayName) or item.DisplayName
                                 showToast(salvagePage, "Purchased " .. displayName .. "!", GREEN_GLOW, 2.5)

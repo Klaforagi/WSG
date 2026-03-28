@@ -37,7 +37,18 @@ local function ensureWeaponInstanceService()
     return WeaponInstanceService
 end
 
+local SalvageConfig = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("SalvageConfig")
+    if mod and mod:IsA("ModuleScript") then
+        SalvageConfig = require(mod)
+    end
+end)
+
 local CrateService = {}
+
+-- Pending crate rewards: PendingRewards[player] = { weaponName, rarity, ... }
+local PendingRewards = {}
 
 --------------------------------------------------------------------------------
 -- WEIGHTED RANDOM ROLL
@@ -157,46 +168,180 @@ function CrateService:OpenCrate(player, crateId)
     -- Determine category from rolled entry or crateDef
     local category = rolled.category or crateDef.category or "Melee"
 
-    -- Create weapon instance with rolled size data
-    local instanceData = wis:CreateInstance(
-        player,
-        rolled.weapon,
-        rolled.rarity,
-        category,
-        crateId,
-        sizePercent,
-        sizeTier
-    )
-
-    if not instanceData then
-        -- Refund on failure
-        print("[CrateService] REFUND – CreateInstance failed")
-        if currencyType == "Keys" then
-            cs:SetKeys(player, balance)
-        else
-            cs:SetCoins(player, balance)
-        end
-        return false, "Failed to create instance"
+    -- Compute salvage value for display on the client popup
+    local salvageValue = 0
+    if SalvageConfig and SalvageConfig.GetValueForRarity then
+        salvageValue = SalvageConfig.GetValueForRarity(rolled.rarity) or 0
     end
 
-    print(string.format("[CrateService] SUCCESS – granted %s (%s) %d%% [%s] id=%s to %s",
-        instanceData.weaponName, instanceData.rarity, sizePercent, sizeTier,
-        instanceData.instanceId, tostring(player.Name)))
+    -- Store as PENDING reward (weapon NOT yet in inventory)
+    local pendingData = {
+        weaponName  = rolled.weapon,
+        rarity      = rolled.rarity,
+        category    = category,
+        source      = crateId,
+        sizePercent = sizePercent,
+        sizeTier    = sizeTier,
+        salvageValue = salvageValue,
+        crateType   = crateId,
+        timestamp   = tick(),
+    }
+    PendingRewards[player] = pendingData
+
+    print(string.format("[CrateReward] Pending reward created for %s: %s (%s) %d%% [%s]",
+        tostring(player.Name), rolled.weapon, rolled.rarity, sizePercent, sizeTier))
 
     local newCoinBalance = cs:GetCoins(player)
     local newKeyBalance  = cs:GetKeys(player)
 
     return true, {
-        instanceId     = instanceData.instanceId,
-        weaponName     = instanceData.weaponName,
-        rarity         = instanceData.rarity,
-        category       = instanceData.category,
-        sizePercent    = instanceData.sizePercent,   -- SIZE ROLL SYSTEM
-        sizeTier       = instanceData.sizeTier,      -- SIZE ROLL SYSTEM
+        weaponName     = rolled.weapon,
+        rarity         = rolled.rarity,
+        category       = category,
+        sizePercent    = sizePercent,       -- SIZE ROLL SYSTEM
+        sizeTier       = sizeTier,          -- SIZE ROLL SYSTEM
+        salvageValue   = salvageValue,
+        isPending      = true,             -- signals client to show Keep/Salvage UI
         newBalance     = newCoinBalance,
-        newKeyBalance  = newKeyBalance,    -- PREMIUM CRATE / KEY SYSTEM
-        crateType      = crateId,          -- PREMIUM CRATE / KEY SYSTEM
+        newKeyBalance  = newKeyBalance,     -- PREMIUM CRATE / KEY SYSTEM
+        crateType      = crateId,           -- PREMIUM CRATE / KEY SYSTEM
     }
+end
+
+--------------------------------------------------------------------------------
+-- FINALIZE: KEEP  –  player chose to keep the pending crate reward
+-- Creates the weapon instance and clears the pending state.
+-- Returns: success, resultData
+--------------------------------------------------------------------------------
+function CrateService:FinalizeCrateKeep(player)
+    local pending = PendingRewards[player]
+    if not pending then
+        return false, "No pending reward"
+    end
+
+    local wis = ensureWeaponInstanceService()
+    if not wis then
+        return false, "Instance service unavailable"
+    end
+
+    -- Create weapon instance from pending data
+    local instanceData = wis:CreateInstance(
+        player,
+        pending.weaponName,
+        pending.rarity,
+        pending.category,
+        pending.source,
+        pending.sizePercent,
+        pending.sizeTier
+    )
+
+    if not instanceData then
+        return false, "Failed to create instance"
+    end
+
+    PendingRewards[player] = nil
+
+    print(string.format("[CrateReward] Finalized keep: %s (%s) id=%s for %s",
+        instanceData.weaponName, instanceData.rarity,
+        instanceData.instanceId, tostring(player.Name)))
+
+    return true, {
+        instanceId  = instanceData.instanceId,
+        weaponName  = instanceData.weaponName,
+        rarity      = instanceData.rarity,
+        category    = instanceData.category,
+        sizePercent = instanceData.sizePercent,
+        sizeTier    = instanceData.sizeTier,
+    }
+end
+
+--------------------------------------------------------------------------------
+-- FINALIZE: SALVAGE  –  player chose to salvage the pending crate reward
+-- Does NOT create a weapon instance. Awards salvage currency directly.
+-- Returns: success, resultData
+--------------------------------------------------------------------------------
+function CrateService:FinalizeCrateSalvage(player)
+    local pending = PendingRewards[player]
+    if not pending then
+        return false, "No pending reward"
+    end
+
+    local cs = ensureCurrencyService()
+    if not cs then
+        return false, "Currency service unavailable"
+    end
+
+    local salvageValue = pending.salvageValue or 0
+    if salvageValue <= 0 then
+        -- Fallback: recalculate from config
+        if SalvageConfig and SalvageConfig.GetValueForRarity then
+            salvageValue = SalvageConfig.GetValueForRarity(pending.rarity) or 0
+        end
+    end
+
+    if salvageValue <= 0 then
+        return false, "No salvage value for this rarity"
+    end
+
+    -- Award salvage currency
+    cs:AddSalvage(player, salvageValue)
+    local newBalance = cs:GetSalvage(player)
+
+    PendingRewards[player] = nil
+
+    print(string.format("[CrateReward] Finalized salvage payout: %d for %s (%s) from %s",
+        salvageValue, pending.weaponName, pending.rarity, tostring(player.Name)))
+
+    return true, {
+        weaponName   = pending.weaponName,
+        rarity       = pending.rarity,
+        awarded      = salvageValue,
+        newBalance   = newBalance,
+    }
+end
+
+--------------------------------------------------------------------------------
+-- PENDING REWARD ACCESSORS
+--------------------------------------------------------------------------------
+
+function CrateService:GetPendingReward(player)
+    return PendingRewards[player]
+end
+
+function CrateService:ClearPendingReward(player)
+    PendingRewards[player] = nil
+end
+
+--- Auto-keep: grant pending reward on disconnect so items are never lost.
+function CrateService:AutoKeepOnDisconnect(player)
+    local pending = PendingRewards[player]
+    if not pending then return end
+
+    local wis = ensureWeaponInstanceService()
+    if not wis then
+        warn("[CrateReward] Cannot auto-keep for " .. tostring(player.Name) .. ": WIS unavailable")
+        PendingRewards[player] = nil
+        return
+    end
+
+    local instanceData = wis:CreateInstance(
+        player,
+        pending.weaponName,
+        pending.rarity,
+        pending.category,
+        pending.source,
+        pending.sizePercent,
+        pending.sizeTier
+    )
+
+    PendingRewards[player] = nil
+
+    if instanceData then
+        print(string.format("[CrateReward] Auto-kept on disconnect: %s (%s) for %s",
+            pending.weaponName, pending.rarity, tostring(player.Name)))
+    else
+        warn("[CrateReward] Auto-keep CreateInstance failed for " .. tostring(player.Name))
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -261,6 +406,70 @@ function CrateService:RollAndGrant(player, crateId)
         sizePercent = instanceData.sizePercent,
         sizeTier    = instanceData.sizeTier,
         crateType   = crateId,
+    }
+end
+
+--------------------------------------------------------------------------------
+-- ROLL AND PEND  (no currency deduction, no grant — stores pending reward)
+-- Same roll pipeline as RollAndGrant but stores result in PendingRewards
+-- instead of creating a weapon instance. Used by SalvageShopService crates
+-- so they share the same Keep/Salvage decision UI as gold crates.
+-- Returns:  success, resultData (with isPending=true + salvageValue)
+--------------------------------------------------------------------------------
+function CrateService:RollAndPend(player, crateId)
+    if type(crateId) ~= "string" then
+        return false, "Invalid crate id"
+    end
+
+    local crateDef = CrateConfig.Crates[crateId]
+    if not crateDef then
+        return false, "Unknown crate"
+    end
+
+    -- Roll weapon (same weighted logic as OpenCrate)
+    local rolled = rollWeapon(crateDef)
+    if not rolled then
+        print("[CrateService] RollAndPend FAILED – empty pool for " .. crateId)
+        return false, "Empty pool"
+    end
+
+    -- Roll weapon size
+    local sizePercent, sizeTier = SizeRollService.RollSize()
+
+    local category = rolled.category or crateDef.category or "Melee"
+
+    -- Compute salvage value for display on the client popup
+    local salvageValue = 0
+    if SalvageConfig and SalvageConfig.GetValueForRarity then
+        salvageValue = SalvageConfig.GetValueForRarity(rolled.rarity) or 0
+    end
+
+    -- Store as PENDING reward (weapon NOT yet in inventory)
+    local pendingData = {
+        weaponName   = rolled.weapon,
+        rarity       = rolled.rarity,
+        category     = category,
+        source       = crateId,
+        sizePercent  = sizePercent,
+        sizeTier     = sizeTier,
+        salvageValue = salvageValue,
+        crateType    = crateId,
+        timestamp    = tick(),
+    }
+    PendingRewards[player] = pendingData
+
+    print(string.format("[CrateReward] Pending reward created (salvage crate) for %s: %s (%s) %d%% [%s]",
+        tostring(player.Name), rolled.weapon, rolled.rarity, sizePercent, sizeTier))
+
+    return true, {
+        weaponName   = rolled.weapon,
+        rarity       = rolled.rarity,
+        category     = category,
+        sizePercent  = sizePercent,
+        sizeTier     = sizeTier,
+        salvageValue = salvageValue,
+        isPending    = true,
+        crateType    = crateId,
     }
 end
 

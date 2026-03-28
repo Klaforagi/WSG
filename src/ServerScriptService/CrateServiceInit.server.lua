@@ -43,6 +43,8 @@ local openCrateRF        = getOrCreateRF("OpenCrate")
 local getWeaponInvRF     = getOrCreateRF("GetWeaponInventory")
 local favoriteWeaponRF   = getOrCreateRF("FavoriteWeapon")
 local discardWeaponRF    = getOrCreateRF("DiscardWeapon")
+local keepCrateRewardRF  = getOrCreateRF("KeepCrateReward")
+local salvageCrateRewardRF = getOrCreateRF("SalvageCrateReward")
 local weaponInvUpdatedRE = getOrCreateRE("WeaponInventoryUpdated")
 
 --------------------------------------------------------------------------------
@@ -67,14 +69,12 @@ openCrateRF.OnServerInvoke = function(player, crateId)
     local success, result = CrateService:OpenCrate(player, crateId)
 
     if success then
-        -- Notify client of inventory change
-        pcall(function()
-            weaponInvUpdatedRE:FireClient(player, WeaponInstanceService:GetInventory(player))
-        end)
-        -- Track purchase for achievements
+        -- Track purchase for achievements (currency was deducted)
         if AchievementService then
             pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
         end
+        -- NOTE: Do NOT fire WeaponInventoryUpdated here.
+        -- Weapon is pending — client will see Keep/Salvage popup.
     end
 
     return success, result
@@ -113,6 +113,64 @@ discardWeaponRF.OnServerInvoke = function(player, instanceId)
 end
 
 --------------------------------------------------------------------------------
+-- CRATE REWARD DECISION REMOTES (Keep / Salvage)
+--------------------------------------------------------------------------------
+local keepDebounce = {}   -- [Player] = tick
+local salvageDebounce = {} -- [Player] = tick
+
+-- KeepCrateReward: player chose to keep the pending crate reward
+keepCrateRewardRF.OnServerInvoke = function(player)
+    -- Anti-spam debounce
+    local now = tick()
+    if keepDebounce[player] and (now - keepDebounce[player]) < 1 then
+        return false, "Too fast"
+    end
+    keepDebounce[player] = now
+
+    print("[CrateReward] Keep selected for " .. tostring(player.Name))
+
+    local success, result = CrateService:FinalizeCrateKeep(player)
+    if success then
+        -- Save inventory and notify client
+        WeaponInstanceService:SaveForPlayer(player)
+        pcall(function()
+            weaponInvUpdatedRE:FireClient(player, WeaponInstanceService:GetInventory(player))
+        end)
+    end
+    return success, result
+end
+
+-- SalvageCrateReward: player chose to salvage the pending crate reward
+salvageCrateRewardRF.OnServerInvoke = function(player)
+    -- Anti-spam debounce
+    local now = tick()
+    if salvageDebounce[player] and (now - salvageDebounce[player]) < 1 then
+        return false, "Too fast"
+    end
+    salvageDebounce[player] = now
+
+    -- Server re-validates pending reward exists and rarity
+    local pending = CrateService:GetPendingReward(player)
+    if not pending then
+        return false, "No pending reward"
+    end
+
+    print("[CrateReward] Salvage selected for " .. tostring(player.Name))
+
+    local success, result = CrateService:FinalizeCrateSalvage(player)
+    if success then
+        -- Fire salvage currency update to client
+        pcall(function()
+            local salvageUpdated = ReplicatedStorage:FindFirstChild("SalvageUpdated")
+            if salvageUpdated and salvageUpdated:IsA("RemoteEvent") then
+                salvageUpdated:FireClient(player, result.newBalance)
+            end
+        end)
+    end
+    return success, result
+end
+
+--------------------------------------------------------------------------------
 -- PLAYER LIFECYCLE
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
@@ -145,12 +203,17 @@ end
 local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
 
 local function onPlayerRemoving(player)
+    -- Auto-keep any pending crate reward before saving
+    CrateService:AutoKeepOnDisconnect(player)
+
     if SaveGuard:ClaimSave(player, "WeaponInstance") then
         WeaponInstanceService:SaveForPlayer(player)
         SaveGuard:ReleaseSave(player, "WeaponInstance")
     end
     WeaponInstanceService:RemovePlayer(player)
     openDebounce[player] = nil
+    keepDebounce[player] = nil
+    salvageDebounce[player] = nil
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
@@ -166,6 +229,8 @@ game:BindToClose(function()
     SaveGuard:BeginShutdown()
     for _, p in ipairs(Players:GetPlayers()) do
         task.spawn(function()
+            -- Auto-keep any pending crate reward before shutdown save
+            CrateService:AutoKeepOnDisconnect(p)
             if SaveGuard:ClaimSave(p, "WeaponInstance") then
                 WeaponInstanceService:SaveForPlayer(p)
                 SaveGuard:ReleaseSave(p, "WeaponInstance")

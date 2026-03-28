@@ -294,11 +294,165 @@ function CrateOpeningUI.Init(playerGui)
     closeBtn.Position = UDim2.new(0.5, 0, 1, -px(16))
     closeBtn.AutoButtonColor = false
     closeBtn.ZIndex = 22
+    closeBtn.Visible = false  -- hidden by default; shown only on errors
     closeBtn.Parent = resultFrame
 
     local cbCorner = Instance.new("UICorner")
     cbCorner.CornerRadius = UDim.new(0, px(10))
     cbCorner.Parent = closeBtn
+
+    ---------------------------------------------------------------------------
+    -- KEEP / SALVAGE DECISION BUTTONS
+    ---------------------------------------------------------------------------
+    local SALVAGE_GREEN = Color3.fromRGB(35, 190, 75)
+    local KEEP_BLUE     = Color3.fromRGB(50, 100, 200)
+
+    -- Container for both buttons side by side
+    local btnRow = Instance.new("Frame")
+    btnRow.Name = "DecisionRow"
+    btnRow.BackgroundTransparency = 1
+    btnRow.Size = UDim2.new(1, -px(24), 0, px(44))
+    btnRow.AnchorPoint = Vector2.new(0.5, 1)
+    btnRow.Position = UDim2.new(0.5, 0, 1, -px(14))
+    btnRow.ZIndex = 22
+    btnRow.Visible = false
+    btnRow.Parent = resultFrame
+
+    -- KEEP button (primary, wider)
+    local keepBtn = Instance.new("TextButton")
+    keepBtn.Name = "KeepBtn"
+    keepBtn.BackgroundColor3 = KEEP_BLUE
+    keepBtn.Font = Enum.Font.GothamBold
+    keepBtn.Text = "KEEP"
+    keepBtn.TextColor3 = WHITE
+    keepBtn.TextSize = math.max(15, math.floor(px(17)))
+    keepBtn.Size = UDim2.new(0.55, -px(4), 1, 0)
+    keepBtn.Position = UDim2.new(0, 0, 0, 0)
+    keepBtn.AutoButtonColor = false
+    keepBtn.ZIndex = 23
+    keepBtn.Parent = btnRow
+
+    local keepCorner = Instance.new("UICorner")
+    keepCorner.CornerRadius = UDim.new(0, px(10))
+    keepCorner.Parent = keepBtn
+
+    local keepStroke = Instance.new("UIStroke")
+    keepStroke.Color = Color3.fromRGB(80, 140, 255)
+    keepStroke.Thickness = 1.5
+    keepStroke.Transparency = 0.3
+    keepStroke.Parent = keepBtn
+
+    -- SALVAGE button (secondary, slightly narrower)
+    local salvageBtn = Instance.new("TextButton")
+    salvageBtn.Name = "SalvageBtn"
+    salvageBtn.BackgroundColor3 = Color3.fromRGB(40, 55, 40)
+    salvageBtn.Font = Enum.Font.GothamBold
+    salvageBtn.Text = "SALVAGE +0"
+    salvageBtn.TextColor3 = SALVAGE_GREEN
+    salvageBtn.TextSize = math.max(13, math.floor(px(15)))
+    salvageBtn.Size = UDim2.new(0.45, -px(4), 1, 0)
+    salvageBtn.Position = UDim2.new(0.55, px(4), 0, 0)
+    salvageBtn.AutoButtonColor = false
+    salvageBtn.ZIndex = 23
+    salvageBtn.Parent = btnRow
+
+    local salvageCorner = Instance.new("UICorner")
+    salvageCorner.CornerRadius = UDim.new(0, px(10))
+    salvageCorner.Parent = salvageBtn
+
+    local salvageStroke = Instance.new("UIStroke")
+    salvageStroke.Color = SALVAGE_GREEN
+    salvageStroke.Thickness = 1
+    salvageStroke.Transparency = 0.5
+    salvageStroke.Parent = salvageBtn
+
+    ---------------------------------------------------------------------------
+    -- SALVAGE CONFIRMATION OVERLAY (for Rare+ items)
+    ---------------------------------------------------------------------------
+    local confirmFrame = Instance.new("Frame")
+    confirmFrame.Name = "SalvageConfirm"
+    confirmFrame.BackgroundColor3 = Color3.fromRGB(16, 18, 32)
+    confirmFrame.BackgroundTransparency = 0.04
+    confirmFrame.Size = UDim2.new(0, px(320), 0, px(180))
+    confirmFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    confirmFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+    confirmFrame.Visible = false
+    confirmFrame.ZIndex = 30
+    confirmFrame.Parent = screen
+
+    local cfCorner = Instance.new("UICorner")
+    cfCorner.CornerRadius = UDim.new(0, px(14))
+    cfCorner.Parent = confirmFrame
+
+    local cfStroke = Instance.new("UIStroke")
+    cfStroke.Color = Color3.fromRGB(255, 80, 80)
+    cfStroke.Thickness = 2
+    cfStroke.Transparency = 0.2
+    cfStroke.Parent = confirmFrame
+
+    local confirmMsg = Instance.new("TextLabel")
+    confirmMsg.Name = "Message"
+    confirmMsg.BackgroundTransparency = 1
+    confirmMsg.Font = Enum.Font.GothamBold
+    confirmMsg.Text = "Salvage this weapon?"
+    confirmMsg.TextColor3 = WHITE
+    confirmMsg.TextSize = math.max(14, math.floor(px(16)))
+    confirmMsg.TextWrapped = true
+    confirmMsg.Size = UDim2.new(1, -px(24), 0, px(70))
+    confirmMsg.Position = UDim2.new(0, px(12), 0, px(16))
+    confirmMsg.TextXAlignment = Enum.TextXAlignment.Center
+    confirmMsg.TextYAlignment = Enum.TextYAlignment.Center
+    confirmMsg.ZIndex = 31
+    confirmMsg.Parent = confirmFrame
+
+    local cfBtnRow = Instance.new("Frame")
+    cfBtnRow.Name = "ConfirmBtnRow"
+    cfBtnRow.BackgroundTransparency = 1
+    cfBtnRow.Size = UDim2.new(1, -px(24), 0, px(40))
+    cfBtnRow.AnchorPoint = Vector2.new(0.5, 1)
+    cfBtnRow.Position = UDim2.new(0.5, 0, 1, -px(16))
+    cfBtnRow.ZIndex = 31
+    cfBtnRow.Parent = confirmFrame
+
+    local confirmYes = Instance.new("TextButton")
+    confirmYes.Name = "ConfirmSalvage"
+    confirmYes.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+    confirmYes.Font = Enum.Font.GothamBold
+    confirmYes.Text = "CONFIRM"
+    confirmYes.TextColor3 = WHITE
+    confirmYes.TextSize = math.max(13, math.floor(px(14)))
+    confirmYes.Size = UDim2.new(0.55, -px(4), 1, 0)
+    confirmYes.Position = UDim2.new(0, 0, 0, 0)
+    confirmYes.AutoButtonColor = false
+    confirmYes.ZIndex = 32
+    confirmYes.Parent = cfBtnRow
+
+    local cyCorner = Instance.new("UICorner")
+    cyCorner.CornerRadius = UDim.new(0, px(8))
+    cyCorner.Parent = confirmYes
+
+    local confirmNo = Instance.new("TextButton")
+    confirmNo.Name = "Cancel"
+    confirmNo.BackgroundColor3 = Color3.fromRGB(48, 55, 82)
+    confirmNo.Font = Enum.Font.GothamBold
+    confirmNo.Text = "CANCEL"
+    confirmNo.TextColor3 = DIM_TEXT
+    confirmNo.TextSize = math.max(13, math.floor(px(14)))
+    confirmNo.Size = UDim2.new(0.45, -px(4), 1, 0)
+    confirmNo.Position = UDim2.new(0.55, px(4), 0, 0)
+    confirmNo.AutoButtonColor = false
+    confirmNo.ZIndex = 32
+    confirmNo.Parent = cfBtnRow
+
+    local cnCorner = Instance.new("UICorner")
+    cnCorner.CornerRadius = UDim.new(0, px(8))
+    cnCorner.Parent = confirmNo
+
+    ---------------------------------------------------------------------------
+    -- DECISION STATE
+    ---------------------------------------------------------------------------
+    local currentResultData = nil  -- stores the pending result for button handlers
+    local decisionDebounce = false
 
     local isAnimating = false
     local activeTween = nil           -- current spin tween (cancelled on re-play)
@@ -365,6 +519,11 @@ function CrateOpeningUI.Init(playerGui)
     local function closeOverlay()
         screen.Enabled = false
         resultFrame.Visible = false
+        btnRow.Visible = false
+        confirmFrame.Visible = false
+        closeBtn.Visible = false
+        currentResultData = nil
+        decisionDebounce = false
         -- Clear strip children
         for _, c in ipairs(strip:GetChildren()) do
             pcall(function() c:Destroy() end)
@@ -372,6 +531,115 @@ function CrateOpeningUI.Init(playerGui)
     end
 
     closeBtn.MouseButton1Click:Connect(closeOverlay)
+
+    ---------------------------------------------------------------------------
+    -- Lazy remote lookup
+    ---------------------------------------------------------------------------
+    local keepCrateRF = nil
+    local salvageCrateRF = nil
+
+    local function getKeepRemote()
+        if keepCrateRF then return keepCrateRF end
+        keepCrateRF = ReplicatedStorage:FindFirstChild("KeepCrateReward")
+        return keepCrateRF
+    end
+
+    local function getSalvageRemote()
+        if salvageCrateRF then return salvageCrateRF end
+        salvageCrateRF = ReplicatedStorage:FindFirstChild("SalvageCrateReward")
+        return salvageCrateRF
+    end
+
+    ---------------------------------------------------------------------------
+    -- KEEP BUTTON HANDLER
+    ---------------------------------------------------------------------------
+    keepBtn.MouseButton1Click:Connect(function()
+        if decisionDebounce then return end
+        if not currentResultData then return end
+        decisionDebounce = true
+
+        local rf = getKeepRemote()
+        if not rf then
+            warn("[CrateOpeningUI] KeepCrateReward remote not found")
+            decisionDebounce = false
+            return
+        end
+
+        local ok, success, result = pcall(function()
+            return rf:InvokeServer()
+        end)
+
+        if ok and success then
+            print("[CrateReward] Keep selected — weapon added to inventory")
+        else
+            warn("[CrateOpeningUI] Keep failed:", ok and result or "pcall error")
+        end
+
+        closeOverlay()
+    end)
+
+    ---------------------------------------------------------------------------
+    -- SALVAGE BUTTON HANDLER
+    ---------------------------------------------------------------------------
+    local function doSalvage()
+        if decisionDebounce then return end
+        decisionDebounce = true
+
+        local rf = getSalvageRemote()
+        if not rf then
+            warn("[CrateOpeningUI] SalvageCrateReward remote not found")
+            decisionDebounce = false
+            return
+        end
+
+        local ok, success, result = pcall(function()
+            return rf:InvokeServer()
+        end)
+
+        if ok and success and type(result) == "table" then
+            print("[CrateReward] Salvage selected — awarded " .. tostring(result.awarded))
+            -- Update salvage balance display if available
+            pcall(function()
+                if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+            end)
+        else
+            warn("[CrateOpeningUI] Salvage failed:", ok and result or "pcall error")
+        end
+
+        closeOverlay()
+    end
+
+    salvageBtn.MouseButton1Click:Connect(function()
+        if decisionDebounce then return end
+        if not currentResultData then return end
+
+        -- Rare or higher: show confirmation popup
+        local rarity = currentResultData.rarity
+        if rarity ~= "Common" then
+            local salvVal = currentResultData.salvageValue or 0
+            confirmMsg.Text = string.format(
+                'Are you sure you want to salvage\nthis %s weapon for %d %s?',
+                rarity, salvVal, "\u{2699}"
+            )
+            print("[CrateReward] Salvage confirmation required for rarity: " .. rarity)
+            confirmFrame.Visible = true
+        else
+            doSalvage()
+        end
+    end)
+
+    ---------------------------------------------------------------------------
+    -- CONFIRMATION POPUP HANDLERS
+    ---------------------------------------------------------------------------
+    confirmYes.MouseButton1Click:Connect(function()
+        confirmFrame.Visible = false
+        doSalvage()
+    end)
+
+    confirmNo.MouseButton1Click:Connect(function()
+        confirmFrame.Visible = false
+        -- Return to the decision popup; do NOT clear pending reward
+    end)
 
     ---------------------------------------------------------------------------
     -- Create a card frame for the strip
@@ -649,6 +917,25 @@ function CrateOpeningUI.Init(playerGui)
             resultFrame.BackgroundTransparency = 1
             TweenService:Create(resultFrame, TweenInfo.new(0.3), {BackgroundTransparency = 0.06}):Play()
 
+            -- Store result data for Keep/Salvage button handlers
+            currentResultData = resultData
+            decisionDebounce = false
+
+            -- Show appropriate buttons based on whether reward is pending
+            if resultData.isPending then
+                -- Pending reward: show Keep/Salvage decision
+                local salvVal = resultData.salvageValue or 0
+                salvageBtn.Text = "SALVAGE +" .. tostring(salvVal)
+                btnRow.Visible = true
+                confirmFrame.Visible = false
+                closeBtn.Visible = false
+            else
+                -- Already-granted reward (e.g. salvage shop crate): show Close
+                btnRow.Visible = false
+                confirmFrame.Visible = false
+                closeBtn.Visible = true
+            end
+
             -- Update coins
             if coinApi and coinApi.SetCoins and resultData.newBalance then
                 pcall(function() coinApi.SetCoins(resultData.newBalance) end)
@@ -705,6 +992,9 @@ function CrateOpeningUI.Init(playerGui)
             -- Brief flash of the overlay with error text
             screen.Enabled = true
             resultFrame.Visible = true
+            btnRow.Visible = false
+            confirmFrame.Visible = false
+            closeBtn.Visible = true
             resultImage.Image = ""
             resultName.Text = errMsg
             resultName.TextColor3 = Color3.fromRGB(255, 80, 80)
