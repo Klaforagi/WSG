@@ -43,6 +43,12 @@ local STROKE_C  = Color3.fromRGB(255, 200, 40)
 local DIM_TEXT   = Color3.fromRGB(180, 185, 200)
 
 --------------------------------------------------------------------------------
+-- Layout — vertical offset above the toolbar/hotbar
+-- Increase this value to push the popup higher above the toolbar.
+--------------------------------------------------------------------------------
+local POPUP_ABOVE_TOOLBAR_OFFSET = 194   -- px (at 1080p baseline) of clearance from screen bottom
+
+--------------------------------------------------------------------------------
 -- ScreenGui (persistent, above most UI)
 --------------------------------------------------------------------------------
 local screenGui = Instance.new("ScreenGui")
@@ -64,9 +70,9 @@ local function showToast(title, icon, reward, ap)
     toast.Name                = "Toast"
     toast.BackgroundColor3    = DARK_BG
     toast.BackgroundTransparency = 0.05
-    toast.Size                = UDim2.new(0, px(320), 0, px(72))
-    toast.AnchorPoint         = Vector2.new(1, 0)
-    toast.Position            = UDim2.new(1, px(340), 0, px(120)) -- start off-screen right
+    toast.Size                = UDim2.new(0, px(340), 0, px(78))
+    toast.AnchorPoint         = Vector2.new(0.5, 1)
+    toast.Position            = UDim2.new(0.5, 0, 1, px(100)) -- start off-screen below
     toast.Parent              = screenGui
 
     local corner = Instance.new("UICorner")
@@ -153,14 +159,14 @@ local function showToast(title, icon, reward, ap)
     local TWEEN_IN  = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     local TWEEN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
-    local targetPos = UDim2.new(1, -px(16), 0, px(120))
+    local targetPos = UDim2.new(0.5, 0, 1, -px(POPUP_ABOVE_TOOLBAR_OFFSET))
     TweenService:Create(toast, TWEEN_IN, {Position = targetPos}):Play()
 
-    -- Hold for 3.5 seconds, then slide out
-    task.delay(3.5, function()
+    -- Hold for 4.5 seconds, then slide out
+    task.delay(4.5, function()
         if toast and toast.Parent then
             local outTween = TweenService:Create(toast, TWEEN_OUT,
-                {Position = UDim2.new(1, px(340), 0, px(120))})
+                {Position = UDim2.new(0.5, 0, 1, px(100))})
             outTween:Play()
             outTween.Completed:Connect(function()
                 if toast and toast.Parent then toast:Destroy() end

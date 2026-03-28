@@ -33,9 +33,9 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local AchievementDefs = require(ReplicatedStorage:WaitForChild("AchievementDefs", 10))
 
 local DATASTORE_NAME = "Achievements_v1"
--- Schema v3: staged achievement model with completion history.
--- Bumping from v2 forces a clean reset of all achievement progress.
-local ACHIEVEMENT_DATA_VERSION = 3
+-- Schema v4: bump to force-reset all achievement progress for testing.
+-- Bumping from v3 forces a clean reset of all achievement progress.
+local ACHIEVEMENT_DATA_VERSION = 4
 local RETRIES        = 3
 local RETRY_DELAY    = 0.5
 
