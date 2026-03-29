@@ -21,13 +21,14 @@ local CrateConfig = {}
 --------------------------------------------------------------------------------
 CrateConfig.Rarities = {
     Common    = { weight = 81, color = Color3.fromRGB(180, 180, 180), label = "Common"    },
+    Uncommon  = { weight = 10, color = Color3.fromRGB(80, 200, 120),  label = "Uncommon"  },
     Rare      = { weight = 15, color = Color3.fromRGB(60, 140, 255),  label = "Rare"      },
-    Epic      = { weight = 3,  color = Color3.fromRGB(180, 60, 255),  label = "Epic"      },
+    Epic      = { weight = 3,  color = Color3.fromRGB(150, 50, 230),  label = "Epic"      }, -- purple (tweaked)
     Legendary = { weight = 1,  color = Color3.fromRGB(255, 180, 30),  label = "Legendary" },
 }
 
 -- Ordered for display (highest first)
-CrateConfig.RarityOrder = { "Legendary", "Epic", "Rare", "Common" }
+CrateConfig.RarityOrder = { "Legendary", "Epic", "Rare", "Uncommon", "Common" }
 
 --------------------------------------------------------------------------------
 -- WEAPON-TO-RARITY MAPPING
@@ -48,8 +49,10 @@ CrateConfig.RarityOrder = { "Legendary", "Epic", "Rare", "Common" }
 CrateConfig.WeaponsByRarity = {
     Common    = {
         { weapon = "Wooden Sword", category = "Melee"  },
-        { weapon = "Stone Hammer", category = "Melee"  },
         { weapon = "Slingshot",    category = "Ranged" },
+    },
+    Uncommon = {
+        { weapon = "Stone Hammer", category = "Melee" },
     },
     Rare      = {
         { weapon = "Flanged Mace", category = "Melee" },
@@ -101,10 +104,11 @@ CrateConfig.Crates = {
 
         -- >>> EDIT PERCENTAGES HERE to rebalance melee crate odds <<<
         rarities = {
-            Common    = 81,
-            Rare      = 15,
-            Epic      = 3,
             Legendary = 1,
+            Epic      = 4,
+            Rare      = 15,
+            Uncommon  = 40,
+            Common    = 40,
         },
 
         pool = {},  -- auto-built below
@@ -123,10 +127,11 @@ CrateConfig.Crates = {
 
         -- >>> EDIT PERCENTAGES HERE to rebalance ranged crate odds <<<
         rarities = {
-            Common    = 81,
-            Rare      = 15,
-            Epic      = 3,
             Legendary = 1,
+            Epic      = 4,
+            Rare      = 15,
+            Uncommon  = 40,
+            Common    = 40,
         },
 
         pool = {},  -- auto-built below

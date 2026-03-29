@@ -41,14 +41,16 @@ local TWEEN_QUICK = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirect
 -- Rarity colour palettes (shared with Inventory)
 local RARITY_COLORS = {
     Common    = Color3.fromRGB(150, 150, 155),
+    Uncommon  = Color3.fromRGB(100, 180, 100),
     Rare      = Color3.fromRGB(60, 140, 255),
-    Epic      = Color3.fromRGB(180, 60, 255),
+    Epic      = Color3.fromRGB(150, 50, 230),
     Legendary = Color3.fromRGB(255, 180, 30),
 }
 local RARITY_BG_COLORS = {
     Common    = Color3.fromRGB(42, 44, 55),
+    Uncommon  = Color3.fromRGB(18, 42, 30),
     Rare      = Color3.fromRGB(22, 38, 68),
-    Epic      = Color3.fromRGB(46, 22, 65),
+    Epic      = Color3.fromRGB(40, 20, 60),
     Legendary = Color3.fromRGB(58, 46, 18),
 }
 
@@ -4079,9 +4081,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         -- Rarity colors for card styling
         local SALVAGE_RARITY_COLORS = {
             Common    = Color3.fromRGB(180, 180, 180),
-            Uncommon  = Color3.fromRGB(120, 200, 120),
+            Uncommon  = Color3.fromRGB(100, 180, 100),
             Rare      = Color3.fromRGB(60, 140, 255),
-            Epic      = Color3.fromRGB(180, 60, 255),
+            Epic      = Color3.fromRGB(150, 50, 230),
             Legendary = Color3.fromRGB(255, 180, 30),
         }
 
