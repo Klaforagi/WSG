@@ -72,33 +72,40 @@ end)
 -- ═══════════════════════════════════════════════════════════════════════════
 local RARITY_COLORS = {
     Common    = Color3.fromRGB(150, 150, 155),
-    Uncommon  = Color3.fromRGB(120, 200, 120),
     Rare      = Color3.fromRGB(60, 140, 255),
-    Epic      = Color3.fromRGB(180, 60, 255),
+    Epic      = Color3.fromRGB(134, 42, 209),  -- richer/darker purple
     Legendary = Color3.fromRGB(255, 180, 30),
 }
 local RARITY_BG_COLORS = {
     Common    = Color3.fromRGB(42, 44, 55),
-    Uncommon  = Color3.fromRGB(22, 48, 36),
     Rare      = Color3.fromRGB(22, 38, 68),
-    Epic      = Color3.fromRGB(46, 22, 65),
+    Epic      = Color3.fromRGB(40, 20, 60), -- slightly darker purple bg
     Legendary = Color3.fromRGB(58, 46, 18),
 }
 -- Vivid full-card backgrounds for weapon inventory cards (reference style)
 local WEAPON_CARD_BG = {
     Common    = Color3.fromRGB(105, 110, 120),
-    Uncommon  = Color3.fromRGB(80, 160, 110),
     Rare      = Color3.fromRGB(45, 90, 175),
-    Epic      = Color3.fromRGB(150, 80, 200),
+    Epic      = Color3.fromRGB(170, 35, 40),
     Legendary = Color3.fromRGB(195, 150, 25),
 }
 local WEAPON_CARD_BORDER = {
     Common    = Color3.fromRGB(70, 75, 82),
-    Uncommon  = Color3.fromRGB(60, 110, 80),
     Rare      = Color3.fromRGB(30, 62, 125),
-    Epic      = Color3.fromRGB(70, 30, 90),
+    Epic      = Color3.fromRGB(120, 22, 26),
     Legendary = Color3.fromRGB(140, 108, 16),
 }
+
+local TextService = game:GetService("TextService")
+
+local function lightenColor(c, amount)
+    amount = amount or 0.16
+    return Color3.new(
+        math.min(1, c.R + amount),
+        math.min(1, c.G + amount),
+        math.min(1, c.B + amount)
+    )
+end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects)
@@ -485,6 +492,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             category   = classifyItem(itemName),
             rarity     = getWeaponRarity(itemName),
             isInstance = false,
+            sizePercent = 100, -- default for non-instance items
+            sizeTier = "Normal",
         })
     end
 
@@ -1348,13 +1357,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local tierColor = WHITE
         if tier == "King" then
-            tierColor = Color3.fromRGB(255, 60, 60)
+            tierColor = GOLD -- yellow for King
         elseif tier == "Giant" then
-            tierColor = Color3.fromRGB(80, 220, 255)
+            tierColor = Color3.fromRGB(80, 220, 255) -- blue for Giant
         elseif tier == "Huge" then
             tierColor = Color3.fromRGB(255, 90, 60)
         elseif tier == "Large" then
-            tierColor = Color3.fromRGB(100, 200, 255)
+            tierColor = Color3.fromRGB(100, 200, 100) -- green for Large
         elseif tier == "Tiny" then
             tierColor = Color3.fromRGB(180, 180, 190)
         end
@@ -1364,14 +1373,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         tierLabel.BackgroundTransparency = 1
         tierLabel.Font = Enum.Font.GothamBold
         tierLabel.TextColor3 = tierColor
-        tierLabel.TextScaled = true
-        tierLabel.Size = UDim2.new(1, -px(6), 0.09, 0)
-        tierLabel.Position = UDim2.new(0, px(3), 0.20, 0)
+        tierLabel.TextSize = math.max(11, math.floor(px(13)))
+        tierLabel.Size = UDim2.new(1, -px(8), 0, px(18))
+        tierLabel.Position = UDim2.new(0, px(4), 0, px(33))
         tierLabel.TextXAlignment = Enum.TextXAlignment.Center
         tierLabel.Text = (tier ~= "Normal") and tier or ""
-        local tierConstraint = Instance.new("UITextSizeConstraint", tierLabel)
-        tierConstraint.MinTextSize = 7
-        tierConstraint.MaxTextSize = 13
         local tierStroke = Instance.new("UIStroke", tierLabel)
         tierStroke.Color = Color3.fromRGB(0, 0, 0)
         tierStroke.Thickness = 1.2; tierStroke.Transparency = 0.25
@@ -1393,21 +1399,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        -- ── SECTION 4: Size percent at bottom (14% of card) ─────────────
+        -- Size percent at bottom
         local sizeLabel = Instance.new("TextLabel", card)
         sizeLabel.Name = "SizePercent"
         sizeLabel.BackgroundTransparency = 1
         sizeLabel.Font = Enum.Font.GothamBold
         sizeLabel.TextColor3 = WHITE
-        sizeLabel.TextScaled = true
-        sizeLabel.Size = UDim2.new(1, 0, 0.13, 0)
+        sizeLabel.TextSize = math.max(13, math.floor(px(15)))
+        sizeLabel.Size = UDim2.new(1, 0, 0, px(22))
         sizeLabel.AnchorPoint = Vector2.new(0, 1)
         sizeLabel.Position = UDim2.new(0, 0, 0.96, 0)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
         sizeLabel.Text = tostring(math.floor(pct)) .. "%"
-        local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
-        pctConstraint.MinTextSize = 9
-        pctConstraint.MaxTextSize = 16
         local pctStroke = Instance.new("UIStroke", sizeLabel)
         pctStroke.Color = Color3.fromRGB(0, 0, 0)
         pctStroke.Thickness = 1.5; pctStroke.Transparency = 0.15
@@ -1498,7 +1501,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         -- Sort: favorited first, then rarity (rarest first), alphabetical, Starter last
-        local rarityPriority = { Legendary = 1, Epic = 2, Rare = 3, Common = 4, Starter = 5 }
+        local rarityPriority = { Legendary = 1, Epic = 2, Rare = 3, Uncommon = 4, Common = 5, Starter = 6 }
         table.sort(filtered, function(a, b)
             -- Starter weapons always go to the very end
             local aStarter = (a.source == "Starter") and 1 or 0
@@ -1512,6 +1515,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local pa = rarityPriority[a.rarity] or 4
             local pb = rarityPriority[b.rarity] or 4
             if pa ~= pb then return pa < pb end
+            -- Within same rarity, sort by sizePercent (larger first)
+            local sa = tonumber(a.sizePercent) or 100
+            local sb = tonumber(b.sizePercent) or 100
+            if sa ~= sb then return sa > sb end
             return a.name < b.name
         end)
 
