@@ -40,6 +40,7 @@ CrateConfig.RarityOrder = { "Legendary", "Epic", "Rare", "Common" }
 -- │ Epic       │ Sword          │ Longbow        │
 -- │ Legendary  │ Spear          │ Xbow           │
 -- └────────────┴────────────────┴────────────────┘
+-- (updated: removed Dagger/Sword/Spear; new melee list below)
 --
 -- >>> TO REASSIGN WEAPONS: move entries between the rarity keys below. <<<
 -- >>> Pools are auto-built from this table – no pool edits needed.     <<<
@@ -47,20 +48,20 @@ CrateConfig.RarityOrder = { "Legendary", "Epic", "Rare", "Common" }
 CrateConfig.WeaponsByRarity = {
     Common    = {
         { weapon = "Wooden Sword", category = "Melee"  },
-        { weapon = "Punisher",    category = "Melee"  },
-        { weapon = "Kingsblade",  category = "Melee"  },
+        { weapon = "Stone Hammer", category = "Melee"  },
         { weapon = "Slingshot",    category = "Ranged" },
     },
     Rare      = {
-        { weapon = "Dagger",   category = "Melee"  },
+        { weapon = "Flanged Mace", category = "Melee" },
         { weapon = "Shortbow", category = "Ranged" },
     },
     Epic      = {
-        { weapon = "Sword",   category = "Melee"  },
+        { weapon = "Spiked Mace", category = "Melee" },
         { weapon = "Longbow", category = "Ranged" },
     },
     Legendary = {
-        { weapon = "Spear", category = "Melee"  },
+        { weapon = "Punisher", category = "Melee" },
+        { weapon = "Kingsblade", category = "Melee" },
         { weapon = "Xbow",  category = "Ranged" },
     },
 }

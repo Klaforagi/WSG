@@ -73,6 +73,19 @@ local RARITY_BG_COLORS = {
     Epic      = Color3.fromRGB(46, 22, 65),
     Legendary = Color3.fromRGB(58, 46, 18),
 }
+-- Vivid full-card backgrounds for weapon inventory cards (reference style)
+local WEAPON_CARD_BG = {
+    Common    = Color3.fromRGB(105, 110, 120),
+    Rare      = Color3.fromRGB(45, 90, 175),
+    Epic      = Color3.fromRGB(170, 35, 40),
+    Legendary = Color3.fromRGB(195, 150, 25),
+}
+local WEAPON_CARD_BORDER = {
+    Common    = Color3.fromRGB(70, 75, 82),
+    Rare      = Color3.fromRGB(30, 62, 125),
+    Epic      = Color3.fromRGB(120, 22, 26),
+    Legendary = Color3.fromRGB(140, 108, 16),
+}
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects)
@@ -305,6 +318,25 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local TAB_GAP   = px(10)
     local DETAIL_W  = px(315)
     local GRID_GAP  = px(10)
+
+    -- ── Shared inventory card layout constants (Melee tab = reference) ──
+    local INV_CARD = {
+        CornerRadius       = px(8),
+        StrokeThickness    = 1.4,
+        StrokeTransparency = 0.25,
+        NameTextSize       = math.max(13, math.floor(px(15))),
+        NameY              = px(4),
+        NameHeight         = px(22),
+        IconSize           = px(88),
+        IconY              = px(28),
+        IconCorner         = px(6),
+        Line1OffBottom     = px(22),
+        Line1Height        = px(16),
+        Line1TextSize      = math.max(11, math.floor(px(12))),
+        Line2OffBottom     = px(5),
+        Line2Height        = px(18),
+        Line2TextSize      = math.max(12, math.floor(px(14))),
+    }
 
     local screenY   = 1080
     pcall(function()
@@ -654,7 +686,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     Instance.new("UICorner", gridScroll).CornerRadius = UDim.new(0, px(10))
 
     local gridLayout = Instance.new("UIGridLayout", gridScroll)
-    gridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
+    gridLayout.CellSize = UDim2.new(0, px(155), 0, px(178))
     gridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
     gridLayout.FillDirection = Enum.FillDirection.Horizontal
     gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -1142,14 +1174,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local equipped = isItemEquipped(ref.itemData)
             local bar = ref.card:FindFirstChild("EquippedBar")
             if bar then bar.Visible = equipped end
-            -- No green background for equipped items; always use rarity bg
-            ref.card.BackgroundColor3 = getRarityBgColor(ref.itemData.rarity)
+            -- Reset background to stored card color (vivid for weapons)
+            ref.card.BackgroundColor3 = ref.bgColor or getRarityBgColor(ref.itemData.rarity)
             -- Update stroke: keep gold for the currently selected card,
-            -- green for equipped, otherwise rarity color
+            -- green for equipped, otherwise border color
             local isSelected = selectedItem and selectedItem.id == ref.itemData.id
             if not isSelected then
-                ref.stroke.Color = equipped and GREEN_GLOW or getRarityColor(ref.itemData.rarity)
-                ref.stroke.Thickness = 1.4
+                ref.stroke.Color = equipped and GREEN_GLOW or (ref.borderColor or getRarityColor(ref.itemData.rarity))
+                ref.stroke.Thickness = ref.bgColor and 2.0 or 1.4
             end
         end
     end
@@ -1163,9 +1195,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local oldRef = allCardRefs[selectedItem.id]
             if oldRef then
                 local eq = isItemEquipped(selectedItem)
-                oldRef.stroke.Color = eq and GREEN_GLOW or getRarityColor(selectedItem.rarity)
-                oldRef.stroke.Thickness = 1.4
-                oldRef.card.BackgroundColor3 = getRarityBgColor(selectedItem.rarity)
+                oldRef.stroke.Color = eq and GREEN_GLOW or (oldRef.borderColor or getRarityColor(selectedItem.rarity))
+                oldRef.stroke.Thickness = oldRef.bgColor and 2.0 or 1.4
+                oldRef.card.BackgroundColor3 = oldRef.bgColor or getRarityBgColor(selectedItem.rarity)
             end
         end
 
@@ -1239,53 +1271,78 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- createWeaponCard(itemData)  –  compact square card for the grid
     ---------------------------------------------------------------------------
     local function createWeaponCard(itemData)
-        local rarColor = getRarityColor(itemData.rarity)
-        local rarBg    = getRarityBgColor(itemData.rarity)
+        local rarity   = itemData.rarity or "Common"
+        local rarColor = getRarityColor(rarity)
+        local cardBg   = WEAPON_CARD_BG[rarity] or WEAPON_CARD_BG.Common
+        local borderC  = WEAPON_CARD_BORDER[rarity] or WEAPON_CARD_BORDER.Common
         local equipped = isItemEquipped(itemData)
 
         local card = Instance.new("Frame")
         card.Name = "Card_" .. tostring(itemData.id)
-        card.BackgroundColor3 = rarBg
+        card.BackgroundColor3 = cardBg
         card.Size = UDim2.new(1, 0, 1, 0)
         card.ClipsDescendants = true
-        Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(8))
+        Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(10))
 
         local stroke = Instance.new("UIStroke", card)
-        stroke.Color = equipped and GREEN_GLOW or rarColor
-        stroke.Thickness = 1.4; stroke.Transparency = 0.25
+        stroke.Color = equipped and GREEN_GLOW or borderC
+        stroke.Thickness = 2.0; stroke.Transparency = 0.1
 
-        -- Name at top
+        -- Weapon name at top (white + black outline for contrast)
         local nameLabel = Instance.new("TextLabel", card)
         nameLabel.Name = "Name"
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.TextColor3 = WHITE
-        nameLabel.TextSize = math.max(13, math.floor(px(15)))
-        nameLabel.Size = UDim2.new(1, -px(10), 0, px(22))
-        nameLabel.Position = UDim2.new(0, px(5), 0, px(4))
+        nameLabel.TextSize = math.max(12, math.floor(px(13)))
+        nameLabel.Size = UDim2.new(1, -px(8), 0, px(30))
+        nameLabel.Position = UDim2.new(0, px(4), 0, px(3))
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
-        nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+        nameLabel.TextWrapped = true
         nameLabel.Text = itemData.name
+        local nameStroke = Instance.new("UIStroke", nameLabel)
+        nameStroke.Color = Color3.fromRGB(0, 0, 0)
+        nameStroke.Thickness = 1.5; nameStroke.Transparency = 0.15
 
-        -- Icon square (centred)
-        local iconBg = Instance.new("Frame", card)
-        iconBg.Name = "IconBg"
-        iconBg.BackgroundColor3 = Color3.new(
-            math.clamp(rarBg.R * 0.65, 0, 1),
-            math.clamp(rarBg.G * 0.65, 0, 1),
-            math.clamp(rarBg.B * 0.65, 0, 1)
-        )
-        iconBg.Size = UDim2.new(0, px(88), 0, px(88))
-        iconBg.AnchorPoint = Vector2.new(0.5, 0)
-        iconBg.Position = UDim2.new(0.5, 0, 0, px(28))
-        Instance.new("UICorner", iconBg).CornerRadius = UDim.new(0, px(6))
+        -- Size tier label below name
+        local pct  = itemData.sizePercent or 100
+        local tier = itemData.sizeTier or "Normal"
 
-        local thumb = Instance.new("ImageLabel", iconBg)
+        local tierColor = WHITE
+        if tier == "King" then
+            tierColor = Color3.fromRGB(255, 60, 60)
+        elseif tier == "Giant" then
+            tierColor = Color3.fromRGB(80, 220, 255)
+        elseif tier == "Huge" then
+            tierColor = Color3.fromRGB(255, 90, 60)
+        elseif tier == "Large" then
+            tierColor = Color3.fromRGB(100, 200, 255)
+        elseif tier == "Tiny" then
+            tierColor = Color3.fromRGB(180, 180, 190)
+        end
+
+        local tierLabel = Instance.new("TextLabel", card)
+        tierLabel.Name = "SizeTier"
+        tierLabel.BackgroundTransparency = 1
+        tierLabel.Font = Enum.Font.GothamBold
+        tierLabel.TextColor3 = tierColor
+        tierLabel.TextSize = math.max(11, math.floor(px(13)))
+        tierLabel.Size = UDim2.new(1, -px(8), 0, px(18))
+        tierLabel.Position = UDim2.new(0, px(4), 0, px(33))
+        tierLabel.TextXAlignment = Enum.TextXAlignment.Center
+        tierLabel.Text = (tier ~= "Normal") and tier or ""
+        local tierStroke = Instance.new("UIStroke", tierLabel)
+        tierStroke.Color = Color3.fromRGB(0, 0, 0)
+        tierStroke.Thickness = 1.2; tierStroke.Transparency = 0.25
+
+        -- Weapon icon directly on card (no inner frame)
+        local thumb = Instance.new("ImageLabel", card)
         thumb.Name = "Thumb"
         thumb.BackgroundTransparency = 1
-        thumb.Size = UDim2.new(0.85, 0, 0.85, 0)
-        thumb.AnchorPoint = Vector2.new(0.5, 0.5)
-        thumb.Position = UDim2.new(0.5, 0, 0.5, 0)
+        thumb.Size = UDim2.new(0, px(85), 0, px(85))
+        thumb.AnchorPoint = Vector2.new(0.5, 0)
+        thumb.Position = UDim2.new(0.5, 0, 0, px(52))
         thumb.ScaleType = Enum.ScaleType.Fit
         thumb.Image = ""
         pcall(function()
@@ -1295,48 +1352,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        -- SIZE ROLL SYSTEM — show tier name + size percent at bottom of card
-        -- Rarity data is preserved on the backend; only the visible card label changes.
-        local pct = itemData.sizePercent or 100
-        local tier = itemData.sizeTier or "Normal"
-
-        -- Tier-based colors for both labels
-        local tierColor = DIM_TEXT
-        if tier == "King" then
-            tierColor = Color3.fromRGB(255, 60, 60)
-        elseif tier == "Giant" then
-            tierColor = GOLD
-        elseif tier == "Large" then
-            tierColor = Color3.fromRGB(100, 200, 255)
-        elseif tier == "Tiny" then
-            tierColor = Color3.fromRGB(160, 160, 170)
-        end
-
-        -- Tier name label (above the percent)
-        local tierLabel = Instance.new("TextLabel", card)
-        tierLabel.Name = "SizeTier"
-        tierLabel.BackgroundTransparency = 1
-        tierLabel.Font = Enum.Font.GothamBold
-        tierLabel.TextColor3 = tierColor
-        tierLabel.TextSize = math.max(11, math.floor(px(12)))
-        tierLabel.Size = UDim2.new(1, 0, 0, px(16))
-        tierLabel.AnchorPoint = Vector2.new(0, 1)
-        tierLabel.Position = UDim2.new(0, 0, 1, -px(22))
-        tierLabel.TextXAlignment = Enum.TextXAlignment.Center
-        tierLabel.Text = tier
-
-        -- Size percent label (bottom of card, below tier)
+        -- Size percent at bottom
         local sizeLabel = Instance.new("TextLabel", card)
         sizeLabel.Name = "SizePercent"
         sizeLabel.BackgroundTransparency = 1
         sizeLabel.Font = Enum.Font.GothamBold
-        sizeLabel.TextColor3 = tierColor
-        sizeLabel.TextSize = math.max(12, math.floor(px(14)))
-        sizeLabel.Size = UDim2.new(1, 0, 0, px(18))
+        sizeLabel.TextColor3 = WHITE
+        sizeLabel.TextSize = math.max(13, math.floor(px(15)))
+        sizeLabel.Size = UDim2.new(1, 0, 0, px(22))
         sizeLabel.AnchorPoint = Vector2.new(0, 1)
-        sizeLabel.Position = UDim2.new(0, 0, 1, -px(5))
+        sizeLabel.Position = UDim2.new(0, 0, 1, -px(6))
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
         sizeLabel.Text = tostring(math.floor(pct)) .. "%"
+        local pctStroke = Instance.new("UIStroke", sizeLabel)
+        pctStroke.Color = Color3.fromRGB(0, 0, 0)
+        pctStroke.Thickness = 1.5; pctStroke.Transparency = 0.15
 
         -- Equipped bar indicator (green bottom strip)
         local eqBar = Instance.new("Frame", card)
@@ -1363,8 +1393,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             favStar.ZIndex = 8
         end
 
-        -- Store ref
-        allCardRefs[itemData.id] = { card = card, stroke = stroke, itemData = itemData }
+        -- Store ref (bgColor/borderColor for selection/equip reset)
+        allCardRefs[itemData.id] = { card = card, stroke = stroke, itemData = itemData, bgColor = cardBg, borderColor = borderC }
 
         -- Click to select
         local clickBtn = Instance.new("TextButton", card)
@@ -1381,16 +1411,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         clickBtn.MouseEnter:Connect(function()
             if not selectedItem or selectedItem.id ~= itemData.id then
                 TweenService:Create(card, TWEEN_QUICK, { BackgroundColor3 = Color3.new(
-                    math.min(1, rarBg.R + 0.05),
-                    math.min(1, rarBg.G + 0.05),
-                    math.min(1, rarBg.B + 0.05)
+                    math.min(1, cardBg.R + 0.06),
+                    math.min(1, cardBg.G + 0.06),
+                    math.min(1, cardBg.B + 0.06)
                 )}):Play()
             end
         end)
         clickBtn.MouseLeave:Connect(function()
             if not selectedItem or selectedItem.id ~= itemData.id then
                 TweenService:Create(card, TWEEN_QUICK, {
-                    BackgroundColor3 = rarBg
+                    BackgroundColor3 = cardBg
                 }):Play()
             end
         end)
@@ -2178,13 +2208,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 card.AutoButtonColor = false
                 card.BorderSizePixel = 0
                 card.LayoutOrder = i_b
+                card.ClipsDescendants = true
                 card.Parent = boostGridScroll
-                Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(10))
+                Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
                 local cStroke = Instance.new("UIStroke", card)
-                cStroke.Color = CARD_STROKE; cStroke.Thickness = 1.2; cStroke.Transparency = 0.35
+                cStroke.Color = CARD_STROKE; cStroke.Thickness = INV_CARD.StrokeThickness; cStroke.Transparency = INV_CARD.StrokeTransparency
 
-                -- Icon area (top portion of card)
+                -- Name label at top (matching weapon card layout)
+                local cardName = Instance.new("TextLabel", card)
+                cardName.Name = "NameLabel"
+                cardName.BackgroundTransparency = 1
+                cardName.Font = Enum.Font.GothamBold
+                cardName.Text = def.DisplayName or def.Id
+                cardName.TextColor3 = WHITE
+                cardName.TextSize = INV_CARD.NameTextSize
+                cardName.TextTruncate = Enum.TextTruncate.AtEnd
+                cardName.TextXAlignment = Enum.TextXAlignment.Center
+                cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
+                cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+
+                -- Icon area (centered square, matching weapon card layout)
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
                 iconArea.BackgroundColor3 = Color3.new(
@@ -2192,16 +2236,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     math.clamp(iconColor.G * 0.15 + 0.06, 0, 1),
                     math.clamp(iconColor.B * 0.15 + 0.06, 0, 1)
                 )
-                iconArea.Size = UDim2.new(1, -px(8), 0, px(100))
-                iconArea.Position = UDim2.new(0, px(4), 0, px(4))
+                iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
+                iconArea.AnchorPoint = Vector2.new(0.5, 0)
+                iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
                 iconArea.BorderSizePixel = 0
-                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, px(8))
+                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
 
-                -- Icon glyph centered in icon area
+                -- Icon image centered in icon area
                 local cardIconImage = Instance.new("ImageLabel", iconArea)
                 cardIconImage.Name = "IconImage"
                 cardIconImage.BackgroundTransparency = 1
-                cardIconImage.Size = UDim2.new(0.5, 0, 0.5, 0)
+                cardIconImage.Size = UDim2.new(0.85, 0, 0.85, 0)
                 cardIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
                 cardIconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
                 cardIconImage.ScaleType = Enum.ScaleType.Fit
@@ -2217,25 +2262,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local cardIconGlyph = Instance.new("TextLabel", iconArea)
                 cardIconGlyph.Name = "IconGlyph"
                 cardIconGlyph.BackgroundTransparency = 1
-                cardIconGlyph.Size = UDim2.new(1, 0, 1, 0)
+                cardIconGlyph.Size = UDim2.new(0.85, 0, 0.85, 0)
+                cardIconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+                cardIconGlyph.Position = UDim2.new(0.5, 0, 0.5, 0)
                 cardIconGlyph.Font = Enum.Font.GothamBold
                 cardIconGlyph.Text = def.IconGlyph or "\u{26A1}"
                 cardIconGlyph.TextScaled = true
                 cardIconGlyph.TextColor3 = iconColor
                 cardIconGlyph.Visible = not cardIconImage.Visible
-
-                -- Name label (below icon area)
-                local cardName = Instance.new("TextLabel", card)
-                cardName.Name = "NameLabel"
-                cardName.BackgroundTransparency = 1
-                cardName.Font = Enum.Font.GothamBold
-                cardName.Text = def.DisplayName or def.Id
-                cardName.TextColor3 = WHITE
-                cardName.TextSize = math.max(12, math.floor(px(13)))
-                cardName.TextTruncate = Enum.TextTruncate.AtEnd
-                cardName.TextXAlignment = Enum.TextXAlignment.Center
-                cardName.Size = UDim2.new(1, -px(8), 0, px(22))
-                cardName.Position = UDim2.new(0, px(4), 0, px(110))
 
                 -- Status / owned count label (bottom of card)
                 local cardStatus = Instance.new("TextLabel", card)
@@ -2244,21 +2278,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardStatus.Font = Enum.Font.GothamBold
                 cardStatus.Text = "Not Owned"
                 cardStatus.TextColor3 = DIM_TEXT
-                cardStatus.TextSize = math.max(10, math.floor(px(11)))
+                cardStatus.TextSize = INV_CARD.Line1TextSize
                 cardStatus.TextXAlignment = Enum.TextXAlignment.Center
-                cardStatus.Size = UDim2.new(1, -px(8), 0, px(18))
-                cardStatus.Position = UDim2.new(0, px(4), 0, px(132))
+                cardStatus.Size = UDim2.new(1, 0, 0, INV_CARD.Line2Height)
+                cardStatus.AnchorPoint = Vector2.new(0, 1)
+                cardStatus.Position = UDim2.new(0, 0, 1, -INV_CARD.Line2OffBottom)
 
                 -- Active bar at bottom (green strip when boost is running)
                 local activeBar = Instance.new("Frame", card)
                 activeBar.Name = "ActiveBar"
                 activeBar.BackgroundColor3 = GREEN_GLOW
-                activeBar.Size = UDim2.new(0.7, 0, 0, px(3))
-                activeBar.AnchorPoint = Vector2.new(0.5, 1)
-                activeBar.Position = UDim2.new(0.5, 0, 1, -px(4))
-                activeBar.BorderSizePixel = 0
+                activeBar.Size = UDim2.new(1, 0, 0, px(3))
+                activeBar.AnchorPoint = Vector2.new(0, 1)
+                activeBar.Position = UDim2.new(0, 0, 1, 0)
+                activeBar.BorderSizePixel = 0; activeBar.ZIndex = 5
                 activeBar.Visible = false
-                Instance.new("UICorner", activeBar).CornerRadius = UDim.new(0, px(2))
 
                 boostCards[def.Id] = {
                     card = card,
@@ -2886,25 +2920,40 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             card.AutoButtonColor = false
             card.BorderSizePixel = 0
             card.LayoutOrder = isDefault and 0 or i_sk
+            card.ClipsDescendants = true
             card.Parent = skinGridScroll
-            Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(10))
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
             local baseStrokeColor = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
-            local baseStrokeThickness = isEpic and 1.6 or 1.2
-            local baseStrokeTransparency = isEpic and 0.2 or 0.35
+            local baseStrokeThickness = isEpic and 1.6 or INV_CARD.StrokeThickness
+            local baseStrokeTransparency = isEpic and 0.2 or INV_CARD.StrokeTransparency
             local sCS = Instance.new("UIStroke", card)
             sCS.Color = baseStrokeColor
             sCS.Thickness = baseStrokeThickness
             sCS.Transparency = baseStrokeTransparency
 
-            -- Icon area (top)
+            -- Name label at top (matching weapon card layout)
+            local cardName = Instance.new("TextLabel", card)
+            cardName.Name = "NameLabel"
+            cardName.BackgroundTransparency = 1
+            cardName.Font = Enum.Font.GothamBold
+            cardName.Text = displayName
+            cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+            cardName.TextSize = INV_CARD.NameTextSize
+            cardName.TextTruncate = Enum.TextTruncate.AtEnd
+            cardName.TextXAlignment = Enum.TextXAlignment.Center
+            cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
+            cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+
+            -- Icon area (centered square, matching weapon card layout)
             local iconArea = Instance.new("Frame", card)
             iconArea.Name = "IconArea"
             iconArea.BackgroundColor3 = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
-            iconArea.Size = UDim2.new(1, -px(8), 0, px(100))
-            iconArea.Position = UDim2.new(0, px(4), 0, px(4))
+            iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
+            iconArea.AnchorPoint = Vector2.new(0.5, 0)
+            iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
             iconArea.BorderSizePixel = 0
-            Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, px(8))
+            Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
 
             local cardIcon = Instance.new("TextLabel", iconArea)
             cardIcon.Name = "Icon"
@@ -2913,45 +2962,32 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             cardIcon.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
             cardIcon.TextScaled = true
             cardIcon.TextColor3 = isDefault and DIM_TEXT or skinColor
-            cardIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+            cardIcon.Size = UDim2.new(0.85, 0, 0.85, 0)
             cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
             cardIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
 
-            -- Name label (bottom)
-            local cardName = Instance.new("TextLabel", card)
-            cardName.Name = "NameLabel"
-            cardName.BackgroundTransparency = 1
-            cardName.Font = Enum.Font.GothamBold
-            cardName.Text = displayName
-            cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
-            cardName.TextSize = math.max(12, math.floor(px(13)))
-            cardName.TextTruncate = Enum.TextTruncate.AtEnd
-            cardName.TextXAlignment = Enum.TextXAlignment.Center
-            cardName.Size = UDim2.new(1, -px(8), 0, px(22))
-            cardName.Position = UDim2.new(0, px(4), 0, px(110))
-
-            -- Rarity label
+            -- Rarity label (bottom of card)
             local cardRarity = Instance.new("TextLabel", card)
             cardRarity.Name = "RarityLabel"
             cardRarity.BackgroundTransparency = 1
             cardRarity.Font = Enum.Font.GothamBold
             cardRarity.Text = rarity
             cardRarity.TextColor3 = rarityColor
-            cardRarity.TextSize = math.max(10, math.floor(px(11)))
+            cardRarity.TextSize = INV_CARD.Line1TextSize
             cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-            cardRarity.Size = UDim2.new(1, -px(8), 0, px(18))
-            cardRarity.Position = UDim2.new(0, px(4), 0, px(132))
+            cardRarity.Size = UDim2.new(1, 0, 0, INV_CARD.Line2Height)
+            cardRarity.AnchorPoint = Vector2.new(0, 1)
+            cardRarity.Position = UDim2.new(0, 0, 1, -INV_CARD.Line2OffBottom)
 
             -- Equipped bar at bottom
             local eqBar = Instance.new("Frame", card)
             eqBar.Name = "EquippedBar"
             eqBar.BackgroundColor3 = GREEN_GLOW
-            eqBar.Size = UDim2.new(0.7, 0, 0, px(3))
-            eqBar.AnchorPoint = Vector2.new(0.5, 1)
-            eqBar.Position = UDim2.new(0.5, 0, 1, -px(4))
-            eqBar.BorderSizePixel = 0
+            eqBar.Size = UDim2.new(1, 0, 0, px(3))
+            eqBar.AnchorPoint = Vector2.new(0, 1)
+            eqBar.Position = UDim2.new(0, 0, 1, 0)
+            eqBar.BorderSizePixel = 0; eqBar.ZIndex = 5
             eqBar.Visible = false
-            Instance.new("UICorner", eqBar).CornerRadius = UDim.new(0, px(2))
 
             -- Favorite star overlay (top-right)
             local favStar = Instance.new("TextLabel", card)
@@ -2963,8 +2999,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             favStar.TextSize = math.max(14, math.floor(px(16)))
             favStar.Size = UDim2.new(0, px(20), 0, px(20))
             favStar.AnchorPoint = Vector2.new(1, 0)
-            favStar.Position = UDim2.new(1, -px(6), 0, px(6))
-            favStar.ZIndex = 5
+            favStar.Position = UDim2.new(1, -px(4), 0, px(3))
+            favStar.ZIndex = 8
             favStar.Visible = false
 
             skinCards[skinId] = {
@@ -3096,7 +3132,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             Instance.new("UICorner", trailGridScroll).CornerRadius = UDim.new(0, px(10))
 
             local trailGridLayout = Instance.new("UIGridLayout", trailGridScroll)
-            trailGridLayout.CellSize = UDim2.new(0, px(140), 0, px(130))
+            trailGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
             trailGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
             trailGridLayout.FillDirection = Enum.FillDirection.Horizontal
             trailGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -3440,31 +3476,47 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 card.AutoButtonColor = false
                 card.BorderSizePixel = 0
                 card.LayoutOrder = isFree and 0 or i_ef
+                card.ClipsDescendants = true
                 card.Parent = trailGridScroll
-                Instance.new("UICorner", card).CornerRadius = UDim.new(0, px(10))
+                Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
                 local baseStrokeColor = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
-                local baseStrokeThickness = isEpic and 1.6 or 1.2
-                local baseStrokeTransparency = isEpic and 0.2 or 0.35
+                local baseStrokeThickness = isEpic and 1.6 or INV_CARD.StrokeThickness
+                local baseStrokeTransparency = isEpic and 0.2 or INV_CARD.StrokeTransparency
                 local eCS = Instance.new("UIStroke", card)
                 eCS.Color = baseStrokeColor
                 eCS.Thickness = baseStrokeThickness
                 eCS.Transparency = baseStrokeTransparency
 
-                -- Color swatch area (top)
+                -- Name label at top (matching weapon card layout)
+                local cardName = Instance.new("TextLabel", card)
+                cardName.Name = "NameLabel"
+                cardName.BackgroundTransparency = 1
+                cardName.Font = Enum.Font.GothamBold
+                cardName.Text = displayName
+                cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+                cardName.TextSize = INV_CARD.NameTextSize
+                cardName.TextTruncate = Enum.TextTruncate.AtEnd
+                cardName.TextXAlignment = Enum.TextXAlignment.Center
+                cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
+                cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+
+                -- Icon area (centered square, matching weapon card layout)
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
                 iconArea.BackgroundColor3 = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
-                iconArea.Size = UDim2.new(1, -px(8), 0, px(60))
-                iconArea.Position = UDim2.new(0, px(4), 0, px(4))
+                iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
+                iconArea.AnchorPoint = Vector2.new(0.5, 0)
+                iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
                 iconArea.BorderSizePixel = 0
-                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, px(8))
+                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
 
+                -- Color swatch inside icon area
                 local swatch = Instance.new("Frame", iconArea)
                 swatch.Name = "ColorSwatch"
-                swatch.Size = UDim2.new(0.5, 0, 0, px(6))
-                swatch.AnchorPoint = Vector2.new(0.5, 0.5)
-                swatch.Position = UDim2.new(0.5, 0, 0.45, 0)
+                swatch.Size = UDim2.new(0.55, 0, 0, px(8))
+                swatch.AnchorPoint = Vector2.new(0.5, 0)
+                swatch.Position = UDim2.new(0.5, 0, 0.15, 0)
                 swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
                 swatch.BorderSizePixel = 0
                 Instance.new("UICorner", swatch).CornerRadius = UDim.new(0.5, 0)
@@ -3481,48 +3533,35 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 trailGlyph.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
                 trailGlyph.TextScaled = true
                 trailGlyph.BackgroundTransparency = 1
-                trailGlyph.Size = UDim2.new(0.7, 0, 0.3, 0)
-                trailGlyph.AnchorPoint = Vector2.new(0.5, 0)
-                trailGlyph.Position = UDim2.new(0.5, 0, 0.6, 0)
+                trailGlyph.Size = UDim2.new(0.7, 0, 0.35, 0)
+                trailGlyph.AnchorPoint = Vector2.new(0.5, 1)
+                trailGlyph.Position = UDim2.new(0.5, 0, 0.95, 0)
                 if isRainbow and def.TrailColorSequence then
                     Instance.new("UIGradient", trailGlyph).Color = def.TrailColorSequence
                 end
 
-                -- Name label
-                local cardName = Instance.new("TextLabel", card)
-                cardName.Name = "NameLabel"
-                cardName.BackgroundTransparency = 1
-                cardName.Font = Enum.Font.GothamBold
-                cardName.Text = displayName
-                cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
-                cardName.TextSize = math.max(12, math.floor(px(13)))
-                cardName.TextTruncate = Enum.TextTruncate.AtEnd
-                cardName.TextXAlignment = Enum.TextXAlignment.Center
-                cardName.Size = UDim2.new(1, -px(8), 0, px(22))
-                cardName.Position = UDim2.new(0, px(4), 0, px(70))
-
-                -- Rarity label
+                -- Rarity label (bottom of card)
                 local cardRarity = Instance.new("TextLabel", card)
                 cardRarity.Name = "RarityLabel"
                 cardRarity.BackgroundTransparency = 1
                 cardRarity.Font = Enum.Font.GothamBold
                 cardRarity.Text = rarity
                 cardRarity.TextColor3 = rarityColor
-                cardRarity.TextSize = math.max(10, math.floor(px(11)))
+                cardRarity.TextSize = INV_CARD.Line1TextSize
                 cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-                cardRarity.Size = UDim2.new(1, -px(8), 0, px(18))
-                cardRarity.Position = UDim2.new(0, px(4), 0, px(90))
+                cardRarity.Size = UDim2.new(1, 0, 0, INV_CARD.Line2Height)
+                cardRarity.AnchorPoint = Vector2.new(0, 1)
+                cardRarity.Position = UDim2.new(0, 0, 1, -INV_CARD.Line2OffBottom)
 
                 -- Equipped bar at bottom
                 local eqBar = Instance.new("Frame", card)
                 eqBar.Name = "EquippedBar"
                 eqBar.BackgroundColor3 = GREEN_GLOW
-                eqBar.Size = UDim2.new(0.7, 0, 0, px(3))
-                eqBar.AnchorPoint = Vector2.new(0.5, 1)
-                eqBar.Position = UDim2.new(0.5, 0, 1, -px(4))
-                eqBar.BorderSizePixel = 0
+                eqBar.Size = UDim2.new(1, 0, 0, px(3))
+                eqBar.AnchorPoint = Vector2.new(0, 1)
+                eqBar.Position = UDim2.new(0, 0, 1, 0)
+                eqBar.BorderSizePixel = 0; eqBar.ZIndex = 5
                 eqBar.Visible = false
-                Instance.new("UICorner", eqBar).CornerRadius = UDim.new(0, px(2))
 
                 effectCards[effectId] = {
                     card = card,
