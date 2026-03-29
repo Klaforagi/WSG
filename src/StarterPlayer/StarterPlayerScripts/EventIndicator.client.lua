@@ -783,7 +783,7 @@ local function createIndicator()
         trackerGui.Name = "EventObjectiveTracker"
         trackerGui.ResetOnSpawn = false
         trackerGui.IgnoreGuiInset = false
-        trackerGui.DisplayOrder = 250
+        trackerGui.DisplayOrder = 240 -- lower than MainUI (250) so modals render above
         trackerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
         trackerGui.Parent = playerGui
 

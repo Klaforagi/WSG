@@ -20,13 +20,19 @@ AssetCodes.images = {
 
     --WEAPON icons
     --MELEE
-    ["Wooden Sword"] = "rbxassetid://42901975",
-    ["Starter Sword"] = "rbxassetid://42901975",
-    Dagger = "rbxassetid://949752421",
-    Sword = "rbxassetid://10123421106",
-    Spear = "rbxassetid://139656815",
+    --Common
+    ["Wooden Sword"] = "rbxassetid://137149577851414",
+    ["Starter Sword"] = "rbxassetid://137149577851414",
+    Branch = "rbxassetid://137149577851414",
+   --Uncommon
+   ["Stone Hammer"] = "rbxassetid://139192177366165",
+    --Rare
+    ["Flanged Mace"] = "rbxassetid://80288535043725",
+    --Epic
+    ["Spiked Mace"] = "rbxassetid://140429696847728",
+    --Legendary
     Punisher = "rbxassetid://120062027388705",
-    Kingsblade = "rbxassetid://129149156143490",
+    Kingsblade = "rbxassetid://77109527769141",
     --UTILITY
     -- ↓ PLACEHOLDER: replace with a final uploaded bandage icon asset ID later
     Bandage = "rbxassetid://14029553034",
