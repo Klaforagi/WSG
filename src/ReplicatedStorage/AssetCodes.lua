@@ -31,11 +31,6 @@ AssetCodes.images = {
     ["Flanged Mace"] = "rbxassetid://80288535043725",
     --Epic
     --Legendary
-    ["Wooden Sword"] = "rbxassetid://42901975",
-    ["Starter Sword"] = "rbxassetid://42901975",
-    Dagger = "rbxassetid://949752421",
-    Sword = "rbxassetid://10123421106",
-    Spear = "rbxassetid://139656815",
     Punisher = "rbxassetid://120062027388705",
     Kingsblade = "rbxassetid://77109527769141",
     --UTILITY
