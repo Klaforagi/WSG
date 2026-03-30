@@ -23,11 +23,13 @@ AssetCodes.images = {
     --Common
     ["Wooden Sword"] = "rbxassetid://137149577851414",
     ["Starter Sword"] = "rbxassetid://137149577851414",
-    Branch = "rbxassetid://137149577851414",
+    Branch = "rbxassetid://96451256229936",
    --Uncommon
    ["Stone Hammer"] = "rbxassetid://139192177366165",
+   ["Wooden Spear"] = "rbxassetid://86988825914270",
     --Rare
     ["Flanged Mace"] = "rbxassetid://80288535043725",
+    Spear = "rbxassetid://92401070096107",
     --Epic
     ["Spiked Mace"] = "rbxassetid://140429696847728",
     --Legendary
