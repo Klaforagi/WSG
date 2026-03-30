@@ -3127,6 +3127,19 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
                 local price       = def.CoinCost or 0
 
+                -- Preview-only: lighten very dark trail colors so icon is visible on dark cards
+                local isDarkTrail = (not isRainbow) and (effectColor.R + effectColor.G + effectColor.B) < 0.75
+                local previewColor = isDarkTrail
+                    and Color3.fromRGB(
+                        math.clamp(math.floor(effectColor.R * 255 + 60), 0, 255),
+                        math.clamp(math.floor(effectColor.G * 255 + 60), 0, 255),
+                        math.clamp(math.floor(effectColor.B * 255 + 65), 0, 255)
+                    )
+                    or effectColor
+                local previewStrokeColor = isDarkTrail
+                    and Color3.fromRGB(120, 120, 130)
+                    or effectColor
+
                 local card = Instance.new("TextButton")
                 card.Name = "EffectCard_" .. effectId
                 card.BackgroundColor3 = CARD_BG
@@ -3161,7 +3174,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 swatch.Size = UDim2.new(0.6, 0, 0, px(10))
                 swatch.AnchorPoint = Vector2.new(0.5, 0.5)
                 swatch.Position = UDim2.new(0.5, 0, 0.35, 0)
-                swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
+                swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or previewColor
                 swatch.BorderSizePixel = 0
                 Instance.new("UICorner", swatch).CornerRadius = UDim.new(0.5, 0)
                 if isRainbow and def.TrailColorSequence then
@@ -3169,15 +3182,15 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     grad.Color = def.TrailColorSequence
                 end
                 local swStk = Instance.new("UIStroke", swatch)
-                swStk.Color = isRainbow and Color3.fromRGB(200, 160, 255) or effectColor
-                swStk.Thickness = px(2); swStk.Transparency = 0.3
+                swStk.Color = isRainbow and Color3.fromRGB(200, 160, 255) or previewStrokeColor
+                swStk.Thickness = px(2); swStk.Transparency = isDarkTrail and 0.1 or 0.3
 
                 -- Trail glyph
                 local trailGlyph = Instance.new("TextLabel", swatchArea)
                 trailGlyph.Name = "TrailGlyph"
                 trailGlyph.Text = "\u{2550}\u{2550}\u{2550}"
                 trailGlyph.Font = Enum.Font.GothamBold
-                trailGlyph.TextColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or effectColor
+                trailGlyph.TextColor3 = isRainbow and Color3.fromRGB(255, 255, 255) or previewColor
                 trailGlyph.TextScaled = true
                 trailGlyph.BackgroundTransparency = 1
                 trailGlyph.Size = UDim2.new(0.8, 0, 0.3, 0)
@@ -3186,6 +3199,11 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 if isRainbow and def.TrailColorSequence then
                     local gg = Instance.new("UIGradient", trailGlyph)
                     gg.Color = def.TrailColorSequence
+                end
+                if isDarkTrail then
+                    local glyphStroke = Instance.new("UIStroke", trailGlyph)
+                    glyphStroke.Color = Color3.fromRGB(100, 100, 110)
+                    glyphStroke.Thickness = 1.2; glyphStroke.Transparency = 0.3
                 end
 
                 -- Name label
