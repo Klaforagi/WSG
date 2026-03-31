@@ -100,6 +100,21 @@ local WEAPON_CARD_BORDER = {
     Legendary = Color3.fromRGB(140, 108, 16),
 }
 
+local TextService = game:GetService("TextService")
+
+local function shadeColor(c, factor)
+    factor = factor or 0.6
+    return Color3.new(math.clamp(c.R * factor, 0, 1), math.clamp(c.G * factor, 0, 1), math.clamp(c.B * factor, 0, 1))
+end
+
+-- Central size-tier style mapping (text color + bg darkness factor)
+local SIZE_TIER_STYLES = {
+    Tiny  = { text = Color3.fromRGB(100, 200, 100), bgFactor = 0.6 }, -- green
+    Large = { text = Color3.fromRGB(80, 180, 255),  bgFactor = 0.55 }, -- blue
+    Giant = { text = Color3.fromRGB(150, 50, 230),  bgFactor = 0.55 }, -- purple
+    King  = { text = GOLD or Color3.fromRGB(255, 200, 60), bgFactor = 0.5 }, -- yellow/gold
+}
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects)
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -1348,35 +1363,52 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local pct  = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
 
-        local tierColor = WHITE
-        if tier == "King" then
-            tierColor = Color3.fromRGB(255, 60, 60)
-        elseif tier == "Giant" then
-            tierColor = Color3.fromRGB(80, 220, 255)
-        elseif tier == "Huge" then
-            tierColor = Color3.fromRGB(255, 90, 60)
-        elseif tier == "Large" then
-            tierColor = Color3.fromRGB(100, 200, 255)
-        elseif tier == "Tiny" then
-            tierColor = Color3.fromRGB(180, 180, 190)
-        end
+        -- Size tier pill tag (frame + inner label)
+        local style = SIZE_TIER_STYLES[tier] or { text = WHITE, bgFactor = 0.6 }
+        local tierText = (tier ~= "Normal") and tier or ""
+        local tierTextSize = math.max(10, math.floor(px(12)))
+        if tierText ~= "" then
+            local textBounds = TextService:GetTextSize(tierText, tierTextSize, Enum.Font.GothamBold, Vector2.new(1000, 200))
+            local padX = px(8)
+            local padY = px(4)
+            local frameW = math.floor(textBounds.X) + padX * 2
+            local frameH = math.floor(textBounds.Y) + padY * 2
 
-        local tierLabel = Instance.new("TextLabel", card)
-        tierLabel.Name = "SizeTier"
-        tierLabel.BackgroundTransparency = 1
-        tierLabel.Font = Enum.Font.GothamBold
-        tierLabel.TextColor3 = tierColor
-        tierLabel.TextScaled = true
-        tierLabel.Size = UDim2.new(1, -px(6), 0.09, 0)
-        tierLabel.Position = UDim2.new(0, px(3), 0.20, 0)
-        tierLabel.TextXAlignment = Enum.TextXAlignment.Center
-        tierLabel.Text = (tier ~= "Normal") and tier or ""
-        local tierConstraint = Instance.new("UITextSizeConstraint", tierLabel)
-        tierConstraint.MinTextSize = 7
-        tierConstraint.MaxTextSize = 13
-        local tierStroke = Instance.new("UIStroke", tierLabel)
-        tierStroke.Color = Color3.fromRGB(0, 0, 0)
-        tierStroke.Thickness = 1.2; tierStroke.Transparency = 0.25
+            -- compute richer bg and brighter text via HSV adjustments
+            local h,s,v = Color3.toHSV(style.text)
+            local textColor = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1)) -- brighter text
+            local bgS = math.clamp(s + 0.14, 0, 1)
+            local bgV = math.clamp(v * style.bgFactor + 0.02, 0, 1)
+            local bgColor = Color3.fromHSV(h, bgS, bgV)
+
+            local tierBg = Instance.new("Frame", card)
+            tierBg.Name = "SizeTierBg"
+            tierBg.BackgroundColor3 = bgColor
+            tierBg.BackgroundTransparency = 0.12
+            tierBg.BorderSizePixel = 0
+            tierBg.Size = UDim2.new(0, frameW, 0, frameH)
+            tierBg.AnchorPoint = Vector2.new(0.5, 0)
+            tierBg.Position = UDim2.new(0.5, 0, 0.20, 0)
+            tierBg.ZIndex = 6
+            local corner = Instance.new("UICorner", tierBg)
+            corner.CornerRadius = UDim.new(0, math.max(0, math.floor(frameH / 2)))
+
+            local tierLabel = Instance.new("TextLabel", tierBg)
+            tierLabel.Name = "SizeTier"
+            tierLabel.BackgroundTransparency = 1
+            tierLabel.Font = Enum.Font.GothamBold
+            tierLabel.TextColor3 = textColor
+            tierLabel.TextSize = tierTextSize
+            tierLabel.Size = UDim2.new(1, 0, 1, 0)
+            tierLabel.TextXAlignment = Enum.TextXAlignment.Center
+            tierLabel.TextYAlignment = Enum.TextYAlignment.Center
+            tierLabel.Text = tierText
+            tierLabel.ZIndex = 7
+
+            local strokeColor = shadeColor(bgColor, 0.8)
+            local bgStroke = Instance.new("UIStroke", tierBg)
+            bgStroke.Color = strokeColor; bgStroke.Thickness = 1; bgStroke.Transparency = 0.6
+        end
 
         -- ── SECTION 3: Weapon icon (middle 44% of card) ─────────────────
         -- Positioned via Scale so it stays proportional at any resolution.
