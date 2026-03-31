@@ -30,6 +30,7 @@ AssetCodes.images = {
     --Rare
     ["Flanged Mace"] = "rbxassetid://80288535043725",
     Spear = "rbxassetid://92401070096107",
+    Shortsword = "rbxassetid://87749478192733",
     --Epic
     ["Spiked Mace"] = "rbxassetid://140429696847728",
     Crusher = "rbxassetid://70478795441387",
