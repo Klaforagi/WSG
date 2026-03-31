@@ -485,6 +485,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             category   = classifyItem(itemName),
             rarity     = getWeaponRarity(itemName),
             isInstance = false,
+            sizePercent = 100, -- default size for non-instance items
+            sizeTier = "Normal",
         })
     end
 
@@ -1497,8 +1499,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end
 
-        -- Sort: favorited first, then rarity (rarest first), alphabetical, Starter last
-        local rarityPriority = { Legendary = 1, Epic = 2, Rare = 3, Common = 4, Starter = 5 }
+        -- Sort: favorited first, then rarity (rarest first), within rarity sort by sizePercent (larger first), alphabetical, Starter last
+        local rarityPriority = { Legendary = 1, Epic = 2, Rare = 3, Uncommon = 4, Common = 5, Starter = 6 }
         table.sort(filtered, function(a, b)
             -- Starter weapons always go to the very end
             local aStarter = (a.source == "Starter") and 1 or 0
@@ -1509,9 +1511,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local bFav = (b.favorited == true) and 0 or 1
             if aFav ~= bFav then return aFav < bFav end
             -- Then by rarity
-            local pa = rarityPriority[a.rarity] or 4
-            local pb = rarityPriority[b.rarity] or 4
+            local pa = rarityPriority[a.rarity] or 5
+            local pb = rarityPriority[b.rarity] or 5
             if pa ~= pb then return pa < pb end
+            -- Within same rarity, sort by sizePercent (larger first)
+            local sa = tonumber(a.sizePercent) or 100
+            local sb = tonumber(b.sizePercent) or 100
+            if sa ~= sb then return sa > sb end
             return a.name < b.name
         end)
 

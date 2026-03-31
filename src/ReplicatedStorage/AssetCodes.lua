@@ -32,6 +32,7 @@ AssetCodes.images = {
     Spear = "rbxassetid://92401070096107",
     --Epic
     ["Spiked Mace"] = "rbxassetid://140429696847728",
+    Crusher = "rbxassetid://140429696847728",
     --Legendary
     Punisher = "rbxassetid://120062027388705",
     Kingsblade = "rbxassetid://77109527769141",
