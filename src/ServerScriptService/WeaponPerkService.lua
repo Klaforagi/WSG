@@ -29,8 +29,13 @@ local WeaponPerkService = {}
 -- Names used for perk-created instances (cleanup searches for these)
 local PERK_AURA_NAME    = "PerkAuraEmitter"
 local PERK_SPARK_NAME   = "PerkSparkEmitter"
+local PERK_GLOW_NAME    = "PerkGlowEmitter"
 local PERK_ATTACH_NAME  = "PerkAttachment"
 local PERK_LIGHT_NAME   = "PerkPointLight"
+
+-- Roblox built-in soft-glow particle texture (a round feathered circle)
+local SOFT_GLOW_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
+local STAR_TEXTURE      = "rbxasset://textures/particles/fire_main.dds"
 
 --------------------------------------------------------------------------------
 -- INTERNAL: find the best BasePart to attach visuals to
@@ -58,6 +63,7 @@ function WeaponPerkService.ClearPerkVisuals(tool)
     for _, desc in ipairs(tool:GetDescendants()) do
         if desc and desc.Name == PERK_AURA_NAME
             or desc.Name == PERK_SPARK_NAME
+            or desc.Name == PERK_GLOW_NAME
             or desc.Name == PERK_ATTACH_NAME
             or desc.Name == PERK_LIGHT_NAME then
             pcall(function() desc:Destroy() end)
@@ -108,98 +114,156 @@ function WeaponPerkService.ApplyPerkVisuals(tool)
 
     local color = perkData.color
 
+    -- Derive a brighter variant for accent highlights
+    local h, s, v = Color3.toHSV(color)
+    local brightColor = Color3.fromHSV(h, math.clamp(s * 0.6, 0, 1), math.clamp(v * 1.3, 0, 1))
+
+    -- Read weapon size scale for adaptive emitter tuning. Bigger weapons get
+    -- slightly more particles to keep the aura proportional.
+    local sizePct = tool:GetAttribute("SizePercent") or 100
+    local scaleMult = math.clamp(sizePct / 100, 0.7, 2.0)
+
     ----------------------------------------------------------------------------
-    -- 1) AURA EMITTER — soft colored glow around the weapon
+    -- 1) CORE AURA EMITTER — constant medium-density energy hugging the weapon
+    --    Creates the "infused weapon" baseline look.
     ----------------------------------------------------------------------------
     local aura = Instance.new("ParticleEmitter")
     aura.Name = PERK_AURA_NAME
+    aura.Texture = SOFT_GLOW_TEXTURE
 
-    -- Appearance
-    aura.Color = ColorSequence.new(color)
+    aura.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, brightColor),
+        ColorSequenceKeypoint.new(0.5, color),
+        ColorSequenceKeypoint.new(1, color),
+    })
     aura.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.25),
-        NumberSequenceKeypoint.new(0.5, 0.35),
-        NumberSequenceKeypoint.new(1, 0.05),
+        NumberSequenceKeypoint.new(0, 0.08 * scaleMult),
+        NumberSequenceKeypoint.new(0.3, 0.28 * scaleMult),
+        NumberSequenceKeypoint.new(0.7, 0.22 * scaleMult),
+        NumberSequenceKeypoint.new(1, 0),
     })
     aura.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.5),
-        NumberSequenceKeypoint.new(0.4, 0.65),
+        NumberSequenceKeypoint.new(0, 0.25),
+        NumberSequenceKeypoint.new(0.3, 0.35),
+        NumberSequenceKeypoint.new(0.7, 0.55),
         NumberSequenceKeypoint.new(1, 1),
     })
-    aura.LightEmission = 0.6
+    aura.LightEmission = 0.85
     aura.LightInfluence = 0
 
-    -- Emission
-    aura.Rate = 6
-    aura.Lifetime = NumberRange.new(0.4, 0.8)
-    aura.Speed = NumberRange.new(0.2, 0.5)
-    aura.SpreadAngle = Vector2.new(180, 180)  -- emit in all directions (aura)
+    aura.Rate = math.floor(18 * scaleMult)
+    aura.Lifetime = NumberRange.new(0.35, 0.7)
+    aura.Speed = NumberRange.new(0.15, 0.6)
+    aura.SpreadAngle = Vector2.new(180, 180)
 
-    -- Behaviour
-    aura.Drag = 2
+    aura.Drag = 3
     aura.LockedToPart = false
-    aura.RotSpeed = NumberRange.new(-30, 30)
+    aura.RotSpeed = NumberRange.new(-60, 60)
     aura.Rotation = NumberRange.new(0, 360)
-
-    -- Use default Roblox particle texture (no custom asset needed)
-    -- The default texture is a soft circle which works well for glow.
+    aura.ZOffset = -0.1
 
     aura.Parent = attachPart
 
     ----------------------------------------------------------------------------
-    -- 2) SPARK EMITTER — occasional tiny bright flecks
+    -- 2) ACCENT SPARK EMITTER — brighter, faster little motes for energy feel
+    --    Adds motion and sparkle so the weapon doesn't look static.
     ----------------------------------------------------------------------------
     local spark = Instance.new("ParticleEmitter")
     spark.Name = PERK_SPARK_NAME
+    spark.Texture = STAR_TEXTURE
 
-    spark.Color = ColorSequence.new(color)
+    spark.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, brightColor),
+        ColorSequenceKeypoint.new(1, color),
+    })
     spark.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.1),
+        NumberSequenceKeypoint.new(0, 0.12 * scaleMult),
+        NumberSequenceKeypoint.new(0.5, 0.06 * scaleMult),
         NumberSequenceKeypoint.new(1, 0),
     })
     spark.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.2),
+        NumberSequenceKeypoint.new(0, 0.1),
+        NumberSequenceKeypoint.new(0.4, 0.3),
         NumberSequenceKeypoint.new(1, 1),
     })
     spark.LightEmission = 1
     spark.LightInfluence = 0
 
-    spark.Rate = 2
-    spark.Lifetime = NumberRange.new(0.2, 0.5)
-    spark.Speed = NumberRange.new(0.5, 1.5)
+    spark.Rate = math.floor(10 * scaleMult)
+    spark.Lifetime = NumberRange.new(0.2, 0.45)
+    spark.Speed = NumberRange.new(0.6, 2.0)
     spark.SpreadAngle = Vector2.new(180, 180)
-    spark.Drag = 3
+    spark.Drag = 5
     spark.LockedToPart = false
+    spark.RotSpeed = NumberRange.new(-120, 120)
+    spark.Rotation = NumberRange.new(0, 360)
+    spark.ZOffset = 0.05
 
     spark.Parent = attachPart
 
     ----------------------------------------------------------------------------
-    -- 3) POINT LIGHT — subtle glow on nearby surfaces
+    -- 3) GLOW PULSE EMITTER — few larger soft particles for aura fullness
+    --    Very low count, makes the overall effect feel richer and more magical.
+    ----------------------------------------------------------------------------
+    local glow = Instance.new("ParticleEmitter")
+    glow.Name = PERK_GLOW_NAME
+    glow.Texture = SOFT_GLOW_TEXTURE
+
+    glow.Color = ColorSequence.new(color)
+    glow.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.15 * scaleMult),
+        NumberSequenceKeypoint.new(0.5, 0.55 * scaleMult),
+        NumberSequenceKeypoint.new(1, 0.3 * scaleMult),
+    })
+    glow.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.6),
+        NumberSequenceKeypoint.new(0.4, 0.45),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    glow.LightEmission = 0.7
+    glow.LightInfluence = 0
+
+    glow.Rate = math.floor(4 * scaleMult)
+    glow.Lifetime = NumberRange.new(0.5, 0.9)
+    glow.Speed = NumberRange.new(0.05, 0.2)
+    glow.SpreadAngle = Vector2.new(180, 180)
+    glow.Drag = 1
+    glow.LockedToPart = true
+    glow.RotSpeed = NumberRange.new(-20, 20)
+    glow.Rotation = NumberRange.new(0, 360)
+    glow.ZOffset = -0.2
+
+    glow.Parent = attachPart
+
+    ----------------------------------------------------------------------------
+    -- 4) POINT LIGHT — stronger glow on nearby surfaces
     ----------------------------------------------------------------------------
     local light = Instance.new("PointLight")
     light.Name = PERK_LIGHT_NAME
     light.Color = color
-    light.Brightness = 0.4
-    light.Range = 4
+    light.Brightness = 0.8
+    light.Range = 6
     light.Shadows = false
     light.Parent = attachPart
 
     ----------------------------------------------------------------------------
-    -- 4) SWORD TRAIL RECOLOR
+    -- 5) SWORD TRAIL RECOLOR — more vivid, less transparent
     ----------------------------------------------------------------------------
     local trail = tool:FindFirstChild("SwordTrail", true)
     if trail and trail:IsA("Trail") then
-        -- Slightly brighten the start, fade toward perk color
-        local brightened = Color3.new(
-            math.min(color.R * 1.2, 1),
-            math.min(color.G * 1.2, 1),
-            math.min(color.B * 1.2, 1)
-        )
         pcall(function()
             trail.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, brightened),
+                ColorSequenceKeypoint.new(0, brightColor),
+                ColorSequenceKeypoint.new(0.4, color),
                 ColorSequenceKeypoint.new(1, color),
             })
+            trail.Transparency = NumberSequence.new({
+                NumberSequenceKeypoint.new(0, 0.15),
+                NumberSequenceKeypoint.new(0.5, 0.4),
+                NumberSequenceKeypoint.new(1, 0.9),
+            })
+            trail.LightEmission = 0.8
+            trail.LightInfluence = 0
         end)
     end
 end
@@ -312,6 +376,8 @@ function WeaponPerkService.SpawnHitEffect(hitPosition, perkName, hitPart)
     if not perkData then return end
 
     local color = perkData.color
+    local h, s, v = Color3.toHSV(color)
+    local brightColor = Color3.fromHSV(h, math.clamp(s * 0.5, 0, 1), math.clamp(v * 1.3, 0, 1))
 
     -- Create a tiny invisible anchored part at the hit location
     local anchor = Instance.new("Part")
@@ -325,39 +391,71 @@ function WeaponPerkService.SpawnHitEffect(hitPosition, perkName, hitPart)
     anchor.CFrame = CFrame.new(hitPosition)
     anchor.Parent = workspace
 
-    -- Burst emitter
-    local emitter = Instance.new("ParticleEmitter")
-    emitter.Name = "PerkHitBurst"
+    -- Primary impact burst — bright fast outward flash
+    local burst = Instance.new("ParticleEmitter")
+    burst.Name = "PerkHitBurst"
+    burst.Texture = SOFT_GLOW_TEXTURE
 
-    emitter.Color = ColorSequence.new(color)
-    emitter.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.3),
+    burst.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, brightColor),
+        ColorSequenceKeypoint.new(0.5, color),
+        ColorSequenceKeypoint.new(1, color),
+    })
+    burst.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.5),
+        NumberSequenceKeypoint.new(0.3, 0.3),
         NumberSequenceKeypoint.new(1, 0),
     })
-    emitter.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.1),
+    burst.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.3, 0.2),
+        NumberSequenceKeypoint.new(0.7, 0.6),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    burst.LightEmission = 1
+    burst.LightInfluence = 0
+
+    burst.Lifetime = NumberRange.new(0.15, 0.35)
+    burst.Speed = NumberRange.new(5, 14)
+    burst.SpreadAngle = Vector2.new(180, 180)
+    burst.Drag = 6
+    burst.Rate = 0
+
+    burst.RotSpeed = NumberRange.new(-180, 180)
+    burst.Rotation = NumberRange.new(0, 360)
+
+    burst.Parent = anchor
+    burst:Emit(18)
+
+    -- Secondary flash — a few larger soft particles for impact fullness
+    local flash = Instance.new("ParticleEmitter")
+    flash.Name = "PerkHitFlash"
+    flash.Texture = SOFT_GLOW_TEXTURE
+
+    flash.Color = ColorSequence.new(brightColor)
+    flash.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.8),
+        NumberSequenceKeypoint.new(1, 0.1),
+    })
+    flash.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.15),
         NumberSequenceKeypoint.new(0.5, 0.5),
         NumberSequenceKeypoint.new(1, 1),
     })
-    emitter.LightEmission = 0.8
-    emitter.LightInfluence = 0
+    flash.LightEmission = 1
+    flash.LightInfluence = 0
 
-    emitter.Lifetime = NumberRange.new(0.15, 0.35)
-    emitter.Speed = NumberRange.new(3, 8)
-    emitter.SpreadAngle = Vector2.new(180, 180)
-    emitter.Drag = 4
-    emitter.Rate = 0  -- we use :Emit() for a one-shot burst
+    flash.Lifetime = NumberRange.new(0.1, 0.2)
+    flash.Speed = NumberRange.new(1, 4)
+    flash.SpreadAngle = Vector2.new(180, 180)
+    flash.Drag = 3
+    flash.Rate = 0
 
-    emitter.RotSpeed = NumberRange.new(-90, 90)
-    emitter.Rotation = NumberRange.new(0, 360)
+    flash.Parent = anchor
+    flash:Emit(5)
 
-    emitter.Parent = anchor
-
-    -- Emit a short burst
-    emitter:Emit(10)
-
-    -- Clean up after particles have died
-    Debris:AddItem(anchor, 0.6)
+    -- Clean up after particles have fully died
+    Debris:AddItem(anchor, 0.8)
 end
 
 return WeaponPerkService

@@ -392,17 +392,30 @@ local function attachMelee(tool)
         pcall(function()
             swordTrail.Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0, trailColorStart),
+                ColorSequenceKeypoint.new(0.4, trailColorEnd),
                 ColorSequenceKeypoint.new(1, trailColorEnd),
             })
-            swordTrail.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.75),
-                NumberSequenceKeypoint.new(1, 0.95),
-            })
-            swordTrail.Lifetime = math.max(0.12, duration)
+            -- Perk trails are much more visible; non-perk trails keep a subtler look
+            local hasPerkTrail = WeaponPerkConfig and tool:GetAttribute("HasPerk")
+            if hasPerkTrail then
+                swordTrail.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.1),
+                    NumberSequenceKeypoint.new(0.4, 0.25),
+                    NumberSequenceKeypoint.new(0.75, 0.55),
+                    NumberSequenceKeypoint.new(1, 0.9),
+                })
+                swordTrail.LightEmission = 0.8
+                swordTrail.LightInfluence = 0
+            else
+                swordTrail.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.75),
+                    NumberSequenceKeypoint.new(1, 0.95),
+                })
+            end
+            swordTrail.Lifetime = math.max(0.14, duration)
             swordTrail.MinLength = 0
-            swordTrail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.0), NumberSequenceKeypoint.new(1, 0.25)})
+            swordTrail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.15), NumberSequenceKeypoint.new(0.6, 0.8), NumberSequenceKeypoint.new(1, 0.2)})
             swordTrail.FaceCamera = false
-            swordTrail.LightInfluence = 0
         end)
 
         -- schedule enable/disable relative to swing start
