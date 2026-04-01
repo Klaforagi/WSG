@@ -39,12 +39,12 @@ if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
     MeleeCfg = require(ReplicatedStorage:WaitForChild("ToolMeleeSettings"))
 end
 
--- PERK SYSTEM: lazy-load perk service for hit-burst visuals
-local WeaponPerkService
+-- ENCHANT SYSTEM: lazy-load enchant service for hit-burst visuals
+local WeaponEnchantService
 pcall(function()
-    local mod = ServerScriptService:FindFirstChild("WeaponPerkService")
+    local mod = ServerScriptService:FindFirstChild("WeaponEnchantService")
     if mod and mod:IsA("ModuleScript") then
-        WeaponPerkService = require(mod)
+        WeaponEnchantService = require(mod)
     end
 end)
 
@@ -760,12 +760,12 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                         hitAlready[hit.humanoid] = true
                         applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
 
-                        -- PERK SYSTEM: spawn colored hit-burst at impact point
-                        if WeaponPerkService and tool and tool:GetAttribute("HasPerk") then
-                            local pn = tool:GetAttribute("PerkName")
+                        -- ENCHANT SYSTEM: spawn colored hit-burst at impact point
+                        if WeaponEnchantService and tool and tool:GetAttribute("HasEnchant") then
+                            local pn = tool:GetAttribute("EnchantName")
                             if pn and pn ~= "" and hit.hitPos then
                                 pcall(function()
-                                    WeaponPerkService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
+                                    WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
                                 end)
                             end
                         end
