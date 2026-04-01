@@ -31,6 +31,14 @@ pcall(function()
     end
 end)
 
+local WeaponPerkConfig = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponPerkConfig")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponPerkConfig = require(mod)
+    end
+end)
+
 local CrateOpeningUI = {}
 
 local function px(base)
@@ -281,6 +289,20 @@ function CrateOpeningUI.Init(playerGui)
     resultSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
     resultSizeLabel.ZIndex = 21
     resultSizeLabel.Parent = resultFrame
+
+    -- PERK SYSTEM — shows the perk name below the size label, styled like a tag
+    local resultPerkLabel = Instance.new("TextLabel")
+    resultPerkLabel.Name = "PerkName"
+    resultPerkLabel.BackgroundTransparency = 1
+    resultPerkLabel.Font = Enum.Font.GothamBold
+    resultPerkLabel.Text = ""
+    resultPerkLabel.TextColor3 = GOLD
+    resultPerkLabel.TextSize = math.max(16, math.floor(px(18)))
+    resultPerkLabel.Size = UDim2.new(1, 0, 0, px(24))
+    resultPerkLabel.Position = UDim2.new(0, 0, 0, px(244))
+    resultPerkLabel.TextXAlignment = Enum.TextXAlignment.Center
+    resultPerkLabel.ZIndex = 21
+    resultPerkLabel.Parent = resultFrame
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "CloseBtn"
@@ -903,6 +925,23 @@ function CrateOpeningUI.Init(playerGui)
                 resultSizeLabel.Text = ""
             end
 
+            -- PERK SYSTEM — display perk name with its color
+            if resultData.perkName and resultData.perkName ~= "" then
+                resultPerkLabel.Text = "✨ " .. resultData.perkName
+                if WeaponPerkConfig then
+                    local perkColor = WeaponPerkConfig.GetColorForPerk(resultData.perkName)
+                    if perkColor then
+                        resultPerkLabel.TextColor3 = perkColor
+                    else
+                        resultPerkLabel.TextColor3 = GOLD
+                    end
+                else
+                    resultPerkLabel.TextColor3 = GOLD
+                end
+            else
+                resultPerkLabel.Text = ""
+            end
+
             -- Set weapon image
             resultImage.Image = ""
             pcall(function()
@@ -1000,6 +1039,7 @@ function CrateOpeningUI.Init(playerGui)
             resultName.TextColor3 = Color3.fromRGB(255, 80, 80)
             resultRarity.Text = ""
             resultSizeLabel.Text = ""
+            resultPerkLabel.Text = ""
             rfStroke.Color = Color3.fromRGB(255, 80, 80)
             resultFrame.BackgroundTransparency = 0.06
 

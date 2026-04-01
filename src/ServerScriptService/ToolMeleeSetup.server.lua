@@ -39,6 +39,15 @@ if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
     MeleeCfg = require(ReplicatedStorage:WaitForChild("ToolMeleeSettings"))
 end
 
+-- PERK SYSTEM: lazy-load perk service for hit-burst visuals
+local WeaponPerkService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponPerkService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponPerkService = require(mod)
+    end
+end)
+
 ---------------------------------------------------------------------------
 -- Remote events
 ---------------------------------------------------------------------------
@@ -750,6 +759,16 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                     if not hitAlready[hit.humanoid] then
                         hitAlready[hit.humanoid] = true
                         applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
+
+                        -- PERK SYSTEM: spawn colored hit-burst at impact point
+                        if WeaponPerkService and tool and tool:GetAttribute("HasPerk") then
+                            local pn = tool:GetAttribute("PerkName")
+                            if pn and pn ~= "" and hit.hitPos then
+                                pcall(function()
+                                    WeaponPerkService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
+                                end)
+                            end
+                        end
 
                         -- hit sound at attacker
                         local hitSoundKey = cfg.hit_sound

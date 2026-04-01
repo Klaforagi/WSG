@@ -4419,6 +4419,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                                     rarity       = rd.rarity,
                                     sizePercent  = rd.sizePercent,
                                     sizeTier     = rd.sizeTier,
+                                    perkName     = rd.perkName,      -- PERK SYSTEM
                                     salvageValue = rd.salvageValue,
                                     isPending    = rd.isPending,
                                     crateType    = rd.crateType or item.RewardId,

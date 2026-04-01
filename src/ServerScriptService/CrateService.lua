@@ -12,8 +12,9 @@
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 
-local CrateConfig      = require(ReplicatedStorage:WaitForChild("CrateConfig"))
-local SizeRollService  = require(ReplicatedStorage:WaitForChild("SizeRollService"))
+local CrateConfig       = require(ReplicatedStorage:WaitForChild("CrateConfig"))
+local SizeRollService   = require(ReplicatedStorage:WaitForChild("SizeRollService"))
+local WeaponPerkConfig  = require(ReplicatedStorage:WaitForChild("WeaponPerkConfig"))
 
 -- Lazy-loaded server modules
 local CurrencyService       = nil
@@ -156,7 +157,11 @@ function CrateService:OpenCrate(player, crateId)
     -- Roll weapon size (80–200%) using weighted tiers
     local sizePercent, sizeTier = SizeRollService.RollSize()
 
-    print(string.format("[CrateService] Rolled: %s (%s) Size: %d%% [%s]", rolled.weapon, rolled.rarity, sizePercent, sizeTier))
+    -- PERK SYSTEM: 20% chance to receive one elemental perk
+    local perkName = WeaponPerkConfig.RollPerk() or ""
+
+    print(string.format("[CrateService] Rolled: %s (%s) Size: %d%% [%s] Perk: %s",
+        rolled.weapon, rolled.rarity, sizePercent, sizeTier, perkName ~= "" and perkName or "None"))
 
     -- Deduct currency BEFORE granting (prevents duplication on disconnect)
     if currencyType == "Keys" then
@@ -182,14 +187,16 @@ function CrateService:OpenCrate(player, crateId)
         source      = crateId,
         sizePercent = sizePercent,
         sizeTier    = sizeTier,
+        perkName    = perkName,            -- PERK SYSTEM
         salvageValue = salvageValue,
         crateType   = crateId,
         timestamp   = tick(),
     }
     PendingRewards[player] = pendingData
 
-    print(string.format("[CrateReward] Pending reward created for %s: %s (%s) %d%% [%s]",
-        tostring(player.Name), rolled.weapon, rolled.rarity, sizePercent, sizeTier))
+    print(string.format("[CrateReward] Pending reward created for %s: %s (%s) %d%% [%s] Perk: %s",
+        tostring(player.Name), rolled.weapon, rolled.rarity, sizePercent, sizeTier,
+        perkName ~= "" and perkName or "None"))
 
     local newCoinBalance = cs:GetCoins(player)
     local newKeyBalance  = cs:GetKeys(player)
@@ -200,6 +207,7 @@ function CrateService:OpenCrate(player, crateId)
         category       = category,
         sizePercent    = sizePercent,       -- SIZE ROLL SYSTEM
         sizeTier       = sizeTier,          -- SIZE ROLL SYSTEM
+        perkName       = perkName,          -- PERK SYSTEM
         salvageValue   = salvageValue,
         isPending      = true,             -- signals client to show Keep/Salvage UI
         newBalance     = newCoinBalance,
@@ -232,7 +240,8 @@ function CrateService:FinalizeCrateKeep(player)
         pending.category,
         pending.source,
         pending.sizePercent,
-        pending.sizeTier
+        pending.sizeTier,
+        pending.perkName             -- PERK SYSTEM
     )
 
     if not instanceData then
@@ -252,6 +261,7 @@ function CrateService:FinalizeCrateKeep(player)
         category    = instanceData.category,
         sizePercent = instanceData.sizePercent,
         sizeTier    = instanceData.sizeTier,
+        perkName    = instanceData.perkName,    -- PERK SYSTEM
     }
 end
 
@@ -331,7 +341,8 @@ function CrateService:AutoKeepOnDisconnect(player)
         pending.category,
         pending.source,
         pending.sizePercent,
-        pending.sizeTier
+        pending.sizeTier,
+        pending.perkName             -- PERK SYSTEM
     )
 
     PendingRewards[player] = nil
@@ -374,8 +385,11 @@ function CrateService:RollAndGrant(player, crateId)
     -- Roll weapon size
     local sizePercent, sizeTier = SizeRollService.RollSize()
 
-    print(string.format("[CrateService] RollAndGrant: %s (%s) Size: %d%% [%s]",
-        rolled.weapon, rolled.rarity, sizePercent, sizeTier))
+    -- PERK SYSTEM: 20% chance to receive one elemental perk
+    local perkName = WeaponPerkConfig.RollPerk() or ""
+
+    print(string.format("[CrateService] RollAndGrant: %s (%s) Size: %d%% [%s] Perk: %s",
+        rolled.weapon, rolled.rarity, sizePercent, sizeTier, perkName ~= "" and perkName or "None"))
 
     local category = rolled.category or crateDef.category or "Melee"
 
@@ -386,7 +400,8 @@ function CrateService:RollAndGrant(player, crateId)
         category,
         crateId,
         sizePercent,
-        sizeTier
+        sizeTier,
+        perkName              -- PERK SYSTEM
     )
 
     if not instanceData then
@@ -405,6 +420,7 @@ function CrateService:RollAndGrant(player, crateId)
         category    = instanceData.category,
         sizePercent = instanceData.sizePercent,
         sizeTier    = instanceData.sizeTier,
+        perkName    = instanceData.perkName,    -- PERK SYSTEM
         crateType   = crateId,
     }
 end
@@ -436,6 +452,9 @@ function CrateService:RollAndPend(player, crateId)
     -- Roll weapon size
     local sizePercent, sizeTier = SizeRollService.RollSize()
 
+    -- PERK SYSTEM: 20% chance to receive one elemental perk
+    local perkName = WeaponPerkConfig.RollPerk() or ""
+
     local category = rolled.category or crateDef.category or "Melee"
 
     -- Compute salvage value for display on the client popup
@@ -452,14 +471,16 @@ function CrateService:RollAndPend(player, crateId)
         source       = crateId,
         sizePercent  = sizePercent,
         sizeTier     = sizeTier,
+        perkName     = perkName,           -- PERK SYSTEM
         salvageValue = salvageValue,
         crateType    = crateId,
         timestamp    = tick(),
     }
     PendingRewards[player] = pendingData
 
-    print(string.format("[CrateReward] Pending reward created (salvage crate) for %s: %s (%s) %d%% [%s]",
-        tostring(player.Name), rolled.weapon, rolled.rarity, sizePercent, sizeTier))
+    print(string.format("[CrateReward] Pending reward created (salvage crate) for %s: %s (%s) %d%% [%s] Perk: %s",
+        tostring(player.Name), rolled.weapon, rolled.rarity, sizePercent, sizeTier,
+        perkName ~= "" and perkName or "None"))
 
     return true, {
         weaponName   = rolled.weapon,
@@ -467,6 +488,7 @@ function CrateService:RollAndPend(player, crateId)
         category     = category,
         sizePercent  = sizePercent,
         sizeTier     = sizeTier,
+        perkName     = perkName,         -- PERK SYSTEM
         salvageValue = salvageValue,
         isPending    = true,
         crateType    = crateId,
