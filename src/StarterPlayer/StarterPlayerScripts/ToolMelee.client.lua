@@ -22,6 +22,15 @@ if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
     MeleeCfgModule = require(ReplicatedStorage:WaitForChild("ToolMeleeSettings"))
 end
 
+-- PERK SYSTEM: shared perk config for trail color lookup
+local WeaponPerkConfig
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponPerkConfig")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponPerkConfig = require(mod)
+    end
+end)
+
 -- remote for swings (server creates this)
 local swingEvent = ReplicatedStorage:WaitForChild("MeleeSwing")
 
@@ -362,11 +371,28 @@ local function attachMelee(tool)
         end
 
         local duration = endOffset - startOffset
-        -- configure subtle white/gray transparent trail appearance
+        -- PERK SYSTEM: use perk color for trail if weapon has a perk
+        local trailColorStart = Color3.fromRGB(240, 240, 240)
+        local trailColorEnd   = Color3.fromRGB(190, 190, 190)
+        if WeaponPerkConfig and tool:GetAttribute("HasPerk") then
+            local pn = tool:GetAttribute("PerkName")
+            if pn and pn ~= "" then
+                local perkColor = WeaponPerkConfig.GetColorForPerk(pn)
+                if perkColor then
+                    trailColorStart = Color3.new(
+                        math.min(perkColor.R * 1.2, 1),
+                        math.min(perkColor.G * 1.2, 1),
+                        math.min(perkColor.B * 1.2, 1)
+                    )
+                    trailColorEnd = perkColor
+                end
+            end
+        end
+        -- configure trail appearance
         pcall(function()
             swordTrail.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, Color3.fromRGB(240,240,240)),
-                ColorSequenceKeypoint.new(1, Color3.fromRGB(190,190,190)),
+                ColorSequenceKeypoint.new(0, trailColorStart),
+                ColorSequenceKeypoint.new(1, trailColorEnd),
             })
             swordTrail.Transparency = NumberSequence.new({
                 NumberSequenceKeypoint.new(0, 0.75),

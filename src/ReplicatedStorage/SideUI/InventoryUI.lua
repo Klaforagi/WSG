@@ -67,6 +67,15 @@ pcall(function()
     end
 end)
 
+-- PERK SYSTEM — perk config for perk color/name display on cards
+local WeaponPerkConfig = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponPerkConfig")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponPerkConfig = require(mod)
+    end
+end)
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Rarity colour palette
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -87,9 +96,9 @@ local RARITY_BG_COLORS = {
 -- Vivid full-card backgrounds for weapon inventory cards (reference style)
 local WEAPON_CARD_BG = {
     Common    = Color3.fromRGB(105, 110, 120),
-    Uncommon  = Color3.fromRGB(80, 160, 110),
+    Uncommon  = Color3.fromRGB(56, 131, 49),
     Rare      = Color3.fromRGB(45, 90, 175),
-    Epic      = Color3.fromRGB(150, 80, 200),
+    Epic      = Color3.fromRGB(114, 38, 176),
     Legendary = Color3.fromRGB(195, 150, 25),
 }
 local WEAPON_CARD_BORDER = {
@@ -100,21 +109,20 @@ local WEAPON_CARD_BORDER = {
     Legendary = Color3.fromRGB(140, 108, 16),
 }
 
--- ═══════════════════════════════════════════════════════════════════════════
--- Size tier colours
--- ═══════════════════════════════════════════════════════════════════════════
-local SIZE_TIER_COLORS = {
-    King   = Color3.fromRGB(255, 215, 60),   -- yellow
-    Giant  = Color3.fromRGB(80, 170, 255),   -- blue
-    Large  = Color3.fromRGB(80, 200, 100),   -- green
-    Tiny   = Color3.fromRGB(180, 180, 190),  -- grey
-}
-local SIZE_TIER_PRIORITY = {
-    King   = 1,
-    Giant  = 2,
-    Large  = 3,
-    Normal = 4,
-    Tiny   = 5,
+local TextService = game:GetService("TextService")
+
+local function shadeColor(c, factor)
+    factor = factor or 0.6
+    return Color3.new(math.clamp(c.R * factor, 0, 1), math.clamp(c.G * factor, 0, 1), math.clamp(c.B * factor, 0, 1))
+end
+
+-- Central size-tier style mapping (text color + bg darkness factor)
+local SIZE_TIER_STYLES = {
+    Tiny   = { text = Color3.fromRGB(100, 200, 100), bgFactor = 0.6 }, -- green
+    Normal = { text = Color3.fromRGB(160, 160, 170), bgFactor = 0.5 }, -- gray
+    Large  = { text = Color3.fromRGB(80, 180, 255),  bgFactor = 0.55 }, -- blue
+    Giant  = { text = Color3.fromRGB(150, 50, 230),  bgFactor = 0.55 }, -- purple
+    King   = { text = GOLD or Color3.fromRGB(255, 200, 60), bgFactor = 0.5 }, -- yellow/gold
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -502,6 +510,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             category   = classifyItem(itemName),
             rarity     = getWeaponRarity(itemName),
             isInstance = false,
+            sizePercent = 100, -- default size for non-instance items
+            sizeTier = "Normal",
         })
     end
 
@@ -519,6 +529,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 favorited   = data.favorited == true,
                 sizePercent = data.sizePercent or 100,   -- SIZE ROLL SYSTEM
                 sizeTier    = data.sizeTier or "Normal", -- SIZE ROLL SYSTEM
+                perkName    = data.perkName or "",       -- PERK SYSTEM
             })
         end
     end
@@ -918,17 +929,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.TextSize = px(18)
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
     detailSize.Size = UDim2.new(1, 0, 0, px(24))
-    detailSize.Position = UDim2.new(0, 0, 0, px(272))
+    detailSize.Position = UDim2.new(0, 0, 0, px(268))
 
-    -- Subtle divider line above salvage/actions area
-    local detailDivider = Instance.new("Frame", detailContent)
-    detailDivider.Name = "Divider"
-    detailDivider.BackgroundColor3 = CARD_STROKE
-    detailDivider.BackgroundTransparency = 0.55
-    detailDivider.BorderSizePixel = 0
-    detailDivider.Size = UDim2.new(0.7, 0, 0, 1)
-    detailDivider.AnchorPoint = Vector2.new(0.5, 0)
-    detailDivider.Position = UDim2.new(0.5, 0, 0, px(304))
+    -- PERK SYSTEM — perk name in detail panel
+    local detailPerk = Instance.new("TextLabel", detailContent)
+    detailPerk.Name = "PerkInfo"
+    detailPerk.BackgroundTransparency = 1
+    detailPerk.Font = Enum.Font.GothamBold
+    detailPerk.TextColor3 = GOLD
+    detailPerk.TextSize = px(16)
+    detailPerk.TextXAlignment = Enum.TextXAlignment.Center
+    detailPerk.Size = UDim2.new(1, 0, 0, px(22))
+    detailPerk.Position = UDim2.new(0, 0, 0, px(292))
+    detailPerk.Text = ""
 
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
@@ -939,7 +952,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailInstanceId.TextSize = px(11)
     detailInstanceId.TextXAlignment = Enum.TextXAlignment.Center
     detailInstanceId.Size = UDim2.new(1, 0, 0, px(16))
-    detailInstanceId.Position = UDim2.new(0, 0, 0, px(294))
+    detailInstanceId.Position = UDim2.new(0, 0, 0, px(316))
     detailInstanceId.Visible = false
 
     -- Equip button (only place weapons can be equipped)
@@ -1306,14 +1319,32 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- SIZE ROLL SYSTEM — show size info in detail panel (coloured tier + white %)
         local pct = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
-        local tc = SIZE_TIER_COLORS[tier] or DIM_TEXT
-        local tcHex = string.format("#%02X%02X%02X",
-            math.clamp(math.round(tc.R * 255), 0, 255),
-            math.clamp(math.round(tc.G * 255), 0, 255),
-            math.clamp(math.round(tc.B * 255), 0, 255))
-        detailSize.Text = string.format(
-            '<font color="%s">%s</font>    <font color="#FFFFFF">%d%%</font>',
-            tcHex, tier, math.floor(pct))
+        detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
+        if tier == "King" then
+            detailSize.TextColor3 = Color3.fromRGB(255, 60, 60)
+        elseif tier == "Giant" then
+            detailSize.TextColor3 = GOLD
+        elseif tier == "Large" then
+            detailSize.TextColor3 = Color3.fromRGB(100, 200, 255)
+        elseif tier == "Tiny" then
+            detailSize.TextColor3 = Color3.fromRGB(160, 160, 170)
+        else
+            detailSize.TextColor3 = DIM_TEXT
+        end
+
+        -- PERK SYSTEM — show perk name in detail panel
+        local itemPerkName = itemData.perkName or ""
+        if itemPerkName ~= "" and WeaponPerkConfig then
+            local perkData = WeaponPerkConfig.GetPerkData(itemPerkName)
+            if perkData then
+                detailPerk.Text = "✨ " .. itemPerkName
+                detailPerk.TextColor3 = perkData.color
+            else
+                detailPerk.Text = ""
+            end
+        else
+            detailPerk.Text = ""
+        end
 
         if isDeveloper and itemData.instanceId then
             detailInstanceId.Text = itemData.instanceId
@@ -1351,7 +1382,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Fixed TextSize so every card title renders at the same size.
         -- TextWrapped = true allows two-line fallback for longer names.
         -- No TextScaled — short names stay at the shared base size.
-        local NAME_TEXT_SIZE = math.max(9, math.floor(px(12)))
+        local NAME_TEXT_SIZE = math.max(9, math.floor(px(18)))
         local nameLabel = Instance.new("TextLabel", card)
         nameLabel.Name = "Name"
         nameLabel.BackgroundTransparency = 1
@@ -1370,28 +1401,57 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameStroke.Color = Color3.fromRGB(0, 0, 0)
         nameStroke.Thickness = 1.5; nameStroke.Transparency = 0.15
 
-        -- ── SECTION 2: Size tier label (next 9% of card) ────────────────
-        local pct  = itemData.sizePercent or 100
-        local tier = itemData.sizeTier or "Normal"
+        -- ── SECTION 2: Perk tag (right under name, centered, fixed size) ──────
+        local perkName = itemData.perkName or ""
+        if perkName ~= "" and WeaponPerkConfig then
+            local perkData = WeaponPerkConfig.GetPerkData(perkName)
+            if perkData then
+                local perkColor = perkData.color
+                local perkDisplayText = "✨ " .. perkName
+                -- Fixed pill size (85% of old dynamic size) so all perks look uniform
+                local perkW = math.floor(px(68))
+                local perkH = math.floor(px(14))
 
-        local tierColor = SIZE_TIER_COLORS[tier] or WHITE
+                local h, s, v = Color3.toHSV(perkColor)
+                local textC = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1))
+                local bgS = math.clamp(s + 0.14, 0, 1)
+                local bgV = math.clamp(v * 0.55 + 0.02, 0, 1)
+                local bgC = Color3.fromHSV(h, bgS, bgV)
 
-        local tierLabel = Instance.new("TextLabel", card)
-        tierLabel.Name = "SizeTier"
-        tierLabel.BackgroundTransparency = 1
-        tierLabel.Font = Enum.Font.GothamBold
-        tierLabel.TextColor3 = tierColor
-        tierLabel.TextScaled = true
-        tierLabel.Size = UDim2.new(1, -px(6), 0.09, 0)
-        tierLabel.Position = UDim2.new(0, px(3), 0.20, 0)
-        tierLabel.TextXAlignment = Enum.TextXAlignment.Center
-        tierLabel.Text = (tier ~= "Normal") and tier or ""
-        local tierConstraint = Instance.new("UITextSizeConstraint", tierLabel)
-        tierConstraint.MinTextSize = 7
-        tierConstraint.MaxTextSize = 13
-        local tierStroke = Instance.new("UIStroke", tierLabel)
-        tierStroke.Color = Color3.fromRGB(0, 0, 0)
-        tierStroke.Thickness = 1.2; tierStroke.Transparency = 0.25
+                local perkBg = Instance.new("Frame", card)
+                perkBg.Name = "PerkTagBg"
+                perkBg.BackgroundColor3 = bgC
+                perkBg.BackgroundTransparency = 0.12
+                perkBg.BorderSizePixel = 0
+                perkBg.Size = UDim2.new(0, perkW, 0, perkH)
+                perkBg.AnchorPoint = Vector2.new(0.5, 0)
+                perkBg.Position = UDim2.new(0.5, 0, 0.20, 0)
+                perkBg.ZIndex = 6
+                perkBg.ClipsDescendants = true
+                local pCorner = Instance.new("UICorner", perkBg)
+                pCorner.CornerRadius = UDim.new(0, math.max(0, math.floor(perkH / 2)))
+
+                local perkLabel = Instance.new("TextLabel", perkBg)
+                perkLabel.Name = "PerkTag"
+                perkLabel.BackgroundTransparency = 1
+                perkLabel.Font = Enum.Font.GothamBold
+                perkLabel.TextColor3 = textC
+                perkLabel.TextScaled = true
+                perkLabel.Size = UDim2.new(1, -px(4), 1, -px(2))
+                perkLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+                perkLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+                perkLabel.TextXAlignment = Enum.TextXAlignment.Center
+                perkLabel.TextYAlignment = Enum.TextYAlignment.Center
+                perkLabel.Text = perkDisplayText
+                perkLabel.ZIndex = 7
+                local pSizeC = Instance.new("UITextSizeConstraint", perkLabel)
+                pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 14
+
+                local pStrokeColor = shadeColor(bgC, 0.8)
+                local pStroke = Instance.new("UIStroke", perkBg)
+                pStroke.Color = pStrokeColor; pStroke.Thickness = 1; pStroke.Transparency = 0.6
+            end
+        end
 
         -- ── SECTION 3: Weapon icon (middle 44% of card) ─────────────────
         -- Positioned via Scale so it stays proportional at any resolution.
@@ -1410,21 +1470,71 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        -- ── SECTION 4: Size percent at bottom (14% of card) ─────────────
+        -- ── SECTION 4: Size tier tag (bottom-left) + Size percent (bottom-right) ──
+        local pct  = itemData.sizePercent or 100
+        local tier = itemData.sizeTier or "Normal"
+
+        -- Size tier pill tag — bottom-left corner (fixed size, text scales to fit)
+        local style = SIZE_TIER_STYLES[tier] or SIZE_TIER_STYLES.Normal
+        local tierText = tier
+        local tierW = math.floor(px(46))
+        local tierH = math.floor(px(16))
+        do
+            local h, s, v = Color3.toHSV(style.text)
+            local textColor = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1))
+            local bgS = math.clamp(s + 0.14, 0, 1)
+            local bgV = math.clamp(v * style.bgFactor + 0.02, 0, 1)
+            local bgColor = Color3.fromHSV(h, bgS, bgV)
+
+            local tierBg = Instance.new("Frame", card)
+            tierBg.Name = "SizeTierBg"
+            tierBg.BackgroundColor3 = bgColor
+            tierBg.BackgroundTransparency = 0.12
+            tierBg.BorderSizePixel = 0
+            tierBg.Size = UDim2.new(0, tierW, 0, tierH)
+            tierBg.AnchorPoint = Vector2.new(0, 1)
+            tierBg.Position = UDim2.new(0, px(4), 0.96, 0)
+            tierBg.ZIndex = 6
+            tierBg.ClipsDescendants = true
+            local corner = Instance.new("UICorner", tierBg)
+            corner.CornerRadius = UDim.new(0, math.max(0, math.floor(tierH / 2)))
+
+            local tierLabel = Instance.new("TextLabel", tierBg)
+            tierLabel.Name = "SizeTier"
+            tierLabel.BackgroundTransparency = 1
+            tierLabel.Font = Enum.Font.GothamBold
+            tierLabel.TextColor3 = textColor
+            tierLabel.TextScaled = true
+            tierLabel.Size = UDim2.new(1, -px(4), 1, -px(2))
+            tierLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+            tierLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+            tierLabel.TextXAlignment = Enum.TextXAlignment.Center
+            tierLabel.TextYAlignment = Enum.TextYAlignment.Center
+            tierLabel.Text = tierText
+            tierLabel.ZIndex = 7
+            local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
+            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 14
+
+            local strokeColor = shadeColor(bgColor, 0.8)
+            local bgStroke = Instance.new("UIStroke", tierBg)
+            bgStroke.Color = strokeColor; bgStroke.Thickness = 1; bgStroke.Transparency = 0.6
+        end
+
+        -- Size percent label — bottom-right corner
         local sizeLabel = Instance.new("TextLabel", card)
         sizeLabel.Name = "SizePercent"
         sizeLabel.BackgroundTransparency = 1
         sizeLabel.Font = Enum.Font.GothamBold
-        sizeLabel.TextColor3 = WHITE
+        sizeLabel.TextColor3 = style.text
         sizeLabel.TextScaled = true
-        sizeLabel.Size = UDim2.new(1, 0, 0.13, 0)
-        sizeLabel.AnchorPoint = Vector2.new(0, 1)
-        sizeLabel.Position = UDim2.new(0, 0, 0.96, 0)
-        sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+        sizeLabel.Size = UDim2.new(0.45, 0, 0.12, 0)
+        sizeLabel.AnchorPoint = Vector2.new(1, 1)
+        sizeLabel.Position = UDim2.new(1, -px(4), 0.96, 0)
+        sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
         sizeLabel.Text = tostring(math.floor(pct)) .. "%"
         local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
-        pctConstraint.MinTextSize = 9
-        pctConstraint.MaxTextSize = 16
+        pctConstraint.MinTextSize = 8
+        pctConstraint.MaxTextSize = 14
         local pctStroke = Instance.new("UIStroke", sizeLabel)
         pctStroke.Color = Color3.fromRGB(0, 0, 0)
         pctStroke.Thickness = 1.5; pctStroke.Transparency = 0.15
@@ -1514,8 +1624,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end
 
-        -- Sort: favorited first, then rarity (rarest first), alphabetical, Starter last
-        local rarityPriority = { Legendary = 1, Epic = 2, Rare = 3, Common = 4, Starter = 5 }
+        -- Sort: favorited first, then rarity (rarest first), within rarity sort by sizePercent (larger first), alphabetical, Starter last
+        local rarityPriority = { Legendary = 1, Epic = 2, Rare = 3, Uncommon = 4, Common = 5, Starter = 6 }
         table.sort(filtered, function(a, b)
             -- Starter weapons always go to the very end
             local aStarter = (a.source == "Starter") and 1 or 0
@@ -1526,13 +1636,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local bFav = (b.favorited == true) and 0 or 1
             if aFav ~= bFav then return aFav < bFav end
             -- Then by rarity
-            local pa = rarityPriority[a.rarity] or 4
-            local pb = rarityPriority[b.rarity] or 4
+            local pa = rarityPriority[a.rarity] or 5
+            local pb = rarityPriority[b.rarity] or 5
             if pa ~= pb then return pa < pb end
-            -- Then by size tier (King > Giant > Large > Normal > Tiny)
-            local sa = SIZE_TIER_PRIORITY[a.sizeTier or "Normal"] or 4
-            local sb = SIZE_TIER_PRIORITY[b.sizeTier or "Normal"] or 4
-            if sa ~= sb then return sa < sb end
+            -- Within same rarity, sort by sizePercent (larger first)
+            local sa = tonumber(a.sizePercent) or 100
+            local sb = tonumber(b.sizePercent) or 100
+            if sa ~= sb then return sa > sb end
             return a.name < b.name
         end)
 

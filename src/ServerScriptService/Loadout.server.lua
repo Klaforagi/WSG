@@ -234,6 +234,15 @@ pcall(function()
     end
 end)
 
+-- PERK SYSTEM — lazy-load WeaponPerkService for perk visual application
+local WeaponPerkService = nil
+pcall(function()
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("WeaponPerkService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponPerkService = require(mod)
+    end
+end)
+
 -- SIZE ROLL SYSTEM — lazy-load WeaponInstanceService early ref for scaling
 -- (The full lazy-load for ownership checks is further down; this forward
 --  declaration lets applyWeaponScale resolve at call time, not parse time.)
@@ -269,6 +278,28 @@ local function applyWeaponScale(player, toolClone, toolName, instanceId)
     end
 end
 
+--- PERK SYSTEM — Look up the player's weapon instance perk data and apply visuals.
+--- Called after applyWeaponScale so perk emitters are created on the already-scaled weapon.
+local function applyWeaponPerk(player, toolClone, toolName, instanceId)
+    if not WeaponPerkService or not WeaponInstanceService_scale then return end
+    local inv = WeaponInstanceService_scale:GetInventory(player)
+    if not inv then return end
+    local bestInstance = nil
+    if instanceId and inv[instanceId] then
+        bestInstance = inv[instanceId]
+    else
+        for _, data in pairs(inv) do
+            if type(data) == "table" and data.weaponName == toolName then
+                bestInstance = data
+                break
+            end
+        end
+    end
+    if bestInstance and type(bestInstance.perkName) == "string" and bestInstance.perkName ~= "" then
+        WeaponPerkService.ApplyPerkFromInstance(toolClone, bestInstance)
+    end
+end
+
 --- Clone a tool into both StarterGear (respawn persistence) and Backpack.
 --- Sets HotbarCategory attribute.  Skips duplicates per-container.
 --- instanceId is optional; used by SIZE ROLL SYSTEM to scale the correct copy.
@@ -289,6 +320,9 @@ local function grantTool(player, folder, toolName, instanceId)
         clone.Parent = sg
         local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
         if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
+        -- PERK SYSTEM: apply perk visuals after scaling
+        local perkOk, perkErr = pcall(applyWeaponPerk, player, clone, toolName, instanceId)
+        if not perkOk then warn("[Loadout] applyWeaponPerk error:", perkErr) end
     end
 
     -- 2) Backpack — skip if already in Backpack or equipped in Character
@@ -302,6 +336,9 @@ local function grantTool(player, folder, toolName, instanceId)
         clone.Parent = bp
         local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
         if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
+        -- PERK SYSTEM: apply perk visuals after scaling
+        local perkOk, perkErr = pcall(applyWeaponPerk, player, clone, toolName, instanceId)
+        if not perkOk then warn("[Loadout] applyWeaponPerk error:", perkErr) end
     end
 end
 

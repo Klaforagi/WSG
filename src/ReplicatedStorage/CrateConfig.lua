@@ -55,14 +55,17 @@ CrateConfig.WeaponsByRarity = {
     Uncommon = {
         { weapon = "Stone Hammer", category = "Melee" },
         { weapon = "Wooden Spear", category = "Melee" },
+        { weapon = "Axe",          category = "Melee" },
     },
     Rare      = {
         { weapon = "Flanged Mace", category = "Melee" },
+        { weapon = "Shortsword",   category = "Melee" },
         { weapon = "Spear",        category = "Melee" },
         { weapon = "Shortbow", category = "Ranged" },
     },
     Epic      = {
         { weapon = "Spiked Mace", category = "Melee" },
+        { weapon = "Crusher",     category = "Melee" },
         { weapon = "Longbow", category = "Ranged" },
     },
     Legendary = {
