@@ -27,6 +27,7 @@ AssetCodes.images = {
    --Uncommon
    ["Stone Hammer"] = "rbxassetid://139192177366165",
    ["Wooden Spear"] = "rbxassetid://86988825914270",
+   Axe = "rbxassetid://96497459859557",
     --Rare
     ["Flanged Mace"] = "rbxassetid://80288535043725",
     Spear = "rbxassetid://92401070096107",

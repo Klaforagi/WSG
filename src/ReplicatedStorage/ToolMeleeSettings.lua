@@ -103,6 +103,26 @@ local presets = {
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
+    -- Uncommon
+    ["axe"] = {
+        damage          = 15,
+        cd              = 0.5,
+        knockback       = 15,
+        hitboxDelay     = 0.35,
+        hitboxActive    = 0.1,
+        showHitbox      = false,
+        hitboxColor     = Color3.fromRGB(255, 100, 50),
+        hitboxSize      = Vector3.new(4, 10, 4),
+        hitboxOffset    = Vector3.new(1, 0, 3.5),
+        swing_anim_id   = "82015832913253",
+        swing_anim_ids  = {
+            "82015832913253",
+            "123046034669489",
+            "95518688900800",
+        },
+        swing_sound     = "SwordSwing",
+        hit_sound       = "SwordHit",
+    },
     ["shortsword"] = {
         damage          = 15,
         cd              = 0.5,
