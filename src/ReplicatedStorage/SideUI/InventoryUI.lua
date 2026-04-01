@@ -96,9 +96,9 @@ local RARITY_BG_COLORS = {
 -- Vivid full-card backgrounds for weapon inventory cards (reference style)
 local WEAPON_CARD_BG = {
     Common    = Color3.fromRGB(105, 110, 120),
-    Uncommon  = Color3.fromRGB(80, 160, 110),
+    Uncommon  = Color3.fromRGB(56, 131, 49),
     Rare      = Color3.fromRGB(45, 90, 175),
-    Epic      = Color3.fromRGB(150, 80, 200),
+    Epic      = Color3.fromRGB(114, 38, 176),
     Legendary = Color3.fromRGB(195, 150, 25),
 }
 local WEAPON_CARD_BORDER = {
@@ -1377,7 +1377,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Fixed TextSize so every card title renders at the same size.
         -- TextWrapped = true allows two-line fallback for longer names.
         -- No TextScaled — short names stay at the shared base size.
-        local NAME_TEXT_SIZE = math.max(9, math.floor(px(12)))
+        local NAME_TEXT_SIZE = math.max(9, math.floor(px(18)))
         local nameLabel = Instance.new("TextLabel", card)
         nameLabel.Name = "Name"
         nameLabel.BackgroundTransparency = 1
