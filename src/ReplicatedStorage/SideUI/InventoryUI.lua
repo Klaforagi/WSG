@@ -864,63 +864,68 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     dPad.PaddingTop  = UDim.new(0, px(12)); dPad.PaddingBottom = UDim.new(0, px(12))
     dPad.PaddingLeft = UDim.new(0, px(12)); dPad.PaddingRight  = UDim.new(0, px(12))
 
-    -- Large image with rarity-coloured background
+    -- Large image with rarity-coloured background + subtle gradient
     local detailImageBg = Instance.new("Frame", detailContent)
     detailImageBg.Name = "ImageBg"
     detailImageBg.BackgroundColor3 = RARITY_BG_COLORS.Common
     detailImageBg.Size = UDim2.new(1, 0, 0, px(170))
+    detailImageBg.ClipsDescendants = true
     Instance.new("UICorner", detailImageBg).CornerRadius = UDim.new(0, px(10))
     local imgBgStroke = Instance.new("UIStroke", detailImageBg)
-    imgBgStroke.Color = RARITY_COLORS.Common; imgBgStroke.Thickness = 1.5; imgBgStroke.Transparency = 0.3
+    imgBgStroke.Color = RARITY_COLORS.Common; imgBgStroke.Thickness = 1.5; imgBgStroke.Transparency = 0.25
+    local imgPad = Instance.new("UIPadding", detailImageBg)
+    imgPad.PaddingTop = UDim.new(0, px(6)); imgPad.PaddingBottom = UDim.new(0, px(6))
+    imgPad.PaddingLeft = UDim.new(0, px(6)); imgPad.PaddingRight = UDim.new(0, px(6))
 
     local detailImage = Instance.new("ImageLabel", detailImageBg)
     detailImage.Name = "Icon"
     detailImage.BackgroundTransparency = 1
-    detailImage.Size = UDim2.new(0.75, 0, 0.75, 0)
+    detailImage.Size = UDim2.new(0.72, 0, 0.72, 0)
     detailImage.AnchorPoint = Vector2.new(0.5, 0.5)
     detailImage.Position = UDim2.new(0.5, 0, 0.5, 0)
     detailImage.ScaleType = Enum.ScaleType.Fit
 
-    -- Weapon name
+    -- Weapon name (slightly larger for prominence)
     local detailName = Instance.new("TextLabel", detailContent)
     detailName.Name = "WeaponName"
     detailName.BackgroundTransparency = 1
     detailName.Font = Enum.Font.GothamBold
     detailName.TextColor3 = WHITE
-    detailName.TextSize = px(26)
+    detailName.TextSize = px(28)
     detailName.TextXAlignment = Enum.TextXAlignment.Center
-    detailName.Size = UDim2.new(1, 0, 0, px(34))
-    detailName.Position = UDim2.new(0, 0, 0, px(178))
+    detailName.Size = UDim2.new(1, 0, 0, px(36))
+    detailName.Position = UDim2.new(0, 0, 0, px(180))
     detailName.TextTruncate = Enum.TextTruncate.AtEnd
 
-    -- Rarity label
+    -- Rarity label (slightly smaller than name, rarity-coloured)
     local detailRarity = Instance.new("TextLabel", detailContent)
     detailRarity.Name = "Rarity"
     detailRarity.BackgroundTransparency = 1
     detailRarity.Font = Enum.Font.GothamBold
     detailRarity.TextColor3 = RARITY_COLORS.Common
-    detailRarity.TextSize = px(19)
+    detailRarity.TextSize = px(17)
     detailRarity.TextXAlignment = Enum.TextXAlignment.Center
-    detailRarity.Size = UDim2.new(1, 0, 0, px(26))
-    detailRarity.Position = UDim2.new(0, 0, 0, px(214))
+    detailRarity.Size = UDim2.new(1, 0, 0, px(22))
+    detailRarity.Position = UDim2.new(0, 0, 0, px(220))
 
-    -- Weapon type
+    -- Weapon type (melee/ranged)
     local detailType = Instance.new("TextLabel", detailContent)
     detailType.Name = "WeaponType"
     detailType.BackgroundTransparency = 1
     detailType.Font = Enum.Font.GothamMedium
     detailType.TextColor3 = DIM_TEXT
-    detailType.TextSize = px(17)
+    detailType.TextSize = px(15)
     detailType.TextXAlignment = Enum.TextXAlignment.Center
-    detailType.Size = UDim2.new(1, 0, 0, px(24))
-    detailType.Position = UDim2.new(0, 0, 0, px(242))
+    detailType.Size = UDim2.new(1, 0, 0, px(20))
+    detailType.Position = UDim2.new(0, 0, 0, px(244))
 
-    -- SIZE ROLL SYSTEM — size percent + tier in detail panel
+    -- SIZE ROLL SYSTEM — size info in detail panel (plain coloured text)
     local detailSize = Instance.new("TextLabel", detailContent)
     detailSize.Name = "SizeInfo"
     detailSize.BackgroundTransparency = 1
     detailSize.Font = Enum.Font.GothamBold
-    detailSize.TextColor3 = GOLD
+    detailSize.RichText = true
+    detailSize.TextColor3 = WHITE
     detailSize.TextSize = px(18)
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
     detailSize.Size = UDim2.new(1, 0, 0, px(24))
@@ -960,9 +965,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEquipBtn.TextColor3 = WHITE
     detailEquipBtn.TextTransparency = 0
     detailEquipBtn.TextSize = px(22)
-    detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+    detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(48))
     detailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
-    detailEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
+    detailEquipBtn.Position = UDim2.new(0.5, 0, 1, -px(4))
     Instance.new("UICorner", detailEquipBtn).CornerRadius = UDim.new(0, px(10))
     local equipStroke = Instance.new("UIStroke", detailEquipBtn)
     equipStroke.Color = Color3.fromRGB(0, 0, 0); equipStroke.Thickness = 1.5; equipStroke.Transparency = 0.15
@@ -972,9 +977,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local actionRow = Instance.new("Frame", detailContent)
     actionRow.Name = "ActionRow"
     actionRow.BackgroundTransparency = 1
-    actionRow.Size = UDim2.new(0.88, 0, 0, px(44))
+    actionRow.Size = UDim2.new(0.88, 0, 0, px(42))
     actionRow.AnchorPoint = Vector2.new(0.5, 1)
-    actionRow.Position = UDim2.new(0.5, 0, 1, -px(58))
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(60))
 
     -- Salvage value preview label (shown above action row for salvageable items)
     local SALVAGE_GREEN = Color3.fromRGB(35, 190, 75)
@@ -987,7 +992,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     salvageValueLabel.TextXAlignment = Enum.TextXAlignment.Center
     salvageValueLabel.Size = UDim2.new(0.88, 0, 0, px(24))
     salvageValueLabel.AnchorPoint = Vector2.new(0.5, 1)
-    salvageValueLabel.Position = UDim2.new(0.5, 0, 1, -px(108))
+    salvageValueLabel.Position = UDim2.new(0.5, 0, 1, -px(114))
     salvageValueLabel.Text = ""
     salvageValueLabel.Visible = false
     local salvageValueStroke = Instance.new("UIStroke", salvageValueLabel)
@@ -1024,7 +1029,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
     end
     actionRow.AnchorPoint = Vector2.new(0.5, 1)
-    actionRow.Position = UDim2.new(0.5, 0, 1, -px(58))
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(60))
 
     -- Favorite button (yellow star)
     local FAV_YELLOW = Color3.fromRGB(255, 210, 50)
@@ -1311,7 +1316,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         detailRarity.TextColor3 = rarColor
         detailType.Text = (itemData.category == "Melee") and "Melee Weapon" or "Ranged Weapon"
 
-        -- SIZE ROLL SYSTEM — show size info in detail panel
+        -- SIZE ROLL SYSTEM — show size info in detail panel (coloured tier + white %)
         local pct = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
         detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
