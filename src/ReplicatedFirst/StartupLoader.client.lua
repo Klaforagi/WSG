@@ -185,7 +185,7 @@ pcall(function()
 			   ShowMinimap = true,
 			   ShowGameState = true,
 			   ShowHelm = true,
-			   ShowPlayerHighlights = true,
+			   ShowPlayerHighlights = false,
 		   }
 		   local settings = {}
 		   for k, v in pairs(defaults) do settings[k] = v end

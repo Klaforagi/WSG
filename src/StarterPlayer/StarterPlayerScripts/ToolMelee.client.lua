@@ -22,12 +22,12 @@ if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
     MeleeCfgModule = require(ReplicatedStorage:WaitForChild("ToolMeleeSettings"))
 end
 
--- PERK SYSTEM: shared perk config for trail color lookup
-local WeaponPerkConfig
+-- ENCHANT SYSTEM: shared enchant config for trail color lookup
+local WeaponEnchantConfig
 pcall(function()
-    local mod = ReplicatedStorage:FindFirstChild("WeaponPerkConfig")
+    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
     if mod and mod:IsA("ModuleScript") then
-        WeaponPerkConfig = require(mod)
+        WeaponEnchantConfig = require(mod)
     end
 end)
 
@@ -371,20 +371,20 @@ local function attachMelee(tool)
         end
 
         local duration = endOffset - startOffset
-        -- PERK SYSTEM: use perk color for trail if weapon has a perk
+        -- ENCHANT SYSTEM: use enchant color for trail if weapon has an enchant
         local trailColorStart = Color3.fromRGB(240, 240, 240)
         local trailColorEnd   = Color3.fromRGB(190, 190, 190)
-        if WeaponPerkConfig and tool:GetAttribute("HasPerk") then
-            local pn = tool:GetAttribute("PerkName")
+        if WeaponEnchantConfig and tool:GetAttribute("HasEnchant") then
+            local pn = tool:GetAttribute("EnchantName")
             if pn and pn ~= "" then
-                local perkColor = WeaponPerkConfig.GetColorForPerk(pn)
-                if perkColor then
+                local enchantColor = WeaponEnchantConfig.GetColorForEnchant(pn)
+                if enchantColor then
                     trailColorStart = Color3.new(
-                        math.min(perkColor.R * 1.2, 1),
-                        math.min(perkColor.G * 1.2, 1),
-                        math.min(perkColor.B * 1.2, 1)
+                        math.min(enchantColor.R * 1.2, 1),
+                        math.min(enchantColor.G * 1.2, 1),
+                        math.min(enchantColor.B * 1.2, 1)
                     )
-                    trailColorEnd = perkColor
+                    trailColorEnd = enchantColor
                 end
             end
         end
@@ -392,17 +392,30 @@ local function attachMelee(tool)
         pcall(function()
             swordTrail.Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0, trailColorStart),
+                ColorSequenceKeypoint.new(0.4, trailColorEnd),
                 ColorSequenceKeypoint.new(1, trailColorEnd),
             })
-            swordTrail.Transparency = NumberSequence.new({
-                NumberSequenceKeypoint.new(0, 0.75),
-                NumberSequenceKeypoint.new(1, 0.95),
-            })
-            swordTrail.Lifetime = math.max(0.12, duration)
+            -- Enchant trails are much more visible; non-Enchant trails keep a subtler look
+            local hasEnchantTrail = WeaponEnchantConfig and tool:GetAttribute("HasEnchant")
+            if hasEnchantTrail then
+                swordTrail.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.1),
+                    NumberSequenceKeypoint.new(0.4, 0.25),
+                    NumberSequenceKeypoint.new(0.75, 0.55),
+                    NumberSequenceKeypoint.new(1, 0.9),
+                })
+                swordTrail.LightEmission = 0.8
+                swordTrail.LightInfluence = 0
+            else
+                swordTrail.Transparency = NumberSequence.new({
+                    NumberSequenceKeypoint.new(0, 0.75),
+                    NumberSequenceKeypoint.new(1, 0.95),
+                })
+            end
+            swordTrail.Lifetime = math.max(0.14, duration)
             swordTrail.MinLength = 0
-            swordTrail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.0), NumberSequenceKeypoint.new(1, 0.25)})
+            swordTrail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.15), NumberSequenceKeypoint.new(0.6, 0.8), NumberSequenceKeypoint.new(1, 0.2)})
             swordTrail.FaceCamera = false
-            swordTrail.LightInfluence = 0
         end)
 
         -- schedule enable/disable relative to swing start

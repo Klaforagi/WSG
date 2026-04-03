@@ -31,11 +31,11 @@ pcall(function()
     end
 end)
 
-local WeaponPerkConfig = nil
+local WeaponEnchantConfig = nil
 pcall(function()
-    local mod = ReplicatedStorage:FindFirstChild("WeaponPerkConfig")
+    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
     if mod and mod:IsA("ModuleScript") then
-        WeaponPerkConfig = require(mod)
+        WeaponEnchantConfig = require(mod)
     end
 end)
 
@@ -290,19 +290,19 @@ function CrateOpeningUI.Init(playerGui)
     resultSizeLabel.ZIndex = 21
     resultSizeLabel.Parent = resultFrame
 
-    -- PERK SYSTEM — shows the perk name below the size label, styled like a tag
-    local resultPerkLabel = Instance.new("TextLabel")
-    resultPerkLabel.Name = "PerkName"
-    resultPerkLabel.BackgroundTransparency = 1
-    resultPerkLabel.Font = Enum.Font.GothamBold
-    resultPerkLabel.Text = ""
-    resultPerkLabel.TextColor3 = GOLD
-    resultPerkLabel.TextSize = math.max(16, math.floor(px(18)))
-    resultPerkLabel.Size = UDim2.new(1, 0, 0, px(24))
-    resultPerkLabel.Position = UDim2.new(0, 0, 0, px(244))
-    resultPerkLabel.TextXAlignment = Enum.TextXAlignment.Center
-    resultPerkLabel.ZIndex = 21
-    resultPerkLabel.Parent = resultFrame
+    -- ENCHANT SYSTEM — shows the enchant name below the size label, styled like a tag
+    local resultEnchantLabel = Instance.new("TextLabel")
+    resultEnchantLabel.Name = "EnchantName"
+    resultEnchantLabel.BackgroundTransparency = 1
+    resultEnchantLabel.Font = Enum.Font.GothamBold
+    resultEnchantLabel.Text = ""
+    resultEnchantLabel.TextColor3 = GOLD
+    resultEnchantLabel.TextSize = math.max(16, math.floor(px(18)))
+    resultEnchantLabel.Size = UDim2.new(1, 0, 0, px(24))
+    resultEnchantLabel.Position = UDim2.new(0, 0, 0, px(244))
+    resultEnchantLabel.TextXAlignment = Enum.TextXAlignment.Center
+    resultEnchantLabel.ZIndex = 21
+    resultEnchantLabel.Parent = resultFrame
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "CloseBtn"
@@ -925,21 +925,21 @@ function CrateOpeningUI.Init(playerGui)
                 resultSizeLabel.Text = ""
             end
 
-            -- PERK SYSTEM — display perk name with its color
-            if resultData.perkName and resultData.perkName ~= "" then
-                resultPerkLabel.Text = "✨ " .. resultData.perkName
-                if WeaponPerkConfig then
-                    local perkColor = WeaponPerkConfig.GetColorForPerk(resultData.perkName)
-                    if perkColor then
-                        resultPerkLabel.TextColor3 = perkColor
+            -- ENCHANT SYSTEM — display enchant name with its color
+            if resultData.enchantName and resultData.enchantName ~= "" then
+                resultEnchantLabel.Text = "✨ " .. resultData.enchantName
+                if WeaponEnchantConfig then
+                    local enchantColor = WeaponEnchantConfig.GetColorForEnchant(resultData.enchantName)
+                    if enchantColor then
+                        resultEnchantLabel.TextColor3 = enchantColor
                     else
-                        resultPerkLabel.TextColor3 = GOLD
+                        resultEnchantLabel.TextColor3 = GOLD
                     end
                 else
-                    resultPerkLabel.TextColor3 = GOLD
+                    resultEnchantLabel.TextColor3 = GOLD
                 end
             else
-                resultPerkLabel.Text = ""
+                resultEnchantLabel.Text = ""
             end
 
             -- Set weapon image
@@ -1039,7 +1039,7 @@ function CrateOpeningUI.Init(playerGui)
             resultName.TextColor3 = Color3.fromRGB(255, 80, 80)
             resultRarity.Text = ""
             resultSizeLabel.Text = ""
-            resultPerkLabel.Text = ""
+            resultEnchantLabel.Text = ""
             rfStroke.Color = Color3.fromRGB(255, 80, 80)
             resultFrame.BackgroundTransparency = 0.06
 

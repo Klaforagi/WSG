@@ -67,12 +67,12 @@ pcall(function()
     end
 end)
 
--- PERK SYSTEM — perk config for perk color/name display on cards
-local WeaponPerkConfig = nil
+-- ENCHANT SYSTEM — enchant config for enchant color/name display on cards
+local WeaponEnchantConfig = nil
 pcall(function()
-    local mod = ReplicatedStorage:FindFirstChild("WeaponPerkConfig")
+    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
     if mod and mod:IsA("ModuleScript") then
-        WeaponPerkConfig = require(mod)
+        WeaponEnchantConfig = require(mod)
     end
 end)
 
@@ -529,7 +529,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 favorited   = data.favorited == true,
                 sizePercent = data.sizePercent or 100,   -- SIZE ROLL SYSTEM
                 sizeTier    = data.sizeTier or "Normal", -- SIZE ROLL SYSTEM
-                perkName    = data.perkName or "",       -- PERK SYSTEM
+                enchantName    = data.enchantName or "",       -- ENCHANT SYSTEM
             })
         end
     end
@@ -931,17 +931,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.Size = UDim2.new(1, 0, 0, px(24))
     detailSize.Position = UDim2.new(0, 0, 0, px(268))
 
-    -- PERK SYSTEM — perk name in detail panel
-    local detailPerk = Instance.new("TextLabel", detailContent)
-    detailPerk.Name = "PerkInfo"
-    detailPerk.BackgroundTransparency = 1
-    detailPerk.Font = Enum.Font.GothamBold
-    detailPerk.TextColor3 = GOLD
-    detailPerk.TextSize = px(16)
-    detailPerk.TextXAlignment = Enum.TextXAlignment.Center
-    detailPerk.Size = UDim2.new(1, 0, 0, px(22))
-    detailPerk.Position = UDim2.new(0, 0, 0, px(292))
-    detailPerk.Text = ""
+    -- ENCHANT SYSTEM — enchant name in detail panel
+    local detailEnchant = Instance.new("TextLabel", detailContent)
+    detailEnchant.Name = "EnchantInfo"
+    detailEnchant.BackgroundTransparency = 1
+    detailEnchant.Font = Enum.Font.GothamBold
+    detailEnchant.TextColor3 = GOLD
+    detailEnchant.TextSize = px(16)
+    detailEnchant.TextXAlignment = Enum.TextXAlignment.Center
+    detailEnchant.Size = UDim2.new(1, 0, 0, px(22))
+    detailEnchant.Position = UDim2.new(0, 0, 0, px(292))
+    detailEnchant.Text = ""
 
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
@@ -1332,18 +1332,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             detailSize.TextColor3 = DIM_TEXT
         end
 
-        -- PERK SYSTEM — show perk name in detail panel
-        local itemPerkName = itemData.perkName or ""
-        if itemPerkName ~= "" and WeaponPerkConfig then
-            local perkData = WeaponPerkConfig.GetPerkData(itemPerkName)
-            if perkData then
-                detailPerk.Text = "✨ " .. itemPerkName
-                detailPerk.TextColor3 = perkData.color
+        -- ENCHANT SYSTEM — show enchant name in detail panel
+        local itemenchantName = itemData.enchantName or ""
+        if itemenchantName ~= "" and WeaponEnchantConfig then
+            local enchantData = WeaponEnchantConfig.GetEnchantData(itemenchantName)
+            if enchantData then
+                detailEnchant.Text = "✨ " .. itemenchantName
+                detailEnchant.TextColor3 = enchantData.color
             else
-                detailPerk.Text = ""
+                detailEnchant.Text = ""
             end
         else
-            detailPerk.Text = ""
+            detailEnchant.Text = ""
         end
 
         if isDeveloper and itemData.instanceId then
@@ -1401,54 +1401,54 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameStroke.Color = Color3.fromRGB(0, 0, 0)
         nameStroke.Thickness = 1.5; nameStroke.Transparency = 0.15
 
-        -- ── SECTION 2: Perk tag (right under name, centered, fixed size) ──────
-        local perkName = itemData.perkName or ""
-        if perkName ~= "" and WeaponPerkConfig then
-            local perkData = WeaponPerkConfig.GetPerkData(perkName)
-            if perkData then
-                local perkColor = perkData.color
-                local perkDisplayText = "✨ " .. perkName
-                -- Fixed pill size (85% of old dynamic size) so all perks look uniform
-                local perkW = math.floor(px(68))
-                local perkH = math.floor(px(14))
+        -- ── SECTION 2: enchant tag (right under name, centered, fixed size) ──────
+        local enchantName = itemData.enchantName or ""
+        if enchantName ~= "" and WeaponEnchantConfig then
+            local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
+            if enchantData then
+                local enchantColor = enchantData.color
+                local enchantDisplayText = "✨ " .. enchantName
+                -- Fixed pill size (85% of old dynamic size) so all enchants look uniform
+                local enchantW = math.floor(px(68))
+                local enchantH = math.floor(px(14))
 
-                local h, s, v = Color3.toHSV(perkColor)
+                local h, s, v = Color3.toHSV(enchantColor)
                 local textC = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1))
                 local bgS = math.clamp(s + 0.14, 0, 1)
                 local bgV = math.clamp(v * 0.55 + 0.02, 0, 1)
                 local bgC = Color3.fromHSV(h, bgS, bgV)
 
-                local perkBg = Instance.new("Frame", card)
-                perkBg.Name = "PerkTagBg"
-                perkBg.BackgroundColor3 = bgC
-                perkBg.BackgroundTransparency = 0.12
-                perkBg.BorderSizePixel = 0
-                perkBg.Size = UDim2.new(0, perkW, 0, perkH)
-                perkBg.AnchorPoint = Vector2.new(0.5, 0)
-                perkBg.Position = UDim2.new(0.5, 0, 0.20, 0)
-                perkBg.ZIndex = 6
-                perkBg.ClipsDescendants = true
-                local pCorner = Instance.new("UICorner", perkBg)
-                pCorner.CornerRadius = UDim.new(0, math.max(0, math.floor(perkH / 2)))
+                local enchantBg = Instance.new("Frame", card)
+                enchantBg.Name = "EnchantTagBg"
+                enchantBg.BackgroundColor3 = bgC
+                enchantBg.BackgroundTransparency = 0.12
+                enchantBg.BorderSizePixel = 0
+                enchantBg.Size = UDim2.new(0, enchantW, 0, enchantH)
+                enchantBg.AnchorPoint = Vector2.new(0.5, 0)
+                enchantBg.Position = UDim2.new(0.5, 0, 0.20, 0)
+                enchantBg.ZIndex = 6
+                enchantBg.ClipsDescendants = true
+                local pCorner = Instance.new("UICorner", enchantBg)
+                pCorner.CornerRadius = UDim.new(0, math.max(0, math.floor(enchantH / 2)))
 
-                local perkLabel = Instance.new("TextLabel", perkBg)
-                perkLabel.Name = "PerkTag"
-                perkLabel.BackgroundTransparency = 1
-                perkLabel.Font = Enum.Font.GothamBold
-                perkLabel.TextColor3 = textC
-                perkLabel.TextScaled = true
-                perkLabel.Size = UDim2.new(1, -px(4), 1, -px(2))
-                perkLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-                perkLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
-                perkLabel.TextXAlignment = Enum.TextXAlignment.Center
-                perkLabel.TextYAlignment = Enum.TextYAlignment.Center
-                perkLabel.Text = perkDisplayText
-                perkLabel.ZIndex = 7
-                local pSizeC = Instance.new("UITextSizeConstraint", perkLabel)
+                local enchantLabel = Instance.new("TextLabel", enchantBg)
+                enchantLabel.Name = "EnchantTag"
+                enchantLabel.BackgroundTransparency = 1
+                enchantLabel.Font = Enum.Font.GothamBold
+                enchantLabel.TextColor3 = textC
+                enchantLabel.TextScaled = true
+                enchantLabel.Size = UDim2.new(1, -px(4), 1, -px(2))
+                enchantLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+                enchantLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+                enchantLabel.TextXAlignment = Enum.TextXAlignment.Center
+                enchantLabel.TextYAlignment = Enum.TextYAlignment.Center
+                enchantLabel.Text = enchantDisplayText
+                enchantLabel.ZIndex = 7
+                local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
                 pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 14
 
                 local pStrokeColor = shadeColor(bgC, 0.8)
-                local pStroke = Instance.new("UIStroke", perkBg)
+                local pStroke = Instance.new("UIStroke", enchantBg)
                 pStroke.Color = pStrokeColor; pStroke.Thickness = 1; pStroke.Transparency = 0.6
             end
         end

@@ -234,12 +234,12 @@ pcall(function()
     end
 end)
 
--- PERK SYSTEM — lazy-load WeaponPerkService for perk visual application
-local WeaponPerkService = nil
+-- ENCHANT SYSTEM — lazy-load WeaponEnchantService for enchant visual application
+local WeaponEnchantService = nil
 pcall(function()
-    local mod = game:GetService("ServerScriptService"):FindFirstChild("WeaponPerkService")
+    local mod = game:GetService("ServerScriptService"):FindFirstChild("WeaponEnchantService")
     if mod and mod:IsA("ModuleScript") then
-        WeaponPerkService = require(mod)
+        WeaponEnchantService = require(mod)
     end
 end)
 
@@ -278,10 +278,10 @@ local function applyWeaponScale(player, toolClone, toolName, instanceId)
     end
 end
 
---- PERK SYSTEM — Look up the player's weapon instance perk data and apply visuals.
---- Called after applyWeaponScale so perk emitters are created on the already-scaled weapon.
-local function applyWeaponPerk(player, toolClone, toolName, instanceId)
-    if not WeaponPerkService or not WeaponInstanceService_scale then return end
+--- ENCHANT SYSTEM — Look up the player's weapon instance enchant data and apply visuals.
+--- Called after applyWeaponScale so enchant emitters are created on the already-scaled weapon.
+local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
+    if not WeaponEnchantService or not WeaponInstanceService_scale then return end
     local inv = WeaponInstanceService_scale:GetInventory(player)
     if not inv then return end
     local bestInstance = nil
@@ -295,8 +295,8 @@ local function applyWeaponPerk(player, toolClone, toolName, instanceId)
             end
         end
     end
-    if bestInstance and type(bestInstance.perkName) == "string" and bestInstance.perkName ~= "" then
-        WeaponPerkService.ApplyPerkFromInstance(toolClone, bestInstance)
+    if bestInstance and type(bestInstance.enchantName) == "string" and bestInstance.enchantName ~= "" then
+        WeaponEnchantService.ApplyEnchantFromInstance(toolClone, bestInstance)
     end
 end
 
@@ -320,9 +320,9 @@ local function grantTool(player, folder, toolName, instanceId)
         clone.Parent = sg
         local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
         if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
-        -- PERK SYSTEM: apply perk visuals after scaling
-        local perkOk, perkErr = pcall(applyWeaponPerk, player, clone, toolName, instanceId)
-        if not perkOk then warn("[Loadout] applyWeaponPerk error:", perkErr) end
+        -- ENCHANT SYSTEM: apply enchant visuals after scaling
+        local enchantOk, enchantErr = pcall(applyWeaponEnchant, player, clone, toolName, instanceId)
+        if not enchantOk then warn("[Loadout] applyWeaponEnchant error:", enchantErr) end
     end
 
     -- 2) Backpack — skip if already in Backpack or equipped in Character
@@ -336,9 +336,9 @@ local function grantTool(player, folder, toolName, instanceId)
         clone.Parent = bp
         local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
         if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
-        -- PERK SYSTEM: apply perk visuals after scaling
-        local perkOk, perkErr = pcall(applyWeaponPerk, player, clone, toolName, instanceId)
-        if not perkOk then warn("[Loadout] applyWeaponPerk error:", perkErr) end
+        -- ENCHANT SYSTEM: apply enchant visuals after scaling
+        local enchantOk, enchantErr = pcall(applyWeaponEnchant, player, clone, toolName, instanceId)
+        if not enchantOk then warn("[Loadout] applyWeaponEnchant error:", enchantErr) end
     end
 end
 
