@@ -32,6 +32,22 @@ BoostConfig.Boosts = {
         -- TODO: Add PriceRobux field when Robux purchases are implemented
     },
     {
+        Id            = "xp_2x",
+        DisplayName   = "2x XP",
+        Description   = "Doubles all XP rewards for 30 minutes.",
+        PriceCoins    = 45,
+        DurationSeconds = 1800,  -- 30 minutes
+        Type          = BoostConfig.Type.Timed,
+        Stackable     = false,
+        InstantUse    = false,
+        Multiplier    = 2,
+        IconKey       = "XP",
+        IconGlyph     = "\u{2B50}",
+        IconColor     = {180, 120, 255},
+        IconAssetId   = "",
+        SortOrder     = 2,
+    },
+    {
         Id            = "quest_2x",
         DisplayName   = "2x Quest Progress",
         Description   = "Doubles daily quest progress for 30 minutes.",
@@ -45,7 +61,7 @@ BoostConfig.Boosts = {
         IconGlyph     = "\u{2611}",
         IconColor     = {100, 180, 255},
         IconAssetId   = "",
-        SortOrder     = 2,
+        SortOrder     = 3,
     },
     {
         Id            = "quest_reroll",
@@ -57,7 +73,7 @@ BoostConfig.Boosts = {
         Stackable     = true,
         InstantUse    = true,
         IconAssetId   = "",
-        SortOrder     = 3,
+        SortOrder     = 4,
     },
     {
         Id            = "bonus_claim",
@@ -69,7 +85,7 @@ BoostConfig.Boosts = {
         Stackable     = true,
         InstantUse    = true,
         IconAssetId   = "",
-        SortOrder     = 4,
+        SortOrder     = 5,
     },
 }
 

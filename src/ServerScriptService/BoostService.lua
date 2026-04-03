@@ -605,6 +605,14 @@ function BoostService:GetQuestProgressMultiplier(player)
     return 1
 end
 
+function BoostService:GetXPMultiplier(player)
+    if self:HasActiveBoost(player, "xp_2x") then
+        local def = getBoostConfig() and getBoostConfig().GetById("xp_2x")
+        return def and def.Multiplier or 2
+    end
+    return 1
+end
+
 --- Returns a table of boost states for the client UI.
 --- { [boostId] = { active = bool, expiresAt = number, bonusClaimed = { [questId]=true } } }
 function BoostService:GetPlayerBoostStates(player)

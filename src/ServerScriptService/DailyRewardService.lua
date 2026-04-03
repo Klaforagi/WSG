@@ -230,10 +230,10 @@ local function grantReward(player, rewardEntry)
         end
 
     elseif rtype == config.RewardType.XPBoost then
-        -- Grant quest_2x boosts (2x quest progress for 30 min each) to inventory
+        -- Grant xp_2x boosts (2x XP for 30 min each) to inventory
         local bs = getBoostService()
         if bs and bs.GrantFreeBoost then
-            local granted = bs:GrantFreeBoost(player, "quest_2x", amount)
+            local granted = bs:GrantFreeBoost(player, "xp_2x", amount)
             if granted then
                 print("[DailyRewardService] Granted", amount, "XP Boost(s) to", player.Name)
                 return true

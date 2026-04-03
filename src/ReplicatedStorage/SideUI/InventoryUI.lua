@@ -307,6 +307,7 @@ end
 
 local BOOST_ACCENT_COLORS = {
     coins_2x = Color3.fromRGB(255, 200, 40),
+    xp_2x = Color3.fromRGB(180, 120, 255),
     quest_2x = Color3.fromRGB(80, 165, 255),
 }
 

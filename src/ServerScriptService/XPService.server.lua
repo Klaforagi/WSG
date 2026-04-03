@@ -10,6 +10,18 @@ local XPConfig = require(ReplicatedStorage:WaitForChild("XPConfig"))
 local XPFormula = require(ReplicatedStorage:WaitForChild("XPFormula"))
 local XPModule = require(script.Parent:WaitForChild("XPServiceModule"))
 
+local BoostService
+local function getBoostService()
+    if BoostService then return BoostService end
+    pcall(function()
+        local mod = script.Parent:FindFirstChild("BoostService")
+        if mod and mod:IsA("ModuleScript") then
+            BoostService = require(mod)
+        end
+    end)
+    return BoostService
+end
+
 -- DataStore
 local DS = DataStoreService:GetDataStore("WSG_XP_v1")
 
@@ -154,6 +166,16 @@ local function AwardXP(player, reason, amountOverride, metadata)
     else
         warn("[XPService] Unknown reason '" .. tostring(reasonKey) .. "' and no amountOverride — skipping")
         return false
+    end
+
+    if amount <= 0 then return false end
+
+    -- Apply optional XP boost multiplier (2x XP, etc.)
+    local boostSvc = getBoostService()
+    if boostSvc and type(boostSvc.GetXPMultiplier) == "function" then
+        local mult = tonumber(boostSvc:GetXPMultiplier(player)) or 1
+        mult = math.max(1, mult)
+        amount = math.floor(amount * mult)
     end
 
     if amount <= 0 then return false end

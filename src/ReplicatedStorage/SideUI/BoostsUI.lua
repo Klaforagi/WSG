@@ -47,6 +47,7 @@ local DISABLED_BG   = _UITheme and _UITheme.DISABLED_BG or Color3.fromRGB(35, 38
 
 local ACCENT_COLORS = {
     coins_2x     = Color3.fromRGB(255, 200, 40),
+    xp_2x        = Color3.fromRGB(180, 120, 255),
     quest_2x     = Color3.fromRGB(80, 165, 255),
 }
 
