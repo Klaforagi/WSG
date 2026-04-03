@@ -1,35 +1,35 @@
 --------------------------------------------------------------------------------
--- WeaponPerkConfig.lua  –  Shared perk data module (server + client)
+-- WeaponEnchantConfig.lua  –  Shared enchant data module (server + client)
 --
--- Defines the 7 elemental weapon perks, their colors, and roll logic.
+-- Defines the 7 elemental weapon enchants, their colors, and roll logic.
 -- Shared between server (roll + apply) and client (trail color + UI reading).
 --
 -- USAGE:
---   local PerkCfg = require(path.to.WeaponPerkConfig)
---   local perkName = PerkCfg.RollPerk()       --> "Fiery" or nil
---   local data     = PerkCfg.GetPerkData("Fiery")
---   local allPerks = PerkCfg.Perks
+--   local EnchantCfg = require(path.to.WeaponEnchantConfig)
+--   local enchantName = EnchantCfg.RollEnchant()       --> "Fiery" or nil
+--   local data     = EnchantCfg.GetEnchantData("Fiery")
+--   local allEnchants = EnchantCfg.Enchants
 --------------------------------------------------------------------------------
 
-local WeaponPerkConfig = {}
+local WeaponEnchantConfig = {}
 
 --------------------------------------------------------------------------------
 -- CONSTANTS
 --------------------------------------------------------------------------------
 
--- Chance (0–1) that any weapon roll receives a perk.
+-- Chance (0–1) that any weapon roll receives an enchant.
 -- TODO: revert to 0.20 after testing
-WeaponPerkConfig.PERK_CHANCE = 1.00
+WeaponEnchantConfig.ENCHANT_CHANCE = 1.00
 
 --------------------------------------------------------------------------------
--- PERK DEFINITIONS
--- Each perk has:
+-- ENCHANT DEFINITIONS
+-- Each enchant has:
 --   name        : display name / key
 --   color       : Color3 used for aura, trail, hit particles
 --   statusType  : placeholder string for future gameplay effect
 --   description : short flavour text (future UI)
 --------------------------------------------------------------------------------
-WeaponPerkConfig.Perks = {
+WeaponEnchantConfig.Enchants = {
     {
         name        = "Fiery",
         color       = Color3.fromRGB(255, 122, 0),
@@ -74,39 +74,39 @@ WeaponPerkConfig.Perks = {
     },
 }
 
--- Fast lookup table: PerksByName["Fiery"] = { name, color, ... }
-WeaponPerkConfig.PerksByName = {}
-for _, perk in ipairs(WeaponPerkConfig.Perks) do
-    WeaponPerkConfig.PerksByName[perk.name] = perk
+-- Fast lookup table: EnchantsByName["Fiery"] = { name, color, ... }
+WeaponEnchantConfig.EnchantsByName = {}
+for _, enchant in ipairs(WeaponEnchantConfig.Enchants) do
+    WeaponEnchantConfig.EnchantsByName[enchant.name] = enchant
 end
 
 --------------------------------------------------------------------------------
--- GetPerkData(perkName) -> perkTable or nil
+-- GetEnchantData(enchantName) -> enchantTable or nil
 --------------------------------------------------------------------------------
-function WeaponPerkConfig.GetPerkData(perkName)
-    if type(perkName) ~= "string" or perkName == "" then return nil end
-    return WeaponPerkConfig.PerksByName[perkName]
+function WeaponEnchantConfig.GetEnchantData(enchantName)
+    if type(enchantName) ~= "string" or enchantName == "" then return nil end
+    return WeaponEnchantConfig.EnchantsByName[enchantName]
 end
 
 --------------------------------------------------------------------------------
--- RollPerk() -> perkName (string) or nil
--- 20% chance to receive a perk; on success picks one uniformly at random.
+-- RollEnchant() -> enchantName (string) or nil
+-- 20% chance to receive an enchant; on success picks one uniformly at random.
 --------------------------------------------------------------------------------
-function WeaponPerkConfig.RollPerk()
-    if math.random() > WeaponPerkConfig.PERK_CHANCE then
-        return nil -- no perk this roll
+function WeaponEnchantConfig.RollEnchant()
+    if math.random() > WeaponEnchantConfig.ENCHANT_CHANCE then
+        return nil -- no enchant this roll
     end
-    local list = WeaponPerkConfig.Perks
+    local list = WeaponEnchantConfig.Enchants
     return list[math.random(1, #list)].name
 end
 
 --------------------------------------------------------------------------------
--- GetColorForPerk(perkName) -> Color3 or nil
+-- GetColorForEnchant(enchantName) -> Color3 or nil
 -- Convenience helper used by client trail / UI code.
 --------------------------------------------------------------------------------
-function WeaponPerkConfig.GetColorForPerk(perkName)
-    local data = WeaponPerkConfig.GetPerkData(perkName)
+function WeaponEnchantConfig.GetColorForEnchant(enchantName)
+    local data = WeaponEnchantConfig.GetEnchantData(enchantName)
     return data and data.color or nil
 end
 
-return WeaponPerkConfig
+return WeaponEnchantConfig
