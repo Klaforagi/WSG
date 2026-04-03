@@ -9,7 +9,7 @@
     
     "ReplicatedStorage": {
       "$path": "src/ReplicatedStorage",
-      "Skybox": {
+      "Enchants": {
         "$className": "Folder"
       }
       ,
