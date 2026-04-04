@@ -3,12 +3,14 @@
 --
 -- Responsible for:
 --   • Setting enchant attributes on Tool instances
---   • Creating / removing aura ParticleEmitters on the weapon
+--   • Cloning manual enchant visual assets from ReplicatedStorage.Enchants
+--     and parenting them under Handle.EnchantBlock
 --   • Recoloring the existing SwordTrail
 --   • Spawning short hit-burst particles at confirmed hit locations
 --
--- All enchant-created instances are named with an "Enchant" prefix so cleanup
--- can distinguish them from normal weapon children.
+-- Enchant visuals are cloned from ReplicatedStorage.Enchants, NOT generated
+-- in code. Each cloned asset is renamed with the prefix "ActiveEnchantEffect_"
+-- so cleanup can reliably distinguish them from normal weapon children.
 --
 -- USAGE (server only):
 --   local EnchantService = require(path.to.WeaponEnchantService)
@@ -26,49 +28,73 @@ local WeaponEnchantConfig = require(ReplicatedStorage:WaitForChild("WeaponEnchan
 
 local WeaponEnchantService = {}
 
--- Names used for enchant-created instances (cleanup searches for these)
-local ENCHANT_AURA_NAME    = "EnchantAuraEmitter"
-local ENCHANT_SPARK_NAME   = "EnchantSparkEmitter"
-local ENCHANT_GLOW_NAME    = "EnchantGlowEmitter"
-local ENCHANT_ATTACH_NAME  = "EnchantAttachment"
-local ENCHANT_LIGHT_NAME   = "EnchantPointLight"
+-- Prefix applied to all cloned enchant effect instances for safe cleanup
+local ENCHANT_EFFECT_PREFIX = "ActiveEnchantEffect_"
 
--- Roblox built-in soft-glow particle texture (a round feathered circle)
+-- Legacy names from old code-generated particle system (cleaned up if found)
+local LEGACY_NAMES = {
+    "EnchantAuraEmitter",
+    "EnchantSparkEmitter",
+    "EnchantGlowEmitter",
+    "EnchantAttachment",
+    "EnchantPointLight",
+}
+
+-- Folder containing manually built enchant visual assets
+local EnchantsFolder = ReplicatedStorage:FindFirstChild("Enchants")
+if not EnchantsFolder then
+    warn("[WeaponEnchantService] ReplicatedStorage.Enchants folder not found — enchant visuals will not apply")
+end
+
+-- Roblox built-in soft-glow particle texture (used only by SpawnHitEffect)
 local SOFT_GLOW_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
-local STAR_TEXTURE      = "rbxasset://textures/particles/fire_main.dds"
 
 --------------------------------------------------------------------------------
--- INTERNAL: find the best BasePart to attach visuals to
+-- INTERNAL: get the asset name(s) to clone for a given enchant
+-- Shock is special: requires both ShockA and ShockB.
+-- All others use a single asset matching the enchant name.
 --------------------------------------------------------------------------------
-local function findAttachPart(tool)
-    if not tool then return nil end
-    -- Prefer Handle (standard Tool convention)
-    local handle = tool:FindFirstChild("Handle")
-    if handle and handle:IsA("BasePart") then return handle end
-    -- Fallback: any BasePart directly under the tool
-    for _, child in ipairs(tool:GetChildren()) do
-        if child:IsA("BasePart") then return child end
+local function getAssetNames(enchantName)
+    if enchantName == "Shock" then
+        return { "ShockA", "ShockB" }
     end
-    -- Deep search
-    return tool:FindFirstChildWhichIsA("BasePart", true)
+    return { enchantName }
 end
 
 --------------------------------------------------------------------------------
--- CLEAR enchant visualS
--- Removes all enchant-owned instances from a tool. Safe to call even if the
--- tool has no enchant.  Does NOT remove non-enchant children.
+-- CLEAR ENCHANT VISUALS
+-- Removes all enchant-owned cloned visuals from Handle.EnchantBlock.
+-- Also removes any legacy code-generated enchant instances that may still exist.
+-- Safe to call even if the tool has no enchant.
+-- Does NOT remove SwordTrail, Handle, meshes, welds, or unrelated content.
 --------------------------------------------------------------------------------
 function WeaponEnchantService.ClearEnchantVisuals(tool)
     if not tool then return end
-    for _, desc in ipairs(tool:GetDescendants()) do
-        if desc and desc.Name == ENCHANT_AURA_NAME
-            or desc.Name == ENCHANT_SPARK_NAME
-            or desc.Name == ENCHANT_GLOW_NAME
-            or desc.Name == ENCHANT_ATTACH_NAME
-            or desc.Name == ENCHANT_LIGHT_NAME then
-            pcall(function() desc:Destroy() end)
+
+    local handle = tool:FindFirstChild("Handle")
+
+    -- Clean up active enchant effect clones from EnchantBlock
+    if handle then
+        local enchantBlock = handle:FindFirstChild("EnchantBlock")
+        if enchantBlock then
+            for _, child in ipairs(enchantBlock:GetChildren()) do
+                if child.Name:sub(1, #ENCHANT_EFFECT_PREFIX) == ENCHANT_EFFECT_PREFIX then
+                    pcall(function() child:Destroy() end)
+                end
+            end
         end
     end
+
+    -- Clean up any legacy code-generated enchant instances anywhere in the tool
+    for _, desc in ipairs(tool:GetDescendants()) do
+        for _, legacyName in ipairs(LEGACY_NAMES) do
+            if desc and desc.Name == legacyName then
+                pcall(function() desc:Destroy() end)
+                break
+            end
+        end
+    end
+
     -- Restore SwordTrail to default white/gray if it exists
     local trail = tool:FindFirstChild("SwordTrail", true)
     if trail and trail:IsA("Trail") then
@@ -82,20 +108,23 @@ function WeaponEnchantService.ClearEnchantVisuals(tool)
 end
 
 --------------------------------------------------------------------------------
--- APPLY enchant visualS
--- Reads hasEnchant / enchantName attributes from the tool and creates:
---   1. A colored aura ParticleEmitter on the weapon handle
---   2. A subtle spark emitter for extra flair
---   3. A dim PointLight for glow ambiance
---   4. Recolors the existing SwordTrail
--- Removes prior enchant visuals first to prevent stacking.
+-- APPLY ENCHANT VISUALS
+-- Reads HasEnchant / EnchantName attributes from the tool, then:
+--   1. Clears any prior enchant visuals
+--   2. Clones the correct enchant asset(s) from ReplicatedStorage.Enchants
+--   3. Parents them under Handle.EnchantBlock
+--   4. Recolors the existing SwordTrail to match the enchant color
+-- NO particles are generated in code — all visuals come from manual assets.
 --------------------------------------------------------------------------------
 function WeaponEnchantService.ApplyEnchantVisuals(tool)
     if not tool then return end
 
     local hasEnchant  = tool:GetAttribute("HasEnchant")
     local enchantName = tool:GetAttribute("EnchantName")
-    if not hasEnchant or not enchantName or enchantName == "" then return end
+    if not hasEnchant or not enchantName or enchantName == "" then
+        WeaponEnchantService.ClearEnchantVisuals(tool)
+        return
+    end
 
     local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
     if not enchantData then
@@ -103,152 +132,44 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
         return
     end
 
-    local attachPart = findAttachPart(tool)
-    if not attachPart then
-        warn("[WeaponEnchantService] No BasePart found on tool '" .. tool.Name .. "', skipping visuals")
+    local handle = tool:FindFirstChild("Handle")
+    if not handle then
+        warn("[WeaponEnchantService] Handle not found on tool '" .. tool.Name .. "', skipping visuals")
+        return
+    end
+
+    local enchantBlock = handle:FindFirstChild("EnchantBlock")
+    if not enchantBlock then
+        warn("[WeaponEnchantService] Handle.EnchantBlock not found on tool '" .. tool.Name .. "', skipping visuals")
+        return
+    end
+
+    if not EnchantsFolder then
+        warn("[WeaponEnchantService] ReplicatedStorage.Enchants folder missing, cannot apply visuals")
         return
     end
 
     -- Clean up any prior enchant visuals
     WeaponEnchantService.ClearEnchantVisuals(tool)
 
-    local color = enchantData.color
+    -- Clone the correct asset(s) into EnchantBlock
+    local assetNames = getAssetNames(enchantName)
+    for _, assetName in ipairs(assetNames) do
+        local assetTemplate = EnchantsFolder:FindFirstChild(assetName)
+        if assetTemplate then
+            local clone = assetTemplate:Clone()
+            clone.Name = ENCHANT_EFFECT_PREFIX .. assetName
+            clone.Parent = enchantBlock
+        else
+            warn("[WeaponEnchantService] Asset '" .. assetName .. "' not found in ReplicatedStorage.Enchants")
+        end
+    end
 
-    -- Derive a brighter variant for accent highlights
+    -- Recolor the SwordTrail to match the enchant
+    local color = enchantData.color
     local h, s, v = Color3.toHSV(color)
     local brightColor = Color3.fromHSV(h, math.clamp(s * 0.6, 0, 1), math.clamp(v * 1.3, 0, 1))
 
-    -- Read weapon size scale for adaptive emitter tuning. Bigger weapons get
-    -- slightly more particles to keep the aura proportional.
-    local sizePct = tool:GetAttribute("SizePercent") or 100
-    local scaleMult = math.clamp(sizePct / 100, 0.7, 2.0)
-
-    ----------------------------------------------------------------------------
-    -- 1) CORE AURA EMITTER — constant medium-density energy hugging the weapon
-    --    Creates the "infused weapon" baseline look.
-    ----------------------------------------------------------------------------
-    local aura = Instance.new("ParticleEmitter")
-    aura.Name = ENCHANT_AURA_NAME
-    aura.Texture = SOFT_GLOW_TEXTURE
-
-    aura.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, brightColor),
-        ColorSequenceKeypoint.new(0.5, color),
-        ColorSequenceKeypoint.new(1, color),
-    })
-    aura.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.08 * scaleMult),
-        NumberSequenceKeypoint.new(0.3, 0.28 * scaleMult),
-        NumberSequenceKeypoint.new(0.7, 0.22 * scaleMult),
-        NumberSequenceKeypoint.new(1, 0),
-    })
-    aura.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.25),
-        NumberSequenceKeypoint.new(0.3, 0.35),
-        NumberSequenceKeypoint.new(0.7, 0.55),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    aura.LightEmission = 0.85
-    aura.LightInfluence = 0
-
-    aura.Rate = math.floor(18 * scaleMult)
-    aura.Lifetime = NumberRange.new(0.35, 0.7)
-    aura.Speed = NumberRange.new(0.15, 0.6)
-    aura.SpreadAngle = Vector2.new(180, 180)
-
-    aura.Drag = 3
-    aura.LockedToPart = false
-    aura.RotSpeed = NumberRange.new(-60, 60)
-    aura.Rotation = NumberRange.new(0, 360)
-    aura.ZOffset = -0.1
-
-    aura.Parent = attachPart
-
-    ----------------------------------------------------------------------------
-    -- 2) ACCENT SPARK EMITTER — brighter, faster little motes for energy feel
-    --    Adds motion and sparkle so the weapon doesn't look static.
-    ----------------------------------------------------------------------------
-    local spark = Instance.new("ParticleEmitter")
-    spark.Name = ENCHANT_SPARK_NAME
-    spark.Texture = STAR_TEXTURE
-
-    spark.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, brightColor),
-        ColorSequenceKeypoint.new(1, color),
-    })
-    spark.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.12 * scaleMult),
-        NumberSequenceKeypoint.new(0.5, 0.06 * scaleMult),
-        NumberSequenceKeypoint.new(1, 0),
-    })
-    spark.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.1),
-        NumberSequenceKeypoint.new(0.4, 0.3),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    spark.LightEmission = 1
-    spark.LightInfluence = 0
-
-    spark.Rate = math.floor(10 * scaleMult)
-    spark.Lifetime = NumberRange.new(0.2, 0.45)
-    spark.Speed = NumberRange.new(0.6, 2.0)
-    spark.SpreadAngle = Vector2.new(180, 180)
-    spark.Drag = 5
-    spark.LockedToPart = false
-    spark.RotSpeed = NumberRange.new(-120, 120)
-    spark.Rotation = NumberRange.new(0, 360)
-    spark.ZOffset = 0.05
-
-    spark.Parent = attachPart
-
-    ----------------------------------------------------------------------------
-    -- 3) GLOW PULSE EMITTER — few larger soft particles for aura fullness
-    --    Very low count, makes the overall effect feel richer and more magical.
-    ----------------------------------------------------------------------------
-    local glow = Instance.new("ParticleEmitter")
-    glow.Name = ENCHANT_GLOW_NAME
-    glow.Texture = SOFT_GLOW_TEXTURE
-
-    glow.Color = ColorSequence.new(color)
-    glow.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.15 * scaleMult),
-        NumberSequenceKeypoint.new(0.5, 0.55 * scaleMult),
-        NumberSequenceKeypoint.new(1, 0.3 * scaleMult),
-    })
-    glow.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.6),
-        NumberSequenceKeypoint.new(0.4, 0.45),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    glow.LightEmission = 0.7
-    glow.LightInfluence = 0
-
-    glow.Rate = math.floor(4 * scaleMult)
-    glow.Lifetime = NumberRange.new(0.5, 0.9)
-    glow.Speed = NumberRange.new(0.05, 0.2)
-    glow.SpreadAngle = Vector2.new(180, 180)
-    glow.Drag = 1
-    glow.LockedToPart = true
-    glow.RotSpeed = NumberRange.new(-20, 20)
-    glow.Rotation = NumberRange.new(0, 360)
-    glow.ZOffset = -0.2
-
-    glow.Parent = attachPart
-
-    ----------------------------------------------------------------------------
-    -- 4) POINT LIGHT — stronger glow on nearby surfaces
-    ----------------------------------------------------------------------------
-    local light = Instance.new("PointLight")
-    light.Name = ENCHANT_LIGHT_NAME
-    light.Color = color
-    light.Brightness = 0.8
-    light.Range = 6
-    light.Shadows = false
-    light.Parent = attachPart
-
-    ----------------------------------------------------------------------------
-    -- 5) SWORD TRAIL RECOLOR — more vivid, less transparent
-    ----------------------------------------------------------------------------
     local trail = tool:FindFirstChild("SwordTrail", true)
     if trail and trail:IsA("Trail") then
         pcall(function()

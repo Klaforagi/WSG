@@ -55,12 +55,6 @@ WeaponEnchantConfig.Enchants = {
         description = "Venomous edge",
     },
     {
-        name        = "Holy",
-        color       = Color3.fromRGB(255, 255, 255),
-        statusType  = "Holy",            -- future: bonus vs undead/mobs
-        description = "Blessed radiance",
-    },
-    {
         name        = "Lifesteal",
         color       = Color3.fromRGB(139, 0, 0),
         statusType  = "Lifesteal",       -- future: heal on hit
