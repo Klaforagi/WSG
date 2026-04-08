@@ -180,8 +180,9 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
             })
             trail.Transparency = NumberSequence.new({
                 NumberSequenceKeypoint.new(0, 0.15),
-                NumberSequenceKeypoint.new(0.5, 0.4),
-                NumberSequenceKeypoint.new(1, 0.9),
+                NumberSequenceKeypoint.new(0.3, 0.3),
+                NumberSequenceKeypoint.new(0.7, 0.65),
+                NumberSequenceKeypoint.new(1, 1),
             })
             trail.LightEmission = 0.8
             trail.LightInfluence = 0
