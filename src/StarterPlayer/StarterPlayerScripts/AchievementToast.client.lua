@@ -64,13 +64,15 @@ screenGui.Parent        = playerGui
 local toastQueue  = {}
 local isShowing   = false
 
-local function showToast(title, icon, reward, ap)
-    -- Toast frame
-    local toast = Instance.new("Frame")
+local function showToast(title, icon, reward, ap, achId, category)
+    -- Toast frame (TextButton so the whole card is clickable)
+    local toast = Instance.new("TextButton")
     toast.Name                = "Toast"
     toast.BackgroundColor3    = DARK_BG
     toast.BackgroundTransparency = 0.05
-    toast.Size                = UDim2.new(0, px(340), 0, px(78))
+    toast.AutoButtonColor     = false
+    toast.Text                = ""
+    toast.Size                = UDim2.new(0, px(340), 0, px(88))
     toast.AnchorPoint         = Vector2.new(0.5, 1)
     toast.Position            = UDim2.new(0.5, 0, 1, px(100)) -- start off-screen below
     toast.Parent              = screenGui
@@ -155,6 +157,35 @@ local function showToast(title, icon, reward, ap)
     rewardLbl.Position           = UDim2.new(0, px(56), 0, px(50))
     rewardLbl.Parent             = toast
 
+    -- "Click to view" hint at the bottom
+    local clickLbl = Instance.new("TextLabel")
+    clickLbl.Name               = "ClickHint"
+    clickLbl.BackgroundTransparency = 1
+    clickLbl.Font               = Enum.Font.GothamMedium
+    clickLbl.Text               = "Click to view  ▶"
+    clickLbl.TextColor3         = Color3.fromRGB(120, 125, 145)
+    clickLbl.TextSize           = math.max(9, math.floor(px(10)))
+    clickLbl.TextXAlignment     = Enum.TextXAlignment.Right
+    clickLbl.Size               = UDim2.new(1, -px(12), 0, px(13))
+    clickLbl.AnchorPoint        = Vector2.new(0, 1)
+    clickLbl.Position           = UDim2.new(0, px(6), 1, -px(4))
+    clickLbl.Parent             = toast
+
+    -- Click handler: navigate to the achievement in the Quests panel
+    toast.MouseButton1Click:Connect(function()
+        if type(_G.NavigateToAchievement) == "function" then
+            pcall(_G.NavigateToAchievement, achId, category)
+        end
+        -- Dismiss the toast immediately on click
+        if toast and toast.Parent then toast:Destroy() end
+        isShowing = false
+        if #toastQueue > 0 then
+            local next = table.remove(toastQueue, 1)
+            isShowing = true
+            showToast(next.title, next.icon, next.reward, next.ap, next.achId, next.category)
+        end
+    end)
+
     -- Animate in
     local TWEEN_IN  = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     local TWEEN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -175,7 +206,7 @@ local function showToast(title, icon, reward, ap)
                 if #toastQueue > 0 then
                     local next = table.remove(toastQueue, 1)
                     isShowing = true
-                    showToast(next.title, next.icon, next.reward, next.ap)
+                    showToast(next.title, next.icon, next.reward, next.ap, next.achId, next.category)
                 end
             end)
         end
@@ -200,8 +231,10 @@ _G.ShowAchievementToast = function(achievementId, stageIndex)
     local icon   = "★"
     local reward = 0
     local ap     = 0
+    local category = nil
     if def then
         icon = def.icon or icon
+        category = def.category
         if def.staged then
             title = AchievementDefs.GetStageTitle and AchievementDefs.GetStageTitle(def, si) or (def.titleFormat and string.format(def.titleFormat, "I") or achievementId)
             reward = AchievementDefs.GetStageReward and AchievementDefs.GetStageReward(def, si) or (def.rewards and def.rewards[si] or 0)
@@ -214,15 +247,16 @@ _G.ShowAchievementToast = function(achievementId, stageIndex)
     end
 
     if isShowing then
-        table.insert(toastQueue, { title = title, icon = icon, reward = reward, ap = ap })
+        table.insert(toastQueue, { title = title, icon = icon, reward = reward, ap = ap, achId = achievementId, category = category })
     else
         isShowing = true
-        showToast(title, icon, reward, ap)
+        showToast(title, icon, reward, ap, achievementId, category)
     end
 end
 
 --------------------------------------------------------------------------------
--- Also listen directly for AchievementProgress in case the UI is closed
+-- Listen for AchievementProgress to show toasts
+-- (DailyQuestsUI no longer calls _G.ShowAchievementToast to avoid duplicates)
 --------------------------------------------------------------------------------
 task.spawn(function()
     local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)

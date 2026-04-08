@@ -1243,7 +1243,35 @@ end
 --------------------------------------------------------------------------------
 -- Module
 --------------------------------------------------------------------------------
+
+-- Navigation refs: updated each time the panel is built so the global
+-- NavigateToAchievement function always calls the current closures.
+local _navSetActiveTab     = nil
+local _navShowCategoryView = nil
+local _navUpdateCatBtns    = nil
+local _navPendingCategory  = nil   -- category to navigate to on next open
+
 local DailyQuestsUI = {}
+
+-- Opens the Quests panel (if needed), switches to the Achievements tab,
+-- and navigates to the category that contains the given achievement id.
+-- Called by AchievementToast when the player clicks a toast notification.
+_G.NavigateToAchievement = function(achId, category)
+    local mc = _G.SideUI and _G.SideUI.MenuController
+    if mc and not mc.IsOpen("Quests") then
+        -- Store intent so BuildUI picks it up after constructing the UI
+        _navPendingCategory = category
+        mc.OpenMenu("Quests")
+        -- mc.OpenMenu is synchronous: BuildUI ran and processed _navPendingCategory
+    else
+        -- Panel is already open; navigate directly using current closures
+        if _navSetActiveTab then _navSetActiveTab("achiev") end
+        if category then
+            if _navShowCategoryView then _navShowCategoryView(category) end
+            if _navUpdateCatBtns    then _navUpdateCatBtns(category)    end
+        end
+    end
+end
 
 function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     if not parent then return nil end
@@ -3994,9 +4022,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 end
             end
 
-            if completed and _G.ShowAchievementToast then
-                pcall(function() _G.ShowAchievementToast(achId, stageIndex) end)
-            end
+            -- Toast is shown solely by AchievementToast.client.lua (which also
+            -- listens to this event).  Do NOT call _G.ShowAchievementToast here
+            -- or the notification will appear twice.
 
             -- Update indicator dots on progress changes
             if updateTabIndicators then updateTabIndicators() end
@@ -4021,9 +4049,24 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     end
 
     ---------------------------------------------------------------------------
-    -- Activate default tab
+    -- Store nav refs so _G.NavigateToAchievement can reach current closures
     ---------------------------------------------------------------------------
-    setActiveTab(preferredTab)
+    _navSetActiveTab     = setActiveTab
+    _navShowCategoryView = showAchievementCategoryView
+    _navUpdateCatBtns    = updateCatButtonStates
+
+    ---------------------------------------------------------------------------
+    -- Activate default tab (or a pending navigation from a toast click)
+    ---------------------------------------------------------------------------
+    if _navPendingCategory then
+        local cat = _navPendingCategory
+        _navPendingCategory = nil
+        setActiveTab("achiev")
+        showAchievementCategoryView(cat)
+        updateCatButtonStates(cat)
+    else
+        setActiveTab(preferredTab)
+    end
 
     ---------------------------------------------------------------------------
     -- Live weekly quest progress updates from server
