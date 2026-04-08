@@ -3,14 +3,20 @@
 -- Mirrors ToolGunSetup.server.lua: creates RemoteEvents, validates incoming
 -- swing requests, performs a short-range cone/sphere check, applies damage,
 -- handles kill feed and score.
+--
+-- SCALING SYSTEM:
+--   All timing / damage / knockback values from ToolMeleeSettings are baselines
+--   at 100% weapon size.  At runtime they are scaled by:
+--     • Size multiplier  (sizePercent / 100)  — bigger = more damage, slower swing
+--     • Combo multiplier (per-step from comboConfig) — attack 3 is the finisher
 --------------------------------------------------------------------------------
-local ReplicatedStorage  = game:GetService("ReplicatedStorage")
-local Players            = game:GetService("Players")
-local Workspace          = game:GetService("Workspace")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
+local Players             = game:GetService("Players")
+local Workspace           = game:GetService("Workspace")
 local ServerScriptService = game:GetService("ServerScriptService")
-local Debris             = game:GetService("Debris")
-local CollectionService  = game:GetService("CollectionService")
-local TweenService       = game:GetService("TweenService")
+local Debris              = game:GetService("Debris")
+local CollectionService   = game:GetService("CollectionService")
+local TweenService        = game:GetService("TweenService")
 
 -- XP integration
 local XPModule
@@ -61,8 +67,8 @@ local function ensureEvent(name)
     return ev
 end
 
-local swingEvent  = ensureEvent("MeleeSwing")   -- client → server
-local meleeHit    = ensureEvent("MeleeHit")      -- server → client (damage popup)
+local swingEvent    = ensureEvent("MeleeSwing")   -- client → server
+local meleeHit      = ensureEvent("MeleeHit")      -- server → client (damage popup)
 local KillFeedEvent = ensureEvent("KillFeed")
 local HeadshotEvent = ensureEvent("Headshot")
 
@@ -77,18 +83,86 @@ end
 local KILL_POINTS = 10
 
 ---------------------------------------------------------------------------
--- Resolve per-tool config from presets
+-- Resolve per-tool config from presets (uses getPreset which merges
+-- rarity defaults + weapon overrides)
 ---------------------------------------------------------------------------
 local function getServerMeleeCfg(toolName)
-    local cfg = {}
-    if MeleeCfg and MeleeCfg.presets then
-        local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
-        local key = suffix and suffix:lower()
-        if key and MeleeCfg.presets[key] then
-            for k, v in pairs(MeleeCfg.presets[key]) do cfg[k] = v end
-        end
+    if not MeleeCfg or not MeleeCfg.getPreset then return {} end
+    local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
+    local key = suffix and suffix:lower()
+    if not key then return {} end
+    return MeleeCfg.getPreset(key) or {}
+end
+
+---------------------------------------------------------------------------
+-- SIZE + COMBO SCALING HELPERS
+--
+-- All config values (damage, cd, knockback, hitboxDelay, hitboxActive,
+-- trail_start, trail_end) are baselines authored at 100% weapon size.
+--
+-- sizePercent is read from tool attributes (set by WeaponScaleService
+-- via Loadout.server at equip time).
+--
+-- Size multiplier = sizePercent / 100
+--   100% → 1.0x   (normal baseline)
+--   200% → 2.0x   (King: double damage, double swing time)
+--    80% → 0.8x   (Tiny: less damage, faster swing)
+---------------------------------------------------------------------------
+
+--- Read weapon size from tool attributes. Defaults to 100.
+local function getToolSizePercent(tool)
+    if not tool then return 100 end
+    local sp = tool:GetAttribute("SizePercent") or tool:GetAttribute("WeaponSizePercent")
+    if type(sp) == "number" and sp > 0 then return sp end
+    return 100
+end
+
+--- Damage scales linearly with size: 200% size = 2.0x damage.
+local function getSizeDamageMultiplier(sizePercent)
+    return math.clamp(sizePercent / 100, 0.5, 3.0)
+end
+
+--- Speed scales linearly with size: 200% size = 2.0x swing duration (slower).
+local function getSizeSpeedMultiplier(sizePercent)
+    return math.clamp(sizePercent / 100, 0.5, 3.0)
+end
+
+--- Return the scaled swing duration for a given base cooldown.
+local function getScaledSwingDuration(baseDuration, sizePercent)
+    return baseDuration * getSizeSpeedMultiplier(sizePercent)
+end
+
+--- Return scaled hitbox timing (delay, active) preserving the proportional
+--- hit-point within the swing animation (~80% into the swing).
+local function getScaledHitboxTiming(baseDelay, baseActive, sizePercent)
+    local sm = getSizeSpeedMultiplier(sizePercent)
+    return baseDelay * sm, baseActive * sm
+end
+
+--- Combo damage multiplier for a given step (1-indexed).
+--- Falls back to 1.0 for attacks 1-2 and legacy ATTACK3_DAMAGE_MULTIPLIER for attack 3.
+local function getComboDamageMultiplier(comboCfg, step)
+    if comboCfg.ATTACK_DAMAGE_MULTIPLIERS and type(comboCfg.ATTACK_DAMAGE_MULTIPLIERS) == "table" then
+        local m = comboCfg.ATTACK_DAMAGE_MULTIPLIERS[step]
+        if type(m) == "number" then return m end
     end
-    return cfg
+    -- Legacy fallback
+    if step == 3 then
+        return comboCfg.ATTACK3_DAMAGE_MULTIPLIER or 1.25
+    end
+    return 1.0
+end
+
+--- Combo knockback multiplier for a given step.
+--- Attacks 1-2 are minimal; attack 3 is the big finisher.
+local function getComboKnockbackMultiplier(comboCfg, step)
+    if comboCfg.ATTACK_KNOCKBACK_MULTIPLIERS and type(comboCfg.ATTACK_KNOCKBACK_MULTIPLIERS) == "table" then
+        local m = comboCfg.ATTACK_KNOCKBACK_MULTIPLIERS[step]
+        if type(m) == "number" then return m end
+    end
+    -- Default fallback: attacks 1-2 light, attack 3 heavy
+    local defaults = { 1.0, 1.25, 10.0 }
+    return defaults[step] or 1.0
 end
 
 ---------------------------------------------------------------------------
@@ -111,6 +185,8 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
             damage = damage * mult
         end
     end
+    -- Round to nearest whole number
+    damage = math.round(damage)
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
@@ -137,7 +213,6 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
                 local base = vp and 5 or 1
                 local ok, result = pcall(function() return CurrencyService:AddCoins(player, base) end)
                 coinAward = (ok and type(result) == "number") and result or base
-                print("[ToolMeleeSetup] Coin award:", base, "->", coinAward, "for", player.Name)
             end
 
             pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)
@@ -166,8 +241,6 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
                 if desc:IsA("BasePart") then desc.Anchored = false; desc.CanCollide = true end
             end
             task.wait(0.05)
-            -- MobDeathFade handles the fade-out and Destroy; skip BreakJoints
-            -- so tweens on child parts still work.
         end
     end
 end
@@ -221,20 +294,17 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
     if lookFlat.Magnitude < 0.001 then lookFlat = Vector3.new(0, 0, -1) end
     lookFlat = lookFlat.Unit
 
-    -- gather candidate models: players + dummies + zombies
     local candidates = {}
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Character and p.Character ~= playerChar then
             table.insert(candidates, p.Character)
         end
     end
-    -- dummies
     for _, obj in ipairs(Workspace:GetChildren()) do
         if obj:IsA("Model") and obj.Name == "Dummy" then
             table.insert(candidates, obj)
         end
     end
-    -- zombies
     for _, z in ipairs(CollectionService:GetTagged("ZombieNPC")) do
         if z:IsA("Model") then table.insert(candidates, z) end
     end
@@ -252,27 +322,22 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
         local dist = toTarget.Magnitude
         if dist > range then continue end
 
-        -- angle check (flatten to XZ)
         local toFlat = Vector3.new(toTarget.X, 0, toTarget.Z)
         if toFlat.Magnitude < 0.001 then
-            -- basically on top of us – always hits
             table.insert(results, { humanoid = hum, model = model, hitPart = root, hitPos = root.Position, dist = dist })
             continue
         end
         toFlat = toFlat.Unit
         local angle = math.acos(math.clamp(lookFlat:Dot(toFlat), -1, 1))
         if angle <= halfArc then
-            -- optional: quick raycast to make sure there's no wall between
             local params = RaycastParams.new()
             params.FilterDescendantsInstances = { playerChar }
             params.FilterType = Enum.RaycastFilterType.Exclude
             params.IgnoreWater = true
             local ray = Workspace:Raycast(origin, (root.Position - origin), params)
             if ray == nil then
-                -- No collider was hit along the ray: assume clear line-of-sight
                 table.insert(results, { humanoid = hum, model = model, hitPart = root, hitPos = root.Position, dist = dist })
             elseif ray.Instance then
-                -- did we hit something belonging to the target model?
                 if ray.Instance:IsDescendantOf(model) or ray.Instance == root then
                     table.insert(results, {
                         humanoid = hum,
@@ -282,25 +347,21 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
                         dist     = dist,
                     })
                 end
-                -- else a wall is in the way – skip
             end
         end
     end
 
-    -- sort by distance so closest gets hit first
     table.sort(results, function(a, b) return a.dist < b.dist end)
     return results
 end
 
 ---------------------------------------------------------------------------
--- Box overlap hit detection: find targets whose root is inside an oriented box
--- `boxCFrame` is the world CFrame of the box center; `halfSize` is half extents Vector3
+-- Box overlap hit detection
 ---------------------------------------------------------------------------
 local function getTargetsInBox(playerChar, boxCFrame, halfSize)
     local results = {}
     local seenHum = {}
 
-    -- Use GetPartBoundsInBox to detect any parts inside the oriented box.
     local parts = Workspace:GetPartBoundsInBox(boxCFrame, halfSize * 2)
     if parts and #parts > 0 then
         local params = RaycastParams.new()
@@ -309,7 +370,6 @@ local function getTargetsInBox(playerChar, boxCFrame, halfSize)
         params.IgnoreWater = true
         for _, part in ipairs(parts) do
             if not part or not part:IsA("BasePart") then continue end
-            -- find ancestor model that has a Humanoid
             local model = part:FindFirstAncestorOfClass("Model")
             if not model then continue end
             if model == playerChar then continue end
@@ -317,17 +377,14 @@ local function getTargetsInBox(playerChar, boxCFrame, halfSize)
             if not hum or hum.Health <= 0 then continue end
             if seenHum[hum] then continue end
 
-            -- ensure there's line-of-sight to the hit part (box center → part)
             local dir = part.Position - boxCFrame.Position
             if dir.Magnitude <= 0.001 then
-                -- extremely close, accept hit
                 local dist = (part.Position - boxCFrame.Position).Magnitude
                 table.insert(results, { humanoid = hum, model = model, hitPart = part, hitPos = part.Position, dist = dist })
                 seenHum[hum] = true
             else
                 local ray = Workspace:Raycast(boxCFrame.Position, dir, params)
                 if ray == nil then
-                    -- No collider hit: assume clear line-of-sight
                     local dist = (part.Position - boxCFrame.Position).Magnitude
                     table.insert(results, { humanoid = hum, model = model, hitPart = part, hitPos = part.Position, dist = dist })
                     seenHum[hum] = true
@@ -352,11 +409,9 @@ local slowState  = {} -- [player] = { count = n, base = number, factors = {..} }
 local comboState = {} -- [player] = { step = 1, lastTime = 0, toolName = "" }
 
 -- Combo config from shared module
-local serverComboCfg = MeleeCfg and MeleeCfg.comboConfig or {}
-local SRV_COMBO_WINDOW   = serverComboCfg.COMBO_WINDOW or 0.2
-local SRV_ATTACK_CDS     = serverComboCfg.ATTACK_COOLDOWNS or { 0.5, 0.5, 0.8 }
-local SRV_ATK3_DMG_MULT  = serverComboCfg.ATTACK3_DAMAGE_MULTIPLIER or 1.25
-local SRV_ATK3_DMG_BONUS = serverComboCfg.ATTACK3_DAMAGE_BONUS  -- nil unless set
+local comboCfg = MeleeCfg and MeleeCfg.comboConfig or {}
+local COMBO_WINDOW = comboCfg.COMBO_WINDOW or 0.2
+local ATTACK_CDS   = comboCfg.ATTACK_COOLDOWNS or { 0.5, 0.5, 0.7 }
 
 ---------------------------------------------------------------------------
 -- Handle incoming swing
@@ -375,13 +430,19 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local tool = player.Character:FindFirstChild(toolName)
     if not tool or not tool:IsA("Tool") then return end
 
-    -- resolve config
+    -- resolve config (rarity defaults merged with weapon overrides)
     local cfg = getServerMeleeCfg(toolName)
-    local baseDamage = cfg.damage or 30
-    local knockback  = cfg.knockback or 0
+
+    -- ── SIZE SCALING ──────────────────────────────────────────────────
+    local sizePercent     = getToolSizePercent(tool)
+    local sizeDamageMult  = getSizeDamageMultiplier(sizePercent)
+    local sizeSpeedMult   = getSizeSpeedMultiplier(sizePercent)
+
+    -- Base stats from config (at 100% size)
+    local baseDamage   = cfg.damage or 5
+    local baseKnockback = cfg.knockback or 2
 
     -- ── COMBO VALIDATION ──────────────────────────────────────────────
-    -- Server tracks its own combo state so clients can't skip to Attack3.
     local hasCombo = cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table"
         and #cfg.swing_anim_ids >= 3
 
@@ -391,53 +452,51 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     end
     local cs = comboState[player]
 
-    -- Determine validated combo step
     local validStep = 1
     if hasCombo then
         -- Reset if weapon changed or combo window expired
-        local prevCd = SRV_ATTACK_CDS[cs.step] or 0.5
-        local comboDeadline = cs.lastTime + prevCd + SRV_COMBO_WINDOW
+        local prevBaseCd = ATTACK_CDS[cs.step] or 0.5
+        local prevScaledCd = prevBaseCd * sizeSpeedMult
+        local comboDeadline = cs.lastTime + prevScaledCd + COMBO_WINDOW
         if cs.toolName ~= toolName or now > comboDeadline then
             cs.step = 1
         end
 
-        -- Clamp clientComboStep to the expected next step
         if type(clientComboStep) == "number" then
             clientComboStep = math.clamp(math.floor(clientComboStep), 1, 3)
         else
             clientComboStep = 1
         end
 
-        -- Accept the client step only if it matches what the server expects
         validStep = cs.step
     end
 
-    local stepCd = hasCombo and (SRV_ATTACK_CDS[validStep] or 0.5) or (cfg.cd or 0.5)
-    local cd     = stepCd  -- used later by slowdown, animation timing, etc.
+    -- ── SCALED COOLDOWN ───────────────────────────────────────────────
+    -- Per-step base cooldown (at 100% size), then scaled by weapon size
+    local baseStepCd = hasCombo and (ATTACK_CDS[validStep] or 0.5) or (cfg.cd or 0.5)
+    local cd = baseStepCd * sizeSpeedMult
 
-    -- Apply Attack3 damage bonus
-    local damage = baseDamage
-    if hasCombo and validStep == 3 then
-        if SRV_ATK3_DMG_BONUS and SRV_ATK3_DMG_MULT == 1 then
-            damage = baseDamage + SRV_ATK3_DMG_BONUS
-        else
-            damage = baseDamage * SRV_ATK3_DMG_MULT
-        end
-    end
-    -- Melee upgrade multiplier is applied at hit time in applyMeleeDamage
-    -- so PvP vs PvE targets get the correct (capped vs uncapped) scaling.
+    -- ── SCALED DAMAGE ─────────────────────────────────────────────────
+    -- finalDamage = baseDamage * sizeMult * comboMult
+    local comboDmgMult = getComboDamageMultiplier(comboCfg, validStep)
+    local damage = math.round(baseDamage * sizeDamageMult * comboDmgMult)
 
-    -- Server-side SwordTrail: enable only during the downswing window.
-    -- Trail visual props are already set by sanitizeTool in Loadout; we just toggle.
+    -- ── SCALED KNOCKBACK ──────────────────────────────────────────────
+    -- finalKnockback = baseKnockback * comboKnockbackMult * sizeMult
+    local comboKbMult = getComboKnockbackMultiplier(comboCfg, validStep)
+    local finalKnockback = baseKnockback * comboKbMult * sizeDamageMult
+
+    -- ── SWORD TRAIL (size-scaled timing) ──────────────────────────────
     do
         local ok, trail = pcall(function() return tool:FindFirstChild("SwordTrail", true) end)
         if ok and trail and trail:IsA("Trail") then
-            -- Always make sure it's off before scheduling the window
             pcall(function() trail.Enabled = false end)
-            local startDelay = cfg.trail_start or 0.22
-            local endTime    = cfg.trail_end   or 0.36
-            if endTime <= startDelay then endTime = startDelay + 0.14 end
-            local activeDur = math.max(0.01, endTime - startDelay)
+            local baseStart = cfg.trail_start or 0.22
+            local baseEnd   = cfg.trail_end   or 0.36
+            if baseEnd <= baseStart then baseEnd = baseStart + 0.14 end
+            local startDelay = baseStart * sizeSpeedMult
+            local endTime    = baseEnd * sizeSpeedMult
+            local activeDur  = math.max(0.01, endTime - startDelay)
             task.spawn(function()
                 task.wait(startDelay)
                 pcall(function() trail.Enabled = true end)
@@ -447,11 +506,9 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         end
     end
 
-    -- rate limit: enforce the PREVIOUS step's cooldown (the one recorded in
-    -- lastSwing), not the upcoming step's.  This prevents Attack3 (0.8s cd)
-    -- from blocking a chain that follows Attack2 (0.5s cd).
+    -- ── RATE LIMITING ─────────────────────────────────────────────────
     if not lastSwing[player] then lastSwing[player] = {} end
-    local last    = lastSwing[player][toolName] or 0
+    local last       = lastSwing[player][toolName] or 0
     local prevStepCd = lastSwing[player][toolName .. "_cd"] or cd
     if now - last < prevStepCd * 0.85 then return end
     if last > 0 and (now - last) < prevStepCd * 1.5 then
@@ -459,28 +516,27 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     else
         lastSwing[player][toolName] = now
     end
-    lastSwing[player][toolName .. "_cd"] = cd  -- remember this step's cd for next check
+    lastSwing[player][toolName .. "_cd"] = cd
 
     -- Advance server combo state AFTER rate-limit passes
     if hasCombo then
         cs.lastTime = now
         cs.toolName = toolName
         if validStep >= 3 then
-            cs.step = 1  -- hard reset after Attack3
+            cs.step = 1
         else
             cs.step = validStep + 1
         end
     end
 
-    -- apply a stacked, robust slowdown that ensures WalkSpeed is restored
+    -- ── SLOWDOWN (size-scaled duration) ───────────────────────────────
     do
         local slowFactor = 0.75
         if cfg.slow_factor and type(cfg.slow_factor) == "number" then
             slowFactor = math.clamp(cfg.slow_factor, 0.1, 1)
         end
-        local slowDuration = math.max((cd or 0) * 0.95, 0.01)
+        local slowDuration = math.max(cd * 0.95, 0.01)
 
-        -- initialize per-player slow state
         if not slowState[player] then
             slowState[player] = { count = 0, base = nil, factors = {} }
         end
@@ -491,19 +547,16 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         st.count = st.count + 1
         table.insert(st.factors, slowFactor)
 
-        -- apply the most restrictive factor (lowest multiplier)
         local minFactor = 1
         for _, f in ipairs(st.factors) do minFactor = math.min(minFactor, f) end
         if hum and hum.Parent then
             pcall(function() hum.WalkSpeed = math.max((st.base or 16) * minFactor, 0.1) end)
         end
 
-        -- schedule restore for this slow instance
         task.delay(slowDuration, function()
             local s = slowState[player]
             if not s then return end
             s.count = math.max(s.count - 1, 0)
-            -- remove one occurrence of this factor (first match)
             for i, v in ipairs(s.factors) do
                 if v == slowFactor then
                     table.remove(s.factors, i)
@@ -511,13 +564,11 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 end
             end
             if s.count <= 0 then
-                -- restore base speed
                 if s.base and hum and hum.Parent then
                     pcall(function() hum.WalkSpeed = s.base end)
                 end
                 slowState[player] = nil
             else
-                -- reapply the most restrictive remaining factor
                 local mf = 1
                 for _, f in ipairs(s.factors) do mf = math.min(mf, f) end
                 if hum and hum.Parent then
@@ -527,13 +578,12 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         end)
     end
 
-    -- use the server-side look direction (from HRP) for safety, blended with the client's
-    -- to prevent spoofing while still feeling responsive
+    -- ── LOOK DIRECTION (server-blended) ───────────────────────────────
     local serverLook = hrp.CFrame.LookVector
     local blended = (serverLook + lookDir.Unit).Unit
     if blended.Magnitude < 0.001 then blended = serverLook end
 
-    -- server-side audiovisuals: play swing sound and server animation from the character
+    -- ── SERVER AUDIOVISUALS ───────────────────────────────────────────
     do
         -- play swing sound at HRP
         local swingSoundKey = cfg.swing_sound
@@ -555,8 +605,6 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             end)
         end
 
-        -- play swing animation on the server humanoid (module config only)
-        local animObj = nil
         -- Resolve animation id: use combo step for combo weapons, else cycle
         local resolvedAnimId = nil
         if cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids > 0 then
@@ -566,7 +614,6 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             end
             if #validIds > 0 then
                 if hasCombo then
-                    -- Pick the animation that matches the validated combo step
                     resolvedAnimId = validIds[((validStep - 1) % #validIds) + 1]
                 else
                     if not lastSwing[player] then lastSwing[player] = {} end
@@ -581,7 +628,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             resolvedAnimId = tostring(cfg.swing_anim_id)
         end
 
-        if not animObj and resolvedAnimId and resolvedAnimId ~= "" then
+        local animObj = nil
+        if resolvedAnimId and resolvedAnimId ~= "" then
             local a = Instance.new("Animation")
             local animId = resolvedAnimId
             if not animId:match("^rbxassetid://") then
@@ -617,64 +665,42 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                     animator = Instance.new("Animator")
                     animator.Parent = hum
                 end
-                -- Diagnostic logging: report which animation object is being used
-                pcall(function()
-                    local aniDesc = "nil"
-                    if animObj then
-                        aniDesc = tostring(animObj.Name) .. "/" .. tostring(animObj.AnimationId)
-                    end
-                    print("[ToolMeleeSetup] Anim load: player=", player and player.Name, "tool=", toolName, "anim=", aniDesc)
-                end)
 
                 local okLoad, track = pcall(function() return animator:LoadAnimation(animObj) end)
-                if not okLoad or not track then
-                    print("[ToolMeleeSetup] Failed to LoadAnimation for", player and player.Name, "tool=", toolName)
-                end
-                if track then
-                    track.Priority = Enum.AnimationPriority.Action
-                end
+                if not okLoad or not track then return end
+                track.Priority = Enum.AnimationPriority.Action
 
-                -- attempt to scale animation playback to match melee cooldown `cd`
-                local ok, animLength = false, nil
-                if track then ok, animLength = pcall(function() return track.Length end) end
-                if track and ok and type(animLength) == "number" and animLength > 0 and cd and type(cd) == "number" and cd > 0 then
-                    local speed = animLength / cd
-                    -- clamp to avoid extreme speeds
-                    if speed < 0.25 then speed = 0.25 end
-                    if speed > 4 then speed = 4 end
+                -- Scale animation playback so it matches the size-scaled swing duration.
+                -- animSpeed = authoredLength / scaledCooldown
+                --   100% size, 0.5s cd → speed ≈ 1.0 (normal)
+                --   200% size, 1.0s cd → speed ≈ 0.5 (slower)
+                local ok2, animLength = pcall(function() return track.Length end)
+                if ok2 and type(animLength) == "number" and animLength > 0 and cd > 0 then
+                    local speed = math.clamp(animLength / cd, 0.25, 4.0)
                     pcall(function() track:AdjustSpeed(speed) end)
                 end
 
-                -- ensure we restore motor C1 when the track stops
                 track.Stopped:Connect(function()
                     if originalC1 and motor and motor.Parent then
                         pcall(function() motor.C1 = originalC1 end)
                     end
                 end)
 
-                if track then
-                    local okPlay, _ = pcall(function() track:Play() end)
-                    if not okPlay then
-                        print("[ToolMeleeSetup] Failed to play animation for", player and player.Name, "tool=", toolName)
-                    else
-                        print("[ToolMeleeSetup] Playing animation for", player and player.Name, "tool=", toolName, "length=", animLength)
-                    end
-                end
-                -- stop the track shortly after the cooldown ends (small margin)
-                local stopDelay = math.max((cd or 0.5) * 1.05, 0.15)
+                pcall(function() track:Play() end)
+
+                local stopDelay = math.max(cd * 1.05, 0.15)
                 task.delay(stopDelay, function()
                     if track then pcall(function() track:Stop() end) end
                     if animObj and animObj:IsA("Animation") and animObj.Parent == nil then
                         pcall(function() animObj:Destroy() end)
                     end
-                    -- final restore in case Stop didn't trigger the Stopped event
                     if originalC1 and motor and motor.Parent then
                         pcall(function() motor.C1 = originalC1 end)
                     end
                 end)
             end)
         else
-            -- 2) procedural swing: tween Motor6D on the right arm (replicates to all clients)
+            -- Procedural swing fallback: tween Motor6D on the right arm
             pcall(function()
                 local char = player.Character
                 if not char then return end
@@ -683,10 +709,10 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 local raiseGoal = originalC1 * CFrame.Angles(math.rad(-90), 0, 0)
                 local slashGoal = originalC1 * CFrame.Angles(math.rad(90), 0, 0)
 
-                -- scale procedural timings to match cooldown `cd`
-                local DEFAULT_PROC_TOTAL = 0.48 -- original total 0.12+0.14+0.22
+                -- Scale procedural timings to match size-scaled cooldown
+                local DEFAULT_PROC_TOTAL = 0.48
                 local scale = 1
-                if cd and cd > 0 then scale = cd / DEFAULT_PROC_TOTAL end
+                if cd > 0 then scale = cd / DEFAULT_PROC_TOTAL end
 
                 local raiseTI  = TweenInfo.new(0.12 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
                 local slashTI  = TweenInfo.new(0.14 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
@@ -700,7 +726,6 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                     slashTween.Completed:Once(function()
                         local returnTween = TweenService:Create(motor, returnTI, { C1 = originalC1 })
                         returnTween:Play()
-                        -- ensure final restore after the return tween completes
                         returnTween.Completed:Once(function()
                             if originalC1 and motor and motor.Parent then
                                 pcall(function() motor.C1 = originalC1 end)
@@ -709,8 +734,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                     end)
                 end)
 
-                -- safety fallback: after cooldown + margin, force restore
-                task.delay(math.max((cd or 0.5) * 1.2, 0.5), function()
+                task.delay(math.max(cd * 1.2, 0.5), function()
                     if originalC1 and motor and motor.Parent then
                         pcall(function() motor.C1 = originalC1 end)
                     end
@@ -719,40 +743,34 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         end
     end
 
-    -- delayed/persistent hitbox: wait `hitboxDelay`, then for `hitboxActive` seconds
-    -- repeatedly check multiple box samples along the look vector and apply
-    -- damage once per target per swing. This increases frequency and samples
-    -- near/mid/far positions to improve reliability.
-    local hitboxDelay = cfg.hitboxDelay or 0.1
-    local hitboxActive = cfg.hitboxActive or 0.2
+    -- ── HITBOX (size-scaled timing, unchanged spatial dimensions) ─────
+    local baseHitboxDelay  = cfg.hitboxDelay or 0.35
+    local baseHitboxActive = cfg.hitboxActive or 0.1
+    local scaledDelay, scaledActive = getScaledHitboxTiming(baseHitboxDelay, baseHitboxActive, sizePercent)
+
     task.spawn(function()
-        task.wait(hitboxDelay)
+        task.wait(scaledDelay)
         local hitAlready = {}
-        local endTime = tick() + hitboxActive
+        local endTime = tick() + scaledActive
         while tick() < endTime and player and player.Character and hum and hum.Health > 0 do
             local curHrp = player.Character:FindFirstChild("HumanoidRootPart")
             if not curHrp then break end
 
             local boxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
-            local offset = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
+            local offset  = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
 
             local rightV = curHrp.CFrame.RightVector
-            local upV = curHrp.CFrame.UpVector
-            local lookV = curHrp.CFrame.LookVector
+            local upV    = curHrp.CFrame.UpVector
+            local lookV  = curHrp.CFrame.LookVector
 
-            -- sample three depths along the look vector: near, center, far
             local centerZ = offset.Z
-            local spread = boxSize.Z * 0.35
+            local spread  = boxSize.Z * 0.35
             local sampleDepths = { centerZ - spread, centerZ, centerZ + spread }
 
             for _, depth in ipairs(sampleDepths) do
                 local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * depth
                 local boxCFrame = CFrame.new(pos, pos + lookV)
-                local halfSize = boxSize / 2
-
-                -- Debug visuals are handled client-side for smoothness; server
-                -- remains authoritative for hit detection. (Client will optionally
-                -- render a moving hitbox.)
+                local halfSize  = boxSize / 2
 
                 local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
                 for _, hit in ipairs(targetsNow) do
@@ -789,7 +807,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                         end
 
                         -- knockback (skip for same-team players)
-                        if knockback > 0 then
+                        if finalKnockback > 0 then
                             local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
                             if victimRoot then
                                 local vp = Players:GetPlayerFromCharacter(hit.model)
@@ -797,7 +815,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                                 if not isSameTeam then
                                     local dir = (victimRoot.Position - boxCFrame.Position)
                                     if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
-                                    applyKnockback(victimRoot, dir, knockback)
+                                    applyKnockback(victimRoot, dir, finalKnockback)
                                 end
                             end
                         end
@@ -806,10 +824,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 end
             end
 
-            -- higher-frequency polling for smoother detection
             task.wait(0.01)
         end
-        -- no server-side debug part to clean up
     end)
 end)
 
@@ -818,7 +834,6 @@ Players.PlayerRemoving:Connect(function(player)
     lastSwing[player] = nil
     comboState[player] = nil
     if slowState[player] then
-        -- attempt to restore WalkSpeed if possible
         local st = slowState[player]
         local char = player.Character
         if char then

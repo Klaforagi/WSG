@@ -400,16 +400,17 @@ local function attachMelee(tool)
             if hasEnchantTrail then
                 swordTrail.Transparency = NumberSequence.new({
                     NumberSequenceKeypoint.new(0, 0.1),
-                    NumberSequenceKeypoint.new(0.4, 0.25),
-                    NumberSequenceKeypoint.new(0.75, 0.55),
-                    NumberSequenceKeypoint.new(1, 0.9),
+                    NumberSequenceKeypoint.new(0.3, 0.25),
+                    NumberSequenceKeypoint.new(0.7, 0.6),
+                    NumberSequenceKeypoint.new(1, 1),
                 })
                 swordTrail.LightEmission = 0.8
                 swordTrail.LightInfluence = 0
             else
                 swordTrail.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 0.75),
-                    NumberSequenceKeypoint.new(1, 0.95),
+                    NumberSequenceKeypoint.new(0, 0.6),
+                    NumberSequenceKeypoint.new(0.5, 0.8),
+                    NumberSequenceKeypoint.new(1, 1),
                 })
             end
             swordTrail.Lifetime = math.max(0.14, duration)
