@@ -55,8 +55,15 @@ local function getCfg(tool)
     local cfg = {}
     local suffix = tostring(tool.Name):match("^Tool(.+)") or tostring(tool.Name):match("^(.+)$")
     local key = suffix and suffix:lower()
-    if key and MeleeCfgModule and MeleeCfgModule.presets and MeleeCfgModule.presets[key] then
-        for k, v in pairs(MeleeCfgModule.presets[key]) do cfg[k] = v end
+    if key and MeleeCfgModule then
+        if MeleeCfgModule.getPreset then
+            local preset = MeleeCfgModule.getPreset(key)
+            if preset then
+                for k, v in pairs(preset) do cfg[k] = v end
+            end
+        elseif MeleeCfgModule.presets and MeleeCfgModule.presets[key] then
+            for k, v in pairs(MeleeCfgModule.presets[key]) do cfg[k] = v end
+        end
     end
     -- per-tool attribute overrides
         for _, a in ipairs({"damage","cd","knockback","hitboxSize","hitboxOffset","hitboxDelay","hitboxActive","showHitbox"}) do
@@ -64,6 +71,34 @@ local function getCfg(tool)
         if val ~= nil then cfg[a] = val end
     end
     return cfg
+end
+
+--------------------------------------------------------------------------------
+-- Size scaling helpers (mirrors server-side ToolMeleeSetup logic)
+-- sizePercent / 100:  100% = 1.0x baseline,  200% = 2.0x (slower, stronger)
+--------------------------------------------------------------------------------
+local _sizeWarnedTools = {}
+local function getToolSizePercent(tool)
+    if not tool then return 100 end
+    local sp = tool:GetAttribute("SizePercent")
+        or tool:GetAttribute("WeaponSizePercent")
+        or tool:GetAttribute("ScalePercent")
+        or tool:GetAttribute("WeaponScale")
+    if type(sp) == "number" and sp > 0 then return sp end
+    if not _sizeWarnedTools[tool] then
+        _sizeWarnedTools[tool] = true
+        warn("[MeleeScaling] No size attribute found on tool:", tool.Name, "defaulting to 100")
+    end
+    return 100
+end
+
+--- Speed scaling: below 100% is linear (tiny weapons swing faster for more DPS).
+--- Above 100% scales at half rate so max 200% = 1.5x duration, not 2.0x.
+local function getSizeSpeedMultiplier(sizePercent)
+    if sizePercent <= 100 then
+        return math.clamp(sizePercent / 100, 0.5, 1.0)
+    end
+    return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 2.0)
 end
 
 --------------------------------------------------------------------------------
@@ -168,7 +203,7 @@ end
 local currentSwingTrack = nil -- script-level: previous swing track reference
 local swingCycleIndex = {}    -- [toolName] → next index into swing_anim_ids
 
-local function playLocalCfgAnimation(cfg, toolName)
+local function playLocalCfgAnimation(cfg, toolName, scaledCd, baseCdOverride)
     -- Resolve which animation id to use this swing
     local animId = nil
     if cfg and cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids > 0 then
@@ -225,40 +260,42 @@ local function playLocalCfgAnimation(cfg, toolName)
     -- Use Action4 (highest action priority) so idle/walk/tool anims cannot override
     track.Priority = Enum.AnimationPriority.Action4
 
-    -- scale speed to match cooldown if provided
-    local cd = cfg.cd or 0.6
-    local okL, length = pcall(function() return track.Length end)
-    if okL and type(length) == "number" and length > 0 and cd and cd > 0 then
-        local speed = length / cd
-        if speed < 0.25 then speed = 0.25 end
-        if speed > 4 then speed = 4 end
-        pcall(function() track:AdjustSpeed(speed) end)
-    end
+    -- Scale speed to match size-scaled swing duration.
+    -- Animations are authored at the base cooldown (~0.5s). For bigger weapons
+    -- scaledCd is longer, so we slow the animation proportionally.
+    -- baseCd/scaledCd gives the correct ratio immediately without needing track.Length.
+    local cd = scaledCd or cfg.cd or 0.5
+    local baseCd = baseCdOverride or cfg.cd or 0.5
+    local fallbackSpeed = math.clamp(baseCd / cd, 0.25, 4.0)
 
-    local okPlay = pcall(function() track:Play(0) end)
+    -- Pass speed as 3rd arg to Play() so Roblox doesn't default it to 1.0.
+    -- Play(fadeTime, weight, speed) — omitting speed defaults to 1.0 which
+    -- silently overrides any prior AdjustSpeed call.
+    local okPlay = pcall(function() track:Play(0, 1, fallbackSpeed) end)
     if not okPlay then
         print("[MeleeAnim] track:Play() FAILED")
         return false
     end
 
+    -- Belt-and-suspenders: also AdjustSpeed after Play in case the engine
+    -- ignores the 3rd arg on some platforms/versions.
+    pcall(function() track:AdjustSpeed(fallbackSpeed) end)
+    print("[MeleeAnim] Speed =", fallbackSpeed, "baseCd =", baseCd, "scaledCd =", cd, "tool =", toolName)
+
     currentSwingTrack = track
     print("[MeleeAnim] track:Play() called for", animId)
 
-    -- wait one frame then verify playback status
+    -- Once track.Length resolves, refine with the exact value for precision
     task.spawn(function()
-        RunService.Heartbeat:Wait()
-        local playing = false
-        pcall(function() playing = track.IsPlaying end)
-        print("[MeleeAnim] After 1 frame: IsPlaying =", tostring(playing))
-
-        -- check length after a short delay (some tracks report 0 initially)
         task.wait(0.1)
-        local delayedLength = 0
-        pcall(function() delayedLength = track.Length end)
-        print("[MeleeAnim] Track.Length (delayed) =", delayedLength)
-
-        if playing and delayedLength > 0 then
-            -- Animation is playing; no rig debug warnings emitted.
+        local realLength = 0
+        pcall(function() realLength = track.Length end)
+        if realLength > 0 and cd > 0 then
+            local preciseSpeed = math.clamp(realLength / cd, 0.25, 4.0)
+            if math.abs(preciseSpeed - fallbackSpeed) > 0.05 then
+                pcall(function() track:AdjustSpeed(preciseSpeed) end)
+                print("[MeleeAnim] Refined speed =", preciseSpeed, "length =", realLength)
+            end
         end
     end)
 
@@ -489,17 +526,22 @@ local function attachMelee(tool)
         local step        = currentComboStep
         local stepCooldown = getStepCooldown(step)
 
+        -- Size scaling: scale cooldown by weapon size
+        local sizePercent   = getToolSizePercent(tool)
+        local sizeSpeedMult = getSizeSpeedMultiplier(sizePercent)
+        local scaledStepCd  = stepCooldown * sizeSpeedMult
+
         -- Rate-limit: use the cooldown of the PREVIOUS step (the one that
         -- set lastAttackTime), not the upcoming step.  This prevents
         -- Attack3 (0.8s cd) from blocking a chain that follows Attack2 (0.5s cd).
-        local enforcedCd = lastStepCooldown > 0 and lastStepCooldown or stepCooldown
+        local enforcedCd = lastStepCooldown > 0 and lastStepCooldown or scaledStepCd
         if now - lastAttackTime < enforcedCd * 0.85 then return end
 
         -- Lock swing
         isSwinging     = true
         bufferedClick  = false
         lastAttackTime = now
-        lastStepCooldown = stepCooldown
+        lastStepCooldown = scaledStepCd
 
         -- Force animation index to match combo step
         if hasCombo then
@@ -512,8 +554,8 @@ local function attachMelee(tool)
         if globalVal and globalVal:IsA("BoolValue") then showGlobal = globalVal.Value end
         local wantDebug = (cfg.showHitbox == true) or showGlobal
         if wantDebug then
-            local hd = cfg.hitboxDelay or 0.1
-            local ha = cfg.hitboxActive or 0.2
+            local hd = (cfg.hitboxDelay or 0.35) * sizeSpeedMult
+            local ha = (cfg.hitboxActive or 0.1) * sizeSpeedMult
             local color = cfg.hitboxColor or Color3.fromRGB(255, 50, 50)
             spawn(function()
                 task.wait(hd)
@@ -559,9 +601,9 @@ local function attachMelee(tool)
             end)
         end
 
-        -- Trigger sword trail
-        local startOffset = cfg.trail_start or 0.22
-        local endOffset   = cfg.trail_end   or 0.36
+        -- Trigger sword trail (size-scaled timing)
+        local startOffset = (cfg.trail_start or 0.22) * sizeSpeedMult
+        local endOffset   = (cfg.trail_end   or 0.36) * sizeSpeedMult
         pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
 
         -- Tell the server we swung (include combo step for validation/damage)
@@ -573,22 +615,22 @@ local function attachMelee(tool)
             end
         end
 
-        -- Play local animation for immediate feedback
+        -- Play local animation for immediate feedback (size-scaled duration)
         local playedAnim = nil
-        pcall(function() playedAnim = playLocalCfgAnimation(cfg, tool.Name) end)
+        pcall(function() playedAnim = playLocalCfgAnimation(cfg, tool.Name, scaledStepCd, stepCooldown) end)
         if not playedAnim then
             playSwingVisual(tool)
         end
 
         -- Hotbar cooldown overlay (slot 1 = Melee)
         if _G.HotbarCooldown then
-            _G.HotbarCooldown.start(1, stepCooldown)
+            _G.HotbarCooldown.start(1, scaledStepCd)
         end
 
         -- Advance or reset combo, then schedule cooldown end
         local nextStep = (step >= 3) and 1 or (step + 1)
 
-        task.delay(stepCooldown, function()
+        task.delay(scaledStepCd, function()
             isSwinging = false
 
             if step >= 3 then
