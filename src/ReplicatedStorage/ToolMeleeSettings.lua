@@ -248,7 +248,7 @@ module.rarityDefaults = rarityDefaults
 module.comboConfig = {
     COMBO_WINDOW                = 0.2,
     ATTACK_COOLDOWNS            = { 0.5, 0.5, 0.7 },
-    ATTACK_DAMAGE_MULTIPLIERS   = { 1.0, 1.0, 1.25 },
+    ATTACK_DAMAGE_MULTIPLIERS   = { 0.8, 0.85, 1.4 },
     ATTACK_KNOCKBACK_MULTIPLIERS = { 1.0, 1.25, 10.0 },
 }
 

@@ -491,9 +491,11 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local cd = baseStepCd * sizeSpeedMult
 
     -- ── SCALED DAMAGE ─────────────────────────────────────────────────
-    -- finalDamage = baseDamage * sizeMult * comboMult
+    -- finalDamage = baseDamage * sizeMult * comboMult * random(0.8–1.0), rounded up
     local comboDmgMult = getComboDamageMultiplier(comboCfg, validStep)
-    local damage = math.round(baseDamage * sizeDamageMult * comboDmgMult)
+    local rawDamage = baseDamage * sizeDamageMult * comboDmgMult
+    local damageRoll = 0.8 + math.random() * 0.2   -- 80-100% of full value
+    local damage = math.ceil(rawDamage * damageRoll)
 
     -- ── SCALED KNOCKBACK ──────────────────────────────────────────────
     -- finalKnockback = baseKnockback * comboKnockbackMult * sizeMult
