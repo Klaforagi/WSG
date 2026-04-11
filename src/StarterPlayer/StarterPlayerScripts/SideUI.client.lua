@@ -1481,6 +1481,16 @@ local function registerModalMenu(name, mod, label)
             return modalOverlay.Visible and currentModule == mod
         end,
     })
+    -- Also register with authoritative MenuState (tracks real GUI visibility)
+    local msMod = sideUIFolder and sideUIFolder:FindFirstChild("MenuState")
+    if msMod and msMod:IsA("ModuleScript") then
+        local ok, ms = pcall(require, msMod)
+        if ok and ms and ms.RegisterMenu then
+            ms.RegisterMenu(name, { gui = modalOverlay, isOpen = function()
+                return modalOverlay.Visible and currentModule == mod
+            end })
+        end
+    end
 end
 
 -- Register every modal page

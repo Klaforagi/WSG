@@ -157,6 +157,39 @@ function CrateOpeningUI.Init(playerGui)
     screen.IgnoreGuiInset = true
     screen.Enabled = false
     screen.Parent = playerGui
+    -- Register with MenuController so the global menu-lock system knows
+    -- when the crate opening screen is active.
+    local CrateMC = nil
+    pcall(function()
+        local mc = script.Parent:FindFirstChild("MenuController")
+        if mc then CrateMC = require(mc) end
+    end)
+    if CrateMC then
+        CrateMC.RegisterMenu("CrateOpening", {
+            open = function() end, -- opened by Play() directly
+            close = function()
+                if screen.Enabled then screen.Enabled = false end
+            end,
+            closeInstant = function()
+                if screen.Enabled then screen.Enabled = false end
+            end,
+            isOpen = function()
+                return screen.Enabled
+            end,
+        })
+    end
+
+    -- Also register the actual ScreenGui with MenuState so state is driven
+    -- by real GUI visibility and cleaned up automatically when removed.
+    pcall(function()
+        local ms = script.Parent:FindFirstChild("MenuState")
+        if ms then
+            local ok, menuState = pcall(require, ms)
+            if ok and menuState and menuState.RegisterMenu then
+                menuState.RegisterMenu("CrateOpening", { gui = screen, isOpen = function() return screen.Enabled end })
+            end
+        end
+    end)
 
     -- Dark overlay
     local overlay = Instance.new("Frame")

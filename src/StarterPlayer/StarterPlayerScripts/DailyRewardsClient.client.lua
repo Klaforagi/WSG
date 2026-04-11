@@ -65,6 +65,31 @@ if not DailyRewardsUI then
     return
 end
 
+-- MenuController integration: register DailyRewards as a managed menu so
+-- the global menu-lock system knows when this popup is open.
+local MenuController = nil
+pcall(function()
+    local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+    if sideUI then
+        local mc = sideUI:FindFirstChild("MenuController")
+        if mc then MenuController = require(mc) end
+    end
+end)
+if MenuController then
+    MenuController.RegisterMenu("DailyRewards", {
+        open = function() end, -- opened by DailyRewardsUI.Open() directly
+        close = function()
+            if DailyRewardsUI.IsOpen() then DailyRewardsUI.Close() end
+        end,
+        closeInstant = function()
+            if DailyRewardsUI.IsOpen() then DailyRewardsUI.Close() end
+        end,
+        isOpen = function()
+            return DailyRewardsUI.IsOpen()
+        end,
+    })
+end
+
 --------------------------------------------------------------------------------
 -- Tween helper
 --------------------------------------------------------------------------------
@@ -110,6 +135,22 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 310
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
+
+-- Register with MenuState so menu visibility is authoritative
+do
+    local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+    if sideUI then
+        local ms = sideUI:FindFirstChild("MenuState")
+        if ms then
+            pcall(function()
+                local menuState = require(ms)
+                if menuState and menuState.RegisterMenu then
+                    menuState.RegisterMenu("DailyRewards", { gui = screenGui, isOpen = function() return DailyRewardsUI.IsOpen() end })
+                end
+            end)
+        end
+    end
+end
 
 --------------------------------------------------------------------------------
 -- HUD Button (top-right, beside Options button)

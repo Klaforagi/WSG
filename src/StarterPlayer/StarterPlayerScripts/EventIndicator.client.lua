@@ -553,16 +553,77 @@ local function createEventPopup()
     end)
 
     eventPopup = popupGui
+    -- Register EventPopup GUI with MenuState so visibility is authoritative
+    do
+        local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+        if sideUI then
+            local ms = sideUI:FindFirstChild("MenuState")
+            if ms then
+                pcall(function()
+                    local menuState = require(ms)
+                    if menuState and menuState.RegisterMenu then
+                        menuState.RegisterMenu("EventPopup", { gui = eventPopup, isOpen = function() return popupVisible end })
+                    end
+                end)
+            end
+        end
+    end
 end
 
 ---------------------------------------------------------------------
 -- Toggle the event popup open/closed
 ---------------------------------------------------------------------
+-- MenuController integration: register EventPopup so the global
+-- menu-lock system knows when this popup is open.
+local EventMenuController = nil
+pcall(function()
+    local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+    if sideUI then
+        local mc = sideUI:FindFirstChild("MenuController")
+        if mc then EventMenuController = require(mc) end
+    end
+end)
+
+local eventPopupRegistered = false
+local function ensureEventPopupRegistered()
+    if eventPopupRegistered or not EventMenuController then return end
+    eventPopupRegistered = true
+    EventMenuController.RegisterMenu("EventPopup", {
+        open = function() end, -- opened by togglePopup directly
+        close = function()
+            if popupVisible and popupHideFn then
+                popupVisible = false
+                popupHideFn()
+            end
+        end,
+        closeInstant = function()
+            if popupVisible and popupHideFn then
+                popupVisible = false
+                popupHideFn()
+            end
+        end,
+        isOpen = function()
+            return popupVisible
+        end,
+    })
+end
+
 local function togglePopup()
     if not eventPopup then return end
+    ensureEventPopupRegistered()
     popupVisible = not popupVisible
     if popupVisible then
+        -- Notify MenuController that this popup is opening
+        if EventMenuController and eventPopupRegistered then
+            EventMenuController.CloseAllMenus("EventPopup")
+        end
         popupShowFn()
+        -- Fire state change callback manually since we bypass OpenMenu
+        if EventMenuController and EventMenuController.OnMenuStateChanged then
+            -- The callback system is fired via OpenMenu normally, but since
+            -- we toggle directly, we need the polling fallback in
+            -- MenuLockEnforcer to catch this. That 0.25s poll handles it.
+        end
     else
         popupHideFn()
     end

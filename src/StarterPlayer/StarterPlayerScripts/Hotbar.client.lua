@@ -32,6 +32,28 @@ local specialUnlockGranted = ReplicatedStorage:WaitForChild("SpecialUnlockGrante
 local forceEquipRemote     = ReplicatedStorage:WaitForChild("ForceEquipTool")
 
 --------------------------------------------------------------------------------
+-- MENU LOCK CHECK
+-- MenuLockEnforcer.client.lua sets player:SetAttribute("MenuOpen", bool)
+-- and exposes _G.IsMenuLocked(). We use the attribute as the single source
+-- of truth for "is the player currently in a menu".
+--------------------------------------------------------------------------------
+local function isAnyMenuOpen()
+    -- Primary: player attribute (set by MenuLockEnforcer)
+    if player:GetAttribute("MenuOpen") == true then
+        local reason = _G.GetMenuLockReason and _G.GetMenuLockReason() or "unknown"
+        warn("[Hotbar] Equip blocked — menu open:", reason)
+        return true
+    end
+    -- Fallback: global function (in case attribute hasn't propagated yet)
+    if _G.IsMenuLocked and _G.IsMenuLocked() then
+        local reason = _G.GetMenuLockReason and _G.GetMenuLockReason() or "unknown"
+        warn("[Hotbar] Equip blocked — menu open:", reason)
+        return true
+    end
+    return false
+end
+
+--------------------------------------------------------------------------------
 -- SLOT DEFINITIONS
 --------------------------------------------------------------------------------
 local SLOT_DEFS = {
@@ -533,6 +555,9 @@ equipSlot = function(idx)
     local def = SLOT_DEFS[idx]
     if not def then return end
 
+    -- MENU LOCK: block all equip attempts while any menu is open
+    if isAnyMenuOpen() then return end
+
     -- Slot 3 = Bandage utility (not a weapon)
     if def.isUtility then
         -- Delegate to BandageClient via global
@@ -664,6 +689,8 @@ end
 UserInputService.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.UserInputType ~= Enum.UserInputType.Keyboard then return end
+    -- Block hotbar keys while any menu/popup is open
+    if isAnyMenuOpen() then return end
     for _, def in ipairs(SLOT_DEFS) do
         if input.KeyCode == def.key then
             equipSlot(def.index)

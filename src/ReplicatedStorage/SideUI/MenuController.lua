@@ -25,12 +25,28 @@ local MenuController = {}
 local menus = {}        -- { [name] = { open, close, closeInstant, isOpen, group } }
 local currentMenu = nil -- name of the currently open menu (or nil)
 
+-- Callbacks fired whenever the overall "any menu open" state changes.
+-- Each callback receives (isAnyOpen: boolean, menuName: string, action: "open"|"close")
+local _onChangeCallbacks = {}
+
+--- Register a callback to be fired when any menu opens or closes.
+function MenuController.OnMenuStateChanged(callback)
+	table.insert(_onChangeCallbacks, callback)
+end
+
+--- Internal: fire all registered state-change callbacks.
+local function fireStateChanged(menuName, action)
+	local anyOpen = MenuController.IsAnyMenuOpen()
+	for _, cb in ipairs(_onChangeCallbacks) do
+		pcall(cb, anyOpen, menuName, action)
+	end
+end
+
 --- Register a menu with its open/close callbacks.
 -- @param name        string   unique menu identifier
 -- @param callbacks   table    { open, close, closeInstant, isOpen, group? }
 function MenuController.RegisterMenu(name, callbacks)
 	menus[name] = callbacks
-	print("[MenuController] Registered menu:", name)
 end
 
 --- Close every open menu. Pass exceptName to skip one (e.g. when about to open it).
@@ -47,7 +63,7 @@ function MenuController.CloseAllMenus(exceptName)
 	if not exceptName then
 		currentMenu = nil
 	end
-	print("[MenuController] CloseAll | except=", tostring(exceptName))
+	fireStateChanged("all", "close")
 end
 
 --- Open a menu by name, closing any other open menu first.
@@ -87,15 +103,7 @@ function MenuController.OpenMenu(name, ...)
 	-- forward any extra args (e.g. a parent ScreenGui) to the menu.open callback
 	menu.open(sameGroup, ...)
 	currentMenu = name
-
-	-- Debug: log transition type
-	if closingMenuName then
-		print(string.format(
-			"[MenuController] Switch: %s -> %s | sameGroup=%s | isSwitching=true",
-			closingMenuName, name, tostring(sameGroup)))
-	else
-		print(string.format("[MenuController] Fresh open: %s | no previous menu", name))
-	end
+	fireStateChanged(name, "open")
 end
 
 --- Close a specific menu (animated).
@@ -107,7 +115,7 @@ function MenuController.CloseMenu(name)
 		if currentMenu == name then
 			currentMenu = nil
 		end
-		print("[MenuController] Closed (animated):", name)
+		fireStateChanged(name, "close")
 	end
 end
 
@@ -134,6 +142,32 @@ end
 --- Get the name of the currently open menu, or nil.
 function MenuController.GetCurrentMenu()
 	return currentMenu
+end
+
+--- Returns true if ANY registered menu reports itself as open.
+--- More robust than GetCurrentMenu() because it polls each menu's isOpen()
+--- callback directly instead of relying on the tracked currentMenu variable.
+function MenuController.IsAnyMenuOpen()
+	for _, m in pairs(menus) do
+		if m.isOpen and m.isOpen() then
+			return true
+		end
+	end
+	return currentMenu ~= nil
+end
+
+--- Returns the name of the first registered menu that reports isOpen=true,
+--- or currentMenu if set, or nil if nothing is open.
+function MenuController.GetOpenMenuName()
+	for name, m in pairs(menus) do
+		if m.isOpen and m.isOpen() then
+			return name
+		end
+	end
+	if currentMenu ~= nil then
+		return currentMenu .. " (stale currentMenu)"
+	end
+	return nil
 end
 
 return MenuController
