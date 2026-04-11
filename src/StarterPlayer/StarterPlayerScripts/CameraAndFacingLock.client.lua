@@ -1,11 +1,22 @@
 --[[
-    CameraAndFacingLock  –  3rd-person shooter camera
+        CameraAndFacingLock  –  3rd-person shooter camera
 
-    When a weapon is equipped the mouse locks to center, the camera
-    shifts over the right shoulder, and the character auto-rotates
-    to face where the camera looks.  Everything uses the BUILT-IN
-    Roblox camera – no Scriptable override, no BodyGyro, no manual
-    HRP.CFrame writes – so nothing fights with physics.
+        When a weapon is equipped the mouse locks to center, the camera
+        shifts over the right shoulder, and the character auto-rotates
+        to face where the camera looks. Everything uses the built-in
+        Roblox camera. This script defers disabling the weapon camera
+        briefly when a tool is unequipped so quick swaps between weapons
+        do NOT cause the camera to snap back to default and then return.
+
+        Implementation notes:
+        - `ApplyWeaponCamera()` enables the lock immediately.
+        - `ApplyDefaultCamera()` restores default behavior.
+        - On `Tool.Unequipped`, we schedule a short delayed re-check
+            (UNEQUIP_DELAY) to see whether another weapon is already
+            equipped; if so, we keep the weapon camera active. This prevents
+            flicker when swapping tools rapidly.
+        - The delay is cancellable by bumping `unequipVersion` whenever
+            a new equip/unequip event happens.
 ]]
 
 local Players            = game:GetService("Players")
@@ -19,15 +30,17 @@ local camera = workspace.CurrentCamera
 -- X = right, Y = up, Z = forward (negative = back)
 -- move the camera up 2 studs on the Y axis when equipping weapons
 local SHOULDER_OFFSET = Vector3.new(4, 2, 0)
+local UNEQUIP_DELAY = 0.06 -- seconds: short delay to avoid camera flicker on swaps
 
 -- ── state ──────────────────────────────────────────────────────
 local active                = false   -- is the lock currently on?
-local equipped              = {}      -- set of currently-equipped weapon tools
+local equipped              = {}      -- set of currently-equipped weapon tools (tool->true)
 local prevMouseBehavior     = nil
 local prevMouseIcon         = nil
 local prevCameraOffset      = nil
 local prevAutoRotate        = nil
 local renderConn            = nil
+local unequipVersion        = 0      -- bump to cancel pending delayed checks
 
 -- ── helpers ────────────────────────────────────────────────────
 local function isWeapon(tool)
@@ -61,7 +74,7 @@ local function getHumanoid()
 end
 
 -- ── enable / disable ──────────────────────────────────────────
-local function enableLock()
+local function ApplyWeaponCamera()
     if active then return end
     active = true
 
@@ -82,8 +95,7 @@ local function enableLock()
 
     -- each frame: enforce settings + force character to face camera direction
     renderConn = RunService.RenderStepped:Connect(function()
-        -- GUARD: if we've been disabled, do nothing (prevents stale-frame re-lock)
-        if not active then return end
+        if not active then return end -- guard against stale frame loops
 
         -- re-enforce mouse lock (Roblox can reset it)
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
@@ -116,7 +128,7 @@ local function enableLock()
     end)
 end
 
-local function disableLock()
+local function ApplyDefaultCamera()
     if not active then return end
     active = false  -- set BEFORE disconnect so the guard stops the loop instantly
 
@@ -139,7 +151,6 @@ local function disableLock()
     else
         restoreMouse()
     end
-    -- safety: force it again next frame in case Roblox stomped on it
     task.defer(function()
         if not active then
             restoreMouse()
@@ -159,27 +170,62 @@ local function disableLock()
 end
 
 -- ── recalculate whether lock should be on ─────────────────────
+local function HasEquippedWeapon()
+    local char = player.Character
+    if not char then return false end
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") and isWeapon(child) then
+            return true
+        end
+    end
+    return false
+end
+
 local function refresh()
-    local shouldBeActive = next(equipped) ~= nil
+    local shouldBeActive = HasEquippedWeapon()
     if shouldBeActive and not active then
-        enableLock()
+        ApplyWeaponCamera()
     elseif not shouldBeActive and active then
-        disableLock()
+        ApplyDefaultCamera()
     end
 end
 
 -- ── tool watcher ──────────────────────────────────────────────
+local function rebuildEquippedFromCharacter()
+    equipped = {}
+    local char = player.Character
+    if not char then return end
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") and isWeapon(child) then
+            equipped[child] = true
+        end
+    end
+end
+
+local function scheduleUnequipCheck()
+    unequipVersion = unequipVersion + 1
+    local myVer = unequipVersion
+    task.delay(UNEQUIP_DELAY, function()
+        if myVer ~= unequipVersion then return end -- canceled by newer equip/unequip
+        rebuildEquippedFromCharacter()
+        refresh()
+    end)
+end
+
 local function watchTool(tool)
     if not isWeapon(tool) then return end
 
     tool.Equipped:Connect(function()
+        -- cancel pending uneven checks by bumping version
+        unequipVersion = unequipVersion + 1
         equipped[tool] = true
         refresh()
     end)
 
     tool.Unequipped:Connect(function()
-        equipped[tool] = nil
-        refresh()
+        -- schedule a short delayed check instead of immediately disabling
+        -- the camera. This prevents flicker when swapping weapons.
+        scheduleUnequipCheck()
     end)
 
     -- if already in character (equipped) at scan time
@@ -193,7 +239,7 @@ end
 local function onCharacter(char)
     -- reset state on respawn
     equipped = {}
-    if active then disableLock() end
+    if active then ApplyDefaultCamera() end
 
     for _, child in ipairs(char:GetChildren()) do
         if child:IsA("Tool") then watchTool(child) end
