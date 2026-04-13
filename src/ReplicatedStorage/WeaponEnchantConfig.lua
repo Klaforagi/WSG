@@ -37,7 +37,7 @@ WeaponEnchantConfig.Enchants = {
         description = "Wreathed in flame",
     },
     {
-        name        = "Frost",
+        name        = "Icy",
         color       = Color3.fromRGB(95, 220, 255),
         statusType  = "Slow",            -- future: movement slow on hit
         description = "Chilling strikes",
