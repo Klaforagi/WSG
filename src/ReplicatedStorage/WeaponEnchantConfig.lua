@@ -33,37 +33,43 @@ WeaponEnchantConfig.Enchants = {
     {
         name        = "Fiery",
         color       = Color3.fromRGB(255, 122, 0),
-        statusType  = "Burn",            -- future: DoT fire damage
+        trail_color = Color3.fromRGB(233, 130, 12),   -- sword trail color
+        statusType  = "Burn",
         description = "Wreathed in flame",
     },
     {
         name        = "Icy",
         color       = Color3.fromRGB(95, 220, 255),
-        statusType  = "Slow",            -- future: movement slow on hit
+        trail_color = Color3.fromRGB(140, 213, 255),   -- sword trail color
+        statusType  = "Slow",
         description = "Chilling strikes",
     },
     {
         name        = "Shock",
-        color       = Color3.fromRGB(255, 242, 0),
-        statusType  = "Stun",            -- future: stun chance on hit
+        color       = Color3.fromRGB(255, 217, 0),
+        trail_color = Color3.fromRGB(255, 208, 0),   -- sword trail color
+        statusType  = "Stun",
         description = "Crackling energy",
     },
     {
         name        = "Toxic",
         color       = Color3.fromRGB(57, 255, 20),
-        statusType  = "Poison",          -- future: poison DoT
+        trail_color = Color3.fromRGB(100, 255, 80),    -- sword trail color
+        statusType  = "Poison",
         description = "Venomous edge",
     },
     {
         name        = "Lifesteal",
         color       = Color3.fromRGB(139, 0, 0),
-        statusType  = "Lifesteal",       -- future: heal on hit
+        trail_color = Color3.fromRGB(180, 30, 30),     -- sword trail color
+        statusType  = "Lifesteal",
         description = "Drains vitality",
     },
     {
         name        = "Void",
         color       = Color3.fromRGB(106, 13, 173),
-        statusType  = "Curse",           -- future: anti-heal / curse
+        trail_color = Color3.fromRGB(141, 40, 218),    -- sword trail color
+        statusType  = "Curse",
         description = "Dark resonance",
     },
 }
@@ -96,11 +102,21 @@ end
 
 --------------------------------------------------------------------------------
 -- GetColorForEnchant(enchantName) -> Color3 or nil
--- Convenience helper used by client trail / UI code.
+-- Convenience helper used by client UI / aura code.
 --------------------------------------------------------------------------------
 function WeaponEnchantConfig.GetColorForEnchant(enchantName)
     local data = WeaponEnchantConfig.GetEnchantData(enchantName)
     return data and data.color or nil
+end
+
+--------------------------------------------------------------------------------
+-- GetTrailColorForEnchant(enchantName) -> Color3 or nil
+-- Returns trail_color if defined, otherwise falls back to color.
+--------------------------------------------------------------------------------
+function WeaponEnchantConfig.GetTrailColorForEnchant(enchantName)
+    local data = WeaponEnchantConfig.GetEnchantData(enchantName)
+    if not data then return nil end
+    return data.trail_color or data.color
 end
 
 return WeaponEnchantConfig

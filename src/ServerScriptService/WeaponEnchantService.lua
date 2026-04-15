@@ -165,9 +165,12 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
         end
     end
 
-    -- Recolor the SwordTrail to match the enchant
-    local color = enchantData.color
-    local h, s, v = Color3.toHSV(color)
+    -- Recolor the SwordTrail to match the enchant. If the enchant provides
+    -- a `trail_color` override, use that specifically for the trail so that
+    -- particle/aura color (enchantData.color) can remain separate.
+    local baseColor = enchantData.color
+    local trailBaseColor = enchantData.trail_color or baseColor
+    local h, s, v = Color3.toHSV(trailBaseColor)
     local brightColor = Color3.fromHSV(h, math.clamp(s * 0.6, 0, 1), math.clamp(v * 1.3, 0, 1))
 
     local trail = tool:FindFirstChild("SwordTrail", true)
@@ -175,8 +178,8 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
         pcall(function()
             trail.Color = ColorSequence.new({
                 ColorSequenceKeypoint.new(0, brightColor),
-                ColorSequenceKeypoint.new(0.4, color),
-                ColorSequenceKeypoint.new(1, color),
+                ColorSequenceKeypoint.new(0.4, trailBaseColor),
+                ColorSequenceKeypoint.new(1, trailBaseColor),
             })
             trail.Transparency = NumberSequence.new({
                 NumberSequenceKeypoint.new(0, 0.15),

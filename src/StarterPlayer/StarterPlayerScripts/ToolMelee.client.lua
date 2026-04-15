@@ -414,7 +414,7 @@ local function attachMelee(tool)
         if WeaponEnchantConfig and tool:GetAttribute("HasEnchant") then
             local pn = tool:GetAttribute("EnchantName")
             if pn and pn ~= "" then
-                local enchantColor = WeaponEnchantConfig.GetColorForEnchant(pn)
+                local enchantColor = WeaponEnchantConfig.GetTrailColorForEnchant(pn)
                 if enchantColor then
                     trailColorStart = Color3.new(
                         math.min(enchantColor.R * 1.2, 1),
@@ -602,8 +602,15 @@ local function attachMelee(tool)
         end
 
         -- Trigger sword trail (size-scaled timing)
-        local startOffset = (cfg.trail_start or 0.22) * sizeSpeedMult
-        local endOffset   = (cfg.trail_end   or 0.36) * sizeSpeedMult
+        -- First attack uses later timing (0.26-0.44) so trail aligns with animation
+        local trailStart = cfg.trail_start or 0.22
+        local trailEnd   = cfg.trail_end   or 0.36
+        if step == 1 then
+            trailStart = cfg.trail_start or 0.26
+            trailEnd   = cfg.trail_end   or 0.44
+        end
+        local startOffset = trailStart * sizeSpeedMult
+        local endOffset   = trailEnd   * sizeSpeedMult
         pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
 
         -- Tell the server we swung (include combo step for validation/damage)
