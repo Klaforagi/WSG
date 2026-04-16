@@ -819,6 +819,9 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
     elseif enchantName == "Shock" then
         applyFlatDamage(targetHumanoid, cfg.ProcDamage or 10, attackerPlayer, enchantName)
 
+        -- Always show impact sparks on the original target
+        ShockChainVFX:FireAllClients(targetModel, nil)
+
         -- Anti-spam: one chain per attacker per cooldown window
         local now = tick()
         local lastChain = shockLastChain[attackerPlayer] or 0

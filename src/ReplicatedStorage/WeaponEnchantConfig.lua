@@ -100,12 +100,12 @@ WeaponEnchantConfig.ProcConfig = {
         SoundId       = "rbxassetid://REPLACE_ME",
     },
     Shock = {
-        ProcChance    = 0.99,
+        ProcChance    = 0.3,
         ProcDamage    = 10,
         ChainRange    = 20,
         MaxChains     = 4,
         ChainDamage   = 8,
-        ChainCooldown = 0.5,
+        ChainCooldown = 0.4,
         SoundId       = "rbxassetid://REPLACE_ME",
     },
     Toxic = {

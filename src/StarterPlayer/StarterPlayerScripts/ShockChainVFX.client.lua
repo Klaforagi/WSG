@@ -27,10 +27,21 @@ local CURVE_MIN       = -6     -- CurveSize randomisation
 local CURVE_MAX       = 6
 local IMPACT_EMIT_MIN = 10
 local IMPACT_EMIT_MAX = 20
+local IMPACT_LINGER   = 0.6    -- how long the impact attachment stays on the target
 
 ---------------------------------------------------------------------------
 -- Helpers
 ---------------------------------------------------------------------------
+
+--- Return the best torso-level BasePart on a model, or nil.
+local function getEffectPart(model)
+    if not model or not model.Parent then return nil end
+    local part = model:FindFirstChild("UpperTorso")
+        or model:FindFirstChild("Torso")
+        or model:FindFirstChild("HumanoidRootPart")
+    if part and part:IsA("BasePart") then return part end
+    return nil
+end
 
 local function getPosition(model)
     if not model or not model.Parent then return nil end
@@ -101,20 +112,54 @@ local function spawnSegment(fromPos, toPos)
     Debris:AddItem(partB, BEAM_LIFETIME)
 end
 
---- Spawn impact spark emitters at a world position.
-local function spawnImpact(pos)
-    local part = makeAnchorPart(pos)
+--- Clone the impact emitter with 2x size scaling applied.
+local function cloneScaledImpact()
     local emitter = ImpactPrefab:Clone()
-    -- Scale impact particles 2x
     local origSize = emitter.Size
     local scaled = {}
     for _, kp in ipairs(origSize.Keypoints) do
         table.insert(scaled, NumberSequenceKeypoint.new(kp.Time, kp.Value * 2, kp.Envelope * 2))
     end
     emitter.Size = NumberSequence.new(scaled)
-    emitter.Parent = part
-    emitter:Emit(math.random(IMPACT_EMIT_MIN, IMPACT_EMIT_MAX))
-    Debris:AddItem(part, BEAM_LIFETIME + 0.5) -- keep a bit longer so particles finish
+    return emitter
+end
+
+--- Spawn impact sparks attached to a target model so they follow movement.
+--- Falls back to a fixed world-position anchor if no body part is available.
+local function spawnImpactAtModel(targetModel, fallbackPos)
+    local bodyPart = getEffectPart(targetModel)
+    if bodyPart then
+        local att = Instance.new("Attachment")
+        att.Name = "_ShockImpactAtt"
+        att.Parent = bodyPart
+        local emitter = cloneScaledImpact()
+        emitter.Parent = att
+        emitter:Emit(math.random(IMPACT_EMIT_MIN, IMPACT_EMIT_MAX))
+        Debris:AddItem(att, IMPACT_LINGER)
+    else
+        -- Fallback: anchored world part
+        if not fallbackPos then return end
+        local part = makeAnchorPart(fallbackPos)
+        local emitter = cloneScaledImpact()
+        emitter.Parent = part
+        emitter:Emit(math.random(IMPACT_EMIT_MIN, IMPACT_EMIT_MAX))
+        Debris:AddItem(part, IMPACT_LINGER)
+    end
+end
+
+--- Create an attachment on a body part, or fall back to a world anchor.
+--- Returns the Attachment and an optional anchor Part (nil if body-attached).
+local function makeAttachment(model, worldPos)
+    local bodyPart = getEffectPart(model)
+    if bodyPart then
+        local att = Instance.new("Attachment")
+        att.Parent = bodyPart
+        return att, nil
+    end
+    local anchor = makeAnchorPart(worldPos)
+    local att = Instance.new("Attachment")
+    att.Parent = anchor
+    return att, anchor
 end
 
 ---------------------------------------------------------------------------
@@ -123,20 +168,55 @@ end
 
 local function PlayShockChainVFX(fromTarget, toTarget)
     local startPos = getPosition(fromTarget)
-    local endPos   = getPosition(toTarget)
-    if not startPos or not endPos then return end
+    if not startPos then return end
 
-    -- Impact sparks at both endpoints
-    spawnImpact(startPos)
-    spawnImpact(endPos)
+    -- Impact sparks on the source target (always)
+    spawnImpactAtModel(fromTarget, startPos)
+
+    -- If no chain target, impact-only mode — no beams
+    local endPos = getPosition(toTarget)
+    if not endPos then return end
+
+    -- Impact sparks on the chain target
+    spawnImpactAtModel(toTarget, endPos)
 
     -- Layered lightning passes
     for _ = 1, BEAM_PASSES do
         local mid = randomMidpoint(startPos, endPos)
+
         -- Segment 1: start → midpoint
-        spawnSegment(startPos, mid)
+        local att0, anchor0 = makeAttachment(fromTarget, startPos)
+        local attM1 = Instance.new("Attachment")
+        local anchorM1 = makeAnchorPart(mid)
+        attM1.Parent = anchorM1
+
+        local beam1 = BeamPrefab:Clone()
+        beam1.Attachment0 = att0
+        beam1.Attachment1 = attM1
+        beam1.CurveSize0 = randomInRange(CURVE_MIN, CURVE_MAX)
+        beam1.CurveSize1 = randomInRange(CURVE_MIN, CURVE_MAX)
+        beam1.Parent = attM1.Parent
+
         -- Segment 2: midpoint → end
-        spawnSegment(mid, endPos)
+        local attM2 = Instance.new("Attachment")
+        local anchorM2 = makeAnchorPart(mid)
+        attM2.Parent = anchorM2
+        local att1, anchor1 = makeAttachment(toTarget, endPos)
+
+        local beam2 = BeamPrefab:Clone()
+        beam2.Attachment0 = attM2
+        beam2.Attachment1 = att1
+        beam2.CurveSize0 = randomInRange(CURVE_MIN, CURVE_MAX)
+        beam2.CurveSize1 = randomInRange(CURVE_MIN, CURVE_MAX)
+        beam2.Parent = attM2.Parent
+
+        -- Cleanup: body-attached attachments + world anchors
+        Debris:AddItem(att0, BEAM_LIFETIME)
+        Debris:AddItem(anchorM1, BEAM_LIFETIME)
+        Debris:AddItem(anchorM2, BEAM_LIFETIME)
+        Debris:AddItem(att1, BEAM_LIFETIME)
+        if anchor0 then Debris:AddItem(anchor0, BEAM_LIFETIME) end
+        if anchor1 then Debris:AddItem(anchor1, BEAM_LIFETIME) end
     end
 end
 
