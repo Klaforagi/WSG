@@ -935,11 +935,18 @@ local function createResultCard(record, order)
 
     -- Details line
     local enchantStr = (record.Enchant and record.Enchant ~= "") and (" | " .. record.Enchant) or ""
+    local dateStr = ""
+    if record.ObtainedAt and record.ObtainedAt > 0 then
+        local ok, formatted = pcall(function()
+            return os.date("%Y-%m-%d %H:%M", record.ObtainedAt)
+        end)
+        if ok then dateStr = " | " .. formatted end
+    end
     createInstance("TextLabel", {
         Size = UDim2.new(1, -20, 0, 16),
         Position = UDim2.new(0, 14, 0, 24),
         BackgroundTransparency = 1,
-        Text = (record.Rarity or "?") .. " | " .. tostring(record.SizePercent or 100) .. "%" .. enchantStr .. " | " .. (record.OwnerUsername or "?"),
+        Text = (record.Rarity or "?") .. " | " .. tostring(record.SizePercent or 100) .. "%" .. enchantStr .. " | " .. (record.OwnerUsername or "?") .. dateStr,
         TextColor3 = COLORS.TEXT_SECONDARY,
         Font = Enum.Font.Gotham,
         TextSize = 11,
@@ -1010,6 +1017,13 @@ doSearch = function()
 
     searchStatus.Text = tostring(#results) .. " weapon(s) found."
     searchStatus.TextColor3 = COLORS.GREEN
+
+    -- Sort by date obtained (newest first)
+    table.sort(results, function(a, b)
+        local aTime = (a.ObtainedAt and a.ObtainedAt > 0) and a.ObtainedAt or 0
+        local bTime = (b.ObtainedAt and b.ObtainedAt > 0) and b.ObtainedAt or 0
+        return aTime > bTime
+    end)
 
     for i, record in ipairs(results) do
         createResultCard(record, i)

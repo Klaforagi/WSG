@@ -365,15 +365,24 @@ local function spawnZombie(portalPart, areaPart, tpl)
     local stationaryTicks = 0 -- consecutive AI ticks with near-zero velocity
 
     -- adjust speed based on enraged/aggro state
+    -- Respects IcySlowPercent attribute set by enchant system
+    local function setMobSpeed(speed)
+        local icySlow = humanoid:GetAttribute("IcySlowPercent")
+        if icySlow and type(icySlow) == "number" and icySlow > 0 then
+            speed = math.max(speed * (1 - icySlow), 1)
+        end
+        humanoid.WalkSpeed = speed
+    end
+
     local function updateSpeedByHealth(h)
         local maxH = humanoid.MaxHealth or 100
         if ENRAGED_ENABLED and h < maxH then
             isEnraged = true
-            humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+            setMobSpeed(MOB_ENRAGED_SPEED)
         elseif aggroPlayer then
-            humanoid.WalkSpeed = MOB_CHASE_SPEED
+            setMobSpeed(MOB_CHASE_SPEED)
         else
-            humanoid.WalkSpeed = MOB_WALK_SPEED
+            setMobSpeed(MOB_WALK_SPEED)
         end
     end
 
@@ -619,11 +628,11 @@ local function spawnZombie(portalPart, areaPart, tpl)
         humanoid.AutoRotate = true
         -- Restore speed based on current state
         if isEnraged then
-            humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+            setMobSpeed(MOB_ENRAGED_SPEED)
         elseif chasing then
-            humanoid.WalkSpeed = MOB_CHASE_SPEED
+            setMobSpeed(MOB_CHASE_SPEED)
         else
-            humanoid.WalkSpeed = MOB_WALK_SPEED
+            setMobSpeed(MOB_WALK_SPEED)
         end
         isAttacking = false
         -- Running event will automatically resume the correct animation
@@ -682,9 +691,9 @@ local function spawnZombie(portalPart, areaPart, tpl)
                     else
                         -- set appropriate speed: enraged > chase
                         if isEnraged then
-                            humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+                            setMobSpeed(MOB_ENRAGED_SPEED)
                         else
-                            humanoid.WalkSpeed = MOB_CHASE_SPEED
+                            setMobSpeed(MOB_CHASE_SPEED)
                         end
                         -- overshoot: move to a point 10 studs PAST the player so the
                         -- humanoid never decelerates near them
@@ -712,9 +721,9 @@ local function spawnZombie(portalPart, areaPart, tpl)
                 end
                 -- set idle/walk speed (unless enraged)
                 if isEnraged then
-                    humanoid.WalkSpeed = MOB_ENRAGED_SPEED
+                    setMobSpeed(MOB_ENRAGED_SPEED)
                 else
-                    humanoid.WalkSpeed = MOB_WALK_SPEED
+                    setMobSpeed(MOB_WALK_SPEED)
                 end
                 -- wander occasionally; 30% chance to idle
                 if tick() - lastWander >= wanderCooldown then

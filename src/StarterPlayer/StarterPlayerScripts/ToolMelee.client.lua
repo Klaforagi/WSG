@@ -152,7 +152,7 @@ local function showDamagePopup(damage, isHeadshot, hitPart, hitPos)
     label.Text = tostring(math.floor(damage))
     label.Font = Enum.Font.GothamBold
     label.TextSize = 24
-    label.TextColor3 = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(255, 215, 80)
+    label.TextColor3 = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(255, 255, 255)
     label.TextStrokeTransparency = 0.5
     label.Parent = gui
 
@@ -688,6 +688,83 @@ meleeHitEvent.OnClientEvent:Connect(function(damage, isHeadshot, hitPart, hitPos
         showDamagePopup(damage, isHeadshot, hitPart, hitPos)
     end)
 end)
+
+--------------------------------------------------------------------------------
+-- ENCHANT PROC DAMAGE POPUP
+-- Listens for EnchantProcHit from server. Shows a colored damage number
+-- offset above the normal damage numbers so they're visually distinct.
+--------------------------------------------------------------------------------
+local enchantProcEvent = ReplicatedStorage:FindFirstChild("EnchantProcHit")
+if not enchantProcEvent then
+    -- Server may not have created it yet; wait briefly
+    enchantProcEvent = ReplicatedStorage:WaitForChild("EnchantProcHit", 10)
+end
+
+if enchantProcEvent then
+    enchantProcEvent.OnClientEvent:Connect(function(damage, enchantName, torsoPart)
+        spawn(function()
+            if not damage or not enchantName then return end
+
+            -- Resolve enchant color
+            local enchantColor = Color3.fromRGB(255, 255, 255)
+            if WeaponEnchantConfig then
+                local c = WeaponEnchantConfig.GetColorForEnchant(enchantName)
+                if c then enchantColor = c end
+            end
+
+            -- Adorn to the target's torso part; fall back to anchored part if needed
+            local parentPart
+            local anchor
+            if torsoPart and typeof(torsoPart) == "Instance" and torsoPart:IsA("BasePart") then
+                parentPart = torsoPart
+            elseif torsoPart and typeof(torsoPart) == "Vector3" then
+                -- Legacy fallback: if a position was sent instead of a part
+                anchor = Instance.new("Part")
+                anchor.Name = "_EnchantProcAnchor"
+                anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+                anchor.Transparency = 1
+                anchor.Anchored = true
+                anchor.CanCollide = false
+                anchor.CFrame = CFrame.new(torsoPart)
+                anchor.Parent = workspace
+                parentPart = anchor
+            end
+            if not parentPart then return end
+
+            local gui = Instance.new("BillboardGui")
+            gui.Name = "EnchantProcPopup"
+            gui.Size = UDim2.new(0, 120, 0, 40)
+            gui.Adornee = parentPart
+            gui.AlwaysOnTop = true
+            gui.StudsOffset = Vector3.new(0, 3, 0) -- offset above torso
+
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            label.Text = tostring(math.floor(damage))
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 20
+            label.TextColor3 = enchantColor
+            label.TextStrokeColor3 = Color3.new(0, 0, 0)
+            label.TextStrokeTransparency = 0.4
+            label.Parent = gui
+            gui.Parent = parentPart
+
+            local tween = TweenService:Create(gui, TweenInfo.new(0.9, Enum.EasingStyle.Quad), {
+                StudsOffset = gui.StudsOffset + Vector3.new(0, 1.5, 0),
+            })
+            tween:Play()
+            for i = 0, 1, 0.06 do
+                label.TextTransparency = i
+                label.TextStrokeTransparency = 0.4 + i * 0.6
+                task.wait(0.06)
+            end
+            tween:Cancel()
+            gui:Destroy()
+            if anchor and anchor.Parent then anchor:Destroy() end
+        end)
+    end)
+end
 
 --------------------------------------------------------------------------------
 -- Scan & watch for melee tools (same pattern as ToolGun.client)

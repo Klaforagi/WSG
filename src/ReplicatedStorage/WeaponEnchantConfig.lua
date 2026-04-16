@@ -81,6 +81,57 @@ for _, enchant in ipairs(WeaponEnchantConfig.Enchants) do
 end
 
 --------------------------------------------------------------------------------
+-- PROC CONFIG  –  Flat enchant proc tuning (server-side gameplay effects)
+-- All damage here is FLAT — does NOT scale from weapon damage, size, rarity,
+-- upgrades, combo step, or swing speed.
+--------------------------------------------------------------------------------
+WeaponEnchantConfig.ProcConfig = {
+    Fiery = {
+        ProcChance = 0.99,
+        ProcDamage = 20,
+        SoundId    = "rbxassetid://REPLACE_ME",
+    },
+    Icy = {
+        ProcChance    = 0.99,
+        TickDamage    = 2,          -- damage per tick while slowed
+        TickInterval  = 1,          -- tick once per second
+        SlowPercent   = 0.50,
+        SlowDuration  = 4,          -- 4 ticks total = 2+2+2+2 = 8 damage
+        SoundId       = "rbxassetid://REPLACE_ME",
+    },
+    Shock = {
+        ProcChance    = 0.99,
+        ProcDamage    = 10,
+        ChainRange    = 16,
+        MaxChains     = 2,
+        ChainDamage   = 8,
+        ChainCooldown = 0.5,
+        SoundId       = "rbxassetid://REPLACE_ME",
+    },
+    Toxic = {
+        ProcChance       = 0.99,
+        TickDamage       = 4,
+        TickInterval     = 2,
+        DurationPerProc  = 6,
+        MaxDuration      = 18,
+        SoundId          = "rbxassetid://REPLACE_ME",
+    },
+    Lifesteal = {
+        ProcChance = 0.99,
+        ProcDamage = 6,
+        HealAmount = 6,
+        SoundId    = "rbxassetid://REPLACE_ME",
+    },
+    Void = {
+        ProcChance         = 0.99,
+        ProcDamage         = 30,
+        KnockbackForce     = 85,
+        KnockbackUpwardForce = 18,
+        SoundId            = "rbxassetid://REPLACE_ME",
+    },
+}
+
+--------------------------------------------------------------------------------
 -- GetEnchantData(enchantName) -> enchantTable or nil
 --------------------------------------------------------------------------------
 function WeaponEnchantConfig.GetEnchantData(enchantName)

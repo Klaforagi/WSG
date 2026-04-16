@@ -216,6 +216,10 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         meleeHit:FireClient(player, damage, false, hitPart, hitPos)
     end)
     if humanoid.Health <= 0 then
+        -- Clean up any active enchant effects (icy slow, toxic DoT) on this target
+        if WeaponEnchantService and WeaponEnchantService.CleanupTarget then
+            pcall(function() WeaponEnchantService.CleanupTarget(humanoid) end)
+        end
         humanoid:SetAttribute("_killCredited", true)
         local victimName = (victimModel and victimModel.Name) or "Unknown"
         local vp = Players:GetPlayerFromCharacter(victimModel)
@@ -819,6 +823,16 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                             if pn and pn ~= "" and hit.hitPos then
                                 pcall(function()
                                     WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
+                                end)
+                            end
+                            -- ENCHANT PROC: roll and apply flat enchant effect
+                            if pn and pn ~= "" then
+                                pcall(function()
+                                    WeaponEnchantService.TryProcEnchant(
+                                        player, hum,
+                                        hit.model, hit.humanoid,
+                                        pn, hit.hitPos
+                                    )
                                 end)
                             end
                         end
