@@ -13,6 +13,10 @@
         "$className": "Folder"
       }
       ,
+      "VFX": {
+        "$className": "Folder"
+      }
+      ,
       "Events": {
         "$className": "Folder",
         "$path": "src/ReplicatedStorage/Events"
