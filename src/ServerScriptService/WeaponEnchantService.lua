@@ -691,13 +691,11 @@ end
 ---------------------------------------------------------------------------
 local shockLastChain = {} -- [Player] = tick()
 
-local function findChainTargets(attackerPlayer, originModel, originPos, chainRange, maxChains)
-    local results = {}
-    local seen = {}
-    seen[originModel] = true
-    if attackerPlayer and attackerPlayer.Character then
-        seen[attackerPlayer.Character] = true
-    end
+-- Find the single nearest valid chain target from a given position.
+-- Returns { model, humanoid, root, dist } or nil.
+local function findNextChainTarget(attackerPlayer, currentPos, chainRange, seen)
+    local best = nil
+    local bestDist = chainRange + 1
 
     -- Gather all candidate models
     local candidates = {}
@@ -717,8 +715,6 @@ local function findChainTargets(attackerPlayer, originModel, originPos, chainRan
         end
     end
 
-    -- Score by distance, pick closest
-    local scored = {}
     for _, model in ipairs(candidates) do
         local hum = getHumanoid(model)
         if not hum or hum.Health <= 0 then continue end
@@ -730,18 +726,14 @@ local function findChainTargets(attackerPlayer, originModel, originPos, chainRan
             and attackerPlayer.Team == vp.Team then
             continue
         end
-        local dist = (root.Position - originPos).Magnitude
-        if dist <= chainRange then
-            table.insert(scored, { model = model, humanoid = hum, root = root, dist = dist })
+        local dist = (root.Position - currentPos).Magnitude
+        if dist <= chainRange and dist < bestDist then
+            best = { model = model, humanoid = hum, root = root, dist = dist }
+            bestDist = dist
         end
     end
 
-    table.sort(scored, function(a, b) return a.dist < b.dist end)
-
-    for i = 1, math.min(maxChains, #scored) do
-        table.insert(results, scored[i])
-    end
-    return results
+    return best
 end
 
 ---------------------------------------------------------------------------
@@ -833,22 +825,31 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
         if now - lastChain < (cfg.ChainCooldown or 0.5) then return end
         shockLastChain[attackerPlayer] = now
 
-        local originPos = targetRoot and targetRoot.Position or hitPos
-        if not originPos then return end
+        local chainRange = cfg.ChainRange or 12
+        local maxChains  = cfg.MaxChains  or 2
 
-        local chains = findChainTargets(
-            attackerPlayer,
-            targetModel,
-            originPos,
-            cfg.ChainRange or 12,
-            cfg.MaxChains or 2
-        )
+        -- Sequential chain: A -> B -> C (not branching)
+        local seen = {}
+        seen[targetModel] = true
+        if attackerPlayer and attackerPlayer.Character then
+            seen[attackerPlayer.Character] = true
+        end
 
-        for _, chain in ipairs(chains) do
-            applyFlatDamage(chain.humanoid, cfg.ChainDamage or 8, attackerPlayer, enchantName)
-            playProcSound(cfg.SoundId, chain.root)
-            -- Fire chain lightning VFX to all clients
-            ShockChainVFX:FireAllClients(targetModel, chain.model)
+        local currentModel = targetModel
+        local currentPos   = targetRoot and targetRoot.Position or hitPos
+        if not currentPos then return end
+
+        for _ = 1, maxChains do
+            local next = findNextChainTarget(attackerPlayer, currentPos, chainRange, seen)
+            if not next then break end
+
+            applyFlatDamage(next.humanoid, cfg.ChainDamage or 8, attackerPlayer, enchantName)
+            playProcSound(cfg.SoundId, next.root)
+            ShockChainVFX:FireAllClients(currentModel, next.model)
+
+            seen[next.model] = true
+            currentModel = next.model
+            currentPos   = next.root.Position
         end
 
     ---------- TOXIC ----------

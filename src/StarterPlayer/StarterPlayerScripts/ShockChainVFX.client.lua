@@ -19,9 +19,9 @@ local ImpactPrefab  = VFXFolder:WaitForChild("ShockImpactEmitter")
 
 local BEAM_LIFETIME   = 0.12   -- seconds before cleanup
 local BEAM_PASSES     = 3      -- 1 main + 2 extras
-local Y_OFFSET        = 1.5    -- raise start/end positions
-local MID_Y_MIN       = 3      -- vertical lift range for midpoint
-local MID_Y_MAX       = 6
+local Y_OFFSET        = 0.2    -- very small vertical nudge
+local MID_Y_MIN       = -1     -- vertical range for midpoint (can be level or below)
+local MID_Y_MAX       = 5
 local MID_XZ_RANGE    = 2      -- random horizontal scatter for midpoint
 local CURVE_MIN       = -6     -- CurveSize randomisation
 local CURVE_MAX       = 6
@@ -34,6 +34,12 @@ local IMPACT_EMIT_MAX = 20
 
 local function getPosition(model)
     if not model or not model.Parent then return nil end
+    -- Prefer torso-level parts for chest-height lightning
+    local torso = model:FindFirstChild("UpperTorso")
+        or model:FindFirstChild("Torso")
+    if torso and torso:IsA("BasePart") then
+        return torso.Position + Vector3.new(0, Y_OFFSET, 0)
+    end
     local hrp = model:FindFirstChild("HumanoidRootPart")
     if hrp and hrp:IsA("BasePart") then
         return hrp.Position + Vector3.new(0, Y_OFFSET, 0)
@@ -99,6 +105,13 @@ end
 local function spawnImpact(pos)
     local part = makeAnchorPart(pos)
     local emitter = ImpactPrefab:Clone()
+    -- Scale impact particles 2x
+    local origSize = emitter.Size
+    local scaled = {}
+    for _, kp in ipairs(origSize.Keypoints) do
+        table.insert(scaled, NumberSequenceKeypoint.new(kp.Time, kp.Value * 2, kp.Envelope * 2))
+    end
+    emitter.Size = NumberSequence.new(scaled)
     emitter.Parent = part
     emitter:Emit(math.random(IMPACT_EMIT_MIN, IMPACT_EMIT_MAX))
     Debris:AddItem(part, BEAM_LIFETIME + 0.5) -- keep a bit longer so particles finish
