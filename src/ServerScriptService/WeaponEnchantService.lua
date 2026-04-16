@@ -409,6 +409,14 @@ if not EnchantProcHit then
     EnchantProcHit.Parent = ReplicatedStorage
 end
 
+-- Remote event for shock chain lightning VFX (server → all clients)
+local ShockChainVFX = ReplicatedStorage:FindFirstChild("ShockChainVFX")
+if not ShockChainVFX then
+    ShockChainVFX = Instance.new("RemoteEvent")
+    ShockChainVFX.Name = "ShockChainVFX"
+    ShockChainVFX.Parent = ReplicatedStorage
+end
+
 ---------------------------------------------------------------------------
 -- HELPERS
 ---------------------------------------------------------------------------
@@ -839,7 +847,8 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
         for _, chain in ipairs(chains) do
             applyFlatDamage(chain.humanoid, cfg.ChainDamage or 8, attackerPlayer, enchantName)
             playProcSound(cfg.SoundId, chain.root)
-            -- TODO: Add visual lightning beam effect between originPos and chain.root.Position here
+            -- Fire chain lightning VFX to all clients
+            ShockChainVFX:FireAllClients(targetModel, chain.model)
         end
 
     ---------- TOXIC ----------
