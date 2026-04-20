@@ -782,10 +782,16 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         end
     end
 
-    -- ── HITBOX (size-scaled timing, unchanged spatial dimensions) ─────
+    -- ── HITBOX (size-scaled timing + size-scaled spatial dimensions) ──
     local baseHitboxDelay  = cfg.hitboxDelay or 0.35
     local baseHitboxActive = cfg.hitboxActive or 0.1
     local scaledDelay, scaledActive = getScaledHitboxTiming(baseHitboxDelay, baseHitboxActive, sizePercent)
+
+    -- Scale hitbox with weapon size: up to +50% at 200% size, never shrink below base
+    local hitboxScale = 1
+    if sizePercent > 100 then
+        hitboxScale = 1 + math.clamp((sizePercent - 100) / 100, 0, 1) * 0.5
+    end
 
     task.spawn(function()
         task.wait(scaledDelay)
@@ -795,7 +801,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             local curHrp = player.Character:FindFirstChild("HumanoidRootPart")
             if not curHrp then break end
 
-            local boxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
+            local baseBoxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
+            local boxSize = baseBoxSize * hitboxScale
             local offset  = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
 
             local rightV = curHrp.CFrame.RightVector
@@ -810,6 +817,23 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * depth
                 local boxCFrame = CFrame.new(pos, pos + lookV)
                 local halfSize  = boxSize / 2
+
+                -- Debug: show hitbox part
+                do
+                    local dbg = Instance.new("Part")
+                    dbg.Name = "_HitboxDebug"
+                    dbg.Size = boxSize
+                    dbg.CFrame = boxCFrame
+                    dbg.Anchored = true
+                    dbg.CanCollide = false
+                    dbg.CanTouch = false
+                    dbg.CanQuery = false
+                    dbg.Transparency = 0.7
+                    dbg.Color = Color3.fromRGB(255, 0, 0)
+                    dbg.Material = Enum.Material.Neon
+                    dbg.Parent = workspace
+                    Debris:AddItem(dbg, scaledActive + 0.05)
+                end
 
                 local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
                 for _, hit in ipairs(targetsNow) do
