@@ -434,17 +434,21 @@ local function getHumanoid(model)
 end
 
 -- Play a proc sound at a position (via the target's root if available)
-local function playProcSound(soundId, targetRoot)
-    if not soundId or soundId == "" or soundId == "rbxassetid://REPLACE_ME" then return end
+-- Clones the Sound from ReplicatedStorage.Sounds.ToolMelee.<enchantName>
+local toolMeleeSounds = ReplicatedStorage:FindFirstChild("Sounds")
+    and ReplicatedStorage.Sounds:FindFirstChild("ToolMelee")
+
+local function playProcSound(enchantName, targetRoot)
+    if not enchantName or enchantName == "" then return end
     if not targetRoot or not targetRoot:IsA("BasePart") then return end
+    if not toolMeleeSounds then return end
+    local template = toolMeleeSounds:FindFirstChild(enchantName)
+    if not template or not template:IsA("Sound") then return end
     pcall(function()
-        local s = Instance.new("Sound")
-        s.SoundId = soundId
-        s.Volume = 0.7
-        s.RollOffMaxDistance = 60
+        local s = template:Clone()
         s.Parent = targetRoot
         s:Play()
-        Debris:AddItem(s, 3)
+        Debris:AddItem(s, s.TimeLength + 1)
     end)
 end
 
@@ -797,7 +801,7 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
     local targetRoot = getRoot(targetModel)
 
     -- Play proc sound
-    playProcSound(cfg.SoundId, targetRoot)
+    playProcSound(enchantName, targetRoot)
 
     ---------- FIERY ----------
     if enchantName == "Fiery" then
@@ -847,7 +851,7 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
             if not next then break end
 
             applyFlatDamage(next.humanoid, cfg.ChainDamage or 8, attackerPlayer, enchantName)
-            playProcSound(cfg.SoundId, next.root)
+            playProcSound(enchantName, next.root)
             ShockChainVFX:FireAllClients(currentModel, next.model)
 
             seen[next.model] = true
