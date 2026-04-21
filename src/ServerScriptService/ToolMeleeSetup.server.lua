@@ -796,8 +796,9 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     task.spawn(function()
         task.wait(scaledDelay)
         local hitAlready = {}
+        local primaryHitDone = false
         local endTime = tick() + scaledActive
-        while tick() < endTime and player and player.Character and hum and hum.Health > 0 do
+        while (not primaryHitDone) and tick() < endTime and player and player.Character and hum and hum.Health > 0 do
             local curHrp = player.Character:FindFirstChild("HumanoidRootPart")
             if not curHrp then break end
 
@@ -812,6 +813,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             local centerZ = offset.Z
             local spread  = boxSize.Z * 0.35
             local sampleDepths = { centerZ - spread, centerZ, centerZ + spread }
+            local bestHit = nil
+            local bestHitDist = math.huge
 
             for _, depth in ipairs(sampleDepths) do
                 local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * depth
@@ -838,61 +841,76 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
                 for _, hit in ipairs(targetsNow) do
                     if not hitAlready[hit.humanoid] then
-                        hitAlready[hit.humanoid] = true
-                        applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
-
-                        -- ENCHANT SYSTEM: spawn colored hit-burst at impact point
-                        if WeaponEnchantService and tool and tool:GetAttribute("HasEnchant") then
-                            local pn = tool:GetAttribute("EnchantName")
-                            if pn and pn ~= "" and hit.hitPos then
-                                pcall(function()
-                                    WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
-                                end)
-                            end
-                            -- ENCHANT PROC: roll and apply flat enchant effect
-                            if pn and pn ~= "" then
-                                pcall(function()
-                                    WeaponEnchantService.TryProcEnchant(
-                                        player, hum,
-                                        hit.model, hit.humanoid,
-                                        pn, hit.hitPos
-                                    )
-                                end)
+                        local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
+                        local victimPos = (victimRoot and victimRoot.Position) or hit.hitPos
+                        if victimPos then
+                            local distToAttacker = (victimPos - curHrp.Position).Magnitude
+                            if distToAttacker < bestHitDist then
+                                bestHitDist = distToAttacker
+                                bestHit = {
+                                    hit = hit,
+                                    boxCFrame = boxCFrame,
+                                    victimRoot = victimRoot,
+                                }
                             end
                         end
+                    end
+                end
+            end
 
-                        -- hit sound at attacker
-                        local hitSoundKey = cfg.hit_sound
-                        if hitSoundKey and hitSoundKey ~= "" then
-                            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-                            if soundsFolder then
-                                local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
-                                if meleeFolder then
-                                    local template = meleeFolder:FindFirstChild(hitSoundKey)
-                                    if template and template:IsA("Sound") then
-                                        local s = template:Clone()
-                                        s.Parent = curHrp
-                                        s:Play()
-                                        Debris:AddItem(s, 3)
-                                    end
-                                end
+            if bestHit then
+                local hit = bestHit.hit
+                hitAlready[hit.humanoid] = true
+                primaryHitDone = true
+
+                applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
+
+                -- ENCHANT SYSTEM: spawn colored hit-burst at impact point
+                if WeaponEnchantService and tool and tool:GetAttribute("HasEnchant") then
+                    local pn = tool:GetAttribute("EnchantName")
+                    if pn and pn ~= "" and hit.hitPos then
+                        pcall(function()
+                            WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
+                        end)
+                    end
+                    -- ENCHANT PROC: roll and apply flat enchant effect
+                    if pn and pn ~= "" then
+                        pcall(function()
+                            WeaponEnchantService.TryProcEnchant(
+                                player, hum,
+                                hit.model, hit.humanoid,
+                                pn, hit.hitPos
+                            )
+                        end)
+                    end
+                end
+
+                -- hit sound at attacker
+                local hitSoundKey = cfg.hit_sound
+                if hitSoundKey and hitSoundKey ~= "" then
+                    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                    if soundsFolder then
+                        local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
+                        if meleeFolder then
+                            local template = meleeFolder:FindFirstChild(hitSoundKey)
+                            if template and template:IsA("Sound") then
+                                local s = template:Clone()
+                                s.Parent = curHrp
+                                s:Play()
+                                Debris:AddItem(s, 3)
                             end
                         end
+                    end
+                end
 
-                        -- knockback (skip for same-team players)
-                        if finalKnockback > 0 then
-                            local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
-                            if victimRoot then
-                                local vp = Players:GetPlayerFromCharacter(hit.model)
-                                local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
-                                if not isSameTeam then
-                                    local dir = (victimRoot.Position - boxCFrame.Position)
-                                    if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
-                                    applyKnockback(victimRoot, dir, finalKnockback)
-                                end
-                            end
-                        end
-
+                -- knockback (skip for same-team players)
+                if finalKnockback > 0 and bestHit.victimRoot then
+                    local vp = Players:GetPlayerFromCharacter(hit.model)
+                    local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
+                    if not isSameTeam then
+                        local dir = (bestHit.victimRoot.Position - bestHit.boxCFrame.Position)
+                        if dir.Magnitude < 0.01 then dir = bestHit.boxCFrame.LookVector end
+                        applyKnockback(bestHit.victimRoot, dir, finalKnockback)
                     end
                 end
             end

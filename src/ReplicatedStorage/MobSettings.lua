@@ -65,7 +65,7 @@ local Presets = {
             XPReward = 8,
         },
         Attack = {
-            Damage      = 12,
+            Damage      = 8,
             Cooldown    = .5,
             Windup      = 0.2,
         },
