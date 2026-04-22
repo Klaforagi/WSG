@@ -92,7 +92,7 @@ local function getToolSizePercent(tool)
     return 100
 end
 
-<<<<<<< HEAD
+HEAD
 local function getSizeSpeedMultiplier(sizePercent)
     return math.clamp(sizePercent / 100, 0.5, 3.0)
 =======
@@ -607,7 +607,7 @@ local function attachMelee(tool)
         end
 
         -- Trigger sword trail (size-scaled timing)
-<<<<<<< HEAD
+HEAD
         local startOffset = (cfg.trail_start or 0.22) * sizeSpeedMult
         local endOffset   = (cfg.trail_end   or 0.36) * sizeSpeedMult
 =======
@@ -620,7 +620,7 @@ local function attachMelee(tool)
         end
         local startOffset = trailStart * sizeSpeedMult
         local endOffset   = trailEnd   * sizeSpeedMult
->>>>>>> 0215795a08efea19e2edc4fb0eced5cf1d0f613a
+0215795a08efea19e2edc4fb0eced5cf1d0f613a
         pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
 
         -- Tell the server we swung (include combo step for validation/damage)
