@@ -273,8 +273,12 @@ local function applyWeaponScale(player, toolClone, toolName, instanceId)
             end
         end
     end
-    if bestInstance and bestInstance.sizePercent and bestInstance.sizePercent ~= 100 then
-        WeaponScaleService.ApplyScale(toolClone, bestInstance.sizePercent)
+    if bestInstance and bestInstance.sizePercent then
+        -- Stamp size as an attribute so ToolMeleeSetup / ToolMelee.client can read it
+        toolClone:SetAttribute("SizePercent", bestInstance.sizePercent)
+        if bestInstance.sizePercent ~= 100 then
+            WeaponScaleService.ApplyScale(toolClone, bestInstance.sizePercent)
+        end
     end
 end
 

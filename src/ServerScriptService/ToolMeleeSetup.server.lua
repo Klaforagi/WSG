@@ -110,10 +110,19 @@ end
 ---------------------------------------------------------------------------
 
 --- Read weapon size from tool attributes. Defaults to 100.
+local _sizeWarnedTools = {}
 local function getToolSizePercent(tool)
     if not tool then return 100 end
-    local sp = tool:GetAttribute("SizePercent") or tool:GetAttribute("WeaponSizePercent")
+    local sp = tool:GetAttribute("SizePercent")
+        or tool:GetAttribute("WeaponSizePercent")
+        or tool:GetAttribute("ScalePercent")
+        or tool:GetAttribute("WeaponScale")
     if type(sp) == "number" and sp > 0 then return sp end
+    -- warn once per tool instance
+    if not _sizeWarnedTools[tool] then
+        _sizeWarnedTools[tool] = true
+        warn("[MeleeScaling] No size attribute found on tool:", tool.Name, "defaulting to 100")
+    end
     return 100
 end
 
@@ -486,6 +495,12 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local comboKbMult = getComboKnockbackMultiplier(comboCfg, validStep)
     local finalKnockback = baseKnockback * comboKbMult * sizeDamageMult
 
+    -- ── DEBUG: size scaling verification ───────────────────────────────
+    print(string.format(
+        "[MeleeScaling] %s | size=%d%% | baseDmg=%.1f | finalDmg=%d | baseCd=%.2f | scaledCd=%.2f | step=%d",
+        toolName, sizePercent, baseDamage, damage, baseStepCd, cd, validStep
+    ))
+
     -- ── SWORD TRAIL (size-scaled timing) ──────────────────────────────
     do
         local ok, trail = pcall(function() return tool:FindFirstChild("SwordTrail", true) end)
@@ -671,14 +686,9 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 track.Priority = Enum.AnimationPriority.Action
 
                 -- Scale animation playback so it matches the size-scaled swing duration.
-                -- animSpeed = authoredLength / scaledCooldown
-                --   100% size, 0.5s cd → speed ≈ 1.0 (normal)
-                --   200% size, 1.0s cd → speed ≈ 0.5 (slower)
-                local ok2, animLength = pcall(function() return track.Length end)
-                if ok2 and type(animLength) == "number" and animLength > 0 and cd > 0 then
-                    local speed = math.clamp(animLength / cd, 0.25, 4.0)
-                    pcall(function() track:AdjustSpeed(speed) end)
-                end
+                -- baseCd/scaledCd gives the correct ratio immediately without needing
+                -- track.Length (which is often 0 due to async asset loading).
+                local fallbackSpeed = math.clamp(baseStepCd / cd, 0.25, 4.0)
 
                 track.Stopped:Connect(function()
                     if originalC1 and motor and motor.Parent then
@@ -686,7 +696,25 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                     end
                 end)
 
-                pcall(function() track:Play() end)
+                -- Pass speed as 3rd arg to Play() — omitting it defaults to 1.0
+                -- which silently overrides any prior AdjustSpeed call.
+                pcall(function() track:Play(0.1, 1, fallbackSpeed) end)
+
+                -- Belt-and-suspenders AdjustSpeed after Play
+                pcall(function() track:AdjustSpeed(fallbackSpeed) end)
+
+                -- Once track.Length resolves, refine with exact value
+                task.spawn(function()
+                    task.wait(0.1)
+                    local realLength = 0
+                    pcall(function() realLength = track.Length end)
+                    if realLength > 0 and cd > 0 then
+                        local preciseSpeed = math.clamp(realLength / cd, 0.25, 4.0)
+                        if math.abs(preciseSpeed - fallbackSpeed) > 0.05 then
+                            pcall(function() track:AdjustSpeed(preciseSpeed) end)
+                        end
+                    end
+                end)
 
                 local stopDelay = math.max(cd * 1.05, 0.15)
                 task.delay(stopDelay, function()
