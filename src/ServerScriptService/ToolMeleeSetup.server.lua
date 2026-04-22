@@ -131,9 +131,14 @@ local function getSizeDamageMultiplier(sizePercent)
     return math.clamp(sizePercent / 100, 0.5, 3.0)
 end
 
---- Speed scales linearly with size: 200% size = 2.0x swing duration (slower).
+--- Speed scaling: below 100% is linear (tiny weapons swing faster for more DPS).
+--- Above 100% scales at half rate so max 200% = 1.5x duration, not 2.0x.
+--- 80%=0.8x, 100%=1.0x, 150%=1.25x, 200%=1.5x
 local function getSizeSpeedMultiplier(sizePercent)
-    return math.clamp(sizePercent / 100, 0.5, 3.0)
+    if sizePercent <= 100 then
+        return math.clamp(sizePercent / 100, 0.5, 1.0)
+    end
+    return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 2.0)
 end
 
 --- Return the scaled swing duration for a given base cooldown.
@@ -211,6 +216,10 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         meleeHit:FireClient(player, damage, false, hitPart, hitPos)
     end)
     if humanoid.Health <= 0 then
+        -- Clean up any active enchant effects (icy slow, toxic DoT) on this target
+        if WeaponEnchantService and WeaponEnchantService.CleanupTarget then
+            pcall(function() WeaponEnchantService.CleanupTarget(humanoid) end)
+        end
         humanoid:SetAttribute("_killCredited", true)
         local victimName = (victimModel and victimModel.Name) or "Unknown"
         local vp = Players:GetPlayerFromCharacter(victimModel)
@@ -486,9 +495,11 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local cd = baseStepCd * sizeSpeedMult
 
     -- ── SCALED DAMAGE ─────────────────────────────────────────────────
-    -- finalDamage = baseDamage * sizeMult * comboMult
+    -- finalDamage = baseDamage * sizeMult * comboMult * random(0.8–1.0), rounded up
     local comboDmgMult = getComboDamageMultiplier(comboCfg, validStep)
-    local damage = math.round(baseDamage * sizeDamageMult * comboDmgMult)
+    local rawDamage = baseDamage * sizeDamageMult * comboDmgMult
+    local damageRoll = 0.8 + math.random() * 0.2   -- 80-100% of full value
+    local damage = math.ceil(rawDamage * damageRoll)
 
     -- ── SCALED KNOCKBACK ──────────────────────────────────────────────
     -- finalKnockback = baseKnockback * comboKnockbackMult * sizeMult
@@ -771,20 +782,28 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         end
     end
 
-    -- ── HITBOX (size-scaled timing, unchanged spatial dimensions) ─────
+    -- ── HITBOX (size-scaled timing + size-scaled spatial dimensions) ──
     local baseHitboxDelay  = cfg.hitboxDelay or 0.35
     local baseHitboxActive = cfg.hitboxActive or 0.1
     local scaledDelay, scaledActive = getScaledHitboxTiming(baseHitboxDelay, baseHitboxActive, sizePercent)
 
+    -- Scale hitbox with weapon size: up to +50% at 200% size, never shrink below base
+    local hitboxScale = 1
+    if sizePercent > 100 then
+        hitboxScale = 1 + math.clamp((sizePercent - 100) / 100, 0, 1) * 0.5
+    end
+
     task.spawn(function()
         task.wait(scaledDelay)
         local hitAlready = {}
+        local primaryHitDone = false
         local endTime = tick() + scaledActive
-        while tick() < endTime and player and player.Character and hum and hum.Health > 0 do
+        while (not primaryHitDone) and tick() < endTime and player and player.Character and hum and hum.Health > 0 do
             local curHrp = player.Character:FindFirstChild("HumanoidRootPart")
             if not curHrp then break end
 
-            local boxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
+            local baseBoxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
+            local boxSize = baseBoxSize * hitboxScale
             local offset  = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
 
             local rightV = curHrp.CFrame.RightVector
@@ -794,60 +813,104 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             local centerZ = offset.Z
             local spread  = boxSize.Z * 0.35
             local sampleDepths = { centerZ - spread, centerZ, centerZ + spread }
+            local bestHit = nil
+            local bestHitDist = math.huge
 
             for _, depth in ipairs(sampleDepths) do
                 local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * depth
                 local boxCFrame = CFrame.new(pos, pos + lookV)
                 local halfSize  = boxSize / 2
 
+                -- Debug: show hitbox part
+                do
+                    local dbg = Instance.new("Part")
+                    dbg.Name = "_HitboxDebug"
+                    dbg.Size = boxSize
+                    dbg.CFrame = boxCFrame
+                    dbg.Anchored = true
+                    dbg.CanCollide = false
+                    dbg.CanTouch = false
+                    dbg.CanQuery = false
+                    dbg.Transparency = 0.7
+                    dbg.Color = Color3.fromRGB(255, 0, 0)
+                    dbg.Material = Enum.Material.Neon
+                    dbg.Parent = workspace
+                    Debris:AddItem(dbg, scaledActive + 0.05)
+                end
+
                 local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
                 for _, hit in ipairs(targetsNow) do
                     if not hitAlready[hit.humanoid] then
-                        hitAlready[hit.humanoid] = true
-                        applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
-
-                        -- ENCHANT SYSTEM: spawn colored hit-burst at impact point
-                        if WeaponEnchantService and tool and tool:GetAttribute("HasEnchant") then
-                            local pn = tool:GetAttribute("EnchantName")
-                            if pn and pn ~= "" and hit.hitPos then
-                                pcall(function()
-                                    WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
-                                end)
+                        local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
+                        local victimPos = (victimRoot and victimRoot.Position) or hit.hitPos
+                        if victimPos then
+                            local distToAttacker = (victimPos - curHrp.Position).Magnitude
+                            if distToAttacker < bestHitDist then
+                                bestHitDist = distToAttacker
+                                bestHit = {
+                                    hit = hit,
+                                    boxCFrame = boxCFrame,
+                                    victimRoot = victimRoot,
+                                }
                             end
                         end
+                    end
+                end
+            end
 
-                        -- hit sound at attacker
-                        local hitSoundKey = cfg.hit_sound
-                        if hitSoundKey and hitSoundKey ~= "" then
-                            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-                            if soundsFolder then
-                                local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
-                                if meleeFolder then
-                                    local template = meleeFolder:FindFirstChild(hitSoundKey)
-                                    if template and template:IsA("Sound") then
-                                        local s = template:Clone()
-                                        s.Parent = curHrp
-                                        s:Play()
-                                        Debris:AddItem(s, 3)
-                                    end
-                                end
+            if bestHit then
+                local hit = bestHit.hit
+                hitAlready[hit.humanoid] = true
+                primaryHitDone = true
+
+                applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
+
+                -- ENCHANT SYSTEM: spawn colored hit-burst at impact point
+                if WeaponEnchantService and tool and tool:GetAttribute("HasEnchant") then
+                    local pn = tool:GetAttribute("EnchantName")
+                    if pn and pn ~= "" and hit.hitPos then
+                        pcall(function()
+                            WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
+                        end)
+                    end
+                    -- ENCHANT PROC: roll and apply flat enchant effect
+                    if pn and pn ~= "" then
+                        pcall(function()
+                            WeaponEnchantService.TryProcEnchant(
+                                player, hum,
+                                hit.model, hit.humanoid,
+                                pn, hit.hitPos
+                            )
+                        end)
+                    end
+                end
+
+                -- hit sound at attacker
+                local hitSoundKey = cfg.hit_sound
+                if hitSoundKey and hitSoundKey ~= "" then
+                    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                    if soundsFolder then
+                        local meleeFolder = soundsFolder:FindFirstChild("ToolMelee")
+                        if meleeFolder then
+                            local template = meleeFolder:FindFirstChild(hitSoundKey)
+                            if template and template:IsA("Sound") then
+                                local s = template:Clone()
+                                s.Parent = curHrp
+                                s:Play()
+                                Debris:AddItem(s, 3)
                             end
                         end
+                    end
+                end
 
-                        -- knockback (skip for same-team players)
-                        if finalKnockback > 0 then
-                            local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
-                            if victimRoot then
-                                local vp = Players:GetPlayerFromCharacter(hit.model)
-                                local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
-                                if not isSameTeam then
-                                    local dir = (victimRoot.Position - boxCFrame.Position)
-                                    if dir.Magnitude < 0.01 then dir = boxCFrame.LookVector end
-                                    applyKnockback(victimRoot, dir, finalKnockback)
-                                end
-                            end
-                        end
-
+                -- knockback (skip for same-team players)
+                if finalKnockback > 0 and bestHit.victimRoot then
+                    local vp = Players:GetPlayerFromCharacter(hit.model)
+                    local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
+                    if not isSameTeam then
+                        local dir = (bestHit.victimRoot.Position - bestHit.boxCFrame.Position)
+                        if dir.Magnitude < 0.01 then dir = bestHit.boxCFrame.LookVector end
+                        applyKnockback(bestHit.victimRoot, dir, finalKnockback)
                     end
                 end
             end

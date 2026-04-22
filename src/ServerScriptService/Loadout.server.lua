@@ -50,6 +50,34 @@ local forceEquipRemote = getOrCreateRemote("ForceEquipTool")
 local setRangedRemote = getOrCreateRemote("SetRangedTool")
 local setMeleeRemote = getOrCreateRemote("SetMeleeTool")
 local loadoutChangedRemote = getOrCreateRemote("LoadoutChanged")
+local menuStateRemote = getOrCreateRemote("MenuStateChanged")
+
+--------------------------------------------------------------------------------
+-- MENU LOCK: server-side enforcement
+-- The client fires MenuStateChanged(true/false) when menus open/close.
+-- We also set a player attribute so other server scripts can check it.
+--------------------------------------------------------------------------------
+menuStateRemote.OnServerEvent:Connect(function(player, isOpen)
+    -- Sanitize: only accept boolean
+    if type(isOpen) ~= "boolean" then return end
+    player:SetAttribute("MenuOpen", isOpen)
+
+    -- If menu just opened, force-unequip any held tool
+    if isOpen then
+        local char = player.Character
+        if char then
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                pcall(function() hum:UnequipTools() end)
+            end
+        end
+    end
+end)
+
+--- Helper: is this player currently menu-locked?
+local function isPlayerMenuLocked(player)
+    return player:GetAttribute("MenuOpen") == true
+end
 
 --------------------------------------------------------------------------------
 -- STATE
@@ -509,6 +537,11 @@ end
 
 -- Force-equip handler: client asks server to equip a tool from their Backpack
 forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
+    -- SERVER MENU-LOCK GUARD: reject equip while any menu is open
+    if isPlayerMenuLocked(player) then
+        return
+    end
+
     local bp = player:FindFirstChildOfClass("Backpack")
     local char = player.Character
     if not bp then return end
@@ -763,6 +796,20 @@ local function onPlayerAdded(player)
                 rangedInstanceId = ids and ids.Ranged or nil,
             })
         end)
+
+        -- MENU-LOCK FAILSAFE: watch for tools parented to Character while menu is open
+        local char = player.Character
+        if char then
+            char.ChildAdded:Connect(function(child)
+                if child:IsA("Tool") and isPlayerMenuLocked(player) then
+                    print("[MenuLock-Server] Failsafe: unequipping", child.Name, "for", player.Name)
+                    task.defer(function()
+                        local hum = char:FindFirstChildOfClass("Humanoid")
+                        if hum then pcall(function() hum:UnequipTools() end) end
+                    end)
+                end
+            end)
+        end
     end)
 
     -- handle an already-spawned character (Studio fast-start)
