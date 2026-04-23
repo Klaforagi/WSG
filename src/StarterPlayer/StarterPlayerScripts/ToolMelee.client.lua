@@ -92,10 +92,6 @@ local function getToolSizePercent(tool)
     return 100
 end
 
-<<<<<<< HEAD
-local function getSizeSpeedMultiplier(sizePercent)
-    return math.clamp(sizePercent / 100, 0.5, 3.0)
-=======
 --- Speed scaling: below 100% is linear (tiny weapons swing faster for more DPS).
 --- Above 100% scales at half rate so max 200% = 1.5x duration, not 2.0x.
 local function getSizeSpeedMultiplier(sizePercent)
@@ -103,7 +99,6 @@ local function getSizeSpeedMultiplier(sizePercent)
         return math.clamp(sizePercent / 100, 0.5, 1.0)
     end
     return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 2.0)
->>>>>>> 0215795a08efea19e2edc4fb0eced5cf1d0f613a
 end
 
 --------------------------------------------------------------------------------
@@ -607,10 +602,8 @@ local function attachMelee(tool)
         end
 
         -- Trigger sword trail (size-scaled timing)
-<<<<<<< HEAD
         local startOffset = (cfg.trail_start or 0.22) * sizeSpeedMult
         local endOffset   = (cfg.trail_end   or 0.36) * sizeSpeedMult
-=======
         -- First attack uses later timing (0.26-0.44) so trail aligns with animation
         local trailStart = cfg.trail_start or 0.22
         local trailEnd   = cfg.trail_end   or 0.36
@@ -620,7 +613,6 @@ local function attachMelee(tool)
         end
         local startOffset = trailStart * sizeSpeedMult
         local endOffset   = trailEnd   * sizeSpeedMult
->>>>>>> 0215795a08efea19e2edc4fb0eced5cf1d0f613a
         pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
 
         -- Tell the server we swung (include combo step for validation/damage)
