@@ -5,13 +5,32 @@
 local Config = {}
 
 -- Health regeneration settings (server authoritative).
--- "AmountPerTick": how much health is restored each tick.
--- "TickInterval": how often (in seconds) each tick occurs.
--- Set "Enabled" to false to disable passive regen.
+-- Regen is disabled immediately when damage is taken and ramps up in stages
+-- based on time since last damage.
+-- Set "Enabled" to false to disable passive regen entirely.
 Config.HealthRegen = {
     Enabled = true,
-    AmountPerTick = 1,   -- HP restored per tick (default: 2)
-    TickInterval   = 10,  -- seconds between ticks (default: 5s)
+    Stages = {
+        -- After 5s without taking damage: heal 1 HP every 1s
+        {
+            DelaySinceDamage = 5,
+            AmountPerTick = 1,
+            TickInterval = 1,
+        },
+        -- After 10s without taking damage: heal 1.5 HP every 1s
+        {
+            DelaySinceDamage = 10,
+            AmountPerTick = 1.5,
+            TickInterval = 1,
+        },
+        -- After 15s without taking damage: heal 2 HP every 1s
+        -- This stage remains active until damage is taken again.
+        {
+            DelaySinceDamage = 15,
+            AmountPerTick = 2,
+            TickInterval = 1,
+        },
+    },
 }
 
 -- Future settings can be added here (e.g., stabilizer flags, head/accessory rules)

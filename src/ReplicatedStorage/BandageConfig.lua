@@ -5,11 +5,11 @@
 
 local BandageConfig = {}
 
-BandageConfig.CastDuration  = 6       -- seconds to channel
-BandageConfig.TickInterval  = 1.5     -- seconds between heal ticks
-BandageConfig.HealPerTick   = 3     -- HP restored per tick
+BandageConfig.CastDuration  = 4       -- seconds to channel
+BandageConfig.TickInterval  = 1       -- seconds between heal ticks
+BandageConfig.HealPerTick   = 10      -- HP restored per tick (10 HP/sec)
 BandageConfig.MaxTotalHeal  = 40      -- max HP healed per use (4 ticks)
-BandageConfig.Cooldown      = 3      -- seconds after use/interrupt before next use
+BandageConfig.Cooldown      = 20      -- seconds after use/interrupt before next use
 
 -- Movement interrupt threshold (studs from start position)
 BandageConfig.MoveThreshold = 1.5
