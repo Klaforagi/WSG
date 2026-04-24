@@ -50,9 +50,47 @@ end
 -- Keeps the character upright (resists tipping) but allows free yaw turning.
 -- addUprightStabilizer removed to avoid forcing upright alignment
 
+local function applySpawnForceField(char: Model)
+	-- Remove any existing ForceField first (Roblox may create one via SpawnLocation)
+	for _, v in ipairs(char:GetChildren()) do
+		if v:IsA("ForceField") then
+			v:Destroy()
+		end
+	end
+
+	local ff = Instance.new("ForceField")
+	ff.Visible = true
+	ff.Parent = char
+
+	local removed = false
+	local function removeFF()
+		if removed then return end
+		removed = true
+		if ff and ff.Parent then
+			ff:Destroy()
+		end
+	end
+
+	-- Remove when any Tool is equipped
+	local toolConn
+	toolConn = char.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then
+			toolConn:Disconnect()
+			removeFF()
+		end
+	end)
+
+	-- Remove after 2 seconds regardless
+	task.delay(2, function()
+		toolConn:Disconnect()
+		removeFF()
+	end)
+end
+
 local function applyCharacterSettings(char: Model)
 	-- Keep head/accessory no-collide for safety, but do not force upright or block humanoid states.
 	applyHeadAndAccessoryNoCollide(char)
+	applySpawnForceField(char)
 
 	-- Remove default Roblox health regen script if present
 	local healthScript = char:FindFirstChild("Health")

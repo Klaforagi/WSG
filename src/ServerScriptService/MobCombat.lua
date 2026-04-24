@@ -68,9 +68,39 @@ local function applyVictimKnockback(victimRoot, attackerRoot, knockback, knockba
     if horizontal.Magnitude < 0.01 then return end
 
     local dir = horizontal.Unit
-    local mass = victimRoot.AssemblyMass > 0 and victimRoot.AssemblyMass or victimRoot:GetMass()
-    local impulse = (dir * (knockback or 18) + Vector3.new(0, knockbackY or 2, 0)) * mass
-    victimRoot:ApplyImpulse(impulse)
+    -- Directly overwrite AssemblyLinearVelocity instead of ApplyImpulse.
+    -- ApplyImpulse is countered by the Humanoid controller every frame;
+    -- setting velocity directly produces a reliable, visible knockback.
+    local lateralSpeed = knockback or 50
+    local vertSpeed = knockbackY or 12
+    victimRoot.AssemblyLinearVelocity = dir * lateralSpeed + Vector3.new(0, vertSpeed, 0)
+end
+
+local function playDamageFlash(character)
+    if not character or not character:IsA("Model") then return end
+
+    local flash = character:FindFirstChild("_MobDamageFlash")
+    if not (flash and flash:IsA("Highlight")) then
+        flash = Instance.new("Highlight")
+        flash.Name = "_MobDamageFlash"
+        flash.Adornee = character
+        flash.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+        flash.FillColor = Color3.fromRGB(255, 255, 255)
+        flash.OutlineColor = Color3.fromRGB(255, 80, 80)
+        flash.Parent = character
+    end
+
+    flash.Enabled = true
+    flash.FillTransparency = 0.22
+    flash.OutlineTransparency = 0.38
+
+    local tween = TweenService:Create(
+        flash,
+        TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { FillTransparency = 1, OutlineTransparency = 1 }
+    )
+    tween:Play()
+    Debris:AddItem(flash, 0.2)
 end
 
 function MobCombat.StartMob(mobModel, mobConfig, context)
@@ -109,8 +139,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local ATTACK_WINDUP = cfgAtk.Windup or 0.45
     local HITBOX_SIZE = cfgAtk.HitboxSize or Vector3.new(5, 6, 5)
     local HITBOX_OFFSET = cfgAtk.HitboxOffset or Vector3.new(0, 0, 3)
-    local HIT_KNOCKBACK = cfgAtk.Knockback or 18
-    local HIT_KNOCKBACK_Y = cfgAtk.KnockbackY or 2
+    local HIT_KNOCKBACK = cfgAtk.Knockback or 50
+    local HIT_KNOCKBACK_Y = cfgAtk.KnockbackY or 12
     local MIN_SPACING = cfgAtk.MinimumSpacingDistance or 3.5
     local ORC_NOISE_CHANCE = 0.25
     local ORC_NOISE_COOLDOWN = 3
@@ -436,6 +466,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 victimHum:TakeDamage(ATTACK_DAMAGE)
 
                 local victimChar = victimHum.Parent
+                -- Quick whole-character flash so players can clearly read incoming damage.
+                playDamageFlash(victimChar)
                 local victimRoot = victimChar and (victimChar:FindFirstChild("HumanoidRootPart") or victimChar:FindFirstChild("Torso"))
                 if victimRoot then
                     pcall(function()
