@@ -107,12 +107,14 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local ATTACK_COOLDOWN = cfgAtk.Cooldown or 1
     local ATTACK_RANGE = cfgAtk.Range or 6
     local ATTACK_WINDUP = cfgAtk.Windup or 0.45
-    local ATTACK_SOUND = cfgAtk.Sound or "OrcAttack"
     local HITBOX_SIZE = cfgAtk.HitboxSize or Vector3.new(5, 6, 5)
     local HITBOX_OFFSET = cfgAtk.HitboxOffset or Vector3.new(0, 0, 3)
     local HIT_KNOCKBACK = cfgAtk.Knockback or 18
     local HIT_KNOCKBACK_Y = cfgAtk.KnockbackY or 2
     local MIN_SPACING = cfgAtk.MinimumSpacingDistance or 3.5
+    local ORC_NOISE_CHANCE = 0.25
+    local ORC_NOISE_COOLDOWN = 3
+    local isOrc = (mobModel.Name == "Orc")
 
     local SHOW_HITBOX = (cfgDbg.ShowHitbox == true)
     local HITBOX_COLOR = cfgDbg.HitboxColor or Color3.fromRGB(255, 50, 50)
@@ -131,6 +133,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local lastMoveCommandAt = 0
     local REPATH_INTERVAL = 0.20
     local REPATH_DISTANCE = 1.5
+    local lastOrcNoiseProcAt = -math.huge
 
     humanoid.WalkSpeed = WALK_SPEED
     humanoid.AutoRotate = true
@@ -335,9 +338,29 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     end)
 
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-    local attackSoundTemplate
-    if soundsFolder then
-        attackSoundTemplate = soundsFolder:FindFirstChild(ATTACK_SOUND) or soundsFolder:FindFirstChild("Zombie_Attack")
+    local mobSoundsFolder = soundsFolder and soundsFolder:FindFirstChild("Mobs")
+    local mobSwingTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("MobSwing")
+    local mobHitTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("MobHit")
+    local orcNoiseTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("OrcNoise")
+
+    local function playTemplateSound(template, parentPart)
+        if not template or not template:IsA("Sound") then return end
+        local parentObj = parentPart or getRootPart(mobModel) or mobModel
+        if not parentObj then return end
+        local s = template:Clone()
+        s.Parent = parentObj
+        s:Play()
+        Debris:AddItem(s, 4)
+    end
+
+    local function playOrcNoise()
+        if not isOrc then return end
+        local now = os.clock()
+        if (now - lastOrcNoiseProcAt) < ORC_NOISE_COOLDOWN then return end
+        if math.random() < ORC_NOISE_CHANCE then
+            lastOrcNoiseProcAt = now
+            playTemplateSound(orcNoiseTemplate, getRootPart(mobModel) or mobModel)
+        end
     end
 
     local function performAttack(targetRoot)
@@ -348,6 +371,11 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         if now - lastSwingEnd < ATTACK_COOLDOWN then return end
 
         isAttacking = true
+
+        -- Every mob attack swing plays MobSwing.
+        playTemplateSound(mobSwingTemplate, getRootPart(mobModel) or mobModel)
+        -- Orc-specific flavor: 25% chance to play OrcNoise on attack (3s proc cooldown).
+        playOrcNoise()
 
         if attackTrack then
             pcall(function()
@@ -419,13 +447,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                     pcall(function() zombieKillEvent:FireClient(ply) end)
                 end
 
+                -- If a player gets hit by a mob, play MobHit on the victim.
                 local parentForSound = (victimChar and (victimChar:FindFirstChild("HumanoidRootPart") or victimChar:FindFirstChildWhichIsA("BasePart"))) or mobModel
-                if attackSoundTemplate and attackSoundTemplate:IsA("Sound") then
-                    local s = attackSoundTemplate:Clone()
-                    s.Parent = parentForSound
-                    s:Play()
-                    Debris:AddItem(s, 4)
-                end
+                playTemplateSound(mobHitTemplate, parentForSound)
             end
         end
 
@@ -440,6 +464,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
             if USE_ENRAGED then
                 isEnraged = true
             end
+
+            -- Orc-specific flavor: 25% chance to play OrcNoise when damaged (3s proc cooldown).
+            playOrcNoise()
 
             local attackerId = humanoid:GetAttribute("lastDamagerUserId")
             if attackerId then
@@ -492,7 +519,12 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
             end
 
             if targetRoot and dist then
+                local wasChasing = chasing
                 chasing = true
+                -- Orc-specific flavor: 25% chance to play OrcNoise when first aggroed (3s proc cooldown).
+                if (not wasChasing) and isOrc then
+                    playOrcNoise()
+                end
                 updateSpeedByState()
 
                 local targetPos = targetRoot.Position
