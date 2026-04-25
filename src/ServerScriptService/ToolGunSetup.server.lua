@@ -164,6 +164,7 @@ end
 
 -- Server-side handling + validation (projectile-based)
 local lastFire = {} -- [player] = { [toolName] = tick() }
+local slowState = {} -- [player] = { count = n, base = number, factors = {..} }
 
 -- Base defaults when no preset supplies values
 local DAMAGE = 25
@@ -189,14 +190,23 @@ local function raycastSkippingAccessories(origin, direction, rayParams)
         end
         local inst = result.Instance
         local acc = nil
-        local isInvisWall = false
+        local shouldSkip = false
         if inst and inst.FindFirstAncestorWhichIsA then
             acc = inst:FindFirstAncestorWhichIsA("Accessory")
         end
-        if inst and inst:IsA("BasePart") and tostring(inst.Name) == "InvisWall" then
-            isInvisWall = true
+        if inst and inst:IsA("BasePart") then
+            local instName = tostring(inst.Name)
+            shouldSkip = (
+                instName == "InvisWall"
+                or instName == "PickupPart"
+                or instName == "DefaultZone"
+                or inst.CanQuery == false
+            )
+            if not shouldSkip and inst:FindFirstAncestor("EventMeteorZones") then
+                shouldSkip = true
+            end
         end
-        if acc or isInvisWall then
+        if acc or shouldSkip then
             -- skip accessory: continue raycast just past the hit position
             local hitPos = result.Position
             local dirUnit = remaining.Unit
@@ -962,6 +972,70 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     local initVel = aimDir * tBULLETSPEED
     spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
 
+    -- Apply a brief movement slow while firing ranged weapons.
+    do
+        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        local slowFactor = 0.6
+        if tCfg.slow_factor and type(tCfg.slow_factor) == "number" then
+            slowFactor = math.clamp(tCfg.slow_factor, 0.1, 1)
+        end
+        local slowDuration = math.max(tCOOLDOWN * 0.95, 0.01)
+
+        if not slowState[player] then
+            slowState[player] = { count = 0, base = nil, factors = {} }
+        end
+        local st = slowState[player]
+        if st.count == 0 then
+            st.base = hum and hum.WalkSpeed or 16
+        end
+        st.count = st.count + 1
+        table.insert(st.factors, slowFactor)
+
+        local minFactor = 1
+        for _, factor in ipairs(st.factors) do
+            minFactor = math.min(minFactor, factor)
+        end
+        if hum and hum.Parent then
+            pcall(function()
+                hum.WalkSpeed = math.max((st.base or 16) * minFactor, 0.1)
+            end)
+        end
+
+        task.delay(slowDuration, function()
+            local s = slowState[player]
+            if not s then
+                return
+            end
+
+            s.count = math.max(s.count - 1, 0)
+            for index, value in ipairs(s.factors) do
+                if value == slowFactor then
+                    table.remove(s.factors, index)
+                    break
+                end
+            end
+
+            if s.count <= 0 then
+                if s.base and hum and hum.Parent then
+                    pcall(function()
+                        hum.WalkSpeed = s.base
+                    end)
+                end
+                slowState[player] = nil
+            else
+                local minRemainingFactor = 1
+                for _, factor in ipairs(s.factors) do
+                    minRemainingFactor = math.min(minRemainingFactor, factor)
+                end
+                if hum and hum.Parent then
+                    pcall(function()
+                        hum.WalkSpeed = math.max((s.base or 16) * minRemainingFactor, 0.1)
+                    end)
+                end
+            end
+        end)
+    end
+
     -- play a minimal server-side recoil animation on the shooter's right arm
     spawn(function()
         pcall(function() playServerRecoil(player) end)
@@ -978,4 +1052,14 @@ end)
 -- clean up rate-limit table when players leave
 Players.PlayerRemoving:Connect(function(player)
     lastFire[player] = nil
+    if slowState[player] then
+        local st = slowState[player]
+        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        if st.base and hum and hum.Parent then
+            pcall(function()
+                hum.WalkSpeed = st.base
+            end)
+        end
+        slowState[player] = nil
+    end
 end)

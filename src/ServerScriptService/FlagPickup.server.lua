@@ -170,15 +170,22 @@ local function makeCarryClone(originalModel, character)
     if flagTrail then
         flagTrail.Enabled = false
         task.spawn(function()
+            local moveThreshold = 0.01
+            local stopGraceSeconds = 0.15
+            local lastMovingAt = 0
             -- Run only while the carried clone is alive in the world
             while clone and clone.Parent do
                 local hrp = character and character:FindFirstChild("HumanoidRootPart")
                 if hrp then
-                    flagTrail.Enabled = (hrp.AssemblyLinearVelocity.Magnitude > 2)
+                    local isMoving = hrp.AssemblyLinearVelocity.Magnitude > moveThreshold
+                    if isMoving then
+                        lastMovingAt = os.clock()
+                    end
+                    flagTrail.Enabled = isMoving or ((os.clock() - lastMovingAt) <= stopGraceSeconds)
                 else
                     flagTrail.Enabled = false
                 end
-                task.wait(0.1)
+                task.wait(0.03)
             end
             -- Ensure trail is off after the clone is destroyed
             pcall(function() flagTrail.Enabled = false end)
@@ -240,6 +247,7 @@ function setupFlagModel(model)
     if not team then return end
     local pickupPart = findPickupPart(model)
     if not pickupPart then return end
+    pickupPart.CanQuery = false
     flags[team] = flags[team] or {}
     flags[team].model = model
     flags[team].pickupPart = pickupPart

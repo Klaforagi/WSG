@@ -3,8 +3,8 @@ local Debris = game:GetService("Debris")
 
 local HEAL_PART_NAME = "HealPart"
 
-local HEAL_PER_TICK = 20
-local TOTAL_TICKS = 5 -- 1 instant + 4 more ticks
+local HEAL_PER_TICK = 7
+local TOTAL_TICKS = 15 -- 1 instant + 14 more ticks; same total heal, spread over 3x the duration
 local TICK_DELAY = 1
 local RESPAWN_TIME = 30
 
@@ -131,7 +131,7 @@ local function healCharacter(character)
 			break
 		end
 
-		-- Apply heal but clamp to max
+		-- Apply smaller heal pulses over a longer window so the hut is less bursty.
 		if humanoid.Health < humanoid.MaxHealth then
 			humanoid.Health = math.min(humanoid.Health + HEAL_PER_TICK, humanoid.MaxHealth)
 		end
