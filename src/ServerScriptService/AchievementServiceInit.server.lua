@@ -384,33 +384,47 @@ task.spawn(function()
     task.wait(3)
     local grantSkinBF = ServerScriptService:FindFirstChild("GrantSkin")
     if grantSkinBF and grantSkinBF:IsA("BindableFunction") then
-        local _prevGrantSkin = grantSkinBF.OnInvoke
-        grantSkinBF.OnInvoke = function(player, skinId)
-            local result = _prevGrantSkin(player, skinId)
-            if result then
-                task.spawn(function()
-                    task.wait(0.5)
-                    recalcItemsOwned(player)
-                end)
+        local _prevGrantSkin
+        local okPrev = pcall(function()
+            _prevGrantSkin = grantSkinBF.OnInvoke
+        end)
+        if okPrev and type(_prevGrantSkin) == "function" then
+            grantSkinBF.OnInvoke = function(player, skinId)
+                local result = _prevGrantSkin(player, skinId)
+                if result then
+                    task.spawn(function()
+                        task.wait(0.5)
+                        recalcItemsOwned(player)
+                    end)
+                end
+                return result
             end
-            return result
+            print("[AchievementServiceInit] GrantSkin wrapped for itemsOwned tracking")
+        else
+            warn("[AchievementServiceInit] GrantSkin OnInvoke is write-only here; skipping wrapper")
         end
-        print("[AchievementServiceInit] GrantSkin wrapped for itemsOwned tracking")
     end
     local grantEffectBF = ServerScriptService:FindFirstChild("GrantEffect")
     if grantEffectBF and grantEffectBF:IsA("BindableFunction") then
-        local _prevGrantEffect = grantEffectBF.OnInvoke
-        grantEffectBF.OnInvoke = function(player, effectId)
-            local result = _prevGrantEffect(player, effectId)
-            if result then
-                task.spawn(function()
-                    task.wait(0.5)
-                    recalcItemsOwned(player)
-                end)
+        local _prevGrantEffect
+        local okPrev = pcall(function()
+            _prevGrantEffect = grantEffectBF.OnInvoke
+        end)
+        if okPrev and type(_prevGrantEffect) == "function" then
+            grantEffectBF.OnInvoke = function(player, effectId)
+                local result = _prevGrantEffect(player, effectId)
+                if result then
+                    task.spawn(function()
+                        task.wait(0.5)
+                        recalcItemsOwned(player)
+                    end)
+                end
+                return result
             end
-            return result
+            print("[AchievementServiceInit] GrantEffect wrapped for itemsOwned tracking")
+        else
+            warn("[AchievementServiceInit] GrantEffect OnInvoke is write-only here; skipping wrapper")
         end
-        print("[AchievementServiceInit] GrantEffect wrapped for itemsOwned tracking")
     end
 end)
 

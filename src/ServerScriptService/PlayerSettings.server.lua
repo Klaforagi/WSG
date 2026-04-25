@@ -50,9 +50,47 @@ end
 -- Keeps the character upright (resists tipping) but allows free yaw turning.
 -- addUprightStabilizer removed to avoid forcing upright alignment
 
+local function applySpawnForceField(char: Model)
+	-- Remove any existing ForceField first (Roblox may create one via SpawnLocation)
+	for _, v in ipairs(char:GetChildren()) do
+		if v:IsA("ForceField") then
+			v:Destroy()
+		end
+	end
+
+	local ff = Instance.new("ForceField")
+	ff.Visible = true
+	ff.Parent = char
+
+	local removed = false
+	local function removeFF()
+		if removed then return end
+		removed = true
+		if ff and ff.Parent then
+			ff:Destroy()
+		end
+	end
+
+	-- Remove when any Tool is equipped
+	local toolConn
+	toolConn = char.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then
+			toolConn:Disconnect()
+			removeFF()
+		end
+	end)
+
+	-- Remove after 2 seconds regardless
+	task.delay(2, function()
+		toolConn:Disconnect()
+		removeFF()
+	end)
+end
+
 local function applyCharacterSettings(char: Model)
 	-- Keep head/accessory no-collide for safety, but do not force upright or block humanoid states.
 	applyHeadAndAccessoryNoCollide(char)
+	applySpawnForceField(char)
 
 	-- Remove default Roblox health regen script if present
 	local healthScript = char:FindFirstChild("Health")
@@ -63,20 +101,37 @@ local function applyCharacterSettings(char: Model)
 	-- Start server-authoritative passive health regen if enabled in config
 	local hum = char:FindFirstChildOfClass("Humanoid")
 	if hum and PlayerSettingsConfig and PlayerSettingsConfig.HealthRegen and PlayerSettingsConfig.HealthRegen.Enabled then
-		local amt = tonumber(PlayerSettingsConfig.HealthRegen.AmountPerTick) or 1
-		local interval = tonumber(PlayerSettingsConfig.HealthRegen.TickInterval) or 5
+		local regenCfg = PlayerSettingsConfig.HealthRegen
+		local configuredStages = regenCfg.Stages
+		local stages = {}
 
-		-- Warn if settings are so low that regen appears non-functional
-		if amt <= 0 then
-			warn("[PlayerSettings] HealthRegen.AmountPerTick is <= 0; regen will not occur!")
-		end
-		if interval > 30 then
-			warn("[PlayerSettings] HealthRegen.TickInterval is very high (>", interval, ") – regen may appear non-functional.")
+		if type(configuredStages) == "table" then
+			for _, stage in ipairs(configuredStages) do
+				local delaySinceDamage = tonumber(stage.DelaySinceDamage)
+				local amountPerTick = tonumber(stage.AmountPerTick)
+				local tickInterval = tonumber(stage.TickInterval)
+				if delaySinceDamage and amountPerTick and tickInterval and tickInterval > 0 and amountPerTick > 0 then
+					table.insert(stages, {
+						DelaySinceDamage = delaySinceDamage,
+						AmountPerTick = amountPerTick,
+						TickInterval = math.max(0.05, tickInterval),
+					})
+				end
+			end
 		end
 
-		-- Enforce sane minimums to avoid extremely fast ticks
-		if interval < 0.05 then interval = 0.05 end
-		if amt <= 0 then amt = 1 end
+		if #stages == 0 then
+			stages = {
+				{ DelaySinceDamage = 5, AmountPerTick = 1, TickInterval = 1 },
+				{ DelaySinceDamage = 10, AmountPerTick = 2, TickInterval = 1 },
+				{ DelaySinceDamage = 15, AmountPerTick = 1, TickInterval = 0.5 },
+			}
+			warn("[PlayerSettings] HealthRegen.Stages missing/invalid; using default staged regen")
+		end
+
+		table.sort(stages, function(a, b)
+			return a.DelaySinceDamage < b.DelaySinceDamage
+		end)
 
 		-- Prevent multiple regen loops for the same humanoid by using an attribute flag
 		local regenFlag = "_ps_regen_active"
@@ -85,13 +140,37 @@ local function applyCharacterSettings(char: Model)
 		end
 		hum:SetAttribute(regenFlag, true)
 
-		-- Spawn a loop that heals the humanoid every `interval` seconds while alive.
-		-- The loop exits when the humanoid dies or the character is removed.
+		-- Spawn a staged regen loop:
+		-- damage disables regen immediately, then regen ramps by time-since-damage.
 		task.spawn(function()
 			-- Listen for death to stop regen
 			local alive = true
+			local lastDamageAt = os.clock()
+			local previousHealth = hum.Health
+			local activeStageIndex = 0
+			local nextRegenAt = math.huge
+
+			local function getActiveStageIndex(secondsSinceDamage)
+				local idx = 0
+				for i, stage in ipairs(stages) do
+					if secondsSinceDamage >= stage.DelaySinceDamage then
+						idx = i
+					end
+				end
+				return idx
+			end
+
 			local diedConn = hum.Died:Connect(function()
 				alive = false
+			end)
+			local healthConn = hum.HealthChanged:Connect(function(newHealth)
+				if newHealth < previousHealth then
+					-- Any damage immediately disables regen and restarts the stage timer.
+					lastDamageAt = os.clock()
+					activeStageIndex = 0
+					nextRegenAt = math.huge
+				end
+				previousHealth = newHealth
 			end)
 			-- Listen for character removal to stop regen
 			local ancestryConn = char.AncestryChanged:Connect(function(_, parent)
@@ -101,16 +180,35 @@ local function applyCharacterSettings(char: Model)
 			end)
 
 			while alive and hum and hum.Parent do
-				-- Only heal if below MaxHealth
-				local maxHp = hum.MaxHealth or 100
-				if hum.Health > 0 and hum.Health < maxHp then
-					hum.Health = math.min(maxHp, hum.Health + amt)
+				local now = os.clock()
+				local secondsSinceDamage = now - lastDamageAt
+				local stageIndex = getActiveStageIndex(secondsSinceDamage)
+
+				if stageIndex ~= activeStageIndex then
+					activeStageIndex = stageIndex
+					if activeStageIndex > 0 then
+						-- Apply first tick immediately when entering a regen stage.
+						nextRegenAt = now
+					else
+						nextRegenAt = math.huge
+					end
 				end
-				task.wait(interval)
+
+				if activeStageIndex > 0 and now >= nextRegenAt then
+					local activeStage = stages[activeStageIndex]
+					local maxHp = hum.MaxHealth or 100
+					if hum.Health > 0 and hum.Health < maxHp then
+						hum.Health = math.min(maxHp, hum.Health + activeStage.AmountPerTick)
+					end
+					nextRegenAt = now + activeStage.TickInterval
+				end
+
+				task.wait(0.1)
 			end
 
 			-- Clean up connections
 			if diedConn.Connected then diedConn:Disconnect() end
+			if healthConn.Connected then healthConn:Disconnect() end
 			if ancestryConn.Connected then ancestryConn:Disconnect() end
 			-- Clear the regen flag
 			if hum and hum.Parent then

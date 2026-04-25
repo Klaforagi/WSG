@@ -67,7 +67,9 @@ local Presets = {
         Attack = {
             Damage      = 8,
             Cooldown    = .5,
-            Windup      = 0.2,
+            Windup      = 0.35,
+            Knockback   = 50,
+            KnockbackY  = 4,
         },
         Animation = {
             Walk   = "rbxassetid://657552124",

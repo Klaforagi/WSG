@@ -164,6 +164,27 @@ local function makeCarryClone(originalModel, character)
             end
         end
     end
+    -- Velocity-based trail toggle: enable FlagTrail only while the carrier is moving
+    local trailPlane = clone:FindFirstChild("Plane", true)
+    local flagTrail = trailPlane and trailPlane:FindFirstChild("FlagTrail")
+    if flagTrail then
+        flagTrail.Enabled = false
+        task.spawn(function()
+            -- Run only while the carried clone is alive in the world
+            while clone and clone.Parent do
+                local hrp = character and character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    flagTrail.Enabled = (hrp.AssemblyLinearVelocity.Magnitude > 2)
+                else
+                    flagTrail.Enabled = false
+                end
+                task.wait(0.1)
+            end
+            -- Ensure trail is off after the clone is destroyed
+            pcall(function() flagTrail.Enabled = false end)
+        end)
+    end
+
     return clone
 end
 
@@ -267,6 +288,8 @@ function setupFlagModel(model)
                 -- slightly thicker and tapered
                 trail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.6), NumberSequenceKeypoint.new(1, 0.2)})
                 trail.Parent = plane
+                -- Trail is off by default; only enabled when a carrier is moving
+                trail.Enabled = false
             end
         end
     end

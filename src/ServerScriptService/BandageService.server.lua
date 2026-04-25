@@ -7,6 +7,10 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
+local Debris            = game:GetService("Debris")
+
+local VFXFolder = ReplicatedStorage:FindFirstChild("VFX")
+local PlusHealsTemplate = VFXFolder and VFXFolder:FindFirstChild("PlusHeals")
 
 --------------------------------------------------------------------------------
 -- LOAD CONFIG
@@ -22,7 +26,7 @@ end
 if not BandageConfig then
     warn("[BandageService] BandageConfig not found – using defaults")
     BandageConfig = {
-        CastDuration = 6, TickInterval = 1.5, HealPerTick = 10,
+        CastDuration = 4, TickInterval = 1, HealPerTick = 10,
         MaxTotalHeal = 40, Cooldown = 20, MoveThreshold = 1.5,
     }
 end
@@ -66,6 +70,7 @@ local function getState(player)
             totalHealed  = 0,
             thread       = nil,
             healthConn   = nil,
+            plusHealsVFX = nil,
         }
     end
     return playerState[player]
@@ -86,11 +91,32 @@ local function getRootPart(player)
     return char:FindFirstChild("HumanoidRootPart")
 end
 
+local function getVFXAttachPart(player)
+    local char = player.Character
+    if not char then return nil end
+    return char:FindFirstChild("HumanoidRootPart")
+        or char:FindFirstChild("UpperTorso")
+        or char:FindFirstChild("Torso")
+        or char:FindFirstChild("Head")
+end
+
 local function startCooldown(player, state)
     state.cooldownEnd = tick() + BandageConfig.Cooldown
     pcall(function()
         bandageCooldown:FireClient(player, BandageConfig.Cooldown)
     end)
+end
+
+local function clearBandageVFX(state)
+    if state.plusHealsVFX and state.plusHealsVFX.Parent then
+        if state.plusHealsVFX:IsA("ParticleEmitter") then
+            state.plusHealsVFX.Enabled = false
+            Debris:AddItem(state.plusHealsVFX, 2)
+        else
+            state.plusHealsVFX:Destroy()
+        end
+    end
+    state.plusHealsVFX = nil
 end
 
 --------------------------------------------------------------------------------
@@ -115,6 +141,9 @@ local function stopBandage(player, reason)
         pcall(function() state.healthConn:Disconnect() end)
         state.healthConn = nil
     end
+
+    -- Stop and clean up bandage-specific VFX
+    clearBandageVFX(state)
 
     -- Clear attribute on character
     local char = player.Character
@@ -231,6 +260,19 @@ local function startBandage(player)
         char:SetAttribute("IsBandaging", true)
     end
 
+    -- Play PlusHeals while the player is actively bandaging
+    if PlusHealsTemplate and not state.plusHealsVFX then
+        local attachPart = getVFXAttachPart(player)
+        if attachPart then
+            local plusHeals = PlusHealsTemplate:Clone()
+            plusHeals.Parent = attachPart
+            if plusHeals:IsA("ParticleEmitter") then
+                plusHeals.Enabled = true
+            end
+            state.plusHealsVFX = plusHeals
+        end
+    end
+
     -- Monitor for damage during cast (health going DOWN = interrupt)
     local prevHealth = hum.Health
     state.healthConn = hum.HealthChanged:Connect(function(newHealth)
@@ -279,6 +321,7 @@ Players.PlayerAdded:Connect(function(player)
             state.totalHealed = 0
             if state.thread then pcall(task.cancel, state.thread); state.thread = nil end
             if state.healthConn then pcall(function() state.healthConn:Disconnect() end); state.healthConn = nil end
+            clearBandageVFX(state)
         end
         state.cooldownEnd = 0
         char:SetAttribute("IsBandaging", false)
@@ -293,6 +336,7 @@ Players.PlayerRemoving:Connect(function(player)
             if state.thread then pcall(task.cancel, state.thread); state.thread = nil end
             if state.healthConn then pcall(function() state.healthConn:Disconnect() end); state.healthConn = nil end
         end
+        clearBandageVFX(state)
     end
     playerState[player] = nil
 end)
