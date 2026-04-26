@@ -35,8 +35,8 @@ end
 
 local rarityDefaults = {
     Common = {
-        damage = 4,
-        cd = 0.7,
+        damage = 3,
+        cd = 0.4,
         bulletspeed = 150,
         range = 450,
         projectile_lifetime = 4,
@@ -49,8 +49,8 @@ local rarityDefaults = {
     },
 
     Uncommon = {
-        damage = 5.5,
-        cd = 0.7,
+        damage = 3.8,
+        cd = 0.4,
         bulletspeed = 175,
         range = 650,
         projectile_lifetime = 4,
@@ -63,8 +63,8 @@ local rarityDefaults = {
     },
 
     Rare = {
-        damage = 7,
-        cd = 0.7,
+        damage = 4.8,
+        cd = 0.4,
         bulletspeed = 225,
         range = 1000,
         projectile_lifetime = 4,
@@ -77,8 +77,8 @@ local rarityDefaults = {
     },
 
     Epic = {
-        damage = 8.5,
-        cd = 0.7,
+        damage = 5.6,
+        cd = 0.4,
         bulletspeed = 275,
         range = 1500,
         projectile_lifetime = 4,
@@ -91,8 +91,8 @@ local rarityDefaults = {
     },
 
     Legendary = {
-        damage = 10,
-        cd = 0.7,
+        damage = 6.4,
+        cd = 0.4,
         bulletspeed = 325,
         range = 2000,
         projectile_lifetime = 4,
