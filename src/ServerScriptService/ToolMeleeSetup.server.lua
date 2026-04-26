@@ -179,6 +179,16 @@ local function getComboKnockbackMultiplier(comboCfg, step)
     return defaults[step] or 1.0
 end
 
+local function getMaxCleaveTargets(sizePercent)
+    if sizePercent >= 190 then
+        return 3
+    end
+    if sizePercent >= 150 then
+        return 2
+    end
+    return 1
+end
+
 ---------------------------------------------------------------------------
 -- Damage helper (same tag pattern as the gun system so KillTracker works)
 ---------------------------------------------------------------------------
@@ -505,6 +515,9 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     -- finalKnockback = baseKnockback * comboKnockbackMult * sizeMult
     local comboKbMult = getComboKnockbackMultiplier(comboCfg, validStep)
     local finalKnockback = baseKnockback * comboKbMult * sizeDamageMult
+    local maxTargets = getMaxCleaveTargets(sizePercent)
+    local cleaveDamageMultipliers = { 1.0, 0.55, 0.35 }
+    local cleaveKnockbackMultipliers = { 1.0, 0.4, 0.4 }
 
     -- ── DEBUG: size scaling verification ───────────────────────────────
     print(string.format(
@@ -813,8 +826,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             local centerZ = offset.Z
             local spread  = boxSize.Z * 0.35
             local sampleDepths = { centerZ - spread, centerZ, centerZ + spread }
-            local bestHit = nil
-            local bestHitDist = math.huge
+            local candidateHits = {}
 
             for _, depth in ipairs(sampleDepths) do
                 local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * depth
@@ -845,12 +857,13 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                         local victimPos = (victimRoot and victimRoot.Position) or hit.hitPos
                         if victimPos then
                             local distToAttacker = (victimPos - curHrp.Position).Magnitude
-                            if distToAttacker < bestHitDist then
-                                bestHitDist = distToAttacker
-                                bestHit = {
+                            local existing = candidateHits[hit.humanoid]
+                            if (not existing) or distToAttacker < existing.dist then
+                                candidateHits[hit.humanoid] = {
                                     hit = hit,
                                     boxCFrame = boxCFrame,
                                     victimRoot = victimRoot,
+                                    dist = distToAttacker,
                                 }
                             end
                         end
@@ -858,30 +871,65 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 end
             end
 
-            if bestHit then
-                local hit = bestHit.hit
-                hitAlready[hit.humanoid] = true
+            local selectedHits = {}
+            for _, entry in pairs(candidateHits) do
+                table.insert(selectedHits, entry)
+            end
+            table.sort(selectedHits, function(a, b)
+                return a.dist < b.dist
+            end)
+
+            while #selectedHits > maxTargets do
+                table.remove(selectedHits)
+            end
+
+            if #selectedHits > 0 then
                 primaryHitDone = true
 
-                applyMeleeDamage(player, hit.humanoid, hit.model, damage, hit.hitPart, hit.hitPos)
+                local pn = nil
+                local canTryEnchant = WeaponEnchantService and tool and tool:GetAttribute("HasEnchant")
+                if canTryEnchant then
+                    pn = tool:GetAttribute("EnchantName")
+                    canTryEnchant = pn and pn ~= ""
+                end
+                local enchantProcced = false
 
-                -- ENCHANT SYSTEM: spawn colored hit-burst at impact point
-                if WeaponEnchantService and tool and tool:GetAttribute("HasEnchant") then
-                    local pn = tool:GetAttribute("EnchantName")
-                    if pn and pn ~= "" and hit.hitPos then
+                for index, entry in ipairs(selectedHits) do
+                    local hit = entry.hit
+                    hitAlready[hit.humanoid] = true
+
+                    local damageMultiplier = cleaveDamageMultipliers[index] or cleaveDamageMultipliers[#cleaveDamageMultipliers]
+                    local knockbackMultiplier = cleaveKnockbackMultipliers[index] or cleaveKnockbackMultipliers[#cleaveKnockbackMultipliers]
+                    applyMeleeDamage(player, hit.humanoid, hit.model, damage * damageMultiplier, hit.hitPart, hit.hitPos)
+
+                    if canTryEnchant and (not enchantProcced) then
+                        local procSucceeded = false
                         pcall(function()
-                            WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
-                        end)
-                    end
-                    -- ENCHANT PROC: roll and apply flat enchant effect
-                    if pn and pn ~= "" then
-                        pcall(function()
-                            WeaponEnchantService.TryProcEnchant(
+                            procSucceeded = WeaponEnchantService.TryProcEnchant(
                                 player, hum,
                                 hit.model, hit.humanoid,
                                 pn, hit.hitPos
-                            )
+                            ) == true
                         end)
+                        if procSucceeded then
+                            enchantProcced = true
+                            if hit.hitPos then
+                                pcall(function()
+                                    WeaponEnchantService.SpawnHitEffect(hit.hitPos, pn, hit.hitPart)
+                                end)
+                            end
+                        end
+                    end
+
+                    -- knockback (skip for same-team players)
+                    if finalKnockback > 0 and entry.victimRoot then
+                        local vp = Players:GetPlayerFromCharacter(hit.model)
+                        local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
+                        if not isSameTeam then
+                            local dir = (entry.victimRoot.Position - entry.boxCFrame.Position)
+                            if dir.Magnitude < 0.01 then dir = entry.boxCFrame.LookVector end
+                            applyKnockback(entry.victimRoot, dir, finalKnockback * knockbackMultiplier)
+                        end
                     end
                 end
 
@@ -900,17 +948,6 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                                 Debris:AddItem(s, 3)
                             end
                         end
-                    end
-                end
-
-                -- knockback (skip for same-team players)
-                if finalKnockback > 0 and bestHit.victimRoot then
-                    local vp = Players:GetPlayerFromCharacter(hit.model)
-                    local isSameTeam = vp and player and player.Team and vp.Team and player.Team == vp.Team
-                    if not isSameTeam then
-                        local dir = (bestHit.victimRoot.Position - bestHit.boxCFrame.Position)
-                        if dir.Magnitude < 0.01 then dir = bestHit.boxCFrame.LookVector end
-                        applyKnockback(bestHit.victimRoot, dir, finalKnockback)
                     end
                 end
             end

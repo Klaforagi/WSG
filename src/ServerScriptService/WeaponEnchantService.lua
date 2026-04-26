@@ -788,15 +788,15 @@ end
 function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
                                               targetModel, targetHumanoid,
                                               enchantName, hitPos)
-    if not enchantName or enchantName == "" then return end
-    if not isValidTarget(attackerPlayer, targetModel, targetHumanoid) then return end
+    if not enchantName or enchantName == "" then return false end
+    if not isValidTarget(attackerPlayer, targetModel, targetHumanoid) then return false end
 
     local cfg = ProcConfig[enchantName]
-    if not cfg then return end
+    if not cfg then return false end
 
     -- Roll proc chance
     local chance = cfg.ProcChance or 0
-    if math.random() > chance then return end
+    if math.random() > chance then return false end
 
     local targetRoot = getRoot(targetModel)
 
@@ -898,6 +898,8 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
             end
         end
     end
+
+    return true
 end
 
 ---------------------------------------------------------------------------
