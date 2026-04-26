@@ -152,11 +152,15 @@ end
 local function getServerToolCfg(toolName)
     local cfg = {}
     for k, v in pairs(TOOLCFG) do cfg[k] = v end
-    if ToolgunModule and ToolgunModule.presets then
+    if ToolgunModule then
         local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
         local presetKey = suffix and suffix:lower()
-        if presetKey and ToolgunModule.presets[presetKey] then
-            for k, v in pairs(ToolgunModule.presets[presetKey]) do cfg[k] = v end
+        local preset = presetKey and (
+            (ToolgunModule.getPreset and ToolgunModule.getPreset(presetKey))
+            or (ToolgunModule.presets and ToolgunModule.presets[presetKey])
+        )
+        if preset then
+            for k, v in pairs(preset) do cfg[k] = v end
         end
     end
     return cfg
@@ -164,7 +168,83 @@ end
 
 -- Server-side handling + validation (projectile-based)
 local lastFire = {} -- [player] = { [toolName] = tick() }
-local slowState = {} -- [player] = { count = n, base = number, factors = {..} }
+
+local DEFAULT_WALKSPEED = 16
+local slowState = {} -- [player] = { token = number, baseSpeed = number, expireAt = number, humanoid = Humanoid }
+
+local function getHumanoid(player)
+    local char = player and player.Character
+    return char and char:FindFirstChildOfClass("Humanoid") or nil
+end
+
+local function restoreRangedSlow(player, token)
+    local state = slowState[player]
+    if not state then return end
+    if state.token ~= token then return end
+
+    local now = tick()
+    if now < state.expireAt then
+        task.delay((state.expireAt - now) + 0.05, function()
+            restoreRangedSlow(player, token)
+        end)
+        return
+    end
+
+    local hum = state.humanoid
+    if not hum or not hum.Parent then
+        hum = getHumanoid(player)
+    end
+
+    if hum and hum.Parent then
+        local baseSpeed = state.baseSpeed or DEFAULT_WALKSPEED
+        pcall(function()
+            hum.WalkSpeed = baseSpeed
+        end)
+    end
+
+    if slowState[player] and slowState[player].token == token then
+        slowState[player] = nil
+    end
+end
+
+local function applyRangedFireSlow(player, slowFactor, slowDuration)
+    local hum = getHumanoid(player)
+    if not hum or not hum.Parent then return end
+
+    local now = tick()
+    local state = slowState[player]
+
+    if not state or state.humanoid ~= hum then
+        state = {
+            token = 0,
+            baseSpeed = hum.WalkSpeed > 0 and hum.WalkSpeed or DEFAULT_WALKSPEED,
+            expireAt = 0,
+            humanoid = hum,
+        }
+        slowState[player] = state
+    end
+
+    -- Never let baseSpeed become the slowed speed.
+    local currentSlowSpeed = (state.baseSpeed or DEFAULT_WALKSPEED) * slowFactor
+    if hum.WalkSpeed > currentSlowSpeed + 0.1 then
+        state.baseSpeed = hum.WalkSpeed
+    end
+
+    state.token += 1
+    state.expireAt = now + slowDuration
+    state.humanoid = hum
+
+    local myToken = state.token
+    local baseSpeed = state.baseSpeed or DEFAULT_WALKSPEED
+
+    pcall(function()
+        hum.WalkSpeed = math.max(baseSpeed * slowFactor, 0.1)
+    end)
+
+    task.delay(slowDuration + 0.05, function()
+        restoreRangedSlow(player, myToken)
+    end)
+end
 
 -- Base defaults when no preset supplies values
 local DAMAGE = 25
@@ -974,66 +1054,12 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
 
     -- Apply a brief movement slow while firing ranged weapons.
     do
-        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
         local slowFactor = 0.6
         if tCfg.slow_factor and type(tCfg.slow_factor) == "number" then
             slowFactor = math.clamp(tCfg.slow_factor, 0.1, 1)
         end
         local slowDuration = math.max(tCOOLDOWN * 0.95, 0.01)
-
-        if not slowState[player] then
-            slowState[player] = { count = 0, base = nil, factors = {} }
-        end
-        local st = slowState[player]
-        if st.count == 0 then
-            st.base = hum and hum.WalkSpeed or 16
-        end
-        st.count = st.count + 1
-        table.insert(st.factors, slowFactor)
-
-        local minFactor = 1
-        for _, factor in ipairs(st.factors) do
-            minFactor = math.min(minFactor, factor)
-        end
-        if hum and hum.Parent then
-            pcall(function()
-                hum.WalkSpeed = math.max((st.base or 16) * minFactor, 0.1)
-            end)
-        end
-
-        task.delay(slowDuration, function()
-            local s = slowState[player]
-            if not s then
-                return
-            end
-
-            s.count = math.max(s.count - 1, 0)
-            for index, value in ipairs(s.factors) do
-                if value == slowFactor then
-                    table.remove(s.factors, index)
-                    break
-                end
-            end
-
-            if s.count <= 0 then
-                if s.base and hum and hum.Parent then
-                    pcall(function()
-                        hum.WalkSpeed = s.base
-                    end)
-                end
-                slowState[player] = nil
-            else
-                local minRemainingFactor = 1
-                for _, factor in ipairs(s.factors) do
-                    minRemainingFactor = math.min(minRemainingFactor, factor)
-                end
-                if hum and hum.Parent then
-                    pcall(function()
-                        hum.WalkSpeed = math.max((s.base or 16) * minRemainingFactor, 0.1)
-                    end)
-                end
-            end
-        end)
+        applyRangedFireSlow(player, slowFactor, slowDuration)
     end
 
     -- play a minimal server-side recoil animation on the shooter's right arm
@@ -1049,15 +1075,43 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     end)
 end)
 
+-- Restore WalkSpeed on character removal (respawn clears the old Humanoid).
+local function onCharacterRemoving(player)
+    local st = slowState[player]
+    if not st then return end
+    local hum = st.humanoid or getHumanoid(player)
+    if hum and hum.Parent and st.baseSpeed then
+        pcall(function()
+            hum.WalkSpeed = st.baseSpeed
+        end)
+    end
+    slowState[player] = nil
+end
+
+local function setupPlayerCleanup(player)
+    player.CharacterRemoving:Connect(function()
+        onCharacterRemoving(player)
+    end)
+end
+
+-- Hook existing players (if script runs after players joined).
+for _, player in ipairs(Players:GetPlayers()) do
+    setupPlayerCleanup(player)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    setupPlayerCleanup(player)
+end)
+
 -- clean up rate-limit table when players leave
 Players.PlayerRemoving:Connect(function(player)
     lastFire[player] = nil
-    if slowState[player] then
-        local st = slowState[player]
-        local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-        if st.base and hum and hum.Parent then
+    local st = slowState[player]
+    if st then
+        local hum = st.humanoid or getHumanoid(player)
+        if hum and hum.Parent and st.baseSpeed then
             pcall(function()
-                hum.WalkSpeed = st.base
+                hum.WalkSpeed = st.baseSpeed
             end)
         end
         slowState[player] = nil
