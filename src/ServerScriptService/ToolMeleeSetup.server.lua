@@ -54,6 +54,9 @@ pcall(function()
     end
 end)
 
+-- Shared weapon switch lock
+local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+
 ---------------------------------------------------------------------------
 -- Remote events
 ---------------------------------------------------------------------------
@@ -458,6 +461,12 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local tool = player.Character:FindFirstChild(toolName)
     if not tool or not tool:IsA("Tool") then return end
 
+    -- WEAPON LOCK CHECK: reject swings from a different weapon while locked
+    if WeaponLockService.IsLocked(player) then
+        local lockedTool = WeaponLockService.GetLockedTool(player)
+        if lockedTool ~= toolName then return end
+    end
+
     -- resolve config (rarity defaults merged with weapon overrides)
     local cfg = getServerMeleeCfg(toolName)
 
@@ -556,6 +565,9 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         lastSwing[player][toolName] = now
     end
     lastSwing[player][toolName .. "_cd"] = cd
+
+    -- Lock weapon switching for the duration of this swing's cooldown.
+    WeaponLockService.ApplyWeaponLock(player, tool, cd)
 
     -- Advance server combo state AFTER rate-limit passes
     if hasCombo then
@@ -972,6 +984,7 @@ Players.PlayerRemoving:Connect(function(player)
         end
         slowState[player] = nil
     end
+    WeaponLockService.cleanupPlayer(player)
 end)
 
 print("[ToolMeleeSetup] server ready")

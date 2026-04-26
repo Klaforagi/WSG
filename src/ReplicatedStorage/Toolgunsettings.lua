@@ -133,8 +133,6 @@ local presets = {
 
     longbow = {
         rarity = "Epic",
-        damage = 12,
-        cd = 0.9,
         projectile_name = "Arrow",
         shoot_sound = "BowShoot",
         hit_sound = "BowHit",
@@ -142,8 +140,6 @@ local presets = {
 
     xbow = {
         rarity = "Legendary",
-        damage = 24,
-        cd = 2.0,
         projectile_name = "Bolt",
         visual_flip = true,
         shoot_sound = "BowShoot",

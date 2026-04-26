@@ -34,6 +34,9 @@ if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
 end
 local TOOLCFG = {}
 
+-- Shared weapon switch lock (also used by ToolMeleeSetup)
+local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+
 -- Default: tracers are disabled unless a preset explicitly enables them
 local SHOW_TRACER = false
 
@@ -977,6 +980,16 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     local tRANGE = tCfg.range or RANGE
     local tCOOLDOWN = tCfg.cd or COOLDOWN_SERVER
 
+    -- Validate the tool is actually equipped in the character (not just named by client).
+    local equippedTool = player.Character:FindFirstChild(toolName)
+    if not equippedTool or not equippedTool:IsA("Tool") then return end
+
+    -- WEAPON LOCK CHECK: reject shots from a different weapon while locked.
+    if WeaponLockService.IsLocked(player) then
+        local lockedTool = WeaponLockService.GetLockedTool(player)
+        if lockedTool ~= toolName then return end
+    end
+
     -- rate limit (per-tool so switching weapons doesn't block shots)
     -- Uses 90% of cooldown as the check threshold so network jitter can't
     -- silently drop shots.  Stamps lastFire to the cadence beat (last + cd)
@@ -1062,6 +1075,9 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         applyRangedFireSlow(player, slowFactor, slowDuration)
     end
 
+    -- Lock weapon switching for the duration of this weapon's cooldown.
+    WeaponLockService.ApplyWeaponLock(player, equippedTool, tCOOLDOWN)
+
     -- play a minimal server-side recoil animation on the shooter's right arm
     spawn(function()
         pcall(function() playServerRecoil(player) end)
@@ -1075,17 +1091,20 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     end)
 end)
 
--- Restore WalkSpeed on character removal (respawn clears the old Humanoid).
+-- Restore WalkSpeed and weapon lock on character removal (respawn clears old Humanoid/Backpack).
 local function onCharacterRemoving(player)
     local st = slowState[player]
-    if not st then return end
-    local hum = st.humanoid or getHumanoid(player)
-    if hum and hum.Parent and st.baseSpeed then
-        pcall(function()
-            hum.WalkSpeed = st.baseSpeed
-        end)
+    if st then
+        local hum = st.humanoid or getHumanoid(player)
+        if hum and hum.Parent and st.baseSpeed then
+            pcall(function()
+                hum.WalkSpeed = st.baseSpeed
+            end)
+        end
+        slowState[player] = nil
     end
-    slowState[player] = nil
+    -- Roblox resets the backpack on respawn; just destroy the holder so tools re-grant cleanly.
+    WeaponLockService.cleanupCharacter(player)
 end
 
 local function setupPlayerCleanup(player)
@@ -1116,4 +1135,5 @@ Players.PlayerRemoving:Connect(function(player)
         end
         slowState[player] = nil
     end
+    WeaponLockService.cleanupPlayer(player)
 end)
