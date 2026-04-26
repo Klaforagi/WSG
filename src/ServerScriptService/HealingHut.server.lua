@@ -3,10 +3,15 @@ local Debris = game:GetService("Debris")
 
 local HEAL_PART_NAME = "HealPart"
 
-local HEAL_PER_TICK = 7
-local TOTAL_TICKS = 15 -- 1 instant + 14 more ticks; same total heal, spread over 3x the duration
-local TICK_DELAY = 1
+local HEAL_PER_TICK = 11
+local HEAL_DURATION = 8
+local TOTAL_TICKS = 9 -- first tick is instant, then 8 delayed ticks
+local TICK_DELAY = HEAL_DURATION / (TOTAL_TICKS - 1)
 local RESPAWN_TIME = 30
+local HUT_HEAL_ACTIVE_ATTR = "_hut_heal_active"
+
+-- Guard against overlapping hut-heal runners on the same humanoid.
+local activeHutHeals = {} -- [Humanoid] = true
 
 local SoundsFolder = ReplicatedStorage:WaitForChild("Sounds")
 local VFXFolder = ReplicatedStorage:WaitForChild("VFX")
@@ -111,6 +116,14 @@ local function healCharacter(character)
 	if not humanoid or humanoid.Health <= 0 then
 		return
 	end
+	if activeHutHeals[humanoid] then
+		return
+	end
+
+	activeHutHeals[humanoid] = true
+	pcall(function()
+		humanoid:SetAttribute(HUT_HEAL_ACTIVE_ATTR, true)
+	end)
 
 	local canceled = false
 	local lastHealth = humanoid.Health
@@ -131,13 +144,14 @@ local function healCharacter(character)
 			break
 		end
 
-		-- Apply smaller heal pulses over a longer window so the hut is less bursty.
-		if humanoid.Health < humanoid.MaxHealth then
-			humanoid.Health = math.min(humanoid.Health + HEAL_PER_TICK, humanoid.MaxHealth)
+		if tick > 1 then
+			-- First tick is instant, remaining ticks are spaced across the full duration.
+			task.wait(TICK_DELAY)
 		end
 
-		if tick < TOTAL_TICKS then
-			task.wait(TICK_DELAY)
+		-- Apply evenly spaced pulses over 8 seconds (instant first pulse).
+		if humanoid.Health < humanoid.MaxHealth then
+			humanoid.Health = math.min(humanoid.Health + HEAL_PER_TICK, humanoid.MaxHealth)
 		end
 	end
 	
@@ -147,6 +161,13 @@ local function healCharacter(character)
 
 	if stopEffects then
 		stopEffects()
+	end
+
+	activeHutHeals[humanoid] = nil
+	if humanoid and humanoid.Parent then
+		pcall(function()
+			humanoid:SetAttribute(HUT_HEAL_ACTIVE_ATTR, false)
+		end)
 	end
 end
 
