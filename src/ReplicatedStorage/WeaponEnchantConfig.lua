@@ -67,8 +67,8 @@ WeaponEnchantConfig.Enchants = {
     },
     {
         name        = "Void",
-        color       = Color3.fromRGB(106, 13, 173),
-        trail_color = Color3.fromRGB(141, 40, 218),    -- sword trail color
+        color       = Color3.fromRGB(180, 80, 255),
+        trail_color = Color3.fromRGB(200, 110, 255),    -- sword trail color
         statusType  = "Curse",
         description = "Dark resonance",
     },
@@ -126,7 +126,7 @@ WeaponEnchantConfig.ProcConfig = {
         ProcChance         = 0.14,
         ProcDamage         = 15,
         KnockbackForce     = 45,
-        KnockbackUpwardForce = 18,
+        KnockbackUpwardForce = 6,
         SoundId            = "rbxassetid://REPLACE_ME",
     },
 }

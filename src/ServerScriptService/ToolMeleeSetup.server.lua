@@ -845,8 +845,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 local boxCFrame = CFrame.new(pos, pos + lookV)
                 local halfSize  = boxSize / 2
 
-                -- Debug: show hitbox part
-                do
+                -- Debug: show hitbox part (only when cfg.showHitbox == true)
+                if cfg.showHitbox == true then
                     local dbg = Instance.new("Part")
                     dbg.Name = "_HitboxDebug"
                     dbg.Size = boxSize
@@ -856,7 +856,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                     dbg.CanTouch = false
                     dbg.CanQuery = false
                     dbg.Transparency = 0.7
-                    dbg.Color = Color3.fromRGB(255, 0, 0)
+                    dbg.Color = cfg.hitboxColor or Color3.fromRGB(255, 0, 0)
                     dbg.Material = Enum.Material.Neon
                     dbg.Parent = workspace
                     Debris:AddItem(dbg, scaledActive + 0.05)

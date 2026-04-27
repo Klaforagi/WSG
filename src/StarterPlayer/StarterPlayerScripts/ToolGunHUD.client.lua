@@ -410,11 +410,11 @@ if fireHit and fireHit:IsA("RemoteEvent") then
             label.Parent = gui
 
             local goal = {StudsOffset = gui.StudsOffset + Vector3.new(0,1.2,0)}
-            local tween = TweenService:Create(gui, TweenInfo.new(0.9, Enum.EasingStyle.Quad), goal)
+            local tween = TweenService:Create(gui, TweenInfo.new(1.5, Enum.EasingStyle.Quad), goal)
             tween:Play()
             for i = 0, 1, 0.06 do
                 label.TextTransparency = i
-                task.wait(0.06)
+                task.wait(0.09)
             end
             tween:Cancel()
             gui:Destroy()
