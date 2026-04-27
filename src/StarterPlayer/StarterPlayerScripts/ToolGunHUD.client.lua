@@ -42,6 +42,24 @@ if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
     TOOLCFG_MODULE = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
 end
 
+-- Size-scaling helpers (mirrors server logic in ToolGunSetup)
+local function getClientSizePercent(tool)
+    if not tool then return 100 end
+    local sp = tool:GetAttribute("SizePercent")
+        or tool:GetAttribute("WeaponSizePercent")
+        or tool:GetAttribute("ScalePercent")
+        or tool:GetAttribute("WeaponScale")
+    if type(sp) == "number" and sp > 0 then return sp end
+    return 100
+end
+local function getClientSizeSpeedMult(sp)
+    if sp <= 100 then return math.clamp(sp / 100, 0.5, 1.0) end
+    return math.clamp(1.0 + (sp - 100) / 200, 1.0, 2.0)
+end
+local function getClientScaledCooldown(baseCd, sizePercent)
+    return baseCd * getClientSizeSpeedMult(sizePercent)
+end
+
 local function playFireSound(toolName)
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     if not soundsFolder then return end
@@ -237,19 +255,78 @@ local function expandCrosshair(amount)
     end)
 end
 
--- One-time connections (with 30ms dedup guard to prevent double-fire sounds)
-local lastAckTime = 0
-local toolCooldowns = {} -- toolName → cd, populated by attachTool, read here for hotbar overlay
+-- Hold-to-fire state (server-paced via ACK; no client-side timer drift)
+local COOLDOWN = 0.5
+local isHoldingFire = false
+local shotInFlight = false
+local nextAllowedFireAt = 0
+local fireToken = 0
+local currentFiringTool = nil
+local toolCooldowns = {} -- toolName → base cd (set by attachTool, used in ACK handler)
+
+local function tryFire(tool)
+    if not isHoldingFire then return end
+    if shotInFlight then return end
+    if os.clock() < nextAllowedFireAt then return end
+    if not tool or not tool.Parent then return end
+    local char = player.Character
+    if not char or not char:FindFirstChild(tool.Name) then return end
+    if _G.IsBandaging then return end
+
+    shotInFlight = true
+    local origin
+    if tool:FindFirstChild("Handle") and tool.Handle:IsA("BasePart") then
+        origin = tool.Handle.Position
+    else
+        origin = camera.CFrame.Position
+    end
+    local mouse = player:GetMouse()
+    local mx, my
+    if mouse and mouse.X and mouse.Y then
+        mx = mouse.X ; my = mouse.Y
+    else
+        local mpos = game:GetService("UserInputService"):GetMouseLocation()
+        mx = mpos.X ; my = mpos.Y
+    end
+    local ray = camera:ScreenPointToRay(mx, my)
+    fireEvent:FireServer(ray.Origin, ray.Direction.Unit, origin, tool.Name)
+    -- Failsafe: if no ACK within 0.35s, clear the in-flight flag so the gun does not get stuck
+    local myToken = fireToken
+    task.delay(0.35, function()
+        if fireToken == myToken and shotInFlight then
+            shotInFlight = false
+        end
+    end)
+end
+
 fireAck.OnClientEvent:Connect(function(gunOrigin, targetPos, toolName)
-    local now = os.clock()
-    if now - lastAckTime < 0.030 then return end
-    lastAckTime = now
     expandCrosshair(DEFAULT_RECOIL_AMOUNT)
     playFireSound(toolName)
-    -- trigger hotbar cooldown overlay (slot 2 = Ranged)
+
+    -- Resolve the equipped tool to compute size-scaled cooldown
+    local equippedTool = nil
+    local char = player.Character
+    if char and toolName then equippedTool = char:FindFirstChild(toolName) end
+    local baseCd = toolCooldowns[toolName] or COOLDOWN
+    local sizePercent = getClientSizePercent(equippedTool)
+    local scaledCd = getClientScaledCooldown(baseCd, sizePercent)
+
+    -- Hotbar cooldown overlay with the correct size-scaled duration
     if _G.HotbarCooldown then
-        local cd = toolCooldowns[toolName] or COOLDOWN
-        _G.HotbarCooldown.start(2, cd)
+        _G.HotbarCooldown.start(2, scaledCd)
+    end
+
+    -- Unblock the next shot and schedule tryFire if player is still holding
+    shotInFlight = false
+    nextAllowedFireAt = os.clock() + scaledCd
+
+    if isHoldingFire then
+        local myToken = fireToken
+        task.delay(scaledCd, function()
+            if fireToken == myToken and isHoldingFire then
+                tryFire(currentFiringTool)
+            end
+        end)
     end
 end)
 
@@ -380,8 +457,6 @@ local function onUnequippedTool()
 end
 
 -- Firing logic copied from original ToolGun.client.lua
-local COOLDOWN = 0.5
-local firing = {}
 local attachedTools = {} -- Lua table registry to prevent duplicate connections on clones
 
 local function getToolCfgForTool(tool)
@@ -414,55 +489,20 @@ local function attachTool(tool)
 
     local toolCfg = getToolCfgForTool(tool)
     local toolCooldown = (toolCfg and toolCfg.cd) or COOLDOWN
-    toolCooldowns[tool.Name] = toolCooldown   -- store for fireAck handler
+    toolCooldowns[tool.Name] = toolCooldown   -- base cd stored for ACK handler size-scaling
 
     local mouse = player:GetMouse()
-    local holding = false
-    local isFiringLoopRunning = false
-    local lastShot = 0
     local function startFiring()
-        if holding then return end
-        -- Prevent firing while bandaging
         if _G.IsBandaging then return end
-        holding = true
-        firing[tool] = true
-        if isFiringLoopRunning then return end
-        isFiringLoopRunning = true
-        task.spawn(function()
-            while holding and tool and tool.Parent and firing[tool] do
-                local now = tick()
-                if now - lastShot >= (toolCooldown or COOLDOWN) then
-                    lastShot = now
-                    local origin
-                    if tool:FindFirstChild("Handle") and tool.Handle:IsA("BasePart") then
-                        origin = tool.Handle.Position
-                    else
-                        origin = camera.CFrame.Position
-                    end
-                    local mx, my
-                    if mouse and mouse.X and mouse.Y then
-                        mx = mouse.X
-                        my = mouse.Y
-                    else
-                        local mpos = game:GetService("UserInputService"):GetMouseLocation()
-                        mx = mpos.X
-                        my = mpos.Y
-                    end
-                    local ray = camera:ScreenPointToRay(mx, my)
-                    local camOrigin = ray.Origin
-                    local camDir = ray.Direction.Unit
-                    local gunOrigin = origin
-                    fireEvent:FireServer(camOrigin, camDir, gunOrigin, tool.Name)
-                end
-                task.wait(0.02)
-            end
-            isFiringLoopRunning = false
-        end)
+        isHoldingFire = true
+        currentFiringTool = tool
+        tryFire(tool)
     end
 
     local function stopFiring()
-        holding = false
-        firing[tool] = nil
+        isHoldingFire = false
+        fireToken = fireToken + 1
+        shotInFlight = false
     end
 
     local mouseConns = {}

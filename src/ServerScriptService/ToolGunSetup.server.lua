@@ -260,6 +260,67 @@ local PROJECTILE_LIFETIME = 5 -- seconds
 local PROJECTILE_SIZE = Vector3.new(0.2, 0.2, 0.2)
 local BULLET_DROP = 9.8
 
+---------------------------------------------------------------------------
+-- RANGED SIZE SCALING HELPERS
+-- Mirrors the melee scaling system in ToolMeleeSetup.
+-- sizePercent is read from the equipped Tool's attributes set by WeaponScaleService.
+---------------------------------------------------------------------------
+
+local _rangedSizeWarnedTools = {}
+local function getToolSizePercent(tool)
+    if not tool then return 100 end
+    local sp = tool:GetAttribute("SizePercent")
+        or tool:GetAttribute("WeaponSizePercent")
+        or tool:GetAttribute("ScalePercent")
+        or tool:GetAttribute("WeaponScale")
+    if type(sp) == "number" and sp > 0 then return sp end
+    if not _rangedSizeWarnedTools[tool] then
+        _rangedSizeWarnedTools[tool] = true
+        warn("[RangedScaling] No size attribute on tool:", tool.Name, "defaulting to 100")
+    end
+    return 100
+end
+
+--- Damage: linear 1:1 with size. 150% = 1.5x, 80% = 0.8x.
+local function getSizeDamageMultiplier(sizePercent)
+    return math.clamp(sizePercent / 100, 0.5, 3.0)
+end
+
+--- Cooldown speed: same curve as melee.
+--- 80%=0.8x, 100%=1.0x, 150%=1.25x, 200%=1.5x
+local function getSizeSpeedMultiplier(sizePercent)
+    if sizePercent <= 100 then
+        return math.clamp(sizePercent / 100, 0.5, 1.0)
+    end
+    return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 2.0)
+end
+
+--- Returns baseCooldown scaled by weapon size.
+local function getScaledCooldown(baseCooldown, sizePercent)
+    return baseCooldown * getSizeSpeedMultiplier(sizePercent)
+end
+
+--- Projectile visual scale factor = sizePercent / 100 (linear).
+local function getProjectileVisualScale(sizePercent)
+    return math.clamp(sizePercent / 100, 0.1, 5.0)
+end
+
+--- Scale a Vector3 by a uniform factor.
+local function scaleVec3(v, factor)
+    return Vector3.new(v.X * factor, v.Y * factor, v.Z * factor)
+end
+
+--- Scale all BasePart sizes in a cloned projectile Model by factor.
+--- Must be called BEFORE parenting / positioning the clone.
+local function scaleProjectileModel(model, factor)
+    if math.abs(factor - 1.0) < 0.001 then return end -- no-op at 100%
+    for _, d in ipairs(model:GetDescendants()) do
+        if d:IsA("BasePart") then
+            pcall(function() d.Size = scaleVec3(d.Size, factor) end)
+        end
+    end
+end
+
 -- Raycast helper that skips Accessory parts so bullets pass through hats/attachments.
 local function raycastSkippingAccessories(origin, direction, rayParams)
     local maxIter = 10
@@ -427,6 +488,9 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local pLifetime = (projCfg and projCfg.projectile_lifetime) or PROJECTILE_LIFETIME
     local leaveProjectile = (projCfg and (projCfg.LeaveProjectile == true or projCfg.leaveProjectile == true))
     local stickLifetime = (projCfg and (projCfg.projectile_stick_lifetime or projCfg.stick_lifetime)) or 2
+    -- Visual scale already baked into projCfg.projectile_size by the caller;
+    -- _projVisualScale is used here only for Model scaling.
+    local modelVisualScale = (projCfg and projCfg._projVisualScale) or 1.0
     local pSize = PROJECTILE_SIZE
     if projCfg and projCfg.projectile_size then
         local ps = projCfg.projectile_size
@@ -473,7 +537,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     if not visual then
         visual = Instance.new("Part")
         visual.Name = "Bullet"
-        visual.Size = pSize
+        visual.Size = pSize  -- already scaled by caller
         visual.Material = Enum.Material.Neon
         if isSlingshot then
             visual.Color = BrickColor.Random().Color
@@ -489,6 +553,8 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         -- If the template is a Model, prepare it for script-driven movement
         if visual:IsA("Model") then
             usingModel = true
+            -- Scale each part of the cloned model before positioning.
+            scaleProjectileModel(visual, modelVisualScale)
             -- ensure model has a PrimaryPart; pick first BasePart if not
             local primary = visual.PrimaryPart
             if not primary then
@@ -513,6 +579,8 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             visual:SetPrimaryPartCFrame(CFrame.new(origin))
             visual.Parent = Workspace
         elseif visual:IsA("BasePart") then
+            -- Scale the cloned part before positioning.
+            pcall(function() visual.Size = scaleVec3(visual.Size, modelVisualScale) end)
             visual.CanCollide = false
             visual.Anchored = true
             visual.CFrame = CFrame.new(origin)
@@ -990,22 +1058,52 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         if lockedTool ~= toolName then return end
     end
 
-    -- rate limit (per-tool so switching weapons doesn't block shots)
-    -- Uses 90% of cooldown as the check threshold so network jitter can't
-    -- silently drop shots.  Stamps lastFire to the cadence beat (last + cd)
-    -- rather than wall-clock receipt time, preventing cumulative drift that
-    -- causes hiccup/burst patterns at any cooldown value.
+    -- ── SIZE SCALING ──────────────────────────────────────────────────
+    local sizePercent     = getToolSizePercent(equippedTool)
+    local sizeDamageMult  = getSizeDamageMultiplier(sizePercent)
+    local scaledCooldown  = getScaledCooldown(tCOOLDOWN, sizePercent)
+    local projVisualScale = getProjectileVisualScale(sizePercent)
+
+    -- Scaled damage is baked into the projectile config so applyDamage
+    -- sees it as the base damage (upgrade / headshot multipliers still apply there).
+    local scaledDamage = tDAMAGE * sizeDamageMult
+
+    -- Compute scaled projectile size.
+    local baseSize = PROJECTILE_SIZE
+    if tCfg.projectile_size then
+        local ps = tCfg.projectile_size
+        if typeof(ps) == "Vector3" then
+            baseSize = ps
+        elseif type(ps) == "table" then
+            baseSize = Vector3.new(ps[1] or 0.2, ps[2] or 0.2, ps[3] or 0.2)
+        end
+    end
+    local scaledSize = scaleVec3(baseSize, projVisualScale)
+
+    -- Strict one-shot cooldown: no cadence snapping, no catch-up, no burst.
     local now = tick()
     local toolKey = toolName or "_default"
     if not lastFire[player] then lastFire[player] = {} end
-    local last = lastFire[player][toolKey]
-    if last and now - last < tCOOLDOWN * 0.9 then return end
-    -- snap to expected cadence beat; reset fresh if player hasn't fired recently
-    if last and (now - last) < tCOOLDOWN * 1.5 then
-        lastFire[player][toolKey] = last + tCOOLDOWN
-    else
-        lastFire[player][toolKey] = now
+    local last = lastFire[player][toolKey] or 0
+    if now - last < scaledCooldown then
+        print("[RangedCooldown] blocked", player.Name, toolName, "remaining", scaledCooldown - (now - last))
+        return
     end
+    lastFire[player][toolKey] = now
+
+    print(string.format(
+        "[RangedScaling] %s | size=%d%% | baseDmg=%.1f | finalDmg=%.1f | baseCd=%.2f | scaledCd=%.2f | projectileScale=%.2f",
+        toolName, sizePercent, tDAMAGE, scaledDamage, tCOOLDOWN, scaledCooldown, projVisualScale
+    ))
+
+    -- Override cfg fields with computed scaled values before passing to spawnProjectile.
+    -- We copy so we never mutate the shared config table.
+    local scaledCfg = {}
+    for k, v in pairs(tCfg) do scaledCfg[k] = v end
+    scaledCfg.damage          = scaledDamage
+    scaledCfg.projectile_size = scaledSize
+    -- Store the visual scale so spawnProjectile can scale Model projectiles.
+    scaledCfg._projVisualScale = projVisualScale
 
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end
@@ -1058,12 +1156,17 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 game:GetService("Debris"):AddItem(beam, 0.22)
             end)()
         end
-        -- (fireAck is fired once at end of handler — no duplicate here)
+        -- (fireAck is fired early in this handler, before spawnProjectile — no duplicate here)
     end
+
+    -- Notify the client immediately so hold-to-fire pacing is driven by ACK, not a local timer.
+    pcall(function()
+        if fireAck then fireAck:FireClient(player, gunOrigin, aimPoint, toolName) end
+    end)
 
     -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts
     local initVel = aimDir * tBULLETSPEED
-    spawnProjectile(player, gunOrigin, initVel, tCfg, toolName)
+    spawnProjectile(player, gunOrigin, initVel, scaledCfg, toolName)
 
     -- Apply a brief movement slow while firing ranged weapons.
     do
@@ -1071,23 +1174,16 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         if tCfg.slow_factor and type(tCfg.slow_factor) == "number" then
             slowFactor = math.clamp(tCfg.slow_factor, 0.1, 1)
         end
-        local slowDuration = math.max(tCOOLDOWN * 0.95, 0.01)
+        local slowDuration = math.max(scaledCooldown * 0.95, 0.01)
         applyRangedFireSlow(player, slowFactor, slowDuration)
     end
 
-    -- Lock weapon switching for the duration of this weapon's cooldown.
-    WeaponLockService.ApplyWeaponLock(player, equippedTool, tCOOLDOWN)
+    -- Lock weapon switching for the duration of this weapon's scaled cooldown.
+    WeaponLockService.ApplyWeaponLock(player, equippedTool, scaledCooldown)
 
     -- play a minimal server-side recoil animation on the shooter's right arm
     spawn(function()
         pcall(function() playServerRecoil(player) end)
-    end)
-
-    -- notify client with aimed position so client can spawn a local tracer
-    pcall(function()
-        if fireAck then
-            fireAck:FireClient(player, gunOrigin, aimPoint, toolName)
-        end
     end)
 end)
 
