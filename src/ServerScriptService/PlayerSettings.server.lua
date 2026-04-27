@@ -197,7 +197,8 @@ local function applyCharacterSettings(char: Model)
 				if activeStageIndex > 0 and now >= nextRegenAt then
 					local activeStage = stages[activeStageIndex]
 					local maxHp = hum.MaxHealth or 100
-					if hum.Health > 0 and hum.Health < maxHp then
+					local hutHealActive = (hum:GetAttribute("_hut_heal_active") == true)
+					if (not hutHealActive) and hum.Health > 0 and hum.Health < maxHp then
 						hum.Health = math.min(maxHp, hum.Health + activeStage.AmountPerTick)
 					end
 					nextRegenAt = now + activeStage.TickInterval

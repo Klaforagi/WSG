@@ -23,8 +23,8 @@ local Defaults = {
     },
     Movement = {
         WalkSpeed        = 8,  -- passive wander speed
-        ChaseSpeed       = 12,  -- speed while chasing an aggroed target
-        EnragedSpeed     = 14,  -- speed after taking any damage (if UseEnraged = true)
+        ChaseSpeed       = 14,  -- speed while chasing an aggroed target
+        EnragedSpeed     = 18,  -- speed after taking any damage (if UseEnraged = true)
         UseEnraged       = false,
         DetectionRadius  = 20,  -- studs; range for auto-detecting nearby players
         AggroDuration    = 8,   -- seconds to remain aggroed on the attacker
@@ -32,7 +32,7 @@ local Defaults = {
     Attack = {
         Damage      = 5,
         Cooldown    = 1,        -- minimum seconds between swings
-        Range       = 6,        -- studs; distance at which attack wind-up begins
+        Range       = 9,        -- studs; distance at which attack wind-up begins
         MinimumSpacingDistance = 3.5, -- stop advancing when closer than this
         Windup      = 1,        -- seconds mob is locked before hitbox fires
         Sound       = "OrcAttack",

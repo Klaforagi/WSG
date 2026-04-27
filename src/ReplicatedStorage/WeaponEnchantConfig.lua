@@ -67,8 +67,8 @@ WeaponEnchantConfig.Enchants = {
     },
     {
         name        = "Void",
-        color       = Color3.fromRGB(106, 13, 173),
-        trail_color = Color3.fromRGB(141, 40, 218),    -- sword trail color
+        color       = Color3.fromRGB(180, 80, 255),
+        trail_color = Color3.fromRGB(200, 110, 255),    -- sword trail color
         statusType  = "Curse",
         description = "Dark resonance",
     },
@@ -87,29 +87,29 @@ end
 --------------------------------------------------------------------------------
 WeaponEnchantConfig.ProcConfig = {
     Fiery = {
-        ProcChance = 0.99,
-        ProcDamage = 20,
+        ProcChance = 0.22,
+        ProcDamage = 9,
         SoundId    = "rbxassetid://REPLACE_ME",
     },
     Icy = {
-        ProcChance    = 0.99,
-        TickDamage    = 2,          -- damage per tick while slowed
+        ProcChance    = 0.24,
+        TickDamage    = 3,          -- damage per tick while slowed
         TickInterval  = 1,          -- tick once per second
         SlowPercent   = 0.50,
         SlowDuration  = 4,          -- 4 ticks total = 2+2+2+2 = 8 damage
         SoundId       = "rbxassetid://REPLACE_ME",
     },
     Shock = {
-        ProcChance    = 0.5,
-        ProcDamage    = 10,
+        ProcChance    = 0.2,
+        ProcDamage    = 4,
         ChainRange    = 20,
         MaxChains     = 4,
-        ChainDamage   = 8,
+        ChainDamage   = 3,
         ChainCooldown = 0.3,
         SoundId       = "rbxassetid://REPLACE_ME",
     },
     Toxic = {
-        ProcChance       = 0.99,
+        ProcChance       = 0.20,
         TickDamage       = 4,
         TickInterval     = 2,
         DurationPerProc  = 6,
@@ -117,16 +117,16 @@ WeaponEnchantConfig.ProcConfig = {
         SoundId          = "rbxassetid://REPLACE_ME",
     },
     Lifesteal = {
-        ProcChance = 0.99,
-        ProcDamage = 6,
-        HealAmount = 6,
+        ProcChance = 0.26,
+        ProcDamage = 3,
+        HealAmount = 3,
         SoundId    = "rbxassetid://REPLACE_ME",
     },
     Void = {
-        ProcChance         = 0.99,
-        ProcDamage         = 30,
-        KnockbackForce     = 85,
-        KnockbackUpwardForce = 18,
+        ProcChance         = 0.14,
+        ProcDamage         = 15,
+        KnockbackForce     = 45,
+        KnockbackUpwardForce = 6,
         SoundId            = "rbxassetid://REPLACE_ME",
     },
 }

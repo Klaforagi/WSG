@@ -103,6 +103,17 @@ local slotTools       = {}
 -- current cached team tint (Color3 or nil)
 local currentTeamColor = nil
 
+-- Weapon cooldown lock state (driven by player attributes set by WeaponLockService)
+local weaponLocked     = false
+local weaponLockedTool = ""
+
+local function isWeaponLocked()
+    return player:GetAttribute("WeaponLocked") == true
+end
+local function getLockedToolName()
+    return player:GetAttribute("WeaponLockedTool") or ""
+end
+
 local function teamColorOrNil(team)
     if not team then return nil end
     local name = tostring(team.Name):lower()
@@ -477,10 +488,15 @@ local function refreshSlots()
         local tool = getToolForSlot(idx)
         slotTools[idx] = tool
 
+        local locked       = isWeaponLocked()
+        local lockedName   = getLockedToolName()
         local isUtility  = def.isUtility == true
         local isLocked   = (idx == 3 and not specialUnlocked and not isUtility)
         local isEquipped = (not isUtility and tool ~= nil and player.Character ~= nil
                             and tool.Parent == player.Character)
+        -- A non-equipped slot is weapon-cooldown-locked when the weapon lock is
+        -- active and this slot's tool is not the one holding the lock.
+        local isCooldownLocked = locked and (not isEquipped or (tool and tool.Name ~= lockedName))
 
         if isEquipped then
             selectedSlot = idx
@@ -534,6 +550,12 @@ local function refreshSlots()
                         ui.stroke.Color         = COLOR_STROKE_L
                         ui.nameLabel.Text       = "LOCKED"
                         ui.nameLabel.TextColor3 = COLOR_LOCK_TXT
+                    elseif isCooldownLocked then
+                        -- Weapon cooldown lock: dim the slot visually
+                        ui.btn.BackgroundColor3 = Color3.fromRGB(28, 20, 10)
+                        ui.stroke.Color         = Color3.fromRGB(120, 90, 30)
+                        ui.nameLabel.TextColor3 = Color3.fromRGB(130, 110, 60)
+                        ui.nameLabel.Text       = tool and tool.Name or ""
                     elseif isEquipped then
                         ui.btn.BackgroundColor3 = selBg
                         ui.stroke.Color         = strokeSel
@@ -557,6 +579,17 @@ equipSlot = function(idx)
 
     -- MENU LOCK: block all equip attempts while any menu is open
     if isAnyMenuOpen() then return end
+
+    -- WEAPON COOLDOWN LOCK: block switching to a different weapon while locked.
+    -- Unequipping the current weapon (clicking the equipped slot) is still allowed.
+    if isWeaponLocked() then
+        if not def.isUtility then
+            local lockedName = getLockedToolName()
+            local tool = getToolForSlot(idx)
+            -- Block only if this slot's tool is not the locked one
+            if tool and tool.Name ~= lockedName then return end
+        end
+    end
 
     -- Slot 3 = Bandage utility (not a weapon)
     if def.isUtility then
@@ -663,6 +696,19 @@ specialUnlockGranted.OnClientEvent:Connect(function(unlocked)
 end)
 
 --------------------------------------------------------------------------------
+-- WEAPON LOCK ATTRIBUTE LISTENER
+-- WeaponLockService sets WeaponLocked / WeaponLockedTool on the player.
+-- Re-render the hotbar immediately when the lock changes so slots gray out
+-- and re-enable at the right moment.
+--------------------------------------------------------------------------------
+player:GetAttributeChangedSignal("WeaponLocked"):Connect(function()
+    task.defer(refreshSlots)
+end)
+player:GetAttributeChangedSignal("WeaponLockedTool"):Connect(function()
+    task.defer(refreshSlots)
+end)
+
+--------------------------------------------------------------------------------
 -- LOADOUT CHANGED (server notifies client after equip changes / load complete)
 --------------------------------------------------------------------------------
 local loadoutChangedRemote = ReplicatedStorage:FindFirstChild("LoadoutChanged")
@@ -693,6 +739,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
     if isAnyMenuOpen() then return end
     for _, def in ipairs(SLOT_DEFS) do
         if input.KeyCode == def.key then
+            -- While weapon-locked, only allow the key of the currently locked tool
+            -- (so the player can unequip by pressing their weapon key).
+            if isWeaponLocked() and not def.isUtility then
+                local lockedName = getLockedToolName()
+                local tool = getToolForSlot(def.index)
+                if not tool or tool.Name ~= lockedName then return end
+            end
             equipSlot(def.index)
             return
         end

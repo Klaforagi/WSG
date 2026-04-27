@@ -156,13 +156,13 @@ local function showDamagePopup(damage, isHeadshot, hitPart, hitPos)
     label.TextStrokeTransparency = 0.5
     label.Parent = gui
 
-    local tween = TweenService:Create(gui, TweenInfo.new(0.9, Enum.EasingStyle.Quad), {
+    local tween = TweenService:Create(gui, TweenInfo.new(1.5, Enum.EasingStyle.Quad), {
         StudsOffset = gui.StudsOffset + Vector3.new(0, 1.2, 0),
     })
     tween:Play()
     for i = 0, 1, 0.06 do
         label.TextTransparency = i
-        task.wait(0.06)
+        task.wait(0.09)
     end
     tween:Cancel()
     gui:Destroy()
@@ -745,21 +745,22 @@ if enchantProcEvent then
             label.BackgroundTransparency = 1
             label.Text = tostring(math.floor(damage))
             label.Font = Enum.Font.GothamBold
-            label.TextSize = 20
+            label.TextSize = 24
             label.TextColor3 = enchantColor
             label.TextStrokeColor3 = Color3.new(0, 0, 0)
             label.TextStrokeTransparency = 0.4
             label.Parent = gui
             gui.Parent = parentPart
 
-            local tween = TweenService:Create(gui, TweenInfo.new(0.9, Enum.EasingStyle.Quad), {
+            local tween = TweenService:Create(gui, TweenInfo.new(3.0, Enum.EasingStyle.Quad), {
                 StudsOffset = gui.StudsOffset + Vector3.new(0, 1.5, 0),
             })
             tween:Play()
+            task.wait(1.5) -- hold fully visible for first half
             for i = 0, 1, 0.06 do
                 label.TextTransparency = i
                 label.TextStrokeTransparency = 0.4 + i * 0.6
-                task.wait(0.06)
+                task.wait(0.09)
             end
             tween:Cancel()
             gui:Destroy()

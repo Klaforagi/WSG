@@ -89,6 +89,8 @@ local function getOrCreateZoneFolder()
     zone.Position = Vector3.new(0, 5, 0)
     zone.Anchored = true
     zone.CanCollide = false
+    zone.CanTouch = false
+    zone.CanQuery = false
     zone.Transparency = 1
     zone.Parent = folder
 

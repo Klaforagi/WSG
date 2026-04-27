@@ -164,6 +164,11 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local REPATH_INTERVAL = 0.20
     local REPATH_DISTANCE = 1.5
     local lastOrcNoiseProcAt = -math.huge
+    local STUCK_MISS_THRESHOLD = 2
+    local STUCK_SPEED_THRESHOLD = 0.6
+    local STUCK_RETREAT_TIME = 0.2
+    local stuckMissesWhileStationary = 0
+    local forcedRetreatUntil = 0
 
     humanoid.WalkSpeed = WALK_SPEED
     humanoid.AutoRotate = true
@@ -398,6 +403,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         if not mobModel.Parent or humanoid.Health <= 0 then return end
 
         local now = os.clock()
+        if now < forcedRetreatUntil then return end
         if now - lastSwingEnd < ATTACK_COOLDOWN then return end
 
         isAttacking = true
@@ -425,6 +431,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         end
 
         local root = getRootPart(mobModel)
+        local didHit = false
         if root then
             local boxCF = buildForwardBoxCFrame(root, HITBOX_OFFSET)
 
@@ -463,6 +470,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
             end
 
             for victimHum, ply in pairs(hitHumanoids) do
+                didHit = true
                 victimHum:TakeDamage(ATTACK_DAMAGE)
 
                 local victimChar = victimHum.Parent
@@ -482,6 +490,18 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 -- If a player gets hit by a mob, play MobHit on the victim.
                 local parentForSound = (victimChar and (victimChar:FindFirstChild("HumanoidRootPart") or victimChar:FindFirstChildWhichIsA("BasePart"))) or mobModel
                 playTemplateSound(mobHitTemplate, parentForSound)
+            end
+
+            local vel = root.AssemblyLinearVelocity or root.Velocity
+            local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
+            if (hSpeed < STUCK_SPEED_THRESHOLD) and (not didHit) then
+                stuckMissesWhileStationary = stuckMissesWhileStationary + 1
+                if stuckMissesWhileStationary >= STUCK_MISS_THRESHOLD then
+                    forcedRetreatUntil = os.clock() + STUCK_RETREAT_TIME
+                    stuckMissesWhileStationary = 0
+                end
+            else
+                stuckMissesWhileStationary = 0
             end
         end
 
@@ -562,21 +582,34 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 local targetPos = targetRoot.Position
                 local horizontalDelta = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z)
                 local horizontalDist = horizontalDelta.Magnitude
+                local retreating = os.clock() < forcedRetreatUntil
 
-                if horizontalDist > MIN_SPACING then
-                    local dir = horizontalDelta.Unit
-                    local movePos = targetPos - dir * MIN_SPACING
-                    startWalkingSmart(Vector3.new(movePos.X, root.Position.Y, movePos.Z), true)
+                if retreating and horizontalDist > 0.05 then
+                    local awayDir = -horizontalDelta.Unit
+                    local retreatPos = root.Position + awayDir * (MIN_SPACING * 2)
+                    startWalkingSmart(Vector3.new(retreatPos.X, root.Position.Y, retreatPos.Z), true)
                 else
-                    stopWalking()
+                    if horizontalDist > MIN_SPACING then
+                        if not humanoid.AutoRotate then
+                            humanoid.AutoRotate = true
+                        end
+                        local dir = horizontalDelta.Unit
+                        -- Overshoot past the target so the humanoid never decelerates before entering attack range.
+                        local movePos = targetPos + dir * MIN_SPACING
+                        startWalkingSmart(Vector3.new(movePos.X, root.Position.Y, movePos.Z), true)
+                    else
+                        stopWalking()
+                    end
                 end
 
-                if dist <= ATTACK_RANGE then
+                if (not retreating) and dist <= ATTACK_RANGE then
                     task.spawn(performAttack, targetRoot)
                 end
             else
                 if chasing then
                     chasing = false
+                    -- Restore auto-rotate now that we are no longer locked onto a target.
+                    humanoid.AutoRotate = true
                     updateSpeedByState()
 
                     local dest

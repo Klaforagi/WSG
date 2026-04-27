@@ -1,76 +1,72 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- Toolgunsettings  (mirrors ToolMeleeSettings but for ranged weapons)
+-- Each key matches the tool name (or the suffix when tools use a "Tool" prefix):
+-- e.g. ToolSlingshot or Slingshot -> "slingshot"
+--
+-- Weapons define a `rarity` plus projectile/sound fields.
+-- Combat stats come from rarityDefaults and can be overridden per-weapon.
 
--- Preset configurations for named tool types (keys are lowercase, e.g. 'pistol', 'sniper')
-local presets = {
-    ["starter slingshot"] = {
-        damage = 8,
-        cd = 0.3,
+--------------------------------------------------------------------------------
+-- HELPERS
+--------------------------------------------------------------------------------
+
+local function copyTable(t)
+    local out = {}
+    for k, v in pairs(t) do
+        if type(v) == "table" then
+            out[k] = copyTable(v)
+        else
+            out[k] = v
+        end
+    end
+    return out
+end
+
+local function mergeTables(base, override)
+    local out = copyTable(base)
+    for k, v in pairs(override) do
+        out[k] = v
+    end
+    return out
+end
+
+--------------------------------------------------------------------------------
+-- RARITY DEFAULTS
+--------------------------------------------------------------------------------
+
+local rarityDefaults = {
+    Common = {
+        damage = 3,
+        cd = 0.4,
         bulletspeed = 150,
         range = 450,
         projectile_lifetime = 4,
         LeaveProjectile = true,
         projectile_wooden_sword_lifetime = 0.3,
-        projectile_size = {0.3,0.3,0.3},
+        projectile_size = {0.3, 0.3, 0.3},
         bulletdrop = 55,
         showTracer = false,
-        headshot_multiplier = 1.2,
-        projectile_name = "Pebble",
-        shoot_sound = "Slingshot_Shoot",
-        hit_sound = "Slingshot_Hit",
+        headshot_multiplier = 1.15,
     },
-    slingshot = {
-        damage = 8,
-        cd = 0.3,
-        bulletspeed = 150,
-        range = 450,
+
+    Uncommon = {
+        damage = 3.8,
+        cd = 0.4,
+        bulletspeed = 175,
+        range = 650,
         projectile_lifetime = 4,
         LeaveProjectile = true,
-        projectile_wooden_sword_lifetime = 0.3,
-        projectile_size = {0.3,0.3,0.3},
-        bulletdrop = 55,
+        projectile_wooden_sword_lifetime = 0.5,
+        projectile_size = {0.25, 0.25, 0.8},
+        bulletdrop = 50,
         showTracer = false,
-        headshot_multiplier = 1.2,
-        projectile_name = "Pebble",
-        shoot_sound = "Slingshot_Shoot",
-        hit_sound = "Slingshot_Hit",
+        headshot_multiplier = 1.15,
     },
-    shortbow = {
-        damage = 14,
-        cd = 0.35,
+
+    Rare = {
+        damage = 4.8,
+        cd = 0.4,
         bulletspeed = 225,
         range = 1000,
-        projectile_lifetime = 4,
-        LeaveProjectile = true,
-        projectile_wooden_sword_lifetime = 1,
-        projectile_size = {0.2, 0.2, 2.0},
-        bulletdrop = 55,
-        showTracer = false,
-        headshot_multiplier = 1.2,
-        projectile_name = "Arrow",
-        shoot_sound = "BowShoot",
-        hit_sound = "BowHit",
-    },
-    longbow = {
-        damage = 30,
-        cd = 0.6,
-        bulletspeed = 300,
-        range = 2000,
-        projectile_lifetime = 4,
-        LeaveProjectile = true,
-        projectile_wooden_sword_lifetime = 1,
-        projectile_size = {0.2, 0.2, 2.0},
-        bulletdrop = 25,
-        showTracer = false,
-        headshot_multiplier = 1.2,
-        projectile_name = "Arrow",
-        shoot_sound = "BowShoot",
-        hit_sound = "BowHit",
-    },
-    xbow = {
-        damage = 80,
-        cd = 2.0,
-        bulletspeed = 400,
-        range = 3000,
         projectile_lifetime = 4,
         LeaveProjectile = true,
         projectile_wooden_sword_lifetime = 1,
@@ -78,23 +74,95 @@ local presets = {
         bulletdrop = 45,
         showTracer = false,
         headshot_multiplier = 1.2,
+    },
+
+    Epic = {
+        damage = 5.6,
+        cd = 0.4,
+        bulletspeed = 275,
+        range = 1500,
+        projectile_lifetime = 4,
+        LeaveProjectile = true,
+        projectile_wooden_sword_lifetime = 1,
+        projectile_size = {0.2, 0.2, 2.0},
+        bulletdrop = 35,
+        showTracer = false,
+        headshot_multiplier = 1.25,
+    },
+
+    Legendary = {
+        damage = 6.4,
+        cd = 0.4,
+        bulletspeed = 325,
+        range = 2000,
+        projectile_lifetime = 4,
+        LeaveProjectile = true,
+        projectile_wooden_sword_lifetime = 1,
+        projectile_size = {0.2, 0.2, 2.0},
+        bulletdrop = 25,
+        showTracer = false,
+        headshot_multiplier = 1.3,
+    },
+}
+
+--------------------------------------------------------------------------------
+-- WEAPON PRESETS
+--------------------------------------------------------------------------------
+
+local presets = {
+    ["starter slingshot"] = {
+        rarity = "Uncommon",
+        projectile_name = "Pebble",
+        shoot_sound = "Slingshot_Shoot",
+        hit_sound = "Slingshot_Hit",
+    },
+
+    slingshot = {
+        rarity = "Common",
+        projectile_name = "Pebble",
+        shoot_sound = "Slingshot_Shoot",
+        hit_sound = "Slingshot_Hit",
+    },
+
+    shortbow = {
+        rarity = "Rare",
+        projectile_name = "Arrow",
+        shoot_sound = "BowShoot",
+        hit_sound = "BowHit",
+    },
+
+    longbow = {
+        rarity = "Epic",
+        projectile_name = "Arrow",
+        shoot_sound = "BowShoot",
+        hit_sound = "BowHit",
+    },
+
+    xbow = {
+        rarity = "Legendary",
         projectile_name = "Bolt",
-        -- Bolt projectile model faces the opposite direction in the asset; flip visual when spawning
         visual_flip = true,
         shoot_sound = "BowShoot",
         hit_sound = "BowHit",
-    }
+    },
 }
 
 local module = {}
 
--- Return the preset table for a given tool type (e.g. 'pistol', 'sniper') or nil
 function module.getPreset(toolType)
     if not toolType then return nil end
-    return presets[tostring(toolType):lower()]
+
+    local weapon = presets[tostring(toolType):lower()]
+    if not weapon then return nil end
+
+    local rarity = weapon.rarity
+    local defaults = rarityDefaults[rarity] or rarityDefaults.Common
+
+    return mergeTables(defaults, weapon)
 end
 
 module.presets = presets
+module.rarityDefaults = rarityDefaults
 
 local ServerStorage = game:GetService("ServerStorage")
 local projectilesFolder = ServerStorage:FindFirstChild("Projectiles")
