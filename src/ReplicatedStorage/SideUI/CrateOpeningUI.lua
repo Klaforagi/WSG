@@ -39,6 +39,18 @@ pcall(function()
     end
 end)
 
+-- ENCHANT SYSTEM — animated shimmer styler for enchant name TextLabels
+local EnchantTextStyler = nil
+pcall(function()
+    local mods = ReplicatedStorage:FindFirstChild("Modules")
+    if mods then
+        local m = mods:FindFirstChild("EnchantTextStyler")
+        if m and m:IsA("ModuleScript") then
+            EnchantTextStyler = require(m)
+        end
+    end
+end)
+
 local CrateOpeningUI = {}
 
 local function px(base)
@@ -958,16 +970,15 @@ function CrateOpeningUI.Init(playerGui)
                 resultSizeLabel.Text = ""
             end
 
-            -- ENCHANT SYSTEM — display enchant name with its color
-            if resultData.enchantName and resultData.enchantName ~= "" then
-                resultEnchantLabel.Text = "✨ " .. resultData.enchantName
+            -- ENCHANT SYSTEM — display enchant name with animated shimmer
+            local enchantForDisplay = (resultData.enchantName and resultData.enchantName ~= "") and resultData.enchantName or nil
+            if EnchantTextStyler then
+                EnchantTextStyler.Apply(resultEnchantLabel, enchantForDisplay)
+            elseif enchantForDisplay then
+                resultEnchantLabel.Text = enchantForDisplay
                 if WeaponEnchantConfig then
-                    local enchantColor = WeaponEnchantConfig.GetColorForEnchant(resultData.enchantName)
-                    if enchantColor then
-                        resultEnchantLabel.TextColor3 = enchantColor
-                    else
-                        resultEnchantLabel.TextColor3 = GOLD
-                    end
+                    local enchantColor = WeaponEnchantConfig.GetColorForEnchant(enchantForDisplay)
+                    resultEnchantLabel.TextColor3 = enchantColor or GOLD
                 else
                     resultEnchantLabel.TextColor3 = GOLD
                 end
@@ -1072,7 +1083,11 @@ function CrateOpeningUI.Init(playerGui)
             resultName.TextColor3 = Color3.fromRGB(255, 80, 80)
             resultRarity.Text = ""
             resultSizeLabel.Text = ""
-            resultEnchantLabel.Text = ""
+            if EnchantTextStyler then
+                EnchantTextStyler.Clear(resultEnchantLabel)
+            else
+                resultEnchantLabel.Text = ""
+            end
             rfStroke.Color = Color3.fromRGB(255, 80, 80)
             resultFrame.BackgroundTransparency = 0.06
 

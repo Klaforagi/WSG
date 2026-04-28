@@ -76,6 +76,18 @@ pcall(function()
     end
 end)
 
+-- ENCHANT SYSTEM — animated shimmer styler for enchant name TextLabels
+local EnchantTextStyler = nil
+pcall(function()
+    local mods = ReplicatedStorage:FindFirstChild("Modules")
+    if mods then
+        local m = mods:FindFirstChild("EnchantTextStyler")
+        if m and m:IsA("ModuleScript") then
+            EnchantTextStyler = require(m)
+        end
+    end
+end)
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Rarity colour palette
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -1335,10 +1347,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- ENCHANT SYSTEM — show enchant name in detail panel
         local itemenchantName = itemData.enchantName or ""
-        if itemenchantName ~= "" and WeaponEnchantConfig then
+        if EnchantTextStyler then
+            EnchantTextStyler.Apply(detailEnchant, itemenchantName ~= "" and itemenchantName or nil)
+        elseif itemenchantName ~= "" and WeaponEnchantConfig then
             local enchantData = WeaponEnchantConfig.GetEnchantData(itemenchantName)
             if enchantData then
-                detailEnchant.Text = "✨ " .. itemenchantName
+                detailEnchant.Text = itemenchantName
                 detailEnchant.TextColor3 = enchantData.color
             else
                 detailEnchant.Text = ""
@@ -1408,7 +1422,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
             if enchantData then
                 local enchantColor = enchantData.color
-                local enchantDisplayText = "✨ " .. enchantName
+                local enchantDisplayText = enchantName
                 -- Fixed pill size (85% of old dynamic size) so all enchants look uniform
                 local enchantW = math.floor(px(68))
                 local enchantH = math.floor(px(14))
@@ -1445,6 +1459,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 enchantLabel.TextYAlignment = Enum.TextYAlignment.Center
                 enchantLabel.Text = enchantDisplayText
                 enchantLabel.ZIndex = 7
+                if EnchantTextStyler then
+                    EnchantTextStyler.Apply(enchantLabel, enchantName)
+                end
                 local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
                 pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 14
 
