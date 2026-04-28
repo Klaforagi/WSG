@@ -956,12 +956,21 @@ function CrateOpeningUI.Init(playerGui)
 
             -- SIZE ROLL SYSTEM — display exact rolled size percentage
             if resultData.sizePercent and resultData.sizePercent ~= 100 then
-                resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
-                -- Tint King/Giant sizes gold, others white
-                if resultData.sizeTier == "King" or resultData.sizeTier == "Giant" then
-                    resultSizeLabel.TextColor3 = GOLD
+                local sizeTier = resultData.sizeTier or "Normal"
+                if EnchantTextStyler then
+                    EnchantTextStyler.ApplySize(resultSizeLabel, sizeTier)
+                    resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
                 else
-                    resultSizeLabel.TextColor3 = WHITE
+                    resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
+                    if sizeTier == "King" then
+                        resultSizeLabel.TextColor3 = Color3.fromRGB(230, 185, 40)
+                    elseif sizeTier == "Giant" then
+                        resultSizeLabel.TextColor3 = Color3.fromRGB(195, 205, 215)
+                    elseif sizeTier == "Large" or sizeTier == "Tiny" then
+                        resultSizeLabel.TextColor3 = Color3.fromRGB(200, 130, 55)
+                    else
+                        resultSizeLabel.TextColor3 = WHITE
+                    end
                 end
             elseif resultData.sizePercent then
                 resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"

@@ -130,11 +130,11 @@ end
 
 -- Central size-tier style mapping (text color + bg darkness factor)
 local SIZE_TIER_STYLES = {
-    Tiny   = { text = Color3.fromRGB(100, 200, 100), bgFactor = 0.6 }, -- green
+    Tiny   = { text = Color3.fromRGB(200, 130,  55), bgFactor = 0.5 }, -- bronze
     Normal = { text = Color3.fromRGB(160, 160, 170), bgFactor = 0.5 }, -- gray
-    Large  = { text = Color3.fromRGB(80, 180, 255),  bgFactor = 0.55 }, -- blue
-    Giant  = { text = Color3.fromRGB(150, 50, 230),  bgFactor = 0.55 }, -- purple
-    King   = { text = GOLD or Color3.fromRGB(255, 200, 60), bgFactor = 0.5 }, -- yellow/gold
+    Large  = { text = Color3.fromRGB(200, 130,  55), bgFactor = 0.5 }, -- bronze
+    Giant  = { text = Color3.fromRGB(195, 205, 215), bgFactor = 0.5 }, -- silver
+    King   = { text = Color3.fromRGB(230, 185,  40), bgFactor = 0.5 }, -- gold
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -1333,16 +1333,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local pct = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
         detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
-        if tier == "King" then
-            detailSize.TextColor3 = Color3.fromRGB(255, 60, 60)
-        elseif tier == "Giant" then
-            detailSize.TextColor3 = GOLD
-        elseif tier == "Large" then
-            detailSize.TextColor3 = Color3.fromRGB(100, 200, 255)
-        elseif tier == "Tiny" then
-            detailSize.TextColor3 = Color3.fromRGB(160, 160, 170)
+        if EnchantTextStyler then
+            EnchantTextStyler.ApplySize(detailSize, tier)
+            detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
         else
-            detailSize.TextColor3 = DIM_TEXT
+            if tier == "King" then
+                detailSize.TextColor3 = Color3.fromRGB(230, 185, 40)
+            elseif tier == "Giant" then
+                detailSize.TextColor3 = Color3.fromRGB(195, 205, 215)
+            elseif tier == "Large" then
+                detailSize.TextColor3 = Color3.fromRGB(200, 130, 55)
+            elseif tier == "Tiny" then
+                detailSize.TextColor3 = Color3.fromRGB(200, 130, 55)
+            else
+                detailSize.TextColor3 = DIM_TEXT
+            end
         end
 
         -- ENCHANT SYSTEM — show enchant name in detail panel
@@ -1436,7 +1441,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local enchantBg = Instance.new("Frame", card)
                 enchantBg.Name = "EnchantTagBg"
                 enchantBg.BackgroundColor3 = bgC
-                enchantBg.BackgroundTransparency = 0.12
+                enchantBg.BackgroundTransparency = 1
                 enchantBg.BorderSizePixel = 0
                 enchantBg.Size = UDim2.new(0, enchantW, 0, enchantH)
                 enchantBg.AnchorPoint = Vector2.new(0.5, 0)
@@ -1463,11 +1468,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     EnchantTextStyler.Apply(enchantLabel, enchantName)
                 end
                 local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
-                pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 14
-
-                local pStrokeColor = shadeColor(bgC, 0.8)
-                local pStroke = Instance.new("UIStroke", enchantBg)
-                pStroke.Color = pStrokeColor; pStroke.Thickness = 1; pStroke.Transparency = 0.6
+                pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 18
             end
         end
 
@@ -1507,7 +1508,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local tierBg = Instance.new("Frame", card)
             tierBg.Name = "SizeTierBg"
             tierBg.BackgroundColor3 = bgColor
-            tierBg.BackgroundTransparency = 0.12
+            tierBg.BackgroundTransparency = 1
             tierBg.BorderSizePixel = 0
             tierBg.Size = UDim2.new(0, tierW, 0, tierH)
             tierBg.AnchorPoint = Vector2.new(0, 1)
@@ -1530,12 +1531,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.TextYAlignment = Enum.TextYAlignment.Center
             tierLabel.Text = tierText
             tierLabel.ZIndex = 7
+            if EnchantTextStyler then
+                EnchantTextStyler.ApplySize(tierLabel, tier)
+            end
             local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
-            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 14
-
-            local strokeColor = shadeColor(bgColor, 0.8)
-            local bgStroke = Instance.new("UIStroke", tierBg)
-            bgStroke.Color = strokeColor; bgStroke.Thickness = 1; bgStroke.Transparency = 0.6
+            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 18
         end
 
         -- Size percent label — bottom-right corner
@@ -1550,9 +1550,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.Position = UDim2.new(1, -px(4), 0.96, 0)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
         sizeLabel.Text = tostring(math.floor(pct)) .. "%"
+        if EnchantTextStyler then
+            EnchantTextStyler.ApplySize(sizeLabel, tier)
+            sizeLabel.Text = tostring(math.floor(pct)) .. "%"
+        end
         local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
         pctConstraint.MinTextSize = 8
-        pctConstraint.MaxTextSize = 14
+        pctConstraint.MaxTextSize = 18
         local pctStroke = Instance.new("UIStroke", sizeLabel)
         pctStroke.Color = Color3.fromRGB(0, 0, 0)
         pctStroke.Thickness = 1.5; pctStroke.Transparency = 0.15
