@@ -15,14 +15,18 @@ local BILLBOARD_NAME = "MobOverheadHealth"
 local FADE_START = 55   -- studs — matches MaxDistance; barely visible here
 local FADE_FULL  = 22   -- studs — fully opaque
 
--- Base (fully-visible) transparencies for each element
+-- Base (fully-visible) transparencies for each element.
+-- Must stay in sync with buildBillboard in MobOverheadHealth.server.lua.
 local BASE = {
-	barTrackBG    = 0.25, -- BarTrack background
-	fillBG        = 0,    -- Fill background
-	nameText      = 0,
-	nameStroke    = 0.3,
-	hpText        = 0,
-	hpStroke      = 0.4,
+	barShadowBG  = 0.60, -- BarShadow drop-shadow frame
+	barOuterBG   = 0.50, -- BarOuter frame background
+	fillBG       = 0,    -- Fill frame background
+	damageBarBG  = 0,    -- DamageBar frame background
+	nameText     = 0,    -- NameLabel TextTransparency
+	nameUIStroke = 0.1,  -- NameStroke UIStroke.Transparency
+	hpText       = 0,    -- HPText TextTransparency
+	hpUIStroke   = 0.15, -- HPStroke UIStroke.Transparency
+	barStroke    = 0.35, -- BarStroke UIStroke.Transparency
 }
 
 local localPlayer = Players.LocalPlayer
@@ -36,27 +40,52 @@ local function applyAlpha(billboard, alpha)
 	local bg = billboard:FindFirstChild("Background")
 	if not bg then return end
 
-	local nameLabel = bg:FindFirstChild("NameLabel")
-	local barTrack  = bg:FindFirstChild("BarTrack")
-	local fill      = barTrack and barTrack:FindFirstChild("Fill")
-	local hpText    = barTrack and barTrack:FindFirstChild("HPText")
+	local nameLabel  = bg:FindFirstChild("NameLabel")
+	local nameStroke = nameLabel and nameLabel:FindFirstChild("NameStroke")
+	local barShadow  = bg:FindFirstChild("BarShadow")
+	local barOuter   = bg:FindFirstChild("BarOuter")
+	local barStroke  = barOuter and barOuter:FindFirstChild("BarStroke")
+	local fill       = barOuter and barOuter:FindFirstChild("Fill")
+	local damageBar  = barOuter and barOuter:FindFirstChild("DamageBar")
+	local hpText     = barOuter and barOuter:FindFirstChild("HPText")
+	local hpStroke   = hpText and hpText:FindFirstChild("HPStroke")
 
 	if nameLabel then
-		nameLabel.TextTransparency       = lerp(1, BASE.nameText,   alpha)
-		nameLabel.TextStrokeTransparency = lerp(1, BASE.nameStroke, alpha)
+		nameLabel.TextTransparency = lerp(1, BASE.nameText, alpha)
+		-- TextStrokeTransparency is disabled (= 1); UIStroke below handles it
 	end
 
-	if barTrack then
-		barTrack.BackgroundTransparency = lerp(1, BASE.barTrackBG, alpha)
+	if nameStroke then
+		nameStroke.Transparency = lerp(1, BASE.nameUIStroke, alpha)
+	end
+
+	if barShadow then
+		barShadow.BackgroundTransparency = lerp(1, BASE.barShadowBG, alpha)
+	end
+
+	if barOuter then
+		barOuter.BackgroundTransparency = lerp(1, BASE.barOuterBG, alpha)
+	end
+
+	if barStroke then
+		barStroke.Transparency = lerp(1, BASE.barStroke, alpha)
 	end
 
 	if fill then
 		fill.BackgroundTransparency = lerp(1, BASE.fillBG, alpha)
 	end
 
+	if damageBar then
+		damageBar.BackgroundTransparency = lerp(1, BASE.damageBarBG, alpha)
+	end
+
 	if hpText then
-		hpText.TextTransparency       = lerp(1, BASE.hpText,  alpha)
-		hpText.TextStrokeTransparency = lerp(1, BASE.hpStroke, alpha)
+		hpText.TextTransparency       = lerp(1, BASE.hpText, alpha)
+		hpText.TextStrokeTransparency = 1  -- disabled; UIStroke handles it
+	end
+
+	if hpStroke then
+		hpStroke.Transparency = lerp(1, BASE.hpUIStroke, alpha)
 	end
 end
 
