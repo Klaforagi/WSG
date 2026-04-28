@@ -1430,7 +1430,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local enchantDisplayText = enchantName
                 -- Fixed pill size (85% of old dynamic size) so all enchants look uniform
                 local enchantW = math.floor(px(68))
-                local enchantH = math.floor(px(14))
+                local enchantH = math.floor(px(17))
 
                 local h, s, v = Color3.toHSV(enchantColor)
                 local textC = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1))
@@ -1445,9 +1445,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 enchantBg.BorderSizePixel = 0
                 enchantBg.Size = UDim2.new(0, enchantW, 0, enchantH)
                 enchantBg.AnchorPoint = Vector2.new(0.5, 0)
-                enchantBg.Position = UDim2.new(0.5, 0, 0.20, 0)
+                enchantBg.Position = UDim2.new(0.5, 0, 0.17, 0)
                 enchantBg.ZIndex = 6
-                enchantBg.ClipsDescendants = true
+                enchantBg.ClipsDescendants = false
                 local pCorner = Instance.new("UICorner", enchantBg)
                 pCorner.CornerRadius = UDim.new(0, math.max(0, math.floor(enchantH / 2)))
 
@@ -1457,7 +1457,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 enchantLabel.Font = Enum.Font.GothamBold
                 enchantLabel.TextColor3 = textC
                 enchantLabel.TextScaled = true
-                enchantLabel.Size = UDim2.new(1, -px(4), 1, -px(2))
+                enchantLabel.Size = UDim2.new(1, -px(4), 1, 0)
                 enchantLabel.AnchorPoint = Vector2.new(0.5, 0.5)
                 enchantLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
                 enchantLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -1468,7 +1468,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     EnchantTextStyler.Apply(enchantLabel, enchantName)
                 end
                 local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
-                pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 18
+                pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 13
             end
         end
 
@@ -1497,7 +1497,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local style = SIZE_TIER_STYLES[tier] or SIZE_TIER_STYLES.Normal
         local tierText = tier
         local tierW = math.floor(px(46))
-        local tierH = math.floor(px(16))
+        local tierH = math.floor(px(20))
         do
             local h, s, v = Color3.toHSV(style.text)
             local textColor = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1))
@@ -1514,7 +1514,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierBg.AnchorPoint = Vector2.new(0, 1)
             tierBg.Position = UDim2.new(0, px(4), 0.96, 0)
             tierBg.ZIndex = 6
-            tierBg.ClipsDescendants = true
+            tierBg.ClipsDescendants = false
             local corner = Instance.new("UICorner", tierBg)
             corner.CornerRadius = UDim.new(0, math.max(0, math.floor(tierH / 2)))
 
@@ -1524,7 +1524,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.Font = Enum.Font.GothamBold
             tierLabel.TextColor3 = textColor
             tierLabel.TextScaled = true
-            tierLabel.Size = UDim2.new(1, -px(4), 1, -px(2))
+            tierLabel.Size = UDim2.new(1, -px(4), 1, 0)
             tierLabel.AnchorPoint = Vector2.new(0.5, 0.5)
             tierLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
             tierLabel.TextXAlignment = Enum.TextXAlignment.Center

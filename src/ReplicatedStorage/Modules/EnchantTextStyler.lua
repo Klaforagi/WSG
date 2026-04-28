@@ -146,6 +146,9 @@ local function stopEffect(label)
     if effect.gradient and effect.gradient.Parent then
         pcall(function() effect.gradient:Destroy() end)
     end
+    if effect.stroke and effect.stroke.Parent then
+        pcall(function() effect.stroke:Destroy() end)
+    end
     activeEffects[label] = nil
 end
 
@@ -165,6 +168,8 @@ function EnchantTextStyler.Apply(label, enchantName)
     -- Also destroy any abandoned UIGradient (e.g. from first-time setup).
     local orphan = label:FindFirstChildWhichIsA("UIGradient")
     if orphan then orphan:Destroy() end
+    local orphanStroke = label:FindFirstChildWhichIsA("UIStroke")
+    if orphanStroke then orphanStroke:Destroy() end
 
     -- Normalise the enchant name: strip ✨ and whitespace just in case.
     local cleanName = nil
@@ -205,7 +210,13 @@ function EnchantTextStyler.Apply(label, enchantName)
     local tween = TweenService:Create(gradient, SHIMMER_TWEEN_INFO, {Offset = Vector2.new(1.2, 0)})
     tween:Play()
 
-    activeEffects[label] = {tween = tween, gradient = gradient}
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.2
+    stroke.Parent = label
+
+    activeEffects[label] = {tween = tween, gradient = gradient, stroke = stroke}
 
     -- Auto-cleanup when the label is destroyed so the tween never orphans.
     label.Destroying:Connect(function()
@@ -227,14 +238,22 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
     stopEffect(label)
     local orphan = label:FindFirstChildWhichIsA("UIGradient")
     if orphan then orphan:Destroy() end
+    local orphanStroke = label:FindFirstChildWhichIsA("UIStroke")
+    if orphanStroke then orphanStroke:Destroy() end
 
     label.Font = Enum.Font.GothamBold
     if displayText ~= nil then label.Text = tostring(displayText) end
 
     local config = SIZE_SHIMMER_CONFIGS[tierName]
     if not config then
-        -- Normal: plain, no shimmer
+        -- Normal: plain, no shimmer, but still gets the border
         label.TextColor3 = SIZE_NORMAL_COLOR
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(0, 0, 0)
+        stroke.Thickness = 1.5
+        stroke.Transparency = 0.2
+        stroke.Parent = label
+        activeEffects[label] = {stroke = stroke}
         return
     end
 
@@ -249,7 +268,13 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
     local tween = TweenService:Create(gradient, SHIMMER_TWEEN_INFO, {Offset = Vector2.new(1.2, 0)})
     tween:Play()
 
-    activeEffects[label] = {tween = tween, gradient = gradient}
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.2
+    stroke.Parent = label
+
+    activeEffects[label] = {tween = tween, gradient = gradient, stroke = stroke}
 
     label.Destroying:Connect(function()
         stopEffect(label)
