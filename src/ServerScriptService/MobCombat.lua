@@ -471,6 +471,13 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
             for victimHum, ply in pairs(hitHumanoids) do
                 didHit = true
+
+                -- Tag the player victim with this NPC as the attacker so that
+                -- KillTracker can show a kill card crediting the monster on death.
+                if _G.RegisterMobCombatHit then
+                    pcall(function() _G.RegisterMobCombatHit(victimHum, mobModel) end)
+                end
+
                 victimHum:TakeDamage(ATTACK_DAMAGE)
 
                 local victimChar = victimHum.Parent

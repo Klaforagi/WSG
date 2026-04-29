@@ -266,7 +266,16 @@ task.spawn(function()
 
     achievProgressRE.OnClientEvent:Connect(function(achId, _, completed, _, _, stageIndex)
         if achId == "__full_refresh" then return end
-        if completed and _G.ShowAchievementToast then
+        if not completed then return end
+        -- Suppress the toast briefly while a CLAIM is in flight. Claiming a
+        -- staged achievement whose next stage is already complete-by-stats
+        -- causes the server to immediately mark stage N+1 completed and push
+        -- progress, which would re-trigger the popup right after the player
+        -- clicked Claim. The achievement window already updates the card
+        -- visuals to claimable, so the popup is redundant and disruptive.
+        local suppressUntil = tonumber(_G._SuppressAchievementToastUntil)
+        if suppressUntil and os.clock() < suppressUntil then return end
+        if _G.ShowAchievementToast then
             pcall(function() _G.ShowAchievementToast(achId, stageIndex) end)
         end
     end)

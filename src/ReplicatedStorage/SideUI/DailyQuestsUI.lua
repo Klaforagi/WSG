@@ -85,9 +85,21 @@ local function isQuestCompletedForDisplay(quest)
     return target > 0 and progress >= target
 end
 
-local function getQuestSortPriority(quest)
+local function getQuestSortPriority(quest, tabId)
     if type(quest) ~= "table" then
         return 4
+    end
+    -- Achievement lists: claimable rows always sort to the very top so the
+    -- player can see what they can claim without scrolling. Daily/Weekly
+    -- quests keep their existing ordering (in-progress first).
+    if type(tabId) == "string" and string.sub(tabId, 1, 6) == "achiev" then
+        if quest.claimed == true then
+            return 3 -- claimed rows sink below in-progress
+        end
+        if isQuestCompletedForDisplay(quest) then
+            return 1 -- claimable rows pinned to the top
+        end
+        return 2     -- in-progress rows in the middle
     end
     if quest.claimed == true then
         return 3
@@ -133,7 +145,7 @@ local function sortQuestsForDisplay(tabId, quests)
         table.insert(sortable, {
             quest = quest,
             originalIndex = originalIndex,
-            priority = getQuestSortPriority(quest),
+            priority = getQuestSortPriority(quest, tabId),
         })
     end
 
@@ -3184,6 +3196,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             btn.Active = false
             btn.Text = "..."
 
+            -- Suppress the achievement-complete toast popup that would
+            -- otherwise fire when the server advances a staged achievement
+            -- whose next stage is already complete-by-stats. The popup is
+            -- meant for first-time stat completions, not for the cascade
+            -- triggered by clicking Claim.
+            _G._SuppressAchievementToastUntil = os.clock() + 1.5
+
             local ok, success = pcall(function() return claimAchievRF2:InvokeServer(ach.id) end)
             if ok and success then
                 achClaimed[ach.id] = true
@@ -3226,24 +3245,29 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
     ---------------------------------------------------------------------------
     -- Clear right content panel
+    -- preserveScroll: when true, do NOT reset CanvasPosition. Used by claim
+    -- refresh paths so the player's scroll position survives a rebuild.
     ---------------------------------------------------------------------------
-    local function clearContentPanel()
+    local function clearContentPanel(preserveScroll)
         for _, c in ipairs(contentPanel:GetChildren()) do
             if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then
                 pcall(function() c:Destroy() end)
             end
         end
-        -- Reset canvas position to top
-        contentPanel.CanvasPosition = Vector2.new(0, 0)
+        if not preserveScroll then
+            -- Reset canvas position to top (default behavior for category
+            -- switches / opening the menu).
+            contentPanel.CanvasPosition = Vector2.new(0, 0)
+        end
     end
 
     ---------------------------------------------------------------------------
     -- Show Home view (Recently Completed)
     ---------------------------------------------------------------------------
-    showAchievementsHomeView = function()
+    showAchievementsHomeView = function(preserveScroll)
         achViewMode = "Home"
         achSelectedCategory = nil
-        clearContentPanel()
+        clearContentPanel(preserveScroll)
 
         makeContentHeader("Recently Completed", false)
 
@@ -3394,10 +3418,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Show Category view
     ---------------------------------------------------------------------------
-    local function showAchievementCategoryView(category)
+    local function showAchievementCategoryView(category, preserveScroll)
         achViewMode = "Category"
         achSelectedCategory = category
-        clearContentPanel()
+        clearContentPanel(preserveScroll)
 
         makeContentHeader(category, true)
 
@@ -3933,14 +3957,24 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                         end
                     end
                 end
-                -- Refresh current view
+                -- Refresh current view (preserve scroll position so claiming
+                -- or live progress updates do NOT jump the player to the top)
+                local oldCanvasPosition = contentPanel and contentPanel.CanvasPosition or Vector2.new(0, 0)
                 if achViewMode == "Home" then
-                    showAchievementsHomeView()
+                    showAchievementsHomeView(true)
                     updateCatButtonStates("Home")
                 elseif achViewMode == "Category" and achSelectedCategory then
-                    showAchievementCategoryView(achSelectedCategory)
+                    showAchievementCategoryView(achSelectedCategory, true)
                     updateCatButtonStates(achSelectedCategory)
                 end
+                -- Defer one frame: AbsoluteCanvasSize may shrink/grow when the
+                -- list is rebuilt, which clamps CanvasPosition. Restore after
+                -- the layout settles so the user stays put.
+                task.defer(function()
+                    if contentPanel and contentPanel.Parent then
+                        contentPanel.CanvasPosition = oldCanvasPosition
+                    end
+                end)
                 -- Refresh indicator dots after full achievement refresh
                 if updateTabIndicators then updateTabIndicators() end
                 return
