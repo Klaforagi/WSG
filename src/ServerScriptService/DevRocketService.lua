@@ -316,27 +316,9 @@ local function applyAoEDamage(shooter, hitPosition)
             pcall(function() StatService:RegisterDamageDealt(shooter, damage) end)
         end
 
-        -- Immediate kill credit if dead (same pattern as ToolGunSetup)
-        if hum.Health <= 0 then
-            pcall(function() hum:SetAttribute("_killCredited", true) end)
-
-            local victimName = otherPlayer.Name
-
-            -- Route through StatService
-            if StatService then
-                StatService:RegisterElimination(shooter, otherPlayer)
-            end
-
-            if shooter.Name ~= victimName then
-                pcall(function() KillFeedEvent:FireAllClients(shooter.Name, victimName, 0) end)
-                if shooter.Team then
-                    pcall(function() AddScore:Fire(shooter.Team.Name, KILL_POINTS) end)
-                end
-                if XPModule and XPModule.AwardXP then
-                    pcall(function() XPModule.AwardXP(shooter, "PlayerKill", nil, { coinAward = 0 }) end)
-                end
-            end
-        end
+        -- Kill credit (StatService events, coins, XP, KillFeed, AddScore) is
+        -- handled centrally by KillTracker.server.lua via the Humanoid.Died
+        -- hook. This block only needs to TAG the humanoid (already done above).
     end
 
     -- Also check NPC humanoids (mobs, dummies) in workspace
@@ -375,20 +357,8 @@ local function applyAoEDamage(shooter, hitPosition)
             pcall(function() StatService:RegisterDamageDealt(shooter, damage) end)
         end
 
-        if model.Health <= 0 then
-            pcall(function() model:SetAttribute("_killCredited", true) end)
-
-            local victimName = character.Name or "Unknown"
-
-            if StatService then
-                StatService:RegisterMobKill(shooter, victimName)
-            end
-
-            pcall(function() KillFeedEvent:FireAllClients(shooter.Name, victimName, 0) end)
-            if shooter.Team then
-                pcall(function() AddScore:Fire(shooter.Team.Name, KILL_POINTS) end)
-            end
-        end
+        -- Kill credit handled centrally by KillTracker.server.lua via the
+        -- Humanoid.Died hook (tag attributes set above).
     end
 end
 

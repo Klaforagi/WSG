@@ -415,6 +415,10 @@ function DailyRewardsUI.Create(screenGui, state, callbacks)
     currentState = state or {}
 
     -- ── Overlay ──────────────────────────────────────────────────────────
+    -- Daily Rewards should not use a full-screen active input blocker because
+    -- it prevents right-click camera rotation. Only actual buttons should
+    -- capture input. The dim backdrop is purely decorative (Active = false,
+    -- and not a TextButton/ImageButton), matching the Inventory pattern.
     overlayFrame = Instance.new("Frame")
     overlayFrame.Name = "DailyRewardsOverlay"
     overlayFrame.Size = UDim2.new(1, 0, 1, 0)
@@ -422,21 +426,10 @@ function DailyRewardsUI.Create(screenGui, state, callbacks)
     overlayFrame.BackgroundColor3 = T.OVERLAY_CLR
     overlayFrame.BackgroundTransparency = 0.45
     overlayFrame.BorderSizePixel = 0
+    overlayFrame.Active = false
     overlayFrame.ZIndex = 500
     overlayFrame.Visible = false
     overlayFrame.Parent = screenGui
-
-    -- Click overlay to close (but not the window itself)
-    local overlayButton = Instance.new("TextButton")
-    overlayButton.Name = "OverlayClose"
-    overlayButton.Size = UDim2.new(1, 0, 1, 0)
-    overlayButton.BackgroundTransparency = 1
-    overlayButton.Text = ""
-    overlayButton.ZIndex = 500
-    overlayButton.Parent = overlayFrame
-    overlayButton.Activated:Connect(function()
-        DailyRewardsUI.Close()
-    end)
 
     -- ── Window ────────────────────────────────────────────────────────────
     local winW = isMobile and 0.92 or 0.55

@@ -30,6 +30,10 @@ ReplicatedFirst:RemoveDefaultLoadingScreen()
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Set true when the user clicks Skip. The preload stages keep running in the
+-- background; only the UI visibility / input blocker are short-circuited.
+local skipped = false
+
 local BANDAGE_ANIM = "rbxassetid://139297808237661"
 
 --------------------------------------------------------------------------------
@@ -211,6 +215,44 @@ local function createGui()
 	barFill.ZIndex = 3
 	barFill.Parent = barBg
 
+	-- Skip button: hides the loading UI immediately and removes the input
+	-- blocker. Loading continues in the background; fadeOut becomes a no-op
+	-- (just destroys the gui) once the real sequence completes.
+	local skipBtn = Instance.new("TextButton")
+	skipBtn.Name = "SkipButton"
+	skipBtn.AnchorPoint = Vector2.new(0.5, 0)
+	skipBtn.Position = UDim2.new(0.5, 0, 0.62, 0)
+	skipBtn.Size = UDim2.new(0, 140, 0, 36)
+	skipBtn.BackgroundColor3 = Color3.fromRGB(40, 48, 80)
+	skipBtn.BorderSizePixel = 0
+	skipBtn.AutoButtonColor = true
+	skipBtn.Font = Enum.Font.GothamBold
+	skipBtn.Text = "Skip"
+	skipBtn.TextSize = 18
+	skipBtn.TextColor3 = Color3.fromRGB(240, 240, 240)
+	skipBtn.ZIndex = 4
+	skipBtn.Parent = bg
+
+	local skipCorner = Instance.new("UICorner")
+	skipCorner.CornerRadius = UDim.new(0, 6)
+	skipCorner.Parent = skipBtn
+
+	local function doSkip()
+		if skipped then return end
+		skipped = true
+		-- Remove input blocker so gameplay/menu input works immediately.
+		if blocker then
+			blocker:Destroy()
+			blocker = nil
+		end
+		-- Hide all visuals; do NOT destroy the gui yet so fadeOut can clean up
+		-- safely whenever loading actually finishes.
+		bg.Visible = false
+	end
+
+	skipBtn.MouseButton1Click:Connect(doSkip)
+	skipBtn.TouchTap:Connect(doSkip)
+
 	gui.Parent = playerGui
 	return gui, blocker, bg, title, statusLbl, barBg, barFill
 end
@@ -225,6 +267,13 @@ function setProgress(statusLabel, barFill, text, alpha)
 end
 
 local function fadeOut(gui, blocker, bg, title, statusLbl, barBg, barFill)
+	-- If the user already hit Skip, the UI is hidden and the blocker is gone.
+	-- Just clean up the gui and bail out — no tweens needed.
+	if skipped then
+		if gui then gui:Destroy() end
+		return
+	end
+
 	-- Remove input blocker immediately so gameplay input works during fade
 	if blocker then blocker:Destroy() end
 

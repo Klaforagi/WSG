@@ -228,52 +228,10 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     pcall(function()
         meleeHit:FireClient(player, damage, false, hitPart, hitPos)
     end)
-    if humanoid.Health <= 0 then
-        -- Clean up any active enchant effects (icy slow, toxic DoT) on this target
-        if WeaponEnchantService and WeaponEnchantService.CleanupTarget then
-            pcall(function() WeaponEnchantService.CleanupTarget(humanoid) end)
-        end
-        humanoid:SetAttribute("_killCredited", true)
-        local victimName = (victimModel and victimModel.Name) or "Unknown"
-        local vp = Players:GetPlayerFromCharacter(victimModel)
-        if vp then victimName = vp.Name end
-        if player.Name ~= victimName then
-            -- Award coins: +5 PvP, +1 mob. Capture boosted return value for popup.
-            local coinAward = 0
-            if CurrencyService and CurrencyService.AddCoins then
-                local base = vp and 5 or 1
-                local ok, result = pcall(function() return CurrencyService:AddCoins(player, base) end)
-                coinAward = (ok and type(result) == "number") and result or base
-            end
-
-            pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)
-            if player.Team then
-                pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
-            end
-            -- Award XP
-            if XPModule and XPModule.AwardXP then
-                if vp then
-                    pcall(function() XPModule.AwardXP(player, "PlayerKill", nil, { coinAward = coinAward }) end)
-                else
-                    local mobName = victimModel and victimModel.Name or "Unknown"
-                    local mobXP = 3
-                    pcall(function()
-                        if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
-                    end)
-                    pcall(function() XPModule.AwardXP(player, "MobKill", mobXP, { coinAward = coinAward }) end)
-                end
-            end
-        end
-        -- ragdoll dummies on melee kill
-        if victimModel and victimModel:IsA("Model") and victimModel.Name == "Dummy" then
-            pcall(function() humanoid:SetAttribute("_dummyRagdolled", true) end)
-            pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Dead) end)
-            for _, desc in ipairs(victimModel:GetDescendants()) do
-                if desc:IsA("BasePart") then desc.Anchored = false; desc.CanCollide = true end
-            end
-            task.wait(0.05)
-        end
-    end
+    -- Kill credit (StatService events, coins, XP, KillFeed, AddScore, enchant
+    -- cleanup, dummy ragdoll) is handled centrally by KillTracker.server.lua
+    -- via the Humanoid.Died hook. Weapons only need to TAG the humanoid
+    -- (already done above via lastDamager* attributes).
 end
 
 ---------------------------------------------------------------------------

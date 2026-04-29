@@ -410,72 +410,9 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
             end
         end)
     end
-    if humanoid.Health <= 0 then
-        humanoid:SetAttribute("_killCredited", true)
-        -- immediate kill credit
-        local victimName = (victimModel and victimModel.Name) or "Unknown"
-        local vp = Players:GetPlayerFromCharacter(victimModel)
-        if vp then victimName = vp.Name end
-
-            -- Route kill through centralized StatService (feeds quests/achievements/scoreboard)
-            if StatService then
-                if vp then
-                    StatService:RegisterElimination(player, vp)
-                    if StatService.DEBUG then
-                        print(string.format("[ToolGunSetup] PvP elimination: %s killed %s → StatService", player.Name, victimName))
-                    end
-                else
-                    StatService:RegisterMobKill(player, victimName)
-                    if StatService.DEBUG then
-                        print(string.format("[ToolGunSetup] Zombie elimination: %s killed %s → StatService", player.Name, victimName))
-                    end
-                end
-            end
-
-            if player.Name ~= victimName then
-                -- determine coin award for this kill and award it before firing the feed
-                local coinAward = 0
-                if not vp and CurrencyService and CurrencyService.AddCoins then
-                    pcall(function() CurrencyService:AddCoins(player, 1) end)
-                    coinAward = 1
-                end
-
-                pcall(function() KillFeedEvent:FireAllClients(player.Name, victimName, coinAward) end)
-                if player.Team then
-                    pcall(function() AddScore:Fire(player.Team.Name, KILL_POINTS) end)
-                end
-                -- Award XP (include coinAward in metadata so XP popup can include coins)
-                if XPModule and XPModule.AwardXP then
-                    if vp then
-                        pcall(function() XPModule.AwardXP(player, "PlayerKill", nil, { coinAward = coinAward }) end)
-                    else
-                        local mobName = victimModel and victimModel.Name or "Unknown"
-                        local mobXP = 3
-                        pcall(function()
-                            if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(mobName) end
-                        end)
-                        pcall(function() XPModule.AwardXP(player, "MobKill", mobXP, { coinAward = coinAward }) end)
-                    end
-                end
-            end
-        -- if this was a dummy model, perform ragdoll/cleanup immediately so it visibly falls
-        if victimModel and victimModel:IsA("Model") and victimModel.Name == "Dummy" then
-            -- mark so DummyDeath doesn't duplicate work
-            pcall(function() humanoid:SetAttribute("_dummyRagdolled", true) end)
-            pcall(function()
-                humanoid:ChangeState(Enum.HumanoidStateType.Dead)
-            end)
-            for _, desc in ipairs(victimModel:GetDescendants()) do
-                if desc:IsA("BasePart") then
-                    desc.Anchored = false
-                    desc.CanCollide = true
-                end
-            end
-            task.wait(0.05)
-            -- MobDeathFade handles the fade-out and Destroy; skip BreakJoints
-            -- so tweens on child parts still work.
-        end
-    end
+    -- Kill credit (StatService events, coins, XP, KillFeed, AddScore) is handled
+    -- centrally by KillTracker.server.lua via the Humanoid.Died hook. Weapons only
+    -- need to TAG the humanoid (already done above via lastDamager* attributes).
 end
 
 local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName)
