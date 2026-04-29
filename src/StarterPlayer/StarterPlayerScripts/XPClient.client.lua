@@ -184,10 +184,10 @@ fill.Size = UDim2.new(0, 0, 1, 0) -- starts empty
 fill.BackgroundColor3 = COLOR_FILL_LEFT
 fill.BorderSizePixel = 0
 fill.Parent = fillInset
-fill.ZIndex = 2
+fill.ZIndex = 3
 
 local fillCorner = Instance.new("UICorner", fill)
-fillCorner.CornerRadius = CORNER_RADIUS
+fillCorner.CornerRadius = UDim.new(0, 5)
 
 local gradient = Instance.new("UIGradient", fill)
 gradient.Color = ColorSequence.new(COLOR_FILL_LEFT, COLOR_FILL_RIGHT)
@@ -205,12 +205,15 @@ local function lighterColor(c, amt)
     return Color3.new(clamp01(c.R + amt), clamp01(c.G + amt), clamp01(c.B + amt))
 end
 
+local lagFill -- forward declaration; assigned in UI setup below
+
 local function setBarTint(color)
     if not color then color = COLOR_FILL_LEFT end
     local activeFillColor = color:Lerp(Color3.new(0,0,0), 0.12)
     local light = lighterColor(color, 0.27)
     fill.BackgroundColor3 = activeFillColor
     gradient.Color = ColorSequence.new(activeFillColor, light)
+    if lagFill then lagFill.BackgroundColor3 = light end
     -- keep numeric labels and frame in a consistent XP palette
     levelLabel.TextColor3 = COLOR_LABEL
     nextLabel.TextColor3 = COLOR_LABEL
@@ -275,13 +278,25 @@ baseFill.AnchorPoint = Vector2.new(0, 0.5)
 baseFill.Position = UDim2.new(0, 0, 0.5, 0)
 baseFill.Size = UDim2.new(1, 0, 1, 0)
 baseFill.BackgroundColor3 = COLOR_TRACK_BASE
-baseFill.BackgroundTransparency = 0.15
+baseFill.BackgroundTransparency = 1
 baseFill.BorderSizePixel = 0
 baseFill.ZIndex = 1
 baseFill.Parent = fillInset
 
 local baseCorner = Instance.new("UICorner", baseFill)
-baseCorner.CornerRadius = CORNER_RADIUS
+baseCorner.CornerRadius = UDim.new(0, 5)
+
+-- Preview lag fill (lighter team color; snaps to new fraction on XP gain)
+lagFill = Instance.new("Frame")
+lagFill.Name = "LagFill"
+lagFill.AnchorPoint = Vector2.new(0, 0.5)
+lagFill.Position = UDim2.new(0, 0, 0.5, 0)
+lagFill.Size = UDim2.new(0, 0, 1, 0)
+lagFill.BackgroundColor3 = lighterColor(COLOR_FILL_LEFT, 0.27)
+lagFill.BorderSizePixel = 0
+lagFill.ZIndex = 2
+lagFill.Parent = fillInset
+Instance.new("UICorner", lagFill).CornerRadius = UDim.new(0, 5)
 
 levelUpLabel.Text = ""
 levelUpLabel.TextTransparency = 1
@@ -351,7 +366,7 @@ end
 -- HELPERS
 --------------------------------------------------------------------------------
 local function tweenFill(fraction, duration)
-    duration = duration or 0.45
+    duration = duration or 0.9
     local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
     local t = TweenService:Create(fill, info, { Size = UDim2.new(fraction, 0, 1, 0) })
     t:Play()
@@ -480,6 +495,8 @@ end
 local currentLevel    = 1
 local currentXP       = 0
 local currentXPToNext = 100
+local isLevelingUp    = false
+local pendingFraction = nil
 
 --------------------------------------------------------------------------------
 -- EVENT HANDLERS
@@ -505,10 +522,15 @@ local function onXPUpdate(payload)
         nextLabel.Text  = tostring(currentLevel + 1)
     end
 
-    -- animate fill
+    -- animate fill (lag effect: lag fill snaps to new amount, main fill tweens to catch up)
     local fraction = 0
     if xpToNext > 0 then fraction = math.clamp(xp / xpToNext, 0, 1) end
-    tweenFill(fraction, 0.45)
+    if isLevelingUp then
+        pendingFraction = fraction
+    else
+        lagFill.Size = UDim2.new(fraction, 0, 1, 0)
+        tweenFill(fraction, 0.9)
+    end
 
     -- popup: handled via dedicated XP_Popup remote to avoid duplicate popups
 end
@@ -521,22 +543,66 @@ local function onPopup(payload)
     end
 end
 
+local sparkRng = Random.new()
+local SPARK_COLORS = {
+    Color3.fromRGB(255, 245, 80),
+    Color3.fromRGB(255, 210, 50),
+    Color3.fromRGB(255, 255, 160),
+    Color3.fromRGB(255, 225, 100),
+}
+local function showBarSparkles()
+    for i = 1, 14 do
+        local spark = Instance.new("Frame")
+        spark.AnchorPoint = Vector2.new(0.5, 0.5)
+        local rx = sparkRng:NextNumber(0.08, 0.92)
+        spark.Position = UDim2.new(rx, 0, 0.5, 0)
+        local sz = math.floor(sparkRng:NextNumber(3, 7))
+        spark.Size = UDim2.new(0, sz, 0, sz)
+        spark.BackgroundColor3 = SPARK_COLORS[math.floor(sparkRng:NextNumber(1, #SPARK_COLORS + 0.999))]
+        spark.BorderSizePixel = 0
+        spark.ZIndex = 20
+        spark.Parent = container
+        Instance.new("UICorner", spark).CornerRadius = UDim.new(1, 0)
+        task.spawn(function()
+            task.wait(sparkRng:NextNumber(0, 0.14))
+            local dx = sparkRng:NextNumber(-18, 18)
+            local dy = sparkRng:NextNumber(10, 26)
+            TweenService:Create(spark, TweenInfo.new(sparkRng:NextNumber(0.4, 0.65), Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                Position = UDim2.new(rx, dx, 0.5, -dy),
+                BackgroundTransparency = 1,
+            }):Play()
+            task.wait(0.75)
+            spark:Destroy()
+        end)
+    end
+end
+
 local function onLevelUp(payload)
     if not payload then return end
     -- only show for the local player
     if payload.playerUserId ~= player.UserId then return end
 
-    -- Immediately update level labels and bar so the player sees the change NOW
     local newLevel = payload.newLevel or (currentLevel + 1)
     currentLevel = newLevel
     levelLabel.Text = tostring(currentLevel)
     nextLabel.Text  = tostring(currentLevel + 1)
 
-    -- Flash fill to full (XP crossed the threshold), then reset to 0.
-    -- The subsequent XP_Update will tween to the correct leftover fraction.
-    tweenFill(1, 0.2)
-    task.delay(0.25, function()
-        fill.Size = UDim2.new(0, 0, 1, 0) -- instant reset
+    -- Animate fill to full, burst sparkles, then reset and apply leftover XP
+    isLevelingUp = true
+    lagFill.Size = UDim2.new(1, 0, 1, 0)
+    task.spawn(function()
+        tweenFill(1, 0.35).Completed:Wait()
+        showBarSparkles()
+        task.wait(0.12)
+        fill.Size   = UDim2.new(0, 0, 1, 0)
+        lagFill.Size = UDim2.new(0, 0, 1, 0)
+        isLevelingUp = false
+        if pendingFraction then
+            local pf = pendingFraction
+            pendingFraction = nil
+            lagFill.Size = UDim2.new(pf, 0, 1, 0)
+            tweenFill(pf, 0.9)
+        end
     end)
 
     -- show small "LEVEL UP!" text centered on the XP bar
