@@ -26,10 +26,10 @@ MeteorShowerConfig.SPAWN_ANGLE_JITTER = 15     -- max horizontal offset (studs) 
 -- Meteor appearance
 ---------------------------------------------------------------------
 MeteorShowerConfig.METEOR_DIAMETER    = 6      -- diameter in studs (Part is a ball)
-MeteorShowerConfig.METEOR_COLOR       = Color3.fromRGB(45, 35, 30)    -- dark rocky body
-MeteorShowerConfig.FIRE_COLOR         = Color3.fromRGB(255, 120, 20)  -- primary flame
-MeteorShowerConfig.FIRE_SEC_COLOR     = Color3.fromRGB(255, 60, 10)   -- secondary flame / embers
-MeteorShowerConfig.GLOW_COLOR         = Color3.fromRGB(255, 140, 40)  -- PointLight colour
+MeteorShowerConfig.METEOR_COLOR       = Color3.fromRGB(220, 235, 255)  -- pale icy body
+MeteorShowerConfig.FIRE_COLOR         = Color3.fromRGB(160, 210, 255)  -- cool blue flame
+MeteorShowerConfig.FIRE_SEC_COLOR     = Color3.fromRGB(220, 240, 255)  -- white-blue embers
+MeteorShowerConfig.GLOW_COLOR         = Color3.fromRGB(160, 210, 255)  -- PointLight colour
 MeteorShowerConfig.GLOW_BRIGHTNESS    = 2
 MeteorShowerConfig.GLOW_RANGE         = 30
 
@@ -64,11 +64,10 @@ MeteorShowerConfig.SPLASH_DAMAGE_PCT       = 0.35 -- 35 % of MaxHealth
 -- Meteor Shards (collectible drops)
 ---------------------------------------------------------------------
 MeteorShowerConfig.SHARD_SPAWN_CHANCE      = 1.0  -- 1.0 = every impact drops a shard
-MeteorShowerConfig.SHARD_LIFETIME          = 15   -- seconds before uncollected shard despawns
-MeteorShowerConfig.REQUIRED_SHARDS         = 3    -- shards to collect for the objective
-MeteorShowerConfig.REWARD_COINS            = 50   -- coins granted on objective completion
-MeteorShowerConfig.SHARD_SIZE              = Vector3.new(2.2, 3, 2.2)
-MeteorShowerConfig.SHARD_COLOR             = Color3.fromRGB(255, 140, 40)  -- warm amber glow
+MeteorShowerConfig.SHARD_LIFETIME          = 20   -- seconds before uncollected shard despawns
+MeteorShowerConfig.SHARD_REWARD_COINS      = 5    -- coins granted per shard collected
+MeteorShowerConfig.SHARD_SIZE              = Vector3.new(2.5, 2.5, 2.5)  -- sphere diameter
+MeteorShowerConfig.SHARD_COLOR             = Color3.fromRGB(180, 225, 255)  -- light bright blue
 MeteorShowerConfig.SHARD_LIGHT_RANGE       = 18
 MeteorShowerConfig.SHARD_LIGHT_BRIGHTNESS  = 1.5
 MeteorShowerConfig.SHARD_Y_OFFSET          = 2    -- studs above ground level

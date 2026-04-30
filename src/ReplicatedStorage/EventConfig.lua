@@ -15,26 +15,32 @@ EventConfig.EventDebugMode = true
 
 if EventConfig.EventDebugMode then
     -----------------------------------------------------------------
-    -- TESTING values (fast iteration – events fire within seconds)
+    -- TESTING values (fast iteration)
     -----------------------------------------------------------------
-    EventConfig.EVENT_DURATION = 45      -- event duration in seconds (testing)
+    EventConfig.EVENT_DURATION     = 45    -- event duration in seconds
 
-    EventConfig.EVENT1_MIN = 10          -- 10 s into the match (testing)
-    EventConfig.EVENT1_MAX = 15          -- 15 s into the match (testing)
-
-    EventConfig.EVENT2_MIN = 25          -- 25 s into the match (testing)
-    EventConfig.EVENT2_MAX = 35          -- 35 s into the match (testing)
+    -- Probability rolling (debug)
+    -- Starts at 50% so an event usually fires within the first 1–2 rolls.
+    EventConfig.CHANCE_INITIAL     = 0.50  -- start at 50% (first roll already meaningful)
+    EventConfig.CHANCE_STEP        = 0.25  -- +25% per interval
+    EventConfig.CHANCE_CAP         = 0.75  -- never exceed 75%
+    EventConfig.CHANCE_INTERVAL    = 5     -- seconds between each roll
+    EventConfig.CHANCE_AFTER_EVENT = 0.50  -- reset here after event (no dead roll in debug)
 else
     -----------------------------------------------------------------
-    -- PRODUCTION values (real match timings)
+    -- PRODUCTION values
     -----------------------------------------------------------------
-    EventConfig.EVENT_DURATION = 90      -- event duration in seconds
+    EventConfig.EVENT_DURATION     = 90    -- event duration in seconds
 
-    EventConfig.EVENT1_MIN = 2 * 60 + 15   -- 2:15 into the match
-    EventConfig.EVENT1_MAX = 3 * 60 + 15   -- 3:15 into the match
-
-    EventConfig.EVENT2_MIN = 6 * 60         -- 6:00 into the match
-    EventConfig.EVENT2_MAX = 7 * 60 + 15    -- 7:15 into the match
+    -- Probability rolling (production)
+    -- Rolls every 20s starting at 2%.  +2% per failed roll, cap 70%.
+    -- Roll sequence: 2%, 4%, 6% … 70%, 70%, 70%…
+    -- Expected time to first trigger ≈ 2:50.  Range roughly 0:20 – 6:00+.
+    EventConfig.CHANCE_INITIAL     = 0.02  -- first roll at 2% (no wasted 0% roll)
+    EventConfig.CHANCE_STEP        = 0.02  -- +2% per failed roll
+    EventConfig.CHANCE_CAP         = 0.70  -- hard cap at 70%
+    EventConfig.CHANCE_INTERVAL    = 20    -- seconds between each roll
+    EventConfig.CHANCE_AFTER_EVENT = 0.02  -- reset to 2% after event (no wasted 0% roll)
 end
 
 -- Pulse animation cycle duration (seconds) – used by client indicator
