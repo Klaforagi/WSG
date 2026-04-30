@@ -31,16 +31,8 @@ pcall(function()
     end
 end)
 
-local WeaponEnchantConfig = nil
-pcall(function()
-    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
-    if mod and mod:IsA("ModuleScript") then
-        WeaponEnchantConfig = require(mod)
-    end
-end)
-
--- ENCHANT SYSTEM — animated shimmer styler for enchant name TextLabels
-local EnchantTextStyler = nil
+-- ENCHANT SYSTEM — single source of truth for all enchant/size text styling
+local EnchantTextStyler
 pcall(function()
     local mods = ReplicatedStorage:FindFirstChild("Modules")
     if mods then
@@ -955,26 +947,12 @@ function CrateOpeningUI.Init(playerGui)
             rfStroke.Color = rc
 
             -- SIZE ROLL SYSTEM — display exact rolled size percentage
-            if resultData.sizePercent and resultData.sizePercent ~= 100 then
-                local sizeTier = resultData.sizeTier or "Normal"
+            local sizeTier = resultData.sizeTier or "Normal"
+            if resultData.sizePercent then
                 if EnchantTextStyler then
                     EnchantTextStyler.ApplySize(resultSizeLabel, sizeTier)
-                    resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
-                else
-                    resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
-                    if sizeTier == "King" then
-                        resultSizeLabel.TextColor3 = Color3.fromRGB(230, 185, 40)
-                    elseif sizeTier == "Giant" then
-                        resultSizeLabel.TextColor3 = Color3.fromRGB(195, 205, 215)
-                    elseif sizeTier == "Large" or sizeTier == "Tiny" then
-                        resultSizeLabel.TextColor3 = Color3.fromRGB(200, 130, 55)
-                    else
-                        resultSizeLabel.TextColor3 = WHITE
-                    end
                 end
-            elseif resultData.sizePercent then
                 resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
-                resultSizeLabel.TextColor3 = DIM_TEXT
             else
                 resultSizeLabel.Text = ""
             end
@@ -983,16 +961,6 @@ function CrateOpeningUI.Init(playerGui)
             local enchantForDisplay = (resultData.enchantName and resultData.enchantName ~= "") and resultData.enchantName or nil
             if EnchantTextStyler then
                 EnchantTextStyler.Apply(resultEnchantLabel, enchantForDisplay)
-            elseif enchantForDisplay then
-                resultEnchantLabel.Text = enchantForDisplay
-                if WeaponEnchantConfig then
-                    local enchantColor = WeaponEnchantConfig.GetColorForEnchant(enchantForDisplay)
-                    resultEnchantLabel.TextColor3 = enchantColor or GOLD
-                else
-                    resultEnchantLabel.TextColor3 = GOLD
-                end
-            else
-                resultEnchantLabel.Text = ""
             end
 
             -- Set weapon image

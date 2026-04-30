@@ -67,17 +67,8 @@ pcall(function()
     end
 end)
 
--- ENCHANT SYSTEM — enchant config for enchant color/name display on cards
-local WeaponEnchantConfig = nil
-pcall(function()
-    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
-    if mod and mod:IsA("ModuleScript") then
-        WeaponEnchantConfig = require(mod)
-    end
-end)
-
--- ENCHANT SYSTEM — animated shimmer styler for enchant name TextLabels
-local EnchantTextStyler = nil
+-- ENCHANT SYSTEM — single source of truth for all enchant/size text styling
+local EnchantTextStyler
 pcall(function()
     local mods = ReplicatedStorage:FindFirstChild("Modules")
     if mods then
@@ -128,14 +119,7 @@ local function shadeColor(c, factor)
     return Color3.new(math.clamp(c.R * factor, 0, 1), math.clamp(c.G * factor, 0, 1), math.clamp(c.B * factor, 0, 1))
 end
 
--- Central size-tier style mapping (text color + bg darkness factor)
-local SIZE_TIER_STYLES = {
-    Tiny   = { text = Color3.fromRGB(200, 130,  55), bgFactor = 0.5 }, -- bronze
-    Normal = { text = Color3.fromRGB(160, 160, 170), bgFactor = 0.5 }, -- gray
-    Large  = { text = Color3.fromRGB(200, 130,  55), bgFactor = 0.5 }, -- bronze
-    Giant  = { text = Color3.fromRGB(195, 205, 215), bgFactor = 0.5 }, -- silver
-    King   = { text = Color3.fromRGB(230, 185,  40), bgFactor = 0.5 }, -- gold
-}
+-- (SIZE_TIER_STYLES removed — EnchantTextStyler is the sole source of size-tier colors)
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects)
@@ -1336,34 +1320,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if EnchantTextStyler then
             EnchantTextStyler.ApplySize(detailSize, tier)
             detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
-        else
-            if tier == "King" then
-                detailSize.TextColor3 = Color3.fromRGB(230, 185, 40)
-            elseif tier == "Giant" then
-                detailSize.TextColor3 = Color3.fromRGB(195, 205, 215)
-            elseif tier == "Large" then
-                detailSize.TextColor3 = Color3.fromRGB(200, 130, 55)
-            elseif tier == "Tiny" then
-                detailSize.TextColor3 = Color3.fromRGB(200, 130, 55)
-            else
-                detailSize.TextColor3 = DIM_TEXT
-            end
         end
 
         -- ENCHANT SYSTEM — show enchant name in detail panel
         local itemenchantName = itemData.enchantName or ""
         if EnchantTextStyler then
             EnchantTextStyler.Apply(detailEnchant, itemenchantName ~= "" and itemenchantName or nil)
-        elseif itemenchantName ~= "" and WeaponEnchantConfig then
-            local enchantData = WeaponEnchantConfig.GetEnchantData(itemenchantName)
-            if enchantData then
-                detailEnchant.Text = itemenchantName
-                detailEnchant.TextColor3 = enchantData.color
-            else
-                detailEnchant.Text = ""
-            end
-        else
-            detailEnchant.Text = ""
         end
 
         if isDeveloper and itemData.instanceId then
@@ -1423,53 +1385,38 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- ── SECTION 2: enchant tag (right under name, centered, fixed size) ──────
         local enchantName = itemData.enchantName or ""
-        if enchantName ~= "" and WeaponEnchantConfig then
-            local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
-            if enchantData then
-                local enchantColor = enchantData.color
-                local enchantDisplayText = enchantName
-                -- Fixed pill size (85% of old dynamic size) so all enchants look uniform
-                local enchantW = math.floor(px(68))
-                local enchantH = math.floor(px(17))
+        if enchantName ~= "" then
+            local enchantW = math.floor(px(68))
+            local enchantH = math.floor(px(17))
 
-                local h, s, v = Color3.toHSV(enchantColor)
-                local textC = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1))
-                local bgS = math.clamp(s + 0.14, 0, 1)
-                local bgV = math.clamp(v * 0.55 + 0.02, 0, 1)
-                local bgC = Color3.fromHSV(h, bgS, bgV)
+            local enchantBg = Instance.new("Frame", card)
+            enchantBg.Name = "EnchantTagBg"
+            enchantBg.BackgroundTransparency = 1
+            enchantBg.BorderSizePixel = 0
+            enchantBg.Size = UDim2.new(0, enchantW, 0, enchantH)
+            enchantBg.AnchorPoint = Vector2.new(0.5, 0)
+            enchantBg.Position = UDim2.new(0.5, 0, 0.17, 0)
+            enchantBg.ZIndex = 6
+            enchantBg.ClipsDescendants = false
+            local pCorner = Instance.new("UICorner", enchantBg)
+            pCorner.CornerRadius = UDim.new(0, math.max(0, math.floor(enchantH / 2)))
 
-                local enchantBg = Instance.new("Frame", card)
-                enchantBg.Name = "EnchantTagBg"
-                enchantBg.BackgroundColor3 = bgC
-                enchantBg.BackgroundTransparency = 1
-                enchantBg.BorderSizePixel = 0
-                enchantBg.Size = UDim2.new(0, enchantW, 0, enchantH)
-                enchantBg.AnchorPoint = Vector2.new(0.5, 0)
-                enchantBg.Position = UDim2.new(0.5, 0, 0.17, 0)
-                enchantBg.ZIndex = 6
-                enchantBg.ClipsDescendants = false
-                local pCorner = Instance.new("UICorner", enchantBg)
-                pCorner.CornerRadius = UDim.new(0, math.max(0, math.floor(enchantH / 2)))
-
-                local enchantLabel = Instance.new("TextLabel", enchantBg)
-                enchantLabel.Name = "EnchantTag"
-                enchantLabel.BackgroundTransparency = 1
-                enchantLabel.Font = Enum.Font.GothamBold
-                enchantLabel.TextColor3 = textC
-                enchantLabel.TextScaled = true
-                enchantLabel.Size = UDim2.new(1, -px(4), 1, 0)
-                enchantLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-                enchantLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
-                enchantLabel.TextXAlignment = Enum.TextXAlignment.Center
-                enchantLabel.TextYAlignment = Enum.TextYAlignment.Center
-                enchantLabel.Text = enchantDisplayText
-                enchantLabel.ZIndex = 7
-                if EnchantTextStyler then
-                    EnchantTextStyler.Apply(enchantLabel, enchantName)
-                end
-                local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
-                pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 13
+            local enchantLabel = Instance.new("TextLabel", enchantBg)
+            enchantLabel.Name = "EnchantTag"
+            enchantLabel.BackgroundTransparency = 1
+            enchantLabel.Font = Enum.Font.GothamBold
+            enchantLabel.TextScaled = true
+            enchantLabel.Size = UDim2.new(1, -px(4), 1, 0)
+            enchantLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+            enchantLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+            enchantLabel.TextXAlignment = Enum.TextXAlignment.Center
+            enchantLabel.TextYAlignment = Enum.TextYAlignment.Center
+            enchantLabel.ZIndex = 7
+            if EnchantTextStyler then
+                EnchantTextStyler.Apply(enchantLabel, enchantName)
             end
+            local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
+            pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 13
         end
 
         -- ── SECTION 3: Weapon icon (middle 44% of card) ─────────────────
@@ -1494,20 +1441,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local tier = itemData.sizeTier or "Normal"
 
         -- Size tier pill tag — bottom-left corner (fixed size, text scales to fit)
-        local style = SIZE_TIER_STYLES[tier] or SIZE_TIER_STYLES.Normal
-        local tierText = tier
-        local tierW = math.floor(px(46))
-        local tierH = math.floor(px(20))
         do
-            local h, s, v = Color3.toHSV(style.text)
-            local textColor = Color3.fromHSV(h, math.clamp(s, 0, 1), math.clamp(v + 0.14, 0, 1))
-            local bgS = math.clamp(s + 0.14, 0, 1)
-            local bgV = math.clamp(v * style.bgFactor + 0.02, 0, 1)
-            local bgColor = Color3.fromHSV(h, bgS, bgV)
+            local tierW = math.floor(px(46))
+            local tierH = math.floor(px(20))
 
             local tierBg = Instance.new("Frame", card)
             tierBg.Name = "SizeTierBg"
-            tierBg.BackgroundColor3 = bgColor
             tierBg.BackgroundTransparency = 1
             tierBg.BorderSizePixel = 0
             tierBg.Size = UDim2.new(0, tierW, 0, tierH)
@@ -1522,14 +1461,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.Name = "SizeTier"
             tierLabel.BackgroundTransparency = 1
             tierLabel.Font = Enum.Font.GothamBold
-            tierLabel.TextColor3 = textColor
             tierLabel.TextScaled = true
             tierLabel.Size = UDim2.new(1, -px(4), 1, 0)
             tierLabel.AnchorPoint = Vector2.new(0.5, 0.5)
             tierLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
             tierLabel.TextXAlignment = Enum.TextXAlignment.Center
             tierLabel.TextYAlignment = Enum.TextYAlignment.Center
-            tierLabel.Text = tierText
+            tierLabel.Text = tier
             tierLabel.ZIndex = 7
             if EnchantTextStyler then
                 EnchantTextStyler.ApplySize(tierLabel, tier)
@@ -1543,7 +1481,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.Name = "SizePercent"
         sizeLabel.BackgroundTransparency = 1
         sizeLabel.Font = Enum.Font.GothamBold
-        sizeLabel.TextColor3 = style.text
         sizeLabel.TextScaled = true
         sizeLabel.Size = UDim2.new(0.45, 0, 0.12, 0)
         sizeLabel.AnchorPoint = Vector2.new(1, 1)
