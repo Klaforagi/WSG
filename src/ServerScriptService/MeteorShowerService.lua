@@ -43,13 +43,14 @@ if not CurrencyService then
 end
 
 ---------------------------------------------------------------------
--- Progress remote (server → client)
+-- Remotes (server → client)
 ---------------------------------------------------------------------
-local ShardProgressRemote = ReplicatedStorage:FindFirstChild("EventShardProgress")
-if not ShardProgressRemote then
-    ShardProgressRemote = Instance.new("RemoteEvent")
-    ShardProgressRemote.Name = "EventShardProgress"
-    ShardProgressRemote.Parent = ReplicatedStorage
+-- MeteorShardCollected: tells the collecting player to show popup + play sound
+local ShardCollectedRemote = ReplicatedStorage:FindFirstChild("MeteorShardCollected")
+if not ShardCollectedRemote then
+    ShardCollectedRemote = Instance.new("RemoteEvent")
+    ShardCollectedRemote.Name = "MeteorShardCollected"
+    ShardCollectedRemote.Parent = ReplicatedStorage
 end
 
 ---------------------------------------------------------------------
@@ -62,8 +63,6 @@ local _spawnThread     = nil     -- coroutine running the spawn loop
 local _currentMeteors  = {}      -- references to in-flight meteor parts
 local _generation      = 0       -- bumped on each Start(); prevents stale cleanup
 local _activeShards    = {}      -- { part, connection } pairs for cleanup
-local _playerProgress  = {}      -- [userId] = number of shards collected this event
-local _playerRewarded  = {}      -- [userId] = true if reward already granted this event
 
 ---------------------------------------------------------------------
 -- Target zone helpers
@@ -77,16 +76,19 @@ local function getOrCreateZoneFolder()
     if folder then return folder end
 
     warn("[MeteorShower] Zone folder '" .. Config.ZONE_FOLDER_NAME
-        .. "' not found – creating default 200×200 fallback zone at world origin.")
+        .. "' not found – creating default 200×200 fallback zone.")
 
     folder = Instance.new("Folder")
     folder.Name = Config.ZONE_FOLDER_NAME
     folder.Parent = workspace
 
+    local centerPart = workspace:FindFirstChild("CenterPoint")
+    local centerPos = centerPart and centerPart.Position or Vector3.new(0, 0, 0)
+
     local zone = Instance.new("Part")
     zone.Name = "DefaultZone"
     zone.Size = Vector3.new(200, 1, 200)
-    zone.Position = Vector3.new(0, 5, 0)
+    zone.Position = Vector3.new(centerPos.X, centerPos.Y + 5, centerPos.Z)
     zone.Anchored = true
     zone.CanCollide = false
     zone.CanTouch = false
@@ -132,11 +134,60 @@ end
 -- Meteor construction
 ---------------------------------------------------------------------
 
---- Build a visible meteor Part with fire, smoke, and glow effects.
--- Returns: meteorPart, spawnCFrame, targetPosition
+--- Clone and attach the custom VFX meteor model to a root Part.
+-- All model BaseParts are welded to root so the tween on root moves everything.
+local function attachVFXModel(root, spawnCF)
+    local vfxFolder = ReplicatedStorage:FindFirstChild("VFX")
+    local template  = vfxFolder and vfxFolder:FindFirstChild("Meteor")
+    if not template then
+        warn("[MeteorShower] ReplicatedStorage.VFX.Meteor not found – using fallback ball")
+        return false
+    end
+
+    local clone = template:Clone()
+
+    -- Normalise to a consistent pivot before welding
+    if clone:IsA("Model") then
+        if not clone.PrimaryPart then
+            clone.PrimaryPart = clone:FindFirstChildOfClass("BasePart")
+        end
+        clone:PivotTo(spawnCF * CFrame.Angles(math.rad(90), 0, 0))
+    elseif clone:IsA("BasePart") then
+        clone.CFrame = spawnCF * CFrame.Angles(math.rad(90), 0, 0)
+    end
+
+    -- Parent into workspace tree so WeldConstraints resolve correctly
+    clone.Parent = root
+
+    -- Weld every BasePart to root and strip physics/collision
+    local parts = clone:IsA("BasePart")
+        and { clone }
+        or clone:GetDescendants()
+
+    for _, part in ipairs(parts) do
+        if part:IsA("BasePart") then
+            part.Anchored   = false   -- must be unanchored to follow the weld
+            part.CanCollide = false
+            part.CanTouch   = false
+
+            local weld  = Instance.new("WeldConstraint")
+            weld.Part0  = root
+            weld.Part1  = part
+            weld.Parent = root
+        end
+    end
+
+    return true
+end
+
+--- Build a meteor anchored to an invisible root Part.
+-- The root is the tween target and is returned as "meteor" to the caller.
+-- Fire / Smoke / PointLight are direct children of root so the existing
+-- impact-cleanup loop (meteor:GetChildren()) finds them without changes.
+-- Returns: rootPart, spawnPos, targetPos
 local function createMeteor(targetPos)
     -- Spawn position: high above + slight horizontal jitter for diagonal trajectory
-    local jitter = Config.SPAWN_ANGLE_JITTER
+    local jitter   = Config.SPAWN_ANGLE_JITTER
     local spawnPos = targetPos + Vector3.new(
         (math.random() * 2 - 1) * jitter,
         Config.SPAWN_HEIGHT,
@@ -144,53 +195,75 @@ local function createMeteor(targetPos)
     )
 
     local direction = (targetPos - spawnPos).Unit
+    local spawnCF   = CFrame.new(spawnPos, spawnPos + direction)
 
-    -- Body
-    local meteor = Instance.new("Part")
-    meteor.Name = "Meteor"
-    meteor.Shape = Enum.PartType.Ball
-    meteor.Size = Vector3.new(Config.METEOR_DIAMETER, Config.METEOR_DIAMETER, Config.METEOR_DIAMETER)
-    meteor.Material = Enum.Material.Slate
-    meteor.Color = Config.METEOR_COLOR
-    meteor.Anchored = true
-    meteor.CanCollide = false
-    meteor.CastShadow = true
-    meteor.CFrame = CFrame.new(spawnPos, spawnPos + direction)
+    -- Invisible anchor part – this is what TweenService moves
+    local root = Instance.new("Part")
+    root.Name        = "Meteor"
+    root.Size        = Vector3.new(1, 1, 1)
+    root.Transparency = 1
+    root.Anchored    = true
+    root.CanCollide  = false
+    root.CanTouch    = false
+    root.CastShadow  = false
+    root.CFrame      = spawnCF
+    root.Parent      = workspace   -- parent first so welds resolve in-world
 
-    -- Fire effect (legacy, simple, performant)
-    local fire = Instance.new("Fire")
-    fire.Size = Config.METEOR_DIAMETER * 1.5
-    fire.Heat = 15
-    fire.Color = Config.FIRE_COLOR
-    fire.SecondaryColor = Config.FIRE_SEC_COLOR
-    fire.Parent = meteor
+    local usedVFX = attachVFXModel(root, spawnCF)
 
-    -- Smoke trail
-    local smoke = Instance.new("Smoke")
-    smoke.Size = 4
-    smoke.Opacity = 0.4
-    smoke.Color = Color3.fromRGB(80, 60, 40)
-    smoke.RiseVelocity = 2
-    smoke.Parent = meteor
+    if not usedVFX then
+        -- Fallback: make the root itself the visible ball
+        root.Transparency = 0
+        root.Shape    = Enum.PartType.Ball
+        root.Size     = Vector3.new(Config.METEOR_DIAMETER, Config.METEOR_DIAMETER, Config.METEOR_DIAMETER)
+        root.Material = Enum.Material.Slate
+        root.Color    = Config.METEOR_COLOR
 
-    -- Glow
+        local fire = Instance.new("Fire")
+        fire.Size          = Config.METEOR_DIAMETER * 1.5
+        fire.Heat          = 15
+        fire.Color         = Config.FIRE_COLOR
+        fire.SecondaryColor = Config.FIRE_SEC_COLOR
+        fire.Parent        = root
+
+        local smoke = Instance.new("Smoke")
+        smoke.Size         = 4
+        smoke.Opacity      = 0.4
+        smoke.Color        = Color3.fromRGB(80, 60, 40)
+        smoke.RiseVelocity = 2
+        smoke.Parent       = root
+    end
+
+    -- Glow always lives on root (direct child) so the impact cleanup
+    -- loop (meteor:GetChildren()) can disable it
     local light = Instance.new("PointLight")
-    light.Color = Config.GLOW_COLOR
+    light.Color      = Config.GLOW_COLOR
     light.Brightness = Config.GLOW_BRIGHTNESS
-    light.Range = Config.GLOW_RANGE
-    light.Parent = meteor
+    light.Range      = Config.GLOW_RANGE
+    light.Parent     = root
 
-    meteor.Parent = workspace
-
-    return meteor, spawnPos, targetPos
+    return root, spawnPos, targetPos
 end
 
 ---------------------------------------------------------------------
 -- Impact effect
 ---------------------------------------------------------------------
 
+--- Play a random Meteor or Meteor2 sound from the Sounds folder at the given part.
+local function playMeteorSound(part)
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    if not soundsFolder then return end
+
+    local names = { "Meteor", "Meteor2" }
+    local source = soundsFolder:FindFirstChild(names[math.random(1, 2)])
+    if not source then return end
+
+    local sound = source:Clone()
+    sound.Parent = part
+    sound:Play()
+end
+
 --- Quick expanding neon flash at the landing site.
--- Extension point: add screen-shake, sound, crater, drop spawning here.
 local function createImpactEffect(position)
     local diameter = Config.METEOR_DIAMETER
 
@@ -199,7 +272,7 @@ local function createImpactEffect(position)
     flash.Shape = Enum.PartType.Ball
     flash.Size = Vector3.new(diameter * 1.5, diameter * 1.5, diameter * 1.5)
     flash.Material = Enum.Material.Neon
-    flash.Color = Color3.fromRGB(255, 160, 40)
+    flash.Color = Color3.fromRGB(180, 225, 255)   -- light blue
     flash.Anchored = true
     flash.CanCollide = false
     flash.Transparency = 0.3
@@ -207,7 +280,7 @@ local function createImpactEffect(position)
     flash.Parent = workspace
 
     local impactLight = Instance.new("PointLight")
-    impactLight.Color = Color3.fromRGB(255, 180, 60)
+    impactLight.Color = Color3.fromRGB(200, 235, 255)  -- pale blue-white
     impactLight.Brightness = 4
     impactLight.Range = 50
     impactLight.Parent = flash
@@ -243,6 +316,11 @@ local function applyImpactDamage(impactPos)
     local directR = Config.DIRECT_HIT_RADIUS
     local splashR = Config.SPLASH_RADIUS
 
+    -- Pre-load MobHit sound template
+    local soundsFolder  = ReplicatedStorage:FindFirstChild("Sounds")
+    local mobsFolder    = soundsFolder and soundsFolder:FindFirstChild("Mobs")
+    local mobHitTemplate = mobsFolder and mobsFolder:FindFirstChild("MobHit")
+
     for _, plr in ipairs(Players:GetPlayers()) do
         local char = plr.Character
         if not char then continue end
@@ -252,11 +330,21 @@ local function applyImpactDamage(impactPos)
         if not hrp then continue end
 
         local dist = (hrp.Position - impactPos).Magnitude
+        local didHit = false
 
         if dist <= directR then
             hum:TakeDamage(hum.MaxHealth * Config.DIRECT_HIT_DAMAGE_PCT)
+            didHit = true
         elseif dist <= splashR then
             hum:TakeDamage(hum.MaxHealth * Config.SPLASH_DAMAGE_PCT)
+            didHit = true
+        end
+
+        if didHit and mobHitTemplate and mobHitTemplate:IsA("Sound") then
+            local s = mobHitTemplate:Clone()
+            s.Parent = hrp
+            s:Play()
+            Debris:AddItem(s, 4)
         end
     end
 end
@@ -271,13 +359,13 @@ local function spawnShard(position)
 
     local shard = Instance.new("Part")
     shard.Name = "MeteorShard"
+    shard.Shape = Enum.PartType.Ball
     shard.Size = Config.SHARD_SIZE
     shard.Material = Enum.Material.Neon
     shard.Color = Config.SHARD_COLOR
     shard.Anchored = true
     shard.CanCollide = false
     shard.CFrame = CFrame.new(position + Vector3.new(0, Config.SHARD_Y_OFFSET, 0))
-        * CFrame.Angles(0, math.rad(math.random(0, 360)), 0)
     shard.Parent = workspace
 
     local light = Instance.new("PointLight")
@@ -297,7 +385,6 @@ local function spawnShard(position)
     local conn
     conn = shard.Touched:Connect(function(hit)
         if collected then return end
-        if not _active then return end
 
         local char = hit.Parent
         if not char then return end
@@ -306,42 +393,39 @@ local function spawnShard(position)
         local plr = Players:GetPlayerFromCharacter(char)
         if not plr then return end
 
-        local userId = plr.UserId
-        local current = _playerProgress[userId] or 0
-        if current >= Config.REQUIRED_SHARDS then return end
-
         collected = true
-        current = current + 1
-        _playerProgress[userId] = current
 
-        pcall(function()
-            ShardProgressRemote:FireClient(plr, current, Config.REQUIRED_SHARDS)
-        end)
-
-        -- Grant reward on objective completion (exactly once per event)
-        if current >= Config.REQUIRED_SHARDS and not _playerRewarded[userId] then
-            _playerRewarded[userId] = true
-            local rewardAmount = Config.REWARD_COINS
-            if CurrencyService and CurrencyService.AddCoins then
-                local ok, err = pcall(function()
-                    CurrencyService:AddCoins(plr, rewardAmount, "MeteorShowerEvent")
-                end)
-                if ok then
-                    print("[MeteorShower] Granted", rewardAmount, "coins to", plr.Name, "for completing event objective")
-                else
-                    warn("[MeteorShower] Failed to grant coins to", plr.Name, ":", err)
-                end
-            else
-                warn("[MeteorShower] CurrencyService unavailable – could not grant", rewardAmount, "coins to", plr.Name)
-            end
-        elseif current >= Config.REQUIRED_SHARDS and _playerRewarded[userId] then
-            print("[MeteorShower] Reward already granted to", plr.Name, "– skipping duplicate")
+        -- Grant +5 coins
+        local rewardAmount = Config.SHARD_REWARD_COINS
+        if CurrencyService and CurrencyService.AddCoins then
+            pcall(function()
+                CurrencyService:AddCoins(plr, rewardAmount, "MeteorShard")
+            end)
         end
+
+        -- Tell the client: show popup + play Collect sound
+        pcall(function()
+            ShardCollectedRemote:FireClient(plr, shard.Position, rewardAmount)
+        end)
 
         pcall(function() conn:Disconnect() end)
         pcall(function() bobTween:Cancel() end)
         pcall(function() shard:Destroy() end)
     end)
+
+    -- Fade out during the last 5 seconds of the shard's lifetime
+    local fadeStart = Config.SHARD_LIFETIME - 5
+    if fadeStart > 0 then
+        task.delay(fadeStart, function()
+            if not shard or shard.Parent == nil then return end
+            local fadeInfo = TweenInfo.new(5, Enum.EasingStyle.Linear)
+            TweenService:Create(shard, fadeInfo, { Transparency = 1 }):Play()
+            local shardLight = shard:FindFirstChildOfClass("PointLight")
+            if shardLight then
+                TweenService:Create(shardLight, fadeInfo, { Brightness = 0 }):Play()
+            end
+        end)
+    end
 
     Debris:AddItem(shard, Config.SHARD_LIFETIME)
     table.insert(_activeShards, { part = shard, connection = conn, tween = bobTween })
@@ -404,6 +488,7 @@ local function spawnOneMeteor()
     end)
 
     tween:Play()
+    playMeteorSound(meteor)
 end
 
 ---------------------------------------------------------------------
@@ -414,6 +499,7 @@ end
 --- until :Stop() is called.
 function MeteorShowerService:Start()
     if _active then return end
+
     _active = true
     _generation = _generation + 1
     _currentMeteors = {}   -- fresh table for this session
@@ -446,40 +532,10 @@ function MeteorShowerService:Stop()
         _spawnThread = nil
     end
 
-    -- Clean up all active shards
-    for _, entry in ipairs(_activeShards) do
-        pcall(function()
-            if entry.connection then entry.connection:Disconnect() end
-        end)
-        pcall(function()
-            if entry.tween then entry.tween:Cancel() end
-        end)
-        pcall(function()
-            if entry.part and entry.part.Parent then entry.part:Destroy() end
-        end)
-    end
+    -- Leave active shards alive so they time out naturally (with fade).
+    -- Clear the tracking table so the next event starts fresh.
     _activeShards = {}
-    _playerProgress = {}
-
-    -- Capture this batch for the delayed force-cleanup.
-    -- A new :Start() call creates a fresh _currentMeteors table,
-    -- so the closure below only cleans up *this* session's meteors.
-    local batch = _currentMeteors
-    local gen   = _generation
     _currentMeteors = {}
-
-    -- Safety-net: force-remove anything still alive after enough time
-    -- for in-flight meteors to finish landing + impact + cleanup.
-    local grace = Config.FALL_DURATION + Config.IMPACT_CLEANUP_DELAY + 1
-    task.delay(grace, function()
-        -- Bail if a new session has already started (its Start reset _generation)
-        if _generation ~= gen then return end
-        for _, meteor in ipairs(batch) do
-            if meteor and meteor.Parent then
-                pcall(function() meteor:Destroy() end)
-            end
-        end
-    end)
 end
 
 --- Returns true while the shower is actively spawning meteors.

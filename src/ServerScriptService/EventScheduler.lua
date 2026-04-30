@@ -47,9 +47,6 @@ local _serverCallbacks = {} -- server-side listeners (registered via OnStateChan
 ---------------------------------------------------------------------
 -- Internal helpers
 ---------------------------------------------------------------------
-local function randomInRange(lo, hi)
-    return lo + math.random() * (hi - lo)
-end
 
 local function broadcast(active, idx)
     pcall(function()
@@ -75,76 +72,67 @@ end
 -- Public API
 ---------------------------------------------------------------------
 
---- Call at match start.  Rolls event times and begins the scheduler loop.
-function EventScheduler:StartMatch(matchStartTick)
+--- Call at match start.  Begins the probability-based event roll loop.
+--- Every CHANCE_INTERVAL seconds a roll is made against the current chance.
+--- If the roll succeeds the event runs for EVENT_DURATION seconds, then
+--- chance resets to CHANCE_AFTER_EVENT and climbs again.
+--- If the roll fails, chance increases by CHANCE_STEP for the next roll.
+function EventScheduler:StartMatch(_matchStartTick)
     -- Clean up any previous match first
     self:StopMatch()
 
-    -- Pre-roll event start offsets (seconds into the match)
-    -- Event 1 time window (configurable in EventConfig)
-    local e1Start = randomInRange(EventConfig.EVENT1_MIN, EventConfig.EVENT1_MAX)
-    -- Event 2 time window (configurable in EventConfig)
-    local e2Start = randomInRange(EventConfig.EVENT2_MIN, EventConfig.EVENT2_MAX)
-
-    -- Prevent overlap: push event 2 after event 1 ends if necessary
-    local e1End = e1Start + EventConfig.EVENT_DURATION
-    if e2Start < e1End then
-        e2Start = e1End + 1  -- 1-second gap minimum
-    end
-
-    local events = {
-        { startOffset = e1Start, duration = EventConfig.EVENT_DURATION },
-        { startOffset = e2Start, duration = EventConfig.EVENT_DURATION },
-    }
-
-    print(("[EventScheduler] Match events rolled – E1 @ %.1fs  E2 @ %.1fs  duration %ds")
-        :format(e1Start, e2Start, EventConfig.EVENT_DURATION))
-
     _running   = true
     _activeIdx = nil
+
+    print(("[EventScheduler] Match started – initial event chance %.0f%%  interval %ds")
+        :format(EventConfig.CHANCE_INITIAL * 100, EventConfig.CHANCE_INTERVAL))
 
     -- Broadcast initial inactive state
     broadcast(false, nil)
 
     _thread = task.spawn(function()
-        for i, ev in ipairs(events) do
+        local chance = EventConfig.CHANCE_INITIAL
+
+        while _running do
+            -- Wait one roll interval
+            task.wait(EventConfig.CHANCE_INTERVAL)
             if not _running then return end
 
-            -- Wait until event start time
-            while _running do
-                local elapsed = workspace:GetServerTimeNow() - matchStartTick
-                if elapsed >= ev.startOffset then break end
-                task.wait(math.min(ev.startOffset - elapsed, 1))
+            print(("[EventScheduler] Rolling for event… chance = %.0f%%"):format(chance * 100))
+
+            if math.random() < chance then
+                -- ---- EVENT START ----
+                _activeIdx    = EventConfig.ActiveEventId
+                _eventEndTime = workspace:GetServerTimeNow() + EventConfig.EVENT_DURATION
+                print((("[EventScheduler] Event '%s' ACTIVE (triggered at %.0f%% chance)"):format(EventConfig.ActiveEventId, chance * 100)))
+                broadcast(true, EventConfig.ActiveEventId)
+                notifyServer(true, EventConfig.ActiveEventId)
+
+                -- Run for EVENT_DURATION seconds
+                local activatedAt = workspace:GetServerTimeNow()
+                while _running do
+                    local elapsed = workspace:GetServerTimeNow() - activatedAt
+                    if elapsed >= EventConfig.EVENT_DURATION then break end
+                    task.wait(math.min(EventConfig.EVENT_DURATION - elapsed, 1))
+                end
+                if not _running then return end
+
+                -- ---- EVENT END ----
+                _activeIdx    = nil
+                _eventEndTime = nil
+                print("[EventScheduler] Event ENDED – resetting chance to 0%")
+                broadcast(false, nil)
+                notifyServer(false, nil)
+
+                -- Reset chance; it will climb again from the next tick
+                chance = EventConfig.CHANCE_AFTER_EVENT
+            else
+                -- Roll failed – increase chance for next interval
+                chance = math.min(chance + EventConfig.CHANCE_STEP, EventConfig.CHANCE_CAP)
+                print(("[EventScheduler] No event – chance raised to %.0f%%"):format(chance * 100))
             end
-            if not _running then return end
-
-            -- Activate event
-            _activeIdx = i
-            _eventEndTime = workspace:GetServerTimeNow() + ev.duration
-            print(("[EventScheduler] Event %d ACTIVE"):format(i))
-            broadcast(true, i)
-            notifyServer(true, i)
-
-            -- Wait for event duration
-            local activatedAt = workspace:GetServerTimeNow()
-            while _running do
-                local dur = workspace:GetServerTimeNow() - activatedAt
-                if dur >= ev.duration then break end
-                task.wait(math.min(ev.duration - dur, 1))
-            end
-            if not _running then return end
-
-            -- Deactivate event
-            _activeIdx = nil
-            _eventEndTime = nil
-            print(("[EventScheduler] Event %d ENDED"):format(i))
-            broadcast(false, nil)
-            notifyServer(false, nil)
         end
     end)
-
-    -- Late-join support: send current state to players who join mid-match
-    -- (connection is cleaned up in StopMatch via _running guard)
 end
 
 --- Call at match end or reset.  Stops the scheduler and clears state.

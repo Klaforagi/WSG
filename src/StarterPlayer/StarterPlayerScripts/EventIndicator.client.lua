@@ -1044,6 +1044,75 @@ else
     warn("[EventIndicator] EventStateChanged remote not found – event UI will not work")
 end
 
+---------------------------------------------------------------------
+-- Meteor shard collection: floating "+N coins" popup + Collect sound
+---------------------------------------------------------------------
+do
+    local shardCollectedRemote = ReplicatedStorage:FindFirstChild("MeteorShardCollected")
+        or ReplicatedStorage:WaitForChild("MeteorShardCollected", 15)
+
+    if shardCollectedRemote then
+        shardCollectedRemote.OnClientEvent:Connect(function(shardPos, amount)
+            -- Play Collect sound
+            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+            local collectSound = soundsFolder and soundsFolder:FindFirstChild("Collect")
+            if collectSound and collectSound:IsA("Sound") then
+                local s = collectSound:Clone()
+                s.Parent = workspace
+                s:Play()
+                game:GetService("Debris"):AddItem(s, 4)
+            end
+
+            -- Floating "+N coins" billboard at the shard position
+            local anchor = Instance.new("Part")
+            anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+            anchor.Transparency = 1
+            anchor.Anchored = true
+            anchor.CanCollide = false
+            anchor.CanTouch = false
+            anchor.CFrame = CFrame.new(shardPos)
+            anchor.Parent = workspace
+
+            local gui = Instance.new("BillboardGui")
+            gui.Size = UDim2.new(0, 120, 0, 44)
+            gui.StudsOffset = Vector3.new(0, 3, 0)
+            gui.AlwaysOnTop = true
+            gui.Adornee = anchor
+            gui.Parent = anchor
+
+            local label = Instance.new("TextLabel")
+            label.Size = UDim2.new(1, 0, 1, 0)
+            label.BackgroundTransparency = 1
+            label.Text = "+" .. tostring(amount) .. " coins"
+            label.Font = Enum.Font.GothamBold
+            label.TextSize = 22
+            label.TextColor3 = Color3.fromRGB(180, 225, 255)
+            label.TextStrokeColor3 = Color3.fromRGB(0, 60, 120)
+            label.TextStrokeTransparency = 0.3
+            label.Parent = gui
+
+            -- Float upward while fading
+            local ts = game:GetService("TweenService")
+            local floatTween = ts:Create(gui,
+                TweenInfo.new(1.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                { StudsOffset = Vector3.new(0, 5.5, 0) }
+            )
+            floatTween:Play()
+
+            task.spawn(function()
+                task.wait(0.6)
+                for t = 0, 1, 0.06 do
+                    label.TextTransparency = t
+                    label.TextStrokeTransparency = 0.3 + t * 0.7
+                    task.wait(0.06)
+                end
+                floatTween:Cancel()
+                anchor:Destroy()
+            end)
+        end)
+    end
+end
+
 -- Clean up on match end
 local MatchEnd = ReplicatedStorage:FindFirstChild("MatchEnd")
 if MatchEnd and MatchEnd:IsA("RemoteEvent") then
