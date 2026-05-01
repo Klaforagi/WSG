@@ -132,9 +132,8 @@ end
 --------------------------------------------------------------------------------
 -- Build a clean front-facing preview of `model` inside `viewport`.
 -- Uses a WorldModel so animations / Motor6Ds remain functional for future
--- emote support. Camera is always positioned in front of the model's
--- forward (-Z) axis at a consistent zoom and slight downward tilt onto the
--- chest/head area.
+-- emote support. Roblox characters face toward local -Z, so the camera sits
+-- on the -Z side and looks back at the chest/head area.
 --------------------------------------------------------------------------------
 local function buildModelViewport(viewport, model)
     -- Clear any previous contents.
@@ -153,7 +152,7 @@ local function buildModelViewport(viewport, model)
     local world = Instance.new("WorldModel")
     world.Parent = viewport
 
-    -- Re-pivot the model to origin facing -Z (toward camera at +Z).
+    -- Re-pivot the model to origin facing -Z.
     -- This guarantees a clean front-facing pose no matter what orientation
     -- the source model had in workspace/ReplicatedStorage.
     local _, extents = getFramingPivot(model)
@@ -175,8 +174,8 @@ local function buildModelViewport(viewport, model)
     -- Distance scaled to the model's largest extent so big and small
     -- mobs are framed identically.
     local distance = maxExtent * 1.85
-    -- Camera in FRONT of the model (positive Z because model faces -Z).
-    local camPos = lookAt + Vector3.new(0, size.Y * 0.05, distance)
+    -- Camera in FRONT of the model (negative Z because model faces -Z).
+    local camPos = lookAt + Vector3.new(0, size.Y * 0.05, -distance)
     cam.CFrame = CFrame.lookAt(camPos, lookAt)
     cam.Parent = viewport
     viewport.CurrentCamera = cam

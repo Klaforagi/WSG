@@ -49,20 +49,49 @@ EventConfig.PULSE_CYCLE = 1.75  -- full pulse cycle duration in seconds
 ---------------------------------------------------------------------
 -- Event definitions (placeholder data for the info panel)
 -- To add a new event, add an entry here keyed by a unique string id.
--- The client reads ActiveEventId to look up the matching def.
+-- The scheduler/client use event ids to look up the matching def.
 ---------------------------------------------------------------------
 EventConfig.EventDefs = {
     MeteorShower = {
         Name       = "Meteor Shower",
         Objective  = "Collect 3 Meteor Shards",
         Reward     = "50 Coins",
+        Announcement = "Meteor Shower Incoming - Collect Shards!",
+        AnnouncementColor = Color3.fromRGB(255, 180, 55),
         RequiredShards = 3,
         CompletionRewardCoins = 50,
     },
+    GoldRush = {
+        Name       = "Gold Rush",
+        Objective  = "Collect 8 Gold Coins",
+        Reward     = "Up to 60 Coins",
+        Announcement = "Gold Rush! Coins are scattering across the battlefield!",
+        AnnouncementColor = Color3.fromRGB(255, 215, 80),
+        RequiredCoins = 8,
+        PickupRewardCoins = 3,
+        CompletionRewardCoins = 25,
+        MaxRewardCoins = 60,
+        WaveCount = 4,
+        MinPickupsPerWave = 12,
+        PickupsPerPlayerPerWave = 2,
+        MaxPickupsPerWave = 28,
+        PickupLifetime = 18,
+    },
 }
 
--- Which event definition is used when an event activates.
--- Swap this value to change the active event type.
+-- Fallback/default event id. Kept for compatibility with older event code and
+-- for quick Studio testing.
 EventConfig.ActiveEventId = "MeteorShower"
+
+-- Optional Studio/testing override. Set to "MeteorShower" or "GoldRush" to
+-- force that event; leave nil to choose from EnabledEvents by weight.
+EventConfig.ForcedEventId = nil
+
+-- Enabled timed events. The scheduler chooses one of these when an event roll
+-- succeeds. Only one event is active at a time.
+EventConfig.EnabledEvents = {
+    { Id = "MeteorShower", Weight = 1.0 },
+    { Id = "GoldRush",     Weight = 1.0 },
+}
 
 return EventConfig

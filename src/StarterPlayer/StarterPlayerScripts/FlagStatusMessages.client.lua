@@ -43,6 +43,13 @@ end
 
 local GOLD_HEX = colorToHex(GOLD_TEXT)
 
+local function escapeRichText(text)
+    return tostring(text or "")
+        :gsub("&", "&amp;")
+        :gsub("<", "&lt;")
+        :gsub(">", "&gt;")
+end
+
 local function playLocalSound(soundName)
     if not soundName then return end
     local sounds = ReplicatedStorage:FindFirstChild("Sounds")
@@ -88,6 +95,9 @@ local function buildRichText(item)
                 "<font color='%s'>The </font><font color='%s'>%s</font><font color='%s'> Flag has been returned!</font>",
                 GOLD_HEX, fHex, teamWord, white)
         end
+    elseif item.eventType == "event" then
+        local accentHex = colorToHex(item.accentColor or Color3.fromRGB(255, 180, 55))
+        return string.format("<font color='%s'>%s</font>", accentHex, escapeRichText(item.message))
     end
     return item.playerName or ""
 end
@@ -116,7 +126,7 @@ local function displayItem(item)
     panelCorner.Parent = panel
 
     local panelStroke = Instance.new("UIStroke")
-    panelStroke.Color = Color3.fromRGB(80, 65, 20)
+    panelStroke.Color = item.accentColor or Color3.fromRGB(80, 65, 20)
     panelStroke.Thickness = 1.5
     panelStroke.Transparency = 0.3
     panelStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
@@ -198,7 +208,7 @@ end
 ---------------------------------------------------------------------
 -- listen for events
 ---------------------------------------------------------------------
-FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName, flagTeamName)
+FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName, flagTeamName, accentColor)
     if eventType == "playSound" then return end
 
     if eventType == "pickup" or eventType == "returned" or eventType == "captured" then
@@ -207,6 +217,13 @@ FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName,
             playerName = playerName,
             playerTeamName = playerTeamName,
             flagTeamName = flagTeamName,
+        })
+        processQueue()
+    elseif eventType == "event" then
+        table.insert(messageQueue, {
+            eventType = eventType,
+            message = playerName,
+            accentColor = (typeof(accentColor) == "Color3") and accentColor or Color3.fromRGB(255, 180, 55),
         })
         processQueue()
     end

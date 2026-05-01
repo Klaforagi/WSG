@@ -462,12 +462,13 @@ local function createImpactEffect(position)
 end
 
 ---------------------------------------------------------------------
--- Impact damage (server-authoritative, MaxHealth-based)
+-- Impact damage (server-authoritative, flat damage)
 ---------------------------------------------------------------------
 
 local function applyImpactDamage(impactPos)
     local directR = Config.DIRECT_HIT_RADIUS
     local splashR = Config.SPLASH_RADIUS
+    local damage = tonumber(Config.IMPACT_DAMAGE) or 10
 
     -- Pre-load MobHit sound template
     local soundsFolder  = ReplicatedStorage:FindFirstChild("Sounds")
@@ -486,10 +487,10 @@ local function applyImpactDamage(impactPos)
         local didHit = false
 
         if dist <= directR then
-            hum:TakeDamage(hum.MaxHealth * Config.DIRECT_HIT_DAMAGE_PCT)
+            hum:TakeDamage(damage)
             didHit = true
         elseif dist <= splashR then
-            hum:TakeDamage(hum.MaxHealth * Config.SPLASH_DAMAGE_PCT)
+            hum:TakeDamage(damage)
             didHit = true
         end
 

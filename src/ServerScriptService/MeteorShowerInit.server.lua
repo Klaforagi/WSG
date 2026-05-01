@@ -39,10 +39,10 @@ end
 ---------------------------------------------------------------------
 -- Hook into event state changes
 ---------------------------------------------------------------------
-EventScheduler:OnStateChanged(function(active, _eventIndex)
-    if active then
+EventScheduler:OnStateChanged(function(active, eventId)
+    if active and eventId == "MeteorShower" then
         MeteorShowerService:Start()
-    else
+    elseif not active then
         MeteorShowerService:Stop()
     end
 end)
@@ -60,7 +60,7 @@ end
 -- Catch the case where an event is already active when this script loads
 -- (unlikely in practice but safe to check).
 local isActive, idx = EventScheduler:IsActive()
-if isActive then
+if isActive and idx == "MeteorShower" then
     MeteorShowerService:Start()
 end
 

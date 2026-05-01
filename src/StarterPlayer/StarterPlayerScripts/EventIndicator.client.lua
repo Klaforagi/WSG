@@ -1,35 +1,13 @@
 --[[
     EventIndicator.client.lua  (StarterPlayerScripts)
-    Shows a clickable "EVENT" card inside the left-side menu panel
-    whenever the server signals that a timed event is active.
+    Shows event UI whenever the server signals that a timed event is active.
+    The left-side menu button/timer is intentionally not created; event state
+    and functionality still drive the popup, objective tracker, and reward UI.
 
-    The card is inserted directly into the MainUICard panel's
-    UIListLayout at LayoutOrder 100, so it sits below the existing
-    buttons (Quests, Upgrade, Team) as part of the natural stack.
-    A timer label sits at LayoutOrder 101 directly below the card.
-    The panel's AutomaticSize.Y grows/shrinks cleanly when the
-    event activates or ends — no manual absolute positioning needed.
-
-    Features:
-      - Clickable event card that toggles a modal-style event popup
-      - Separate countdown timer label below the Event button
-      - Event popup matches the KingsGround menu window style
-      - All UI is created when event activates and destroyed when it ends
-
-    Event card layer stack (bottom to top):
-      1. Base frame  (dark background + gradient)           ZIndex 0
-      2. SilhouetteArt  (medieval battle atmosphere)        ZIndex 1
-      3. TeamPulseOverlay  (team-coloured tint, animates)   ZIndex 2
-      4. GoldBorderStroke  (UIStroke on base frame)         ZIndex n/a
-      5. EventLabel + Shadow  (centered "EVENT" text)       ZIndex 9-10
-      6. ClickOverlay  (transparent button for clicks)      ZIndex 11
-
-    Pulse animation:
-      - Starts inside createIndicator() after all layers are built
-      - Runs in pulseThread (task.spawn loop)
-      - Tweens TeamPulseOverlay.BackgroundTransparency between
-        PULSE_MIN_TRANSPARENCY (strong tint) and PULSE_MAX_TRANSPARENCY (weak tint)
-      - Stops in destroyIndicator() via task.cancel + tween cleanup
+        Features:
+            - Event popup matches the KingsGround menu window style
+            - Lightweight right-side objective tracker with live countdown
+            - All UI is created when event activates and destroyed when it ends
 ]]
 
 local Players           = game:GetService("Players")
@@ -116,37 +94,59 @@ local popupTimerLabel   = nil   -- timer TextLabel inside the popup
 local popupVisible      = false -- whether the popup is shown
 local objectiveTracker  = nil   -- right-side objective tracker ScreenGui
 local trackerObjLabel   = nil   -- TextLabel that shows shard progress
+local trackerTimerLabel = nil   -- TextLabel that shows remaining event time
 local shardProgressConn = nil   -- connection for EventShardProgress remote
+local currentEventId    = EventConfig and EventConfig.ActiveEventId or "MeteorShower"
 
 ---------------------------------------------------------------------
 -- Current event definition (read from EventConfig)
 ---------------------------------------------------------------------
-local function getEventDef()
+local function getEventDef(eventId)
     if not EventConfig then return nil end
-    local id = EventConfig.ActiveEventId
+    local id = eventId or currentEventId or EventConfig.ActiveEventId
     if id and EventConfig.EventDefs then
         return EventConfig.EventDefs[id]
     end
     return nil
 end
 
+local function getEventRequiredCount(def)
+    if not def then return 0 end
+    return tonumber(def.RequiredShards)
+        or tonumber(def.RequiredCoins)
+        or tonumber(def.RequiredCollectibles)
+        or tonumber(def.RequiredObjectives)
+        or 0
+end
+
 ---------------------------------------------------------------------
--- Time formatting — M:SS when >= 60, otherwise just seconds
+-- Time formatting — compact M:SS
 ---------------------------------------------------------------------
 local function formatTime(seconds)
     seconds = math.max(0, math.floor(seconds))
-    if seconds >= 60 then
-        local m = math.floor(seconds / 60)
-        local s = seconds % 60
-        return string.format("%d:%02d", m, s)
+    local minutes = math.floor(seconds / 60)
+    local secs = seconds % 60
+    return string.format("%d:%02d", minutes, secs)
+end
+
+local function updateEventTimers()
+    if not eventEndTime then return end
+
+    local remaining = math.max(0, eventEndTime - workspace:GetServerTimeNow())
+    local text = formatTime(remaining)
+
+    if trackerTimerLabel then
+        trackerTimerLabel.Text = "Time: " .. text
     end
-    return tostring(seconds)
+
+    if popupTimerLabel and popupVisible then
+        popupTimerLabel.Text = text
+    end
 end
 
 
-
 ---------------------------------------------------------------------
--- Cleanup — stops pulse, cancels tweens, destroys card/timer/popup
+-- Cleanup — stops timers/tweens and destroys event UI
 ---------------------------------------------------------------------
 local function destroyIndicator()
     if shardProgressConn then
@@ -174,6 +174,7 @@ local function destroyIndicator()
         objectiveTracker = nil
     end
     trackerObjLabel = nil
+    trackerTimerLabel = nil
     popupVisible = false
     popupTimerLabel = nil
     eventEndTime = nil
@@ -630,196 +631,22 @@ local function togglePopup()
 end
 
 ---------------------------------------------------------------------
--- Build the event card
+-- Build event UI without adding a left-side menu button/timer
 ---------------------------------------------------------------------
-local function createIndicator()
+local function createIndicator(endTime, eventId)
+    currentEventId = eventId or currentEventId or (EventConfig and EventConfig.ActiveEventId) or "MeteorShower"
     destroyIndicator()
+    eventEndTime = endTime
 
-    -- Find the MainUICard panel inside the MainUI ScreenGui
     local mainUI = playerGui:FindFirstChild("MainUI")
-    if not mainUI then
-        mainUI = playerGui:WaitForChild("MainUI", 5)
-    end
-    if not mainUI then
-        warn("[EventIndicator] MainUI not found – cannot show event card")
-        return
-    end
-    local panel = mainUI:FindFirstChild("MainUICard")
-    if not panel then
-        panel = mainUI:WaitForChild("MainUICard", 5)
-    end
-    if not panel then
-        warn("[EventIndicator] MainUICard not found – cannot show event card")
-        return
-    end
-
-    -- Card height: similar to the Shop/Inventory row
-    local function calcCardHeight()
-        local screenY = 720
-        local cam = workspace.CurrentCamera
-        if cam and cam.ViewportSize then screenY = cam.ViewportSize.Y end
-        return math.max(42, math.floor(screenY * 0.075))
-    end
-    local cardH = calcCardHeight()
-
-    -----------------------------------------------------------------
-    -- Clean up any stale EventCard / EventTimerLabel left over from
-    -- a previous indicator (prevents duplicates).
-    -----------------------------------------------------------------
-    for _, child in ipairs(panel:GetChildren()) do
-        if child.Name == "EventCard" or child.Name == "EventTimerLabel" then
-            pcall(function() child:Destroy() end)
+    local panel = mainUI and mainUI:FindFirstChild("MainUICard")
+    if panel then
+        for _, child in ipairs(panel:GetChildren()) do
+            if child.Name == "EventCard" or child.Name == "EventTimerLabel" then
+                pcall(function() child:Destroy() end)
+            end
         end
     end
-
-    -----------------------------------------------------------------
-    -- LAYER 1: Base frame (dark background + gradient)
-    -- Inserted directly into MainUICard's UIListLayout at
-    -- LayoutOrder 100 so it sits below the menu grid.
-    -----------------------------------------------------------------
-    local card = Instance.new("Frame")
-    card.Name = "EventCard"
-    card.LayoutOrder = 100
-    card.Size = UDim2.new(1, 0, 0, cardH)
-    card.BackgroundColor3 = COLORS.darkBase
-    card.BackgroundTransparency = 0
-    card.BorderSizePixel = 0
-    card.ClipsDescendants = true
-    card.Parent = panel
-    currentCard = card
-
-    local cardCorner = Instance.new("UICorner")
-    cardCorner.CornerRadius = UDim.new(0, px(8))
-    cardCorner.Parent = card
-
-    local bgGrad = Instance.new("UIGradient")
-    bgGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(14, 12, 26)),
-        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(10, 10, 18)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(6, 8, 16)),
-    })
-    bgGrad.Rotation = 90
-    bgGrad.Parent = card
-
-    -----------------------------------------------------------------
-    -- LAYER 2: Silhouette art (background art — always visible)
-    -----------------------------------------------------------------
-    buildSilhouetteArt(card)
-
-    -----------------------------------------------------------------
-    -- LAYER 3: Team-coloured pulse overlay
-    -- This is the overlay whose transparency is animated by the pulse.
-    -- It tints the entire card with the local player's team colour.
-    -----------------------------------------------------------------
-    local teamPulseOverlay = Instance.new("Frame")
-    teamPulseOverlay.Name = "TeamPulseOverlay"
-    teamPulseOverlay.BackgroundColor3 = getTeamPulseColor()
-    teamPulseOverlay.BackgroundTransparency = PULSE_MAX_TRANSPARENCY
-    teamPulseOverlay.Size = UDim2.new(1, 0, 1, 0)
-    teamPulseOverlay.BorderSizePixel = 0
-    teamPulseOverlay.ZIndex = 2
-    teamPulseOverlay.Parent = card
-
-    local pulseOverlayCorner = Instance.new("UICorner")
-    pulseOverlayCorner.CornerRadius = UDim.new(0, px(8))
-    pulseOverlayCorner.Parent = teamPulseOverlay
-
-    -- Update overlay color when team changes
-    player:GetPropertyChangedSignal("Team"):Connect(function()
-        pcall(function()
-            teamPulseOverlay.BackgroundColor3 = getTeamPulseColor()
-        end)
-    end)
-
-    -----------------------------------------------------------------
-    -- LAYER 4: Gold border stroke (always visible, sits on base frame)
-    -----------------------------------------------------------------
-    local goldStroke = Instance.new("UIStroke")
-    goldStroke.Name = "GoldBorderStroke"
-    goldStroke.Color = COLORS.gold
-    goldStroke.Thickness = 2
-    goldStroke.Transparency = 0.15
-    goldStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    goldStroke.Parent = card
-
-    -----------------------------------------------------------------
-    -- LAYER 5: "EVENT" label + shadow (centered on card)
-    -----------------------------------------------------------------
-    local shadow = Instance.new("TextLabel")
-    shadow.Name = "Shadow"
-    shadow.BackgroundTransparency = 1
-    shadow.Size = UDim2.new(0.9, 0, 0.85, 0)
-    shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-    shadow.Position = UDim2.new(0.5, px(1), 0.5, px(1))
-    shadow.Font = Enum.Font.GothamBold
-    shadow.Text = "EVENT"
-    shadow.TextColor3 = Color3.fromRGB(0, 0, 0)
-    shadow.TextTransparency = 0.55
-    shadow.TextSize = math.max(13, math.floor(cardH * 0.50 * deviceTextScale))
-    shadow.TextXAlignment = Enum.TextXAlignment.Center
-    shadow.TextYAlignment = Enum.TextYAlignment.Center
-    shadow.ZIndex = 9
-    shadow.Parent = card
-
-    local label = Instance.new("TextLabel")
-    label.Name = "EventLabel"
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(0.9, 0, 0.85, 0)
-    label.AnchorPoint = Vector2.new(0.5, 0.5)
-    label.Position = UDim2.new(0.5, 0, 0.5, 0)
-    label.Font = Enum.Font.GothamBold
-    label.Text = "EVENT"
-    label.TextColor3 = COLORS.gold
-    label.TextSize = math.max(13, math.floor(cardH * 0.50 * deviceTextScale))
-    label.TextXAlignment = Enum.TextXAlignment.Center
-    label.TextYAlignment = Enum.TextYAlignment.Center
-    label.ZIndex = 10
-    label.Parent = card
-
-    local labelStroke = Instance.new("UIStroke")
-    labelStroke.Color = Color3.fromRGB(30, 20, 6)
-    labelStroke.Thickness = 1
-    labelStroke.Transparency = 0.1
-    labelStroke.Parent = label
-
-    -----------------------------------------------------------------
-    -- LAYER 6: Click overlay (transparent button on top of all layers)
-    -----------------------------------------------------------------
-    local clickBtn = Instance.new("TextButton")
-    clickBtn.Name = "ClickOverlay"
-    clickBtn.Size = UDim2.new(1, 0, 1, 0)
-    clickBtn.BackgroundTransparency = 1
-    clickBtn.Text = ""
-    clickBtn.AutoButtonColor = false
-    clickBtn.ZIndex = 11
-    clickBtn.Parent = card
-
-    clickBtn.Activated:Connect(function()
-        togglePopup()
-    end)
-
-    -----------------------------------------------------------------
-    -- Separate timer label below the card
-    -----------------------------------------------------------------
-    local tmrLbl = Instance.new("TextLabel")
-    tmrLbl.Name = "EventTimerLabel"
-    tmrLbl.LayoutOrder = 101
-    tmrLbl.Size = UDim2.new(1, 0, 0, px(26))
-    tmrLbl.BackgroundTransparency = 1
-    tmrLbl.Font = Enum.Font.GothamBold
-    tmrLbl.Text = "--:--"
-    tmrLbl.TextColor3 = Color3.fromRGB(235, 235, 245)
-    tmrLbl.TextSize = px(15)
-    tmrLbl.TextXAlignment = Enum.TextXAlignment.Center
-    tmrLbl.ZIndex = 10
-    tmrLbl.Parent = panel  -- inside the panel UIListLayout, below the card
-    timerLabel = tmrLbl
-
-    local tmrStroke = Instance.new("UIStroke")
-    tmrStroke.Color = Color3.fromRGB(0, 0, 0)
-    tmrStroke.Thickness = 1.2
-    tmrStroke.Transparency = 0.1
-    tmrStroke.Parent = tmrLbl
 
     -----------------------------------------------------------------
     -- Build the event popup (hidden by default)
@@ -839,6 +666,7 @@ local function createIndicator()
         local def = getEventDef()
         local evtName   = def and def.Name     or "Event"
         local objective = def and def.Objective or "..."
+        local required = getEventRequiredCount(def)
 
         local trackerGui = Instance.new("ScreenGui")
         trackerGui.Name = "EventObjectiveTracker"
@@ -857,7 +685,14 @@ local function createIndicator()
         container.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
         container.BackgroundTransparency = 0.10
         container.BorderSizePixel = 0
+        container.Active = true
         container.Parent = trackerGui
+
+        container.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+                togglePopup()
+            end
+        end)
 
         local cCorner = Instance.new("UICorner")
         cCorner.CornerRadius = UDim.new(0, px(12))
@@ -890,11 +725,26 @@ local function createIndicator()
         cLayout.Padding = UDim.new(0, px(10))
         cLayout.Parent = container
 
+        local topRow = Instance.new("Frame")
+        topRow.Name = "TrackerTopRow"
+        topRow.LayoutOrder = 1
+        topRow.Size = UDim2.new(1, 0, 0, px(36))
+        topRow.BackgroundTransparency = 1
+        topRow.Parent = container
+
+        local topLayout = Instance.new("UIListLayout")
+        topLayout.FillDirection = Enum.FillDirection.Horizontal
+        topLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        topLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+        topLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        topLayout.Padding = UDim.new(0, px(12))
+        topLayout.Parent = topRow
+
         -- Title line: "Event: Meteor Shower"
         local titleLbl = Instance.new("TextLabel")
         titleLbl.Name = "TrackerTitle"
         titleLbl.LayoutOrder = 1
-        titleLbl.Size = UDim2.new(1, 0, 0, px(34))
+        titleLbl.Size = UDim2.new(1, -px(124), 1, 0)
         titleLbl.BackgroundTransparency = 1
         titleLbl.Font = Enum.Font.GothamBold
         titleLbl.TextSize = px(25)
@@ -902,13 +752,54 @@ local function createIndicator()
         titleLbl.Text = "Event: " .. evtName
         titleLbl.TextXAlignment = Enum.TextXAlignment.Left
         titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
-        titleLbl.Parent = container
+        titleLbl.Parent = topRow
 
         local titleStroke = Instance.new("UIStroke")
         titleStroke.Color = Color3.fromRGB(0, 0, 0)
         titleStroke.Thickness = 1
         titleStroke.Transparency = 0.15
         titleStroke.Parent = titleLbl
+
+        local timerBadge = Instance.new("Frame")
+        timerBadge.Name = "TimerBadge"
+        timerBadge.LayoutOrder = 2
+        timerBadge.Size = UDim2.new(0, px(112), 0, px(30))
+        timerBadge.BackgroundColor3 = Color3.fromRGB(18, 18, 30)
+        timerBadge.BackgroundTransparency = 0.08
+        timerBadge.BorderSizePixel = 0
+        timerBadge.Parent = topRow
+
+        local badgeCorner = Instance.new("UICorner")
+        badgeCorner.CornerRadius = UDim.new(0, px(8))
+        badgeCorner.Parent = timerBadge
+
+        local badgeStroke = Instance.new("UIStroke")
+        badgeStroke.Color = COLORS.gold
+        badgeStroke.Thickness = 1
+        badgeStroke.Transparency = 0.45
+        badgeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        badgeStroke.Parent = timerBadge
+
+        local timeLbl = Instance.new("TextLabel")
+        timeLbl.Name = "TimerText"
+        timeLbl.Size = UDim2.new(1, -px(12), 1, 0)
+        timeLbl.Position = UDim2.new(0, px(6), 0, 0)
+        timeLbl.BackgroundTransparency = 1
+        timeLbl.Font = Enum.Font.GothamBold
+        timeLbl.TextSize = px(16)
+        timeLbl.TextColor3 = Color3.fromRGB(245, 245, 255)
+        timeLbl.Text = "Time: 0:00"
+        timeLbl.TextXAlignment = Enum.TextXAlignment.Center
+        timeLbl.TextYAlignment = Enum.TextYAlignment.Center
+        timeLbl.TextTruncate = Enum.TextTruncate.AtEnd
+        timeLbl.Parent = timerBadge
+        trackerTimerLabel = timeLbl
+
+        local timeStroke = Instance.new("UIStroke")
+        timeStroke.Color = Color3.fromRGB(0, 0, 0)
+        timeStroke.Thickness = 0.8
+        timeStroke.Transparency = 0.25
+        timeStroke.Parent = timeLbl
 
         -- Objective line: "- Collect 3 Meteor Shards (0/3)"
         local objLbl = Instance.new("TextLabel")
@@ -919,7 +810,9 @@ local function createIndicator()
         objLbl.Font = Enum.Font.Gotham
         objLbl.TextSize = px(20)
         objLbl.TextColor3 = Color3.fromRGB(220, 220, 230)
-        objLbl.Text = "- " .. objective .. "  (0/" .. (def and def.RequiredShards or "3") .. ")"
+        objLbl.Text = required > 0
+            and ("- " .. objective .. "  (0/" .. required .. ")")
+            or ("- " .. objective)
         objLbl.TextXAlignment = Enum.TextXAlignment.Left
         objLbl.TextTruncate = Enum.TextTruncate.AtEnd
         objLbl.Parent = container
@@ -957,10 +850,13 @@ local function createIndicator()
                 if trackerObjLabel then
                     local def = getEventDef()
                     local objective = def and def.Objective or "..."
+                    current = tonumber(current) or 0
+                    required = tonumber(required) or getEventRequiredCount(def)
                     if current >= required then
                         trackerObjLabel.Text = "- " .. objective .. "  (" .. current .. "/" .. required .. ")  COMPLETE!"
                         trackerObjLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
                     else
+                        trackerObjLabel.TextColor3 = Color3.fromRGB(220, 220, 230)
                         trackerObjLabel.Text = "- " .. objective .. "  (" .. current .. "/" .. required .. ")"
                     end
                 end
@@ -969,62 +865,15 @@ local function createIndicator()
     end
 
     -----------------------------------------------------------------
-    -- Heartbeat timer update (updates card timer + panel timer)
+    -- Heartbeat timer update (right tracker badge + popup timer)
     -----------------------------------------------------------------
     if timerConnection then
         pcall(function() timerConnection:Disconnect() end)
     end
     timerConnection = RunService.Heartbeat:Connect(function()
-        if not eventEndTime then return end
-        local remaining = eventEndTime - workspace:GetServerTimeNow()
-        local text = formatTime(remaining)
-        if remaining <= 0 then text = "0" end
-        -- Left-side timer: full human-readable phrase
-        if timerLabel then
-            local secs = math.max(0, math.floor(remaining))
-            if secs < 60 then
-                timerLabel.Text = secs .. " seconds remaining"
-            else
-                timerLabel.Text = text .. " remaining"
-            end
-        end
-        if popupTimerLabel and popupVisible then
-            popupTimerLabel.Text = text
-        end
+        updateEventTimers()
     end)
-
-    -----------------------------------------------------------------
-    -- Pulse animation  (STARTS HERE)
-    -- Tweens teamPulseOverlay.BackgroundTransparency between
-    -- PULSE_MIN_TRANSPARENCY (strong tint) and PULSE_MAX_TRANSPARENCY
-    -- (weak tint).  Gold stroke stays constant.  Background art
-    -- remains visible underneath at all times.
-    -----------------------------------------------------------------
-    pulseThread = task.spawn(function()
-        local halfCycle = PULSE_CYCLE / 2
-        local tweenInfo = TweenInfo.new(halfCycle, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut)
-
-        while currentCard and currentCard.Parent do
-            -- Phase 1: overlay becomes more visible (stronger team tint)
-            local tw1 = TweenService:Create(teamPulseOverlay, tweenInfo, {
-                BackgroundTransparency = PULSE_MIN_TRANSPARENCY,
-            })
-            pulseTweens = { tw1 }
-            tw1:Play()
-            tw1.Completed:Wait()
-
-            if not currentCard or not currentCard.Parent then break end
-
-            -- Phase 2: overlay fades back (weaker tint, background shows more)
-            local tw2 = TweenService:Create(teamPulseOverlay, tweenInfo, {
-                BackgroundTransparency = PULSE_MAX_TRANSPARENCY,
-            })
-            pulseTweens = { tw2 }
-            tw2:Play()
-            tw2.Completed:Wait()
-        end
-        -- Pulse STOPS when the loop exits (card destroyed or unparented)
-    end)
+    updateEventTimers()
 end
 
 ---------------------------------------------------------------------
@@ -1032,10 +881,9 @@ end
 ---------------------------------------------------------------------
 local EventStateChanged = ReplicatedStorage:WaitForChild("EventStateChanged", 15)
 if EventStateChanged then
-    EventStateChanged.OnClientEvent:Connect(function(active, eventIndex, endTime)
+    EventStateChanged.OnClientEvent:Connect(function(active, eventId, endTime)
         if active then
-            createIndicator()
-            eventEndTime = endTime  -- set after createIndicator (which calls destroyIndicator first)
+            createIndicator(endTime, eventId)
         else
             destroyIndicator()
         end
@@ -1045,72 +893,85 @@ else
 end
 
 ---------------------------------------------------------------------
--- Meteor shard collection: floating "+N coins" popup + Collect sound
+-- Event coin collection: floating "+N coins" popup + Collect sound
 ---------------------------------------------------------------------
+local function showCoinPopup(worldPosition, amount, popupKind, eventKind)
+    local isEventReward = popupKind == "EventReward"
+    local isGoldRush = eventKind == "GoldRush"
+
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    local collectSound = soundsFolder and soundsFolder:FindFirstChild("Collect")
+    if collectSound and collectSound:IsA("Sound") then
+        local sound = collectSound:Clone()
+        sound.Parent = workspace
+        sound:Play()
+        game:GetService("Debris"):AddItem(sound, 4)
+    end
+
+    local anchor = Instance.new("Part")
+    anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+    anchor.Transparency = 1
+    anchor.Anchored = true
+    anchor.CanCollide = false
+    anchor.CanTouch = false
+    anchor.CFrame = CFrame.new(worldPosition)
+    anchor.Parent = workspace
+
+    local gui = Instance.new("BillboardGui")
+    gui.Size = isEventReward and UDim2.new(0, 160, 0, 52) or UDim2.new(0, 120, 0, 44)
+    gui.StudsOffset = isEventReward and Vector3.new(0, 4.1, 0) or Vector3.new(0, 3, 0)
+    gui.AlwaysOnTop = true
+    gui.Adornee = anchor
+    gui.Parent = anchor
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = "+" .. tostring(amount) .. " coins"
+    label.Font = Enum.Font.GothamBold
+    label.TextSize = isEventReward and 28 or 22
+    if isGoldRush then
+        label.TextColor3 = isEventReward and Color3.fromRGB(255, 235, 130) or Color3.fromRGB(255, 215, 80)
+        label.TextStrokeColor3 = Color3.fromRGB(96, 54, 0)
+    else
+        label.TextColor3 = isEventReward and Color3.fromRGB(255, 224, 92) or Color3.fromRGB(180, 225, 255)
+        label.TextStrokeColor3 = isEventReward and Color3.fromRGB(90, 48, 0) or Color3.fromRGB(0, 60, 120)
+    end
+    label.TextStrokeTransparency = 0.3
+    label.Parent = gui
+
+    local floatTween = TweenService:Create(gui,
+        TweenInfo.new(1.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+        { StudsOffset = isEventReward and Vector3.new(0, 7, 0) or Vector3.new(0, 5.5, 0) }
+    )
+    floatTween:Play()
+
+    task.spawn(function()
+        task.wait(0.6)
+        for t = 0, 1, 0.06 do
+            label.TextTransparency = t
+            label.TextStrokeTransparency = 0.3 + t * 0.7
+            task.wait(0.06)
+        end
+        floatTween:Cancel()
+        anchor:Destroy()
+    end)
+end
+
 do
     local shardCollectedRemote = ReplicatedStorage:FindFirstChild("MeteorShardCollected")
         or ReplicatedStorage:WaitForChild("MeteorShardCollected", 15)
-
     if shardCollectedRemote then
         shardCollectedRemote.OnClientEvent:Connect(function(shardPos, amount, popupKind)
-            local isEventReward = popupKind == "EventReward"
+            showCoinPopup(shardPos, amount, popupKind, "MeteorShower")
+        end)
+    end
 
-            -- Play Collect sound
-            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-            local collectSound = soundsFolder and soundsFolder:FindFirstChild("Collect")
-            if collectSound and collectSound:IsA("Sound") then
-                local s = collectSound:Clone()
-                s.Parent = workspace
-                s:Play()
-                game:GetService("Debris"):AddItem(s, 4)
-            end
-
-            -- Floating "+N coins" billboard at the shard position
-            local anchor = Instance.new("Part")
-            anchor.Size = Vector3.new(0.1, 0.1, 0.1)
-            anchor.Transparency = 1
-            anchor.Anchored = true
-            anchor.CanCollide = false
-            anchor.CanTouch = false
-            anchor.CFrame = CFrame.new(shardPos)
-            anchor.Parent = workspace
-
-            local gui = Instance.new("BillboardGui")
-            gui.Size = isEventReward and UDim2.new(0, 160, 0, 52) or UDim2.new(0, 120, 0, 44)
-            gui.StudsOffset = isEventReward and Vector3.new(0, 4.1, 0) or Vector3.new(0, 3, 0)
-            gui.AlwaysOnTop = true
-            gui.Adornee = anchor
-            gui.Parent = anchor
-
-            local label = Instance.new("TextLabel")
-            label.Size = UDim2.new(1, 0, 1, 0)
-            label.BackgroundTransparency = 1
-            label.Text = "+" .. tostring(amount) .. " coins"
-            label.Font = Enum.Font.GothamBold
-            label.TextSize = isEventReward and 28 or 22
-            label.TextColor3 = isEventReward and Color3.fromRGB(255, 224, 92) or Color3.fromRGB(180, 225, 255)
-            label.TextStrokeColor3 = isEventReward and Color3.fromRGB(90, 48, 0) or Color3.fromRGB(0, 60, 120)
-            label.TextStrokeTransparency = 0.3
-            label.Parent = gui
-
-            -- Float upward while fading
-            local ts = game:GetService("TweenService")
-            local floatTween = ts:Create(gui,
-                TweenInfo.new(1.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                { StudsOffset = isEventReward and Vector3.new(0, 7, 0) or Vector3.new(0, 5.5, 0) }
-            )
-            floatTween:Play()
-
-            task.spawn(function()
-                task.wait(0.6)
-                for t = 0, 1, 0.06 do
-                    label.TextTransparency = t
-                    label.TextStrokeTransparency = 0.3 + t * 0.7
-                    task.wait(0.06)
-                end
-                floatTween:Cancel()
-                anchor:Destroy()
-            end)
+    local goldCollectedRemote = ReplicatedStorage:FindFirstChild("GoldRushCoinCollected")
+        or ReplicatedStorage:WaitForChild("GoldRushCoinCollected", 15)
+    if goldCollectedRemote then
+        goldCollectedRemote.OnClientEvent:Connect(function(coinPos, amount, popupKind)
+            showCoinPopup(coinPos, amount, popupKind, "GoldRush")
         end)
     end
 end

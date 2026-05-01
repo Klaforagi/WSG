@@ -21,9 +21,13 @@ pcall(function()
 end)
 
 -- RemoteEvent for flag status announcements
-local FlagStatus = Instance.new("RemoteEvent")
-FlagStatus.Name = "FlagStatus"
-FlagStatus.Parent = ReplicatedStorage
+local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
+if not FlagStatus or not FlagStatus:IsA("RemoteEvent") then
+    if FlagStatus then FlagStatus:Destroy() end
+    FlagStatus = Instance.new("RemoteEvent")
+    FlagStatus.Name = "FlagStatus"
+    FlagStatus.Parent = ReplicatedStorage
+end
 
 -- helper: play a sound from ReplicatedStorage.Sounds.Flag at a given part
 local function playFlagSound(soundName, part)
