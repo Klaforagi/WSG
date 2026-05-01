@@ -349,7 +349,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ──────────────────────────────────────────────────────────────────────
     -- Dimensions
     -- ──────────────────────────────────────────────────────────────────────
-    local TAB_W     = px(140)
+    local TAB_W     = px(132)
     local TAB_GAP   = px(10)
     local DETAIL_W  = px(315)
     local GRID_GAP  = px(10)
@@ -649,8 +649,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local sidePad = Instance.new("UIPadding", sidebar)
     sidePad.PaddingTop    = UDim.new(0, px(10))
     sidePad.PaddingBottom = UDim.new(0, px(10))
-    sidePad.PaddingLeft   = UDim.new(0, px(4))
-    sidePad.PaddingRight  = UDim.new(0, px(4))
+    sidePad.PaddingLeft   = UDim.new(0, px(6))
+    sidePad.PaddingRight  = UDim.new(0, px(6))
 
     local tabButtons = {}
     local currentTab = "melee"
@@ -661,7 +661,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         btn.AutoButtonColor = false
         btn.BackgroundColor3 = SIDEBAR_BG
         btn.BorderSizePixel = 0
-        btn.Size = UDim2.new(1, -px(4), 0, px(64))
+        btn.Size = UDim2.new(1, -px(2), 0, px(62))
         btn.LayoutOrder = def.order
         btn.Text = ""
         btn.Parent = sidebar
@@ -682,8 +682,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             iconLbl.Font = Enum.Font.GothamBold
             iconLbl.Text = def.icon
             iconLbl.TextColor3 = DIM_TEXT
-            iconLbl.TextSize = math.max(18, math.floor(px(22)))
-            iconLbl.Size = UDim2.new(1, 0, 0, px(26))
+            iconLbl.TextSize = math.max(16, math.floor(px(18)))
+            iconLbl.Size = UDim2.new(1, 0, 0, px(24))
             iconLbl.Position = UDim2.new(0, 0, 0, px(8))
             iconLbl.TextXAlignment = Enum.TextXAlignment.Center
         else
@@ -697,9 +697,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         textLbl.Font = Enum.Font.GothamBold
         textLbl.Text = def.label
         textLbl.TextColor3 = DIM_TEXT
-        textLbl.TextSize = math.max(12, math.floor(px(13)))
+        textLbl.TextSize = math.max(11, math.floor(px(12)))
         textLbl.Size = UDim2.new(1, -px(6), 0, px(16))
-        textLbl.Position = UDim2.new(0, px(3), 0, px(38))
+        textLbl.Position = UDim2.new(0, px(3), 0, px(34))
         textLbl.TextXAlignment = Enum.TextXAlignment.Center
 
         local btnStroke = Instance.new("UIStroke", btn)

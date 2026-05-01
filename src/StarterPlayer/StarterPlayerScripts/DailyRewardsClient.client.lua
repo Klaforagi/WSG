@@ -387,6 +387,10 @@ local function ensurePopup()
                 -- Play claim animation on the just-claimed day
                 if success and currentState.currentDay and currentState.currentDay > 0 then
                     DailyRewardsUI.PlayClaimAnimation(currentState.currentDay)
+                    pcall(function()
+                        local cs = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ClaimSound"))
+                        cs.Play()
+                    end)
                 end
             end
             updateBadgeState()

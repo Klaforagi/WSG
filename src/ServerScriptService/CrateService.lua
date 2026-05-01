@@ -4,8 +4,8 @@
 -- Flow:  Client → OpenCrate RemoteFunction → validate funds → weighted roll
 --        → deduct currency → WeaponInstanceService:CreateInstance → return result
 --
--- Generic handler for all crate types (MeleeCrate, RangedCrate,
--- PremiumMeleeCrate, PremiumRangedCrate).  Reads currency type, cost,
+-- Generic handler for weapon crate types. Legacy melee/ranged crate ids are
+-- resolved to the merged crate ids before validation. Reads currency type, cost,
 -- rarity weights, and weapon pool from CrateConfig per crate.
 --------------------------------------------------------------------------------
 
@@ -47,6 +47,14 @@ pcall(function()
 end)
 
 local CrateService = {}
+
+local function resolveCrateId(crateId)
+    if type(crateId) ~= "string" then return crateId end
+    if CrateConfig.ResolveCrateId then
+        return CrateConfig.ResolveCrateId(crateId)
+    end
+    return crateId
+end
 
 -- Pending crate rewards: PendingRewards[player] = { weaponName, rarity, ... }
 local PendingRewards = {}
@@ -108,9 +116,15 @@ function CrateService:OpenCrate(player, crateId)
         return false, "Invalid crate id"
     end
 
+    local requestedCrateId = crateId
+    crateId = resolveCrateId(crateId)
     local crateDef = CrateConfig.Crates[crateId]
     if not crateDef then
         return false, "Unknown crate"
+    end
+
+    if crateId ~= requestedCrateId then
+        print(string.format("[CrateService] Redirected legacy crate id %s -> %s", requestedCrateId, crateId))
     end
 
     local cs = ensureCurrencyService()
@@ -365,9 +379,15 @@ function CrateService:RollAndGrant(player, crateId)
         return false, "Invalid crate id"
     end
 
+    local requestedCrateId = crateId
+    crateId = resolveCrateId(crateId)
     local crateDef = CrateConfig.Crates[crateId]
     if not crateDef then
         return false, "Unknown crate"
+    end
+
+    if crateId ~= requestedCrateId then
+        print(string.format("[CrateService] Redirected legacy crate id %s -> %s", requestedCrateId, crateId))
     end
 
     local wis = ensureWeaponInstanceService()
@@ -437,9 +457,15 @@ function CrateService:RollAndPend(player, crateId)
         return false, "Invalid crate id"
     end
 
+    local requestedCrateId = crateId
+    crateId = resolveCrateId(crateId)
     local crateDef = CrateConfig.Crates[crateId]
     if not crateDef then
         return false, "Unknown crate"
+    end
+
+    if crateId ~= requestedCrateId then
+        print(string.format("[CrateService] Redirected legacy crate id %s -> %s", requestedCrateId, crateId))
     end
 
     -- Roll weapon (same weighted logic as OpenCrate)
@@ -500,6 +526,7 @@ end
 -- PREMIUM CRATE / KEY SYSTEM  – uses per-crate rarities if available
 --------------------------------------------------------------------------------
 function CrateService:GetPoolInfo(crateId)
+    crateId = resolveCrateId(crateId)
     local crateDef = CrateConfig.Crates[crateId]
     if not crateDef then return nil end
 

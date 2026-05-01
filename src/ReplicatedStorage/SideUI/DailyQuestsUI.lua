@@ -14,6 +14,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService       = game:GetService("TextService")
 
 local UITheme = require(script.Parent.UITheme)
+local ClaimSound
+do
+    local ok, mod = pcall(function()
+        return require(ReplicatedStorage:WaitForChild("Modules", 10):WaitForChild("ClaimSound", 5))
+    end)
+    if ok then ClaimSound = mod end
+end
 
 local player = Players.LocalPlayer
 
@@ -1346,7 +1353,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Layout constants
     ---------------------------------------------------------------------------
-    local TAB_W   = px(160)
+    local TAB_W   = px(132)
     local TAB_GAP = px(10)
     local CARD_H  = px(142)   -- includes space for achievement date line under progress bar
     local HDR_H   = px(66)    -- header + subheader + accent bar
@@ -1682,7 +1689,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Helper: make a gold section header
     ---------------------------------------------------------------------------
-    local function makeHeader(text, subText, parentFrame)
+    local TimeHelper_Local
+    do
+        local ok, mod = pcall(function()
+            return require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
+        end)
+        if ok then TimeHelper_Local = mod end
+    end
+
+    local function makeHeader(text, subText, parentFrame, resetKind)
         -- Wrapper to hold header + subheader + accent bar
         local hdrWrap = Instance.new("Frame")
         hdrWrap.Name                = "HeaderWrap"
@@ -1714,6 +1729,42 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         sub.Size                = UDim2.new(1, 0, 0, px(18))
         sub.Position            = UDim2.new(0, 0, 0, px(30))
         sub.Parent              = hdrWrap
+
+        -- Reset countdown label (top-right) for daily/weekly headers
+        if resetKind == "daily" or resetKind == "weekly" then
+            local resetLbl = Instance.new("TextLabel")
+            resetLbl.Name               = "ResetCountdown"
+            resetLbl.BackgroundTransparency = 1
+            resetLbl.Font               = Enum.Font.GothamBold
+            resetLbl.Text               = "Resets in --"
+            resetLbl.TextColor3         = Color3.fromRGB(180, 190, 215)
+            resetLbl.TextSize           = math.max(11, math.floor(px(13)))
+            resetLbl.TextXAlignment     = Enum.TextXAlignment.Right
+            resetLbl.AnchorPoint        = Vector2.new(1, 0)
+            resetLbl.Position           = UDim2.new(1, 0, 0, px(4))
+            resetLbl.Size               = UDim2.new(0, px(220), 0, px(20))
+            resetLbl.Parent             = hdrWrap
+
+            if TimeHelper_Local then
+                local function refresh()
+                    if not resetLbl.Parent then return false end
+                    local secs
+                    if resetKind == "daily" then
+                        secs = TimeHelper_Local.SecondsUntilNextDailyReset()
+                    else
+                        secs = TimeHelper_Local.SecondsUntilNextWeeklyReset()
+                    end
+                    resetLbl.Text = "Resets in " .. TimeHelper_Local.FormatCountdown(secs)
+                    return true
+                end
+                refresh()
+                task.spawn(function()
+                    while refresh() do
+                        task.wait(1)
+                    end
+                end)
+            end
+        end
 
         -- Gold accent bar under header (matches BoostsUI style)
         local accentBar = Instance.new("Frame")
@@ -1764,7 +1815,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local dailyPage = makePage("DailyPage", true)
     contentPages["daily"] = dailyPage
 
-    makeHeader("DAILY QUESTS", "Complete quests to earn coin rewards. Resets daily!", dailyPage)
+    makeHeader("DAILY QUESTS", "Complete quests to earn coin rewards. Resets daily!", dailyPage, "daily")
 
     if #quests == 0 then
         makePlaceholder("No quests available today.", 3, dailyPage)
@@ -1953,6 +2004,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Font               = Enum.Font.GothamBold
         progText.Text               = FormatProgress(quest.progress, quest.goal)
         progText.TextColor3         = WHITE
+        progText.TextStrokeColor3   = Color3.fromRGB(0, 0, 0)
+        progText.TextStrokeTransparency = 0
         progText.TextSize           = math.max(11, math.floor(px(12)))
         progText.Size               = UDim2.new(1, 0, 1, 0)
         progText.Parent             = track
@@ -2076,6 +2129,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     dailyRerollStateUpdaters[quest.id](true, true)
                 end
                 updateButtonState(quest.goal, quest.goal, true)
+                if ClaimSound then ClaimSound.Play() end
                 -- Flash gold
                 local origColor = card.BackgroundColor3
                 TweenService:Create(card, TWEEN_QUICK,
@@ -2119,7 +2173,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local weeklyPage = makePage("WeeklyPage", false)
     contentPages["weekly"] = weeklyPage
 
-    makeHeader("WEEKLY QUESTS", "Larger challenges \u{2013} resets every Monday!", weeklyPage)
+    makeHeader("WEEKLY QUESTS", "Larger challenges \u{2013} resets Saturday midnight ET!", weeklyPage, "weekly")
 
     -- Fetch weekly quest data from server
     local weeklyQuests = {}
@@ -2394,6 +2448,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progText.Font               = Enum.Font.GothamBold
         progText.Text               = FormatProgress(wq.progress, wq.goal)
         progText.TextColor3         = WHITE
+        progText.TextStrokeColor3   = Color3.fromRGB(0, 0, 0)
+        progText.TextStrokeTransparency = 0
         progText.TextSize           = math.max(11, math.floor(px(12)))
         progText.Size               = UDim2.new(1, 0, 1, 0)
         progText.Parent             = track
@@ -2518,6 +2574,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     weeklyRerollStateUpdaters[questIdx](true, true)
                 end
                 updateWkBtnState(wq.goal, wq.goal, true)
+                if ClaimSound then ClaimSound.Play() end
                 -- Flash gold
                 local origColor2 = card.BackgroundColor3
                 TweenService:Create(card, TWEEN_QUICK,
@@ -3209,6 +3266,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 if achData then achData.claimed = true end
                 updateAchBtnState(prog, goal, true, true)
                 updateAchievedOnLabel(true, achData and achData.achievedOn)
+                if ClaimSound then ClaimSound.Play() end
 
                 -- Gold flash animation on card
                 pcall(function()

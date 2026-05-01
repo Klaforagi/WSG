@@ -52,10 +52,11 @@ end
 local playerWeekly = {}
 
 --------------------------------------------------------------------------------
--- Week key: year + Monday-based week number (UTC)
+-- Week key: anchored to Saturday 00:00 Eastern Time (server-authoritative)
 --------------------------------------------------------------------------------
+local TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
 local function currentWeekKey()
-    return os.date("!%Y-W%W")
+    return TimeHelper.GetWeeklyKey()
 end
 
 --------------------------------------------------------------------------------

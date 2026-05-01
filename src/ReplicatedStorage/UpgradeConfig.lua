@@ -22,10 +22,14 @@ UpgradeConfig.ValidIds = {
 }
 
 --------------------------------------------------------------------------------
--- Cost tuning
+-- Cost tuning  (Scrap-based, flat per-level cost)
 --------------------------------------------------------------------------------
-UpgradeConfig.BASE_COST     = 25    -- starting coin cost at level 0→1
-UpgradeConfig.COST_EXPONENT = 1.08  -- cost growth per level (smooth ramp)
+UpgradeConfig.CURRENCY      = "scrap"  -- payment currency for upgrades
+UpgradeConfig.BASE_COST     = 50       -- flat scrap cost per level (was coin-based exponential)
+UpgradeConfig.COST_EXPONENT = 1.0      -- 1.0 = flat (kept for legacy compatibility)
+
+-- Player-level requirement to upgrade. Set to false to disable the gate.
+UpgradeConfig.REQUIRE_PLAYER_LEVEL = false
 
 --------------------------------------------------------------------------------
 -- PvP damage tuning  (capped for balance)
@@ -96,11 +100,21 @@ end
 --------------------------------------------------------------------------------
 
 --- Cost for the next upgrade at the given level.
---- Always returns a cleanly rounded whole number.
+--- Returns a flat scrap cost (50) by default; preserved exponent path for
+--- legacy callers that may still want a curve.
 function UpgradeConfig.GetCost(level)
 	level = math.max(0, math.floor(level or 0))
-	local raw = UpgradeConfig.BASE_COST * (UpgradeConfig.COST_EXPONENT ^ level)
+	local exp = UpgradeConfig.COST_EXPONENT or 1.0
+	if exp <= 1.000001 then
+		return UpgradeConfig.BASE_COST
+	end
+	local raw = UpgradeConfig.BASE_COST * (exp ^ level)
 	return roundCost(raw)
+end
+
+--- Currency type accessor (always "scrap" now; older code may have asked for coins).
+function UpgradeConfig.GetCurrency()
+	return UpgradeConfig.CURRENCY or "scrap"
 end
 
 --- PvP damage multiplier (capped).
@@ -113,18 +127,19 @@ function UpgradeConfig.GetPvPMultiplier(level, weaponType)
 end
 
 --- PvE damage multiplier (uncapped — keeps scaling).
+--- Now uses the centralized GetDamageMultiplier curve so melee + ranged
+--- share the same progression. Preserves PvP caps separately.
 function UpgradeConfig.GetPvEMultiplier(level, weaponType)
 	level = math.max(0, math.floor(level or 0))
-	local cfg = UpgradeConfig.PvE[weaponType]
-	if not cfg then return 1 end
-	return 1 + (level * cfg.BONUS_PER_LEVEL)
+	return UpgradeConfig.GetDamageMultiplier(level)
 end
 
---- Displayed bonus percent for the UI (matches weapon level directly).
---- Level 1 = +1%, Level 11 = +11%, Level 100 = +100%.
+--- Displayed bonus percent for the UI — derived from the centralized damage
+--- curve so what the player sees matches what they actually deal.
 function UpgradeConfig.GetDisplayedBonusPercent(level, _weaponType)
 	level = math.max(0, math.floor(level or 0))
-	return level
+	local mult = UpgradeConfig.GetDamageMultiplier(level)
+	return math.floor((mult - 1) * 100 + 0.5)
 end
 
 --- Human-readable bonus text for the UI.
@@ -145,5 +160,53 @@ end
 function UpgradeConfig.IsValid(upgradeId)
 	return UpgradeConfig.ValidIds[upgradeId] == true
 end
+
+--------------------------------------------------------------------------------
+-- Centralized damage-multiplier curve (USE THIS — do not duplicate the math).
+--
+-- Target table:
+--   Level 0     = 1.00x
+--   Level 25    = 1.25x
+--   Level 50    = 1.50x
+--   Level 100   ≈ 1.65x
+--   Level 250   ≈ 1.88x
+--   Level 500   = 2.00x
+--   Level 1000  ≈ 2.15x
+--   Level 5000  ≈ 2.20x
+--   Level 10000 ≈ 2.22x
+--
+-- Implementation:
+--   * 0–50:    linear 1.00 → 1.50
+--   * 51–500:  smooth diminishing 1.50 → 2.00 (sqrt-shaped)
+--   * 500+:    diminishing toward asymptote ≈ 2.222 (1 - exp decay)
+--
+-- Monotonic non-decreasing. Capped well below 2.25.
+--------------------------------------------------------------------------------
+local DAMAGE_CAP_HIGH = 2.222 -- effective high-end cap
+function UpgradeConfig.GetDamageMultiplier(level)
+	level = math.max(0, math.floor(tonumber(level) or 0))
+
+	if level <= 50 then
+		-- Linear 1.00 → 1.50 across [0, 50]
+		return 1.0 + (0.5 * level / 50)
+	end
+
+	if level <= 500 then
+		-- Smooth diminishing from 1.50 at L=50 → 2.00 at L=500.
+		-- Use sqrt-shaped progression of (level - 50) / 450.
+		local t = (level - 50) / 450
+		return 1.5 + 0.5 * math.sqrt(t)
+	end
+
+	-- Above 500: asymptotic curve to ~2.222.
+	-- 2.0 + (HIGH - 2.0) * (1 - exp(-k * (L-500)))
+	-- Pick k so that at L=1000 we reach ~2.15:
+	--   delta = 0.222, target_added @ L=1000 = 0.15 → 1 - e^{-500k} = 0.6757 → k ≈ 0.00225
+	local k = 0.00225
+	local extra = (DAMAGE_CAP_HIGH - 2.0) * (1 - math.exp(-k * (level - 500)))
+	return math.min(DAMAGE_CAP_HIGH, 2.0 + extra)
+end
+
+UpgradeConfig.DAMAGE_CAP = DAMAGE_CAP_HIGH
 
 return UpgradeConfig

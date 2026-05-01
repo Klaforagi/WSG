@@ -392,6 +392,19 @@ local function onHumanoidDied(humanoid, model)
             if npcName then
                 local key = npcKillerKey(npcModel, npcName)
                 local count = bumpKillCount(victimPlayer.UserId, key)
+                -- Resolve a clean template name the client can look up in
+                -- ReplicatedStorage.MobTemplates. Prefer the explicit NPCId
+                -- attribute (set by MobSpawner), fall back to the model name
+                -- with any "_N" suffix stripped (e.g. "Zombie_3" -> "Zombie").
+                local templateName
+                if npcModel then
+                    templateName = npcModel:GetAttribute("TemplateName")
+                                or npcModel:GetAttribute("NPCId")
+                end
+                if not templateName then
+                    local raw = (npcModel and npcModel.Name) or npcName
+                    templateName = string.match(raw, "^([%a]+)") or raw
+                end
                 if npcModel and not npcModel.Parent then npcModel = nil end
                 payload = {
                     killerKind                 = "NPC",
@@ -402,6 +415,7 @@ local function onHumanoidDied(humanoid, model)
                     killerStreak               = nil,
                     killedByThisKillerCount    = count,
                     killerModel                = npcModel,
+                    npcTemplateName            = templateName,
                     killerCategory             = categorizeNpc(npcModel, npcName),
                     killerWeaponName           = nil,
                     deathMessage               = nil,

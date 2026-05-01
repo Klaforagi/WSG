@@ -67,9 +67,10 @@ table.sort(DEFAULT_TRACK_ORDER) -- deterministic order
 --------------------------------------------------------------------------------
 local playerData = {}
 
---- Same daily boundary used by DailyRewardService (UTC calendar day)
+--- Same daily boundary used by DailyRewardService (Eastern-time anchored, midnight ET).
+local TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
 local function todayKey()
-    return os.date("!%Y-%m-%d")
+    return TimeHelper.GetDailyKey()
 end
 
 local function shuffleInPlace(items)

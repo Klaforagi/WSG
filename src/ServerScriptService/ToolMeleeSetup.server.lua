@@ -410,6 +410,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     if type(toolName) ~= "string" then return end
     if typeof(lookDir) ~= "Vector3" then return end
     if not player or not player.Character then return end
+    -- Losing-team tool lockout: server-authoritative block on weapon use.
+    if player:GetAttribute("ToolsLocked") == true then return end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
     local hum = player.Character:FindFirstChildOfClass("Humanoid")

@@ -56,6 +56,8 @@ EventConfig.EventDefs = {
         Name       = "Meteor Shower",
         Objective  = "Collect 3 Meteor Shards",
         Reward     = "50 Coins",
+        RequiredShards = 3,
+        CompletionRewardCoins = 50,
     },
 }
 

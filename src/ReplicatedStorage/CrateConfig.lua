@@ -1,22 +1,32 @@
 --------------------------------------------------------------------------------
 -- CrateConfig.lua  –  Shared crate definitions (server + client)
 --
--- 4 crate types:
---   MeleeCrate          – Coins, melee weapons, all rarities
---   RangedCrate         – Coins, ranged weapons, all rarities
---   PremiumMeleeCrate   – Keys, melee weapons, Rare+ only (no Commons)
---   PremiumRangedCrate  – Keys, ranged weapons, Rare+ only (no Commons)
+-- 2 crate types:
+--   WeaponCrate          – Coins, melee + ranged weapons, all rarities
+--   PremiumWeaponCrate   – Keys, melee + ranged weapons, Rare+ only
 --
--- Each crate has: currency, cost, per-crate rarity weights, and an auto-built
--- weapon pool filtered by weapon type and available rarities.
+-- Legacy crate ids are resolved at the service boundary so old references keep
+-- working while the shop only presents the merged weapon crates.
 --------------------------------------------------------------------------------
 
 local CrateConfig = {}
 
+CrateConfig.LegacyCrateIdMap = {
+    MeleeCrate = "WeaponCrate",
+    RangedCrate = "WeaponCrate",
+    PremiumMeleeCrate = "PremiumWeaponCrate",
+    PremiumRangedCrate = "PremiumWeaponCrate",
+}
+
+function CrateConfig.ResolveCrateId(crateId)
+    if type(crateId) ~= "string" then return crateId end
+    return CrateConfig.LegacyCrateIdMap[crateId] or crateId
+end
+
 --------------------------------------------------------------------------------
 -- RARITY DEFINITIONS  (color, display label)
 -- Global weights are a fallback for any crate that doesn't define its own
--- `rarities` table.  Currently all 4 crates define one, so these are mainly
+-- `rarities` table.  Both shop crates define one, so these are mainly
 -- used for color/label lookups.
 --------------------------------------------------------------------------------
 CrateConfig.Rarities = {
@@ -82,8 +92,7 @@ CrateConfig.WeaponsByRarity = {
 --   id          – internal identifier (matches key in Crates table)
 --   displayName – player-facing name shown in UI
 --   description – short description on crate card
---   weaponType  – "Melee" or "Ranged" (filters WeaponsByRarity for pool)
---   category    – same as weaponType (used by CrateService as fallback)
+--   weaponTypes – included item categories, preserving each rolled weapon's category
 --   currency    – "Coins" or "Keys"
 --   cost        – amount of currency required to open
 --   price       – alias for cost (backwards compat)
@@ -97,41 +106,17 @@ CrateConfig.Crates = {
     -- BASIC CRATES  (Coins)
     ---------------------------------------------------------------------------
 
-    MeleeCrate = {
-        id          = "MeleeCrate",
-        displayName = "Melee Crate",
-        description = "Contains a random melee weapon.",
-        weaponType  = "Melee",
-        category    = "Melee",
+    WeaponCrate = {
+        id          = "WeaponCrate",
+        displayName = "Weapon Crate",
+        description = "Contains a random melee or ranged weapon.",
+        weaponTypes = { "Melee", "Ranged" },
         currency    = "Coins",
         cost        = 100,
         price       = 100,
         iconGlyph   = "\u{2694}",        -- ⚔
 
-        -- >>> EDIT PERCENTAGES HERE to rebalance melee crate odds <<<
-        rarities = {
-            Legendary = 1,
-            Epic      = 4,
-            Rare      = 15,
-            Uncommon  = 40,
-            Common    = 40,
-        },
-
-        pool = {},  -- auto-built below
-    },
-
-    RangedCrate = {
-        id          = "RangedCrate",
-        displayName = "Ranged Crate",
-        description = "Contains a random ranged weapon.",
-        weaponType  = "Ranged",
-        category    = "Ranged",
-        currency    = "Coins",
-        cost        = 100,
-        price       = 100,
-        iconGlyph   = "\u{1F3F9}",      -- 🏹
-
-        -- >>> EDIT PERCENTAGES HERE to rebalance ranged crate odds <<<
+        -- >>> EDIT PERCENTAGES HERE to rebalance weapon crate odds <<<
         rarities = {
             Legendary = 1,
             Epic      = 4,
@@ -147,40 +132,17 @@ CrateConfig.Crates = {
     -- PREMIUM CRATES  (Keys – no Commons!)
     ---------------------------------------------------------------------------
 
-    PremiumMeleeCrate = {
-        id          = "PremiumMeleeCrate",
-        displayName = "Premium Melee Crate",
-        description = "A premium melee crate. Costs Keys. No Commons!",
-        weaponType  = "Melee",
-        category    = "Melee",
+    PremiumWeaponCrate = {
+        id          = "PremiumWeaponCrate",
+        displayName = "Premium Weapon Crate",
+        description = "A premium weapon crate. Costs Keys. No Commons!",
+        weaponTypes = { "Melee", "Ranged" },
         currency    = "Keys",
         cost        = 1,
         price       = 1,
-        iconGlyph   = "\u{1F5E1}",      -- 🗡
+        iconGlyph   = "\u{2728}",      -- ✨
 
-        -- >>> EDIT PERCENTAGES HERE to rebalance premium melee odds <<<
-        -- No Common entry = Commons can never drop from this crate
-        rarities = {
-            Rare      = 80,
-            Epic      = 15,
-            Legendary = 5,
-        },
-
-        pool = {},  -- auto-built below
-    },
-
-    PremiumRangedCrate = {
-        id          = "PremiumRangedCrate",
-        displayName = "Premium Ranged Crate",
-        description = "A premium ranged crate. Costs Keys. No Commons!",
-        weaponType  = "Ranged",
-        category    = "Ranged",
-        currency    = "Keys",
-        cost        = 1,
-        price       = 1,
-        iconGlyph   = "\u{1F3AF}",      -- 🎯
-
-        -- >>> EDIT PERCENTAGES HERE to rebalance premium ranged odds <<<
+        -- >>> EDIT PERCENTAGES HERE to rebalance premium weapon odds <<<
         -- No Common entry = Commons can never drop from this crate
         rarities = {
             Rare      = 80,
@@ -196,17 +158,30 @@ CrateConfig.Crates = {
 -- AUTO-BUILD POOLS
 --
 -- For each crate, populates the pool from WeaponsByRarity filtered by:
---   1. weaponType  – only weapons matching the crate's weapon type
---   2. rarities    – only weapons whose rarity key exists in the crate
+--   1. weaponTypes  – only weapons matching an included category
+--   2. rarities     – only weapons whose rarity key exists in the crate
 --------------------------------------------------------------------------------
+local function buildAllowedWeaponTypes(def)
+    local allowed = {}
+    if type(def.weaponTypes) == "table" then
+        for _, weaponType in ipairs(def.weaponTypes) do
+            allowed[weaponType] = true
+        end
+    elseif def.weaponType then
+        allowed[def.weaponType] = true
+    end
+    return allowed
+end
+
 for crateId, def in pairs(CrateConfig.Crates) do
-    if def.rarities and def.weaponType then
+    if def.rarities then
         local pool = {}
+        local allowedTypes = buildAllowedWeaponTypes(def)
         for rarity, _ in pairs(def.rarities) do
             local weapons = CrateConfig.WeaponsByRarity[rarity]
             if weapons then
                 for _, entry in ipairs(weapons) do
-                    if entry.category == def.weaponType then
+                    if not next(allowedTypes) or allowedTypes[entry.category] then
                         table.insert(pool, {
                             weapon   = entry.weapon,
                             rarity   = rarity,
@@ -220,10 +195,8 @@ for crateId, def in pairs(CrateConfig.Crates) do
     end
 end
 
--- Ordered list for UI display (fills left-to-right, top-to-bottom in 2x2 grid)
--- Row 1: Melee Crate, Premium Melee Crate
--- Row 2: Ranged Crate, Premium Ranged Crate
-CrateConfig.CrateOrder = { "MeleeCrate", "PremiumMeleeCrate", "RangedCrate", "PremiumRangedCrate" }
+-- Ordered list for UI display
+CrateConfig.CrateOrder = { "WeaponCrate", "PremiumWeaponCrate" }
 
 --------------------------------------------------------------------------------
 -- DEVELOPER USER IDS  (see instance IDs in inventory, debug info)

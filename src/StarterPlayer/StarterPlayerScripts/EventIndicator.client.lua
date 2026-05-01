@@ -1052,7 +1052,9 @@ do
         or ReplicatedStorage:WaitForChild("MeteorShardCollected", 15)
 
     if shardCollectedRemote then
-        shardCollectedRemote.OnClientEvent:Connect(function(shardPos, amount)
+        shardCollectedRemote.OnClientEvent:Connect(function(shardPos, amount, popupKind)
+            local isEventReward = popupKind == "EventReward"
+
             -- Play Collect sound
             local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
             local collectSound = soundsFolder and soundsFolder:FindFirstChild("Collect")
@@ -1074,8 +1076,8 @@ do
             anchor.Parent = workspace
 
             local gui = Instance.new("BillboardGui")
-            gui.Size = UDim2.new(0, 120, 0, 44)
-            gui.StudsOffset = Vector3.new(0, 3, 0)
+            gui.Size = isEventReward and UDim2.new(0, 160, 0, 52) or UDim2.new(0, 120, 0, 44)
+            gui.StudsOffset = isEventReward and Vector3.new(0, 4.1, 0) or Vector3.new(0, 3, 0)
             gui.AlwaysOnTop = true
             gui.Adornee = anchor
             gui.Parent = anchor
@@ -1085,9 +1087,9 @@ do
             label.BackgroundTransparency = 1
             label.Text = "+" .. tostring(amount) .. " coins"
             label.Font = Enum.Font.GothamBold
-            label.TextSize = 22
-            label.TextColor3 = Color3.fromRGB(180, 225, 255)
-            label.TextStrokeColor3 = Color3.fromRGB(0, 60, 120)
+            label.TextSize = isEventReward and 28 or 22
+            label.TextColor3 = isEventReward and Color3.fromRGB(255, 224, 92) or Color3.fromRGB(180, 225, 255)
+            label.TextStrokeColor3 = isEventReward and Color3.fromRGB(90, 48, 0) or Color3.fromRGB(0, 60, 120)
             label.TextStrokeTransparency = 0.3
             label.Parent = gui
 
@@ -1095,7 +1097,7 @@ do
             local ts = game:GetService("TweenService")
             local floatTween = ts:Create(gui,
                 TweenInfo.new(1.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-                { StudsOffset = Vector3.new(0, 5.5, 0) }
+                { StudsOffset = isEventReward and Vector3.new(0, 7, 0) or Vector3.new(0, 5.5, 0) }
             )
             floatTween:Play()
 

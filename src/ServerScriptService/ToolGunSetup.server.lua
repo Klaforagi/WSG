@@ -976,6 +976,8 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     -- basic validation of types
     if typeof(camOrigin) ~= "Vector3" or typeof(camDirection) ~= "Vector3" or typeof(gunOrigin) ~= "Vector3" then return end
     if not player or not player.Character then return end
+    -- Losing-team tool lockout: server-authoritative block on weapon use.
+    if player:GetAttribute("ToolsLocked") == true then return end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 

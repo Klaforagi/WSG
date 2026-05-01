@@ -45,6 +45,13 @@ end)
 
 local CrateOpeningUI = {}
 
+local function resolveCrateId(crateId)
+    if CrateConfig and CrateConfig.ResolveCrateId then
+        return CrateConfig.ResolveCrateId(crateId)
+    end
+    return crateId
+end
+
 local function px(base)
     local cam = workspace.CurrentCamera
     local screenY = 1080
@@ -798,7 +805,8 @@ function CrateOpeningUI.Init(playerGui)
         if isAnimating then return end
         isAnimating = true
 
-        local crateDef = CrateConfig and CrateConfig.Crates[crateId]
+        local resolvedCrateId = resolveCrateId(crateId)
+        local crateDef = CrateConfig and CrateConfig.Crates[resolvedCrateId]
         if not crateDef then
             isAnimating = false
             return
@@ -1041,7 +1049,7 @@ function CrateOpeningUI.Init(playerGui)
 
         if ok and success and type(result) == "table" then
             isAnimating = false -- Play will re-set it
-            CrateOpeningUI.Play(crateId, result, _G.CrateOpeningCoinApi)
+            CrateOpeningUI.Play(result.crateType or crateId, result, _G.CrateOpeningCoinApi)
         else
             -- Show error toast and close
             isAnimating = false

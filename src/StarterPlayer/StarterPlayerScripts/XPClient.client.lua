@@ -258,6 +258,8 @@ levelUpLabel.BackgroundTransparency = 1
 levelUpLabel.Font = Enum.Font.GothamBold
 levelUpLabel.TextSize = 12
 levelUpLabel.TextColor3 = COLOR_LEVELUP
+levelUpLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+levelUpLabel.TextStrokeTransparency = 0
 -- XP counter label (hidden by default) shows currentXP / currentXPToNext when hovered or held
 local xpCountLabel = Instance.new("TextLabel")
 xpCountLabel.Name = "XPCountLabel"
@@ -268,6 +270,8 @@ xpCountLabel.BackgroundTransparency = 1
 xpCountLabel.Font = Enum.Font.Gotham
 xpCountLabel.TextSize = 12
 xpCountLabel.TextColor3 = COLOR_LABEL
+xpCountLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+xpCountLabel.TextStrokeTransparency = 0
 xpCountLabel.Text = ""
 xpCountLabel.TextTransparency = 1
 xpCountLabel.ZIndex = 11
@@ -577,12 +581,152 @@ local function showBarSparkles()
     end
 end
 
+local lastLevelUpEffectAt = {}  -- userId -> os.clock() of last effect
+
+local function spawnLevelUpEffects(targetPlayer)
+    if not targetPlayer then return end
+    local uid = targetPlayer.UserId
+    local now = os.clock()
+    if lastLevelUpEffectAt[uid] and (now - lastLevelUpEffectAt[uid]) < 0.5 then
+        return
+    end
+    lastLevelUpEffectAt[uid] = now
+
+    local char = targetPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart") or char:FindFirstChild("Torso") or char:FindFirstChildWhichIsA("BasePart")
+    if not hrp then return end
+
+    local Debris = game:GetService("Debris")
+
+    -- Holder attachment so all effects ride the player
+    local att = Instance.new("Attachment")
+    att.Name = "LevelUpEffectAttachment"
+    att.Parent = hrp
+    Debris:AddItem(att, 3.5)
+
+    -- Gold sparkles (rising)
+    local sparkles = Instance.new("ParticleEmitter")
+    sparkles.Name = "LevelUpSparkles"
+    sparkles.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    sparkles.Rate = 0
+    sparkles.Lifetime = NumberRange.new(0.8, 1.4)
+    sparkles.Speed = NumberRange.new(6, 10)
+    sparkles.SpreadAngle = Vector2.new(180, 180)
+    sparkles.Rotation = NumberRange.new(0, 360)
+    sparkles.RotSpeed = NumberRange.new(-180, 180)
+    sparkles.LightEmission = 0.8
+    sparkles.LightInfluence = 0
+    sparkles.Color = ColorSequence.new(Color3.fromRGB(255, 235, 120), Color3.fromRGB(255, 200, 50))
+    sparkles.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.4),
+        NumberSequenceKeypoint.new(0.5, 1.0),
+        NumberSequenceKeypoint.new(1, 0.0),
+    })
+    sparkles.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.7, 0.2),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    sparkles.Acceleration = Vector3.new(0, 6, 0)
+    sparkles.Drag = 1.5
+    sparkles.EmissionDirection = Enum.NormalId.Top
+    sparkles.Parent = att
+
+    -- Burst (one-shot)
+    local burst = Instance.new("ParticleEmitter")
+    burst.Name = "LevelUpBurst"
+    burst.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    burst.Rate = 0
+    burst.Lifetime = NumberRange.new(0.6, 1.0)
+    burst.Speed = NumberRange.new(14, 22)
+    burst.SpreadAngle = Vector2.new(360, 360)
+    burst.LightEmission = 1
+    burst.Color = ColorSequence.new(Color3.fromRGB(255, 240, 160))
+    burst.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.8),
+        NumberSequenceKeypoint.new(1, 0.0),
+    })
+    burst.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    burst.Acceleration = Vector3.new(0, -8, 0)
+    burst.Drag = 1.0
+    burst.Parent = att
+
+    -- Expanding ring (Part with mesh)
+    local ring = Instance.new("Part")
+    ring.Name = "LevelUpRing"
+    ring.Anchored = false
+    ring.CanCollide = false
+    ring.CanQuery = false
+    ring.CanTouch = false
+    ring.Massless = true
+    ring.Size = Vector3.new(0.2, 0.2, 0.2)
+    ring.Color = Color3.fromRGB(255, 220, 80)
+    ring.Material = Enum.Material.Neon
+    ring.Transparency = 0.1
+    ring.CFrame = hrp.CFrame * CFrame.new(0, -2.5, 0) * CFrame.Angles(math.pi/2, 0, 0)
+    local mesh = Instance.new("SpecialMesh")
+    mesh.MeshType = Enum.MeshType.FileMesh
+    mesh.MeshId  = "rbxassetid://3270017"   -- ring mesh
+    mesh.Scale   = Vector3.new(2, 2, 0.5)
+    mesh.Parent  = ring
+    local weld = Instance.new("WeldConstraint")
+    weld.Part0 = ring
+    weld.Part1 = hrp
+    weld.Parent = ring
+    ring.Parent = workspace
+    Debris:AddItem(ring, 1.2)
+    -- Tween scale + fade
+    task.spawn(function()
+        local TS = TweenService
+        TS:Create(mesh, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Scale = Vector3.new(28, 28, 0.5),
+        }):Play()
+        TS:Create(ring, TweenInfo.new(0.9, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Transparency = 1,
+        }):Play()
+    end)
+
+    -- Fire emissions
+    sparkles:Emit(50)
+    burst:Emit(60)
+    -- continuous trickle for a bit
+    sparkles.Rate = 30
+    task.delay(1.0, function()
+        if sparkles and sparkles.Parent then sparkles.Rate = 0 end
+    end)
+end
+
 local function onLevelUp(payload)
     if not payload then return end
-    -- only show for the local player
-    if payload.playerUserId ~= player.UserId then return end
+    local newLevel = payload.newLevel
+    local userId   = payload.playerUserId
 
-    local newLevel = payload.newLevel or (currentLevel + 1)
+    -- World effects: spawn for whoever leveled up, on every client
+    if userId then
+        local target = Players:GetPlayerByUserId(userId)
+        if target then
+            if target.Character then
+                spawnLevelUpEffects(target)
+            else
+                local conn
+                conn = target.CharacterAdded:Connect(function()
+                    if conn then conn:Disconnect() end
+                    task.wait(0.3)
+                    spawnLevelUpEffects(target)
+                end)
+                task.delay(5, function() if conn then conn:Disconnect() end end)
+            end
+        end
+    end
+
+    -- Local UI updates only for local player below
+    if userId ~= player.UserId then return end
+
+    newLevel = newLevel or (currentLevel + 1)
     currentLevel = newLevel
     levelLabel.Text = tostring(currentLevel)
     nextLabel.Text  = tostring(currentLevel + 1)

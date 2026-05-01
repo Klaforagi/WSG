@@ -241,15 +241,15 @@ game:BindToClose(function()
 end)
 
 print("[CrateServiceInit] Crate system ready")
--- Debug: print MeleeCrate pool contents to verify config changes
+-- Debug: print WeaponCrate pool contents to verify config changes
 pcall(function()
-    local pool = require(ReplicatedStorage:WaitForChild("CrateConfig")).Crates.MeleeCrate.pool
+    local pool = require(ReplicatedStorage:WaitForChild("CrateConfig")).Crates.WeaponCrate.pool
     if pool and #pool > 0 then
-        print("[CrateServiceInit] MeleeCrate pool items:")
+        print("[CrateServiceInit] WeaponCrate pool items:")
         for i, v in ipairs(pool) do
             print(string.format("  - %s (%s)", tostring(v.weapon), tostring(v.rarity)))
         end
     else
-        warn("[CrateServiceInit] MeleeCrate pool is empty or unavailable")
+        warn("[CrateServiceInit] WeaponCrate pool is empty or unavailable")
     end
 end)

@@ -30,6 +30,7 @@ local ReplicatedStorage    = game:GetService("ReplicatedStorage")
 local ServerScriptService  = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage:WaitForChild("MeteorShowerConfig"))
+local EventConfig = require(ReplicatedStorage:WaitForChild("EventConfig"))
 
 ---------------------------------------------------------------------
 -- Currency integration (for reward payout)
@@ -42,6 +43,11 @@ if not CurrencyService then
     warn("[MeteorShower] CurrencyService not found – rewards will not be granted")
 end
 
+local AchievementService
+pcall(function()
+    AchievementService = require(ServerScriptService:WaitForChild("AchievementService", 10))
+end)
+
 ---------------------------------------------------------------------
 -- Remotes (server → client)
 ---------------------------------------------------------------------
@@ -51,6 +57,13 @@ if not ShardCollectedRemote then
     ShardCollectedRemote = Instance.new("RemoteEvent")
     ShardCollectedRemote.Name = "MeteorShardCollected"
     ShardCollectedRemote.Parent = ReplicatedStorage
+end
+
+local ShardProgressRemote = ReplicatedStorage:FindFirstChild("EventShardProgress")
+if not ShardProgressRemote then
+    ShardProgressRemote = Instance.new("RemoteEvent")
+    ShardProgressRemote.Name = "EventShardProgress"
+    ShardProgressRemote.Parent = ReplicatedStorage
 end
 
 ---------------------------------------------------------------------
@@ -63,6 +76,146 @@ local _spawnThread     = nil     -- coroutine running the spawn loop
 local _currentMeteors  = {}      -- references to in-flight meteor parts
 local _generation      = 0       -- bumped on each Start(); prevents stale cleanup
 local _activeShards    = {}      -- { part, connection } pairs for cleanup
+local _playerProgress  = {}      -- [userId] = shards collected this event
+local _playerCompleted = {}      -- [userId] = true once completion reward paid
+
+local _eventProgressServiceChecked = false
+local _eventProgressService = nil
+local _warnedEventProgressUnsupported = false
+
+local function getEventProgressService()
+    if _eventProgressServiceChecked then return _eventProgressService end
+    _eventProgressServiceChecked = true
+
+    for _, moduleName in ipairs({ "EventQuestService", "EventObjectiveService", "EventService" }) do
+        local mod = ServerScriptService:FindFirstChild(moduleName)
+        if mod and mod:IsA("ModuleScript") then
+            local ok, svc = pcall(require, mod)
+            if ok and type(svc) == "table" then
+                _eventProgressService = svc
+                return _eventProgressService
+            end
+        end
+    end
+
+    warn("[MeteorShower] Event progress service not found; using MeteorShowerService shard objective tracker")
+    return nil
+end
+
+local function getMeteorEventDef()
+    local eventId = EventConfig.ActiveEventId or "MeteorShower"
+    return EventConfig.EventDefs and EventConfig.EventDefs[eventId]
+end
+
+local function getRequiredShards()
+    local def = getMeteorEventDef()
+    return tonumber(def and def.RequiredShards) or tonumber(Config.REQUIRED_SHARDS) or 3
+end
+
+local function getCompletionRewardCoins()
+    local def = getMeteorEventDef()
+    local configured = tonumber(def and def.CompletionRewardCoins)
+    if configured then return configured end
+
+    local rewardText = tostring(def and def.Reward or "")
+    return tonumber(rewardText:match("(%d+)%s*[Cc]oins?")) or 0
+end
+
+local function fireShardProgress(player, current, required)
+    pcall(function()
+        ShardProgressRemote:FireClient(player, current, required)
+    end)
+end
+
+local function awardObjectiveCompletion(player, popupPosition)
+    local rewardCoins = getCompletionRewardCoins()
+    if rewardCoins > 0 and CurrencyService and CurrencyService.AddCoins then
+        pcall(function()
+            CurrencyService:AddCoins(player, rewardCoins, "MeteorShowerObjective")
+        end)
+    end
+
+    if rewardCoins > 0 and popupPosition then
+        pcall(function()
+            ShardCollectedRemote:FireClient(player, popupPosition, rewardCoins, "EventReward")
+        end)
+    end
+
+    if AchievementService and AchievementService.IncrementStat then
+        pcall(function()
+            AchievementService:IncrementStat(player, "eventQuestsCompleted", 1)
+        end)
+    end
+end
+
+local function tryExternalObjectiveProgress(player)
+    local svc = getEventProgressService()
+    if not svc then return false end
+
+    local methodNames = {
+        "IncrementMeteorShardProgress",
+        "IncrementShardProgress",
+        "IncrementObjectiveProgress",
+        "IncrementProgress",
+        "AddObjectiveProgress",
+        "AddProgress",
+    }
+
+    for _, methodName in ipairs(methodNames) do
+        local method = svc[methodName]
+        if type(method) == "function" then
+            local ok = pcall(function()
+                method(svc, player, EventConfig.ActiveEventId or "MeteorShower", "MeteorShard", 1)
+            end)
+            if not ok then
+                warn("[MeteorShower] Event progress service call failed for " .. methodName)
+            end
+            return ok
+        end
+    end
+
+    if not _warnedEventProgressUnsupported then
+        _warnedEventProgressUnsupported = true
+        warn("[MeteorShower] Event progress service has no known increment method; using local shard tracker")
+    end
+    return false
+end
+
+local function incrementShardObjective(player, popupPosition)
+    if not _active then return end
+    if tryExternalObjectiveProgress(player) then return end
+
+    local userId = player.UserId
+    local required = getRequiredShards()
+
+    if _playerCompleted[userId] then
+        fireShardProgress(player, required, required)
+        return
+    end
+
+    local current = math.min((_playerProgress[userId] or 0) + 1, required)
+    _playerProgress[userId] = current
+    fireShardProgress(player, current, required)
+
+    if current >= required then
+        _playerCompleted[userId] = true
+        awardObjectiveCompletion(player, popupPosition)
+        print(string.format("[MeteorShower] Objective complete for %s (%d/%d)", tostring(player.Name), current, required))
+    end
+end
+
+Players.PlayerAdded:Connect(function(player)
+    task.defer(function()
+        if _active then
+            fireShardProgress(player, _playerProgress[player.UserId] or 0, getRequiredShards())
+        end
+    end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+    _playerProgress[player.UserId] = nil
+    _playerCompleted[player.UserId] = nil
+end)
 
 ---------------------------------------------------------------------
 -- Target zone helpers
@@ -394,6 +547,7 @@ local function spawnShard(position)
         if not plr then return end
 
         collected = true
+        shard.CanTouch = false
 
         -- Grant +5 coins
         local rewardAmount = Config.SHARD_REWARD_COINS
@@ -406,6 +560,10 @@ local function spawnShard(position)
         -- Tell the client: show popup + play Collect sound
         pcall(function()
             ShardCollectedRemote:FireClient(plr, shard.Position, rewardAmount)
+        end)
+
+        pcall(function()
+            incrementShardObjective(plr, shard.Position)
         end)
 
         pcall(function() conn:Disconnect() end)
@@ -503,8 +661,14 @@ function MeteorShowerService:Start()
     _active = true
     _generation = _generation + 1
     _currentMeteors = {}   -- fresh table for this session
+    _playerProgress = {}
+    _playerCompleted = {}
 
     print("[MeteorShower] Shower STARTED")
+
+    for _, player in ipairs(Players:GetPlayers()) do
+        fireShardProgress(player, 0, getRequiredShards())
+    end
 
     _spawnThread = task.spawn(function()
         while _active do
@@ -536,6 +700,8 @@ function MeteorShowerService:Stop()
     -- Clear the tracking table so the next event starts fresh.
     _activeShards = {}
     _currentMeteors = {}
+    _playerProgress = {}
+    _playerCompleted = {}
 end
 
 --- Returns true while the shower is actively spawning meteors.
