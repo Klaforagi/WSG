@@ -71,11 +71,11 @@ EventConfig.EventDefs = {
         PickupRewardCoins = 3,
         CompletionRewardCoins = 25,
         MaxRewardCoins = 60,
-        WaveCount = 4,
-        MinPickupsPerWave = 12,
-        PickupsPerPlayerPerWave = 2,
-        MaxPickupsPerWave = 28,
-        PickupLifetime = 18,
+        WaveCount = 5,
+        MinPickupsPerWave = 18,
+        PickupsPerPlayerPerWave = 4,
+        MaxPickupsPerWave = 40,
+        PickupLifetime = 24,
     },
 }
 

@@ -74,7 +74,7 @@ local function getMaxRewardCoins()
 end
 
 local function getPickupLifetime()
-    return tonumber(getDef().PickupLifetime) or 18
+    return tonumber(getDef().PickupLifetime) or 24
 end
 
 local function fireProgress(player)
@@ -288,10 +288,10 @@ local function spawnWave()
     local def = getDef()
     local playerCount = math.max(1, #Players:GetPlayers())
     local count = math.max(
-        tonumber(def.MinPickupsPerWave) or 12,
-        playerCount * (tonumber(def.PickupsPerPlayerPerWave) or 2)
+        tonumber(def.MinPickupsPerWave) or 18,
+        playerCount * (tonumber(def.PickupsPerPlayerPerWave) or 4)
     )
-    count = math.min(count, tonumber(def.MaxPickupsPerWave) or 28)
+    count = math.min(count, tonumber(def.MaxPickupsPerWave) or 40)
 
     for _ = 1, count do
         spawnPickup(samplePickupPosition())
@@ -328,7 +328,7 @@ function GoldRushService:Start()
     end
 
     _spawnThread = task.spawn(function()
-        local waveCount = math.max(1, tonumber(getDef().WaveCount) or 4)
+        local waveCount = math.max(1, tonumber(getDef().WaveCount) or 5)
         local duration = tonumber(EventConfig.EVENT_DURATION) or 60
         local interval = math.max(6, duration / waveCount)
 

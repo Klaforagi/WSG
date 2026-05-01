@@ -39,6 +39,14 @@ pcall(function()
     StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
 
+local WeaponMasteryService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponMasteryService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponMasteryService = require(mod)
+    end
+end)
+
 -- Melee settings module
 local MeleeCfg
 if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
@@ -195,7 +203,7 @@ end
 ---------------------------------------------------------------------------
 -- Damage helper (same tag pattern as the gun system so KillTracker works)
 ---------------------------------------------------------------------------
-local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, hitPos)
+local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, hitPos, weaponInstanceId, weaponName)
     -- prevent friendly fire: if the victim is a player on the same Team, skip damage
     local victimPlayer = nil
     if victimModel and Players then
@@ -218,11 +226,24 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
         humanoid:SetAttribute("lastDamageTime", tick())
+        if type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+            humanoid:SetAttribute("lastDamagerWeaponInstanceId", weaponInstanceId)
+        else
+            humanoid:SetAttribute("lastDamagerWeaponInstanceId", nil)
+        end
+        if type(weaponName) == "string" and weaponName ~= "" then
+            humanoid:SetAttribute("lastDamagerWeapon", weaponName)
+        else
+            humanoid:SetAttribute("lastDamagerWeapon", nil)
+        end
     end)
     humanoid:TakeDamage(damage)
     -- Track damage dealt for quest progress
     if StatService and StatService.RegisterDamageDealt then
         pcall(function() StatService:RegisterDamageDealt(player, damage) end)
+    end
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        pcall(function() WeaponMasteryService:RegisterDamage(player, weaponInstanceId, damage) end)
     end
     -- send hit feedback to the attacker
     pcall(function()
@@ -872,7 +893,16 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
 
                     local damageMultiplier = cleaveDamageMultipliers[index] or cleaveDamageMultipliers[#cleaveDamageMultipliers]
                     local knockbackMultiplier = cleaveKnockbackMultipliers[index] or cleaveKnockbackMultipliers[#cleaveKnockbackMultipliers]
-                    applyMeleeDamage(player, hit.humanoid, hit.model, damage * damageMultiplier, hit.hitPart, hit.hitPos)
+                    applyMeleeDamage(
+                        player,
+                        hit.humanoid,
+                        hit.model,
+                        damage * damageMultiplier,
+                        hit.hitPart,
+                        hit.hitPos,
+                        tool:GetAttribute("WeaponInstanceId"),
+                        tool:GetAttribute("WeaponName") or toolName
+                    )
 
                     if canTryEnchant and (not enchantProcced) then
                         local procSucceeded = false

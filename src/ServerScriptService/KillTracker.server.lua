@@ -117,6 +117,14 @@ pcall(function()
     StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
 
+local WeaponMasteryService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponMasteryService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponMasteryService = require(mod)
+    end
+end)
+
 local WeaponEnchantService
 pcall(function()
     local mod = ServerScriptService:FindFirstChild("WeaponEnchantService")
@@ -145,6 +153,8 @@ local function registerCombatHit(humanoid, attackerPlayer)
         humanoid:SetAttribute("lastDamagerUserId", attackerPlayer.UserId)
         humanoid:SetAttribute("lastDamagerName",   attackerPlayer.Name)
         humanoid:SetAttribute("lastDamageTime",    tick())
+        humanoid:SetAttribute("lastDamagerWeaponInstanceId", nil)
+        humanoid:SetAttribute("lastDamagerWeapon", nil)
     end)
 
     local objVal = humanoid:FindFirstChild("LastDamagedBy")
@@ -453,6 +463,15 @@ local function onHumanoidDied(humanoid, model)
             StatService:RegisterElimination(killer, victimPlayer)
         elseif isMonsterVictim then
             StatService:RegisterMobKill(killer, victimName)
+        end
+    end
+
+    local weaponInstanceId = humanoid:GetAttribute("lastDamagerWeaponInstanceId")
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        if isPlayerVictim then
+            pcall(function() WeaponMasteryService:RegisterElimination(killer, weaponInstanceId) end)
+        elseif isMonsterVictim then
+            pcall(function() WeaponMasteryService:RegisterMobKill(killer, weaponInstanceId) end)
         end
     end
 

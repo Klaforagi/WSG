@@ -332,6 +332,34 @@ local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
     end
 end
 
+local function resolveWeaponInstanceId(player, toolName, instanceId)
+    if type(instanceId) == "string" and instanceId ~= "" then
+        return instanceId
+    end
+    if not WeaponInstanceService_scale then return nil end
+    local inv = WeaponInstanceService_scale:GetInventory(player)
+    if type(inv) ~= "table" then return nil end
+    for id, data in pairs(inv) do
+        if type(id) == "string" and type(data) == "table" and data.weaponName == toolName then
+            return id
+        end
+    end
+    return nil
+end
+
+local function stampWeaponAttributes(player, toolClone, folder, toolName, instanceId)
+    if not toolClone then return end
+    local resolvedInstanceId = resolveWeaponInstanceId(player, toolName, instanceId)
+    toolClone:SetAttribute("HotbarCategory", folder)
+    toolClone:SetAttribute("WeaponCategory", folder)
+    toolClone:SetAttribute("WeaponName", toolName)
+    if type(resolvedInstanceId) == "string" and resolvedInstanceId ~= "" then
+        toolClone:SetAttribute("WeaponInstanceId", resolvedInstanceId)
+    else
+        toolClone:SetAttribute("WeaponInstanceId", nil)
+    end
+end
+
 --- Clone a tool into both StarterGear (respawn persistence) and Backpack.
 --- Sets HotbarCategory attribute.  Skips duplicates per-container.
 --- instanceId is optional; used by SIZE ROLL SYSTEM to scale the correct copy.
@@ -346,7 +374,7 @@ local function grantTool(player, folder, toolName, instanceId)
     -- 1) StarterGear — persists across respawns; engine auto-clones to Backpack
     if sg and not sg:FindFirstChild(toolName) then
         local clone = template:Clone()
-        clone:SetAttribute("HotbarCategory", folder)
+        stampWeaponAttributes(player, clone, folder, toolName, instanceId)
         sanitizeTool(clone)
         -- Parent first so relative CFrames and pivot math are correct, then scale
         clone.Parent = sg
@@ -362,7 +390,7 @@ local function grantTool(player, folder, toolName, instanceId)
     local inChar = char and char:FindFirstChild(toolName)
     if not inBP and not inChar and bp then
         local clone = template:Clone()
-        clone:SetAttribute("HotbarCategory", folder)
+        stampWeaponAttributes(player, clone, folder, toolName, instanceId)
         sanitizeTool(clone)
         -- Parent into Backpack first so the tool's world/relative CFrames are stable
         clone.Parent = bp
