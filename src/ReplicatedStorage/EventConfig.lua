@@ -15,17 +15,17 @@ EventConfig.EventDebugMode = true
 
 if EventConfig.EventDebugMode then
     -----------------------------------------------------------------
-    -- TESTING values (fast iteration)
+    -- TESTING values
+    -- Rolls every 20s starting at 2%, +2% per fail, cap 70%.
+    -- Expected first event ≈ 180 seconds (~3 minutes).
     -----------------------------------------------------------------
     EventConfig.EVENT_DURATION     = 45    -- event duration in seconds
 
-    -- Probability rolling (debug)
-    -- Starts at 50% so an event usually fires within the first 1–2 rolls.
-    EventConfig.CHANCE_INITIAL     = 0.50  -- start at 50% (first roll already meaningful)
-    EventConfig.CHANCE_STEP        = 0.25  -- +25% per interval
-    EventConfig.CHANCE_CAP         = 0.75  -- never exceed 75%
-    EventConfig.CHANCE_INTERVAL    = 5     -- seconds between each roll
-    EventConfig.CHANCE_AFTER_EVENT = 0.50  -- reset here after event (no dead roll in debug)
+    EventConfig.CHANCE_INITIAL     = 0.02  -- 2% on first roll
+    EventConfig.CHANCE_STEP        = 0.02  -- +2% per failed roll
+    EventConfig.CHANCE_CAP         = 0.70  -- cap at 70%
+    EventConfig.CHANCE_INTERVAL    = 20    -- seconds between each roll
+    EventConfig.CHANCE_AFTER_EVENT = 0.00  -- full reset after event ends
 else
     -----------------------------------------------------------------
     -- PRODUCTION values
