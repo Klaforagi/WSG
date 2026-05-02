@@ -5,6 +5,7 @@
 --   AdminService:SearchWeapons(adminPlayer, searchType, searchValue)
 --   AdminService:GrantWeapon(adminPlayer, targetUserId, weaponName, sizePercent, enchantName)
 --   AdminService:GrantCurrency(adminPlayer, targetUserId, currencyType, amount)
+--   AdminService:ControlEvent(adminPlayer, action, eventId)
 --
 -- All operations verify the requesting player is a whitelisted dev.
 -- Hooks into existing WeaponInstanceService for instance creation/save.
@@ -14,17 +15,19 @@
 
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local DevUserIds            = require(game.ReplicatedStorage.DevUserIds)
-local CrateConfig           = require(game.ReplicatedStorage.CrateConfig)
-local WeaponEnchantConfig   = require(game.ReplicatedStorage.WeaponEnchantConfig)
-local SizeRollService       = require(game.ReplicatedStorage.SizeRollService)
+local DevUserIds            = require(ReplicatedStorage.DevUserIds)
+local CrateConfig           = require(ReplicatedStorage.CrateConfig)
+local WeaponEnchantConfig   = require(ReplicatedStorage.WeaponEnchantConfig)
+local SizeRollService       = require(ReplicatedStorage.SizeRollService)
 
 -- Lazy-loaded server modules (avoid circular requires)
 local _WeaponInstanceService
 local _WeaponRegistryService
 local _AdminAuditService
 local _CurrencyService
+local _EventScheduler
 
 local function getWeaponInstanceService()
     if not _WeaponInstanceService then
@@ -52,6 +55,13 @@ local function getCurrencyService()
         _CurrencyService = require(script.Parent.CurrencyService)
     end
     return _CurrencyService
+end
+
+local function getEventScheduler()
+    if not _EventScheduler then
+        _EventScheduler = require(script.Parent.EventScheduler)
+    end
+    return _EventScheduler
 end
 
 local AdminService = {}
@@ -562,6 +572,68 @@ function AdminService:GrantCurrency(adminPlayer, targetUserId, currencyType, amo
             GrantedByUserId = adminPlayer.UserId,
             GrantedByUsername = adminPlayer.Name,
         },
+    }
+end
+
+--------------------------------------------------------------------------------
+-- CONTROL EVENT
+--
+-- Starts/stops timed events for testing without waiting for scheduler rolls.
+-- action: "GetState" | "Start" | "Stop"
+-- eventId: event id from EventConfig.EventDefs for Start/Stop.
+--
+-- Returns: { success = bool, state = table?, message = string?, error = string? }
+--------------------------------------------------------------------------------
+function AdminService:ControlEvent(adminPlayer, action, eventId)
+    local ok, err = assertDev(adminPlayer)
+    if not ok then
+        return { success = false, error = err }
+    end
+
+    if type(action) ~= "string" then
+        return { success = false, error = "Invalid event action" }
+    end
+
+    local scheduler = getEventScheduler()
+
+    if action == "GetState" then
+        return {
+            success = true,
+            state = scheduler:GetAdminState(),
+        }
+    end
+
+    if action == "Start" and (type(eventId) ~= "string" or eventId == "") then
+        return { success = false, error = "Event id is required" }
+    end
+    if eventId ~= nil and eventId ~= "" and type(eventId) ~= "string" then
+        return { success = false, error = "Invalid event id" }
+    end
+    if type(eventId) == "string" and #eventId > 50 then
+        return { success = false, error = "Event id too long" }
+    end
+
+    local controlOk, controlErr
+    if action == "Start" then
+        controlOk, controlErr = scheduler:StartEvent(eventId)
+    elseif action == "Stop" then
+        controlOk, controlErr = scheduler:StopEvent(eventId)
+    else
+        return { success = false, error = "Unknown event action: " .. tostring(action) }
+    end
+
+    if not controlOk then
+        return {
+            success = false,
+            error = controlErr or "Event command failed",
+            state = scheduler:GetAdminState(),
+        }
+    end
+
+    return {
+        success = true,
+        message = action .. " " .. tostring(eventId or "active event"),
+        state = scheduler:GetAdminState(),
     }
 end
 

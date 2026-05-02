@@ -6,9 +6,10 @@
 --   1. Weapon Search  – search by WeaponId, OwnerUserId, or Username
 --   2. Grant Weapon   – grant weapons to any player
 --   3. Grant Currency – grant coins, keys, or salvage to any player
+--   4. Events         – start/stop timed events for testing
 --
 -- All operations are server-authoritative via RemoteFunctions:
---   AdminSearchWeaponsRF, AdminGrantWeaponRF, AdminGrantCurrencyRF
+--   AdminSearchWeaponsRF, AdminGrantWeaponRF, AdminGrantCurrencyRF, AdminControlEventRF
 --------------------------------------------------------------------------------
 
 local Players           = game:GetService("Players")
@@ -17,6 +18,7 @@ local TweenService      = game:GetService("TweenService")
 
 local player    = Players.LocalPlayer
 local DevUserIds = require(ReplicatedStorage:WaitForChild("DevUserIds"))
+local EventConfig = require(ReplicatedStorage:WaitForChild("EventConfig"))
 
 -- Only run for whitelisted devs
 if not DevUserIds.IsDev(player) then
@@ -27,9 +29,10 @@ end
 local searchRF = ReplicatedStorage:WaitForChild("AdminSearchWeaponsRF", 10)
 local grantRF  = ReplicatedStorage:WaitForChild("AdminGrantWeaponRF", 10)
 local grantCurrencyRF = ReplicatedStorage:WaitForChild("AdminGrantCurrencyRF", 10)
+local controlEventRF = ReplicatedStorage:WaitForChild("AdminControlEventRF", 10)
 local deleteRF = ReplicatedStorage:WaitForChild("AdminDeleteWeaponRF", 10)
 
-if not searchRF or not grantRF or not grantCurrencyRF or not deleteRF then
+if not searchRF or not grantRF or not grantCurrencyRF or not controlEventRF or not deleteRF then
     warn("[AdminPanel] Admin remotes not found; aborting.")
     return
 end
@@ -244,13 +247,13 @@ local tabBar = createInstance("Frame", {
 local function createTab(name, text, order)
     local btn = createInstance("TextButton", {
         Name = name,
-        Size = UDim2.new(0, 140, 0, 30),
-        Position = UDim2.new(0, 12 + (order - 1) * 150, 0, 3),
+        Size = UDim2.new(0, 132, 0, 30),
+        Position = UDim2.new(0, 12 + (order - 1) * 140, 0, 3),
         BackgroundColor3 = COLORS.TAB_INACTIVE,
         Text = text,
         TextColor3 = COLORS.TEXT_PRIMARY,
         Font = Enum.Font.GothamMedium,
-        TextSize = 13,
+        TextSize = 12,
         Parent = tabBar,
     })
     addCorner(btn, 6)
@@ -260,9 +263,10 @@ end
 local searchTab = createTab("SearchTab", "Weapon Search", 1)
 local grantTab  = createTab("GrantTab", "Grant Weapon", 2)
 local grantCurrencyTab = createTab("GrantCurrencyTab", "Grant Currency", 3)
-local userDataTab = createTab("UserDataTab", "User Data", 4)
+local eventsTab = createTab("EventsTab", "Events", 4)
+local userDataTab = createTab("UserDataTab", "User Data", 5)
 userDataTab.Visible = USER_DATA_AVAILABLE
-local userDataRTab = createTab("UserDataRTab", "User Data (R)", 5)
+local userDataRTab = createTab("UserDataRTab", "User Data (R)", 6)
 userDataRTab.Visible = RESTORE_AVAILABLE
 
 -- Content area
@@ -854,6 +858,338 @@ local currencyStatus = createInstance("TextLabel", {
 })
 
 --------------------------------------------------------------------------------
+-- TAB 4: EVENTS
+--------------------------------------------------------------------------------
+local eventRows = {}
+local eventControlBusy = false
+local refreshEventState
+
+local function getConfiguredEvents()
+    local list = {}
+    local seen = {}
+
+    local function addConfiguredEvent(eventId)
+        if type(eventId) ~= "string" or seen[eventId] then return end
+        local definition = EventConfig.EventDefs and EventConfig.EventDefs[eventId]
+        if not definition then return end
+
+        seen[eventId] = true
+        table.insert(list, {
+            eventId = eventId,
+            name = definition.Name or eventId,
+            objective = definition.Objective or "",
+            reward = definition.Reward or "",
+        })
+    end
+
+    if type(EventConfig.EnabledEvents) == "table" then
+        for _, entry in ipairs(EventConfig.EnabledEvents) do
+            if type(entry) == "table" then
+                addConfiguredEvent(entry.Id or entry.id or entry.EventId or entry.eventId)
+            else
+                addConfiguredEvent(entry)
+            end
+        end
+    end
+
+    local extraIds = {}
+    if type(EventConfig.EventDefs) == "table" then
+        for eventId, _ in pairs(EventConfig.EventDefs) do
+            if not seen[eventId] then
+                table.insert(extraIds, eventId)
+            end
+        end
+    end
+    table.sort(extraIds)
+    for _, eventId in ipairs(extraIds) do
+        addConfiguredEvent(eventId)
+    end
+
+    return list
+end
+
+local eventsPage = createInstance("Frame", {
+    Name = "EventsPage",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Visible = false,
+    Parent = contentArea,
+})
+
+local eventsPanel = createInstance("Frame", {
+    Name = "EventsPanel",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundColor3 = COLORS.BG_PANEL,
+    Parent = eventsPage,
+})
+addCorner(eventsPanel, 8)
+addPadding(eventsPanel, 12, 12, 12, 12)
+
+createInstance("TextLabel", {
+    Size = UDim2.new(1, -280, 0, 24),
+    BackgroundTransparency = 1,
+    Text = "Timed Events",
+    TextColor3 = COLORS.TEXT_PRIMARY,
+    Font = Enum.Font.GothamBold,
+    TextSize = 15,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = eventsPanel,
+})
+
+local eventRefreshButton = createInstance("TextButton", {
+    Name = "RefreshEventsBtn",
+    Size = UDim2.new(0, 110, 0, 30),
+    Position = UDim2.new(1, -230, 0, 0),
+    BackgroundColor3 = COLORS.BG_INPUT,
+    Text = "Refresh",
+    TextColor3 = COLORS.TEXT_PRIMARY,
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    Parent = eventsPanel,
+})
+addCorner(eventRefreshButton, 5)
+addStroke(eventRefreshButton, COLORS.BORDER, 1)
+
+local stopActiveEventButton = createInstance("TextButton", {
+    Name = "StopActiveEventBtn",
+    Size = UDim2.new(0, 110, 0, 30),
+    Position = UDim2.new(1, -110, 0, 0),
+    BackgroundColor3 = COLORS.RED,
+    Text = "Stop Active",
+    TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 12,
+    Parent = eventsPanel,
+})
+addCorner(stopActiveEventButton, 5)
+
+local eventSummary = createInstance("TextLabel", {
+    Name = "EventSummary",
+    Size = UDim2.new(1, 0, 0, 42),
+    Position = UDim2.new(0, 0, 0, 34),
+    BackgroundColor3 = COLORS.BG_INPUT,
+    Text = "Loading event state...",
+    TextColor3 = COLORS.TEXT_SECONDARY,
+    Font = Enum.Font.Gotham,
+    TextSize = 12,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Center,
+    Parent = eventsPanel,
+})
+addCorner(eventSummary, 6)
+addPadding(eventSummary, 0, 0, 10, 10)
+
+local eventsScroll = createInstance("ScrollingFrame", {
+    Name = "EventsScroll",
+    Size = UDim2.new(1, 0, 1, -88),
+    Position = UDim2.new(0, 0, 0, 86),
+    BackgroundTransparency = 1,
+    ScrollBarThickness = 4,
+    ScrollBarImageColor3 = COLORS.ACCENT,
+    CanvasSize = UDim2.new(0, 0, 0, 0),
+    AutomaticCanvasSize = Enum.AutomaticSize.Y,
+    Parent = eventsPanel,
+})
+
+createInstance("UIListLayout", {
+    SortOrder = Enum.SortOrder.LayoutOrder,
+    Padding = UDim.new(0, 8),
+    Parent = eventsScroll,
+})
+
+local function getEventDisplayName(eventId)
+    local row = eventRows[eventId]
+    return (row and row.displayName) or tostring(eventId or "event")
+end
+
+local function applyEventAdminState(state)
+    if type(state) ~= "table" then return end
+
+    local activeEventId = state.ActiveEventId
+    local serverTime = tonumber(state.ServerTime) or 0
+    local endTime = tonumber(state.EventEndTime) or 0
+
+    if activeEventId and activeEventId ~= "" then
+        local remaining = math.max(0, math.floor(endTime - serverTime + 0.5))
+        eventSummary.Text = string.format("Active: %s (%ds remaining)", getEventDisplayName(activeEventId), remaining)
+        eventSummary.TextColor3 = COLORS.GREEN
+    else
+        eventSummary.Text = "No event is currently active."
+        eventSummary.TextColor3 = COLORS.TEXT_SECONDARY
+    end
+
+    for eventId, row in pairs(eventRows) do
+        local isActive = (eventId == activeEventId)
+        row.statusLabel.Text = isActive and "ACTIVE" or "READY"
+        row.statusLabel.TextColor3 = isActive and COLORS.GREEN or COLORS.TEXT_SECONDARY
+        row.startButton.BackgroundColor3 = isActive and COLORS.TAB_INACTIVE or COLORS.GREEN
+        row.stopButton.BackgroundColor3 = isActive and COLORS.RED or COLORS.TAB_INACTIVE
+    end
+end
+
+local function requestEventAction(action, eventId)
+    if eventControlBusy then return end
+    eventControlBusy = true
+
+    if action == "Start" then
+        eventSummary.Text = "Starting " .. getEventDisplayName(eventId) .. "..."
+        eventSummary.TextColor3 = COLORS.TEXT_DIM
+    elseif action == "Stop" then
+        eventSummary.Text = "Stopping " .. getEventDisplayName(eventId) .. "..."
+        eventSummary.TextColor3 = COLORS.TEXT_DIM
+    end
+
+    local ok, result = pcall(function()
+        return controlEventRF:InvokeServer(action, eventId)
+    end)
+
+    eventControlBusy = false
+
+    if not ok then
+        eventSummary.Text = "Request failed: " .. tostring(result)
+        eventSummary.TextColor3 = COLORS.RED
+        return
+    end
+
+    if not result or not result.success then
+        if result and result.state then
+            applyEventAdminState(result.state)
+        end
+        eventSummary.Text = "Error: " .. tostring(result and result.error or "Unknown error")
+        eventSummary.TextColor3 = COLORS.RED
+        return
+    end
+
+    applyEventAdminState(result.state)
+end
+
+refreshEventState = function()
+    requestEventAction("GetState")
+end
+
+local configuredEvents = getConfiguredEvents()
+if #configuredEvents == 0 then
+    createInstance("TextLabel", {
+        Size = UDim2.new(1, 0, 0, 52),
+        BackgroundColor3 = COLORS.BG_CARD,
+        Text = "No events are configured in EventConfig.EventDefs.",
+        TextColor3 = COLORS.TEXT_SECONDARY,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 13,
+        Parent = eventsScroll,
+    })
+else
+    for index, eventInfo in ipairs(configuredEvents) do
+        local row = createInstance("Frame", {
+            Name = eventInfo.eventId .. "Row",
+            Size = UDim2.new(1, -6, 0, 88),
+            BackgroundColor3 = COLORS.BG_CARD,
+            LayoutOrder = index,
+            Parent = eventsScroll,
+        })
+        addCorner(row, 7)
+        addStroke(row, COLORS.BORDER, 1)
+
+        local titleLabel = createInstance("TextLabel", {
+            Size = UDim2.new(1, -250, 0, 22),
+            Position = UDim2.new(0, 12, 0, 8),
+            BackgroundTransparency = 1,
+            Text = eventInfo.name,
+            TextColor3 = COLORS.TEXT_PRIMARY,
+            Font = Enum.Font.GothamBold,
+            TextSize = 14,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = row,
+        })
+
+        createInstance("TextLabel", {
+            Size = UDim2.new(1, -250, 0, 38),
+            Position = UDim2.new(0, 12, 0, 32),
+            BackgroundTransparency = 1,
+            Text = string.format("%s\nReward: %s", eventInfo.objective ~= "" and eventInfo.objective or "No objective set", eventInfo.reward ~= "" and eventInfo.reward or "None"),
+            TextColor3 = COLORS.TEXT_SECONDARY,
+            Font = Enum.Font.Gotham,
+            TextSize = 12,
+            TextWrapped = true,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            TextYAlignment = Enum.TextYAlignment.Top,
+            Parent = row,
+        })
+
+        local statusLabel = createInstance("TextLabel", {
+            Size = UDim2.new(0, 90, 0, 24),
+            Position = UDim2.new(1, -236, 0, 12),
+            BackgroundColor3 = COLORS.BG_INPUT,
+            Text = "READY",
+            TextColor3 = COLORS.TEXT_SECONDARY,
+            Font = Enum.Font.GothamBold,
+            TextSize = 11,
+            Parent = row,
+        })
+        addCorner(statusLabel, 4)
+
+        local startButton = createInstance("TextButton", {
+            Name = "StartBtn",
+            Size = UDim2.new(0, 82, 0, 30),
+            Position = UDim2.new(1, -138, 0, 10),
+            BackgroundColor3 = COLORS.GREEN,
+            Text = "Start",
+            TextColor3 = Color3.new(1, 1, 1),
+            Font = Enum.Font.GothamBold,
+            TextSize = 12,
+            Parent = row,
+        })
+        addCorner(startButton, 5)
+
+        local stopButton = createInstance("TextButton", {
+            Name = "StopBtn",
+            Size = UDim2.new(0, 82, 0, 30),
+            Position = UDim2.new(1, -48, 0, 10),
+            AnchorPoint = Vector2.new(1, 0),
+            BackgroundColor3 = COLORS.TAB_INACTIVE,
+            Text = "Stop",
+            TextColor3 = Color3.new(1, 1, 1),
+            Font = Enum.Font.GothamBold,
+            TextSize = 12,
+            Parent = row,
+        })
+        addCorner(stopButton, 5)
+
+        eventRows[eventInfo.eventId] = {
+            displayName = eventInfo.name,
+            statusLabel = statusLabel,
+            startButton = startButton,
+            stopButton = stopButton,
+        }
+
+        titleLabel.Text = eventInfo.name .. "  (" .. eventInfo.eventId .. ")"
+
+        startButton.MouseButton1Click:Connect(function()
+            requestEventAction("Start", eventInfo.eventId)
+        end)
+        stopButton.MouseButton1Click:Connect(function()
+            requestEventAction("Stop", eventInfo.eventId)
+        end)
+    end
+end
+
+eventRefreshButton.MouseButton1Click:Connect(function()
+    refreshEventState()
+end)
+
+stopActiveEventButton.MouseButton1Click:Connect(function()
+    local activeEventId = nil
+    for eventId, row in pairs(eventRows) do
+        if row.statusLabel.Text == "ACTIVE" then
+            activeEventId = eventId
+            break
+        end
+    end
+    requestEventAction("Stop", activeEventId)
+end)
+
+--------------------------------------------------------------------------------
 -- LOGIC: PANEL TOGGLE
 --------------------------------------------------------------------------------
 local panelOpen = false
@@ -861,6 +1197,9 @@ local panelOpen = false
 local function togglePanel()
     panelOpen = not panelOpen
     panelFrame.Visible = panelOpen
+    if panelOpen and eventsPage.Visible and refreshEventState then
+        refreshEventState()
+    end
 end
 
 adminButton.MouseButton1Click:Connect(togglePanel)
@@ -878,18 +1217,24 @@ local function switchTab(tabName)
     searchPage.Visible = (tabName == "Search")
     grantPage.Visible  = (tabName == "Grant")
     currencyPage.Visible = (tabName == "GrantCurrency")
+    eventsPage.Visible = (tabName == "Events")
     if userDataPage  then userDataPage.Visible  = (tabName == "UserData")  end
     if userDataRPage then userDataRPage.Visible = (tabName == "UserDataR") end
     searchTab.BackgroundColor3    = (tabName == "Search")    and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
     grantTab.BackgroundColor3     = (tabName == "Grant")     and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
     grantCurrencyTab.BackgroundColor3 = (tabName == "GrantCurrency") and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
+    eventsTab.BackgroundColor3 = (tabName == "Events") and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
     userDataTab.BackgroundColor3  = (tabName == "UserData")  and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
     userDataRTab.BackgroundColor3 = (tabName == "UserDataR") and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
+    if tabName == "Events" and refreshEventState then
+        refreshEventState()
+    end
 end
 
 searchTab.MouseButton1Click:Connect(function() switchTab("Search") end)
 grantTab.MouseButton1Click:Connect(function() switchTab("Grant") end)
 grantCurrencyTab.MouseButton1Click:Connect(function() switchTab("GrantCurrency") end)
+eventsTab.MouseButton1Click:Connect(function() switchTab("Events") end)
 if USER_DATA_AVAILABLE then
     userDataTab.MouseButton1Click:Connect(function() switchTab("UserData") end)
 end

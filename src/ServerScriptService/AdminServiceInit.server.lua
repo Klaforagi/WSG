@@ -5,6 +5,7 @@
 --   AdminSearchWeaponsRF  – search weapons by ID, owner userId, or username
 --   AdminGrantWeaponRF    – grant a weapon to a target player
 --   AdminGrantCurrencyRF  – grant coins, keys, or salvage to a target player
+--   AdminControlEventRF   – start/stop timed events for testing
 --
 -- Both remotes verify the calling player is a whitelisted dev on every call.
 -- Rate-limited to 1 request per second per player per remote.
@@ -33,6 +34,7 @@ end
 local searchRF  = findOrCreate("RemoteFunction", "AdminSearchWeaponsRF", ReplicatedStorage)
 local grantRF   = findOrCreate("RemoteFunction", "AdminGrantWeaponRF", ReplicatedStorage)
 local grantCurrencyRF = findOrCreate("RemoteFunction", "AdminGrantCurrencyRF", ReplicatedStorage)
+local controlEventRF = findOrCreate("RemoteFunction", "AdminControlEventRF", ReplicatedStorage)
 local deleteRF  = findOrCreate("RemoteFunction", "AdminDeleteWeaponRF", ReplicatedStorage)
 
 --------------------------------------------------------------------------------
@@ -41,6 +43,7 @@ local deleteRF  = findOrCreate("RemoteFunction", "AdminDeleteWeaponRF", Replicat
 local searchDebounce = {} -- [Player] = tick
 local grantDebounce  = {} -- [Player] = tick
 local grantCurrencyDebounce = {} -- [Player] = tick
+local controlEventDebounce = {} -- [Player] = tick
 local deleteDebounce = {} -- [Player] = tick
 local DEBOUNCE_TIME  = 1.0
 local MAX_CURRENCY_GRANT = 1000000
@@ -175,6 +178,36 @@ grantCurrencyRF.OnServerInvoke = function(player, targetUserId, currencyType, am
 end
 
 --------------------------------------------------------------------------------
+-- EVENT CONTROL HANDLER
+--------------------------------------------------------------------------------
+controlEventRF.OnServerInvoke = function(player, action, eventId)
+    if type(action) ~= "string" then
+        return { success = false, error = "Event action must be a string" }
+    end
+    if #action > 20 then
+        return { success = false, error = "Event action too long" }
+    end
+
+    -- Allow frequent UI refreshes, but rate-limit mutating commands.
+    if action ~= "GetState" and not checkDebounce(player, controlEventDebounce) then
+        return { success = false, error = "Too many requests. Please wait." }
+    end
+
+    if not DevUserIds.IsDev(player) then
+        return { success = false, error = "Unauthorized" }
+    end
+
+    if eventId ~= nil and type(eventId) ~= "string" then
+        eventId = tostring(eventId)
+    end
+    if type(eventId) == "string" and #eventId > 50 then
+        return { success = false, error = "Event id too long" }
+    end
+
+    return AdminService:ControlEvent(player, action, eventId)
+end
+
+--------------------------------------------------------------------------------
 -- DELETE HANDLER
 --------------------------------------------------------------------------------
 deleteRF.OnServerInvoke = function(player, ownerUserId, weaponId)
@@ -210,6 +243,7 @@ Players.PlayerRemoving:Connect(function(player)
     searchDebounce[player] = nil
     grantDebounce[player] = nil
     grantCurrencyDebounce[player] = nil
+    controlEventDebounce[player] = nil
     deleteDebounce[player] = nil
 end)
 

@@ -518,6 +518,7 @@ local function spawnShard(position)
     shard.Size = Config.SHARD_SIZE
     shard.Material = Enum.Material.Neon
     shard.Color = Config.SHARD_COLOR
+    shard.Transparency = Config.SHARD_NEON_TRANSPARENCY or 0.75
     shard.Anchored = true
     shard.CanCollide = false
     shard.CFrame = CFrame.new(position + Vector3.new(0, Config.SHARD_Y_OFFSET, 0))
@@ -591,6 +592,30 @@ local function spawnShard(position)
     table.insert(_activeShards, { part = shard, connection = conn, tween = bobTween })
 end
 
+local _meteorRayParams = RaycastParams.new()
+_meteorRayParams.FilterType = Enum.RaycastFilterType.Exclude
+_meteorRayParams.FilterDescendantsInstances = {}
+
+--- Raycast from spawnPos toward targetPos; returns the first real surface hit,
+--- ignoring the meteor root. Falls back to targetPos if nothing is found.
+local function findImpactPosition(spawnPos, targetPos, meteorRoot)
+    _meteorRayParams.FilterDescendantsInstances = { meteorRoot }
+    local dir    = targetPos - spawnPos
+    local result = workspace:Raycast(spawnPos, dir, _meteorRayParams)
+    return result and result.Position or targetPos
+end
+
+--- Returns true if `part` or any of its ancestors contains "Tree" in the name.
+local function isOnTree(part)
+    if string.find(part.Name, "Tree", 1, true) then return true end
+    local cur = part.Parent
+    while cur and cur ~= workspace do
+        if string.find(cur.Name, "Tree", 1, true) then return true end
+        cur = cur.Parent
+    end
+    return false
+end
+
 local function spawnOneMeteor()
     if not _active then return end
 
@@ -612,9 +637,20 @@ local function spawnOneMeteor()
     local meteor, spawnPos, target = createMeteor(targetPos)
     table.insert(_currentMeteors, meteor)
 
+    -- Raycast to find the actual first surface hit along the fall path
+    local impactPos = findImpactPosition(spawnPos, target, meteor)
+
+    -- Check at spawn time if the surface is a Tree (skip shard if so)
+    local _impactRayDown = workspace:Raycast(
+        impactPos + Vector3.new(0, 2, 0),
+        Vector3.new(0, -8, 0),
+        _meteorRayParams
+    )
+    local impactOnTree = _impactRayDown and isOnTree(_impactRayDown.Instance)
+
     -- Scripted fall: Quad-In easing simulates gravitational acceleration
-    local direction = (target - spawnPos).Unit
-    local endCF = CFrame.new(target, target + direction)
+    local direction = (impactPos - spawnPos).Unit
+    local endCF = CFrame.new(impactPos, impactPos + direction)
 
     local tweenInfo = TweenInfo.new(
         Config.FALL_DURATION,
@@ -626,13 +662,15 @@ local function spawnOneMeteor()
 
     tween.Completed:Connect(function()
         -- Impact flash
-        createImpactEffect(target)
+        createImpactEffect(impactPos)
 
         -- Deal AoE damage at impact site
-        applyImpactDamage(target)
+        applyImpactDamage(impactPos)
 
-        -- Spawn a collectible shard
-        spawnShard(target)
+        -- Spawn a collectible shard (skip if impact surface is a tree)
+        if not impactOnTree then
+            spawnShard(impactPos)
+        end
 
         -- Turn off emitters so they fade naturally before removal
         pcall(function()
