@@ -66,7 +66,8 @@ MeteorShowerConfig.SHARD_REWARD_COINS      = 5    -- coins granted per shard col
 MeteorShowerConfig.SHARD_SIZE              = Vector3.new(2.5, 2.5, 2.5)  -- sphere diameter
 MeteorShowerConfig.SHARD_COLOR             = Color3.fromRGB(180, 225, 255)  -- light bright blue
 MeteorShowerConfig.SHARD_LIGHT_RANGE       = 18
-MeteorShowerConfig.SHARD_LIGHT_BRIGHTNESS  = 1.5
+MeteorShowerConfig.SHARD_LIGHT_BRIGHTNESS  = 0.3  -- toned down (was 1.5)
+MeteorShowerConfig.SHARD_NEON_TRANSPARENCY = 0.75  -- dim the neon self-glow
 MeteorShowerConfig.SHARD_Y_OFFSET          = -1    -- studs above ground level
 
 ---------------------------------------------------------------------

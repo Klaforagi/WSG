@@ -47,7 +47,7 @@ end
 local rarityDefaults = {
     Common = {
         damage       = 5,
-        cd           = 0.7,
+        cd           = 1,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -58,7 +58,7 @@ local rarityDefaults = {
     },
     Uncommon = {
         damage       = 7,
-        cd           = 0.7,
+        cd           = 1,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -69,7 +69,7 @@ local rarityDefaults = {
     },
     Rare = {
         damage       = 8.5,
-        cd           = 0.7,
+        cd           = 1,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -80,7 +80,7 @@ local rarityDefaults = {
     },
     Epic = {
         damage       = 10,
-        cd           = 0.7,
+        cd           = 1,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -91,7 +91,7 @@ local rarityDefaults = {
     },
     Legendary = {
         damage       = 12,
-        cd           = 0.7,
+        cd           = 3,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
