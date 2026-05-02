@@ -52,13 +52,10 @@ MeteorShowerConfig.IMPACT_CLEANUP_DELAY   = 0.6  -- seconds after impact before 
 
 ---------------------------------------------------------------------
 -- Impact damage
--- Damage is expressed as a fraction of the victim's MaxHealth so it
--- scales with any future HP changes.
 ---------------------------------------------------------------------
 MeteorShowerConfig.DIRECT_HIT_RADIUS       = 8    -- studs – full damage zone
-MeteorShowerConfig.DIRECT_HIT_DAMAGE_PCT   = 0.85 -- 85 % of MaxHealth
 MeteorShowerConfig.SPLASH_RADIUS           = 20   -- studs – outer splash zone
-MeteorShowerConfig.SPLASH_DAMAGE_PCT       = 0.35 -- 35 % of MaxHealth
+MeteorShowerConfig.IMPACT_DAMAGE           = 10   -- flat damage for direct and splash hits
 
 ---------------------------------------------------------------------
 -- Meteor Shards (collectible drops)

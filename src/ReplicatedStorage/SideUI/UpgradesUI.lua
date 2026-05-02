@@ -170,6 +170,35 @@ local function makeCoinIcon(parentFrame, size)
 end
 
 --------------------------------------------------------------------------------
+-- Scrap icon widget (mirrors coin look but with steel/grey palette).
+--------------------------------------------------------------------------------
+local function makeScrapIcon(parentFrame, size)
+	local scrap = Instance.new("Frame")
+	scrap.Name            = "ScrapIcon"
+	scrap.Size            = UDim2.new(0, size, 0, size)
+	scrap.BackgroundColor3 = Color3.fromRGB(170, 178, 190)
+	scrap.BorderSizePixel = 0
+	local cr = Instance.new("UICorner")
+	cr.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.18)))
+	cr.Parent = scrap
+	local stroke = Instance.new("UIStroke")
+	stroke.Color           = Color3.fromRGB(80, 88, 98)
+	stroke.Thickness       = math.max(1, math.floor(size * 0.10))
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent          = scrap
+	local lbl = Instance.new("TextLabel")
+	lbl.BackgroundTransparency = 1
+	lbl.Size = UDim2.fromScale(1, 1)
+	lbl.Text = "S"
+	lbl.Font = Enum.Font.GothamBlack
+	lbl.TextColor3 = Color3.fromRGB(35, 40, 48)
+	lbl.TextScaled = true
+	lbl.Parent = scrap
+	scrap.Parent = parentFrame
+	return scrap
+end
+
+--------------------------------------------------------------------------------
 -- Module
 --------------------------------------------------------------------------------
 local UpgradesUI = {}
@@ -605,7 +634,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		costHeader.Name = "CostHeader"
 		costHeader.BackgroundTransparency = 1
 		costHeader.Font = Enum.Font.GothamMedium
-		costHeader.Text = "Next Upgrade:"
+		costHeader.Text = "Next Upgrade (Scrap):"
 		costHeader.TextColor3 = DIM_TEXT
 		costHeader.TextSize = math.max(10, math.floor(px(11)))
 		costHeader.TextXAlignment = Enum.TextXAlignment.Center
@@ -641,7 +670,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		priceLabel.ZIndex = 10
 		priceLabel.Parent = priceRow
 
-		local costCoin = makeCoinIcon(priceRow, costCoinSize)
+		local costCoin = makeScrapIcon(priceRow, costCoinSize)
 		costCoin.AnchorPoint = Vector2.new(0, 0.5)
 		costCoin.Position = UDim2.new(0.5, (costCoinSize / 2 + px(1)), 0.5, 0)
 		costCoin.ZIndex = 10
@@ -673,8 +702,8 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 			bonusLabel.Text  = (level == 0) and bonusTxt or ("Bonus: " .. bonusTxt)
 			local cost       = UpgradeConfig.GetCost(level)
 
-			-- Cap check: is the upgrade at or above the player level?
-			local capped = (level >= playerLevel)
+			-- Player-level cap is disabled by default (UpgradeConfig.REQUIRE_PLAYER_LEVEL).
+			local capped = (UpgradeConfig.REQUIRE_PLAYER_LEVEL == true) and (level >= playerLevel) or false
 			if capped then
 				btn.Text = "MAXED"
 				btn.Active = false
@@ -692,9 +721,6 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 				priceLabel.Text = tostring(cost)
 				capLabel.Visible = false
 			end
-
-			print(("[UpgradesUI] Card '%s' updated: level=%d, playerLevel=%d, capped=%s, bonus=%s, nextCost=%d"):format(
-				upgradeId, level, playerLevel, tostring(capped), UpgradeConfig.GetBonusText(level, upgradeId), cost))
 		end
 
 		-- Run initial cap check
@@ -753,7 +779,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 				local toastMsg = msg or "Purchase failed"
 				local toastColor = RED_TEXT
 				if tostring(msg):find("Insufficient") then
-					toastMsg = "Not enough coins!"
+					toastMsg = "Not enough scrap!"
 				elseif tostring(msg):find("capped") then
 					toastMsg = "Upgrade capped by player level!"
 				end

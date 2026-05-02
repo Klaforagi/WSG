@@ -22,9 +22,9 @@ local EventConfig = require(ReplicatedStorage:WaitForChild("EventConfig"))
 
 ---------------------------------------------------------------------
 -- Remote: server → client  (EventStateChanged)
--- Payload:  (active: boolean, eventIndex: number?)
---   active = true  → an event just started   (eventIndex = 1 or 2)
---   active = false → the current event ended  (eventIndex = nil)
+-- Payload:  (active: boolean, eventId: string?)
+--   active = true  → an event just started   (eventId = selected event id)
+--   active = false → the current event ended  (eventId = nil)
 ---------------------------------------------------------------------
 local EventStateChanged = ReplicatedStorage:FindFirstChild("EventStateChanged")
 if not EventStateChanged then
@@ -33,13 +33,25 @@ if not EventStateChanged then
     EventStateChanged.Parent = ReplicatedStorage
 end
 
+local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
+if not FlagStatus or not FlagStatus:IsA("RemoteEvent") then
+    if FlagStatus then FlagStatus:Destroy() end
+    FlagStatus = Instance.new("RemoteEvent")
+    FlagStatus.Name = "FlagStatus"
+    FlagStatus.Parent = ReplicatedStorage
+end
+
+local EVENT_ACTIVE_ATTR = "EventActive"
+local EVENT_ID_ATTR     = "ActiveEventId"
+local EVENT_END_ATTR    = "EventEndTime"
+
 ---------------------------------------------------------------------
 -- Module
 ---------------------------------------------------------------------
 local EventScheduler = {}
 
 local _running      = false   -- true while a match is active
-local _activeIdx    = nil     -- currently active event index (1 or 2), or nil
+local _activeIdx    = nil     -- currently active event id, or nil
 local _thread       = nil     -- the scheduler coroutine
 local _eventEndTime = nil     -- server timestamp when the active event ends
 local _serverCallbacks = {} -- server-side listeners (registered via OnStateChanged)
@@ -48,7 +60,64 @@ local _serverCallbacks = {} -- server-side listeners (registered via OnStateChan
 -- Internal helpers
 ---------------------------------------------------------------------
 
+local function setReplicatedEventState(active, idx)
+    pcall(function()
+        ReplicatedStorage:SetAttribute(EVENT_ACTIVE_ATTR, active == true)
+        ReplicatedStorage:SetAttribute(EVENT_ID_ATTR, active and tostring(idx or "") or "")
+        ReplicatedStorage:SetAttribute(EVENT_END_ATTR, active and (_eventEndTime or 0) or 0)
+    end)
+end
+
+local function getEventDef(eventId)
+    return EventConfig.EventDefs and EventConfig.EventDefs[eventId]
+end
+
+local function chooseEventId()
+    local forced = EventConfig.ForcedEventId
+    if forced and getEventDef(forced) then
+        return forced
+    end
+
+    local entries = {}
+    local totalWeight = 0
+    local enabledEvents = EventConfig.EnabledEvents
+
+    if type(enabledEvents) == "table" then
+        for _, entry in ipairs(enabledEvents) do
+            local eventId = entry
+            local weight = 1
+            if type(entry) == "table" then
+                eventId = entry.Id or entry.id or entry.EventId or entry.eventId
+                weight = tonumber(entry.Weight or entry.weight) or 1
+            end
+
+            if eventId and getEventDef(eventId) and weight > 0 then
+                totalWeight = totalWeight + weight
+                table.insert(entries, { id = eventId, cumulativeWeight = totalWeight })
+            end
+        end
+    end
+
+    if #entries == 0 then
+        local fallback = EventConfig.ActiveEventId or "MeteorShower"
+        if getEventDef(fallback) then
+            return fallback
+        end
+        return "MeteorShower"
+    end
+
+    local roll = math.random() * totalWeight
+    for _, entry in ipairs(entries) do
+        if roll <= entry.cumulativeWeight then
+            return entry.id
+        end
+    end
+
+    return entries[#entries].id
+end
+
 local function broadcast(active, idx)
+    setReplicatedEventState(active, idx)
     pcall(function()
         EventStateChanged:FireAllClients(active, idx, _eventEndTime)
     end)
@@ -59,6 +128,16 @@ local function notifyServer(active, idx)
     for _, cb in ipairs(_serverCallbacks) do
         pcall(cb, active, idx)
     end
+end
+
+local function announceEventStart(eventId)
+    local def = getEventDef(eventId)
+    local text = def and def.Announcement
+    if not text or text == "" then return end
+    local color = def.AnnouncementColor or Color3.fromRGB(255, 180, 55)
+    pcall(function()
+        FlagStatus:FireAllClients("event", text, nil, nil, color)
+    end)
 end
 
 --- Send current event state to a single player (for late-joiners).
@@ -102,11 +181,13 @@ function EventScheduler:StartMatch(_matchStartTick)
 
             if math.random() < chance then
                 -- ---- EVENT START ----
-                _activeIdx    = EventConfig.ActiveEventId
+                local eventId = chooseEventId()
+                _activeIdx    = eventId
                 _eventEndTime = workspace:GetServerTimeNow() + EventConfig.EVENT_DURATION
-                print((("[EventScheduler] Event '%s' ACTIVE (triggered at %.0f%% chance)"):format(EventConfig.ActiveEventId, chance * 100)))
-                broadcast(true, EventConfig.ActiveEventId)
-                notifyServer(true, EventConfig.ActiveEventId)
+                print((("[EventScheduler] Event '%s' ACTIVE (triggered at %.0f%% chance)"):format(eventId, chance * 100)))
+                broadcast(true, eventId)
+                announceEventStart(eventId)
+                notifyServer(true, eventId)
 
                 -- Run for EVENT_DURATION seconds
                 local activatedAt = workspace:GetServerTimeNow()
@@ -152,13 +233,13 @@ function EventScheduler:StopMatch()
 end
 
 --- Register a server-side callback for event state changes.
---- callback(active: boolean, eventIndex: number?)
+--- callback(active: boolean, eventId: string?)
 --- Used by systems like MeteorShowerService to start/stop during events.
 function EventScheduler:OnStateChanged(callback)
     table.insert(_serverCallbacks, callback)
 end
 
---- Returns whether an event is currently active and which index.
+--- Returns whether an event is currently active and which event id.
 function EventScheduler:IsActive()
     return _activeIdx ~= nil, _activeIdx
 end

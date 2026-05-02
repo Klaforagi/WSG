@@ -25,6 +25,7 @@
 --------------------------------------------------------------------------------
 
 local Players       = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService  = game:GetService("TweenService")
 
 local UITheme = require(script.Parent:WaitForChild("UITheme"))
@@ -79,34 +80,26 @@ local function safeThumbnail(userId)
 end
 
 --------------------------------------------------------------------------------
--- Build a ViewportFrame preview of an NPC model. Returns true on success.
--- Clones the model client-side, strips scripts, frames it from the front.
+-- Look up a canonical mob template (clean clone source) in
+-- ReplicatedStorage.MobTemplates. Server publishes this folder at startup.
+-- Falls back to nil; caller decides what to do.
 --------------------------------------------------------------------------------
-local function buildNpcViewport(viewport, npcModel)
-    -- Clear any previous contents first.
-    for _, child in ipairs(viewport:GetChildren()) do
-        if child:IsA("Model") or child:IsA("BasePart") or child:IsA("Camera") then
-            child:Destroy()
-        end
-    end
+local function getMobTemplate(templateName)
+    if not templateName or templateName == "" then return nil end
+    local folder = ReplicatedStorage:FindFirstChild("MobTemplates")
+    if not folder then return nil end
+    local m = folder:FindFirstChild(templateName)
+    if m and m:IsA("Model") then return m end
+    return nil
+end
 
-    if not npcModel or typeof(npcModel) ~= "Instance" or not npcModel:IsA("Model") or not npcModel.Parent then
-        return false
-    end
-
-    -- Roblox requires Archivable=true to clone. Many replicated models default true,
-    -- but we restore whatever it was.
-    local prevArchivable = npcModel.Archivable
-    if not prevArchivable then
-        local ok = pcall(function() npcModel.Archivable = true end)
-        if not ok then return false end
-    end
-
-    local cloneOk, clone = pcall(function() return npcModel:Clone() end)
-    if not prevArchivable then pcall(function() npcModel.Archivable = false end) end
-    if not cloneOk or not clone then return false end
-
-    -- Strip scripts so nothing tries to run inside the viewport.
+--------------------------------------------------------------------------------
+-- Sanitize a cloned character/NPC model for use inside a ViewportFrame /
+-- WorldModel. Strips scripts, anchors parts, disables collisions/queries.
+-- Returns the same model for chaining.
+--------------------------------------------------------------------------------
+local function sanitizeForViewport(clone)
+    if not clone then return clone end
     for _, d in ipairs(clone:GetDescendants()) do
         if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
             d:Destroy()
@@ -117,25 +110,119 @@ local function buildNpcViewport(viewport, npcModel)
             d.CanTouch = false
         end
     end
+    return clone
+end
 
-    -- Compute bounding box for camera framing.
-    local cf, size = clone:GetBoundingBox()
+--------------------------------------------------------------------------------
+-- Find the head/torso of a humanoid-shaped Model so we can frame the camera
+-- consistently regardless of rig type (R6 / R15 / custom NPC).
+--------------------------------------------------------------------------------
+local function getFramingPivot(model)
+    local root = model:FindFirstChild("HumanoidRootPart")
+              or model:FindFirstChild("Torso")
+              or model:FindFirstChild("UpperTorso")
+              or model.PrimaryPart
+              or model:FindFirstChildWhichIsA("BasePart")
+    if not root then
+        return model:GetPivot(), Vector3.new(4, 5, 2)
+    end
+    return root.CFrame, model:GetExtentsSize()
+end
+
+--------------------------------------------------------------------------------
+-- Build a clean front-facing preview of `model` inside `viewport`.
+-- Uses a WorldModel so animations / Motor6Ds remain functional for future
+-- emote support. Roblox characters face toward local -Z, so the camera sits
+-- on the -Z side and looks back at the chest/head area.
+--------------------------------------------------------------------------------
+local function buildModelViewport(viewport, model)
+    -- Clear any previous contents.
+    for _, child in ipairs(viewport:GetChildren()) do
+        if child:IsA("Model") or child:IsA("BasePart") or child:IsA("Camera")
+            or child:IsA("WorldModel") then
+            child:Destroy()
+        end
+    end
+
+    if not model or typeof(model) ~= "Instance" or not model:IsA("Model") then
+        return false
+    end
+
+    -- WorldModel inside the ViewportFrame allows animators / future emotes.
+    local world = Instance.new("WorldModel")
+    world.Parent = viewport
+
+    -- Re-pivot the model to origin facing -Z.
+    -- This guarantees a clean front-facing pose no matter what orientation
+    -- the source model had in workspace/ReplicatedStorage.
+    local _, extents = getFramingPivot(model)
+    -- Pivot at origin, facing forward (-Z is "front" in Roblox character convention)
+    pcall(function() model:PivotTo(CFrame.new(0, 0, 0)) end)
+
+    model.Parent = world
+
+    -- Recompute extents now that model is parented.
+    local size = model:GetExtentsSize()
     local maxExtent = math.max(size.X, size.Y, size.Z)
-    if maxExtent <= 0 then maxExtent = 4 end
+    if maxExtent <= 0 then maxExtent = 5 end
 
-    clone.Parent = viewport
-
+    -- Camera setup — front view, centered on torso/head area.
     local cam = Instance.new("Camera")
-    cam.FieldOfView = 60
-    -- Frame the upper body from slightly above eye-level, looking at head height.
-    local lookTarget = cf.Position + Vector3.new(0, size.Y * 0.15, 0)
-    local distance = maxExtent * 1.6
-    local camPos = lookTarget + Vector3.new(0, size.Y * 0.05, distance)
-    cam.CFrame = CFrame.lookAt(camPos, lookTarget)
+    cam.FieldOfView = 50
+    -- Look at a point slightly above the geometric center (head area).
+    local lookAt = Vector3.new(0, size.Y * 0.15, 0)
+    -- Distance scaled to the model's largest extent so big and small
+    -- mobs are framed identically.
+    local distance = maxExtent * 1.85
+    -- Camera in FRONT of the model (negative Z because model faces -Z).
+    local camPos = lookAt + Vector3.new(0, size.Y * 0.05, -distance)
+    cam.CFrame = CFrame.lookAt(camPos, lookAt)
     cam.Parent = viewport
     viewport.CurrentCamera = cam
 
     return true
+end
+
+--------------------------------------------------------------------------------
+-- Player preview: clone the killer's live character model into the viewport
+-- and frame it from the front. Falls back to thumbnail/skull if Character
+-- isn't ready (e.g. respawning).
+--------------------------------------------------------------------------------
+local function buildPlayerCharacterViewport(viewport, player)
+    if not player then return false end
+    local char = player.Character
+    if not char or not char.Parent then return false end
+    -- Clone is required because the original character is parented to
+    -- workspace and being actively simulated.
+    local prevArchivable = char.Archivable
+    if not prevArchivable then pcall(function() char.Archivable = true end) end
+    local ok, clone = pcall(function() return char:Clone() end)
+    if not prevArchivable then pcall(function() char.Archivable = false end) end
+    if not ok or not clone then return false end
+
+    sanitizeForViewport(clone)
+    return buildModelViewport(viewport, clone)
+end
+
+--------------------------------------------------------------------------------
+-- NPC preview: prefer the canonical model from ReplicatedStorage.MobTemplates
+-- (set up by MobSpawner). Never clones from workspace per design note.
+--------------------------------------------------------------------------------
+local function buildNpcViewport(viewport, payload)
+    -- Prefer the templated source published by the server.
+    local templateName = payload and (payload.npcTemplateName or payload.killerName)
+    local template = getMobTemplate(templateName)
+    if template then
+        local prevArchivable = template.Archivable
+        if not prevArchivable then pcall(function() template.Archivable = true end) end
+        local ok, clone = pcall(function() return template:Clone() end)
+        if not prevArchivable then pcall(function() template.Archivable = false end) end
+        if ok and clone then
+            sanitizeForViewport(clone)
+            return buildModelViewport(viewport, clone)
+        end
+    end
+    return false
 end
 
 --------------------------------------------------------------------------------
@@ -347,7 +434,8 @@ function KillCardUI.Mount(parentScreenGui)
         portraitImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
         portraitViewport.Visible = false
         for _, child in ipairs(portraitViewport:GetChildren()) do
-            if child:IsA("Model") or child:IsA("BasePart") or child:IsA("Camera") then
+            if child:IsA("Model") or child:IsA("BasePart") or child:IsA("Camera")
+                or child:IsA("WorldModel") then
                 child:Destroy()
             end
         end
@@ -391,27 +479,41 @@ function KillCardUI.Mount(parentScreenGui)
         resetPortrait()
 
         if kind == "Player" and payload.killerUserId then
-            -- Show fallback while async thumbnail loads.
-            showFallbackSkull()
-            task.spawn(function()
-                local img = safeThumbnail(payload.killerUserId)
-                if mySeq ~= seq then return end  -- stale: a newer Show happened
-                if img then
-                    showImage(img)
-                else
-                    -- Keep skull fallback if thumbnail fetch fails.
-                    showFallbackSkull()
-                end
-            end)
+            -- Try to render the actual player avatar in 3D first; this gives
+            -- a clean front-facing body preview and is future-ready for
+            -- emotes/animations inside the WorldModel.
+            local killerPlayer = Players:GetPlayerByUserId(payload.killerUserId)
+            local rendered3D = false
+            if killerPlayer then
+                rendered3D = buildPlayerCharacterViewport(portraitViewport, killerPlayer)
+            end
+            if rendered3D then
+                portraitViewport.Visible = true
+                portraitImage.Visible = false
+                portraitFallback.Visible = false
+            else
+                -- Fallback: head-shot thumbnail (async).
+                showFallbackSkull()
+                task.spawn(function()
+                    local img = safeThumbnail(payload.killerUserId)
+                    if mySeq ~= seq then return end
+                    if img then
+                        showImage(img)
+                    else
+                        showFallbackSkull()
+                    end
+                end)
+            end
         elseif kind == "NPC" then
-            -- Try to render the actual NPC model in a viewport.
-            local ok = buildNpcViewport(portraitViewport, payload.killerModel)
+            -- Use ReplicatedStorage.MobTemplates (server-published) — never
+            -- the workspace mob clone.
+            local ok = buildNpcViewport(portraitViewport, payload)
             if ok then
                 portraitViewport.Visible = true
                 portraitImage.Visible = false
                 portraitFallback.Visible = false
             else
-                -- No model available -> NPC fallback skull.
+                -- No template available -> NPC fallback skull.
                 showFallbackSkull()
             end
         else

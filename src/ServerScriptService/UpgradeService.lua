@@ -205,32 +205,46 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 
 	local currentLevel = levels[upgradeId] or 0
 
-	-- Enforce player-level cap before allowing purchase
-	local pLevel = getPlayerLevel(player)
-	if currentLevel >= pLevel then
-		print(("[UpgradeCap] %s purchase BLOCKED '%s': upgradeLevel=%d >= playerLevel=%d"):format(
-			player.Name, upgradeId, currentLevel, pLevel))
-		return false, "Upgrade capped by player level"
+	-- Player-level gate (now disabled by default in UpgradeConfig).
+	if config.REQUIRE_PLAYER_LEVEL == true then
+		local pLevel = getPlayerLevel(player)
+		if currentLevel >= pLevel then
+			return false, "Upgrade capped by player level"
+		end
 	end
 
 	local price = config.GetCost(currentLevel)
+	local currency = (config.GetCurrency and config.GetCurrency()) or "scrap"
 
 	local cs = getCurrencyService()
 	if not cs then return false, "Currency system unavailable" end
 
-	local balance = cs:GetCoins(player)
-	if balance < price then
-		return false, "Insufficient coins"
+	if currency == "scrap" then
+		if not cs.GetSalvage or not cs.RemoveSalvage then
+			return false, "Scrap currency unavailable"
+		end
+		local balance = cs:GetSalvage(player)
+		if balance < price then
+			return false, "Insufficient scrap"
+		end
+		cs:RemoveSalvage(player, price)
+	else
+		-- Legacy coin path
+		local balance = cs:GetCoins(player)
+		if balance < price then
+			return false, "Insufficient coins"
+		end
+		cs:AddCoins(player, -price, "upgrade")
 	end
 
-	-- Deduct coins (source "upgrade" prevents Big Spender achievement from counting this)
-	cs:AddCoins(player, -price, "upgrade")
-
-	-- Increase level (clamped as a safety net)
-	local newLevel = clampUpgradeLevel(currentLevel + 1, pLevel)
+	-- Increase level (no cap when REQUIRE_PLAYER_LEVEL=false)
+	local newLevel = currentLevel + 1
+	if config.REQUIRE_PLAYER_LEVEL == true then
+		newLevel = clampUpgradeLevel(newLevel, getPlayerLevel(player))
+	end
 	levels[upgradeId] = newLevel
-	print(("[UpgradeService] %s upgraded '%s' to level %d (cost %d coins)"):format(
-		player.Name, upgradeId, levels[upgradeId], price))
+	print(("[UpgradeService] %s upgraded '%s' to level %d (cost %d %s)"):format(
+		player.Name, upgradeId, levels[upgradeId], price, currency))
 
 	-- Save immediately
 	task.spawn(function()

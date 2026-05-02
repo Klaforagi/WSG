@@ -20,6 +20,7 @@ local SalvageService = {}
 local _WeaponInstanceService
 local _CurrencyService
 local _SalvageConfig
+local _WeaponMasteryService
 
 local function getWeaponInstanceService()
     if not _WeaponInstanceService then
@@ -49,6 +50,16 @@ local function getSalvageConfig()
         end
     end
     return _SalvageConfig
+end
+
+local function getWeaponMasteryService()
+    if not _WeaponMasteryService then
+        local mod = ServerScriptService:FindFirstChild("WeaponMasteryService")
+        if mod and mod:IsA("ModuleScript") then
+            _WeaponMasteryService = require(mod)
+        end
+    end
+    return _WeaponMasteryService
 end
 
 --------------------------------------------------------------------------------
@@ -188,6 +199,11 @@ function SalvageService:SalvageItem(player, instanceId)
     local removed = wis:RemoveInstance(player, instanceId)
     if not removed then
         return false, { reason = "Failed to remove item" }
+    end
+
+    local mastery = getWeaponMasteryService()
+    if mastery and mastery.RemoveWeapon then
+        pcall(function() mastery:RemoveWeapon(player, instanceId) end)
     end
 
     -- 4. Award Salvage currency (only after successful removal)

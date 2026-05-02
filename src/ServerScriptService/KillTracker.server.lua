@@ -117,6 +117,14 @@ pcall(function()
     StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
 
+local WeaponMasteryService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponMasteryService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponMasteryService = require(mod)
+    end
+end)
+
 local WeaponEnchantService
 pcall(function()
     local mod = ServerScriptService:FindFirstChild("WeaponEnchantService")
@@ -145,6 +153,8 @@ local function registerCombatHit(humanoid, attackerPlayer)
         humanoid:SetAttribute("lastDamagerUserId", attackerPlayer.UserId)
         humanoid:SetAttribute("lastDamagerName",   attackerPlayer.Name)
         humanoid:SetAttribute("lastDamageTime",    tick())
+        humanoid:SetAttribute("lastDamagerWeaponInstanceId", nil)
+        humanoid:SetAttribute("lastDamagerWeapon", nil)
     end)
 
     local objVal = humanoid:FindFirstChild("LastDamagedBy")
@@ -392,6 +402,19 @@ local function onHumanoidDied(humanoid, model)
             if npcName then
                 local key = npcKillerKey(npcModel, npcName)
                 local count = bumpKillCount(victimPlayer.UserId, key)
+                -- Resolve a clean template name the client can look up in
+                -- ReplicatedStorage.MobTemplates. Prefer the explicit NPCId
+                -- attribute (set by MobSpawner), fall back to the model name
+                -- with any "_N" suffix stripped (e.g. "Zombie_3" -> "Zombie").
+                local templateName
+                if npcModel then
+                    templateName = npcModel:GetAttribute("TemplateName")
+                                or npcModel:GetAttribute("NPCId")
+                end
+                if not templateName then
+                    local raw = (npcModel and npcModel.Name) or npcName
+                    templateName = string.match(raw, "^([%a]+)") or raw
+                end
                 if npcModel and not npcModel.Parent then npcModel = nil end
                 payload = {
                     killerKind                 = "NPC",
@@ -402,6 +425,7 @@ local function onHumanoidDied(humanoid, model)
                     killerStreak               = nil,
                     killedByThisKillerCount    = count,
                     killerModel                = npcModel,
+                    npcTemplateName            = templateName,
                     killerCategory             = categorizeNpc(npcModel, npcName),
                     killerWeaponName           = nil,
                     deathMessage               = nil,
@@ -439,6 +463,15 @@ local function onHumanoidDied(humanoid, model)
             StatService:RegisterElimination(killer, victimPlayer)
         elseif isMonsterVictim then
             StatService:RegisterMobKill(killer, victimName)
+        end
+    end
+
+    local weaponInstanceId = humanoid:GetAttribute("lastDamagerWeaponInstanceId")
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        if isPlayerVictim then
+            pcall(function() WeaponMasteryService:RegisterElimination(killer, weaponInstanceId) end)
+        elseif isMonsterVictim then
+            pcall(function() WeaponMasteryService:RegisterMobKill(killer, weaponInstanceId) end)
         end
     end
 

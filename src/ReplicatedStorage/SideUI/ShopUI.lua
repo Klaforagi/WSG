@@ -841,7 +841,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     ---------------------------------------------------------------------------
     -- Layout constants (sidebar dimensions matching DailyQuestsUI)
     ---------------------------------------------------------------------------
-    local TAB_W   = px(130)
+    local TAB_W   = px(132)
     local TAB_GAP = px(10)
 
     ---------------------------------------------------------------------------
@@ -1198,8 +1198,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     --
     -- The grid is absolutely positioned below the header and fills the
     -- remaining height of weaponsPage.  CellSize is computed dynamically
-    -- from the grid's actual rendered pixel dimensions so that two columns
-    -- always fit regardless of ScrollingFrame canvas-size quirks.
+    -- from the grid's actual rendered pixel dimensions so that configured
+    -- crate rows always fit regardless of ScrollingFrame canvas-size quirks.
     --
     -- >>> To tweak spacing, edit GRID_GAP below.
     -- >>> Cell size is auto-computed – see recomputeGridCells().
@@ -1225,22 +1225,24 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     gridLayout.SortOrder               = Enum.SortOrder.LayoutOrder
     gridLayout.Parent                  = crateGrid
 
+    local crateOrder = (CrateConfig and CrateConfig.CrateOrder) or {}
+
     -- Dynamically compute CellSize from the grid's actual rendered size
     -- so two columns always fit regardless of parent chain sizing.
     local function recomputeGridCells()
         local w = crateGrid.AbsoluteSize.X
         local h = crateGrid.AbsoluteSize.Y
         if w > 20 and h > 20 then
+            local rowCount = math.max(1, math.ceil(math.max(#crateOrder, 1) / 2))
             local cellW = math.floor((w - GRID_GAP) / 2)
-            local cellH = math.floor((h - GRID_GAP) / 2)
+            local cellH = math.floor((h - (GRID_GAP * (rowCount - 1))) / rowCount)
             gridLayout.CellSize = UDim2.fromOffset(cellW, cellH)
         end
     end
     crateGrid:GetPropertyChangedSignal("AbsoluteSize"):Connect(recomputeGridCells)
     task.defer(recomputeGridCells)
 
-    -- Build crate cards from CrateConfig (fills 2×2 grid)
-    local crateOrder = (CrateConfig and CrateConfig.CrateOrder) or {}
+    -- Build crate cards from CrateConfig
     local crateOpenDebounce = false
 
     for idx, crateId in ipairs(crateOrder) do

@@ -27,6 +27,14 @@ pcall(function()
     StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
 
+local WeaponMasteryService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponMasteryService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponMasteryService = require(mod)
+    end
+end)
+
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
@@ -368,7 +376,7 @@ end
 
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
-local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos)
+local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos, weaponInstanceId, weaponName)
     -- prevent friendly fire: if the victim is a player on the same Team, skip damage
     local victimPlayer = nil
     if victimModel and Players then
@@ -389,11 +397,24 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
         humanoid:SetAttribute("lastDamageTime", tick())
+        if type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+            humanoid:SetAttribute("lastDamagerWeaponInstanceId", weaponInstanceId)
+        else
+            humanoid:SetAttribute("lastDamagerWeaponInstanceId", nil)
+        end
+        if type(weaponName) == "string" and weaponName ~= "" then
+            humanoid:SetAttribute("lastDamagerWeapon", weaponName)
+        else
+            humanoid:SetAttribute("lastDamagerWeapon", nil)
+        end
     end)
     humanoid:TakeDamage(damage)
     -- Track damage dealt for quest progress
     if StatService and StatService.RegisterDamageDealt then
         pcall(function() StatService:RegisterDamageDealt(player, damage) end)
+    end
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        pcall(function() WeaponMasteryService:RegisterDamage(player, weaponInstanceId, damage) end)
     end
     pcall(function()
         if fireHit then fireHit:FireClient(player, damage, isHeadshot == true, hitPart, hitPos) end
@@ -616,7 +637,17 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         local mult = (projCfg and projCfg.headshot_multiplier) or 1
                         finalDamage = pDamage * mult
                     end
-                    applyDamage(player, humanoid, parent, finalDamage, isHeadshot, inst, rayResult.Position)
+                    applyDamage(
+                        player,
+                        humanoid,
+                        parent,
+                        finalDamage,
+                        isHeadshot,
+                        inst,
+                        rayResult.Position,
+                        projCfg and projCfg._weaponInstanceId,
+                        (projCfg and projCfg._weaponName) or toolName
+                    )
                     -- play sniper headshot sound at victim head when appropriate
                     if isHeadshot then
                         local ok, _ = pcall(function()
@@ -976,6 +1007,8 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     -- basic validation of types
     if typeof(camOrigin) ~= "Vector3" or typeof(camDirection) ~= "Vector3" or typeof(gunOrigin) ~= "Vector3" then return end
     if not player or not player.Character then return end
+    -- Losing-team tool lockout: server-authoritative block on weapon use.
+    if player:GetAttribute("ToolsLocked") == true then return end
     local hrp = player.Character:FindFirstChild("HumanoidRootPart")
     if not hrp then return end
 
@@ -1041,6 +1074,8 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     scaledCfg.projectile_size = scaledSize
     -- Store the visual scale so spawnProjectile can scale Model projectiles.
     scaledCfg._projVisualScale = projVisualScale
+    scaledCfg._weaponInstanceId = equippedTool:GetAttribute("WeaponInstanceId")
+    scaledCfg._weaponName = equippedTool:GetAttribute("WeaponName") or toolName
 
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end

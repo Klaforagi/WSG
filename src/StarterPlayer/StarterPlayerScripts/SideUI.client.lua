@@ -157,6 +157,12 @@ local function CreatePanel(screenGui)
     corner.CornerRadius = UDim.new(0, px(10))
     corner.Parent = panel
 
+    -- Min/max width clamp so panel stays usable on narrow / ultrawide viewports
+    local sizeConstraint = Instance.new("UISizeConstraint")
+    sizeConstraint.MinSize = Vector2.new(px(140), 0)
+    sizeConstraint.MaxSize = Vector2.new(px(360), math.huge)
+    sizeConstraint.Parent = panel
+
     local stroke = Instance.new("UIStroke")
     stroke.Color = COLORS.gold
     stroke.Thickness = 1

@@ -246,7 +246,7 @@ healthLabel.Font = Enum.Font.GothamBold
 healthLabel.TextColor3 = WHITE
 healthLabel.TextScaled = true
 healthLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-healthLabel.TextStrokeTransparency = 0.4
+healthLabel.TextStrokeTransparency = 0
 healthLabel.ZIndex = 3
 healthLabel.Parent = barBg
 

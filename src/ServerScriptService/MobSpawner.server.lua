@@ -124,6 +124,45 @@ end
 local templates = findTemplates()
 local weightedPool = {}
 
+---------------------------------------------------------------------------
+-- Replicate sanitized mob templates to ReplicatedStorage so client UI
+-- (e.g. KillCardUI viewport preview) can clone the canonical model without
+-- touching workspace mobs. Scripts are stripped, parts anchored, no
+-- collisions. Folder is rebuilt every server start so it stays fresh.
+---------------------------------------------------------------------------
+local function publishClientTemplates()
+    local existing = ReplicatedStorage:FindFirstChild("MobTemplates")
+    if existing then existing:Destroy() end
+    local folder = Instance.new("Folder")
+    folder.Name = "MobTemplates"
+    folder.Parent = ReplicatedStorage
+
+    for _, src in ipairs(templates) do
+        if src and src:IsA("Model") then
+            local ok, copy = pcall(function()
+                src.Archivable = true
+                return src:Clone()
+            end)
+            if ok and copy then
+                -- Strip scripts so nothing tries to run on the client.
+                for _, d in ipairs(copy:GetDescendants()) do
+                    if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
+                        d:Destroy()
+                    elseif d:IsA("BasePart") then
+                        d.Anchored = true
+                        d.CanCollide = false
+                        d.CanQuery = false
+                        d.CanTouch = false
+                    end
+                end
+                copy.Parent = folder
+            end
+        end
+    end
+    print("[MobSpawner] Published " .. #folder:GetChildren() .. " mob templates to ReplicatedStorage.MobTemplates")
+end
+pcall(publishClientTemplates)
+
 local function rebuildWeightedPool()
     table.clear(weightedPool)
     local disabledCount = 0
@@ -244,6 +283,7 @@ local function spawnMobFromTemplate(entry, template)
 
     mob:SetAttribute("IsSpawnedMob", true)
     mob:SetAttribute("SpawnPortalGroup", entry.groupName)
+    mob:SetAttribute("TemplateName", tpl.Name)
 
     CollectionService:AddTag(mob, mobTag)
     setModelCollisionGroup(mob, MOB_COLLISION_GROUP)

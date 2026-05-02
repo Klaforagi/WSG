@@ -4,6 +4,7 @@ local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 -- CurrencyService (lazy-loaded for objective coin rewards)
 local CurrencyService
@@ -17,13 +18,39 @@ end)
 -- Centralized stat service (single source of truth for all stats & events)
 local StatService
 pcall(function()
-	StatService = require(game:GetService("ServerScriptService"):WaitForChild("StatService", 10))
+    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
 
+local WeaponMasteryService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponMasteryService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponMasteryService = require(mod)
+    end
+end)
+
+local function getEquippedWeaponInstanceId(player)
+    local char = player and player.Character
+    if not char then return nil end
+    for _, child in ipairs(char:GetChildren()) do
+        if child:IsA("Tool") then
+            local instanceId = child:GetAttribute("WeaponInstanceId")
+            if type(instanceId) == "string" and instanceId ~= "" then
+                return instanceId
+            end
+        end
+    end
+    return nil
+end
+
 -- RemoteEvent for flag status announcements
-local FlagStatus = Instance.new("RemoteEvent")
-FlagStatus.Name = "FlagStatus"
-FlagStatus.Parent = ReplicatedStorage
+local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
+if not FlagStatus or not FlagStatus:IsA("RemoteEvent") then
+    if FlagStatus then FlagStatus:Destroy() end
+    FlagStatus = Instance.new("RemoteEvent")
+    FlagStatus.Name = "FlagStatus"
+    FlagStatus.Parent = ReplicatedStorage
+end
 
 -- helper: play a sound from ReplicatedStorage.Sounds.Flag at a given part
 local function playFlagSound(soundName, part)
@@ -652,6 +679,13 @@ local function setupStand(standPart)
         -- Centralized stat tracking (updates attributes, fires events for quests/achievements)
         if StatService then
             StatService:RegisterFlagCapture(pl)
+        end
+
+        if WeaponMasteryService then
+            local instanceId = getEquippedWeaponInstanceId(pl)
+            if instanceId then
+                pcall(function() WeaponMasteryService:RegisterCapture(pl, instanceId) end)
+            end
         end
 
         -- announce capture to clients
