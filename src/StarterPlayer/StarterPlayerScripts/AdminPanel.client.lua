@@ -5,9 +5,10 @@
 -- Clicking it opens a full admin panel with two tabs:
 --   1. Weapon Search  – search by WeaponId, OwnerUserId, or Username
 --   2. Grant Weapon   – grant weapons to any player
+--   3. Grant Currency – grant coins, keys, or salvage to any player
 --
 -- All operations are server-authoritative via RemoteFunctions:
---   AdminSearchWeaponsRF, AdminGrantWeaponRF
+--   AdminSearchWeaponsRF, AdminGrantWeaponRF, AdminGrantCurrencyRF
 --------------------------------------------------------------------------------
 
 local Players           = game:GetService("Players")
@@ -25,9 +26,10 @@ end
 -- Wait for remotes
 local searchRF = ReplicatedStorage:WaitForChild("AdminSearchWeaponsRF", 10)
 local grantRF  = ReplicatedStorage:WaitForChild("AdminGrantWeaponRF", 10)
+local grantCurrencyRF = ReplicatedStorage:WaitForChild("AdminGrantCurrencyRF", 10)
 local deleteRF = ReplicatedStorage:WaitForChild("AdminDeleteWeaponRF", 10)
 
-if not searchRF or not grantRF or not deleteRF then
+if not searchRF or not grantRF or not grantCurrencyRF or not deleteRF then
     warn("[AdminPanel] Admin remotes not found; aborting.")
     return
 end
@@ -257,9 +259,10 @@ end
 
 local searchTab = createTab("SearchTab", "Weapon Search", 1)
 local grantTab  = createTab("GrantTab", "Grant Weapon", 2)
-local userDataTab = createTab("UserDataTab", "User Data", 3)
+local grantCurrencyTab = createTab("GrantCurrencyTab", "Grant Currency", 3)
+local userDataTab = createTab("UserDataTab", "User Data", 4)
 userDataTab.Visible = USER_DATA_AVAILABLE
-local userDataRTab = createTab("UserDataRTab", "User Data (R)", 4)
+local userDataRTab = createTab("UserDataRTab", "User Data (R)", 5)
 userDataRTab.Visible = RESTORE_AVAILABLE
 
 -- Content area
@@ -640,6 +643,217 @@ local grantStatus = createInstance("TextLabel", {
 })
 
 --------------------------------------------------------------------------------
+-- TAB 3: GRANT CURRENCY
+--------------------------------------------------------------------------------
+local updateCurrencyPreview
+
+local currencyPage = createInstance("Frame", {
+    Name = "GrantCurrencyPage",
+    Size = UDim2.new(1, 0, 1, 0),
+    BackgroundTransparency = 1,
+    Visible = false,
+    Parent = contentArea,
+})
+
+local currencyLeft = createInstance("Frame", {
+    Name = "GrantCurrencyLeft",
+    Size = UDim2.new(0.5, -4, 1, 0),
+    BackgroundColor3 = COLORS.BG_PANEL,
+    Parent = currencyPage,
+})
+addCorner(currencyLeft, 8)
+addPadding(currencyLeft, 12, 12, 12, 12)
+
+createInstance("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 16),
+    Position = UDim2.new(0, 0, 0, 0),
+    BackgroundTransparency = 1,
+    Text = "Quick Select",
+    TextColor3 = COLORS.TEXT_SECONDARY,
+    Font = Enum.Font.GothamMedium,
+    TextSize = 12,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = currencyLeft,
+})
+
+for i, preset in ipairs(DEV_PRESETS) do
+    local qBtn = createInstance("TextButton", {
+        Name = "QuickCurrency_" .. preset.name,
+        Size = UDim2.new(0, 120, 0, 26),
+        Position = UDim2.new(0, (i - 1) * 128, 0, 18),
+        BackgroundColor3 = COLORS.BG_INPUT,
+        Text = preset.name,
+        TextColor3 = COLORS.TEXT_PRIMARY,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 12,
+        Parent = currencyLeft,
+    })
+    addCorner(qBtn, 4)
+    addStroke(qBtn, COLORS.BORDER, 1)
+    qBtn.MouseEnter:Connect(function() qBtn.BackgroundColor3 = COLORS.BG_CARD_HOVER end)
+    qBtn.MouseLeave:Connect(function() qBtn.BackgroundColor3 = COLORS.BG_INPUT end)
+    qBtn.MouseButton1Click:Connect(function()
+        local field = currencyLeft:FindFirstChild("TargetUserIdField")
+        if field then
+            field.Text = preset.userId
+        end
+        if updateCurrencyPreview then
+            updateCurrencyPreview()
+        end
+    end)
+end
+
+local currencyTargetUserIdInput = createFormField(currencyLeft, "Target UserId", "e.g. 285568988", 0 + QUICK_SELECT_OFFSET)
+currencyTargetUserIdInput.Name = "TargetUserIdField"
+
+createInstance("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 16),
+    Position = UDim2.new(0, 0, 0, 112),
+    BackgroundTransparency = 1,
+    Text = "Currency Type",
+    TextColor3 = COLORS.TEXT_SECONDARY,
+    Font = Enum.Font.GothamMedium,
+    TextSize = 12,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = currencyLeft,
+})
+
+local currencyTypeFrame = createInstance("Frame", {
+    Name = "CurrencyTypeFrame",
+    Size = UDim2.new(1, 0, 0, 30),
+    Position = UDim2.new(0, 0, 0, 132),
+    BackgroundTransparency = 1,
+    Parent = currencyLeft,
+})
+
+local currencyTypes = {
+    { key = "Coins", label = "Coins" },
+    { key = "Keys", label = "Keys" },
+    { key = "Salvage", label = "Salvage" },
+}
+local selectedCurrencyType = "Coins"
+local currencyTypeBtns = {}
+
+for i, currency in ipairs(currencyTypes) do
+    local btn = createInstance("TextButton", {
+        Name = currency.key .. "Btn",
+        Size = UDim2.new(0, 110, 0, 26),
+        Position = UDim2.new(0, (i - 1) * 118, 0, 0),
+        BackgroundColor3 = (currency.key == selectedCurrencyType) and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE,
+        Text = currency.label,
+        TextColor3 = COLORS.TEXT_PRIMARY,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 11,
+        Parent = currencyTypeFrame,
+    })
+    addCorner(btn, 4)
+    currencyTypeBtns[currency.key] = btn
+end
+
+local currencyAmountInput = createFormField(currencyLeft, "Amount", "e.g. 100", 172)
+currencyAmountInput.Name = "CurrencyAmountField"
+
+local currencyRight = createInstance("Frame", {
+    Name = "GrantCurrencyRight",
+    Size = UDim2.new(0.5, -4, 1, 0),
+    Position = UDim2.new(0.5, 4, 0, 0),
+    BackgroundColor3 = COLORS.BG_PANEL,
+    Parent = currencyPage,
+})
+addCorner(currencyRight, 8)
+addPadding(currencyRight, 12, 12, 12, 12)
+
+createInstance("TextLabel", {
+    Size = UDim2.new(1, 0, 0, 20),
+    BackgroundTransparency = 1,
+    Text = "Currency Grant",
+    TextColor3 = COLORS.TEXT_PRIMARY,
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    Parent = currencyRight,
+})
+
+local presetFrame = createInstance("Frame", {
+    Name = "CurrencyPresetFrame",
+    Size = UDim2.new(1, 0, 0, 34),
+    Position = UDim2.new(0, 0, 0, 30),
+    BackgroundTransparency = 1,
+    Parent = currencyRight,
+})
+
+local currencyPresets = {
+    { label = "+100 Coins", currencyType = "Coins", amount = 100 },
+    { label = "+5 Keys", currencyType = "Keys", amount = 5 },
+    { label = "+50 Salvage", currencyType = "Salvage", amount = 50 },
+}
+local currencyPresetButtons = {}
+
+for i, preset in ipairs(currencyPresets) do
+    local btn = createInstance("TextButton", {
+        Name = "Preset_" .. preset.currencyType,
+        Size = UDim2.new(0, 122, 0, 30),
+        Position = UDim2.new(0, (i - 1) * 130, 0, 0),
+        BackgroundColor3 = COLORS.BG_INPUT,
+        Text = preset.label,
+        TextColor3 = COLORS.TEXT_PRIMARY,
+        Font = Enum.Font.GothamBold,
+        TextSize = 12,
+        Parent = presetFrame,
+    })
+    addCorner(btn, 4)
+    addStroke(btn, COLORS.BORDER, 1)
+    btn.MouseEnter:Connect(function() btn.BackgroundColor3 = COLORS.BG_CARD_HOVER end)
+    btn.MouseLeave:Connect(function() btn.BackgroundColor3 = COLORS.BG_INPUT end)
+    table.insert(currencyPresetButtons, { button = btn, preset = preset })
+end
+
+local currencyPreview = createInstance("TextLabel", {
+    Name = "CurrencyGrantPreview",
+    Size = UDim2.new(1, 0, 0, 116),
+    Position = UDim2.new(0, 0, 0, 78),
+    BackgroundColor3 = COLORS.BG_INPUT,
+    Text = "Choose a target, currency, and amount. Preset buttons fill the form.",
+    TextColor3 = COLORS.TEXT_DIM,
+    Font = Enum.Font.Gotham,
+    TextSize = 12,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    Parent = currencyRight,
+})
+addCorner(currencyPreview, 6)
+addPadding(currencyPreview, 8, 8, 8, 8)
+
+local currencyGrantButton = createInstance("TextButton", {
+    Name = "GrantCurrencyBtn",
+    Size = UDim2.new(1, 0, 0, 40),
+    Position = UDim2.new(0, 0, 0, 206),
+    BackgroundColor3 = COLORS.GREEN,
+    Text = "Grant Currency",
+    TextColor3 = Color3.new(1, 1, 1),
+    Font = Enum.Font.GothamBold,
+    TextSize = 14,
+    Parent = currencyRight,
+})
+addCorner(currencyGrantButton, 6)
+
+local currencyStatus = createInstance("TextLabel", {
+    Name = "GrantCurrencyStatus",
+    Size = UDim2.new(1, 0, 0, 110),
+    Position = UDim2.new(0, 0, 0, 258),
+    BackgroundTransparency = 1,
+    Text = "",
+    TextColor3 = COLORS.GREEN,
+    Font = Enum.Font.GothamMedium,
+    TextSize = 12,
+    TextWrapped = true,
+    TextXAlignment = Enum.TextXAlignment.Left,
+    TextYAlignment = Enum.TextYAlignment.Top,
+    Parent = currencyRight,
+})
+
+--------------------------------------------------------------------------------
 -- LOGIC: PANEL TOGGLE
 --------------------------------------------------------------------------------
 local panelOpen = false
@@ -663,16 +877,19 @@ local userDataRPage -- forward decl, created later if available
 local function switchTab(tabName)
     searchPage.Visible = (tabName == "Search")
     grantPage.Visible  = (tabName == "Grant")
+    currencyPage.Visible = (tabName == "GrantCurrency")
     if userDataPage  then userDataPage.Visible  = (tabName == "UserData")  end
     if userDataRPage then userDataRPage.Visible = (tabName == "UserDataR") end
     searchTab.BackgroundColor3    = (tabName == "Search")    and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
     grantTab.BackgroundColor3     = (tabName == "Grant")     and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
+    grantCurrencyTab.BackgroundColor3 = (tabName == "GrantCurrency") and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
     userDataTab.BackgroundColor3  = (tabName == "UserData")  and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
     userDataRTab.BackgroundColor3 = (tabName == "UserDataR") and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
 end
 
 searchTab.MouseButton1Click:Connect(function() switchTab("Search") end)
 grantTab.MouseButton1Click:Connect(function() switchTab("Grant") end)
+grantCurrencyTab.MouseButton1Click:Connect(function() switchTab("GrantCurrency") end)
 if USER_DATA_AVAILABLE then
     userDataTab.MouseButton1Click:Connect(function() switchTab("UserData") end)
 end
@@ -1193,7 +1410,133 @@ end
 grantButton.MouseButton1Click:Connect(doGrant)
 
 --------------------------------------------------------------------------------
--- TAB 3: USER DATA  (saved-player browser + reset controls)
+-- LOGIC: GRANT CURRENCY
+--------------------------------------------------------------------------------
+local currencyGrantBusy = false
+local MAX_CURRENCY_GRANT = 1000000
+
+local function setCurrencyType(currencyType)
+    if not currencyTypeBtns[currencyType] then return end
+    selectedCurrencyType = currencyType
+    for key, btn in pairs(currencyTypeBtns) do
+        btn.BackgroundColor3 = (key == selectedCurrencyType) and COLORS.TAB_ACTIVE or COLORS.TAB_INACTIVE
+    end
+end
+
+updateCurrencyPreview = function()
+    local uid = currencyTargetUserIdInput.Text
+    local amount = currencyAmountInput.Text
+
+    local lines = {}
+    table.insert(lines, "Target UserId: " .. (uid ~= "" and uid or "(empty)"))
+    table.insert(lines, "Currency: " .. tostring(selectedCurrencyType))
+    table.insert(lines, "Amount: " .. (amount ~= "" and amount or "(empty)"))
+    table.insert(lines, "")
+    table.insert(lines, "Click 'Grant Currency' to confirm.")
+
+    currencyPreview.Text = table.concat(lines, "\n")
+    currencyPreview.TextColor3 = COLORS.TEXT_SECONDARY
+end
+
+for key, btn in pairs(currencyTypeBtns) do
+    btn.MouseButton1Click:Connect(function()
+        setCurrencyType(key)
+        updateCurrencyPreview()
+    end)
+end
+
+for _, entry in ipairs(currencyPresetButtons) do
+    entry.button.MouseButton1Click:Connect(function()
+        setCurrencyType(entry.preset.currencyType)
+        currencyAmountInput.Text = tostring(entry.preset.amount)
+        updateCurrencyPreview()
+    end)
+end
+
+currencyTargetUserIdInput.FocusLost:Connect(updateCurrencyPreview)
+currencyAmountInput.FocusLost:Connect(updateCurrencyPreview)
+updateCurrencyPreview()
+
+local function doGrantCurrency()
+    if currencyGrantBusy then return end
+    currencyGrantBusy = true
+
+    local uid = tonumber(currencyTargetUserIdInput.Text)
+    local amount = tonumber(currencyAmountInput.Text)
+
+    if not uid or uid <= 0 then
+        currencyStatus.Text = "Invalid Target UserId."
+        currencyStatus.TextColor3 = COLORS.RED
+        currencyGrantBusy = false
+        return
+    end
+    if not amount or amount <= 0 then
+        currencyStatus.Text = "Amount must be positive."
+        currencyStatus.TextColor3 = COLORS.RED
+        currencyGrantBusy = false
+        return
+    end
+
+    amount = math.floor(amount)
+    if amount <= 0 then
+        currencyStatus.Text = "Amount must be at least 1."
+        currencyStatus.TextColor3 = COLORS.RED
+        currencyGrantBusy = false
+        return
+    end
+    if amount > MAX_CURRENCY_GRANT then
+        currencyStatus.Text = "Amount is too large."
+        currencyStatus.TextColor3 = COLORS.RED
+        currencyGrantBusy = false
+        return
+    end
+
+    currencyStatus.Text = "Granting currency..."
+    currencyStatus.TextColor3 = COLORS.TEXT_DIM
+    currencyGrantButton.BackgroundColor3 = COLORS.TAB_INACTIVE
+
+    local ok, result = pcall(function()
+        return grantCurrencyRF:InvokeServer(uid, selectedCurrencyType, amount)
+    end)
+
+    currencyGrantButton.BackgroundColor3 = COLORS.GREEN
+    currencyGrantBusy = false
+
+    if not ok then
+        currencyStatus.Text = "Request failed: " .. tostring(result)
+        currencyStatus.TextColor3 = COLORS.RED
+        return
+    end
+
+    if not result or not result.success then
+        currencyStatus.Text = "Error: " .. tostring(result and result.error or "Unknown error")
+        currencyStatus.TextColor3 = COLORS.RED
+        return
+    end
+
+    local rec = result.currencyRecord
+    if rec then
+        currencyStatus.Text = string.format(
+            "SUCCESS!\nAdded %d %s to %s (%d)\nBalance: %d -> %d\nTarget was %s.%s",
+            rec.Amount or amount,
+            rec.CurrencyLabel or selectedCurrencyType,
+            rec.TargetUsername or "?",
+            rec.TargetUserId or uid,
+            rec.PreviousBalance or 0,
+            rec.NewBalance or 0,
+            rec.WasOnline and "online" or "offline",
+            rec.Warning and ("\nWarning: " .. tostring(rec.Warning)) or ""
+        )
+    else
+        currencyStatus.Text = "Currency granted successfully!"
+    end
+    currencyStatus.TextColor3 = COLORS.GREEN
+end
+
+currencyGrantButton.MouseButton1Click:Connect(doGrantCurrency)
+
+--------------------------------------------------------------------------------
+-- TAB 4: USER DATA  (saved-player browser + reset controls)
 --------------------------------------------------------------------------------
 if USER_DATA_AVAILABLE then
     userDataPage = createInstance("Frame", {
@@ -2189,7 +2532,7 @@ if USER_DATA_AVAILABLE then
 end -- USER_DATA_AVAILABLE
 
 --------------------------------------------------------------------------------
--- TAB 4: USER DATA (R)  (reset history + restore)
+-- TAB 5: USER DATA (R)  (reset history + restore)
 --------------------------------------------------------------------------------
 if RESTORE_AVAILABLE then
     userDataRPage = createInstance("Frame", {

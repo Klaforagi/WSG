@@ -67,7 +67,7 @@ MeteorShowerConfig.SHARD_SIZE              = Vector3.new(2.5, 2.5, 2.5)  -- sphe
 MeteorShowerConfig.SHARD_COLOR             = Color3.fromRGB(180, 225, 255)  -- light bright blue
 MeteorShowerConfig.SHARD_LIGHT_RANGE       = 18
 MeteorShowerConfig.SHARD_LIGHT_BRIGHTNESS  = 1.5
-MeteorShowerConfig.SHARD_Y_OFFSET          = 2    -- studs above ground level
+MeteorShowerConfig.SHARD_Y_OFFSET          = -1    -- studs above ground level
 
 ---------------------------------------------------------------------
 -- Target zones

@@ -21,7 +21,6 @@ local DEFAULTS = {
     InvertCamera = false,
     SprintMode = "Hold",
     ShowTooltips = true,
-    ShowMinimap = true,
     ShowGameState = true,
     ShowHelm = true,
     ShowPlayerHighlights = false,
@@ -44,10 +43,15 @@ end
 
 local function ensureDefaults(tbl)
     if type(tbl) ~= "table" then tbl = {} end
+    local clean = {}
     for k, v in pairs(DEFAULTS) do
-        if tbl[k] == nil then tbl[k] = v end
+        if tbl[k] == nil then
+            clean[k] = v
+        else
+            clean[k] = tbl[k]
+        end
     end
-    return tbl
+    return clean
 end
 
 local function dataKeyForUserId(userId)

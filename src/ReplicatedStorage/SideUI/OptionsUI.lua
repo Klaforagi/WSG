@@ -8,7 +8,6 @@
 --   • The main ScreenGui is named "MainUI" (used for UIScale adjustment).
 --   • Sounds in a SoundGroup named "Music" / "SFX" under SoundService are
 --     volume-adjusted. If those groups don't exist yet, placeholders are noted.
---   • Minimap ScreenGui at PlayerGui.Minimap (hidden/shown via Enabled).
 --   • Game-state ScreenGui at PlayerGui.GameStateDisplay (hidden/shown).
 --   • Camera sensitivity/invert are stored in _G.PlayerSettings for camera
 --     scripts to read at their own pace.
@@ -73,7 +72,6 @@ local DEFAULT_SETTINGS = {
 	SprintMode        = "Hold",
 	ShowTooltips      = true,
 	-- UI
-	ShowMinimap       = true,
 	ShowGameState     = true,
 	ShowHelm          = true,
 	ShowPlayerHighlights = false,
@@ -175,13 +173,6 @@ local function ApplySettings(settings)
 	_G.PlayerSettings = settings
 
 	-- UI ─────────────────────────────────────────────────────────────────
-	-- Show Minimap
-	pcall(function()
-		local gui = playerGui:FindFirstChild("Minimap")
-			or playerGui:FindFirstChild("MinimapGui")
-		if gui then gui.Enabled = settings.ShowMinimap end
-	end)
-
 	-- Show Game State
 	pcall(function()
 		local gui = playerGui:FindFirstChild("GameStateDisplay")
@@ -892,7 +883,6 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	-- UI section
 	---------------------------------------------------------------------------
 	createSectionHeader(root, "UI", nextOrder())
-	createToggle(root, "Show Minimap", "ShowMinimap", nextOrder())
 	createToggle(root, "Show Scoreboard", "ShowGameState", nextOrder())
 	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
 	-- UI Scale removed per request

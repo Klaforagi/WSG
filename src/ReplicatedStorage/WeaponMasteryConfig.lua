@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 -- WeaponMasteryConfig.lua
--- Shared thresholds, point values, and milestone rewards for per-instance
+-- Shared thresholds, point values, and milestone rewards for per-weapon-name
 -- weapon mastery.
 --------------------------------------------------------------------------------
 

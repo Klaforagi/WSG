@@ -412,6 +412,7 @@ local function playMeteorSound(part)
     if not source then return end
 
     local sound = source:Clone()
+    sound.PlaybackSpeed = source.PlaybackSpeed + (math.random() * 0.3 - 0.15)
     sound.Parent = part
     sound:Play()
 end
