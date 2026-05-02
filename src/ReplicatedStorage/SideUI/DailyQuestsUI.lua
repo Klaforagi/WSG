@@ -1389,19 +1389,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local sidebar = Instance.new("Frame")
     sidebar.Name             = "TabSidebar"
     sidebar.Parent           = root
-    if type(LeftPanelStyle.applyLeftTabRailStyle) == "function" then
-        LeftPanelStyle.applyLeftTabRailStyle(sidebar, px)
-    else
-        sidebar.BackgroundColor3 = SIDEBAR_BG
-        sidebar.BorderSizePixel  = 0
-        sidebar.Size             = UDim2.new(0, TAB_W, 1, 0)
-        sidebar.Position         = UDim2.new(0, 0, 0, 0)
-        sidebar.ClipsDescendants = false
-        local sCorner = Instance.new("UICorner"); sCorner.CornerRadius = UDim.new(0, px(10)); sCorner.Parent = sidebar
-        local sStroke = Instance.new("UIStroke"); sStroke.Color = CARD_STROKE; sStroke.Thickness = 1.2; sStroke.Transparency = 0.3; sStroke.Parent = sidebar
-        local sLayout = Instance.new("UIListLayout"); sLayout.SortOrder = Enum.SortOrder.LayoutOrder; sLayout.Padding = UDim.new(0, px(3)); sLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; sLayout.Parent = sidebar
-        local sPad = Instance.new("UIPadding"); sPad.PaddingTop = UDim.new(0, px(10)); sPad.PaddingBottom = UDim.new(0, px(10)); sPad.PaddingLeft = UDim.new(0, px(6)); sPad.PaddingRight = UDim.new(0, px(6)); sPad.Parent = sidebar
-    end
+    LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
 
     ---------------------------------------------------------------------------
     -- Content area (right of sidebar)

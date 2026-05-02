@@ -21,7 +21,7 @@ LeftPanelStyle.TAB_GAP         = 10    -- gap between sidebar and content
 LeftPanelStyle.TAB_LIST_PAD    = 3     -- spacing between buttons
 LeftPanelStyle.SIDE_PAD_X      = 6     -- inner left/right padding
 LeftPanelStyle.SIDE_PAD_Y      = 10    -- inner top/bottom padding
-LeftPanelStyle.RAIL_TOP_INSET  = 2     -- keeps outer stroke/corner inside clipped parents
+LeftPanelStyle.RAIL_TOP_INSET  = 6     -- visible top margin matching the Shop rail
 LeftPanelStyle.BTN_INSET       = 2     -- horizontal inset for each button
 LeftPanelStyle.CORNER_RADIUS   = 10    -- UICorner radius
 LeftPanelStyle.STROKE_THICK    = 1.2   -- UIStroke thickness
@@ -71,6 +71,16 @@ local function scaled(pxFn, value)
 	return value
 end
 
+local function getParentPaddingTopOffset(guiObject)
+	local parent = guiObject and guiObject.Parent
+	if not parent then return 0 end
+
+	local padding = parent:FindFirstChildOfClass("UIPadding")
+	if not padding then return 0 end
+
+	return padding.PaddingTop.Offset
+end
+
 function LeftPanelStyle.ApplyLeftTabRailStyle(tabRailFrame, pxFn, options)
 	if not tabRailFrame then return nil end
 	options = options or {}
@@ -87,7 +97,11 @@ function LeftPanelStyle.ApplyLeftTabRailStyle(tabRailFrame, pxFn, options)
 	tabRailFrame.Size = UDim2.new(0, scaled(pxFn, width), 0, 0)
 	tabRailFrame.AutomaticSize = Enum.AutomaticSize.Y
 	tabRailFrame.AnchorPoint = options.anchorPoint or Vector2.new(0, 0)
-	tabRailFrame.Position = options.position or UDim2.new(0, 0, 0, scaled(pxFn, topInset))
+	local topInsetOffset = scaled(pxFn, topInset)
+	if options.compensateParentPadding ~= false then
+		topInsetOffset = math.max(0, topInsetOffset - getParentPaddingTopOffset(tabRailFrame))
+	end
+	tabRailFrame.Position = options.position or UDim2.new(0, 0, 0, topInsetOffset)
 	tabRailFrame.ClipsDescendants = false
 
 	local corner = getOrCreateChildOfClass(tabRailFrame, "UICorner")
