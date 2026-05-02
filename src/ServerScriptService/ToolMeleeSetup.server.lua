@@ -137,19 +137,21 @@ local function getToolSizePercent(tool)
     return 100
 end
 
---- Damage scales linearly with size: 200% size = 2.0x damage.
+--- Damage scales at half rate above 100%: 200% size = 1.5x damage.
 local function getSizeDamageMultiplier(sizePercent)
-    return math.clamp(sizePercent / 100, 0.5, 3.0)
+    if sizePercent <= 100 then
+        return math.clamp(sizePercent / 100, 0.5, 1.0)
+    end
+    return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 1.5)
 end
 
---- Speed scaling: below 100% is linear (tiny weapons swing faster for more DPS).
---- Above 100% scales at half rate so max 200% = 1.5x duration, not 2.0x.
---- 80%=0.8x, 100%=1.0x, 150%=1.25x, 200%=1.5x
+--- Speed scaling: 100% = 1.0x. 200% = 2.0x (100% slower).
+--- Below 100% is linear (tiny weapons swing faster).
 local function getSizeSpeedMultiplier(sizePercent)
     if sizePercent <= 100 then
         return math.clamp(sizePercent / 100, 0.5, 1.0)
     end
-    return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 2.0)
+    return math.clamp(1.0 + (sizePercent - 100) / 100, 1.0, 2.0)
 end
 
 --- Return the scaled swing duration for a given base cooldown.
@@ -420,8 +422,8 @@ local comboState = {} -- [player] = { step = 1, lastTime = 0, toolName = "" }
 
 -- Combo config from shared module
 local comboCfg = MeleeCfg and MeleeCfg.comboConfig or {}
-local COMBO_WINDOW = comboCfg.COMBO_WINDOW or 0.2
-local ATTACK_CDS   = comboCfg.ATTACK_COOLDOWNS or { 0.5, 0.5, 0.7 }
+local COMBO_WINDOW   = comboCfg.COMBO_WINDOW or 0.2
+local ATTACK3_EXTRA  = comboCfg.ATTACK3_EXTRA_CD or 0.4
 
 ---------------------------------------------------------------------------
 -- Handle incoming swing
@@ -473,7 +475,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local validStep = 1
     if hasCombo then
         -- Reset if weapon changed or combo window expired
-        local prevBaseCd = ATTACK_CDS[cs.step] or 0.5
+        local prevBaseCd = (cfg.cd or 0.5) + (cs.step == 3 and ATTACK3_EXTRA or 0)
         local prevScaledCd = prevBaseCd * sizeSpeedMult
         local comboDeadline = cs.lastTime + prevScaledCd + COMBO_WINDOW
         if cs.toolName ~= toolName or now > comboDeadline then
@@ -490,8 +492,11 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     end
 
     -- ── SCALED COOLDOWN ───────────────────────────────────────────────
-    -- Per-step base cooldown (at 100% size), then scaled by weapon size
-    local baseStepCd = hasCombo and (ATTACK_CDS[validStep] or 0.5) or (cfg.cd or 0.5)
+    -- cfg.cd = exact cooldown per attack in seconds (steps 1 & 2).
+    -- Step 3 adds ATTACK3_EXTRA on top.
+    local baseCd     = cfg.cd or 0.5
+    local baseStepCd = hasCombo and (baseCd + (validStep == 3 and ATTACK3_EXTRA or 0))
+                                or  baseCd
     local cd = baseStepCd * sizeSpeedMult
 
     -- ── SCALED DAMAGE ─────────────────────────────────────────────────

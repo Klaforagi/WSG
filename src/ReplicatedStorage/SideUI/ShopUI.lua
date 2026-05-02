@@ -7,6 +7,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 
 local UITheme = require(script.Parent.UITheme)
+local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
 
 local function px(base)
     local cam = workspace.CurrentCamera
@@ -841,8 +842,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     ---------------------------------------------------------------------------
     -- Layout constants (sidebar dimensions matching DailyQuestsUI)
     ---------------------------------------------------------------------------
-    local TAB_W   = px(132)
-    local TAB_GAP = px(10)
+    local TAB_W   = px(LeftPanelStyle.TAB_W)
+    local TAB_GAP = px(LeftPanelStyle.TAB_GAP)
 
     ---------------------------------------------------------------------------
     -- Root container (absolute positioning for sidebar + content, like Quests)
@@ -868,36 +869,21 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     ---------------------------------------------------------------------------
     local sidebar = Instance.new("Frame")
     sidebar.Name             = "TabSidebar"
-    sidebar.BackgroundColor3 = SIDEBAR_BG
-    sidebar.BorderSizePixel  = 0
-    sidebar.Size             = UDim2.new(0, TAB_W, 0, 0)
-    sidebar.AutomaticSize    = Enum.AutomaticSize.Y
-    sidebar.Position         = UDim2.new(0, 0, 0, 0)
-    sidebar.ClipsDescendants = false
     sidebar.Parent           = root
-
-    local sideCorner = Instance.new("UICorner")
-    sideCorner.CornerRadius = UDim.new(0, px(10))
-    sideCorner.Parent = sidebar
-
-    local sideStroke = Instance.new("UIStroke")
-    sideStroke.Color        = CARD_STROKE
-    sideStroke.Thickness    = 1.2
-    sideStroke.Transparency = 0.3
-    sideStroke.Parent       = sidebar
-
-    local sideLayout = Instance.new("UIListLayout")
-    sideLayout.SortOrder           = Enum.SortOrder.LayoutOrder
-    sideLayout.Padding             = UDim.new(0, px(3))
-    sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    sideLayout.Parent              = sidebar
-
-    local sidePad = Instance.new("UIPadding")
-    sidePad.PaddingTop    = UDim.new(0, px(10))
-    sidePad.PaddingBottom = UDim.new(0, px(10))
-    sidePad.PaddingLeft   = UDim.new(0, px(6))
-    sidePad.PaddingRight  = UDim.new(0, px(6))
-    sidePad.Parent        = sidebar
+    if type(LeftPanelStyle.applyLeftTabRailStyle) == "function" then
+        LeftPanelStyle.applyLeftTabRailStyle(sidebar, px)
+    else
+        sidebar.BackgroundColor3 = SIDEBAR_BG
+        sidebar.BorderSizePixel  = 0
+        sidebar.Size             = UDim2.new(0, TAB_W, 0, 0)
+        sidebar.AutomaticSize    = Enum.AutomaticSize.Y
+        sidebar.Position         = UDim2.new(0, 0, 0, 0)
+        sidebar.ClipsDescendants = false
+        local sCorner = Instance.new("UICorner"); sCorner.CornerRadius = UDim.new(0, px(10)); sCorner.Parent = sidebar
+        local sStroke = Instance.new("UIStroke"); sStroke.Color = CARD_STROKE; sStroke.Thickness = 1.2; sStroke.Transparency = 0.3; sStroke.Parent = sidebar
+        local sLayout = Instance.new("UIListLayout"); sLayout.SortOrder = Enum.SortOrder.LayoutOrder; sLayout.Padding = UDim.new(0, px(3)); sLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; sLayout.Parent = sidebar
+        local sPad = Instance.new("UIPadding"); sPad.PaddingTop = UDim.new(0, px(10)); sPad.PaddingBottom = UDim.new(0, px(10)); sPad.PaddingLeft = UDim.new(0, px(6)); sPad.PaddingRight = UDim.new(0, px(6)); sPad.Parent = sidebar
+    end
 
     ---------------------------------------------------------------------------
     -- Build tab buttons (vertical, mirrors DailyQuestsUI makeTabButton)
@@ -4892,7 +4878,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     ShopUI.getActiveTab = function() return currentTab end
 
     ---------------------------------------------------------------------------
-    -- Dynamic root height: keep root tall enough for content (sidebar fills it)
+    -- Dynamic root height: keep root tall enough for content and the auto-sized tab rail.
     ---------------------------------------------------------------------------
     local function updateRootHeight()
         local contentH = contentContainer.AbsoluteSize.Y

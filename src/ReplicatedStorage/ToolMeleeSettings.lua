@@ -47,7 +47,7 @@ end
 local rarityDefaults = {
     Common = {
         damage       = 5,
-        cd           = 0.7,
+        cd           = 0.5,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -58,7 +58,7 @@ local rarityDefaults = {
     },
     Uncommon = {
         damage       = 7,
-        cd           = 0.7,
+        cd           = 0.5,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -69,7 +69,7 @@ local rarityDefaults = {
     },
     Rare = {
         damage       = 8.5,
-        cd           = 0.7,
+        cd           = 5,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -80,7 +80,7 @@ local rarityDefaults = {
     },
     Epic = {
         damage       = 10,
-        cd           = 0.7,
+        cd           = 0.5,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -91,7 +91,7 @@ local rarityDefaults = {
     },
     Legendary = {
         damage       = 12,
-        cd           = 0.7,
+        cd           = 0.5,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.1,
@@ -245,9 +245,11 @@ module.rarityDefaults = rarityDefaults
 -- ATTACK_KNOCKBACK_MULTIPLIERS : per-step scalar applied to base knockback
 --   → attacks 1 & 2 have minimal knockback; attack 3 is the big finisher
 --------------------------------------------------------------------------------
+-- cd = exact swing cooldown per attack in seconds (steps 1 & 2).
+-- Step 3 adds ATTACK3_EXTRA_CD on top (configurable below).
 module.comboConfig = {
     COMBO_WINDOW                = 0.2,
-    ATTACK_COOLDOWNS            = { 0.5, 0.5, 0.7 },
+    ATTACK3_EXTRA_CD            = 0.4,
     ATTACK_DAMAGE_MULTIPLIERS   = { 0.8, 0.85, 1.4 },
     ATTACK_KNOCKBACK_MULTIPLIERS = { 1.0, 1.25, 10.0 },
 }

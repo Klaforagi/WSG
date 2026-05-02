@@ -14,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService       = game:GetService("TextService")
 
 local UITheme = require(script.Parent.UITheme)
+local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
 local ClaimSound
 do
     local ok, mod = pcall(function()
@@ -1353,8 +1354,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Layout constants
     ---------------------------------------------------------------------------
-    local TAB_W   = px(132)
-    local TAB_GAP = px(10)
+    local TAB_W   = px(LeftPanelStyle.TAB_W)
+    local TAB_GAP = px(LeftPanelStyle.TAB_GAP)
     local CARD_H  = px(142)   -- includes space for achievement date line under progress bar
     local HDR_H   = px(66)    -- header + subheader + accent bar
 
@@ -1387,35 +1388,20 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     local sidebar = Instance.new("Frame")
     sidebar.Name             = "TabSidebar"
-    sidebar.BackgroundColor3 = SIDEBAR_BG
-    sidebar.BorderSizePixel  = 0
-    sidebar.Size             = UDim2.new(0, TAB_W, 1, 0)
-    sidebar.Position         = UDim2.new(0, 0, 0, 0)
-    sidebar.ClipsDescendants = false
     sidebar.Parent           = root
-
-    local sideCorner = Instance.new("UICorner")
-    sideCorner.CornerRadius = UDim.new(0, px(10))
-    sideCorner.Parent = sidebar
-
-    local sideStroke = Instance.new("UIStroke")
-    sideStroke.Color        = CARD_STROKE
-    sideStroke.Thickness    = 1.2
-    sideStroke.Transparency = 0.3
-    sideStroke.Parent       = sidebar
-
-    local sideLayout = Instance.new("UIListLayout")
-    sideLayout.SortOrder           = Enum.SortOrder.LayoutOrder
-    sideLayout.Padding             = UDim.new(0, px(3))
-    sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    sideLayout.Parent              = sidebar
-
-    local sidePad = Instance.new("UIPadding")
-    sidePad.PaddingTop    = UDim.new(0, px(10))
-    sidePad.PaddingBottom = UDim.new(0, px(10))
-    sidePad.PaddingLeft   = UDim.new(0, px(6))
-    sidePad.PaddingRight  = UDim.new(0, px(6))
-    sidePad.Parent        = sidebar
+    if type(LeftPanelStyle.applyLeftTabRailStyle) == "function" then
+        LeftPanelStyle.applyLeftTabRailStyle(sidebar, px)
+    else
+        sidebar.BackgroundColor3 = SIDEBAR_BG
+        sidebar.BorderSizePixel  = 0
+        sidebar.Size             = UDim2.new(0, TAB_W, 1, 0)
+        sidebar.Position         = UDim2.new(0, 0, 0, 0)
+        sidebar.ClipsDescendants = false
+        local sCorner = Instance.new("UICorner"); sCorner.CornerRadius = UDim.new(0, px(10)); sCorner.Parent = sidebar
+        local sStroke = Instance.new("UIStroke"); sStroke.Color = CARD_STROKE; sStroke.Thickness = 1.2; sStroke.Transparency = 0.3; sStroke.Parent = sidebar
+        local sLayout = Instance.new("UIListLayout"); sLayout.SortOrder = Enum.SortOrder.LayoutOrder; sLayout.Padding = UDim.new(0, px(3)); sLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center; sLayout.Parent = sidebar
+        local sPad = Instance.new("UIPadding"); sPad.PaddingTop = UDim.new(0, px(10)); sPad.PaddingBottom = UDim.new(0, px(10)); sPad.PaddingLeft = UDim.new(0, px(6)); sPad.PaddingRight = UDim.new(0, px(6)); sPad.Parent = sidebar
+    end
 
     ---------------------------------------------------------------------------
     -- Content area (right of sidebar)
@@ -1627,14 +1613,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             page.Visible = (id == tabId)
         end
         applyAchievementsScrollStyle(tabId == "achiev")
-        -- Update the modal window title to match the active tab
-        local TAB_TITLES = {
-            daily  = "DAILY QUESTS",
-            weekly = "WEEKLY QUESTS",
-            achiev = "ACHIEVEMENTS",
-        }
+        -- Keep the modal title stable while tabs change the content below it.
         if _G.SideUI and type(_G.SideUI.SetTitle) == "function" then
-            _G.SideUI.SetTitle(TAB_TITLES[tabId] or "QUESTS")
+            _G.SideUI.SetTitle("QUESTS")
         end
         -- Show/hide AP display in header based on active tab
         if apDisplayFrame then

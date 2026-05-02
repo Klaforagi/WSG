@@ -945,7 +945,6 @@ do
     pcall(function() Inventory:SetEquipped("Melee", savedMelee) end)
     pcall(function() Inventory:SetEquipped("Ranged", savedRanged) end)
 end
-
 -- Create centered modal window (hidden by default)
 local modalOverlay = Instance.new("Frame")
 modalOverlay.Name = "ModalOverlay"
@@ -1031,13 +1030,13 @@ titleLabel.ZIndex = 11
 titleLabel.Parent = titlePill
 titleLabel.ZIndex = 275
 
--- Right-side currency row (Coins + Keys together)
+-- Right-side currency row (Coins + Keys + Salvage)
     local currencyRow = Instance.new("Frame")
     currencyRow.Name = "CurrencyRow"
     currencyRow.BackgroundTransparency = 1
-    currencyRow.Size = UDim2.new(0.48, 0, 0.70, 0)
+    currencyRow.Size = UDim2.new(0.52, 0, 0, px(34))
     currencyRow.AnchorPoint = Vector2.new(1, 0.5)
-    currencyRow.Position = UDim2.new(0.92, 0, 0.5, 0)
+    currencyRow.Position = UDim2.new(0.935, 0, 0.5, 0)
     currencyRow.ZIndex = 275
     currencyRow.Parent = headerBar
 
@@ -1046,39 +1045,58 @@ titleLabel.ZIndex = 275
     currencyLayout.VerticalAlignment = Enum.VerticalAlignment.Center
     currencyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
     currencyLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    currencyLayout.Padding = UDim.new(0, px(12))
+    currencyLayout.Padding = UDim.new(0, px(8))
     currencyLayout.Parent = currencyRow
+
+    local function styleCurrencyChip(frame, accentColor, width)
+        frame.Size = UDim2.new(0, px(width), 0, px(31))
+        frame.BackgroundColor3 = Color3.fromRGB(17, 20, 34)
+        frame.BackgroundTransparency = 0.04
+        frame.BorderSizePixel = 0
+
+        local corner = Instance.new("UICorner")
+        corner.CornerRadius = UDim.new(0, px(9))
+        corner.Parent = frame
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = accentColor
+        stroke.Thickness = 1.1
+        stroke.Transparency = 0.38
+        stroke.Parent = frame
+
+        local gradient = Instance.new("UIGradient")
+        gradient.Rotation = 90
+        gradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(24, 28, 46)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(11, 13, 24)),
+        })
+        gradient.Parent = frame
+    end
+
+    local function addHeaderTextConstraint(label, maxSize)
+        label.TextScaled = true
+        local constraint = Instance.new("UITextSizeConstraint")
+        constraint.MinTextSize = 9
+        constraint.MaxTextSize = math.max(10, math.floor(px(maxSize)))
+        constraint.Parent = label
+    end
 
     -- Coin display (right side, LayoutOrder 1 = appears first from the left)
     local headerCoinFrame = Instance.new("Frame")
     headerCoinFrame.Name = "HeaderCoin"
-    headerCoinFrame.Size = UDim2.new(0, px(80), 1, 0)
-    headerCoinFrame.BackgroundTransparency = 1
     headerCoinFrame.ZIndex = 275
     headerCoinFrame.LayoutOrder = 1
     headerCoinFrame.Parent = currencyRow
-
-    local headerCoinLabel = Instance.new("TextLabel")
-    headerCoinLabel.Name = "CoinLabel"
-    headerCoinLabel.Size = UDim2.new(0.68, 0, 1, 0)
-    headerCoinLabel.Position = UDim2.new(0, 0, 0, 0)
-    headerCoinLabel.BackgroundTransparency = 1
-    headerCoinLabel.Font = Enum.Font.GothamBold
-    headerCoinLabel.TextScaled = true
-    headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
-    headerCoinLabel.TextXAlignment = Enum.TextXAlignment.Right
-    headerCoinLabel.Text = "0"
-    headerCoinLabel.ZIndex = 276
-    headerCoinLabel.Parent = headerCoinFrame
+    styleCurrencyChip(headerCoinFrame, Color3.fromRGB(255, 215, 80), 96)
 
     local headerCoinIcon = Instance.new("ImageLabel")
     headerCoinIcon.Name = "CoinIcon"
     headerCoinIcon.Size = UDim2.new(0, px(22), 0, px(22))
-    headerCoinIcon.Position = UDim2.new(0.72, 0, 0.5, 0)
+    headerCoinIcon.Position = UDim2.new(0, px(9), 0.5, 0)
     headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
     headerCoinIcon.BackgroundTransparency = 1
     headerCoinIcon.ScaleType = Enum.ScaleType.Fit
-    headerCoinIcon.ZIndex = 276
+    headerCoinIcon.ZIndex = 277
     headerCoinIcon.Parent = headerCoinFrame
     pcall(function()
         if AssetCodes and type(AssetCodes.Get) == "function" then
@@ -1087,73 +1105,86 @@ titleLabel.ZIndex = 275
         end
     end)
 
+    local headerCoinLabel = Instance.new("TextLabel")
+    headerCoinLabel.Name = "CoinLabel"
+    headerCoinLabel.Size = UDim2.new(1, -px(40), 1, -px(4))
+    headerCoinLabel.Position = UDim2.new(0, px(34), 0, px(2))
+    headerCoinLabel.BackgroundTransparency = 1
+    headerCoinLabel.Font = Enum.Font.GothamBold
+    headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
+    headerCoinLabel.TextXAlignment = Enum.TextXAlignment.Left
+    headerCoinLabel.Text = "0"
+    headerCoinLabel.ZIndex = 277
+    headerCoinLabel.Parent = headerCoinFrame
+    addHeaderTextConstraint(headerCoinLabel, 15)
+
     -- Keys display (right side, LayoutOrder 2 = appears after coins)
     local headerKeyFrame = Instance.new("Frame")
     headerKeyFrame.Name = "HeaderKey"
-    headerKeyFrame.Size = UDim2.new(0, px(60), 1, 0)
-    headerKeyFrame.BackgroundTransparency = 1
     headerKeyFrame.ZIndex = 275
     headerKeyFrame.LayoutOrder = 2
     headerKeyFrame.Parent = currencyRow
+    styleCurrencyChip(headerKeyFrame, Color3.fromRGB(170, 100, 255), 72)
 
     local headerKeyIcon = Instance.new("TextLabel")
     headerKeyIcon.Name = "KeyIcon"
-    headerKeyIcon.Size = UDim2.new(0, px(18), 1, 0)
-    headerKeyIcon.Position = UDim2.new(0, 0, 0, 0)
+    headerKeyIcon.Size = UDim2.new(0, px(22), 0, px(22))
+    headerKeyIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+    headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
     headerKeyIcon.BackgroundTransparency = 1
     headerKeyIcon.Font = Enum.Font.GothamBold
     headerKeyIcon.Text = "\u{1F511}"
-    headerKeyIcon.TextScaled = true
     headerKeyIcon.TextColor3 = Color3.fromRGB(170, 100, 255)
-    headerKeyIcon.ZIndex = 276
+    headerKeyIcon.ZIndex = 277
     headerKeyIcon.Parent = headerKeyFrame
+    addHeaderTextConstraint(headerKeyIcon, 18)
 
     local headerKeyLabel = Instance.new("TextLabel")
     headerKeyLabel.Name = "KeyLabel"
-    headerKeyLabel.Size = UDim2.new(0.60, 0, 1, 0)
-    headerKeyLabel.Position = UDim2.new(0.38, 0, 0, 0)
+    headerKeyLabel.Size = UDim2.new(1, -px(36), 1, -px(4))
+    headerKeyLabel.Position = UDim2.new(0, px(33), 0, px(2))
     headerKeyLabel.BackgroundTransparency = 1
     headerKeyLabel.Font = Enum.Font.GothamBold
-    headerKeyLabel.TextScaled = true
     headerKeyLabel.TextColor3 = Color3.fromRGB(170, 100, 255)
     headerKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
     headerKeyLabel.Text = "0"
-    headerKeyLabel.ZIndex = 276
+    headerKeyLabel.ZIndex = 277
     headerKeyLabel.Parent = headerKeyFrame
+    addHeaderTextConstraint(headerKeyLabel, 15)
 
     -- Salvage display (header currency row, LayoutOrder 3 = after keys)
     local headerSalvageFrame = Instance.new("Frame")
     headerSalvageFrame.Name = "HeaderSalvage"
-    headerSalvageFrame.Size = UDim2.new(0, px(70), 1, 0)
-    headerSalvageFrame.BackgroundTransparency = 1
     headerSalvageFrame.ZIndex = 275
     headerSalvageFrame.LayoutOrder = 3
     headerSalvageFrame.Parent = currencyRow
+    styleCurrencyChip(headerSalvageFrame, Color3.fromRGB(35, 190, 75), 98)
 
     local headerSalvageIcon = Instance.new("TextLabel")
     headerSalvageIcon.Name = "SalvageIcon"
-    headerSalvageIcon.Size = UDim2.new(0, px(18), 1, 0)
-    headerSalvageIcon.Position = UDim2.new(0, 0, 0, 0)
+    headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
+    headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+    headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
     headerSalvageIcon.BackgroundTransparency = 1
     headerSalvageIcon.Font = Enum.Font.GothamBold
     headerSalvageIcon.Text = "\u{2699}"
-    headerSalvageIcon.TextScaled = true
     headerSalvageIcon.TextColor3 = Color3.fromRGB(35, 190, 75)
-    headerSalvageIcon.ZIndex = 276
+    headerSalvageIcon.ZIndex = 277
     headerSalvageIcon.Parent = headerSalvageFrame
+    addHeaderTextConstraint(headerSalvageIcon, 18)
 
     local headerSalvageLabel = Instance.new("TextLabel")
     headerSalvageLabel.Name = "SalvageLabel"
-    headerSalvageLabel.Size = UDim2.new(0.60, 0, 1, 0)
-    headerSalvageLabel.Position = UDim2.new(0.38, 0, 0, 0)
+    headerSalvageLabel.Size = UDim2.new(1, -px(36), 1, -px(4))
+    headerSalvageLabel.Position = UDim2.new(0, px(33), 0, px(2))
     headerSalvageLabel.BackgroundTransparency = 1
     headerSalvageLabel.Font = Enum.Font.GothamBold
-    headerSalvageLabel.TextScaled = true
     headerSalvageLabel.TextColor3 = Color3.fromRGB(35, 190, 75)
     headerSalvageLabel.TextXAlignment = Enum.TextXAlignment.Left
     headerSalvageLabel.Text = "0"
-    headerSalvageLabel.ZIndex = 276
+    headerSalvageLabel.ZIndex = 277
     headerSalvageLabel.Parent = headerSalvageFrame
+    addHeaderTextConstraint(headerSalvageLabel, 15)
 
 -- Close X (top-right corner of window) — dark + gold style
 local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
@@ -1231,6 +1262,71 @@ contentPadding.Parent = contentFrame
 -- ensure content sits above other UI but behind header elements
 contentFrame.ZIndex = 260
 
+local modalStatusOverlay = Instance.new("Frame")
+modalStatusOverlay.Name = "ModalStatusOverlay"
+modalStatusOverlay.BackgroundTransparency = 1
+modalStatusOverlay.Size = contentFrame.Size
+modalStatusOverlay.Position = contentFrame.Position
+modalStatusOverlay.Visible = false
+modalStatusOverlay.ZIndex = 285
+modalStatusOverlay.Parent = window
+
+local modalStatusCard = Instance.new("Frame")
+modalStatusCard.Name = "StatusCard"
+modalStatusCard.BackgroundColor3 = Color3.fromRGB(17, 20, 34)
+modalStatusCard.BackgroundTransparency = 0.04
+modalStatusCard.Size = UDim2.new(0, px(310), 0, px(96))
+modalStatusCard.AnchorPoint = Vector2.new(0.5, 0.5)
+modalStatusCard.Position = UDim2.new(0.5, 0, 0.45, 0)
+modalStatusCard.BorderSizePixel = 0
+modalStatusCard.ZIndex = 286
+modalStatusCard.Parent = modalStatusOverlay
+Instance.new("UICorner", modalStatusCard).CornerRadius = UDim.new(0, px(10))
+
+local modalStatusStroke = Instance.new("UIStroke")
+modalStatusStroke.Color = COLORS.gold
+modalStatusStroke.Thickness = 1.2
+modalStatusStroke.Transparency = 0.35
+modalStatusStroke.Parent = modalStatusCard
+
+local modalStatusTitle = Instance.new("TextLabel")
+modalStatusTitle.Name = "StatusTitle"
+modalStatusTitle.BackgroundTransparency = 1
+modalStatusTitle.Font = Enum.Font.GothamBold
+modalStatusTitle.TextColor3 = COLORS.gold
+modalStatusTitle.TextSize = math.max(15, math.floor(px(17)))
+modalStatusTitle.TextXAlignment = Enum.TextXAlignment.Center
+modalStatusTitle.Size = UDim2.new(1, -px(28), 0, px(28))
+modalStatusTitle.Position = UDim2.new(0, px(14), 0, px(18))
+modalStatusTitle.ZIndex = 287
+modalStatusTitle.Parent = modalStatusCard
+
+local modalStatusDetail = Instance.new("TextLabel")
+modalStatusDetail.Name = "StatusDetail"
+modalStatusDetail.BackgroundTransparency = 1
+modalStatusDetail.Font = Enum.Font.GothamMedium
+modalStatusDetail.TextColor3 = Color3.fromRGB(190, 195, 215)
+modalStatusDetail.TextSize = math.max(12, math.floor(px(13)))
+modalStatusDetail.TextWrapped = true
+modalStatusDetail.TextXAlignment = Enum.TextXAlignment.Center
+modalStatusDetail.Size = UDim2.new(1, -px(32), 0, px(34))
+modalStatusDetail.Position = UDim2.new(0, px(16), 0, px(48))
+modalStatusDetail.ZIndex = 287
+modalStatusDetail.Parent = modalStatusCard
+
+local function setModalStatus(title, detail, accentColor)
+    local accent = accentColor or COLORS.gold
+    modalStatusTitle.Text = title or "Loading..."
+    modalStatusTitle.TextColor3 = accent
+    modalStatusDetail.Text = detail or ""
+    modalStatusStroke.Color = accent
+    modalStatusOverlay.Visible = true
+end
+
+local function hideModalStatus()
+    modalStatusOverlay.Visible = false
+end
+
 -- Forward-declare coinApi so closures below can reference it
 local coinApi = nil
 -- PREMIUM CRATE / KEY SYSTEM  – forward-declare keyApi
@@ -1238,7 +1334,7 @@ local keyApi = nil
 
 local function clearContent()
     for _, c in ipairs(contentFrame:GetChildren()) do
-        if not c:IsA("UIListLayout") and not c:IsA("UIGridLayout") then
+        if not c:IsA("UIListLayout") and not c:IsA("UIGridLayout") and not c:IsA("UIPadding") then
             pcall(function() c:Destroy() end)
         end
     end
@@ -1246,14 +1342,37 @@ local function clearContent()
     local apDisp = headerBar:FindFirstChild("APDisplay")
     if apDisp then apDisp:Destroy() end
 end
+
+local function createContentHost()
+    -- Fill the visible content area so child menus that read parent.AbsoluteSize.Y
+    -- (e.g. InventoryUI's adaptive root height) get a non-zero height.
+    local host = Instance.new("Frame")
+    host.Name = "ModalContentHost"
+    host.BackgroundTransparency = 1
+    host.Size = UDim2.new(1, 0, 1, 0)
+    host.LayoutOrder = 1
+    host.ZIndex = 260
+    host.Parent = contentFrame
+
+    local hostLayout = Instance.new("UIListLayout")
+    hostLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    hostLayout.Padding = UDim.new(0, px(8))
+    hostLayout.Parent = host
+
+    return host
+end
+
 local currentModule = nil
+local modalBuildToken = 0
 local isAnimating = false
 local TWEEN_IN_INFO = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local TWEEN_OUT_INFO = TweenInfo.new(0.16, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
 local function clearAndHide()
+    modalBuildToken += 1
     currentModule = nil
     modalOverlay.Visible = false
+    hideModalStatus()
     clearContent()
 end
 
@@ -1418,6 +1537,8 @@ _G.UpdateShopHeaderSalvage = updateHeaderSalvage
 -- Populate modal content without animation (used by MenuController open callbacks)
 local function populateModalContent(mod, label)
     if not mod then return end
+    modalBuildToken += 1
+    local token = modalBuildToken
     clearContent()
     titleLabel.Text = label or "SHOP"
     -- Currency row visibility rules:
@@ -1427,31 +1548,71 @@ local function populateModalContent(mod, label)
     local isInventory = (label == "INVENTORY")
     local showCurrency = isShop or isInventory
     currencyRow.Visible = showCurrency
-    headerCoinFrame.Visible = isShop or isInventory
-    headerKeyFrame.Visible = isShop or isInventory
-    headerSalvageFrame.Visible = isShop or isInventory
-    if isShop or isInventory then
+    headerCoinFrame.Visible = showCurrency
+    headerKeyFrame.Visible = showCurrency
+    headerSalvageFrame.Visible = showCurrency
+    if showCurrency then
         updateHeaderCoins()
         updateHeaderKeys()
         updateHeaderSalvage()
     end
-    pcall(function()
-        local ok, loaded = pcall(require, mod)
-        if ok and type(loaded.Create) == "function" then
-            loaded.Create(contentFrame, coinApi, Inventory)
+
+    local contentHost = createContentHost()
+    currentModule = mod
+    setModalStatus("Loading " .. string.lower(label or "menu") .. "...", "Getting the menu ready.", COLORS.gold)
+
+    task.defer(function()
+        local ok, err = xpcall(function()
+            local requireOk, loaded = pcall(require, mod)
+            if not requireOk then
+                error("Require failed: " .. tostring(loaded))
+            end
+            if type(loaded) ~= "table" or type(loaded.Create) ~= "function" then
+                error("Menu module has no Create(parent, coinApi, inventoryApi) function")
+            end
+            if token ~= modalBuildToken or not contentHost.Parent then return end
+
+            loaded.Create(contentHost, coinApi, Inventory)
+
+            if token ~= modalBuildToken or not contentHost.Parent then return end
+            local hasContent = false
+            for _, child in ipairs(contentHost:GetChildren()) do
+                if child:IsA("GuiObject") then
+                    hasContent = true
+                    break
+                end
+            end
+            if not hasContent then
+                error("Menu did not create any visible content")
+            end
+        end, function(buildErr)
+            return tostring(buildErr)
+        end)
+
+        if token ~= modalBuildToken then
+            pcall(function() contentHost:Destroy() end)
+            return
+        end
+
+        if ok then
+            hideModalStatus()
+        else
+            warn("[SideUI] Failed to build " .. tostring(label or "menu") .. ": " .. tostring(err))
+            clearContent()
+            setModalStatus("Could not load " .. string.lower(label or "menu"), "Close this menu and try opening it again.", Color3.fromRGB(255, 105, 105))
         end
     end)
-    currentModule = mod
 end
-
 -- Instant-close the modal (no animation). Used when switching menus.
 -- sameGroup: when true, keeps overlay visible for seamless same-group transition.
 local function modalCloseInstant(sameGroup)
     isAnimating = false
+    modalBuildToken += 1
     currentModule = nil
     if sameGroup then
         -- Same-group switch: keep overlay visible, only swap content
         clearContent()
+        hideModalStatus()
         print("[SideUI] modalCloseInstant: sameGroup=true, overlay stays visible")
     else
         clearAndHide()

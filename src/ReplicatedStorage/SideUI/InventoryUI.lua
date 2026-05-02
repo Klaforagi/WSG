@@ -15,6 +15,7 @@ local RunService         = game:GetService("RunService")
 local TweenService       = game:GetService("TweenService")
 
 local UITheme = require(script.Parent.UITheme)
+local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Responsive pixel helper
@@ -379,8 +380,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ──────────────────────────────────────────────────────────────────────
     -- Dimensions
     -- ──────────────────────────────────────────────────────────────────────
-    local TAB_W     = px(132)
-    local TAB_GAP   = px(10)
+    local TAB_W     = px(LeftPanelStyle.TAB_W)
+    local TAB_GAP   = px(LeftPanelStyle.TAB_GAP)
     local DETAIL_W  = px(315)
     local GRID_GAP  = px(10)
 
@@ -662,26 +663,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ══════════════════════════════════════════════════════════════════════
     local sidebar = Instance.new("Frame")
     sidebar.Name = "TabSidebar"
-    sidebar.BackgroundColor3 = SIDEBAR_BG
-    sidebar.BorderSizePixel = 0
-    sidebar.Size = UDim2.new(0, TAB_W, 1, 0)
-    sidebar.ClipsDescendants = false
     sidebar.Parent = root
-    Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, px(10))
-
-    local sideStroke = Instance.new("UIStroke", sidebar)
-    sideStroke.Color = CARD_STROKE; sideStroke.Thickness = 1.2; sideStroke.Transparency = 0.3
-
-    local sideLayout = Instance.new("UIListLayout", sidebar)
-    sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    sideLayout.Padding = UDim.new(0, px(3))
-    sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-    local sidePad = Instance.new("UIPadding", sidebar)
-    sidePad.PaddingTop    = UDim.new(0, px(10))
-    sidePad.PaddingBottom = UDim.new(0, px(10))
-    sidePad.PaddingLeft   = UDim.new(0, px(6))
-    sidePad.PaddingRight  = UDim.new(0, px(6))
+    if type(LeftPanelStyle.applyLeftTabRailStyle) == "function" then
+        LeftPanelStyle.applyLeftTabRailStyle(sidebar, px)
+    else
+        sidebar.BackgroundColor3 = SIDEBAR_BG
+        sidebar.BorderSizePixel = 0
+        sidebar.Size = UDim2.new(0, TAB_W, 1, 0)
+        sidebar.ClipsDescendants = false
+        Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, px(10))
+        local sStroke = Instance.new("UIStroke", sidebar)
+        sStroke.Color = CARD_STROKE; sStroke.Thickness = 1.2; sStroke.Transparency = 0.3
+        local sLayout = Instance.new("UIListLayout", sidebar)
+        sLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        sLayout.Padding = UDim.new(0, px(3))
+        sLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        local sPad = Instance.new("UIPadding", sidebar)
+        sPad.PaddingTop = UDim.new(0, px(10))
+        sPad.PaddingBottom = UDim.new(0, px(10))
+        sPad.PaddingLeft = UDim.new(0, px(6))
+        sPad.PaddingRight = UDim.new(0, px(6))
+    end
 
     local tabButtons = {}
     local currentTab = "melee"

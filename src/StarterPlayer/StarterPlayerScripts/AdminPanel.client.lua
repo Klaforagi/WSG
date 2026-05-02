@@ -1092,7 +1092,7 @@ else
         addStroke(row, COLORS.BORDER, 1)
 
         local titleLabel = createInstance("TextLabel", {
-            Size = UDim2.new(1, -250, 0, 22),
+            Size = UDim2.new(1, -320, 0, 22),
             Position = UDim2.new(0, 12, 0, 8),
             BackgroundTransparency = 1,
             Text = eventInfo.name,
@@ -1104,7 +1104,7 @@ else
         })
 
         createInstance("TextLabel", {
-            Size = UDim2.new(1, -250, 0, 38),
+            Size = UDim2.new(1, -320, 0, 38),
             Position = UDim2.new(0, 12, 0, 32),
             BackgroundTransparency = 1,
             Text = string.format("%s\nReward: %s", eventInfo.objective ~= "" and eventInfo.objective or "No objective set", eventInfo.reward ~= "" and eventInfo.reward or "None"),
@@ -1119,7 +1119,7 @@ else
 
         local statusLabel = createInstance("TextLabel", {
             Size = UDim2.new(0, 90, 0, 24),
-            Position = UDim2.new(1, -236, 0, 12),
+            Position = UDim2.new(1, -286, 0, 12),
             BackgroundColor3 = COLORS.BG_INPUT,
             Text = "READY",
             TextColor3 = COLORS.TEXT_SECONDARY,
@@ -1132,7 +1132,7 @@ else
         local startButton = createInstance("TextButton", {
             Name = "StartBtn",
             Size = UDim2.new(0, 82, 0, 30),
-            Position = UDim2.new(1, -138, 0, 10),
+            Position = UDim2.new(1, -188, 0, 10),
             BackgroundColor3 = COLORS.GREEN,
             Text = "Start",
             TextColor3 = Color3.new(1, 1, 1),
@@ -1145,7 +1145,7 @@ else
         local stopButton = createInstance("TextButton", {
             Name = "StopBtn",
             Size = UDim2.new(0, 82, 0, 30),
-            Position = UDim2.new(1, -48, 0, 10),
+            Position = UDim2.new(1, -16, 0, 10),
             AnchorPoint = Vector2.new(1, 0),
             BackgroundColor3 = COLORS.TAB_INACTIVE,
             Text = "Stop",
