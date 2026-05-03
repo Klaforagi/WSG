@@ -221,7 +221,7 @@ local function grantReward(player, rewardEntry)
     if rtype == config.RewardType.Coins then
         local cs = getCurrencyService()
         if cs then
-            cs:AddCoins(player, amount)
+            cs:AddCoins(player, amount, "daily_reward")
             print("[DailyRewardService] Granted", amount, "coins to", player.Name)
             return true
         else

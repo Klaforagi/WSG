@@ -6,6 +6,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Teams = game:GetService("Teams")
 
+local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+
 ---------------------------------------------------------------------------
 -- Remote events
 ---------------------------------------------------------------------------
@@ -50,7 +52,7 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 
 	-- Already on this team
 	if plr.Team and plr.Team.Name == teamName then
-		changeResponse:FireClient(plr, false, "You are already on " .. teamName .. " team")
+		changeResponse:FireClient(plr, false, "You are already on " .. TeamDisplayNames.Get(teamName))
 		return
 	end
 
@@ -59,7 +61,7 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 	local redTeam  = Teams:FindFirstChild("Red")
 	if not blueTeam or not redTeam then
 		changeResponse:FireClient(plr, false, "Teams not available")
-		warn("[TeamChange] Blue or Red team object missing")
+		warn("[TeamChange] Expected side object missing")
 		return
 	end
 
@@ -74,11 +76,11 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 	end
 
 	if teamName == "Blue" and blueCount >= redCount + 2 then
-		changeResponse:FireClient(plr, false, "Blue team has too many players")
+		changeResponse:FireClient(plr, false, TeamDisplayNames.Get("Blue") .. " has too many players")
 		return
 	end
 	if teamName == "Red" and redCount >= blueCount + 2 then
-		changeResponse:FireClient(plr, false, "Red team has too many players")
+		changeResponse:FireClient(plr, false, TeamDisplayNames.Get("Red") .. " has too many players")
 		return
 	end
 
@@ -87,7 +89,7 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 	plr.Team = teamName == "Red" and redTeam or blueTeam
 	plr:SetAttribute("Team", teamName)
 
-	changeResponse:FireClient(plr, true, "Switched to " .. teamName .. " team")
+	changeResponse:FireClient(plr, true, "Switched to " .. TeamDisplayNames.Get(teamName))
 
 	-- Respawn at correct team spawn
 	task.spawn(function()

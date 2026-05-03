@@ -1433,99 +1433,6 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         return popover
     end
 
-    local function makeCrateRewardsStrip(parent, rewards, fallbackGlyph)
-        local strip = Instance.new("Frame")
-        strip.Name = "FeaturedRewards"
-        strip.BackgroundTransparency = 1
-        strip.Size = UDim2.new(1, 0, 0, px(84))
-        strip.LayoutOrder = 4
-        strip.Parent = parent
-
-        local label = Instance.new("TextLabel")
-        label.Name = "RewardsLabel"
-        label.BackgroundTransparency = 1
-        label.Font = Enum.Font.GothamBold
-        label.Text = "FEATURED DROPS"
-        label.TextColor3 = DIM_TEXT
-        label.TextSize = math.max(9, math.floor(px(10)))
-        label.TextXAlignment = Enum.TextXAlignment.Center
-        label.Size = UDim2.new(1, 0, 0, px(15))
-        label.Parent = strip
-
-        local rewardRow = Instance.new("Frame")
-        rewardRow.Name = "RewardRow"
-        rewardRow.BackgroundTransparency = 1
-        rewardRow.Size = UDim2.new(1, 0, 0, px(62))
-        rewardRow.Position = UDim2.new(0, 0, 0, px(18))
-        rewardRow.Parent = strip
-
-        local rowLayout = Instance.new("UIListLayout")
-        rowLayout.FillDirection = Enum.FillDirection.Horizontal
-        rowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-        rowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-        rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        rowLayout.Padding = UDim.new(0, px(8))
-        rowLayout.Parent = rewardRow
-
-        for index, reward in ipairs(rewards) do
-            local rarityColor = getCrateRarityColor(reward.rarity)
-            local cell = Instance.new("Frame")
-            cell.Name = "Reward_" .. tostring(index)
-            cell.BackgroundColor3 = RARITY_BG_COLORS[reward.rarity] or ICON_BG
-            cell.BackgroundTransparency = 0.05
-            cell.BorderSizePixel = 0
-            cell.Size = UDim2.new(0, px(56), 0, px(56))
-            cell.LayoutOrder = index
-            cell.ClipsDescendants = true
-            cell.Parent = rewardRow
-
-            local cellCorner = Instance.new("UICorner")
-            cellCorner.CornerRadius = UDim.new(0, px(10))
-            cellCorner.Parent = cell
-
-            local cellStroke = Instance.new("UIStroke")
-            cellStroke.Color = rarityColor
-            cellStroke.Thickness = 1.3
-            cellStroke.Transparency = 0.18
-            cellStroke.Parent = cell
-
-            local image = getAssetImage(reward.weapon)
-            if image then
-                local thumb = Instance.new("ImageLabel")
-                thumb.Name = "Thumb"
-                thumb.BackgroundTransparency = 1
-                thumb.Image = image
-                thumb.ScaleType = Enum.ScaleType.Fit
-                thumb.Size = UDim2.new(0.82, 0, 0.76, 0)
-                thumb.AnchorPoint = Vector2.new(0.5, 0.5)
-                thumb.Position = UDim2.new(0.5, 0, 0.46, 0)
-                thumb.Parent = cell
-            else
-                local glyph = Instance.new("TextLabel")
-                glyph.Name = "FallbackGlyph"
-                glyph.BackgroundTransparency = 1
-                glyph.Font = Enum.Font.GothamBold
-                glyph.Text = fallbackGlyph or "?"
-                glyph.TextColor3 = rarityColor
-                glyph.TextSize = math.max(20, math.floor(px(24)))
-                glyph.TextXAlignment = Enum.TextXAlignment.Center
-                glyph.TextYAlignment = Enum.TextYAlignment.Center
-                glyph.Size = UDim2.new(1, 0, 1, 0)
-                glyph.Parent = cell
-            end
-
-            local rarityBar = Instance.new("Frame")
-            rarityBar.BackgroundColor3 = rarityColor
-            rarityBar.BackgroundTransparency = 0.15
-            rarityBar.BorderSizePixel = 0
-            rarityBar.Size = UDim2.new(1, 0, 0, px(4))
-            rarityBar.Position = UDim2.new(0, 0, 1, -px(4))
-            rarityBar.Parent = cell
-        end
-
-        return strip
-    end
-
     local function makeCrateOddsCard(parent, rarityRows, accentColor, isKeyCrate)
         local odds = Instance.new("Frame")
         odds.Name = "OddsCard"
@@ -1605,17 +1512,16 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
         local labelCount = math.max(#rarityRows, 1)
         for index, rowData in ipairs(rarityRows) do
-            local shortLabel = string.sub(rowData.label, 1, math.min(4, #rowData.label))
             local percentLabel = Instance.new("TextLabel")
             percentLabel.BackgroundTransparency = 1
             percentLabel.Font = Enum.Font.GothamBold
-            percentLabel.Text = string.format("%s %.0f%%", shortLabel, rowData.percent)
+            percentLabel.Text = string.format("%s %.0f%%", rowData.label, rowData.percent)
             percentLabel.TextColor3 = rowData.color
             percentLabel.TextScaled = true
             percentLabel.Size = UDim2.new(1 / labelCount, -px(4), 1, 0)
             percentLabel.LayoutOrder = index
             percentLabel.Parent = labelRow
-            addTextSizeConstraint(percentLabel, 7, math.max(9, math.floor(px(10))))
+            addTextSizeConstraint(percentLabel, 6, math.max(9, math.floor(px(10))))
         end
 
         local popover = makeCrateRarityPopover(odds, rarityRows, accentColor, isKeyCrate)
@@ -1652,7 +1558,6 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         local cratePrice = crateDef.cost or crateDef.price or 0
         local isKeyCrate = (crateCurrency == "Keys")
         local rarityRows = getCrateRarityRows(crateDef)
-        local featuredRewards = getFeaturedCrateRewards(crateDef, 5)
         local accentColor = isKeyCrate and CRATE_PREMIUM_STROKE or GOLD
         local iconAccent = (rarityRows[1] and rarityRows[1].color) or accentColor
 
@@ -1725,6 +1630,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         innerLayout.SortOrder      = Enum.SortOrder.LayoutOrder
         innerLayout.FillDirection   = Enum.FillDirection.Vertical
         innerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        innerLayout.VerticalAlignment = Enum.VerticalAlignment.Center
         innerLayout.Padding        = UDim.new(0, px(6))
         innerLayout.Parent         = card
 
@@ -1785,17 +1691,21 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         crateBadge.BackgroundColor3 = isKeyCrate and PREM_STROKE or Color3.fromRGB(56, 46, 22)
         crateBadge.BackgroundTransparency = 0.04
         crateBadge.BorderSizePixel = 0
-        crateBadge.Font = Enum.Font.GothamBold
-        crateBadge.Text = isKeyCrate and "RARE+" or "ALL"
+        crateBadge.Font = Enum.Font.GothamBlack
+        crateBadge.Text = isKeyCrate and "" or "ALL"
         crateBadge.TextColor3 = WHITE
-        crateBadge.TextScaled = true
-        crateBadge.Size = UDim2.new(0, px(44), 0, px(18))
+        crateBadge.TextStrokeColor3 = Color3.fromRGB(45, 12, 72)
+        crateBadge.TextStrokeTransparency = 1
+        crateBadge.TextScaled = false
+        crateBadge.TextSize = isKeyCrate and math.max(13, math.floor(px(15))) or math.max(9, math.floor(px(10)))
+        crateBadge.TextXAlignment = Enum.TextXAlignment.Center
+        crateBadge.TextYAlignment = Enum.TextYAlignment.Center
+        crateBadge.Size = UDim2.new(0, isKeyCrate and px(72) or px(38), 0, isKeyCrate and px(24) or px(18))
         crateBadge.AnchorPoint = Vector2.new(1, 0)
-        crateBadge.Position = UDim2.new(1, px(8), 0, -px(6))
+        crateBadge.Position = UDim2.new(1, isKeyCrate and px(18) or px(8), 0, isKeyCrate and -px(10) or -px(7))
         crateBadge.ZIndex = 270
+        crateBadge.ClipsDescendants = false
         crateBadge.Parent = iconPlate
-
-        addTextSizeConstraint(crateBadge, 7, math.max(9, math.floor(px(10))))
 
         local badgeCorner = Instance.new("UICorner")
         badgeCorner.CornerRadius = UDim.new(1, 0)
@@ -1806,6 +1716,44 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         badgeStroke.Thickness = 1
         badgeStroke.Transparency = 0.25
         badgeStroke.Parent = crateBadge
+
+        if isKeyCrate then
+            local outlineColor = Color3.fromRGB(40, 8, 66)
+            local outlineOffsets = {
+                Vector2.new(-1, 0), Vector2.new(1, 0), Vector2.new(0, -1), Vector2.new(0, 1),
+                Vector2.new(-1, -1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(1, 1),
+            }
+            for outlineIndex, offset in ipairs(outlineOffsets) do
+                local outline = Instance.new("TextLabel")
+                outline.Name = "RareTextOutline" .. tostring(outlineIndex)
+                outline.BackgroundTransparency = 1
+                outline.Font = Enum.Font.GothamBlack
+                outline.Text = "RARE+"
+                outline.TextColor3 = outlineColor
+                outline.TextScaled = false
+                outline.TextSize = crateBadge.TextSize
+                outline.TextXAlignment = Enum.TextXAlignment.Center
+                outline.TextYAlignment = Enum.TextYAlignment.Center
+                outline.Size = UDim2.new(1, 0, 1, 0)
+                outline.Position = UDim2.new(0, px(offset.X), 0, px(offset.Y))
+                outline.ZIndex = crateBadge.ZIndex + 1
+                outline.Parent = crateBadge
+            end
+
+            local rareText = Instance.new("TextLabel")
+            rareText.Name = "RareText"
+            rareText.BackgroundTransparency = 1
+            rareText.Font = Enum.Font.GothamBlack
+            rareText.Text = "RARE+"
+            rareText.TextColor3 = WHITE
+            rareText.TextScaled = false
+            rareText.TextSize = crateBadge.TextSize
+            rareText.TextXAlignment = Enum.TextXAlignment.Center
+            rareText.TextYAlignment = Enum.TextYAlignment.Center
+            rareText.Size = UDim2.new(1, 0, 1, 0)
+            rareText.ZIndex = crateBadge.ZIndex + 2
+            rareText.Parent = crateBadge
+        end
 
         -- Hover-detection button over icon plate for tooltip
         local iconHoverBtn = Instance.new("TextButton")
@@ -1939,10 +1887,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         descLabel.Parent = card
 
         -------------------------------------------------------------------
-        -- 4. Featured rewards + always-visible odds
+        -- 4. Always-visible odds
         -------------------------------------------------------------------
 
-        makeCrateRewardsStrip(card, featuredRewards, crateDef.iconGlyph)
         makeCrateOddsCard(card, rarityRows, accentColor, isKeyCrate)
 
         -------------------------------------------------------------------

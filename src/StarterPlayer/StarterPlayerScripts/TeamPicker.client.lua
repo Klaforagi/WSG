@@ -1,6 +1,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera = workspace.CurrentCamera
@@ -93,7 +95,7 @@ local function makeCard(teamName, accentColor, hoverColor, iconText)
 
 	-- Team name label
 	local label = Instance.new("TextLabel")
-	label.Text = "JOIN " .. string.upper(teamName)
+	label.Text = "JOIN " .. TeamDisplayNames.GetUpper(teamName)
 	label.Font = Enum.Font.GothamBold
 	label.TextScaled = true
 	label.TextColor3 = Color3.fromRGB(255, 215, 80)

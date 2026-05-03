@@ -158,13 +158,21 @@ end)
 
 --------------------------------------------------------------------------------
 -- INTEGRATION: Wrap CurrencyService.AddCoins to apply coin multiplier
--- This is done via a wrapper so the existing callers (KillTracker, QuestService,
--- etc.) automatically get the boost applied without any changes.
+-- This is done via a wrapper so tagged gameplay/event rewards automatically get
+-- the boost without letting large claim rewards or purchases inflate.
 --------------------------------------------------------------------------------
 if CurrencyService then
     local _originalAddCoins = CurrencyService.AddCoins
+    local BOOSTED_COIN_SOURCES = {
+        elimination = true,
+        objective = true,
+        GoldRushPickup = true,
+        GoldRushObjective = true,
+        MeteorShard = true,
+        MeteorShowerObjective = true,
+    }
 
-    --- Wrapped AddCoins: applies coin boost multiplier to positive (reward) amounts.
+    --- Wrapped AddCoins: applies coin boost multiplier to positive gameplay/event amounts.
     --- Returns the final amount actually added (after boost). Callers can use the
     --- return value for accurate UI display (e.g. reward popups).
     --- Optional 3rd param `source` is passed through for upstream wrappers.
@@ -172,18 +180,19 @@ if CurrencyService then
         amount = math.floor(tonumber(amount) or 0)
         if amount <= 0 then
             -- Deductions (negative amounts) and zero should pass through unchanged
-            _originalAddCoins(self, player, amount)
+            _originalAddCoins(self, player, amount, source)
             return amount
         end
 
-        -- Apply coin multiplier for positive (reward) amounts
-        local multiplier = BoostService:GetCoinMultiplier(player)
+        -- Apply coin multiplier only to active gameplay/event rewards.
+        local shouldBoost = type(source) == "string" and BOOSTED_COIN_SOURCES[source] == true
+        local multiplier = shouldBoost and BoostService:GetCoinMultiplier(player) or 1
         local boosted = math.floor(amount * multiplier)
-        _originalAddCoins(self, player, boosted)
+        _originalAddCoins(self, player, boosted, source)
         return boosted
     end
 
-    print("[BoostServiceInit] CurrencyService.AddCoins wrapped with boost multiplier")
+    print("[BoostServiceInit] CurrencyService.AddCoins wrapped with source-aware boost multiplier")
 end
 
 --------------------------------------------------------------------------------

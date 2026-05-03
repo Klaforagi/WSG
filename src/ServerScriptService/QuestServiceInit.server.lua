@@ -185,6 +185,15 @@ task.spawn(function()
 
     if CurrencyService then
         local _prevAddCoins = CurrencyService.AddCoins
+        local COINS_EARNED_EXCLUDED_SOURCES = {
+            quest = true,
+            weekly_quest = true,
+            achievement = true,
+            purchase = true,
+            daily_reward = true,
+            weaponMastery = true,
+            quest_bonus = true,
+        }
 
         function CurrencyService:AddCoins(player, amount, source)
             local result = _prevAddCoins(self, player, amount, source)
@@ -192,8 +201,9 @@ task.spawn(function()
             -- Fire coins_earned stat event for positive, non-reward amounts
             local earned = tonumber(result) or tonumber(amount) or 0
             if earned > 0 and typeof(player) == "Instance" and player:IsA("Player") then
-                -- Exclude quest/achievement/weekly_quest rewards to avoid feedback loops
-                if source ~= "quest" and source ~= "weekly_quest" and source ~= "achievement" then
+                -- Exclude large claim/purchase rewards to keep this as gameplay-earned progress.
+                local isExcluded = type(source) == "string" and COINS_EARNED_EXCLUDED_SOURCES[source] == true
+                if not isExcluded then
                     task.spawn(function()
                         StatService:RegisterCoinsEarned(player, earned)
                     end)

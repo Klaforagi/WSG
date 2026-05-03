@@ -145,13 +145,13 @@ local function getSizeDamageMultiplier(sizePercent)
     return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 1.5)
 end
 
---- Speed scaling: 100% = 1.0x. 200% = 2.0x (100% slower).
+--- Speed scaling: 100% = 1.0x. 200% = 1.5x (half-rate above 100%).
 --- Below 100% is linear (tiny weapons swing faster).
 local function getSizeSpeedMultiplier(sizePercent)
     if sizePercent <= 100 then
         return math.clamp(sizePercent / 100, 0.5, 1.0)
     end
-    return math.clamp(1.0 + (sizePercent - 100) / 100, 1.0, 2.0)
+    return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 2.0)
 end
 
 --- Return the scaled swing duration for a given base cooldown.
@@ -525,11 +525,11 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         local ok, trail = pcall(function() return tool:FindFirstChild("SwordTrail", true) end)
         if ok and trail and trail:IsA("Trail") then
             pcall(function() trail.Enabled = false end)
-            local baseStart = cfg.trail_start or 0.22
-            local baseEnd   = cfg.trail_end   or 0.36
-            if baseEnd <= baseStart then baseEnd = baseStart + 0.14 end
-            local startDelay = baseStart * sizeSpeedMult
-            local endTime    = baseEnd * sizeSpeedMult
+            -- Anchor trail to hitbox: start 0.12s before impact, end 0.1s after
+            local hd         = (cfg.hitboxDelay  or 0.35) * sizeSpeedMult
+            local ha         = (cfg.hitboxActive or 0.1)  * sizeSpeedMult
+            local startDelay = math.max(0, hd - 0.12)
+            local endTime    = hd + ha + 0.1
             local activeDur  = math.max(0.01, endTime - startDelay)
             task.spawn(function()
                 task.wait(startDelay)
@@ -633,9 +633,16 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                         local template = meleeFolder:FindFirstChild(swingSoundKey)
                         if template and template:IsA("Sound") then
                             local s = template:Clone()
+                            -- At larger sizes the swing takes longer, so delay the whoosh
+                            -- and slow it down so it hits at the same point in the animation.
+                            s.PlaybackSpeed = math.clamp(1.0 / sizeSpeedMult, 0.25, 1.5)
                             s.Parent = hrp
-                            s:Play()
-                            Debris:AddItem(s, 3)
+                            -- Fire at 0.08s into the swing (scaled with size)
+                            local soundDelay = 0.08 * sizeSpeedMult
+                            task.delay(soundDelay, function()
+                                if s and s.Parent then s:Play() end
+                            end)
+                            Debris:AddItem(s, soundDelay + 3)
                         end
                     end
                 end
@@ -707,9 +714,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                 if not okLoad or not track then return end
                 track.Priority = Enum.AnimationPriority.Action
 
-                -- Scale animation playback so it matches the size-scaled swing duration.
-                -- baseCd/scaledCd gives the correct ratio immediately without needing
-                -- track.Length (which is often 0 due to async asset loading).
+                -- Scale animation speed by size only: baseStepCd/cd = 1/sizeSpeedMult
+                -- so bigger weapons play the animation proportionally slower.
                 local fallbackSpeed = math.clamp(baseStepCd / cd, 0.25, 4.0)
 
                 track.Stopped:Connect(function()

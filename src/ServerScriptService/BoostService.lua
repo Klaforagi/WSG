@@ -563,10 +563,10 @@ function BoostService:BonusClaim(player, questId)
     end
 
     -- Deduct coins
-    cs:AddCoins(player, -def.PriceCoins)
+    cs:AddCoins(player, -def.PriceCoins, "bonus_claim")
 
     -- Grant bonus reward (same amount as the quest's normal reward)
-    cs:AddCoins(player, questDef.reward)
+    cs:AddCoins(player, questDef.reward, "quest_bonus")
 
     pd.bonusClaimed[questId] = true
     print(("[BoostService] %s bonus-claimed quest '%s' (+%d coins)"):format(

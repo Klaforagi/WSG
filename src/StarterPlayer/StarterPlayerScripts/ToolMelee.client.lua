@@ -92,13 +92,13 @@ local function getToolSizePercent(tool)
     return 100
 end
 
---- Speed scaling: 100% = 1.0x. 200% = 2.0x (100% slower).
+--- Speed scaling: 100% = 1.0x. 200% = 1.5x (half-rate above 100%).
 --- Below 100% is linear (tiny weapons swing faster).
 local function getSizeSpeedMultiplier(sizePercent)
     if sizePercent <= 100 then
         return math.clamp(sizePercent / 100, 0.5, 1.0)
     end
-    return math.clamp(1.0 + (sizePercent - 100) / 100, 1.0, 2.0)
+    return math.clamp(1.0 + (sizePercent - 100) / 200, 1.0, 2.0)
 end
 
 --------------------------------------------------------------------------------
@@ -604,18 +604,14 @@ local function attachMelee(tool)
         end
 
         -- Trigger sword trail (size-scaled timing)
-        local startOffset = (cfg.trail_start or 0.22) * sizeSpeedMult
-        local endOffset   = (cfg.trail_end   or 0.36) * sizeSpeedMult
-        -- First attack uses later timing (0.26-0.44) so trail aligns with animation
-        local trailStart = cfg.trail_start or 0.22
-        local trailEnd   = cfg.trail_end   or 0.36
-        if step == 1 then
-            trailStart = cfg.trail_start or 0.26
-            trailEnd   = cfg.trail_end   or 0.44
+        -- Anchor to hitbox: start 0.12s before impact, run 0.3s past it
+        do
+            local hd          = (cfg.hitboxDelay  or 0.35) * sizeSpeedMult
+            local ha          = (cfg.hitboxActive or 0.1)  * sizeSpeedMult
+            local startOffset = math.max(0, hd - 0.12)
+            local endOffset   = hd + ha + 0.1
+            pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
         end
-        local startOffset = trailStart * sizeSpeedMult
-        local endOffset   = trailEnd   * sizeSpeedMult
-        pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
 
         -- Tell the server we swung (include combo step for validation/damage)
         local char = player.Character
@@ -628,6 +624,8 @@ local function attachMelee(tool)
 
         -- Play local animation for immediate feedback (size-scaled duration)
         local playedAnim = nil
+        -- stepCooldown is the unscaled base cd; scaledStepCd has size applied.
+        -- stepCooldown/scaledStepCd = 1/sizeSpeedMult → slows anim with size only.
         pcall(function() playedAnim = playLocalCfgAnimation(cfg, tool.Name, scaledStepCd, stepCooldown) end)
         if not playedAnim then
             playSwingVisual(tool)

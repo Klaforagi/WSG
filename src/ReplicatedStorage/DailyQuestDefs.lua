@@ -34,7 +34,7 @@ DailyQuestDefs.Pool = {
         title     = "Monster Hunter",
         desc      = "Eliminate 15 monsters",
         goal      = 15,
-        reward    = 12,
+        reward    = 80,
         trackType = "zombies_eliminated",
     },
     {
@@ -42,7 +42,7 @@ DailyQuestDefs.Pool = {
         title     = "Monster Slayer",
         desc      = "Eliminate 25 monsters",
         goal      = 25,
-        reward    = 18,
+        reward    = 110,
         trackType = "zombies_eliminated",
     },
 
@@ -52,7 +52,7 @@ DailyQuestDefs.Pool = {
         title     = "Player Hunter",
         desc      = "Eliminate 5 enemy players",
         goal      = 5,
-        reward    = 15,
+        reward    = 100,
         trackType = "players_eliminated",
     },
     {
@@ -60,7 +60,7 @@ DailyQuestDefs.Pool = {
         title     = "Headhunter",
         desc      = "Eliminate 10 enemy players",
         goal      = 10,
-        reward    = 22,
+        reward    = 140,
         trackType = "players_eliminated",
     },
 
@@ -70,7 +70,7 @@ DailyQuestDefs.Pool = {
         title     = "Battle Ready",
         desc      = "Play 3 matches",
         goal      = 3,
-        reward    = 12,
+        reward    = 80,
         trackType = "matches_played",
     },
     {
@@ -78,7 +78,7 @@ DailyQuestDefs.Pool = {
         title     = "Warpath",
         desc      = "Play 5 matches",
         goal      = 5,
-        reward    = 18,
+        reward    = 110,
         trackType = "matches_played",
     },
 
@@ -88,7 +88,7 @@ DailyQuestDefs.Pool = {
         title     = "Coin Grab",
         desc      = "Earn 75 coins",
         goal      = 75,
-        reward    = 15,
+        reward    = 90,
         trackType = "coins_earned",
     },
     {
@@ -96,7 +96,7 @@ DailyQuestDefs.Pool = {
         title     = "Coin Collector",
         desc      = "Earn 150 coins",
         goal      = 150,
-        reward    = 22,
+        reward    = 125,
         trackType = "coins_earned",
     },
 
@@ -106,7 +106,7 @@ DailyQuestDefs.Pool = {
         title     = "Heavy Hitter",
         desc      = "Deal 1,000 total damage",
         goal      = 1000,
-        reward    = 15,
+        reward    = 90,
         trackType = "damage_dealt",
     },
     {
@@ -114,7 +114,7 @@ DailyQuestDefs.Pool = {
         title     = "Devastator",
         desc      = "Deal 2,500 total damage",
         goal      = 2500,
-        reward    = 22,
+        reward    = 125,
         trackType = "damage_dealt",
     },
 }

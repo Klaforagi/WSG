@@ -2,6 +2,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 
+local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -194,13 +196,14 @@ print("[MatchHUD] Removed blue diamond badge for cleaner scoreboard")
 -- Team name label
 local blueName = Instance.new("TextLabel")
 blueName.Name = "TeamName"
-blueName.Text = "BLUE"
+blueName.Text = TeamDisplayNames.GetUpper("Blue")
 blueName.Font = Enum.Font.GothamBlack
 blueName.TextScaled = true
 blueName.TextColor3 = GOLD_TEXT
 blueName.BackgroundTransparency = 1
-    blueName.Size = UDim2.new(0.62, 0, 0.34, 0)
-    blueName.Position = UDim2.new(0.12, 0, 0.02, 0)
+blueName.AnchorPoint = Vector2.new(0.5, 0)
+blueName.Size = UDim2.new(1, -8, 0.34, 0)
+blueName.Position = UDim2.new(0.5, 0, 0.02, 0)
 blueName.TextXAlignment = Enum.TextXAlignment.Center
 blueName.ZIndex = 3
 blueName.Parent = bluePanel
@@ -258,13 +261,14 @@ print("[MatchHUD] Removed red diamond badge for cleaner scoreboard")
 -- Team name label
 local redName = Instance.new("TextLabel")
 redName.Name = "TeamName"
-redName.Text = "RED"
+redName.Text = TeamDisplayNames.GetUpper("Red")
 redName.Font = Enum.Font.GothamBlack
 redName.TextScaled = true
 redName.TextColor3 = GOLD_TEXT
 redName.BackgroundTransparency = 1
-    redName.Size = UDim2.new(0.62, 0, 0.34, 0)
-    redName.Position = UDim2.new(0.20, 0, 0.02, 0)
+redName.AnchorPoint = Vector2.new(0.5, 0)
+redName.Size = UDim2.new(1, -8, 0.34, 0)
+redName.Position = UDim2.new(0.5, 0, 0.02, 0)
 redName.TextXAlignment = Enum.TextXAlignment.Center
 redName.ZIndex = 3
 redName.Parent = redPanel

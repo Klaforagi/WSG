@@ -1664,7 +1664,7 @@ end
 if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
-if questsModule then registerModalMenu("Quests", questsModule, "DAILY QUESTS") end
+if questsModule then registerModalMenu("Quests", questsModule, "QUESTS") end
 if upgradesModule then registerModalMenu("Upgrades", upgradesModule, "UPGRADES") end
 
 -- Legacy helper kept for any external code that may still reference it
@@ -2143,7 +2143,7 @@ local function OpenPage(id)
     else
         -- Fallback if MenuController failed to load
         if id == "Options" then toggleOptionsMenu(); return end
-        if id == "Missions" then requestShowModule(questsModule, "DAILY QUESTS"); return end
+        if id == "Missions" then requestShowModule(questsModule, "QUESTS"); return end
         if id == "Upgrade" then requestShowModule(upgradesModule, "UPGRADES"); return end
         if id == "Team" then
             if type(_G.TeamStatsToggle) == "function" then pcall(_G.TeamStatsToggle) end
