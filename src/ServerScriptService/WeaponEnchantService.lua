@@ -471,11 +471,21 @@ local function sendProcPopup(attackerPlayer, damage, enchantName, targetRoot)
     end)
 end
 
--- Apply flat enchant damage to a humanoid (bypasses weapon scaling)
+-- Apply flat enchant damage to a humanoid.
+-- Scales with the attacker's melee upgrade level (same multiplier as base weapon,
+-- no PvP cap -- all targets take the same bonus damage).
 -- Also sends a proc popup to the attacker's client.
 local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantName)
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     if damage <= 0 then return end
+    -- Apply melee upgrade multiplier (uncapped for all targets)
+    if _G.GetMeleeDamageMultiplier and attackerPlayer then
+        local mult = _G.GetMeleeDamageMultiplier(attackerPlayer, false)
+        if mult > 1 then
+            damage = damage * mult
+        end
+    end
+    damage = math.round(damage)
     pcall(function()
         if attackerPlayer then
             targetHumanoid:SetAttribute("lastDamagerUserId", attackerPlayer.UserId)
@@ -743,7 +753,76 @@ end
 ---------------------------------------------------------------------------
 -- TOXIC STATE  –  One poison runner per target; re-procs extend duration
 ---------------------------------------------------------------------------
-local toxicState = {} -- [Humanoid] = { remaining: number, running: boolean }
+local toxicState = {} -- [Humanoid] = { remaining, running, originalColors, particles }
+
+local POISON_COLOR = Color3.fromRGB(80, 200, 80)
+
+local function applyPoisonBodyTint(model)
+    if not model then return {} end
+    local originals = {}
+    for _, desc in ipairs(model:GetDescendants()) do
+        if desc:IsA("BasePart") and desc.Transparency < 1 then
+            originals[desc] = desc.Color
+            pcall(function() desc.Color = POISON_COLOR end)
+        end
+    end
+    return originals
+end
+
+local function removePoisonBodyTint(originals)
+    if not originals then return end
+    for part, color in pairs(originals) do
+        if part and part.Parent then
+            pcall(function() part.Color = color end)
+        end
+    end
+end
+
+local function createPoisonParticles(model)
+    local root = model and (model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso"))
+    if not root then return nil end
+
+    local attachment = Instance.new("Attachment")
+    attachment.Name = "_PoisonGasAttachment"
+    attachment.Parent = root
+
+    local emitter = Instance.new("ParticleEmitter")
+    emitter.Name = "_PoisonGasEmitter"
+    emitter.Texture = "rbxasset://textures/particles/smoke_main.dds"
+    emitter.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(120, 220, 80)),
+        ColorSequenceKeypoint.new(0.5, Color3.fromRGB(80, 180, 60)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 120, 40)),
+    })
+    emitter.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.2),
+        NumberSequenceKeypoint.new(0.4, 0.5),
+        NumberSequenceKeypoint.new(1, 0.05),
+    })
+    emitter.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.2),
+        NumberSequenceKeypoint.new(0.5, 0.5),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    emitter.LightEmission = 0.2
+    emitter.LightInfluence = 0.6
+    emitter.Lifetime = NumberRange.new(0.6, 1.4)
+    emitter.Speed = NumberRange.new(1, 3)
+    emitter.SpreadAngle = Vector2.new(60, 60)
+    emitter.Drag = 3
+    emitter.Rate = 20
+    emitter.RotSpeed = NumberRange.new(-60, 60)
+    emitter.Rotation = NumberRange.new(0, 360)
+    emitter.Parent = attachment
+
+    return attachment
+end
+
+local function removePoisonParticles(attachment)
+    if attachment and attachment.Parent then
+        pcall(function() attachment:Destroy() end)
+    end
+end
 
 local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
@@ -763,6 +842,11 @@ local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
     local state = { remaining = math.min(addDuration, maxDuration), running = true }
     toxicState[targetHumanoid] = state
 
+    -- Apply visuals
+    local model = targetHumanoid.Parent
+    state.originalColors = applyPoisonBodyTint(model)
+    state.particles      = createPoisonParticles(model)
+
     task.spawn(function()
         while state.running and state.remaining > 0 do
             task.wait(tickInterval)
@@ -774,8 +858,10 @@ local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
             state.remaining = state.remaining - tickInterval
             applyFlatDamage(targetHumanoid, tickDmg, attackerPlayer, "Toxic")
         end
-        -- Cleanup
+        -- Cleanup visuals then state
         state.running = false
+        removePoisonBodyTint(state.originalColors)
+        removePoisonParticles(state.particles)
         if toxicState[targetHumanoid] == state then
             toxicState[targetHumanoid] = nil
         end

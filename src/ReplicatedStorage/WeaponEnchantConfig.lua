@@ -19,7 +19,7 @@ local WeaponEnchantConfig = {}
 
 -- Chance (0–1) that any weapon roll receives an enchant.
 -- TODO: revert to 0.20 after testing
-WeaponEnchantConfig.ENCHANT_CHANCE = 1.00
+WeaponEnchantConfig.ENCHANT_CHANCE = 0.20
 
 --------------------------------------------------------------------------------
 -- ENCHANT DEFINITIONS
@@ -47,14 +47,14 @@ WeaponEnchantConfig.Enchants = {
     {
         name        = "Shock",
         color       = Color3.fromRGB(255, 217, 0),
-        trail_color = Color3.fromRGB(255, 208, 0),   -- sword trail color
+        trail_color = Color3.fromRGB(231, 189, 1),   -- sword trail color
         statusType  = "Stun",
         description = "Crackling energy",
     },
     {
         name        = "Toxic",
-        color       = Color3.fromRGB(57, 255, 20),
-        trail_color = Color3.fromRGB(100, 255, 80),    -- sword trail color
+        color       = Color3.fromRGB(65, 170, 35),
+        trail_color = Color3.fromRGB(100, 200, 70),    -- sword trail color
         statusType  = "Poison",
         description = "Venomous edge",
     },
@@ -88,7 +88,7 @@ end
 WeaponEnchantConfig.ProcConfig = {
     Fiery = {
         ProcChance = 0.22,
-        ProcDamage = 9,
+        ProcDamage = 12,
         SoundId    = "rbxassetid://REPLACE_ME",
     },
     Icy = {
@@ -101,24 +101,24 @@ WeaponEnchantConfig.ProcConfig = {
     },
     Shock = {
         ProcChance    = 0.2,
-        ProcDamage    = 4,
+        ProcDamage    = 6,
         ChainRange    = 20,
         MaxChains     = 4,
-        ChainDamage   = 3,
+        ChainDamage   = 4,
         ChainCooldown = 0.3,
         SoundId       = "rbxassetid://REPLACE_ME",
     },
     Toxic = {
-        ProcChance       = 0.20,
+        ProcChance       = 0.40,
         TickDamage       = 4,
         TickInterval     = 2,
-        DurationPerProc  = 6,
+        DurationPerProc  = 9,
         MaxDuration      = 18,
         SoundId          = "rbxassetid://REPLACE_ME",
     },
     Lifesteal = {
-        ProcChance = 0.26,
-        ProcDamage = 3,
+        ProcChance = 0.31,
+        ProcDamage = 5,
         HealAmount = 3,
         SoundId    = "rbxassetid://REPLACE_ME",
     },

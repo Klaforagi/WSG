@@ -214,10 +214,9 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
     end
-    -- Apply melee upgrade multiplier (PvP-capped / PvE-uncapped)
+    -- Apply melee upgrade multiplier (uncapped for all targets -- players take same bonus as mobs)
     if _G.GetMeleeDamageMultiplier then
-        local isPvP = (victimPlayer ~= nil)
-        local mult = _G.GetMeleeDamageMultiplier(player, isPvP)
+        local mult = _G.GetMeleeDamageMultiplier(player, false)
         if mult > 1 then
             damage = damage * mult
         end
