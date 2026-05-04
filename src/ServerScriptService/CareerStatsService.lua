@@ -87,7 +87,9 @@ end
 local function markDirty(player, reason)
     local coordinator = getSaveCoordinator()
     if coordinator then
-        coordinator:MarkDirty(player, "CareerStats", reason or "career_stats")
+        coordinator:MarkDirty(player, "CareerStats", reason or "career_stats", {
+            delaySeconds = 30,
+        })
     end
 end
 

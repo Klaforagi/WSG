@@ -537,7 +537,7 @@ function AchievementService:IncrementStat(player, statKey, amount)
 
     data.stats[statKey] = (data.stats[statKey] or 0) + amount
     self:_evaluateStatAchievements(player, data, statKey)
-    markAchievementDirty(player, "achievement_increment")
+    markAchievementDirty(player, "achievement_increment", { delaySeconds = 45 })
 end
 
 --- Set a stat to an absolute value (used for "best" stats like bestElimStreak).
@@ -552,7 +552,7 @@ function AchievementService:SetStat(player, statKey, value)
     if value > (data.stats[statKey] or 0) then
         data.stats[statKey] = value
         self:_evaluateStatAchievements(player, data, statKey)
-        markAchievementDirty(player, "achievement_set_stat")
+        markAchievementDirty(player, "achievement_set_stat", { delaySeconds = 45 })
     end
 end
 

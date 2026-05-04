@@ -52,6 +52,7 @@ end
 -- }
 --------------------------------------------------------------------------------
 local playerWeekly = {}
+local currentWeekKey
 
 local function serializeWeeklyData(data)
     if type(data) ~= "table" then
@@ -88,7 +89,7 @@ end
 -- Week key: anchored to Saturday 00:00 Eastern Time (server-authoritative)
 --------------------------------------------------------------------------------
 local TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
-local function currentWeekKey()
+currentWeekKey = function()
     return TimeHelper.GetWeeklyKey()
 end
 
@@ -168,7 +169,9 @@ local function markDirty(player)
     local data = playerWeekly[player]
     if data then
         data.dirty = true
-        DataSaveCoordinator:MarkDirty(player, "WeeklyQuest", "weekly_quest")
+        DataSaveCoordinator:MarkDirty(player, "WeeklyQuest", "weekly_quest", {
+            delaySeconds = 30,
+        })
     end
 end
 

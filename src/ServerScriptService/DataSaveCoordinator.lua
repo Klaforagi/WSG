@@ -146,12 +146,107 @@ local function normalizeLoadResult(result)
     }
 end
 
-local function collectSectionSnapshots(profile, player)
+local function makeSectionSet(sectionName, sections)
+    local sectionSet = {}
+
+    if type(sectionName) == "string" and sectionName ~= "" then
+        sectionSet[sectionName] = true
+    end
+
+    if type(sections) == "table" then
+        for key, value in pairs(sections) do
+            local resolvedName = nil
+            if type(key) == "number" then
+                resolvedName = value
+            elseif value == true then
+                resolvedName = key
+            end
+
+            if type(resolvedName) == "string" and resolvedName ~= "" then
+                sectionSet[resolvedName] = true
+            end
+        end
+    end
+
+    if next(sectionSet) == nil then
+        return nil
+    end
+
+    return sectionSet
+end
+
+local function mergePendingSave(existingPending, newPending)
+    if not existingPending then
+        return newPending
+    end
+
+    existingPending.reason = tostring(newPending.reason or existingPending.reason or "dirty")
+    existingPending.force = existingPending.force or newPending.force == true
+    existingPending.final = existingPending.final or newPending.final == true
+    existingPending.immediate = existingPending.immediate or newPending.immediate == true
+    existingPending.cleanupAfterSave = existingPending.cleanupAfterSave or newPending.cleanupAfterSave == true
+
+    if type(newPending.delaySeconds) == "number" then
+        if type(existingPending.delaySeconds) == "number" then
+            existingPending.delaySeconds = math.min(existingPending.delaySeconds, newPending.delaySeconds)
+        else
+            existingPending.delaySeconds = newPending.delaySeconds
+        end
+    end
+
+    if existingPending.fullSweep or newPending.fullSweep then
+        existingPending.fullSweep = true
+        existingPending.sections = nil
+    elseif newPending.sections then
+        existingPending.sections = existingPending.sections or {}
+        for sectionName in pairs(newPending.sections) do
+            existingPending.sections[sectionName] = true
+        end
+    end
+
+    return existingPending
+end
+
+local function scheduleFlush(coordinator, profile, player, delaySeconds)
+    if profile.SaveScheduled or profile.SaveInProgress then
+        return
+    end
+
+    profile.SaveScheduled = true
+    task.delay(delaySeconds, function()
+        profile.SaveScheduled = false
+        if profile.PendingSave and player and player.Parent then
+            task.spawn(function()
+                coordinator:FlushPlayer(player)
+            end)
+        end
+    end)
+end
+
+local function buildSectionFilter(profile, pending)
+    if pending and pending.fullSweep then
+        return nil
+    end
+    if pending and type(pending.sections) == "table" and next(pending.sections) ~= nil then
+        return pending.sections
+    end
+    if next(profile.DirtySections) ~= nil then
+        return profile.DirtySections
+    end
+    return nil
+end
+
+local function collectSectionSnapshots(profile, player, sectionFilter)
     local changedSections = {}
     local suspiciousSections = {}
     local unchangedCount = 0
+    local unchangedSections = {}
 
     for _, sectionName in ipairs(orderedSectionNames) do
+        if sectionFilter and not sectionFilter[sectionName] then
+            continue
+        end
+
         local definition = registeredSections[sectionName]
         if definition and definition.GetSaveData then
             local currentData = definition.GetSaveData(player, profile)
@@ -172,11 +267,12 @@ local function collectSectionSnapshots(profile, player)
                 }
             else
                 unchangedCount += 1
+                unchangedSections[sectionName] = true
             end
         end
     end
 
-    return changedSections, suspiciousSections, unchangedCount
+    return changedSections, suspiciousSections, unchangedCount, unchangedSections
 end
 
 local function shouldBlockSuspiciousSave(suspiciousSections)
@@ -280,17 +376,22 @@ function DataSaveCoordinator:MarkDirty(player, sectionName, reason, options)
         debounce = DataStoreConfig.SaveDebounceSeconds or 15
     end
 
+    local newPending = {
+        reason = tostring(reason or "dirty"),
+        force = options.force == true,
+        final = options.final == true,
+        immediate = false,
+        cleanupAfterSave = options.cleanupAfterSave == true,
+        delaySeconds = debounce,
+        fullSweep = options.fullSweep == true,
+        sections = options.fullSweep == true and nil or makeSectionSet(sectionName, options.sections),
+    }
+
     if profile.PendingSave then
-        profile.PendingSave.reason = tostring(reason or profile.PendingSave.reason or "dirty")
-        profile.PendingSave.force = profile.PendingSave.force or options.force == true
+        profile.PendingSave = mergePendingSave(profile.PendingSave, newPending)
         logInfo(string.format("[DataStore] save merged/debounced | player=%s | section=%s | reason=%s", tostring(player and player.Name), sectionName, tostring(reason)))
     else
-        profile.PendingSave = {
-            reason = tostring(reason or "dirty"),
-            force = options.force == true,
-            final = options.final == true,
-            cleanupAfterSave = options.cleanupAfterSave == true,
-        }
+        profile.PendingSave = newPending
         logInfo(string.format("[DataStore] save queued | player=%s | section=%s | reason=%s", tostring(player and player.Name), sectionName, tostring(reason)))
     end
 
@@ -298,15 +399,7 @@ function DataSaveCoordinator:MarkDirty(player, sectionName, reason, options)
         return true
     end
 
-    profile.SaveScheduled = true
-    task.delay(debounce, function()
-        profile.SaveScheduled = false
-        if profile.PendingSave and profile.Player and profile.Player.Parent then
-            task.spawn(function()
-                self:FlushPlayer(profile.Player)
-            end)
-        end
-    end)
+    scheduleFlush(self, profile, profile.Player, debounce)
 
     return true
 end
@@ -346,7 +439,12 @@ function DataSaveCoordinator:FlushPlayer(player)
         return true
     end
 
-    local changedSections, suspiciousSections, unchangedCount = collectSectionSnapshots(profile, player)
+    local sectionFilter = buildSectionFilter(profile, pending)
+    local changedSections, suspiciousSections, unchangedCount, unchangedSections = collectSectionSnapshots(profile, player, sectionFilter)
+    for sectionName in pairs(unchangedSections) do
+        profile.DirtySections[sectionName] = nil
+    end
+
     local shouldBlock, suspiciousReason = shouldBlockSuspiciousSave(suspiciousSections)
     if shouldBlock then
         warn(string.format("[DataStore] save blocked because suspected data wipe | player=%s | reason=%s", tostring(player and player.Name), tostring(suspiciousReason)))
@@ -394,9 +492,18 @@ function DataSaveCoordinator:FlushPlayer(player)
     end
 
     if profile.PendingSave and player and player.Parent then
-        task.spawn(function()
-            self:FlushPlayer(player)
-        end)
+        local nextPending = profile.PendingSave
+        if nextPending.immediate or nextPending.final or shutdownStarted then
+            task.spawn(function()
+                self:FlushPlayer(player)
+            end)
+        else
+            local nextDelay = nextPending.delaySeconds
+            if type(nextDelay) ~= "number" then
+                nextDelay = DataStoreConfig.SaveDebounceSeconds or 15
+            end
+            scheduleFlush(self, profile, player, nextDelay)
+        end
     end
 
     return allSucceeded
@@ -404,12 +511,19 @@ end
 
 function DataSaveCoordinator:RequestImmediateSave(player, reason, options)
     local profile = ensureProfile(player)
-    profile.PendingSave = {
+    options = options or {}
+    local explicitSections = makeSectionSet(nil, options.sections)
+    local newPending = {
         reason = tostring(reason or "manual"),
-        force = options and options.force == true,
-        final = options and options.final == true,
-        cleanupAfterSave = options and options.cleanupAfterSave == true,
+        force = options.force == true,
+        final = options.final == true,
+        immediate = true,
+        cleanupAfterSave = options.cleanupAfterSave == true,
+        delaySeconds = options.delaySeconds,
+        fullSweep = explicitSections == nil,
+        sections = explicitSections,
     }
+    profile.PendingSave = mergePendingSave(profile.PendingSave, newPending)
     return self:FlushPlayer(player)
 end
 
