@@ -83,6 +83,33 @@ local Presets = {
         },
     },
 
+    Goblin = {
+        Spawn = {
+            Weight   = 10,  -- 2x Orc's weight of 5
+            XPReward = 4,
+        },
+        Movement = {
+            WalkSpeed    = 12,  -- Orc default (8) +4
+            ChaseSpeed   = 18,  -- Orc default (14) +4
+            EnragedSpeed = 22,  -- Orc default (18) +4
+        },
+        Attack = {
+            Damage      = 3,   -- ~3x less than Orc's 8
+            Cooldown    = 0.5,
+            Windup      = 0.35,
+            Knockback   = 20,
+            KnockbackY  = 3,
+            HitboxSize  = Vector3.new(3, 5, 4),  -- smaller than Orc default (5, 6, 5)
+            HitboxOffset = Vector3.new(0, 0, 2.5),
+        },
+        Animation = {
+            Walk   = "rbxassetid://657552124",
+            Run    = "rbxassetid://507767714",
+            Idle   = "rbxassetid://507766388",
+            Attack = "rbxassetid://122917464230305",
+        },
+    },
+
     Ogre = {
         Spawn = {
             Weight   = 2,

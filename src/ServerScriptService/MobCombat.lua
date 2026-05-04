@@ -145,6 +145,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local ORC_NOISE_CHANCE = 0.25
     local ORC_NOISE_COOLDOWN = 3
     local isOrc = (mobModel.Name == "Orc")
+    local GOBLIN_NOISE_CHANCE = 0.25
+    local GOBLIN_NOISE_COOLDOWN = 3
+    local isGoblin = (mobModel.Name == "Goblin")
 
     local SHOW_HITBOX = (cfgDbg.ShowHitbox == true)
     local HITBOX_COLOR = cfgDbg.HitboxColor or Color3.fromRGB(255, 50, 50)
@@ -164,6 +167,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local REPATH_INTERVAL = 0.20
     local REPATH_DISTANCE = 1.5
     local lastOrcNoiseProcAt = os.clock() -- start at now so full cooldown must expire before first noise (prevents spawn-time audio pop)
+    local lastGoblinNoiseProcAt = os.clock() -- shared cooldown for both GoblinNoise and GoblinDeath
     local STUCK_MISS_THRESHOLD = 2
     local STUCK_SPEED_THRESHOLD = 0.6
     local STUCK_RETREAT_TIME = 0.2
@@ -377,6 +381,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local mobSwingTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("MobSwing")
     local mobHitTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("MobHit")
     local orcNoiseTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("OrcNoise")
+    local goblinNoiseTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("GoblinNoise")
+    local goblinDeathTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("GoblinDeath")
 
     local function playTemplateSound(template, parentPart)
         if not template or not template:IsA("Sound") then return end
@@ -398,6 +404,28 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         end
     end
 
+    -- Goblin: GoblinNoise plays on attack or aggro (shared cooldown with GoblinDeath)
+    local function playGoblinNoise()
+        if not isGoblin then return end
+        local now = os.clock()
+        if (now - lastGoblinNoiseProcAt) < GOBLIN_NOISE_COOLDOWN then return end
+        if math.random() < GOBLIN_NOISE_CHANCE then
+            lastGoblinNoiseProcAt = now
+            playTemplateSound(goblinNoiseTemplate, getRootPart(mobModel) or mobModel)
+        end
+    end
+
+    -- Goblin: GoblinDeath plays randomly when the goblin takes damage (shared cooldown with GoblinNoise)
+    local function playGoblinDeath()
+        if not isGoblin then return end
+        local now = os.clock()
+        if (now - lastGoblinNoiseProcAt) < GOBLIN_NOISE_COOLDOWN then return end
+        if math.random() < GOBLIN_NOISE_CHANCE then
+            lastGoblinNoiseProcAt = now
+            playTemplateSound(goblinDeathTemplate, getRootPart(mobModel) or mobModel)
+        end
+    end
+
     local function performAttack(targetRoot)
         if isAttacking then return end
         if not mobModel.Parent or humanoid.Health <= 0 then return end
@@ -412,6 +440,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         playTemplateSound(mobSwingTemplate, getRootPart(mobModel) or mobModel)
         -- Orc-specific flavor: 25% chance to play OrcNoise on attack (3s proc cooldown).
         playOrcNoise()
+        -- Goblin-specific flavor: 25% chance to play GoblinNoise on attack (3s shared cooldown).
+        playGoblinNoise()
 
         if attackTrack then
             pcall(function()
@@ -526,6 +556,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
             -- Orc-specific flavor: 25% chance to play OrcNoise when damaged (3s proc cooldown).
             playOrcNoise()
+            -- Goblin-specific flavor: 25% chance to play GoblinDeath when damaged (3s shared cooldown).
+            playGoblinDeath()
 
             local attackerId = humanoid:GetAttribute("lastDamagerUserId")
             if attackerId then
@@ -583,6 +615,10 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 -- Orc-specific flavor: 25% chance to play OrcNoise when first aggroed (3s proc cooldown).
                 if (not wasChasing) and isOrc then
                     playOrcNoise()
+                end
+                -- Goblin-specific flavor: 25% chance to play GoblinNoise when first aggroed (3s shared cooldown).
+                if (not wasChasing) and isGoblin then
+                    playGoblinNoise()
                 end
                 updateSpeedByState()
 

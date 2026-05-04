@@ -17,7 +17,7 @@ pcall(function() PhysicsService:CollisionGroupSetCollidable(MOB_COLLISION_GROUP,
 ---------------------------------------------------------------------------
 -- Spawner configuration
 ---------------------------------------------------------------------------
-local TEMPLATE_NAMES = { "Zombie", "Zack", "Orc", "Ogre" }
+local TEMPLATE_NAMES = { "Zombie", "Zack", "Orc", "Ogre", "Goblin" }
 local PORTAL_GROUP_NAMES = { "DarkPortal1", "DarkPortal2" }
 local PORTAL_PART_NAME = "PortalPlane"
 local MOB_AREA_PREFIX = "MobArea"
