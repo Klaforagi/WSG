@@ -10,6 +10,7 @@ local DataSaveCoordinator = {}
 local registeredSections = {}
 local orderedSectionNames = {}
 local profilesByUserId = {}
+local cleanedProfilesByUserId = {}
 local activeWrites = 0
 local shutdownStarted = false
 
@@ -28,6 +29,7 @@ end
 
 local function ensureProfile(player)
     local userId = getUserIdKey(player)
+    cleanedProfilesByUserId[userId] = nil
     local profile = profilesByUserId[userId]
     if profile then
         if typeof(player) == "Instance" and player:IsA("Player") then
@@ -234,6 +236,10 @@ local function buildSectionFilter(profile, pending)
         return profile.DirtySections
     end
     return nil
+end
+
+local function hasDirtySections(profile)
+    return profile and next(profile.DirtySections) ~= nil
 end
 
 local function collectSectionSnapshots(profile, player, sectionFilter)
@@ -463,6 +469,9 @@ function DataSaveCoordinator:FlushPlayer(player)
         releaseWriteSlot()
         profile.SaveInProgress = false
         profile.LastSaveSucceeded = true
+        if pending.cleanupAfterSave then
+            self:CleanupPlayer(player)
+        end
         return true
     end
 
@@ -513,6 +522,7 @@ function DataSaveCoordinator:RequestImmediateSave(player, reason, options)
     local profile = ensureProfile(player)
     options = options or {}
     local explicitSections = makeSectionSet(nil, options.sections)
+    local useDirtyOnly = options.dirtyOnly == true
     local newPending = {
         reason = tostring(reason or "manual"),
         force = options.force == true,
@@ -520,8 +530,8 @@ function DataSaveCoordinator:RequestImmediateSave(player, reason, options)
         immediate = true,
         cleanupAfterSave = options.cleanupAfterSave == true,
         delaySeconds = options.delaySeconds,
-        fullSweep = explicitSections == nil,
-        sections = explicitSections,
+        fullSweep = explicitSections == nil and not useDirtyOnly,
+        sections = explicitSections or (useDirtyOnly and {} or nil),
     }
     profile.PendingSave = mergePendingSave(profile.PendingSave, newPending)
     return self:FlushPlayer(player)
@@ -546,6 +556,7 @@ function DataSaveCoordinator:CleanupPlayer(player)
         end
     end
 
+    cleanedProfilesByUserId[profile.UserId] = true
     profilesByUserId[profile.UserId] = nil
 end
 
@@ -560,12 +571,14 @@ function DataSaveCoordinator:HandlePlayerRemoving(player)
     self:RequestImmediateSave(player, "PlayerRemoving", {
         force = true,
         final = true,
+        dirtyOnly = true,
         cleanupAfterSave = true,
     })
 end
 
 function DataSaveCoordinator:BeginShutdown()
     shutdownStarted = true
+    DataStoreConfig.ShutdownInProgress = true
 end
 
 function DataSaveCoordinator:HandleShutdown()
@@ -575,16 +588,27 @@ function DataSaveCoordinator:HandleShutdown()
 
     local startedAt = os.clock()
     for index, player in ipairs(Players:GetPlayers()) do
+        local userId = getUserIdKey(player)
+        if cleanedProfilesByUserId[userId] then
+            continue
+        end
+
         if (os.clock() - startedAt) > (DataStoreConfig.ShutdownTimeoutSeconds or 20) then
             warn("[DataStore] shutdown save timed out before all players were processed")
             break
         end
 
-        self:RequestImmediateSave(player, "BindToClose", {
-            force = true,
-            final = true,
-            cleanupAfterSave = true,
-        })
+        local profile = profilesByUserId[userId]
+        if profile and (hasDirtySections(profile) or profile.PendingSave) then
+            self:RequestImmediateSave(player, "BindToClose", {
+                force = true,
+                final = true,
+                dirtyOnly = true,
+                cleanupAfterSave = true,
+            })
+        elseif profile then
+            self:CleanupPlayer(player)
+        end
         if index < #Players:GetPlayers() then
             task.wait(DataStoreConfig.ShutdownSaveSpacingSeconds or 0.2)
         end

@@ -9,6 +9,8 @@ local DataStoreConfig = {
     MinimumBudgetThreshold = 1,
     BudgetPollIntervalSeconds = 0.25,
     RetryBackoffSeconds = { 1, 2, 4 },
+    StudioShutdownRetryBackoffSeconds = { 0 },
+    WaitForBudgetDuringStudioShutdown = false,
     SuspiciousSectionThreshold = 2,
 }
 

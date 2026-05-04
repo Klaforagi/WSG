@@ -64,7 +64,15 @@ function DataStoreOps.IsStudio()
     return RunService:IsStudio()
 end
 
+local function isStudioShutdownMode()
+    return RunService:IsStudio() and DataStoreConfig.ShutdownInProgress == true
+end
+
 function DataStoreOps.WaitForBudget(requestType, label)
+    if isStudioShutdownMode() and DataStoreConfig.WaitForBudgetDuringStudioShutdown == false then
+        return true
+    end
+
     local warned = false
     while true do
         local ok, budget = pcall(function()
@@ -83,8 +91,21 @@ function DataStoreOps.WaitForBudget(requestType, label)
 end
 
 local function getRetryDelay(attempt)
-    local backoff = DataStoreConfig.RetryBackoffSeconds or { 1, 2, 4 }
+    local backoff = nil
+    if isStudioShutdownMode() then
+        backoff = DataStoreConfig.StudioShutdownRetryBackoffSeconds
+    end
+    backoff = backoff or DataStoreConfig.RetryBackoffSeconds or { 1, 2, 4 }
     return backoff[attempt] or backoff[#backoff] or 1
+end
+
+local function getMaxAttempts()
+    local backoff = nil
+    if isStudioShutdownMode() then
+        backoff = DataStoreConfig.StudioShutdownRetryBackoffSeconds
+    end
+    backoff = backoff or DataStoreConfig.RetryBackoffSeconds or { 1, 2, 4 }
+    return math.max(1, #backoff)
 end
 
 function DataStoreOps.Load(store, key, label, callback)
@@ -93,7 +114,7 @@ function DataStoreOps.Load(store, key, label, callback)
     end
 
     local lastError = nil
-    local maxAttempts = #(DataStoreConfig.RetryBackoffSeconds or { 1, 2, 4 })
+    local maxAttempts = getMaxAttempts()
     for attempt = 1, maxAttempts do
         DataStoreOps.WaitForBudget(Enum.DataStoreRequestType.GetAsync, label)
 
@@ -124,7 +145,7 @@ function DataStoreOps.Update(store, key, label, transformFunc)
     end
 
     local lastError = nil
-    local maxAttempts = #(DataStoreConfig.RetryBackoffSeconds or { 1, 2, 4 })
+    local maxAttempts = getMaxAttempts()
     for attempt = 1, maxAttempts do
         DataStoreOps.WaitForBudget(Enum.DataStoreRequestType.UpdateAsync, label)
 
