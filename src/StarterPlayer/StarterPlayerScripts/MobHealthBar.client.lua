@@ -51,18 +51,22 @@ end
 --------------------------------------------------------------------------------
 local state = {}
 local trackBillboard
+local TRACK_RETRY_DELAY = 0.05
+local TRACK_RETRY_LIMIT = 20
 
 local function scheduleTrackRetry(billboard)
 	if not billboard or not billboard.Parent then return end
 	local s = state[billboard]
 	if not s or s.tracked then return end
 	if s.retryScheduled then return end
+	if (s.retryCount or 0) >= TRACK_RETRY_LIMIT then return end
 	s.retryScheduled = true
-	task.defer(function()
+	task.delay(TRACK_RETRY_DELAY, function()
 		local st = state[billboard]
 		if not st then return end
 		st.retryScheduled = false
 		if st.tracked or not billboard.Parent then return end
+		st.retryCount = (st.retryCount or 0) + 1
 		trackBillboard(billboard)
 	end)
 end
@@ -206,6 +210,7 @@ trackBillboard = function(billboard)
 			damageTween = nil,
 			damageTask = nil,
 			retryScheduled = false,
+			retryCount = 0,
 		}
 		state[billboard] = s
 	end
@@ -236,6 +241,7 @@ trackBillboard = function(billboard)
 	local connections = s.connections
 	s.prevPct = initPct
 	s.tracked = true
+	s.retryCount = 0
 
 	-- Health change → drive all visual effects
 	connections[#connections + 1] = hum.HealthChanged:Connect(function(newHealth)
