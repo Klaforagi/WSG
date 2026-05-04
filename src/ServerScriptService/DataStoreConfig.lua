@@ -1,5 +1,5 @@
 local DataStoreConfig = {
-    SaveInStudio = false,
+    SaveInStudio = true,
     LoadInStudio = true,
     DebugLogs = true,
     SaveDebounceSeconds = 15,
