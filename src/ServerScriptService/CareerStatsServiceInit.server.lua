@@ -14,6 +14,7 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local CareerStatsService = require(ServerScriptService:WaitForChild("CareerStatsService", 10))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local StatService        = require(ServerScriptService:WaitForChild("StatService", 10))
 
 --------------------------------------------------------------------------------
@@ -112,11 +113,55 @@ end
 -- Player lifecycle
 --------------------------------------------------------------------------------
 local joinTimes = {}  -- [Player] -> os.clock() when they joined
+local careerStatsRegistered = false
+
+local function validateCareerStats(_, currentData, lastGoodData)
+    if type(currentData) ~= "table" or type(lastGoodData) ~= "table" then
+        return nil
+    end
+
+    local previousStats = type(lastGoodData.stats) == "table" and lastGoodData.stats or {}
+    local newStats = type(currentData.stats) == "table" and currentData.stats or {}
+    if (tonumber(previousStats.TotalXP) or 0) > 0 and (tonumber(newStats.TotalXP) or 0) == 0 then
+        return {
+            suspicious = true,
+            severity = "warning",
+            reason = "career TotalXP reset to zero",
+        }
+    end
+    return nil
+end
+
+local function registerCareerStatsSection()
+    if careerStatsRegistered then
+        return
+    end
+    careerStatsRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "CareerStats",
+        Priority = 40,
+        Critical = false,
+        Load = function(player)
+            return CareerStatsService:LoadProfileForPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return CareerStatsService:GetSaveData(player)
+        end,
+        Save = function(player, currentData, lastGoodData)
+            return CareerStatsService:SaveProfileForPlayer(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            CareerStatsService:ClearPlayer(player)
+        end,
+        Validate = validateCareerStats,
+    })
+end
 
 local function onPlayerAdded(player)
     task.spawn(function()
         task.wait(1) -- let other services init first
-        CareerStatsService:LoadForPlayer(player)
+        DataSaveCoordinator:LoadSection(player, "CareerStats")
         joinTimes[player] = os.clock()
         print("[CareerStatsServiceInit] Loaded career stats for", player.Name)
     end)
@@ -131,33 +176,12 @@ local function flushPlaytime(player)
     end
 end
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+registerCareerStatsSection()
 
 Players.PlayerRemoving:Connect(function(player)
     flushPlaytime(player)
-    if SaveGuard:ClaimSave(player, "CareerStats") then
-        pcall(function() CareerStatsService:SaveForPlayer(player) end)
-        SaveGuard:ReleaseSave(player, "CareerStats")
-    end
-    CareerStatsService:ClearPlayer(player)
     joinTimes[player] = nil
     currentStreaks[player] = nil
-end)
-
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for player, _ in pairs(joinTimes) do
-        flushPlaytime(player)
-    end
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "CareerStats") then
-                pcall(function() CareerStatsService:SaveForPlayer(p) end)
-                SaveGuard:ReleaseSave(p, "CareerStats")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
 end)
 
 for _, p in ipairs(Players:GetPlayers()) do
@@ -172,7 +196,6 @@ task.spawn(function()
         for player, _ in pairs(joinTimes) do
             flushPlaytime(player)
         end
-        pcall(function() CareerStatsService:SaveAll() end)
     end
 end)
 

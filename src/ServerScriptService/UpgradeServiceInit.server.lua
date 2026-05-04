@@ -11,10 +11,57 @@ local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+
 --------------------------------------------------------------------------------
 -- Require modules
 --------------------------------------------------------------------------------
 local UpgradeService = require(ServerScriptService:WaitForChild("UpgradeService", 10))
+
+local upgradeSectionRegistered = false
+
+local function registerUpgradeSection()
+	if upgradeSectionRegistered then
+		return
+	end
+	upgradeSectionRegistered = true
+
+	DataSaveCoordinator:RegisterSection({
+		Name = "Upgrade",
+		Priority = 57,
+		Critical = false,
+		Load = function(player)
+			return UpgradeService:LoadForPlayer(player)
+		end,
+		GetSaveData = function(player)
+			return UpgradeService:GetSaveData(player)
+		end,
+		Save = function(player, currentData)
+			return UpgradeService:SaveForPlayer(player, currentData)
+		end,
+		Cleanup = function(player)
+			UpgradeService:ClearPlayer(player)
+		end,
+		Validate = function(_, currentData, lastGoodData)
+			local currentTotal = 0
+			local lastTotal = 0
+			for _, value in pairs(currentData or {}) do
+				if type(value) == "number" then currentTotal += value end
+			end
+			for _, value in pairs(lastGoodData or {}) do
+				if type(value) == "number" then lastTotal += value end
+			end
+			if lastTotal > 0 and currentTotal == 0 then
+				return {
+					suspicious = true,
+					severity = "warning",
+					reason = "upgrade levels reset to zero",
+				}
+			end
+			return nil
+		end,
+	})
+end
 
 --------------------------------------------------------------------------------
 -- AchievementService (lazy-loaded to avoid require-order issues)
@@ -117,9 +164,11 @@ end
 -- Player lifecycle
 --------------------------------------------------------------------------------
 
+registerUpgradeSection()
+
 Players.PlayerAdded:Connect(function(player)
 	task.spawn(function()
-		UpgradeService:LoadForPlayer(player)
+		DataSaveCoordinator:LoadSection(player, "Upgrade")
 		-- Wait for XPService to set the Level attribute so we send the
 		-- correct player level to the client and purchase validation works.
 		local waited = 0
@@ -141,7 +190,7 @@ end)
 -- Handle players already present (Team Test / late join)
 for _, player in ipairs(Players:GetPlayers()) do
 	task.spawn(function()
-		UpgradeService:LoadForPlayer(player)
+		DataSaveCoordinator:LoadSection(player, "Upgrade")
 		-- Wait for XPService to set the Level attribute
 		local waited = 0
 		while not player:GetAttribute("Level") and waited < 10 and player.Parent do
@@ -157,40 +206,6 @@ for _, player in ipairs(Players:GetPlayers()) do
 		syncUpgradeLevelAchievements(player)
 	end)
 end
-
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-Players.PlayerRemoving:Connect(function(player)
-	if SaveGuard:ClaimSave(player, "Upgrade") then
-		local ok, err = pcall(function()
-			UpgradeService:SaveForPlayer(player)
-		end)
-		if not ok then
-			warn("[UpgradeServiceInit] SaveForPlayer error for", player.Name, err)
-		end
-		SaveGuard:ReleaseSave(player, "Upgrade")
-	end
-	UpgradeService:ClearPlayer(player)
-end)
-
--- BindToClose: save all on shutdown
-game:BindToClose(function()
-	SaveGuard:BeginShutdown()
-	for _, p in ipairs(Players:GetPlayers()) do
-		task.spawn(function()
-			if SaveGuard:ClaimSave(p, "Upgrade") then
-				local ok, err = pcall(function()
-					UpgradeService:SaveForPlayer(p)
-				end)
-				if not ok then
-					warn("[UpgradeServiceInit] SaveAll shutdown error for", p.Name, err)
-				end
-				SaveGuard:ReleaseSave(p, "Upgrade")
-			end
-		end)
-	end
-	SaveGuard:WaitForAll(5)
-end)
 
 --------------------------------------------------------------------------------
 -- INTEGRATION: Expose weapon damage multipliers via _G

@@ -4,11 +4,13 @@
 local Players = game:GetService("Players")
 local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local XPConfig = require(ReplicatedStorage:WaitForChild("XPConfig"))
 local XPFormula = require(ReplicatedStorage:WaitForChild("XPFormula"))
 local XPModule = require(script.Parent:WaitForChild("XPServiceModule"))
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 
 local BoostService
 local function getBoostService()
@@ -60,6 +62,8 @@ local XP_LevelUp = Remotes:WaitForChild(REMOTE_NAMES.Level)
 -- In-memory store for quick access (server authoritative)
 -- structure: data[player.UserId] = {Level = int, XP = int, TotalXP = int}
 local data = {}
+local xpRegistered = false
+local updateLeaderstats
 
 -- Helper: get required xp for level (use XPFormula)
 local function GetXPRequiredForLevel(level)
@@ -67,49 +71,144 @@ local function GetXPRequiredForLevel(level)
 end
 
 -- Load/save helpers
-local function loadPlayer(userId)
-    local key = tostring(userId)
-    local ok, res = pcall(function()
-        return DS:GetAsync(key)
-    end)
-    if ok and type(res) == "table" then
-        local lvl = tonumber(res.Level) or 1
-        local xp  = tonumber(res.XP) or 0
-        local total = tonumber(res.TotalXP) or 0
-        print("[XPService] Loaded saved data for", userId, "— Level:", lvl, "XP:", xp)
-        return {Level = lvl, XP = xp, TotalXP = total}
-    else
-        if not ok then
-            warn("[XPService] DataStore unavailable for", userId, "— using defaults (XP will work but won't persist)")
-        else
-            print("[XPService] No saved data for", userId, "— starting fresh")
-        end
-        return {Level = 1, XP = 0, TotalXP = 0}
-    end
+local function normalizeXPData(rawData)
+    rawData = type(rawData) == "table" and rawData or {}
+    return {
+        Level = math.max(1, math.floor(tonumber(rawData.Level) or 1)),
+        XP = math.max(0, math.floor(tonumber(rawData.XP) or 0)),
+        TotalXP = math.max(0, math.floor(tonumber(rawData.TotalXP) or 0)),
+    }
 end
 
-local function savePlayer(userId)
-    local p = data[userId]
-    if not p then return false end
+local function applyXPEntry(player, entry)
+    entry = normalizeXPData(entry)
+    data[player.UserId] = entry
+
+    local xpToNext = GetXPRequiredForLevel(entry.Level)
+    pcall(function()
+        player:SetAttribute("Level", entry.Level)
+        player:SetAttribute("XP", entry.XP)
+        player:SetAttribute("XPToNext", xpToNext)
+        player:SetAttribute("TotalXP", entry.TotalXP)
+    end)
+
+    updateLeaderstats(player, entry.Level)
+    pcall(function()
+        XP_Update:FireClient(player, { playerUserId = player.UserId, newLevel = entry.Level, xp = entry.XP, xpToNext = xpToNext, delta = 0, reason = "Init" })
+    end)
+end
+
+local function loadPlayer(userId)
     local key = tostring(userId)
-    local payload = { Level = p.Level, XP = p.XP, TotalXP = p.TotalXP }
-    local tries = 0
-    while tries < 3 do
-        local ok, err = pcall(function()
-            DS:SetAsync(key, payload)
-        end)
-        if ok then return true end
-        tries = tries + 1
-        task.wait(1 + tries * 0.5)
+    local ok, result, err = DataStoreOps.Load(DS, key, "XP/" .. key)
+    if not ok then
+        warn("[XPService] DataStore unavailable for", userId, "— using temporary defaults and blocking saves")
+        return {
+            status = "failed",
+            data = normalizeXPData(nil),
+            reason = err,
+        }
     end
-    warn("XPService: failed to save data for", userId)
-    return false
+
+    if type(result) == "table" then
+        local entry = normalizeXPData(result)
+        print("[XPService] Loaded saved data for", userId, "— Level:", entry.Level, "XP:", entry.XP)
+        return {
+            status = "existing",
+            data = entry,
+        }
+    end
+
+    print("[XPService] No saved data for", userId, "— starting fresh")
+    return {
+        status = "new",
+        data = normalizeXPData(nil),
+    }
+end
+
+local function savePlayer(player, payload, lastGoodData)
+    if not player then return false, "missing player" end
+    local userId = player.UserId
+    local key = tostring(userId)
+    payload = normalizeXPData(payload or data[userId])
+    lastGoodData = normalizeXPData(lastGoodData)
+
+    local ok, _, err = DataStoreOps.Update(DS, key, "XP/" .. key, function(oldData)
+        local stored = normalizeXPData(oldData)
+        if (stored.Level or 1) > 1 and (payload.Level or 1) <= 1 then
+            warn("[XPService] suspected level wipe blocked for", userId)
+            return oldData
+        end
+        if (stored.TotalXP or 0) > 0 and (payload.TotalXP or 0) == 0 and (lastGoodData.TotalXP or 0) > 0 then
+            warn("[XPService] suspected TotalXP wipe blocked for", userId)
+            return oldData
+        end
+        return payload
+    end)
+
+    if not ok then
+        warn("XPService: failed to save data for", userId)
+        return false, err
+    end
+    return true
 end
 
 -- Public getter
 local function GetPlayerData(player)
     if not player then return nil end
     return data[player.UserId]
+end
+
+local function validateXP(_, currentData, lastGoodData)
+    if type(currentData) ~= "table" or type(lastGoodData) ~= "table" then
+        return nil
+    end
+
+    if (tonumber(lastGoodData.Level) or 1) > 1 and (tonumber(currentData.Level) or 1) <= 1 then
+        return {
+            suspicious = true,
+            severity = "severe",
+            reason = "level dropped back to 1",
+        }
+    end
+
+    if (tonumber(lastGoodData.TotalXP) or 0) > 0 and (tonumber(currentData.TotalXP) or 0) == 0 then
+        return {
+            suspicious = true,
+            severity = "severe",
+            reason = "TotalXP reset to 0",
+        }
+    end
+
+    return nil
+end
+
+local function registerXPSection()
+    if xpRegistered then
+        return
+    end
+    xpRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "XP",
+        Priority = 15,
+        Critical = true,
+        Load = function(player)
+            local result = loadPlayer(player.UserId)
+            applyXPEntry(player, result.data)
+            return result
+        end,
+        GetSaveData = function(player)
+            return DataStoreOps.DeepCopy(data[player.UserId])
+        end,
+        Save = function(player, currentData, lastGoodData)
+            return savePlayer(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            data[player.UserId] = nil
+        end,
+        Validate = validateXP,
+    })
 end
 
 -- Load MobSettings so we can resolve per-mob XP values
@@ -119,19 +218,20 @@ if ReplicatedStorage:FindFirstChild("MobSettings") then
 end
 
 --- Returns the XP reward for killing a mob of the given template name.
---- Falls back to XPConfig.DefaultMobXP if the mob has no xp_reward field.
+--- Falls back to XPConfig.DefaultMobXP if the mob has no configured reward.
 local function GetMobXP(mobName)
-    if MobSettings and MobSettings.presets then
-        local cfg = MobSettings.presets[mobName]
-        if cfg and type(cfg.xp_reward) == "number" then
-            return cfg.xp_reward
+    if MobSettings and MobSettings.Get then
+        local cfg = MobSettings.Get(mobName)
+        local spawnCfg = cfg and cfg.Spawn
+        if spawnCfg and type(spawnCfg.XPReward) == "number" then
+            return spawnCfg.XPReward
         end
     end
     return XPConfig.DefaultMobXP or 3
 end
 
 -- Helper: update the Level value inside leaderstats
-local function updateLeaderstats(player, level)
+updateLeaderstats = function(player, level)
     local ls = player:FindFirstChild("leaderstats")
     if not ls then return end
     local lv = ls:FindFirstChild("Level")
@@ -202,8 +302,6 @@ local function AwardXP(player, reason, amountOverride, metadata)
             pcall(function()
                 XP_LevelUp:FireAllClients({ playerUserId = player.UserId, oldLevel = entry.Level - 1, newLevel = entry.Level })
             end)
-            -- save on level up (non-blocking so callers aren't stalled by DataStore)
-            task.spawn(function() savePlayer(player.UserId) end)
         else
             break
         end
@@ -243,6 +341,8 @@ local function AwardXP(player, reason, amountOverride, metadata)
         XP_Popup:FireClient(player, popup)
     end)
 
+    DataSaveCoordinator:MarkDirty(player, "XP", reasonKey)
+
     return true
 end
 
@@ -255,9 +355,6 @@ print("[XPService] Module exports ready")
 
 -- Player lifecycle: load and save
 Players.PlayerAdded:Connect(function(player)
-    local entry = loadPlayer(player.UserId)
-    data[player.UserId] = entry
-
     -- Create leaderstats folder so Level shows on the in-game leaderboard
     local ls = Instance.new("Folder")
     ls.Name = "leaderstats"
@@ -265,56 +362,29 @@ Players.PlayerAdded:Connect(function(player)
 
     local levelStat = Instance.new("IntValue")
     levelStat.Name = "Level"
-    levelStat.Value = entry.Level
+    levelStat.Value = 1
     levelStat.Parent = ls
 
-    -- set Attributes
-    local xpToNext = GetXPRequiredForLevel(entry.Level)
-    pcall(function()
-        player:SetAttribute("Level", entry.Level)
-        player:SetAttribute("XP", entry.XP)
-        player:SetAttribute("XPToNext", xpToNext)
-        player:SetAttribute("TotalXP", entry.TotalXP)
-    end)
-    -- send initial update
-    pcall(function()
-        XP_Update:FireClient(player, { playerUserId = player.UserId, newLevel = entry.Level, xp = entry.XP, xpToNext = xpToNext, delta = 0, reason = "Init" })
-    end)
+    DataSaveCoordinator:LoadSection(player, "XP")
 end)
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
+registerXPSection()
 
-Players.PlayerRemoving:Connect(function(player)
-    if SaveGuard:ClaimSave(player, "XP") then
-        savePlayer(player.UserId)
-        SaveGuard:ReleaseSave(player, "XP")
-    end
-    data[player.UserId] = nil
-end)
+for _, player in ipairs(Players:GetPlayers()) do
+    task.spawn(function()
+        if player:FindFirstChild("leaderstats") == nil then
+            local ls = Instance.new("Folder")
+            ls.Name = "leaderstats"
+            ls.Parent = player
 
--- Save all on shutdown (was missing – data loss risk)
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "XP") then
-                savePlayer(p.UserId)
-                SaveGuard:ReleaseSave(p, "XP")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
-
--- Periodic autosave
-task.spawn(function()
-    while true do
-        task.wait(120)
-        for userId, _ in pairs(data) do
-            pcall(function() savePlayer(userId) end)
+            local levelStat = Instance.new("IntValue")
+            levelStat.Name = "Level"
+            levelStat.Value = 1
+            levelStat.Parent = ls
         end
-    end
-end)
+        DataSaveCoordinator:LoadSection(player, "XP")
+    end)
+end
 
 -- Expose a BindableFunction for scripts that prefer event binding (optional)
 local bindableName = "XPService_AwardBindable"

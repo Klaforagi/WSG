@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Teams = game:GetService("Teams")
 
 local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+local Map = workspace:WaitForChild("WSG")
 
 ---------------------------------------------------------------------------
 -- Remote events
@@ -18,6 +19,14 @@ changeRequest.Parent = ReplicatedStorage
 local changeResponse = Instance.new("RemoteEvent")
 changeResponse.Name = "ChangeTeamResponse"
 changeResponse.Parent = ReplicatedStorage
+
+local returnToLobbyRequest = Instance.new("RemoteEvent")
+returnToLobbyRequest.Name = "ReturnToLobbyRequest"
+returnToLobbyRequest.Parent = ReplicatedStorage
+
+local returnToLobbyResponse = Instance.new("RemoteEvent")
+returnToLobbyResponse.Name = "ReturnToLobbyResponse"
+returnToLobbyResponse.Parent = ReplicatedStorage
 
 ---------------------------------------------------------------------------
 -- Rate limit per player
@@ -99,7 +108,7 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 		if hrp then
 			task.wait(0.15) -- let other handlers settle, then override position
 			local spawnName = teamName == "Red" and "RedSpawn" or "BlueSpawn"
-			local spawnPart = workspace:FindFirstChild(spawnName)
+			local spawnPart = Map:FindFirstChild(spawnName)
 			if spawnPart and spawnPart:IsA("BasePart") then
 				hrp.CFrame = randomPointOnPart(spawnPart)
 			end
@@ -112,4 +121,44 @@ end)
 ---------------------------------------------------------------------------
 Players.PlayerRemoving:Connect(function(plr)
 	lastChangeTime[plr] = nil
+end)
+
+---------------------------------------------------------------------------
+-- Return to Lobby handler
+-- Moves the player to Neutral and respawns them at workspace.LobbySpawn.
+-- TeamSpawn.CharacterAdded sees no "Team" attribute and places the
+-- character at LobbySpawn automatically.
+---------------------------------------------------------------------------
+returnToLobbyRequest.OnServerEvent:Connect(function(plr)
+	-- Cooldown (shared with team-change cooldown)
+	local now = tick()
+	if lastChangeTime[plr] and (now - lastChangeTime[plr]) < COOLDOWN then
+		returnToLobbyResponse:FireClient(plr, false, "Please wait before changing teams again")
+		return
+	end
+
+	-- Already in lobby
+	local currentTeam = plr.Team
+	if not currentTeam or currentTeam.Name == "Neutral" then
+		returnToLobbyResponse:FireClient(plr, false, "You are already in the lobby")
+		return
+	end
+
+	local neutralTeam = Teams:FindFirstChild("Neutral")
+	if not neutralTeam then
+		warn("[TeamChange] Neutral team object not found")
+		returnToLobbyResponse:FireClient(plr, false, "Lobby team not available")
+		return
+	end
+
+	lastChangeTime[plr] = now
+	plr.Team = neutralTeam
+	plr:SetAttribute("Team", nil)  -- clears the attribute; TeamSpawn will see nil → LobbySpawn
+
+	returnToLobbyResponse:FireClient(plr, true, "Returned to lobby")
+
+	-- Reload character; TeamSpawn.CharacterAdded handles placing at LobbySpawn
+	task.spawn(function()
+		pcall(function() plr:LoadCharacter() end)
+	end)
 end)

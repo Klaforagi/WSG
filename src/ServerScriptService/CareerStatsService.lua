@@ -18,6 +18,9 @@
 
 local DataStoreService = game:GetService("DataStoreService")
 local Players          = game:GetService("Players")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 
 local DATASTORE_NAME = "CareerStats_v1"
 local RETRIES        = 3
@@ -26,6 +29,7 @@ local RETRY_DELAY    = 0.5
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 
 local CareerStatsService = {}
+local _saveCoordinator
 
 --------------------------------------------------------------------------------
 -- Default career stats template
@@ -63,6 +67,32 @@ local function getKey(player)
     return "User_" .. tostring(player.UserId)
 end
 
+local function getSaveCoordinator()
+    if _saveCoordinator == nil then
+        local ok, coordinator = pcall(function()
+            return require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+        end)
+        if ok then
+            _saveCoordinator = coordinator
+        else
+            _saveCoordinator = false
+        end
+    end
+    if _saveCoordinator == false then
+        return nil
+    end
+    return _saveCoordinator
+end
+
+local function markDirty(player, reason)
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:MarkDirty(player, "CareerStats", reason or "career_stats", {
+            delaySeconds = 30,
+        })
+    end
+end
+
 --- Merge saved data with current defaults so new stat keys get 0.
 local function mergeWithDefaults(saved)
     local stats = {}
@@ -77,40 +107,80 @@ end
 -- DataStore I/O
 --------------------------------------------------------------------------------
 
-function CareerStatsService:LoadForPlayer(player)
-    if not player then return end
-    local key = getKey(player)
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
-        end)
-        if success then break end
-        warn("[CareerStatsService] GetAsync attempt", i, "failed:", tostring(result))
-        task.wait(RETRY_DELAY * i)
+function CareerStatsService:LoadProfileForPlayer(player)
+    if not player then
+        return {
+            status = "failed",
+            data = mergeWithDefaults(nil),
+            reason = "missing player",
+        }
     end
+    local key = getKey(player)
+    local success, result, err = DataStoreOps.Load(ds, key, "CareerStats/" .. key)
 
     local data = mergeWithDefaults(success and result or nil)
     playerData[player] = data
     print("[CareerStatsService] Loaded career stats for", player.Name)
+    if not success then
+        return {
+            status = "failed",
+            data = DataStoreOps.DeepCopy(data),
+            reason = err,
+        }
+    end
+    if result == nil then
+        return {
+            status = "new",
+            data = DataStoreOps.DeepCopy(data),
+        }
+    end
+    return {
+        status = "existing",
+        data = DataStoreOps.DeepCopy(data),
+    }
+end
+
+function CareerStatsService:LoadForPlayer(player)
+    local result = self:LoadProfileForPlayer(player)
+    return result and result.data or nil
+end
+
+function CareerStatsService:GetSaveData(player)
+    if not player then return nil end
+    return DataStoreOps.DeepCopy(playerData[player])
+end
+
+function CareerStatsService:SaveProfileForPlayer(player, currentData, oldData)
+    if not player then return false, "missing player" end
+    local data = currentData or playerData[player]
+    if not data then return false, "missing data" end
+    local key = getKey(player)
+    local payload = { stats = data.stats }
+    local success, _, err = DataStoreOps.Update(ds, key, "CareerStats/" .. key, function(storedPayload)
+        local previous = type(oldData) == "table" and oldData or storedPayload or { stats = {} }
+        local previousStats = type(previous.stats) == "table" and previous.stats or {}
+        local newStats = type(payload.stats) == "table" and payload.stats or {}
+        local previousTotal = 0
+        local newTotal = 0
+        for _, statKey in ipairs(STAT_KEYS) do
+            previousTotal += math.max(0, math.floor(tonumber(previousStats[statKey]) or 0))
+            newTotal += math.max(0, math.floor(tonumber(newStats[statKey]) or 0))
+        end
+        if previousTotal > 0 and newTotal == 0 then
+            warn("[CareerStatsService] suspected wipe blocked for", player.Name)
+            return storedPayload
+        end
+        return payload
+    end)
+    if success then
+        return true
+    end
+    warn("[CareerStatsService] Failed to save career stats for", player.Name)
+    return false, err
 end
 
 function CareerStatsService:SaveForPlayer(player)
-    if not player then return false end
-    local data = playerData[player]
-    if not data then return false end
-    local key = getKey(player)
-    local payload = { stats = data.stats }
-    for i = 1, RETRIES do
-        local ok, err = pcall(function()
-            ds:SetAsync(key, payload)
-        end)
-        if ok then return true end
-        warn("[CareerStatsService] SetAsync attempt", i, "failed:", tostring(err))
-        task.wait(RETRY_DELAY * i)
-    end
-    warn("[CareerStatsService] Failed to save career stats for", player.Name)
-    return false
+    return self:SaveProfileForPlayer(player)
 end
 
 function CareerStatsService:SaveAll()
@@ -148,6 +218,7 @@ function CareerStatsService:IncrementStat(player, statKey, amount)
         data.stats[statKey] = 0
     end
     data.stats[statKey] = data.stats[statKey] + amount
+    markDirty(player, statKey)
 end
 
 --- Set a stat only if the new value is higher (for "highest" records).
@@ -159,6 +230,7 @@ function CareerStatsService:SetStatMax(player, statKey, value)
     end
     if value > data.stats[statKey] then
         data.stats[statKey] = value
+        markDirty(player, statKey)
     end
 end
 

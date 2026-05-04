@@ -30,6 +30,8 @@ local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local AchievementDefs = require(ReplicatedStorage:WaitForChild("AchievementDefs", 10))
 
 local DATASTORE_NAME = "Achievements_v1"
@@ -65,6 +67,21 @@ local AchievementService = {}
 --   }
 --------------------------------------------------------------------------------
 local playerData = {}
+
+local function copyAchievementData(data)
+    return DataStoreOps.DeepCopy(data)
+end
+
+local function achievementHistoryCount(data)
+    if type(data) ~= "table" or type(data.completedHistory) ~= "table" then
+        return 0
+    end
+    return #data.completedHistory
+end
+
+local function markAchievementDirty(player, reason, options)
+    DataSaveCoordinator:MarkDirty(player, "Achievement", reason or "achievement", options)
+end
 
 --------------------------------------------------------------------------------
 -- CurrencyService  (lazy-loaded so require order doesn't matter)
@@ -413,15 +430,7 @@ end
 function AchievementService:LoadForPlayer(player)
     if not player then return end
     local key = getKey(player)
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
-        end)
-        if success then break end
-        warn("[AchievementService] GetAsync attempt", i, "failed:", tostring(result))
-        task.wait(RETRY_DELAY * i)
-    end
+    local success, result, err = DataStoreOps.Load(ds, key, "Achievement/" .. key)
 
     local data, wasResetByVersion = mergeWithDefaults(success and result or nil)
 
@@ -462,32 +471,45 @@ function AchievementService:LoadForPlayer(player)
     playerData[player] = data
 
     if wasResetByVersion then
-        task.spawn(function()
-            AchievementService:SaveForPlayer(player)
-        end)
+        markAchievementDirty(player, "achievement_schema_reset")
     end
+
+    return {
+        status = success and (result == nil and "new" or "existing") or "failed",
+        data = copyAchievementData(data),
+        reason = err,
+    }
 end
 
-function AchievementService:SaveForPlayer(player)
+function AchievementService:SaveForPlayer(player, saveData)
     if not player then return false end
-    local data = playerData[player]
+    local data = saveData or playerData[player]
     if not data then return false end
     print(string.format("[AchievementSave] SaveForPlayer(%s): AP=%d, history=%d entries",
         player.Name, data.achievementPoints or 0, #(data.completedHistory or {})))
     local key = getKey(player)
-    local success, err
-    for i = 1, RETRIES do
-        success, err = pcall(function()
-            ds:SetAsync(key, data)
-        end)
-        if success then break end
-        warn("[AchievementService] SetAsync attempt", i, "failed:", tostring(err))
-        task.wait(RETRY_DELAY * i)
-    end
+    local success, _, err = DataStoreOps.Update(ds, key, "Achievement/" .. key, function(oldData)
+        local previous = type(oldData) == "table" and oldData or {}
+        local previousHistory = achievementHistoryCount(previous)
+        local nextHistory = achievementHistoryCount(data)
+        local previousPoints = tonumber(previous.achievementPoints) or 0
+        local nextPoints = tonumber(data.achievementPoints) or 0
+        if (previousHistory > 0 or previousPoints > 0) and nextHistory == 0 and nextPoints == 0 then
+            warn("[AchievementService] suspected wipe blocked for", tostring(player.Name))
+            return oldData
+        end
+        return data
+    end)
     if not success then
         warn("[AchievementService] failed to save for", tostring(player.Name))
     end
     return success == true
+end
+
+function AchievementService:GetSaveData(player)
+    local data = playerData[player]
+    if not data then return nil end
+    return copyAchievementData(data)
 end
 
 function AchievementService:SaveAll()
@@ -515,6 +537,7 @@ function AchievementService:IncrementStat(player, statKey, amount)
 
     data.stats[statKey] = (data.stats[statKey] or 0) + amount
     self:_evaluateStatAchievements(player, data, statKey)
+    markAchievementDirty(player, "achievement_increment", { delaySeconds = 45 })
 end
 
 --- Set a stat to an absolute value (used for "best" stats like bestElimStreak).
@@ -529,6 +552,7 @@ function AchievementService:SetStat(player, statKey, value)
     if value > (data.stats[statKey] or 0) then
         data.stats[statKey] = value
         self:_evaluateStatAchievements(player, data, statKey)
+        markAchievementDirty(player, "achievement_set_stat", { delaySeconds = 45 })
     end
 end
 
@@ -694,6 +718,7 @@ function AchievementService:ClaimReward(player, achievementId)
 
     -- Push full refresh to update UI
     pushAllAchievements(player)
+    markAchievementDirty(player, "achievement_claim")
 
     return true, coinReward, apReward
 end

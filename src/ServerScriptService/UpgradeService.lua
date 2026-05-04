@@ -22,6 +22,8 @@ local DataStoreService    = game:GetService("DataStoreService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local DATASTORE_NAME = "Upgrades_v3"   -- bumped to reset all upgrade progress for testing
 local RETRIES        = 3
 local RETRY_DELAY    = 0.5
@@ -61,6 +63,27 @@ end
 -- Per-player state: playerUpgrades[player] = { melee_weapon = N, ranged_weapon = N }
 --------------------------------------------------------------------------------
 local playerUpgrades = {}
+
+local function copyUpgradeData(data)
+	return DataStoreOps.DeepCopy(data)
+end
+
+local function totalUpgradeLevels(data)
+	if type(data) ~= "table" then
+		return 0
+	end
+	local total = 0
+	for _, value in pairs(data) do
+		if type(value) == "number" then
+			total += value
+		end
+	end
+	return total
+end
+
+local function markUpgradeDirty(player, reason, options)
+	DataSaveCoordinator:MarkDirty(player, "Upgrade", reason or "upgrade", options)
+end
 
 --------------------------------------------------------------------------------
 -- Reusable cap helper: clamp upgrade level to player level
@@ -114,15 +137,7 @@ end
 function UpgradeService:LoadForPlayer(player)
 	if not player then return {} end
 	local key = getKey(player)
-	local success, result
-	for i = 1, RETRIES do
-		success, result = pcall(function()
-			return ds:GetAsync(key)
-		end)
-		if success then break end
-		warn("UpgradeService: GetAsync failed (attempt", i, "):", tostring(result))
-		task.wait(RETRY_DELAY * i)
-	end
+	local success, result, err = DataStoreOps.Load(ds, key, "Upgrade/" .. key)
 
 	local data = {}
 	if success and type(result) == "table" then
@@ -155,26 +170,34 @@ function UpgradeService:LoadForPlayer(player)
 		player.Name,
 		validated.melee_weapon or 0,
 		validated.ranged_weapon or 0))
-	return validated
+	return {
+		status = success and (result == nil and "new" or "existing") or "failed",
+		data = copyUpgradeData(validated),
+		reason = err,
+	}
 end
 
-function UpgradeService:SaveForPlayer(player)
+function UpgradeService:SaveForPlayer(player, saveData)
 	if not player then return false end
 	local key = getKey(player)
-	local data = playerUpgrades[player] or {}
-	local success, err
-	for i = 1, RETRIES do
-		success, err = pcall(function()
-			ds:SetAsync(key, data)
-		end)
-		if success then break end
-		warn("UpgradeService: SetAsync failed (attempt", i, "):", tostring(err))
-		task.wait(RETRY_DELAY * i)
-	end
+	local data = saveData or playerUpgrades[player] or {}
+	local success, _, err = DataStoreOps.Update(ds, key, "Upgrade/" .. key, function(oldData)
+		if totalUpgradeLevels(oldData) > 0 and totalUpgradeLevels(data) == 0 then
+			warn("[UpgradeService] suspected wipe blocked for", tostring(player.Name))
+			return oldData
+		end
+		return data
+	end)
 	if not success then
 		warn("UpgradeService: failed to save for", tostring(player.Name))
 	end
 	return success
+end
+
+function UpgradeService:GetSaveData(player)
+	local data = playerUpgrades[player]
+	if not data then return nil end
+	return copyUpgradeData(data)
 end
 
 function UpgradeService:SaveAll()
@@ -246,10 +269,11 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 	print(("[UpgradeService] %s upgraded '%s' to level %d (cost %d %s)"):format(
 		player.Name, upgradeId, levels[upgradeId], price, currency))
 
-	-- Save immediately
-	task.spawn(function()
-		UpgradeService:SaveForPlayer(player)
-	end)
+	markUpgradeDirty(player, "upgrade_purchase")
+	DataSaveCoordinator:RequestImmediateSave(player, "upgrade_purchase", {
+		sections = { "Upgrade" },
+		force = true,
+	})
 
 	-- Push updated state to client
 	pushState(player)

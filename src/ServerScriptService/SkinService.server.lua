@@ -18,6 +18,10 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService  = game:GetService("DataStoreService")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 
 local DEBUG = true
 local function dprint(...)
@@ -87,6 +91,29 @@ dprint("Remotes created")
 -- ── Per-player state ───────────────────────────────────────────────────────
 -- playerData[player] = { owned = { [skinId] = true }, equipped = skinId, favorited = { [skinId] = true } }
 local playerData = {}
+local applyingLock = {}
+local skinSectionRegistered = false
+
+local function markDirty(player, reason, options)
+    DataSaveCoordinator:MarkDirty(player, "Skin", reason or "skin", options)
+end
+
+local function copySkinData(data)
+    return DataStoreOps.DeepCopy(data)
+end
+
+local function countOwnedSkins(data)
+    if type(data) ~= "table" or type(data.owned) ~= "table" then
+        return 0
+    end
+    local count = 0
+    for skinId, owned in pairs(data.owned) do
+        if owned and skinId ~= "Default" then
+            count += 1
+        end
+    end
+    return count
+end
 
 -- ── Persistence helpers ────────────────────────────────────────────────────
 local function dsKey(player)
@@ -94,14 +121,8 @@ local function dsKey(player)
 end
 
 local function loadData(player)
-    if not ds then return { owned = {}, equipped = "Default" } end
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function() return ds:GetAsync(dsKey(player)) end)
-        if success then break end
-        warn("[SkinService] GetAsync fail attempt", i, result)
-        task.wait(RETRY_DELAY * i)
-    end
+    if not ds then return { owned = {}, equipped = "Default", favorited = {} }, "failed", "missing datastore" end
+    local success, result, err = DataStoreOps.Load(ds, dsKey(player), "Skin/" .. dsKey(player))
     if success and type(result) == "table" then
         local owned = {}
         if type(result.owned) == "table" then
@@ -132,15 +153,21 @@ local function loadData(player)
                 end
             end
         end
-        return { owned = owned, equipped = equipped, favorited = favorited }
+        return { owned = owned, equipped = equipped, favorited = favorited }, "existing", nil
     end
-    return { owned = { Default = true }, equipped = "Default", favorited = {} }
+    return { owned = { Default = true }, equipped = "Default", favorited = {} }, success and "new" or "failed", err
 end
 
-local function saveData(player)
-    if not ds then return end
+local function getSaveData(player)
     local data = playerData[player]
-    if not data then return end
+    if not data then return nil end
+    return copySkinData(data)
+end
+
+local function saveData(player, data, oldData)
+    if not ds then return false, "missing datastore" end
+    data = data or playerData[player]
+    if not data then return false, "missing data" end
     local ownedArr = {}
     for id, v in pairs(data.owned) do
         if v and id ~= "Default" then -- no need to save Default
@@ -148,22 +175,83 @@ local function saveData(player)
         end
     end
     local payload = { owned = ownedArr, equipped = data.equipped or "Default", favorited = data.favorited or {} }
-    for i = 1, RETRIES do
-        local ok, err = pcall(function() ds:SetAsync(dsKey(player), payload) end)
-        if ok then
-            dprint("saved data for", player.Name)
-            return
+    local success, _, err = DataStoreOps.Update(ds, dsKey(player), "Skin/" .. dsKey(player), function(storedPayload)
+        local previous = type(oldData) == "table" and oldData or storedPayload or {}
+        local previousState = { owned = { Default = true }, equipped = "Default", favorited = {} }
+        if type(previous.owned) == "table" then
+            for _, skinId in ipairs(previous.owned) do
+                if type(skinId) == "string" and skinId ~= "" then
+                    previousState.owned[skinId] = true
+                end
+            end
         end
-        warn("[SkinService] SetAsync fail attempt", i, err)
-        task.wait(RETRY_DELAY * i)
+        if type(previous.equipped) == "string" and previous.equipped ~= "" then
+            previousState.equipped = previous.equipped
+        end
+        if type(previous.favorited) == "table" then
+            previousState.favorited = previous.favorited
+        end
+        if countOwnedSkins(previousState) > 0 and countOwnedSkins(data) == 0 then
+            warn("[SkinService] suspected wipe blocked for", player.Name)
+            return storedPayload
+        end
+        return payload
+    end)
+    if success then
+        dprint("saved data for", player.Name)
+        return true
     end
+    return false, err
+end
+
+local function loadProfile(player)
+    local data, status, reason = loadData(player)
+    playerData[player] = data
+    return {
+        status = status,
+        data = copySkinData(data),
+        reason = reason,
+    }
 end
 
 local function getOrCreateData(player)
     if not playerData[player] then
-        playerData[player] = loadData(player)
+        local data = loadData(player)
+        playerData[player] = data
     end
     return playerData[player]
+end
+
+local function registerSkinSection()
+    if skinSectionRegistered then
+        return
+    end
+    skinSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "Skin",
+        Priority = 70,
+        Critical = false,
+        Load = loadProfile,
+        GetSaveData = getSaveData,
+        Save = function(player, currentData, lastGoodData)
+            return saveData(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            playerData[player] = nil
+            applyingLock[player] = nil
+        end,
+        Validate = function(_, currentData, lastGoodData)
+            if countOwnedSkins(lastGoodData) > 0 and countOwnedSkins(currentData) == 0 then
+                return {
+                    suspicious = true,
+                    severity = "warning",
+                    reason = "owned skins became empty",
+                }
+            end
+            return nil
+        end,
+    })
 end
 
 -- ── Owned / Equipped helpers ───────────────────────────────────────────────
@@ -220,8 +308,6 @@ local function getShowHelm(player)
 end
 
 -- Re-entry guard: prevents double-application
-local applyingLock = {}
-
 -- Remove all previously applied cosmetic skin parts from a character
 local function clearSkinCosmetics(character)
     if not character then return end
@@ -1362,12 +1448,14 @@ end
 --------------------------------------------------------------------------------
 
 local function onPlayerAdded(player)
+    DataSaveCoordinator:LoadSection(player, "Skin")
     local data = getOrCreateData(player)
     data.owned["Default"] = true
 
     -- Validate equipped skin is still owned
     if data.equipped ~= "Default" and not data.owned[data.equipped] then
         data.equipped = "Default"
+        markDirty(player, "invalid_skin_fallback")
     end
 
     dprint(player.Name, "joined – equipped:", data.equipped)
@@ -1496,18 +1584,8 @@ local function onPlayerAdded(player)
     end
 end
 
+registerSkinSection()
 Players.PlayerAdded:Connect(onPlayerAdded)
-
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-Players.PlayerRemoving:Connect(function(player)
-    if SaveGuard:ClaimSave(player, "Skin") then
-        saveData(player)
-        SaveGuard:ReleaseSave(player, "Skin")
-    end
-    playerData[player] = nil
-    applyingLock[player] = nil
-end)
 
 -- Handle late-join players
 for _, p in ipairs(Players:GetPlayers()) do
@@ -1515,19 +1593,6 @@ for _, p in ipairs(Players:GetPlayers()) do
         onPlayerAdded(p)
     end)
 end
-
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "Skin") then
-                saveData(p)
-                SaveGuard:ReleaseSave(p, "Skin")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 --------------------------------------------------------------------------------
 -- REMOTE HANDLERS
@@ -1568,7 +1633,7 @@ purchaseSkinRF.OnServerInvoke = function(player, skinId)
     data.owned[skinId] = true
     dprint("Purchased", def.DisplayName, "for", player.Name)
 
-    task.spawn(function() saveData(player) end)
+    markDirty(player, "purchase_skin")
 
     local newBal = CurrencyService and CurrencyService:GetCoins(player) or 0
     return true, newBal, "ok"
@@ -1598,7 +1663,7 @@ equipSkinRE.OnServerEvent:Connect(function(player, skinId)
         end)
     end
 
-    task.spawn(function() saveData(player) end)
+    markDirty(player, "equip_skin")
     pushEquippedToClient(player)
 end)
 
@@ -1613,7 +1678,7 @@ favoriteSkinRF.OnServerInvoke = function(player, skinId, state)
     if not data.favorited then data.favorited = {} end
     data.favorited[skinId] = state or nil
     dprint("FavoriteSkin:", skinId, "=", tostring(state), "for", player.Name)
-    task.spawn(function() saveData(player) end)
+    markDirty(player, "favorite_skin")
     return true
 end
 
@@ -1652,7 +1717,7 @@ do
         local data = getOrCreateData(player)
         data.owned[skinId] = true
         dprint("Granted skin", skinId, "to", player.Name, "(via BindableFunction)")
-        task.spawn(function() saveData(player) end)
+        markDirty(player, "grant_skin")
         return true
     end
 

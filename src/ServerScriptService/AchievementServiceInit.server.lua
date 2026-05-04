@@ -12,8 +12,50 @@ local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local AchievementService = require(ServerScriptService:WaitForChild("AchievementService", 10))
 local StatService         = require(ServerScriptService:WaitForChild("StatService", 10))
+
+local achievementSectionRegistered = false
+
+local function registerAchievementSection()
+    if achievementSectionRegistered then
+        return
+    end
+    achievementSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "Achievement",
+        Priority = 58,
+        Critical = false,
+        Load = function(player)
+            return AchievementService:LoadForPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return AchievementService:GetSaveData(player)
+        end,
+        Save = function(player, currentData)
+            return AchievementService:SaveForPlayer(player, currentData)
+        end,
+        Cleanup = function(player)
+            AchievementService:ClearPlayer(player)
+        end,
+        Validate = function(_, currentData, lastGoodData)
+            local currentHistory = currentData and currentData.completedHistory and #currentData.completedHistory or 0
+            local lastHistory = lastGoodData and lastGoodData.completedHistory and #lastGoodData.completedHistory or 0
+            local currentPoints = currentData and currentData.achievementPoints or 0
+            local lastPoints = lastGoodData and lastGoodData.achievementPoints or 0
+            if (lastHistory > 0 or lastPoints > 0) and currentHistory == 0 and currentPoints == 0 then
+                return {
+                    suspicious = true,
+                    severity = "warning",
+                    reason = "achievement progress reset to empty",
+                }
+            end
+            return nil
+        end,
+    })
+end
 
 --------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
@@ -86,33 +128,12 @@ local function onPlayerAdded(player)
     -- Small delay to let CurrencyService and other modules initialize first
     task.spawn(function()
         task.wait(0.5)
-        AchievementService:LoadForPlayer(player)
+        DataSaveCoordinator:LoadSection(player, "Achievement")
         print("[AchievementServiceInit] Loaded achievements for", player.Name)
     end)
 end
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-Players.PlayerRemoving:Connect(function(player)
-    if SaveGuard:ClaimSave(player, "Achievements") then
-        pcall(function() AchievementService:SaveForPlayer(player) end)
-        SaveGuard:ReleaseSave(player, "Achievements")
-    end
-    AchievementService:ClearPlayer(player)
-end)
-
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "Achievements") then
-                pcall(function() AchievementService:SaveForPlayer(p) end)
-                SaveGuard:ReleaseSave(p, "Achievements")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
+registerAchievementSection()
 
 for _, p in ipairs(Players:GetPlayers()) do
     onPlayerAdded(p)

@@ -1,4 +1,5 @@
 local Workspace = game:GetService("Workspace")
+local Map = Workspace:WaitForChild("WSG")
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
@@ -16,7 +17,7 @@ pcall(function() PhysicsService:CollisionGroupSetCollidable(MOB_COLLISION_GROUP,
 ---------------------------------------------------------------------------
 -- Spawner configuration
 ---------------------------------------------------------------------------
-local TEMPLATE_NAMES = { "Zombie", "Zack", "Orc", "Ogre" }
+local TEMPLATE_NAMES = { "Zombie", "Zack", "Orc", "Ogre", "Goblin" }
 local PORTAL_GROUP_NAMES = { "DarkPortal1", "DarkPortal2" }
 local PORTAL_PART_NAME = "PortalPlane"
 local MOB_AREA_PREFIX = "MobArea"
@@ -196,14 +197,14 @@ rebuildWeightedPool()
 local function findPortals()
     local out = {}
     for idx, groupName in ipairs(PORTAL_GROUP_NAMES) do
-        local group = Workspace:FindFirstChild(groupName)
+        local group = Map:FindFirstChild(groupName)
         if not group then
             warn("[MobSpawner] Missing group: " .. groupName)
             continue
         end
 
         local areaName = MOB_AREA_PREFIX .. tostring(idx)
-        local areaPart = Workspace:FindFirstChild(areaName)
+        local areaPart = Map:FindFirstChild(areaName)
         if not areaPart then
             warn("[MobSpawner] Missing area: " .. areaName)
         end

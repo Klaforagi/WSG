@@ -28,11 +28,14 @@ local Players             = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+
 local DATASTORE_NAME = "Boosts_v2"
 local RETRIES = 3
 local RETRY_DELAY = 0.5
 
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
+local _SaveCoordinator
 
 ----------------------------------------------------------------------------
 -- Lazy-require dependencies so load order doesn't matter
@@ -59,6 +62,30 @@ local function getCurrencyService()
         end
     end)
     return CurrencyService
+end
+
+local function getSaveCoordinator()
+    if _SaveCoordinator == nil then
+        local ok, coordinator = pcall(function()
+            return require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+        end)
+        if ok then
+            _SaveCoordinator = coordinator
+        else
+            _SaveCoordinator = false
+        end
+    end
+    if _SaveCoordinator == false then
+        return nil
+    end
+    return _SaveCoordinator
+end
+
+local function markDirty(player, reason, options)
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:MarkDirty(player, "Boost", reason or "boost", options)
+    end
 end
 
 local QuestService
@@ -259,19 +286,17 @@ end
 ----------------------------------------------------------------------------
 -- Persistence helpers
 ----------------------------------------------------------------------------
-function BoostService:LoadForPlayer(player)
-    if not player then return false end
+function BoostService:LoadProfileForPlayer(player)
+    if not player then
+        return {
+            status = "failed",
+            data = makeEmptyState(),
+            reason = "missing player",
+        }
+    end
 
     local key = getKey(player)
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
-        end)
-        if success then break end
-        warn("[BoostService] GetAsync failed (attempt", i, "):", tostring(result))
-        task.wait(RETRY_DELAY * i)
-    end
+    local success, result, err = DataStoreOps.Load(ds, key, "Boost/" .. key)
 
     if success then
         playerBoosts[player] = normalizePlayerState(result)
@@ -282,32 +307,67 @@ function BoostService:LoadForPlayer(player)
 
     clearExpiredBoosts(player)
     pushBoostState(player)
-    return success
+    if not success then
+        return {
+            status = "failed",
+            data = DataStoreOps.DeepCopy(playerBoosts[player]),
+            reason = err,
+        }
+    end
+    if result == nil then
+        return {
+            status = "new",
+            data = DataStoreOps.DeepCopy(playerBoosts[player]),
+        }
+    end
+    return {
+        status = "existing",
+        data = DataStoreOps.DeepCopy(playerBoosts[player]),
+    }
 end
 
-function BoostService:SaveForPlayer(player)
+function BoostService:LoadForPlayer(player)
+    local result = self:LoadProfileForPlayer(player)
+    return result and result.status ~= "failed"
+end
+
+function BoostService:GetSaveData(player)
     local pd = playerBoosts[player]
-    if not player or not pd then return false end
+    if not pd then return nil end
+    clearExpiredBoosts(player)
+    return serializePlayerState(pd)
+end
+
+function BoostService:SaveProfileForPlayer(player, payload, oldData)
+    local pd = playerBoosts[player]
+    if not player or not pd then return false, "missing boost state" end
 
     clearExpiredBoosts(player)
 
     local key = getKey(player)
-    local payload = serializePlayerState(pd)
-    local success, err
-    for i = 1, RETRIES do
-        success, err = pcall(function()
-            ds:SetAsync(key, payload)
-        end)
-        if success then break end
-        warn("[BoostService] SetAsync failed (attempt", i, "):", tostring(err))
-        task.wait(RETRY_DELAY * i)
-    end
+    payload = payload or serializePlayerState(pd)
+    local success, _, err = DataStoreOps.Update(ds, key, "Boost/" .. key, function(storedPayload)
+        local previous = type(oldData) == "table" and oldData or storedPayload or {}
+        local previousClaims = DataStoreOps.CountEntries(previous.bonusClaimed)
+        local newClaims = DataStoreOps.CountEntries(payload.bonusClaimed)
+        local previousInventory = DataStoreOps.CountEntries(previous.inventory)
+        local newInventory = DataStoreOps.CountEntries(payload.inventory)
+        if (previousClaims > 0 or previousInventory > 0) and newClaims == 0 and newInventory == 0 and (tonumber(payload.freeRerolls) or 0) == 0 then
+            warn("[BoostService] suspected wipe blocked for", player.Name)
+            return storedPayload
+        end
+        return payload
+    end)
 
     if not success then
         warn("[BoostService] Failed to save boost data for", player.Name)
     end
 
-    return success
+    return success, err
+end
+
+function BoostService:SaveForPlayer(player)
+    return self:SaveProfileForPlayer(player)
 end
 
 function BoostService:SaveAll()
@@ -350,6 +410,7 @@ function BoostService:PurchaseOwnedBoost(player, boostId)
         player.Name, boostId, pd.inventory[boostId]))
 
     pushBoostState(player)
+    markDirty(player, "boost_purchase")
     return true, "Purchased", self:GetPlayerBoostStates(player)
 end
 
@@ -386,6 +447,7 @@ function BoostService:ActivateOwnedBoost(player, boostId)
         player.Name, boostId, pd.inventory[boostId]))
 
     pushBoostState(player)
+    markDirty(player, "boost_activate")
     return true, "Activated", self:GetPlayerBoostStates(player)
 end
 
@@ -498,8 +560,7 @@ function BoostService:RerollQuest(player, questType, questIndex)
     if usedFreeReroll then
         pd.freeRerolls = pd.freeRerolls - 1
         print(string.format("[FreeReroll] %s consumed free reroll – remaining: %d", player.Name, pd.freeRerolls))
-        -- Persist change immediately
-        task.spawn(function() BoostService:SaveForPlayer(player) end)
+        markDirty(player, "free_reroll_consumed", { force = true })
     else
         local cs = getCurrencyService()
         if cs then
@@ -516,6 +577,7 @@ function BoostService:RerollQuest(player, questType, questIndex)
         questType == "weekly" and WEEKLY_REROLL_COOLDOWN or DAILY_REROLL_COOLDOWN))
 
     pushBoostState(player)
+    markDirty(player, "quest_reroll")
     return true, "Quest rerolled", updatedQuests
 end
 
@@ -573,6 +635,7 @@ function BoostService:BonusClaim(player, questId)
         player.Name, questId, questDef.reward))
 
     pushBoostState(player)
+    markDirty(player, "bonus_claim")
     return true, "Bonus reward claimed"
 end
 
@@ -673,8 +736,7 @@ function BoostService:GrantFreeReroll(player, count)
     print(string.format("[FreeReroll] Granted %d free reroll(s) to %s (before=%d, after=%d)",
         count, player.Name, before, pd.freeRerolls))
     pushBoostState(player)
-    -- Persist immediately so the token survives if the player disconnects
-    task.spawn(function() BoostService:SaveForPlayer(player) end)
+    markDirty(player, "grant_free_reroll", { force = true })
     return true
 end
 
@@ -709,6 +771,7 @@ function BoostService:GrantFreeBoost(player, boostId, count)
     print(("[BoostService] Granted %d free '%s' to %s (owned=%d)"):format(
         count, boostId, player.Name, pd.inventory[boostId]))
     pushBoostState(player)
+    markDirty(player, "grant_free_boost")
     return true
 end
 

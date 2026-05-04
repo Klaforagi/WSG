@@ -50,6 +50,26 @@ end
 -- }
 --------------------------------------------------------------------------------
 local state = {}
+local trackBillboard
+local TRACK_RETRY_DELAY = 0.05
+local TRACK_RETRY_LIMIT = 20
+
+local function scheduleTrackRetry(billboard)
+	if not billboard or not billboard.Parent then return end
+	local s = state[billboard]
+	if not s or s.tracked then return end
+	if s.retryScheduled then return end
+	if (s.retryCount or 0) >= TRACK_RETRY_LIMIT then return end
+	s.retryScheduled = true
+	task.delay(TRACK_RETRY_DELAY, function()
+		local st = state[billboard]
+		if not st then return end
+		st.retryScheduled = false
+		if st.tracked or not billboard.Parent then return end
+		st.retryCount = (st.retryCount or 0) + 1
+		trackBillboard(billboard)
+	end)
+end
 
 --------------------------------------------------------------------------------
 -- Element accessor (caches nothing; call each time to stay safe)
@@ -180,8 +200,20 @@ end
 --------------------------------------------------------------------------------
 -- Begin tracking a billboard
 --------------------------------------------------------------------------------
-local function trackBillboard(billboard)
-	if state[billboard] then return end  -- already tracked
+trackBillboard = function(billboard)
+	local s = state[billboard]
+	if s and s.tracked then return end  -- already tracked
+	if not s then
+		s = {
+			tracked = false,
+			connections = {},
+			damageTween = nil,
+			damageTask = nil,
+			retryScheduled = false,
+			retryCount = 0,
+		}
+		state[billboard] = s
+	end
 
 	local attachPart = billboard.Parent
 	if not attachPart or not attachPart:IsA("BasePart") then return end
@@ -191,7 +223,10 @@ local function trackBillboard(billboard)
 	if not hum then return end
 
 	local el = getElements(billboard)
-	if not el then return end  -- UI not fully built yet; DescendantAdded will retry
+	if not el then
+		scheduleTrackRetry(billboard)
+		return
+	end
 
 	-- Correct initial state from current humanoid HP
 	local initPct = (hum.MaxHealth > 0) and math.clamp(hum.Health / hum.MaxHealth, 0, 1) or 0
@@ -203,13 +238,10 @@ local function trackBillboard(billboard)
 		el.damageBar.Size = UDim2.fromScale(initPct, 1)
 	end
 
-	local connections = {}
-	state[billboard]  = {
-		prevPct     = initPct,
-		connections = connections,
-		damageTween = nil,
-		damageTask  = nil,
-	}
+	local connections = s.connections
+	s.prevPct = initPct
+	s.tracked = true
+	s.retryCount = 0
 
 	-- Health change → drive all visual effects
 	connections[#connections + 1] = hum.HealthChanged:Connect(function(newHealth)
@@ -218,10 +250,22 @@ local function trackBillboard(billboard)
 		end
 	end)
 
+	connections[#connections + 1] = hum:GetPropertyChangedSignal("MaxHealth"):Connect(function()
+		if billboard.Parent then
+			onHealthChanged(billboard, hum.Health, hum.MaxHealth)
+		end
+	end)
+
 	-- Billboard removed from workspace → clean up
 	connections[#connections + 1] = billboard.AncestryChanged:Connect(function()
 		if not billboard:IsDescendantOf(game) then
 			cleanupBillboard(billboard)
+		end
+	end)
+
+	connections[#connections + 1] = billboard.DescendantAdded:Connect(function()
+		if not s.tracked then
+			scheduleTrackRetry(billboard)
 		end
 	end)
 end
@@ -237,6 +281,16 @@ local function onDescendantAdded(inst)
 				trackBillboard(inst)
 			end
 		end)
+		return
+	end
+
+	local ancestor = inst.Parent
+	while ancestor do
+		if ancestor:IsA("BillboardGui") and ancestor.Name == BILLBOARD_NAME then
+			scheduleTrackRetry(ancestor)
+			return
+		end
+		ancestor = ancestor.Parent
 	end
 end
 

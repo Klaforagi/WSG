@@ -26,6 +26,7 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local DailyQuestDefs = require(ReplicatedStorage:WaitForChild("DailyQuestDefs", 10))
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 
 local QuestService = {}
 
@@ -37,9 +38,27 @@ local RETRIES        = 3
 local RETRY_DELAY    = 0.5
 
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
+local _saveCoordinator
 
 local function getKey(player)
     return "User_" .. tostring(player.UserId)
+end
+
+local function getSaveCoordinator()
+    if _saveCoordinator == nil then
+        local ok, coordinator = pcall(function()
+            return require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+        end)
+        if ok then
+            _saveCoordinator = coordinator
+        else
+            _saveCoordinator = false
+        end
+    end
+    if _saveCoordinator == false then
+        return nil
+    end
+    return _saveCoordinator
 end
 
 --------------------------------------------------------------------------------
@@ -118,43 +137,31 @@ local function buildQuestState(order)
     return quests
 end
 
---------------------------------------------------------------------------------
--- DataStore save / load helpers
---------------------------------------------------------------------------------
-
-local saveQueue = {} -- [player] = true
-
---- Debounced auto-save: saves dirty data every 30 seconds
-task.spawn(function()
-    while true do
-        task.wait(30)
-        for player, _ in pairs(saveQueue) do
-            if player and player.Parent then
-                local pd = playerData[player]
-                if pd then
-                    task.spawn(function()
-                        QuestService:SaveForPlayer(player)
-                    end)
-                    pd.dirty = false
-                end
-            end
-            saveQueue[player] = nil
-        end
-    end
-end)
 
 local function markDirty(player)
     local pd = playerData[player]
     if pd then
         pd.dirty = true
-        saveQueue[player] = true
+        local coordinator = getSaveCoordinator()
+        if coordinator then
+            coordinator:MarkDirty(player, "Quest", "daily_quest", {
+                delaySeconds = 30,
+            })
+        end
     end
 end
 
 --- Save daily quest state to DataStore for a single player.
-function QuestService:SaveForPlayer(player)
+function QuestService:GetSaveData(player)
+    if not player then return nil end
+    return DataStoreOps.DeepCopy(playerData[player])
+end
+
+function QuestService:SaveProfileForPlayer(player, currentData, oldData)
     local pd = playerData[player]
-    if not player or not pd then return false end
+    if not player then return false, "missing player" end
+    pd = currentData or pd
+    if not pd then return false, "missing data" end
 
     local key = getKey(player)
 
@@ -173,15 +180,16 @@ function QuestService:SaveForPlayer(player)
         quests     = questsSave,
     }
 
-    local success, err
-    for i = 1, RETRIES do
-        success, err = pcall(function()
-            ds:SetAsync(key, payload)
-        end)
-        if success then break end
-        warn("[DailyQuestSave] SetAsync failed (attempt " .. i .. "): " .. tostring(err))
-        task.wait(RETRY_DELAY * i)
-    end
+    local success, _, err = DataStoreOps.Update(ds, key, "DailyQuest/" .. key, function(storedPayload)
+        local previous = type(oldData) == "table" and oldData or storedPayload or {}
+        local previousCount = DataStoreOps.CountEntries(type(previous) == "table" and previous.quests or nil)
+        local newCount = DataStoreOps.CountEntries(payload.quests)
+        if previousCount > 0 and newCount == 0 then
+            warn("[DailyQuestSave] suspected wipe blocked for", player.Name)
+            return storedPayload
+        end
+        return payload
+    end)
 
     if success then
         print("[DailyQuestSave]", player.Name, "| day:", pd.day,
@@ -189,27 +197,45 @@ function QuestService:SaveForPlayer(player)
     else
         warn("[DailyQuestSave] Failed to save for", player.Name)
     end
-    return success ~= false
+    return success ~= false, err
+end
+
+function QuestService:SaveForPlayer(player)
+    return self:SaveProfileForPlayer(player)
 end
 
 --- Load daily quest state from DataStore. If the saved day matches today,
 --- restores the exact same quests and progress. Otherwise generates fresh quests.
 --- Uses the same UTC day boundary as DailyRewardService.
-function QuestService:LoadForPlayer(player)
-    if not player then return false end
+function QuestService:LoadProfileForPlayer(player)
+    if not player then
+        return {
+            status = "failed",
+            data = nil,
+            reason = "missing player",
+        }
+    end
 
     local key = getKey(player)
     local today = todayKey()
 
     -- Load from DataStore
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
-        end)
-        if success then break end
-        warn("[DailyQuestLoad] GetAsync failed (attempt " .. i .. "): " .. tostring(result))
-        task.wait(RETRY_DELAY * i)
+    local success, result, err = DataStoreOps.Load(ds, key, "DailyQuest/" .. key)
+
+    if not success then
+        local fallbackOrder = assignQuestOrder()
+        local fallbackData = {
+            day = today,
+            questOrder = fallbackOrder,
+            quests = buildQuestState(fallbackOrder),
+            dirty = false,
+        }
+        playerData[player] = fallbackData
+        return {
+            status = "failed",
+            data = DataStoreOps.DeepCopy(fallbackData),
+            reason = err,
+        }
     end
 
     local stored = success and type(result) == "table" and result or nil
@@ -263,7 +289,10 @@ function QuestService:LoadForPlayer(player)
                     end
                     return table.concat(parts, ", ")
                 end)())
-            return true
+            return {
+                status = "existing",
+                data = DataStoreOps.DeepCopy(playerData[player]),
+            }
         end
     end
 
@@ -290,12 +319,17 @@ function QuestService:LoadForPlayer(player)
         "| GENERATED new quests | reason:", reason,
         "| day:", today,
         "| quests:", table.concat(order, ", "))
+    local status = stored and "existing" or "new"
+    return {
+        status = status,
+        data = DataStoreOps.DeepCopy(playerData[player]),
+        markDirty = true,
+    }
+end
 
-    -- Save immediately so the new assignment persists
-    task.spawn(function()
-        QuestService:SaveForPlayer(player)
-    end)
-    return true
+function QuestService:LoadForPlayer(player)
+    local result = self:LoadProfileForPlayer(player)
+    return result and result.status ~= "failed"
 end
 
 --- Returns in-memory data, loading if needed. Called by all progress/query APIs.
@@ -480,20 +514,19 @@ function QuestService:RerollQuest(player, questIndex)
     pd.questOrder[questIndex] = newDef.id
     pd.quests[newDef.id] = { progress = 0, claimed = false }
     markDirty(player)
-
-    -- Force immediate save after reroll
-    task.spawn(function()
-        QuestService:SaveForPlayer(player)
-    end)
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:RequestImmediateSave(player, "daily_quest_reroll", {
+            force = true,
+        })
+    end
 
     return true, "Quest rerolled", self:GetQuestsForPlayer(player)
 end
 
 --- Cleanup when player leaves. Save first, then clear memory.
 function QuestService:ClearPlayer(player)
-    self:SaveForPlayer(player)
     playerData[player] = nil
-    saveQueue[player] = nil
 end
 
 return QuestService

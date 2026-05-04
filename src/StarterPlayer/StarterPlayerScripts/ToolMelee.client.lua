@@ -92,8 +92,8 @@ local function getToolSizePercent(tool)
     return 100
 end
 
---- Speed scaling: 100% = 1.0x. 200% = 1.5x (half-rate above 100%).
---- Below 100% is linear (tiny weapons swing faster).
+--- Speed scaling: below 100% is linear (tiny weapons swing faster for more DPS).
+--- Above 100% scales at half rate so max 200% = 1.5x duration, not 2.0x.
 local function getSizeSpeedMultiplier(sizePercent)
     if sizePercent <= 100 then
         return math.clamp(sizePercent / 100, 0.5, 1.0)
@@ -512,9 +512,13 @@ local function attachMelee(tool)
         -- Cancel if bandaging
         if _G.IsBandaging then return end
 
-        -- Buffer click if a swing is already active
+        -- Buffer click only in the last 0.25s of the cooldown — fixed window
+        -- so large weapons don't get a proportionally bigger input buffer.
         if isSwinging then
-            bufferedClick = true
+            local elapsed = tick() - lastAttackTime
+            if lastStepCooldown > 0 and elapsed >= lastStepCooldown - 0.15 then
+                bufferedClick = true
+            end
             return
         end
 
@@ -609,7 +613,7 @@ local function attachMelee(tool)
             local hd          = (cfg.hitboxDelay  or 0.35) * sizeSpeedMult
             local ha          = (cfg.hitboxActive or 0.1)  * sizeSpeedMult
             local startOffset = math.max(0, hd - 0.12)
-            local endOffset   = hd + ha + 0.1
+            local endOffset   = hd + ha
             pcall(function() triggerSwordTrailWindow(startOffset, endOffset) end)
         end
 

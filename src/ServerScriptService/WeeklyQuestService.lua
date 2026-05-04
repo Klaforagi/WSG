@@ -20,6 +20,8 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Players             = game:GetService("Players")
 
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local WeeklyQuestDefs = require(ReplicatedStorage:WaitForChild("WeeklyQuestDefs", 10))
 
 local WeeklyQuestService = {}
@@ -50,12 +52,44 @@ end
 -- }
 --------------------------------------------------------------------------------
 local playerWeekly = {}
+local currentWeekKey
+
+local function serializeWeeklyData(data)
+    if type(data) ~= "table" then
+        return {
+            weekKey = currentWeekKey(),
+            quests = {},
+        }
+    end
+
+    local saveData = {
+        weekKey = data.weekKey,
+        quests = {},
+    }
+    if type(data.quests) == "table" then
+        for index, quest in ipairs(data.quests) do
+            saveData.quests[index] = {
+                defId = quest.defId,
+                progress = quest.progress,
+                claimed = quest.claimed,
+            }
+        end
+    end
+    return saveData
+end
+
+local function questCount(data)
+    if type(data) ~= "table" or type(data.quests) ~= "table" then
+        return 0
+    end
+    return #data.quests
+end
 
 --------------------------------------------------------------------------------
 -- Week key: anchored to Saturday 00:00 Eastern Time (server-authoritative)
 --------------------------------------------------------------------------------
 local TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
-local function currentWeekKey()
+currentWeekKey = function()
     return TimeHelper.GetWeeklyKey()
 end
 
@@ -108,19 +142,11 @@ end
 --------------------------------------------------------------------------------
 local function loadFromStore(player)
     local key = getKey(player)
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
-        end)
-        if success then break end
-        warn("[WeeklyQuestService] GetAsync failed (attempt " .. i .. "): " .. tostring(result))
-        task.wait(RETRY_DELAY * i)
-    end
+    local success, result, err = DataStoreOps.Load(ds, key, "WeeklyQuest/" .. key)
     if success and type(result) == "table" then
-        return result
+        return result, "existing", nil
     end
-    return nil
+    return nil, success and "new" or "failed", err
 end
 
 --------------------------------------------------------------------------------
@@ -128,56 +154,24 @@ end
 --------------------------------------------------------------------------------
 local function saveToStore(player, data)
     local key = getKey(player)
-    local saveData = {
-        weekKey = data.weekKey,
-        quests  = {},
-    }
-    for i, q in ipairs(data.quests) do
-        saveData.quests[i] = {
-            defId    = q.defId,
-            progress = q.progress,
-            claimed  = q.claimed,
-        }
-    end
-
-    local success, err
-    for i = 1, RETRIES do
-        success, err = pcall(function()
-            ds:SetAsync(key, saveData)
-        end)
-        if success then break end
-        warn("[WeeklyQuestService] SetAsync failed (attempt " .. i .. "): " .. tostring(err))
-        task.wait(RETRY_DELAY * i)
-    end
-    return success
-end
-
---------------------------------------------------------------------------------
--- Debounced auto-save: saves dirty data every 30 seconds
---------------------------------------------------------------------------------
-local saveQueue = {} -- [player] = true
-
-task.spawn(function()
-    while true do
-        task.wait(30)
-        for player, _ in pairs(saveQueue) do
-            if player and player.Parent then
-                local data = playerWeekly[player]
-                if data then
-                    task.spawn(saveToStore, player, data)
-                    data.dirty = false
-                end
-            end
-            saveQueue[player] = nil
+    local saveData = serializeWeeklyData(data)
+    local success, _, err = DataStoreOps.Update(ds, key, "WeeklyQuest/" .. key, function(oldData)
+        if questCount(oldData) > 0 and questCount(saveData) == 0 then
+            warn("[WeeklyQuestService] suspected wipe blocked for", player.Name)
+            return oldData
         end
-    end
-end)
+        return saveData
+    end)
+    return success, err
+end
 
 local function markDirty(player)
     local data = playerWeekly[player]
     if data then
         data.dirty = true
-        saveQueue[player] = true
+        DataSaveCoordinator:MarkDirty(player, "WeeklyQuest", "weekly_quest", {
+            delaySeconds = 30,
+        })
     end
 end
 
@@ -204,7 +198,7 @@ end
 --- Load (or initialize) weekly quest data for a player. Call on PlayerAdded.
 function WeeklyQuestService:LoadPlayer(player)
     local week = currentWeekKey()
-    local stored = loadFromStore(player)
+    local stored, status = loadFromStore(player)
 
     if stored and stored.weekKey == week and type(stored.quests) == "table" and #stored.quests == 3 then
         -- Validate all quest IDs still exist in the pool.
@@ -223,7 +217,10 @@ function WeeklyQuestService:LoadPlayer(player)
                 quests  = stored.quests,
                 dirty   = false,
             }
-            return
+            return {
+                status = status,
+                data = serializeWeeklyData(playerWeekly[player]),
+            }
         end
     end
 
@@ -235,16 +232,29 @@ function WeeklyQuestService:LoadPlayer(player)
         dirty   = true,
     }
     markDirty(player)
-    -- Save immediately for new assignments
-    task.spawn(saveToStore, player, playerWeekly[player])
+    return {
+        status = stored and "existing" or status,
+        data = serializeWeeklyData(playerWeekly[player]),
+    }
 end
 
 --- Save the player's weekly quest data. Call on PlayerRemoving.
 function WeeklyQuestService:SavePlayer(player)
     local data = playerWeekly[player]
     if data then
-        saveToStore(player, data)
+        return saveToStore(player, data)
     end
+    return false, "missing data"
+end
+
+function WeeklyQuestService:GetSaveData(player)
+    local data = playerWeekly[player]
+    if not data then return nil end
+    return serializeWeeklyData(data)
+end
+
+function WeeklyQuestService:SaveProfileForPlayer(player, currentData)
+    return saveToStore(player, currentData or playerWeekly[player])
 end
 
 --- Returns an array of quest snapshots for the client.
@@ -319,7 +329,7 @@ function WeeklyQuestService:ClaimReward(player, questIndex)
     markDirty(player)
 
     -- Force immediate save after claim
-    task.spawn(saveToStore, player, data)
+    DataSaveCoordinator:RequestImmediateSave(player, "weekly_quest_claim", { sections = { "WeeklyQuest" }, force = true })
 
     return true
 end
@@ -383,16 +393,14 @@ function WeeklyQuestService:RerollQuest(player, questIndex)
     }
 
     markDirty(player)
-    task.spawn(saveToStore, player, data)
+    DataSaveCoordinator:RequestImmediateSave(player, "weekly_quest_reroll", { sections = { "WeeklyQuest" }, force = true })
 
     return true, "Quest rerolled", self:GetWeeklyQuests(player)
 end
 
 --- Cleanup when player leaves. Save first, then clear memory.
 function WeeklyQuestService:ClearPlayer(player)
-    self:SavePlayer(player)
     playerWeekly[player] = nil
-    saveQueue[player] = nil
 end
 
 return WeeklyQuestService

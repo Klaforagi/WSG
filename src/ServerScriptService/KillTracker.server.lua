@@ -104,6 +104,14 @@ pcall(function()
     XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
 end)
 
+local MobSettings
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("MobSettings")
+    if mod and mod:IsA("ModuleScript") then
+        MobSettings = require(mod)
+    end
+end)
+
 local CurrencyService
 pcall(function()
     local mod = ServerScriptService:FindFirstChild("CurrencyService")
@@ -330,6 +338,37 @@ local function categorizeNpc(npcModel, npcName)
     return "Wild Monster"
 end
 
+local function getMobRewardName(model, fallbackName)
+    if model and model:IsA("Model") then
+        local templateName = model:GetAttribute("TemplateName")
+        if type(templateName) == "string" and templateName ~= "" then
+            return templateName
+        end
+        return model.Name
+    end
+    return fallbackName
+end
+
+local function getMobCoinReward(model, fallbackName)
+    local mobName = getMobRewardName(model, fallbackName)
+    if MobSettings and MobSettings.Get then
+        local cfg = MobSettings.Get(mobName)
+        local spawnCfg = cfg and cfg.Spawn
+        local coinReward = spawnCfg and spawnCfg.CoinReward
+        if type(coinReward) == "number" then
+            return coinReward
+        end
+        if type(coinReward) == "table" then
+            local minReward = coinReward.Min
+            local maxReward = coinReward.Max
+            if type(minReward) == "number" and type(maxReward) == "number" and minReward <= maxReward then
+                return math.random(minReward, maxReward)
+            end
+        end
+    end
+    return MOB_COIN_REWARD
+end
+
 local function fireKillCard(victimPlayer, payload)
     if not victimPlayer or not victimPlayer.Parent then return end
     -- Sanitize Instance fields: a destroyed/unparented Instance will throw when
@@ -483,7 +522,7 @@ local function onHumanoidDied(humanoid, model)
     -- Coin reward
     local coinAward = 0
     if CurrencyService and CurrencyService.AddCoins then
-        local base = isPlayerVictim and PVP_COIN_REWARD or MOB_COIN_REWARD
+        local base = isPlayerVictim and PVP_COIN_REWARD or getMobCoinReward(model, victimName)
         local ok, result = pcall(function() return CurrencyService:AddCoins(killer, base, "elimination") end)
         coinAward = (ok and type(result) == "number") and result or base
     end
@@ -497,8 +536,9 @@ local function onHumanoidDied(humanoid, model)
             pcall(function() XPModule.AwardXP(killer, "PlayerKill", nil, { coinAward = coinAward }) end)
         else
             local mobXP = 3
+            local rewardMobName = getMobRewardName(model, victimName)
             pcall(function()
-                if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(victimName) end
+                if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(rewardMobName) end
             end)
             pcall(function() XPModule.AwardXP(killer, "MobKill", mobXP, { coinAward = coinAward }) end)
         end

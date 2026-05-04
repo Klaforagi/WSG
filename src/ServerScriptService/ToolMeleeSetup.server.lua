@@ -214,10 +214,9 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
     end
-    -- Apply melee upgrade multiplier (PvP-capped / PvE-uncapped)
+    -- Apply melee upgrade multiplier (uncapped for all targets -- players take same bonus as mobs)
     if _G.GetMeleeDamageMultiplier then
-        local isPvP = (victimPlayer ~= nil)
-        local mult = _G.GetMeleeDamageMultiplier(player, isPvP)
+        local mult = _G.GetMeleeDamageMultiplier(player, false)
         if mult > 1 then
             damage = damage * mult
         end
@@ -474,8 +473,12 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
 
     local validStep = 1
     if hasCombo then
-        -- Reset if weapon changed or combo window expired
-        local prevBaseCd = (cfg.cd or 0.5) + (cs.step == 3 and ATTACK3_EXTRA or 0)
+        -- Reset if weapon changed or combo window expired.
+        -- Use cfg.cd only (not + ATTACK3_EXTRA) because the window to REACH
+        -- step 3 is gated by the step-2 cooldown (cfg.cd), not the step-3 one.
+        -- Using ATTACK3_EXTRA here made the server window 1.1s while the client
+        -- reset at 0.7s, causing step-3 damage to fire on a step-1 client swing.
+        local prevBaseCd   = cfg.cd or 0.5
         local prevScaledCd = prevBaseCd * sizeSpeedMult
         local comboDeadline = cs.lastTime + prevScaledCd + COMBO_WINDOW
         if cs.toolName ~= toolName or now > comboDeadline then
@@ -525,11 +528,11 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         local ok, trail = pcall(function() return tool:FindFirstChild("SwordTrail", true) end)
         if ok and trail and trail:IsA("Trail") then
             pcall(function() trail.Enabled = false end)
-            -- Anchor trail to hitbox: start 0.12s before impact, end 0.1s after
+            -- Anchor trail to hitbox: start 0.12s before impact, end at hitbox clear
             local hd         = (cfg.hitboxDelay  or 0.35) * sizeSpeedMult
             local ha         = (cfg.hitboxActive or 0.1)  * sizeSpeedMult
             local startDelay = math.max(0, hd - 0.12)
-            local endTime    = hd + ha + 0.1
+            local endTime    = hd + ha
             local activeDur  = math.max(0.01, endTime - startDelay)
             task.spawn(function()
                 task.wait(startDelay)
