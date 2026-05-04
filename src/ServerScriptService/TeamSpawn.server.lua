@@ -2,6 +2,8 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Teams = game:GetService("Teams")
 
+local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+
 -----------------------------------------------------------------------
 -- Prevent ALL players from auto-spawning (this is a Players service property)
 -----------------------------------------------------------------------
@@ -96,11 +98,11 @@ Players.PlayerAdded:Connect(function(player)
 		-- allow joining if target team has at most one more player than the other
 		-- disallow if the difference is two or more
 		if teamName == "Blue" and blueCount >= redCount + 2 then
-			chooseResponse:FireClient(player, false, "Blue has too many players — pick the other side")
+			chooseResponse:FireClient(player, false, TeamDisplayNames.Get("Blue") .. " has too many players — pick the other side")
 			return
 		end
 		if teamName == "Red" and redCount >= blueCount + 2 then
-			chooseResponse:FireClient(player, false, "Red has too many players — pick the other side")
+			chooseResponse:FireClient(player, false, TeamDisplayNames.Get("Red") .. " has too many players — pick the other side")
 			return
 		end
 
@@ -109,7 +111,7 @@ Players.PlayerAdded:Connect(function(player)
 		player:SetAttribute("Team", teamName)
 
 		-- Notify client of success
-		chooseResponse:FireClient(player, true, "Joined " .. teamName)
+		chooseResponse:FireClient(player, true, "Joined " .. TeamDisplayNames.Get(teamName))
 
 		-- Teleport to spawn once character loads
 		local spawnPart = getSpawnForTeam(teamName)

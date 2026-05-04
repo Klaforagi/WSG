@@ -32,8 +32,8 @@ end
 ---------------------------------------------------------------------
 -- Tunable pulse constants
 ---------------------------------------------------------------------
-local PULSE_BLUE_COLOR       = Color3.fromRGB(40, 90, 220)   -- blue team overlay
-local PULSE_RED_COLOR        = Color3.fromRGB(220, 45, 45)   -- red team overlay
+local PULSE_BLUE_COLOR       = Color3.fromRGB(40, 90, 220)   -- Knights-side overlay color
+local PULSE_RED_COLOR        = Color3.fromRGB(220, 45, 45)   -- Barbarians-side overlay color
 local PULSE_MIN_TRANSPARENCY = 0.25                           -- strongest tint (most visible)
 local PULSE_MAX_TRANSPARENCY = 0.70                           -- weakest tint  (background shows through)
 local PULSE_CYCLE            = (EventConfig and EventConfig.PULSE_CYCLE) or 1.75

@@ -282,7 +282,7 @@ function setupFlagModel(model)
     do
         local plane = model:FindFirstChild("Plane", true)
         if plane and plane:IsA("BasePart") then
-            -- choose team color (match Minimap / UI colors)
+            -- choose team color to match HUD colors
             local teamColor = Color3.new(1,1,1)
             if team == "Blue" then
                 teamColor = Color3.fromRGB(100,160,255)

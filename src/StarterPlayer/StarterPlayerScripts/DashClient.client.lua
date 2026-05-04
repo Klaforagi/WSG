@@ -163,22 +163,14 @@ screenGui.DisplayOrder = 7
 screenGui.Parent = playerGui
 
 --------------------------------------------------------------------------------
--- DASH BUTTON  – ability button to the LEFT of the minimap, bottom-right area
---
--- Minimap reference (from Minimap.client.lua):
---   AnchorPoint(1,1)  Position(1-0.012, 0, 1-0.012, 0)
---   Size(0.20, 0, 0.40, 0)   CornerRadius 8px   Gold UIStroke
---
--- Tuning offsets – change these to shift the button closer/farther:
---   DASH_BTN_GAP  = gap between minimap left edge and button right edge
---   DASH_BTN_VOFF = vertical offset from bottom edge (0 = flush with minimap)
+-- DASH BUTTON - sits on the same baseline as the 1-4 hotbar slots.
+-- Its right edge lines up with the XP bar's right edge.
 --------------------------------------------------------------------------------
-local BUTTON_SIZE   = 104   -- base px at 1080p (close to hotbar slot footprint)
-local MINIMAP_MARGIN = 0.012
-local MINIMAP_WIDTH  = 0.186
-local DASH_BTN_GAP   = 0.007 -- horizontal gap from minimap left edge (smaller = closer right)
-local DASH_BTN_VOFF  = 0     -- extra vertical offset (px at 1080p; 0 = bottom-aligned with minimap)
-local DASH_BTN_RIGHT_NUDGE = 0.100 -- final right nudge toward minimap cluster
+local BUTTON_SIZE          = 108   -- base px at 1080p; matches Hotbar SLOT_SCALE
+local HOTBAR_BOTTOM_OFFSET = 0.012 + 0.058
+local XP_BAR_WIDTH_SCALE   = 0.34
+local XP_LEVEL_LABEL_SIZE  = 22
+local XP_BAR_EXTRA_WIDTH   = XP_LEVEL_LABEL_SIZE * 2 + 24
 
 local btnFrame = Instance.new("Frame")
 btnFrame.Name = "DashButtonFrame"
@@ -190,11 +182,9 @@ btnFrame.Parent = screenGui
 local applyingLayout = false
 local function applyButtonLayout()
     applyingLayout = true
-    local baseX = 1 - MINIMAP_MARGIN - MINIMAP_WIDTH - DASH_BTN_GAP
-    local finalX = math.clamp(baseX + DASH_BTN_RIGHT_NUDGE, 0, 1)
     btnFrame.Position = UDim2.new(
-        finalX, 0,
-        1 - MINIMAP_MARGIN, -px(DASH_BTN_VOFF)
+        0.5 + (XP_BAR_WIDTH_SCALE / 2), XP_BAR_EXTRA_WIDTH / 2,
+        1 - HOTBAR_BOTTOM_OFFSET, 0
     )
     btnFrame.Size = UDim2.fromOffset(px(BUTTON_SIZE), px(BUTTON_SIZE))
     applyingLayout = false

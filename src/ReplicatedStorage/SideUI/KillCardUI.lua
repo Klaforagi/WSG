@@ -19,7 +19,7 @@
 --     deaths.
 --
 -- Portrait modes:
---   Player  -> ImageLabel with Roblox HeadShot thumbnail (skull only on fail)
+--   Player  -> ViewportFrame with generated avatar rig (thumbnail only on fail)
 --   NPC     -> ViewportFrame with cloned NPC model (skull only when no model)
 --   Unknown -> Skull glyph
 --------------------------------------------------------------------------------
@@ -30,7 +30,17 @@ local TweenService  = game:GetService("TweenService")
 
 local UITheme = require(script.Parent:WaitForChild("UITheme"))
 
+local EmoteConfig
+pcall(function()
+    local mod = script.Parent:FindFirstChild("EmoteConfig")
+    if mod and mod:IsA("ModuleScript") then
+        EmoteConfig = require(mod)
+    end
+end)
+
 local KillCardUI = {}
+
+local DEFAULT_PLAYER_PORTRAIT_EMOTE_ID = "wave"
 
 local function px(base)
     local cam = workspace.CurrentCamera
@@ -98,19 +108,41 @@ end
 -- WorldModel. Strips scripts, anchors parts, disables collisions/queries.
 -- Returns the same model for chaining.
 --------------------------------------------------------------------------------
-local function sanitizeForViewport(clone)
+local function sanitizeForViewport(clone, anchorParts)
     if not clone then return clone end
+    if anchorParts == nil then anchorParts = true end
     for _, d in ipairs(clone:GetDescendants()) do
-        if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
+        if d:IsA("BaseScript") or d:IsA("ModuleScript")
+            or d:IsA("BillboardGui") or d:IsA("ForceField") then
             d:Destroy()
         elseif d:IsA("BasePart") then
-            d.Anchored = true
+            d.Anchored = anchorParts
             d.CanCollide = false
             d.CanQuery = false
             d.CanTouch = false
         end
     end
     return clone
+end
+
+local function prepareAnimatedAvatarForViewport(rig)
+    sanitizeForViewport(rig, false)
+
+    local root = rig and rig:FindFirstChild("HumanoidRootPart")
+    if root and root:IsA("BasePart") then
+        root.Anchored = true
+    end
+
+    local humanoid = rig and rig:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+        humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+        if not humanoid:FindFirstChildOfClass("Animator") then
+            Instance.new("Animator").Parent = humanoid
+        end
+    end
+
+    return rig
 end
 
 --------------------------------------------------------------------------------
@@ -135,7 +167,9 @@ end
 -- emote support. Roblox characters face toward local -Z, so the camera sits
 -- on the -Z side and looks back at the chest/head area.
 --------------------------------------------------------------------------------
-local function buildModelViewport(viewport, model)
+local function buildModelViewport(viewport, model, options)
+    options = options or {}
+
     -- Clear any previous contents.
     for _, child in ipairs(viewport:GetChildren()) do
         if child:IsA("Model") or child:IsA("BasePart") or child:IsA("Camera")
@@ -168,12 +202,12 @@ local function buildModelViewport(viewport, model)
 
     -- Camera setup — front view, centered on torso/head area.
     local cam = Instance.new("Camera")
-    cam.FieldOfView = 50
+    cam.FieldOfView = options.fieldOfView or 50
     -- Look at a point slightly above the geometric center (head area).
-    local lookAt = Vector3.new(0, size.Y * 0.15, 0)
+    local lookAt = Vector3.new(0, size.Y * (options.lookAtHeightScale or 0.15), 0)
     -- Distance scaled to the model's largest extent so big and small
     -- mobs are framed identically.
-    local distance = maxExtent * 1.85
+    local distance = maxExtent * (options.distanceScale or 1.85)
     -- Camera in FRONT of the model (negative Z because model faces -Z).
     local camPos = lookAt + Vector3.new(0, size.Y * 0.05, -distance)
     cam.CFrame = CFrame.lookAt(camPos, lookAt)
@@ -184,24 +218,89 @@ local function buildModelViewport(viewport, model)
 end
 
 --------------------------------------------------------------------------------
--- Player preview: clone the killer's live character model into the viewport
--- and frame it from the front. Falls back to thumbnail/skull if Character
--- isn't ready (e.g. respawning).
+-- Player preview: build a fresh avatar rig from HumanoidDescription instead
+-- of cloning the live character. That keeps the card from becoming a frozen
+-- death-moment body/tool snapshot and gives us a clean Animator path.
 --------------------------------------------------------------------------------
-local function buildPlayerCharacterViewport(viewport, player)
-    if not player then return false end
-    local char = player.Character
-    if not char or not char.Parent then return false end
-    -- Clone is required because the original character is parented to
-    -- workspace and being actively simulated.
-    local prevArchivable = char.Archivable
-    if not prevArchivable then pcall(function() char.Archivable = true end) end
-    local ok, clone = pcall(function() return char:Clone() end)
-    if not prevArchivable then pcall(function() char.Archivable = false end) end
-    if not ok or not clone then return false end
+local function buildPlayerAvatarRig(userId)
+    if not userId then return nil end
 
-    sanitizeForViewport(clone)
-    return buildModelViewport(viewport, clone)
+    local desc
+    local player = Players:GetPlayerByUserId(userId)
+    local char = player and player.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        pcall(function()
+            desc = hum:GetAppliedDescription()
+        end)
+    end
+
+    if not desc then
+        pcall(function()
+            desc = Players:GetHumanoidDescriptionFromUserId(userId)
+        end)
+    end
+    if not desc then return nil end
+
+    local rig
+    pcall(function()
+        rig = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+    end)
+    if not rig then return nil end
+
+    rig.Name = "KillCardAvatar_" .. tostring(userId)
+    return prepareAnimatedAvatarForViewport(rig)
+end
+
+local function resolvePlayerPortraitAnimationId(payload)
+    local explicitId = payload and (payload.portraitAnimationId
+        or payload.killCardAnimationId
+        or payload.killerAnimationId)
+    if type(explicitId) == "string" and explicitId ~= "" then
+        return explicitId
+    end
+
+    if EmoteConfig and type(EmoteConfig.GetById) == "function" then
+        local def = EmoteConfig.GetById(DEFAULT_PLAYER_PORTRAIT_EMOTE_ID)
+        if def and type(def.AnimationId) == "string" and def.AnimationId ~= "" then
+            return def.AnimationId
+        end
+    end
+
+    return nil
+end
+
+local function playPortraitAnimation(rig, animationId)
+    if not rig or type(animationId) ~= "string" or animationId == "" then
+        return nil
+    end
+
+    local humanoid = rig:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return nil end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = humanoid
+    end
+
+    local animation = Instance.new("Animation")
+    animation.AnimationId = animationId
+    local track
+    local ok, err = pcall(function()
+        track = animator:LoadAnimation(animation)
+    end)
+    animation:Destroy()
+
+    if not ok or not track then
+        warn("[KillCardUI] Failed to load portrait animation:", err)
+        return nil
+    end
+
+    track.Priority = Enum.AnimationPriority.Action
+    track.Looped = true
+    pcall(function() track:Play(0.2) end)
+    return track
 end
 
 --------------------------------------------------------------------------------
@@ -283,7 +382,7 @@ function KillCardUI.Mount(parentScreenGui)
     createCorner(portraitSlot, 8)
     createStroke(portraitSlot, UITheme.CARD_STROKE, 2)
 
-    -- Mode A: ImageLabel for Player avatar + Unknown skull + NPC fallback
+    -- Mode A: ImageLabel fallback for player avatar load failures
     local portraitImage = Instance.new("ImageLabel")
     portraitImage.Name = "PortraitImage"
     portraitImage.Size = UDim2.fromScale(1, 1)
@@ -295,7 +394,7 @@ function KillCardUI.Mount(parentScreenGui)
     portraitImage.Parent = portraitSlot
     createCorner(portraitImage, 8)
 
-    -- Mode B: ViewportFrame for NPC model preview
+    -- Mode B: ViewportFrame for player avatar and NPC model previews
     local portraitViewport = Instance.new("ViewportFrame")
     portraitViewport.Name = "PortraitViewport"
     portraitViewport.Size = UDim2.fromScale(1, 1)
@@ -422,13 +521,23 @@ function KillCardUI.Mount(parentScreenGui)
     local controller = {}
     local seq = 0
     local activeShowTween, activeHideTween
+    local activePortraitTrack
     local revengeConn
 
     local ON_SCREEN_X  = UDim2.new(1, -px(20), 0.5, 0)
     local OFF_SCREEN_X = UDim2.new(1, px(40),  0.5, 0)
 
     -- Wipe portrait state to a known-clean baseline.
+    local function stopPortraitAnimation()
+        if activePortraitTrack then
+            pcall(function() activePortraitTrack:Stop(0) end)
+            pcall(function() activePortraitTrack:Destroy() end)
+            activePortraitTrack = nil
+        end
+    end
+
     local function resetPortrait()
+        stopPortraitAnimation()
         portraitImage.Visible = false
         portraitImage.Image = ""
         portraitImage.ImageColor3 = Color3.fromRGB(255, 255, 255)
@@ -479,31 +588,39 @@ function KillCardUI.Mount(parentScreenGui)
         resetPortrait()
 
         if kind == "Player" and payload.killerUserId then
-            -- Try to render the actual player avatar in 3D first; this gives
-            -- a clean front-facing body preview and is future-ready for
-            -- emotes/animations inside the WorldModel.
-            local killerPlayer = Players:GetPlayerByUserId(payload.killerUserId)
-            local rendered3D = false
-            if killerPlayer then
-                rendered3D = buildPlayerCharacterViewport(portraitViewport, killerPlayer)
-            end
-            if rendered3D then
-                portraitViewport.Visible = true
-                portraitImage.Visible = false
-                portraitFallback.Visible = false
-            else
-                -- Fallback: head-shot thumbnail (async).
-                showFallbackSkull()
-                task.spawn(function()
-                    local img = safeThumbnail(payload.killerUserId)
-                    if mySeq ~= seq then return end
-                    if img then
-                        showImage(img)
-                    else
-                        showFallbackSkull()
+            showFallbackSkull()
+            local animationId = resolvePlayerPortraitAnimationId(payload)
+            task.spawn(function()
+                local rig = buildPlayerAvatarRig(payload.killerUserId)
+                if mySeq ~= seq then
+                    if rig then pcall(function() rig:Destroy() end) end
+                    return
+                end
+
+                if rig then
+                    local rendered3D = buildModelViewport(portraitViewport, rig, {
+                        fieldOfView = 42,
+                        distanceScale = 1.65,
+                        lookAtHeightScale = 0.22,
+                    })
+                    if rendered3D then
+                        activePortraitTrack = playPortraitAnimation(rig, animationId)
+                        portraitViewport.Visible = true
+                        portraitImage.Visible = false
+                        portraitFallback.Visible = false
+                        return
                     end
-                end)
-            end
+                    pcall(function() rig:Destroy() end)
+                end
+
+                local img = safeThumbnail(payload.killerUserId)
+                if mySeq ~= seq then return end
+                if img then
+                    showImage(img)
+                else
+                    showFallbackSkull()
+                end
+            end)
         elseif kind == "NPC" then
             -- Use ReplicatedStorage.MobTemplates (server-published) — never
             -- the workspace mob clone.
@@ -585,6 +702,7 @@ function KillCardUI.Mount(parentScreenGui)
             -- override its Visible=true.
             if mySeq ~= seq then return end
             root.Visible = false
+            resetPortrait()
             if activeHideTween == tw then activeHideTween = nil end
         end)
         tw:Play()

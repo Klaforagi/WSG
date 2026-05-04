@@ -4,6 +4,8 @@
 -- Provides:
 --   AdminService:SearchWeapons(adminPlayer, searchType, searchValue)
 --   AdminService:GrantWeapon(adminPlayer, targetUserId, weaponName, sizePercent, enchantName)
+--   AdminService:GrantCurrency(adminPlayer, targetUserId, currencyType, amount)
+--   AdminService:ControlEvent(adminPlayer, action, eventId)
 --
 -- All operations verify the requesting player is a whitelisted dev.
 -- Hooks into existing WeaponInstanceService for instance creation/save.
@@ -12,16 +14,20 @@
 --------------------------------------------------------------------------------
 
 local Players = game:GetService("Players")
+local DataStoreService = game:GetService("DataStoreService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local DevUserIds            = require(game.ReplicatedStorage.DevUserIds)
-local CrateConfig           = require(game.ReplicatedStorage.CrateConfig)
-local WeaponEnchantConfig   = require(game.ReplicatedStorage.WeaponEnchantConfig)
-local SizeRollService       = require(game.ReplicatedStorage.SizeRollService)
+local DevUserIds            = require(ReplicatedStorage.DevUserIds)
+local CrateConfig           = require(ReplicatedStorage.CrateConfig)
+local WeaponEnchantConfig   = require(ReplicatedStorage.WeaponEnchantConfig)
+local SizeRollService       = require(ReplicatedStorage.SizeRollService)
 
 -- Lazy-loaded server modules (avoid circular requires)
 local _WeaponInstanceService
 local _WeaponRegistryService
 local _AdminAuditService
+local _CurrencyService
+local _EventScheduler
 
 local function getWeaponInstanceService()
     if not _WeaponInstanceService then
@@ -42,6 +48,20 @@ local function getAdminAuditService()
         _AdminAuditService = require(script.Parent.AdminAuditService)
     end
     return _AdminAuditService
+end
+
+local function getCurrencyService()
+    if not _CurrencyService then
+        _CurrencyService = require(script.Parent.CurrencyService)
+    end
+    return _CurrencyService
+end
+
+local function getEventScheduler()
+    if not _EventScheduler then
+        _EventScheduler = require(script.Parent.EventScheduler)
+    end
+    return _EventScheduler
 end
 
 local AdminService = {}
@@ -109,6 +129,75 @@ local function validateEnchant(enchantName)
         return enchantName
     end
     return nil -- invalid enchant name
+end
+
+local CURRENCY_GRANT_MAX = 1000000
+local CURRENCY_RETRIES = 3
+local CURRENCY_RETRY_DELAY = 0.5
+local CURRENCY_DEFS = {
+    Coins = {
+        displayName = "Coins",
+        datastoreName = "Coins_v1",
+        getMethod = "GetCoins",
+        addMethod = "AddCoins",
+        saveMethod = "SaveForPlayer",
+    },
+    Keys = {
+        displayName = "Keys",
+        datastoreName = "Keys_v1",
+        getMethod = "GetKeys",
+        addMethod = "AddKeys",
+        saveMethod = "SaveKeysForPlayer",
+    },
+    Salvage = {
+        displayName = "Salvage",
+        datastoreName = "Salvage_v1",
+        getMethod = "GetSalvage",
+        addMethod = "AddSalvage",
+        saveMethod = "SaveSalvageForPlayer",
+    },
+}
+
+local _currencyDataStores = {}
+local function getCurrencyDataStore(def)
+    if not _currencyDataStores[def.datastoreName] then
+        _currencyDataStores[def.datastoreName] = DataStoreService:GetDataStore(def.datastoreName)
+    end
+    return _currencyDataStores[def.datastoreName]
+end
+
+local function currencyDataStoreKey(userId)
+    return "User_" .. tostring(userId)
+end
+
+local function retryOfflineCurrencyAdd(def, targetUserId, amount)
+    local dataStore = getCurrencyDataStore(def)
+    local key = currencyDataStoreKey(targetUserId)
+    local previousBalance = 0
+    local newBalance = 0
+    local lastErr
+
+    for i = 1, CURRENCY_RETRIES do
+        local ok, result = pcall(function()
+            return dataStore:UpdateAsync(key, function(oldValue)
+                local oldAmount = math.floor(tonumber(oldValue) or 0)
+                if oldAmount < 0 then oldAmount = 0 end
+                previousBalance = oldAmount
+                newBalance = oldAmount + amount
+                return newBalance
+            end)
+        end)
+        if ok then
+            if type(result) == "number" then
+                newBalance = math.max(0, math.floor(result))
+            end
+            return true, previousBalance, newBalance
+        end
+        lastErr = result
+        task.wait(CURRENCY_RETRY_DELAY * i)
+    end
+
+    return false, previousBalance, newBalance, lastErr
 end
 
 --------------------------------------------------------------------------------
@@ -366,6 +455,185 @@ function AdminService:GrantWeapon(adminPlayer, targetUserId, weaponName, sizePer
     return {
         success = true,
         weaponRecord = registryRecord,
+    }
+end
+
+--------------------------------------------------------------------------------
+-- GRANT CURRENCY
+--
+-- Adds coins, keys, or salvage to a target player by UserId.
+-- Works for both online and offline players.
+--
+-- Returns: { success = bool, currencyRecord = table?, error = string? }
+--------------------------------------------------------------------------------
+function AdminService:GrantCurrency(adminPlayer, targetUserId, currencyType, amount)
+    -- 1. Verify admin
+    local ok, err = assertDev(adminPlayer)
+    if not ok then
+        return { success = false, error = err }
+    end
+
+    -- 2. Validate inputs
+    if type(targetUserId) ~= "number" or targetUserId <= 0 then
+        return { success = false, error = "Invalid target UserId" }
+    end
+    if type(currencyType) ~= "string" then
+        return { success = false, error = "Invalid currency type" }
+    end
+    local currencyDef = CURRENCY_DEFS[currencyType]
+    if not currencyDef then
+        return { success = false, error = "Unknown currency type: " .. tostring(currencyType) }
+    end
+
+    amount = math.floor(tonumber(amount) or 0)
+    if amount <= 0 then
+        return { success = false, error = "Amount must be positive" }
+    end
+    if amount > CURRENCY_GRANT_MAX then
+        return { success = false, error = "Amount is too large" }
+    end
+
+    -- Verify the userId exists by trying to resolve the username
+    local targetUsername
+    local nameOk, nameResult = pcall(function()
+        return Players:GetNameFromUserIdAsync(targetUserId)
+    end)
+    if not nameOk or not nameResult then
+        return { success = false, error = "Could not resolve UserId " .. tostring(targetUserId) .. " to a username. The user may not exist." }
+    end
+    targetUsername = nameResult
+
+    local targetPlayer = Players:GetPlayerByUserId(targetUserId)
+    local previousBalance = 0
+    local newBalance = 0
+    local wasOnline = targetPlayer ~= nil
+    local warning
+
+    if targetPlayer then
+        local currencyService = getCurrencyService()
+        local getMethod = currencyService[currencyDef.getMethod]
+        local addMethod = currencyService[currencyDef.addMethod]
+        local saveMethod = currencyService[currencyDef.saveMethod]
+
+        if type(getMethod) ~= "function" or type(addMethod) ~= "function" or type(saveMethod) ~= "function" then
+            return { success = false, error = "CurrencyService is missing required methods for " .. currencyDef.displayName }
+        end
+
+        previousBalance = math.floor(tonumber(getMethod(currencyService, targetPlayer)) or 0)
+        local addOk, addErr = pcall(function()
+            addMethod(currencyService, targetPlayer, amount)
+        end)
+        if not addOk then
+            return { success = false, error = "Failed to grant " .. currencyDef.displayName .. ": " .. tostring(addErr) }
+        end
+
+        newBalance = math.floor(tonumber(getMethod(currencyService, targetPlayer)) or (previousBalance + amount))
+        local saveOk, saveResult = pcall(function()
+            return saveMethod(currencyService, targetPlayer)
+        end)
+        if not saveOk or saveResult == false then
+            warning = "Granted live balance, but the immediate save failed; normal player-leave save may still persist it."
+        end
+    else
+        local updateOk, oldAmount, updatedAmount, updateErr = retryOfflineCurrencyAdd(currencyDef, targetUserId, amount)
+        if not updateOk then
+            return { success = false, error = "Failed to update offline " .. currencyDef.displayName .. ": " .. tostring(updateErr) }
+        end
+        previousBalance = oldAmount
+        newBalance = updatedAmount
+    end
+
+    -- 3. Audit log
+    local audit = getAdminAuditService()
+    audit:LogAction({
+        Action          = "GrantCurrency",
+        AdminUserId     = adminPlayer.UserId,
+        AdminUsername    = adminPlayer.Name,
+        TargetUserId    = targetUserId,
+        TargetUsername   = targetUsername,
+        WeaponId        = "",
+        WeaponName      = currencyDef.displayName,
+        SizePercent     = amount,
+        Enchant         = string.format("old=%d; new=%d; online=%s", previousBalance, newBalance, tostring(wasOnline)),
+    })
+
+    return {
+        success = true,
+        currencyRecord = {
+            TargetUserId = targetUserId,
+            TargetUsername = targetUsername,
+            CurrencyType = currencyType,
+            CurrencyLabel = currencyDef.displayName,
+            Amount = amount,
+            PreviousBalance = previousBalance,
+            NewBalance = newBalance,
+            WasOnline = wasOnline,
+            Warning = warning,
+            GrantedByUserId = adminPlayer.UserId,
+            GrantedByUsername = adminPlayer.Name,
+        },
+    }
+end
+
+--------------------------------------------------------------------------------
+-- CONTROL EVENT
+--
+-- Starts/stops timed events for testing without waiting for scheduler rolls.
+-- action: "GetState" | "Start" | "Stop"
+-- eventId: event id from EventConfig.EventDefs for Start/Stop.
+--
+-- Returns: { success = bool, state = table?, message = string?, error = string? }
+--------------------------------------------------------------------------------
+function AdminService:ControlEvent(adminPlayer, action, eventId)
+    local ok, err = assertDev(adminPlayer)
+    if not ok then
+        return { success = false, error = err }
+    end
+
+    if type(action) ~= "string" then
+        return { success = false, error = "Invalid event action" }
+    end
+
+    local scheduler = getEventScheduler()
+
+    if action == "GetState" then
+        return {
+            success = true,
+            state = scheduler:GetAdminState(),
+        }
+    end
+
+    if action == "Start" and (type(eventId) ~= "string" or eventId == "") then
+        return { success = false, error = "Event id is required" }
+    end
+    if eventId ~= nil and eventId ~= "" and type(eventId) ~= "string" then
+        return { success = false, error = "Invalid event id" }
+    end
+    if type(eventId) == "string" and #eventId > 50 then
+        return { success = false, error = "Event id too long" }
+    end
+
+    local controlOk, controlErr
+    if action == "Start" then
+        controlOk, controlErr = scheduler:StartEvent(eventId)
+    elseif action == "Stop" then
+        controlOk, controlErr = scheduler:StopEvent(eventId)
+    else
+        return { success = false, error = "Unknown event action: " .. tostring(action) }
+    end
+
+    if not controlOk then
+        return {
+            success = false,
+            error = controlErr or "Event command failed",
+            state = scheduler:GetAdminState(),
+        }
+    end
+
+    return {
+        success = true,
+        message = action .. " " .. tostring(eventId or "active event"),
+        state = scheduler:GetAdminState(),
     }
 end
 

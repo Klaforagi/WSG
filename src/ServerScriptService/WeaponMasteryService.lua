@@ -1,16 +1,18 @@
 --------------------------------------------------------------------------------
 -- WeaponMasteryService.lua
--- Server-authoritative per-weapon-instance progression and milestone rewards.
+-- Server-authoritative per-weapon-name progression and milestone rewards.
+-- Public APIs still accept weapon instance IDs for compatibility with tools/UI.
 --------------------------------------------------------------------------------
 
-local DataStoreService   = game:GetService("DataStoreService")
-local Players            = game:GetService("Players")
-local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local DataStoreService    = game:GetService("DataStoreService")
+local Players             = game:GetService("Players")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage:WaitForChild("WeaponMasteryConfig"))
 
 local DATASTORE_NAME = "WeaponMastery_v1"
+local DATA_VERSION = 2
 local RETRIES = 3
 local RETRY_DELAY = 0.5
 local SAVE_DELAY = 30
@@ -115,28 +117,103 @@ local function normalizeEntry(entry)
     return entry
 end
 
-local function getEntry(player, instanceId, createIfMissing)
-    if not player or type(instanceId) ~= "string" or instanceId == "" then return nil end
-    local tableForPlayer = playerMasteries[player]
-    if not tableForPlayer then
-        tableForPlayer = {}
-        playerMasteries[player] = tableForPlayer
-    end
-    local entry = tableForPlayer[instanceId]
-    if not entry and createIfMissing then
-        entry = newEntry()
-        tableForPlayer[instanceId] = entry
-    end
-    if entry then
-        tableForPlayer[instanceId] = normalizeEntry(entry)
-    end
-    return tableForPlayer[instanceId]
+local function newDataRecord()
+    return {
+        __version = DATA_VERSION,
+        byWeaponName = {},
+        legacyByInstance = {},
+    }
 end
 
-local function ownsInstance(player, instanceId)
-    local wis = getWeaponInstanceService()
-    if not wis or type(instanceId) ~= "string" then return false end
-    return wis:GetInstance(player, instanceId) ~= nil
+local function ensureDataForPlayer(player)
+    local data = playerMasteries[player]
+    if type(data) ~= "table" then
+        data = newDataRecord()
+        playerMasteries[player] = data
+    end
+    data.__version = DATA_VERSION
+    if type(data.byWeaponName) ~= "table" then
+        data.byWeaponName = {}
+    end
+    if type(data.legacyByInstance) ~= "table" then
+        data.legacyByInstance = {}
+    end
+    return data
+end
+
+local function mergeEntryInto(targetEntry, sourceEntry)
+    targetEntry = normalizeEntry(targetEntry or newEntry())
+    sourceEntry = normalizeEntry(copyTable(sourceEntry))
+
+    targetEntry.xp = (targetEntry.xp or 0) + (sourceEntry.xp or 0)
+    targetEntry.eliminations = (targetEntry.eliminations or 0) + (sourceEntry.eliminations or 0)
+    targetEntry.mobKills = (targetEntry.mobKills or 0) + (sourceEntry.mobKills or 0)
+    targetEntry.captures = (targetEntry.captures or 0) + (sourceEntry.captures or 0)
+    targetEntry.damage = (targetEntry.damage or 0) + (sourceEntry.damage or 0)
+    targetEntry.lastUsedAt = math.max(targetEntry.lastUsedAt or 0, sourceEntry.lastUsedAt or 0)
+
+    for rewardLevel, claimed in pairs(sourceEntry.claimedRewards or {}) do
+        if claimed == true then
+            targetEntry.claimedRewards[tostring(rewardLevel)] = true
+        end
+    end
+
+    targetEntry.level = Config.GetLevelForXP(targetEntry.xp)
+    return targetEntry
+end
+
+local function getInventory(player)
+    local weaponInstanceService = getWeaponInstanceService()
+    if not weaponInstanceService then return {} end
+    local ok, inventory = pcall(function()
+        return weaponInstanceService:GetInventory(player)
+    end)
+    if ok and type(inventory) == "table" then
+        return inventory
+    end
+    return {}
+end
+
+local function getWeaponNameFromInventory(inventory, instanceId)
+    if type(inventory) ~= "table" or type(instanceId) ~= "string" then return nil end
+    local instanceData = inventory[instanceId]
+    if type(instanceData) == "table" and type(instanceData.weaponName) == "string" and instanceData.weaponName ~= "" then
+        return instanceData.weaponName
+    end
+    return nil
+end
+
+local function getOwnedWeaponName(player, instanceId)
+    if not player or type(instanceId) ~= "string" or instanceId == "" then return nil end
+    local weaponInstanceService = getWeaponInstanceService()
+    if not weaponInstanceService then return nil end
+    local ok, instanceData = pcall(function()
+        return weaponInstanceService:GetInstance(player, instanceId)
+    end)
+    if ok and type(instanceData) == "table" and type(instanceData.weaponName) == "string" and instanceData.weaponName ~= "" then
+        return instanceData.weaponName
+    end
+    return nil
+end
+
+local function getEntryForWeaponName(player, weaponName, createIfMissing)
+    if not player or type(weaponName) ~= "string" or weaponName == "" then return nil end
+    local data = ensureDataForPlayer(player)
+    local entry = data.byWeaponName[weaponName]
+    if not entry and createIfMissing then
+        entry = newEntry()
+        data.byWeaponName[weaponName] = entry
+    end
+    if entry then
+        data.byWeaponName[weaponName] = normalizeEntry(entry)
+    end
+    return data.byWeaponName[weaponName]
+end
+
+local function getEntryForInstance(player, instanceId, createIfMissing)
+    local weaponName = getOwnedWeaponName(player, instanceId)
+    if not weaponName then return nil, nil end
+    return getEntryForWeaponName(player, weaponName, createIfMissing), weaponName
 end
 
 local function getReadyRewardLevel(entry)
@@ -152,14 +229,14 @@ local function getReadyRewardLevel(entry)
     return nil
 end
 
-function WeaponMasteryService:GetMasteryPayload(player, instanceId)
-    local entry = getEntry(player, instanceId, false) or newEntry()
-    entry = normalizeEntry(entry)
-
+local function buildPayload(entry, weaponName)
+    entry = normalizeEntry(entry or newEntry())
     local progress = Config.GetProgressForXP(entry.xp)
     local levelDef = Config.GetLevelDef(entry.level)
 
     return {
+        weaponName = weaponName,
+        masteryKey = weaponName,
         xp = entry.xp,
         level = entry.level,
         title = levelDef and levelDef.Title or "Fresh",
@@ -177,23 +254,35 @@ function WeaponMasteryService:GetMasteryPayload(player, instanceId)
     }
 end
 
+function WeaponMasteryService:GetMasteryPayloadForWeaponName(player, weaponName)
+    local entry = getEntryForWeaponName(player, weaponName, false) or newEntry()
+    return buildPayload(entry, weaponName)
+end
+
+function WeaponMasteryService:GetMasteryPayload(player, instanceId)
+    local entry, weaponName = getEntryForInstance(player, instanceId, false)
+    return buildPayload(entry or newEntry(), weaponName)
+end
+
 function WeaponMasteryService:AttachMasteryToInventory(player, inventory)
     local enriched = {}
     if type(inventory) ~= "table" then return enriched end
     for instanceId, data in pairs(inventory) do
         if type(data) == "table" then
             local copy = copyTable(data)
-            copy.mastery = self:GetMasteryPayload(player, instanceId)
+            copy.mastery = self:GetMasteryPayloadForWeaponName(player, copy.weaponName)
             enriched[instanceId] = copy
         end
     end
     return enriched
 end
 
-local function fireUpdated(player, instanceId, meta)
+local function fireUpdated(player, instanceId, weaponName, meta)
     if not player or not player.Parent then return end
+    local updateMeta = meta or {}
+    updateMeta.weaponName = weaponName or updateMeta.weaponName
     pcall(function()
-        masteryUpdatedRE:FireClient(player, instanceId, WeaponMasteryService:GetMasteryPayload(player, instanceId), meta or {})
+        masteryUpdatedRE:FireClient(player, instanceId, WeaponMasteryService:GetMasteryPayloadForWeaponName(player, updateMeta.weaponName), updateMeta)
     end)
 end
 
@@ -213,10 +302,9 @@ end
 local function addProgress(player, instanceId, xpAmount, statKey, statAmount, meta)
     if not player or not player.Parent then return nil end
     if type(instanceId) ~= "string" or instanceId == "" then return nil end
-    if not ownsInstance(player, instanceId) then return nil end
 
-    local entry = getEntry(player, instanceId, true)
-    if not entry then return nil end
+    local entry, weaponName = getEntryForInstance(player, instanceId, true)
+    if not entry or not weaponName then return nil end
 
     xpAmount = math.max(0, math.floor(tonumber(xpAmount) or 0))
     statAmount = math.max(0, math.floor(tonumber(statAmount) or 0))
@@ -239,8 +327,55 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     if updateMeta.leveledUp then
         updateMeta.newLevel = entry.level
     end
-    fireUpdated(player, instanceId, updateMeta)
-    return WeaponMasteryService:GetMasteryPayload(player, instanceId)
+    fireUpdated(player, instanceId, weaponName, updateMeta)
+    return WeaponMasteryService:GetMasteryPayloadForWeaponName(player, weaponName)
+end
+
+local function loadVersioned(result)
+    local loaded = newDataRecord()
+    if type(result.byWeaponName) == "table" then
+        for weaponName, entry in pairs(result.byWeaponName) do
+            if type(weaponName) == "string" and weaponName ~= "" then
+                loaded.byWeaponName[weaponName] = normalizeEntry(copyTable(entry))
+            end
+        end
+    end
+    if type(result.legacyByInstance) == "table" then
+        for instanceId, entry in pairs(result.legacyByInstance) do
+            if type(instanceId) == "string" and instanceId ~= "" then
+                loaded.legacyByInstance[instanceId] = normalizeEntry(copyTable(entry))
+            end
+        end
+    end
+    return loaded
+end
+
+local function loadLegacy(result)
+    local loaded = newDataRecord()
+    if type(result) == "table" then
+        for instanceId, entry in pairs(result) do
+            if type(instanceId) == "string" and instanceId ~= "__version" and type(entry) == "table" then
+                loaded.legacyByInstance[instanceId] = normalizeEntry(copyTable(entry))
+            end
+        end
+    end
+    return loaded
+end
+
+local function migrateLegacyByInstance(player, data)
+    local inventory = getInventory(player)
+    local changed = false
+
+    for instanceId, entry in pairs(copyTable(data.legacyByInstance)) do
+        local weaponName = getWeaponNameFromInventory(inventory, instanceId)
+        if weaponName then
+            data.byWeaponName[weaponName] = mergeEntryInto(data.byWeaponName[weaponName], entry)
+            data.legacyByInstance[instanceId] = nil
+            changed = true
+        end
+    end
+
+    return changed
 end
 
 function WeaponMasteryService:LoadForPlayer(player)
@@ -256,28 +391,48 @@ function WeaponMasteryService:LoadForPlayer(player)
         task.wait(RETRY_DELAY * attempt)
     end
 
-    local loaded = {}
+    local loaded = newDataRecord()
+    local needsSave = false
     if success and type(result) == "table" then
-        for instanceId, entry in pairs(result) do
-            if type(instanceId) == "string" then
-                loaded[instanceId] = normalizeEntry(entry)
-            end
+        if result.__version == DATA_VERSION and type(result.byWeaponName) == "table" then
+            loaded = loadVersioned(result)
+        else
+            loaded = loadLegacy(result)
+            needsSave = true
         end
     elseif not success then
         warn("[WeaponMasteryService] Failed to load for " .. tostring(player.Name) .. "; starting empty")
     end
 
+    if migrateLegacyByInstance(player, loaded) then
+        needsSave = true
+    end
+
     playerMasteries[player] = loaded
     dirtyPlayers[player] = nil
+
+    if needsSave then
+        dirtyPlayers[player] = true
+        task.spawn(function()
+            WeaponMasteryService:SaveForPlayer(player)
+        end)
+    end
+
     return loaded
 end
 
 function WeaponMasteryService:SaveForPlayer(player)
     if not player then return false end
-    local data = playerMasteries[player]
-    if not data then return true end
-    for _, entry in pairs(data) do
-        normalizeEntry(entry)
+    local data = ensureDataForPlayer(player)
+    for weaponName, entry in pairs(data.byWeaponName) do
+        if type(weaponName) == "string" then
+            data.byWeaponName[weaponName] = normalizeEntry(entry)
+        end
+    end
+    for instanceId, entry in pairs(data.legacyByInstance) do
+        if type(instanceId) == "string" then
+            data.legacyByInstance[instanceId] = normalizeEntry(entry)
+        end
     end
 
     local key = dsKey(player)
@@ -311,14 +466,17 @@ function WeaponMasteryService:RemovePlayer(player)
 end
 
 function WeaponMasteryService:RemoveWeapon(player, instanceId)
-    local data = playerMasteries[player]
-    if data and data[instanceId] then
-        data[instanceId] = nil
+    local data = ensureDataForPlayer(player)
+    local removedLegacy = false
+    if type(instanceId) == "string" and data.legacyByInstance[instanceId] then
+        data.legacyByInstance[instanceId] = nil
+        removedLegacy = true
         markDirty(player)
-        fireUpdated(player, instanceId, { removed = true })
-        return true
     end
-    return false
+    if removedLegacy then
+        fireUpdated(player, instanceId, nil, { removed = true })
+    end
+    return removedLegacy
 end
 
 function WeaponMasteryService:RegisterElimination(player, instanceId)
@@ -336,13 +494,12 @@ end
 function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     if not player or not player.Parent then return nil end
     if type(instanceId) ~= "string" or instanceId == "" then return nil end
-    if not ownsInstance(player, instanceId) then return nil end
+
+    local entry, weaponName = getEntryForInstance(player, instanceId, true)
+    if not entry or not weaponName then return nil end
 
     amount = math.max(0, math.floor(tonumber(amount) or 0))
     if amount <= 0 then return nil end
-
-    local entry = getEntry(player, instanceId, true)
-    if not entry then return nil end
 
     local beforeBucket = math.floor((entry.damage or 0) / 100)
     entry.damage = (entry.damage or 0) + amount
@@ -354,7 +511,7 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
         local oldLevel = entry.level or 1
         entry.xp = (entry.xp or 0) + xpAmount
         entry.level = Config.GetLevelForXP(entry.xp)
-        fireUpdated(player, instanceId, {
+        fireUpdated(player, instanceId, weaponName, {
             kind = "Damage",
             deltaXP = xpAmount,
             leveledUp = (entry.level or 1) > oldLevel,
@@ -363,20 +520,21 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     end
 
     markDirty(player)
-    return self:GetMasteryPayload(player, instanceId)
+    return self:GetMasteryPayloadForWeaponName(player, weaponName)
 end
 
 function WeaponMasteryService:ClaimReward(player, instanceId, level)
     if not player or not player.Parent then return false, { reason = "No player" } end
     if type(instanceId) ~= "string" or instanceId == "" then return false, { reason = "Invalid weapon" } end
-    if not ownsInstance(player, instanceId) then return false, { reason = "Weapon not found" } end
+
+    local entry, weaponName = getEntryForInstance(player, instanceId, false)
+    if not entry or not weaponName then return false, { reason = "Weapon not found" } end
 
     level = math.floor(tonumber(level) or 0)
     local reward = Config.GetReward(level)
     if not reward then return false, { reason = "No reward for this level" } end
 
-    local entry = getEntry(player, instanceId, false)
-    if not entry or (entry.level or 1) < level then
+    if (entry.level or 1) < level then
         return false, { reason = "Mastery level not reached" }
     end
 
@@ -398,12 +556,13 @@ function WeaponMasteryService:ClaimReward(player, instanceId, level)
     entry.claimedRewards[claimKey] = true
     markDirty(player)
     self:SaveForPlayer(player)
-    fireUpdated(player, instanceId, { kind = "RewardClaimed", rewardLevel = level })
+    fireUpdated(player, instanceId, weaponName, { kind = "RewardClaimed", rewardLevel = level })
 
     return true, {
         level = level,
+        weaponName = weaponName,
         reward = copyTable(reward),
-        mastery = self:GetMasteryPayload(player, instanceId),
+        mastery = self:GetMasteryPayloadForWeaponName(player, weaponName),
     }
 end
 

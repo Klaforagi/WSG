@@ -1,6 +1,8 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+
+local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -83,7 +85,7 @@ local function showEnd(resultType, winner)
         subtitle.Text = "Next point wins!"
         pcall(function() playGameSound("SuddenDeath") end)
     elseif resultType == "win" and winner then
-        title.Text = "⚔ " .. string.upper(winner) .. " TEAM WINS! ⚔"
+        title.Text = "⚔ " .. TeamDisplayNames.GetUpper(winner) .. " WIN! ⚔"
         subtitle.Text = "New match starting soon..."
         if winner == "Blue" then
             title.TextColor3 = Color3.fromRGB(65, 130, 255)

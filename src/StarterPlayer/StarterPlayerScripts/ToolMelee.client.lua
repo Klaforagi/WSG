@@ -92,8 +92,8 @@ local function getToolSizePercent(tool)
     return 100
 end
 
---- Speed scaling: 100% = 1.0x. 200% = 1.5x (half-rate above 100%).
---- Below 100% is linear (tiny weapons swing faster).
+--- Speed scaling: below 100% is linear (tiny weapons swing faster for more DPS).
+--- Above 100% scales at half rate so max 200% = 1.5x duration, not 2.0x.
 local function getSizeSpeedMultiplier(sizePercent)
     if sizePercent <= 100 then
         return math.clamp(sizePercent / 100, 0.5, 1.0)

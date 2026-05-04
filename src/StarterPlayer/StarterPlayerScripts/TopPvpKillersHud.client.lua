@@ -17,7 +17,7 @@ local SLOT_GAP = 10
 local TWEEN_MOVE = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local TWEEN_FADE = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
--- Team-based border colors (red / blue team)
+-- Team-based border colors (Barbarians / Knights sides)
 local TEAM_STROKE_COLORS = {
     Red  = Color3.fromRGB(220, 50, 50),
     Blue = Color3.fromRGB(50, 100, 220),

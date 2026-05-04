@@ -53,6 +53,7 @@ local EventScheduler = {}
 local _running      = false   -- true while a match is active
 local _activeIdx    = nil     -- currently active event id, or nil
 local _thread       = nil     -- the scheduler coroutine
+local _manualThread = nil     -- admin-triggered auto-stop coroutine
 local _eventEndTime = nil     -- server timestamp when the active event ends
 local _serverCallbacks = {} -- server-side listeners (registered via OnStateChanged)
 
@@ -147,6 +148,93 @@ local function sendStateTo(player)
     end)
 end
 
+local function cancelManualThread()
+    if _manualThread then
+        pcall(task.cancel, _manualThread)
+        _manualThread = nil
+    end
+end
+
+local function endActiveEvent(source)
+    local endedEventId = _activeIdx
+    if not endedEventId then return nil end
+
+    _activeIdx = nil
+    _eventEndTime = nil
+
+    print(('[EventScheduler] Event \'%s\' ended (%s)'):format(tostring(endedEventId), tostring(source or "unknown")))
+    broadcast(false, nil)
+    notifyServer(false, nil)
+
+    return endedEventId
+end
+
+local function startActiveEvent(eventId, durationSeconds, source)
+    local def = getEventDef(eventId)
+    if not def then
+        return false, "Unknown event: " .. tostring(eventId)
+    end
+
+    if _activeIdx then
+        endActiveEvent("replaced by " .. tostring(eventId))
+    end
+
+    local duration = math.max(1, tonumber(durationSeconds) or tonumber(EventConfig.EVENT_DURATION) or 60)
+    EventConfig.ActiveEventId = eventId
+    _activeIdx = eventId
+    _eventEndTime = workspace:GetServerTimeNow() + duration
+
+    print(('[EventScheduler] Event \'%s\' ACTIVE for %ds (%s)'):format(tostring(eventId), duration, tostring(source or "scheduler")))
+    broadcast(true, eventId)
+    announceEventStart(eventId)
+    notifyServer(true, eventId)
+
+    return true
+end
+
+local function buildAdminEventList()
+    local list = {}
+    local seen = {}
+
+    local function addEvent(eventId)
+        if type(eventId) ~= "string" or seen[eventId] then return end
+        local def = getEventDef(eventId)
+        if not def then return end
+        seen[eventId] = true
+        table.insert(list, {
+            EventId = eventId,
+            Name = def.Name or eventId,
+            Objective = def.Objective or "",
+            Reward = def.Reward or "",
+        })
+    end
+
+    if type(EventConfig.EnabledEvents) == "table" then
+        for _, entry in ipairs(EventConfig.EnabledEvents) do
+            if type(entry) == "table" then
+                addEvent(entry.Id or entry.id or entry.EventId or entry.eventId)
+            else
+                addEvent(entry)
+            end
+        end
+    end
+
+    local extraIds = {}
+    if type(EventConfig.EventDefs) == "table" then
+        for eventId, _ in pairs(EventConfig.EventDefs) do
+            if not seen[eventId] then
+                table.insert(extraIds, eventId)
+            end
+        end
+    end
+    table.sort(extraIds)
+    for _, eventId in ipairs(extraIds) do
+        addEvent(eventId)
+    end
+
+    return list
+end
+
 ---------------------------------------------------------------------
 -- Public API
 ---------------------------------------------------------------------
@@ -177,40 +265,46 @@ function EventScheduler:StartMatch(_matchStartTick)
             task.wait(EventConfig.CHANCE_INTERVAL)
             if not _running then return end
 
-            print(("[EventScheduler] Rolling for event… chance = %.0f%%"):format(chance * 100))
+            if _activeIdx ~= nil then
+                local remaining = (_eventEndTime or 0) - workspace:GetServerTimeNow()
+                if remaining > 0 then
+                    task.wait(math.min(remaining, EventConfig.CHANCE_INTERVAL))
+                else
+                    endActiveEvent("scheduler expiry")
+                end
+            else
+                print(("[EventScheduler] Rolling for event… chance = %.0f%%"):format(chance * 100))
 
-            if math.random() < chance then
+                if math.random() < chance then
                 -- ---- EVENT START ----
                 local eventId = chooseEventId()
-                _activeIdx    = eventId
-                _eventEndTime = workspace:GetServerTimeNow() + EventConfig.EVENT_DURATION
-                print((("[EventScheduler] Event '%s' ACTIVE (triggered at %.0f%% chance)"):format(eventId, chance * 100)))
-                broadcast(true, eventId)
-                announceEventStart(eventId)
-                notifyServer(true, eventId)
+                local started, startErr = startActiveEvent(eventId, EventConfig.EVENT_DURATION, ("triggered at %.0f%% chance"):format(chance * 100))
+                if not started then
+                    warn("[EventScheduler] Failed to start event: " .. tostring(startErr))
+                    chance = math.min(chance + EventConfig.CHANCE_STEP, EventConfig.CHANCE_CAP)
+                    continue
+                end
 
                 -- Run for EVENT_DURATION seconds
-                local activatedAt = workspace:GetServerTimeNow()
-                while _running do
-                    local elapsed = workspace:GetServerTimeNow() - activatedAt
-                    if elapsed >= EventConfig.EVENT_DURATION then break end
-                    task.wait(math.min(EventConfig.EVENT_DURATION - elapsed, 1))
+                while _running and _activeIdx == eventId do
+                    local remaining = (_eventEndTime or 0) - workspace:GetServerTimeNow()
+                    if remaining <= 0 then break end
+                    task.wait(math.min(remaining, 1))
                 end
                 if not _running then return end
 
                 -- ---- EVENT END ----
-                _activeIdx    = nil
-                _eventEndTime = nil
-                print("[EventScheduler] Event ENDED – resetting chance to 0%")
-                broadcast(false, nil)
-                notifyServer(false, nil)
+                if _activeIdx == eventId then
+                    endActiveEvent("duration elapsed")
+                end
 
                 -- Reset chance; it will climb again from the next tick
                 chance = EventConfig.CHANCE_AFTER_EVENT
-            else
+                else
                 -- Roll failed – increase chance for next interval
                 chance = math.min(chance + EventConfig.CHANCE_STEP, EventConfig.CHANCE_CAP)
                 print(("[EventScheduler] No event – chance raised to %.0f%%"):format(chance * 100))
+                end
             end
         end
     end)
@@ -221,6 +315,7 @@ function EventScheduler:StopMatch()
     _running      = false
     _activeIdx    = nil
     _eventEndTime = nil
+    cancelManualThread()
 
     if _thread then
         pcall(task.cancel, _thread)
@@ -242,6 +337,60 @@ end
 --- Returns whether an event is currently active and which event id.
 function EventScheduler:IsActive()
     return _activeIdx ~= nil, _activeIdx
+end
+
+--- Starts a specific event immediately for admin/testing workflows.
+--- Works whether or not the normal match scheduler is currently running.
+function EventScheduler:StartEvent(eventId, durationSeconds)
+    cancelManualThread()
+
+    local started, err = startActiveEvent(eventId, durationSeconds or EventConfig.EVENT_DURATION, "admin")
+    if not started then
+        return false, err
+    end
+
+    local activeEventId = _activeIdx
+    local activeEndTime = _eventEndTime
+    _manualThread = task.spawn(function()
+        while _activeIdx == activeEventId and _eventEndTime == activeEndTime do
+            local remaining = (activeEndTime or 0) - workspace:GetServerTimeNow()
+            if remaining <= 0 then break end
+            task.wait(math.min(remaining, 1))
+        end
+
+        if _activeIdx == activeEventId and _eventEndTime == activeEndTime then
+            endActiveEvent("admin duration elapsed")
+        end
+        _manualThread = nil
+    end)
+
+    return true
+end
+
+--- Stops the currently active event. If eventId is provided, it must match.
+function EventScheduler:StopEvent(eventId)
+    if not _activeIdx then
+        return false, "No event is currently active"
+    end
+    if eventId and eventId ~= "" and eventId ~= _activeIdx then
+        return false, tostring(eventId) .. " is not the active event"
+    end
+
+    cancelManualThread()
+    endActiveEvent("admin stop")
+    return true
+end
+
+--- Returns admin-panel friendly state and event metadata.
+function EventScheduler:GetAdminState()
+    return {
+        Active = _activeIdx ~= nil,
+        ActiveEventId = _activeIdx,
+        EventEndTime = _eventEndTime,
+        ServerTime = workspace:GetServerTimeNow(),
+        MatchRunning = _running,
+        Events = buildAdminEventList(),
+    }
 end
 
 --- Send state to a specific player (call from PlayerAdded handler).

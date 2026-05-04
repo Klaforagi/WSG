@@ -36,7 +36,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Champion",
         desc      = "Win 3 matches with your team",
         goal      = 3,
-        reward    = 40,
+        reward    = 180,
         trackType = "matches_won",
     },
     {
@@ -44,7 +44,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Grand Champion",
         desc      = "Win 5 matches with your team",
         goal      = 5,
-        reward    = 60,
+        reward    = 230,
         trackType = "matches_won",
     },
     {
@@ -52,7 +52,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Legendary Victor",
         desc      = "Win 10 matches with your team",
         goal      = 10,
-        reward    = 80,
+        reward    = 300,
         trackType = "matches_won",
     },
 
@@ -62,7 +62,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Flag Runner",
         desc      = "Capture 3 enemy flags",
         goal      = 3,
-        reward    = 40,
+        reward    = 180,
         trackType = "flag_captures",
     },
     {
@@ -70,7 +70,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Flag Dominator",
         desc      = "Capture 5 enemy flags",
         goal      = 5,
-        reward    = 60,
+        reward    = 230,
         trackType = "flag_captures",
     },
     {
@@ -78,7 +78,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Capture King",
         desc      = "Capture 8 enemy flags",
         goal      = 8,
-        reward    = 80,
+        reward    = 280,
         trackType = "flag_captures",
     },
 
@@ -88,7 +88,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Banner Guardian",
         desc      = "Return your team's flag 3 times",
         goal      = 3,
-        reward    = 40,
+        reward    = 180,
         trackType = "flag_returns",
     },
     {
@@ -96,7 +96,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Flag Defender",
         desc      = "Return your team's flag 5 times",
         goal      = 5,
-        reward    = 60,
+        reward    = 230,
         trackType = "flag_returns",
     },
     {
@@ -104,7 +104,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Loyal Protector",
         desc      = "Return your team's flag 8 times",
         goal      = 8,
-        reward    = 80,
+        reward    = 280,
         trackType = "flag_returns",
     },
 
@@ -114,7 +114,7 @@ WeeklyQuestDefs.Pool = {
         title       = "Battlefield Veteran",
         desc        = "Spend 30 minutes in matches",
         goal        = 30,
-        reward      = 40,
+        reward      = 180,
         trackType   = "time_played",
         displayUnit = "min",
     },
@@ -123,7 +123,7 @@ WeeklyQuestDefs.Pool = {
         title       = "War Veteran",
         desc        = "Spend 60 minutes in matches",
         goal        = 60,
-        reward      = 60,
+        reward      = 230,
         trackType   = "time_played",
         displayUnit = "min",
     },
@@ -132,7 +132,7 @@ WeeklyQuestDefs.Pool = {
         title       = "Ironclad",
         desc        = "Spend 120 minutes in matches",
         goal        = 120,
-        reward      = 80,
+        reward      = 280,
         trackType   = "time_played",
         displayUnit = "min",
     },
@@ -143,7 +143,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Wealth Builder",
         desc      = "Earn 500 coins from gameplay",
         goal      = 500,
-        reward    = 50,
+        reward    = 200,
         trackType = "coins_earned",
     },
     {
@@ -151,7 +151,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Fortune Seeker",
         desc      = "Earn 1,000 coins from gameplay",
         goal      = 1000,
-        reward    = 75,
+        reward    = 280,
         trackType = "coins_earned",
     },
 
@@ -161,7 +161,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Loyal Fighter",
         desc      = "Complete 15 matches",
         goal      = 15,
-        reward    = 40,
+        reward    = 180,
         trackType = "matches_played",
     },
     {
@@ -169,7 +169,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Dedicated Warrior",
         desc      = "Complete 25 matches",
         goal      = 25,
-        reward    = 60,
+        reward    = 230,
         trackType = "matches_played",
     },
     {
@@ -177,7 +177,7 @@ WeeklyQuestDefs.Pool = {
         title     = "Marathon Runner",
         desc      = "Complete 40 matches",
         goal      = 40,
-        reward    = 80,
+        reward    = 280,
         trackType = "matches_played",
     },
 }

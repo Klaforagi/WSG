@@ -325,7 +325,6 @@ pcall(function()
 			InvertCamera = false,
 			SprintMode = "Hold",
 			ShowTooltips = true,
-			ShowMinimap = true,
 			ShowGameState = true,
 			ShowHelm = true,
 			ShowPlayerHighlights = false,
@@ -333,7 +332,9 @@ pcall(function()
 		local settings = {}
 		for k, v in pairs(defaults) do settings[k] = v end
 		if ok and type(data) == "table" then
-			for k, v in pairs(data) do settings[k] = v end
+			for k, _ in pairs(defaults) do
+				if data[k] ~= nil then settings[k] = data[k] end
+			end
 		end
 		_G.PlayerSettings = settings
 		_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)

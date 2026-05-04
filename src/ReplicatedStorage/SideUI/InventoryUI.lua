@@ -15,6 +15,7 @@ local RunService         = game:GetService("RunService")
 local TweenService       = game:GetService("TweenService")
 
 local UITheme = require(script.Parent.UITheme)
+local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Responsive pixel helper
@@ -125,6 +126,97 @@ local TextService = game:GetService("TextService")
 local function shadeColor(c, factor)
     factor = factor or 0.6
     return Color3.new(math.clamp(c.R * factor, 0, 1), math.clamp(c.G * factor, 0, 1), math.clamp(c.B * factor, 0, 1))
+end
+
+local function mixColor(a, b, alpha)
+    alpha = math.clamp(alpha or 0.5, 0, 1)
+    return Color3.new(
+        a.R + (b.R - a.R) * alpha,
+        a.G + (b.G - a.G) * alpha,
+        a.B + (b.B - a.B) * alpha
+    )
+end
+
+local function brightenColor(c, amount)
+    amount = amount or 0.06
+    return Color3.new(
+        math.clamp(c.R + amount, 0, 1),
+        math.clamp(c.G + amount, 0, 1),
+        math.clamp(c.B + amount, 0, 1)
+    )
+end
+
+local function colorFromRGBArray(value)
+    if type(value) == "table" and #value >= 3 then
+        return Color3.fromRGB(value[1], value[2], value[3])
+    end
+    return nil
+end
+
+local function accentPanelColor(accentColor, strength)
+    return mixColor(Color3.fromRGB(18, 20, 34), accentColor or GOLD, strength or 0.28)
+end
+
+local function addTextOutline(label, transparency, thickness)
+    local outline = Instance.new("UIStroke", label)
+    outline.Color = Color3.fromRGB(0, 0, 0)
+    outline.Thickness = thickness or 1.4
+    outline.Transparency = transparency or 0.18
+    return outline
+end
+
+local function addCardSheen(parent, accentColor)
+    local sheen = Instance.new("Frame", parent)
+    sheen.Name = "CardSheen"
+    sheen.BackgroundColor3 = brightenColor(accentColor or WHITE, 0.08)
+    sheen.BackgroundTransparency = 0.78
+    sheen.BorderSizePixel = 0
+    sheen.Size = UDim2.new(1, 0, 0.36, 0)
+    sheen.ZIndex = 1
+    local corner = Instance.new("UICorner", sheen)
+    corner.CornerRadius = UDim.new(0, px(10))
+    return sheen
+end
+
+local function addCardAccentBar(parent, accentColor, name, anchorBottom)
+    local bar = Instance.new("Frame", parent)
+    bar.Name = name or "AccentBar"
+    bar.BackgroundColor3 = accentColor or GOLD
+    bar.BackgroundTransparency = 0.08
+    bar.BorderSizePixel = 0
+    bar.Size = UDim2.new(1, 0, 0, px(3))
+    bar.ZIndex = 6
+    if anchorBottom then
+        bar.AnchorPoint = Vector2.new(0, 1)
+        bar.Position = UDim2.new(0, 0, 1, 0)
+    else
+        bar.Position = UDim2.new(0, 0, 0, 0)
+    end
+    return bar
+end
+
+local function addIconWellHighlight(iconArea, accentColor)
+    local highlight = Instance.new("Frame", iconArea)
+    highlight.Name = "IconHighlight"
+    highlight.BackgroundColor3 = brightenColor(accentColor or WHITE, 0.05)
+    highlight.BackgroundTransparency = 0.72
+    highlight.BorderSizePixel = 0
+    highlight.Size = UDim2.new(1, 0, 0.35, 0)
+    highlight.ZIndex = 1
+    Instance.new("UICorner", highlight).CornerRadius = UDim.new(0, px(6))
+
+    local stroke = Instance.new("UIStroke", iconArea)
+    stroke.Color = accentColor or CARD_STROKE
+    stroke.Thickness = 1
+    stroke.Transparency = 0.48
+    return highlight, stroke
+end
+
+local function setCardStroke(stroke, color, thickness, transparency)
+    if not stroke then return end
+    stroke.Color = color
+    stroke.Thickness = thickness
+    stroke.Transparency = transparency
 end
 
 local function formatMasteryReward(reward)
@@ -379,8 +471,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ──────────────────────────────────────────────────────────────────────
     -- Dimensions
     -- ──────────────────────────────────────────────────────────────────────
-    local TAB_W     = px(132)
-    local TAB_GAP   = px(10)
+    local TAB_W     = px(LeftPanelStyle.TAB_W)
+    local TAB_GAP   = px(LeftPanelStyle.TAB_GAP)
     local DETAIL_W  = px(315)
     local GRID_GAP  = px(10)
 
@@ -662,26 +754,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- ══════════════════════════════════════════════════════════════════════
     local sidebar = Instance.new("Frame")
     sidebar.Name = "TabSidebar"
-    sidebar.BackgroundColor3 = SIDEBAR_BG
-    sidebar.BorderSizePixel = 0
-    sidebar.Size = UDim2.new(0, TAB_W, 1, 0)
-    sidebar.ClipsDescendants = false
     sidebar.Parent = root
-    Instance.new("UICorner", sidebar).CornerRadius = UDim.new(0, px(10))
-
-    local sideStroke = Instance.new("UIStroke", sidebar)
-    sideStroke.Color = CARD_STROKE; sideStroke.Thickness = 1.2; sideStroke.Transparency = 0.3
-
-    local sideLayout = Instance.new("UIListLayout", sidebar)
-    sideLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    sideLayout.Padding = UDim.new(0, px(3))
-    sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-
-    local sidePad = Instance.new("UIPadding", sidebar)
-    sidePad.PaddingTop    = UDim.new(0, px(10))
-    sidePad.PaddingBottom = UDim.new(0, px(10))
-    sidePad.PaddingLeft   = UDim.new(0, px(6))
-    sidePad.PaddingRight  = UDim.new(0, px(6))
+    LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
 
     local tabButtons = {}
     local currentTab = "melee"
@@ -1106,8 +1180,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     Instance.new("UICorner", detailEquipBtn).CornerRadius = UDim.new(0, px(10))
     local equipStroke = Instance.new("UIStroke", detailEquipBtn)
     equipStroke.Color = Color3.fromRGB(0, 0, 0); equipStroke.Thickness = 1.5; equipStroke.Transparency = 0.15
-    print("[UIPolish] Applied browse-style typography to Equip button: detailEquipBtn")
-
     -- Action buttons row (Favorite + Salvage) above equip button
     local actionRow = Instance.new("Frame", detailContent)
     actionRow.Name = "ActionRow"
@@ -2219,14 +2291,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostEmptyState.Parent = boostsPage
 
         local beCard = Instance.new("Frame")
-        beCard.BackgroundColor3 = CARD_BG
+        beCard.BackgroundColor3 = accentPanelColor(GOLD, 0.22)
         beCard.Size = UDim2.new(0.7, 0, 0, px(130))
         beCard.AnchorPoint = Vector2.new(0.5, 0.5)
         beCard.Position = UDim2.new(0.5, 0, 0.45, 0)
         beCard.Parent = boostEmptyState
         Instance.new("UICorner", beCard).CornerRadius = UDim.new(0, px(14))
         local beStroke = Instance.new("UIStroke", beCard)
-        beStroke.Color = CARD_STROKE; beStroke.Thickness = 1.2; beStroke.Transparency = 0.3
+        beStroke.Color = UITheme.GOLD_DIM; beStroke.Thickness = 1.4; beStroke.Transparency = 0.18
+        addCardSheen(beCard, GOLD)
 
         local beLine1 = Instance.new("TextLabel", beCard)
         beLine1.BackgroundTransparency = 1; beLine1.Font = Enum.Font.GothamMedium
@@ -2309,9 +2382,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailIconBg.Name = "IconBg"
         boostDetailIconBg.BackgroundColor3 = Color3.fromRGB(30, 34, 55)
         boostDetailIconBg.Size = UDim2.new(1, 0, 0, px(170))
+        boostDetailIconBg.ClipsDescendants = true
         Instance.new("UICorner", boostDetailIconBg).CornerRadius = UDim.new(0, px(10))
         local bdIconStroke = Instance.new("UIStroke", boostDetailIconBg)
         bdIconStroke.Color = CARD_STROKE; bdIconStroke.Thickness = 1.5; bdIconStroke.Transparency = 0.3
+        local boostDetailIconSheen = addCardSheen(boostDetailIconBg, GOLD)
+        boostDetailIconSheen.BackgroundTransparency = 0.82
 
         local boostDetailIconImage = Instance.new("ImageLabel", boostDetailIconBg)
         boostDetailIconImage.Name = "IconImage"
@@ -2329,6 +2405,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailIconGlyph.TextSize = math.max(40, math.floor(px(60)))
         boostDetailIconGlyph.TextColor3 = WHITE
         boostDetailIconGlyph.Text = ""
+        addTextOutline(boostDetailIconGlyph, 0.2, 1.6)
 
         -- Boost name
         local boostDetailName = Instance.new("TextLabel", boostDetailContent)
@@ -2451,10 +2528,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        print("[UIPolish] Boost detail text size updated")
-        print("[UIPolish] Achievement progress text style sampled")
-        print("[UIPolish] Applied achievement-style typography to browse button: boostShopBtn")
-
         -- ── Helpers ─────────────────────────────────────────────────────
 
         local function getBoostState(boostId)
@@ -2479,20 +2552,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local def = BoostConfig and BoostConfig.GetById(selectedBoostId)
             if not def then return end
 
-            print("[BoostsTab] Updating details panel")
-
-            local iconColor = BOOST_ACCENT_COLORS[def.Id] or GOLD
-            if type(def.IconColor) == "table" and #def.IconColor >= 3 then
-                iconColor = Color3.fromRGB(def.IconColor[1], def.IconColor[2], def.IconColor[3])
-            end
+            local iconColor = colorFromRGBArray(def.IconColor) or BOOST_ACCENT_COLORS[def.Id] or GOLD
 
             -- Icon background tint
             boostDetailIconBg.BackgroundColor3 = Color3.new(
-                math.clamp(iconColor.R * 0.15 + 0.08, 0, 1),
-                math.clamp(iconColor.G * 0.15 + 0.08, 0, 1),
-                math.clamp(iconColor.B * 0.15 + 0.08, 0, 1)
+                math.clamp(iconColor.R * 0.22 + 0.08, 0, 1),
+                math.clamp(iconColor.G * 0.22 + 0.08, 0, 1),
+                math.clamp(iconColor.B * 0.22 + 0.08, 0, 1)
             )
             bdIconStroke.Color = iconColor
+            bdIconStroke.Transparency = 0.12
+            bdpStroke.Color = iconColor
+            bdpStroke.Transparency = 0.14
+            boostDetailIconSheen.BackgroundColor3 = brightenColor(iconColor, 0.08)
 
             -- Icon image or glyph
             local img = getBoostIconImage(def)
@@ -2508,6 +2580,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
 
             boostDetailName.Text = def.DisplayName or def.Id
+            boostDetailName.TextColor3 = brightenColor(iconColor, 0.1)
             boostDetailDesc.Text = def.Description or ""
 
             -- Duration
@@ -2522,7 +2595,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- State-dependent fields
             local owned, active, remaining = getBoostState(def.Id)
             boostDetailOwned.Text = "Owned: " .. tostring(owned)
-            print("[BoostsTab] Owned count:", owned)
 
             if active then
                 boostDetailStatus.Text = "\u{2714} ACTIVE"
@@ -2535,7 +2607,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 boostActivateBtn.TextColor3 = GREEN_GLOW
                 boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
                 boostActivateStroke.Transparency = 0.15
-                print("[BoostsTab] Status: Active")
             elseif owned > 0 then
                 boostDetailStatus.Text = "Ready to Activate"
                 boostDetailStatus.TextColor3 = WHITE
@@ -2546,7 +2617,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 boostActivateBtn.TextColor3 = WHITE
                 boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
                 boostActivateStroke.Transparency = 0.15
-                print("[BoostsTab] Status: Ready")
             else
                 boostDetailStatus.Text = "Not Owned"
                 boostDetailStatus.TextColor3 = DIM_TEXT
@@ -2557,7 +2627,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 boostActivateBtn.TextColor3 = DIM_TEXT
                 boostActivateStroke.Color = CARD_STROKE
                 boostActivateStroke.Transparency = 0.45
-                print("[BoostsTab] Status: NotOwned")
             end
         end
 
@@ -2570,28 +2639,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 local isSelected = (selectedBoostId == def.Id)
 
-                -- Card background
+                local targetBg = refs.baseBg or CARD_BG
                 if isSelected then
-                    refs.card.BackgroundColor3 = active and CARD_EQUIPPED or CARD_BG
+                    targetBg = active and mixColor(refs.activeBg or CARD_EQUIPPED, GOLD, 0.14) or (refs.selectedBg or CARD_BG)
+                    setCardStroke(refs.cardStroke, GOLD, 2.5, 0)
                 elseif active then
-                    refs.card.BackgroundColor3 = CARD_EQUIPPED
+                    targetBg = refs.activeBg or CARD_EQUIPPED
+                    setCardStroke(refs.cardStroke, GREEN_GLOW, 2.0, 0.16)
+                elseif owned > 0 then
+                    setCardStroke(refs.cardStroke, refs.borderColor or CARD_STROKE, 1.8, 0.12)
                 else
-                    refs.card.BackgroundColor3 = CARD_BG
+                    setCardStroke(refs.cardStroke, refs.borderColor or CARD_STROKE, 1.5, 0.22)
                 end
-
-                -- Card stroke
-                if isSelected then
-                    refs.cardStroke.Color = GOLD
-                    refs.cardStroke.Thickness = 2.5
-                    refs.cardStroke.Transparency = 0
-                elseif active then
-                    refs.cardStroke.Color = GREEN_GLOW
-                    refs.cardStroke.Thickness = 1.8
-                    refs.cardStroke.Transparency = 0.3
-                else
-                    refs.cardStroke.Color = CARD_STROKE
-                    refs.cardStroke.Thickness = 1.2
-                    refs.cardStroke.Transparency = 0.35
+                refs.card.BackgroundColor3 = targetBg
+                if refs.accentBar then
+                    refs.accentBar.BackgroundColor3 = active and GREEN_GLOW or (refs.accentColor or GOLD)
+                    refs.accentBar.BackgroundTransparency = active and 0 or 0.12
                 end
 
                 -- Active bar indicator
@@ -2602,12 +2665,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 if active then
                     refs.statusLabel.Text = string.format("%02d:%02d", math.floor(remaining / 60), remaining % 60)
                     refs.statusLabel.TextColor3 = GREEN_GLOW
+                    if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, GREEN_GLOW, 0.3) end
+                    if refs.statusStroke then refs.statusStroke.Color = GREEN_GLOW; refs.statusStroke.Transparency = 0.22 end
                 elseif owned > 0 then
                     refs.statusLabel.Text = "Owned: " .. tostring(owned)
                     refs.statusLabel.TextColor3 = WHITE
+                    if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, refs.accentColor or GOLD, 0.18) end
+                    if refs.statusStroke then refs.statusStroke.Color = refs.accentColor or GOLD; refs.statusStroke.Transparency = 0.35 end
                 else
                     refs.statusLabel.Text = "Not Owned"
                     refs.statusLabel.TextColor3 = DIM_TEXT
+                    if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, Color3.fromRGB(10, 12, 20), 0.28) end
+                    if refs.statusStroke then refs.statusStroke.Color = refs.borderColor or CARD_STROKE; refs.statusStroke.Transparency = 0.5 end
                 end
             end
 
@@ -2618,7 +2687,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── Select a boost ──────────────────────────────────────────────
         local function setSelectedBoost(boostId)
             selectedBoostId = boostId
-            print("[BoostsTab] Selected boost:", boostId or "(none)")
             refreshBoostCards()
         end
 
@@ -2631,14 +2699,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             unavailable.Size = UDim2.new(1, 0, 0, px(50)); unavailable.LayoutOrder = 1
         else
             for i_b, def in ipairs(boostDefs) do
-                local iconColor = BOOST_ACCENT_COLORS[def.Id] or GOLD
-                if type(def.IconColor) == "table" and #def.IconColor >= 3 then
-                    iconColor = Color3.fromRGB(def.IconColor[1], def.IconColor[2], def.IconColor[3])
-                end
+                local iconColor = colorFromRGBArray(def.IconColor) or BOOST_ACCENT_COLORS[def.Id] or GOLD
+                local baseBg = accentPanelColor(iconColor, 0.48)
+                local selectedBg = brightenColor(baseBg, 0.05)
+                local activeBg = mixColor(baseBg, GREEN_GLOW, 0.2)
+                local borderColor = mixColor(shadeColor(iconColor, 0.74), WHITE, 0.1)
 
                 local card = Instance.new("TextButton")
                 card.Name = "BoostCard_" .. def.Id
-                card.BackgroundColor3 = CARD_BG
+                card.BackgroundColor3 = baseBg
                 card.Size = UDim2.new(1, 0, 1, 0)
                 card.Text = ""
                 card.AutoButtonColor = false
@@ -2649,7 +2718,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
                 local cStroke = Instance.new("UIStroke", card)
-                cStroke.Color = CARD_STROKE; cStroke.Thickness = INV_CARD.StrokeThickness; cStroke.Transparency = INV_CARD.StrokeTransparency
+                cStroke.Color = borderColor; cStroke.Thickness = 1.6; cStroke.Transparency = 0.2
+                addCardSheen(card, iconColor)
+                local accentBar = addCardAccentBar(card, iconColor)
 
                 -- Name label at top (matching weapon card layout)
                 local cardName = Instance.new("TextLabel", card)
@@ -2663,20 +2734,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardName.TextXAlignment = Enum.TextXAlignment.Center
                 cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
                 cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+                cardName.ZIndex = 3
+                addTextOutline(cardName, 0.18, 1.35)
 
                 -- Icon area (centered square, matching weapon card layout)
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
-                iconArea.BackgroundColor3 = Color3.new(
-                    math.clamp(iconColor.R * 0.15 + 0.06, 0, 1),
-                    math.clamp(iconColor.G * 0.15 + 0.06, 0, 1),
-                    math.clamp(iconColor.B * 0.15 + 0.06, 0, 1)
-                )
+                iconArea.BackgroundColor3 = accentPanelColor(iconColor, 0.22)
                 iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
                 iconArea.AnchorPoint = Vector2.new(0.5, 0)
                 iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
                 iconArea.BorderSizePixel = 0
                 Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+                addIconWellHighlight(iconArea, iconColor)
 
                 -- Icon image centered in icon area
                 local cardIconImage = Instance.new("ImageLabel", iconArea)
@@ -2686,6 +2756,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
                 cardIconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
                 cardIconImage.ScaleType = Enum.ScaleType.Fit
+                cardIconImage.ZIndex = 3
 
                 local img = getBoostIconImage(def)
                 if img and #img > 0 then
@@ -2706,9 +2777,39 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardIconGlyph.TextScaled = true
                 cardIconGlyph.TextColor3 = iconColor
                 cardIconGlyph.Visible = not cardIconImage.Visible
+                cardIconGlyph.ZIndex = 3
+                addTextOutline(cardIconGlyph, 0.2, 1.4)
+
+                local durationBadge = Instance.new("TextLabel", card)
+                durationBadge.Name = "DurationBadge"
+                durationBadge.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.36)
+                durationBadge.Font = Enum.Font.GothamBold
+                durationBadge.TextColor3 = WHITE
+                durationBadge.TextSize = math.max(10, math.floor(px(11)))
+                durationBadge.TextXAlignment = Enum.TextXAlignment.Center
+                durationBadge.Size = UDim2.new(0, px(42), 0, px(18))
+                durationBadge.AnchorPoint = Vector2.new(1, 0)
+                durationBadge.Position = UDim2.new(1, -px(5), 0, px(27))
+                durationBadge.Text = ((def.DurationSeconds or 0) > 0) and (tostring(math.floor((def.DurationSeconds or 0) / 60)) .. "m") or "BOOST"
+                durationBadge.ZIndex = 4
+                Instance.new("UICorner", durationBadge).CornerRadius = UDim.new(0, px(6))
+                local durationStroke = Instance.new("UIStroke", durationBadge)
+                durationStroke.Color = iconColor; durationStroke.Thickness = 1; durationStroke.Transparency = 0.45
 
                 -- Status / owned count label (bottom of card)
-                local cardStatus = Instance.new("TextLabel", card)
+                local statusPill = Instance.new("Frame", card)
+                statusPill.Name = "StatusPill"
+                statusPill.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(10, 12, 20), 0.28)
+                statusPill.BorderSizePixel = 0
+                statusPill.Size = UDim2.new(0.84, 0, 0, INV_CARD.Line2Height + px(4))
+                statusPill.AnchorPoint = Vector2.new(0.5, 1)
+                statusPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+                statusPill.ZIndex = 3
+                Instance.new("UICorner", statusPill).CornerRadius = UDim.new(0, px(7))
+                local statusStroke = Instance.new("UIStroke", statusPill)
+                statusStroke.Color = borderColor; statusStroke.Thickness = 1; statusStroke.Transparency = 0.5
+
+                local cardStatus = Instance.new("TextLabel", statusPill)
                 cardStatus.Name = "StatusLabel"
                 cardStatus.BackgroundTransparency = 1
                 cardStatus.Font = Enum.Font.GothamBold
@@ -2716,15 +2817,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardStatus.TextColor3 = DIM_TEXT
                 cardStatus.TextSize = INV_CARD.Line1TextSize
                 cardStatus.TextXAlignment = Enum.TextXAlignment.Center
-                cardStatus.Size = UDim2.new(1, 0, 0, INV_CARD.Line2Height)
-                cardStatus.AnchorPoint = Vector2.new(0, 1)
-                cardStatus.Position = UDim2.new(0, 0, 1, -INV_CARD.Line2OffBottom)
+                cardStatus.Size = UDim2.new(1, -px(6), 1, 0)
+                cardStatus.Position = UDim2.new(0, px(3), 0, 0)
+                cardStatus.ZIndex = 4
+                addTextOutline(cardStatus, 0.35, 1)
 
                 -- Active bar at bottom (green strip when boost is running)
                 local activeBar = Instance.new("Frame", card)
                 activeBar.Name = "ActiveBar"
                 activeBar.BackgroundColor3 = GREEN_GLOW
-                activeBar.Size = UDim2.new(1, 0, 0, px(3))
+                activeBar.Size = UDim2.new(1, 0, 0, px(4))
                 activeBar.AnchorPoint = Vector2.new(0, 1)
                 activeBar.Position = UDim2.new(0, 0, 1, 0)
                 activeBar.BorderSizePixel = 0; activeBar.ZIndex = 5
@@ -2734,6 +2836,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     card = card,
                     cardStroke = cStroke,
                     statusLabel = cardStatus,
+                    statusPill = statusPill,
+                    statusStroke = statusStroke,
+                    accentBar = accentBar,
+                    accentColor = iconColor,
+                    baseBg = baseBg,
+                    hoverBg = brightenColor(baseBg, 0.07),
+                    selectedBg = selectedBg,
+                    activeBg = activeBg,
+                    borderColor = borderColor,
                 }
 
                 -- Click to select
@@ -2744,13 +2855,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 -- Hover effect
                 card.MouseEnter:Connect(function()
                     if selectedBoostId ~= def.Id then
-                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 40, 58)}):Play()
+                        local refs = boostCards[def.Id]
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = refs and refs.hoverBg or brightenColor(baseBg, 0.07)}):Play()
                     end
                 end)
                 card.MouseLeave:Connect(function()
                     if selectedBoostId ~= def.Id then
                         local _, isActive = getBoostState(def.Id)
-                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = isActive and CARD_EQUIPPED or CARD_BG}):Play()
+                        local refs = boostCards[def.Id]
+                        local targetBg = refs and (isActive and refs.activeBg or refs.baseBg) or baseBg
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
                     end
                 end)
             end
@@ -2781,8 +2895,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if not selectedBoostId then return end
             if not boostActivateBtn.Active then return end
             if not remotes then return end
-
-            print("[BoostsTab] Activate clicked for:", selectedBoostId)
 
             local ok, success, message, states = pcall(function()
                 return remotes.activate:InvokeServer(selectedBoostId)
@@ -3176,8 +3288,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        print("[UIPolish] Applied achievement-style typography to browse button: skinShopBtn")
-
         -- ── Helper: update equip button state ───────────────────────────
         local function updateSkinEquipButton()
             if not selectedSkinId then return end
@@ -3219,21 +3329,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 -- Selection highlight
                 local isSelected = (selectedSkinId == sid)
                 local isEquippedCard = (equippedSkinId == sid)
+                local targetBg = info.baseBg or CARD_BG
 
                 if isSelected then
-                    info.cardStroke.Color = GOLD
-                    info.cardStroke.Thickness = 2.0
-                    info.cardStroke.Transparency = 0
+                    targetBg = info.selectedBg or CARD_BG
+                    setCardStroke(info.cardStroke, GOLD, 2.5, 0)
                 elseif isEquippedCard then
-                    info.cardStroke.Color = GREEN_GLOW
-                    info.cardStroke.Thickness = 1.8
-                    info.cardStroke.Transparency = 0.3
-                    info.card.BackgroundColor3 = CARD_EQUIPPED
+                    targetBg = info.equippedBg or CARD_EQUIPPED
+                    setCardStroke(info.cardStroke, GREEN_GLOW, 2.0, 0.16)
                 else
-                    info.cardStroke.Color = info.baseStrokeColor
-                    info.cardStroke.Thickness = info.baseStrokeThickness
-                    info.cardStroke.Transparency = info.baseStrokeTransparency
-                    info.card.BackgroundColor3 = CARD_BG
+                    setCardStroke(info.cardStroke, info.baseStrokeColor, info.baseStrokeThickness, info.baseStrokeTransparency)
+                end
+                info.card.BackgroundColor3 = targetBg
+                if info.accentBar then
+                    info.accentBar.BackgroundColor3 = isEquippedCard and GREEN_GLOW or (info.accentColor or GOLD)
+                    info.accentBar.BackgroundTransparency = isEquippedCard and 0 or 0.1
                 end
 
                 -- Equipped bar at bottom of card
@@ -3270,12 +3380,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local skinColor = def.ArmorColor or Color3.fromRGB(150, 150, 155)
 
             skinDetailName.Text = def.DisplayName or skinId
-            skinDetailName.TextColor3 = (rarity == "Epic") and Color3.fromRGB(210, 170, 255) or WHITE
+            skinDetailName.TextColor3 = isDefault and WHITE or brightenColor(rarityColor, 0.1)
             skinDetailRarity.Text = rarity
             skinDetailRarity.TextColor3 = rarityColor
             skinDetailDesc.Text = def.Description or ""
-            skinPreviewVP.BackgroundColor3 = rarityBg
+            skinPreviewVP.BackgroundColor3 = mixColor(rarityBg, skinColor, isDefault and 0.05 or 0.18)
             skinIconStroke.Color = rarityColor
+            skinIconStroke.Transparency = 0.12
+            sdpStroke.Color = rarityColor
+            sdpStroke.Transparency = 0.14
 
             -- Update 3D preview
             local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
@@ -3345,12 +3458,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local isDefault   = def.IsDefault or false
             local isEpic      = (def.Rarity == "Epic")
             local skinColor   = def.ArmorColor or Color3.fromRGB(150, 150, 155)
+            local accentColor = def.AccentColor or skinColor
             local rarity      = def.Rarity or "Common"
             local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
+            local rarityBg    = WEAPON_CARD_BG[rarity] or WEAPON_CARD_BG.Common
+            local baseBg      = mixColor(rarityBg, skinColor, isDefault and 0.04 or 0.14)
+            local selectedBg  = brightenColor(baseBg, 0.05)
+            local equippedBg  = mixColor(baseBg, GREEN_GLOW, 0.16)
 
             local card = Instance.new("TextButton")
             card.Name = "SkinCard_" .. skinId
-            card.BackgroundColor3 = CARD_BG
+            card.BackgroundColor3 = baseBg
             card.Size = UDim2.new(1, 0, 1, 0)
             card.Text = ""
             card.AutoButtonColor = false
@@ -3360,13 +3478,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             card.Parent = skinGridScroll
             Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
-            local baseStrokeColor = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
-            local baseStrokeThickness = isEpic and 1.6 or INV_CARD.StrokeThickness
-            local baseStrokeTransparency = isEpic and 0.2 or INV_CARD.StrokeTransparency
+            local baseStrokeColor = WEAPON_CARD_BORDER[rarity] or shadeColor(rarityColor, 0.65)
+            local baseStrokeThickness = isEpic and 2.0 or 1.7
+            local baseStrokeTransparency = isEpic and 0.08 or 0.16
             local sCS = Instance.new("UIStroke", card)
             sCS.Color = baseStrokeColor
             sCS.Thickness = baseStrokeThickness
             sCS.Transparency = baseStrokeTransparency
+            addCardSheen(card, rarityColor)
+            local accentBar = addCardAccentBar(card, accentColor)
 
             -- Name label at top (matching weapon card layout)
             local cardName = Instance.new("TextLabel", card)
@@ -3380,16 +3500,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             cardName.TextXAlignment = Enum.TextXAlignment.Center
             cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
             cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+            cardName.ZIndex = 3
+            addTextOutline(cardName, 0.18, 1.35)
 
             -- Icon area (centered square, matching weapon card layout)
             local iconArea = Instance.new("Frame", card)
             iconArea.Name = "IconArea"
-            iconArea.BackgroundColor3 = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
+            iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, skinColor, isDefault and 0.06 or 0.26)
             iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
             iconArea.AnchorPoint = Vector2.new(0.5, 0)
             iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
             iconArea.BorderSizePixel = 0
             Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+            addIconWellHighlight(iconArea, accentColor)
 
             local cardIcon = Instance.new("TextLabel", iconArea)
             cardIcon.Name = "Icon"
@@ -3398,12 +3521,40 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             cardIcon.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
             cardIcon.TextScaled = true
             cardIcon.TextColor3 = isDefault and DIM_TEXT or skinColor
-            cardIcon.Size = UDim2.new(0.85, 0, 0.85, 0)
+            cardIcon.Size = UDim2.new(0.72, 0, 0.72, 0)
             cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-            cardIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+            cardIcon.Position = UDim2.new(0.5, 0, 0.46, 0)
+            cardIcon.ZIndex = 3
+            addTextOutline(cardIcon, 0.22, 1.4)
+
+            local swatchWrap = Instance.new("Frame", iconArea)
+            swatchWrap.Name = "ArmorSwatch"
+            swatchWrap.BackgroundColor3 = skinColor
+            swatchWrap.BorderSizePixel = 0
+            swatchWrap.Size = UDim2.new(0.62, 0, 0, px(8))
+            swatchWrap.AnchorPoint = Vector2.new(0.5, 1)
+            swatchWrap.Position = UDim2.new(0.5, 0, 0.92, 0)
+            swatchWrap.ZIndex = 4
+            Instance.new("UICorner", swatchWrap).CornerRadius = UDim.new(0.5, 0)
+            local swatchGradient = Instance.new("UIGradient", swatchWrap)
+            swatchGradient.Color = ColorSequence.new(skinColor, accentColor)
+            local swatchStroke = Instance.new("UIStroke", swatchWrap)
+            swatchStroke.Color = accentColor; swatchStroke.Thickness = 1; swatchStroke.Transparency = 0.24
 
             -- Rarity label (bottom of card)
-            local cardRarity = Instance.new("TextLabel", card)
+            local rarityPill = Instance.new("Frame", card)
+            rarityPill.Name = "RarityPill"
+            rarityPill.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.28)
+            rarityPill.BorderSizePixel = 0
+            rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
+            rarityPill.AnchorPoint = Vector2.new(0.5, 1)
+            rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+            rarityPill.ZIndex = 3
+            Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
+            local rarityPillStroke = Instance.new("UIStroke", rarityPill)
+            rarityPillStroke.Color = rarityColor; rarityPillStroke.Thickness = 1; rarityPillStroke.Transparency = 0.42
+
+            local cardRarity = Instance.new("TextLabel", rarityPill)
             cardRarity.Name = "RarityLabel"
             cardRarity.BackgroundTransparency = 1
             cardRarity.Font = Enum.Font.GothamBold
@@ -3411,9 +3562,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             cardRarity.TextColor3 = rarityColor
             cardRarity.TextSize = INV_CARD.Line1TextSize
             cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-            cardRarity.Size = UDim2.new(1, 0, 0, INV_CARD.Line2Height)
-            cardRarity.AnchorPoint = Vector2.new(0, 1)
-            cardRarity.Position = UDim2.new(0, 0, 1, -INV_CARD.Line2OffBottom)
+            cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
+            cardRarity.Position = UDim2.new(0, px(3), 0, 0)
+            cardRarity.ZIndex = 4
+            addTextOutline(cardRarity, 0.3, 1)
 
             -- Equipped bar at bottom
             local eqBar = Instance.new("Frame", card)
@@ -3438,11 +3590,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             favStar.Position = UDim2.new(1, -px(4), 0, px(3))
             favStar.ZIndex = 8
             favStar.Visible = false
+            addTextOutline(favStar, 0.2, 1.2)
 
             skinCards[skinId] = {
                 card = card,
                 cardStroke = sCS,
                 isDefault = isDefault,
+                accentBar = accentBar,
+                accentColor = accentColor,
+                baseBg = baseBg,
+                hoverBg = brightenColor(baseBg, 0.07),
+                selectedBg = selectedBg,
+                equippedBg = equippedBg,
                 baseStrokeColor = baseStrokeColor,
                 baseStrokeThickness = baseStrokeThickness,
                 baseStrokeTransparency = baseStrokeTransparency,
@@ -3457,13 +3616,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if not game:GetService("UserInputService").TouchEnabled then
                 card.MouseEnter:Connect(function()
                     if selectedSkinId ~= skinId then
-                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 40, 58)}):Play()
+                        local refs = skinCards[skinId]
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = refs and refs.hoverBg or brightenColor(baseBg, 0.07)}):Play()
                     end
                 end)
                 card.MouseLeave:Connect(function()
                     if selectedSkinId ~= skinId then
                         local isEq = (equippedSkinId == skinId)
-                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = isEq and CARD_EQUIPPED or CARD_BG}):Play()
+                        local refs = skinCards[skinId]
+                        local targetBg = refs and (isEq and refs.equippedBg or refs.baseBg) or baseBg
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
                     end
                 end)
             end
@@ -3589,10 +3751,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             effectsEmptyState.Parent = effectsPage
 
             local eeCard = Instance.new("Frame", effectsEmptyState)
-            eeCard.BackgroundColor3 = CARD_BG; eeCard.Size = UDim2.new(0.7, 0, 0, px(130))
+            eeCard.BackgroundColor3 = accentPanelColor(Color3.fromRGB(214, 138, 206), 0.22); eeCard.Size = UDim2.new(0.7, 0, 0, px(130))
             eeCard.AnchorPoint = Vector2.new(0.5, 0.5); eeCard.Position = UDim2.new(0.5, 0, 0.45, 0)
             Instance.new("UICorner", eeCard).CornerRadius = UDim.new(0, px(14))
-            Instance.new("UIStroke", eeCard).Color = CARD_STROKE
+            local eeStroke = Instance.new("UIStroke", eeCard)
+            eeStroke.Color = Color3.fromRGB(214, 138, 206); eeStroke.Thickness = 1.4; eeStroke.Transparency = 0.22
+            addCardSheen(eeCard, Color3.fromRGB(214, 138, 206))
 
             local eeL = Instance.new("TextLabel", eeCard)
             eeL.BackgroundTransparency = 1; eeL.Font = Enum.Font.GothamMedium
@@ -3663,6 +3827,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailPreviewVP.BackgroundColor3 = RARITY_BG_COLORS.Common
             trailPreviewVP.Size = UDim2.new(1, 0, 0, px(200))
             trailPreviewVP.Ambient = Color3.fromRGB(100, 100, 120)
+            trailPreviewVP.ClipsDescendants = true
             Instance.new("UICorner", trailPreviewVP).CornerRadius = UDim.new(0, px(10))
             local trailVPStroke = Instance.new("UIStroke", trailPreviewVP)
             trailVPStroke.Color = RARITY_COLORS.Common; trailVPStroke.Thickness = 1.5; trailVPStroke.Transparency = 0.3
@@ -3758,9 +3923,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end
             end)
 
-            print("[UIPolish] Effects browse label updated to Browse Effects Shop")
-            print("[UIPolish] Applied achievement-style typography to browse button: trailShopBtn")
-
             -- ── State ───────────────────────────────────────────────────
             local ownedSet = {}
             local equippedTrailId = nil
@@ -3798,21 +3960,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                     local isSelected = (selectedEffectId == eid)
                     local isEquipped = (equippedTrailId == eid)
+                    local targetBg = info.baseBg
 
                     if isSelected then
-                        info.cardStroke.Color = GOLD
-                        info.cardStroke.Thickness = 2.0
-                        info.cardStroke.Transparency = 0
+                        targetBg = info.selectedBg
+                        setCardStroke(info.cardStroke, GOLD, 2.5, 0)
                     elseif isEquipped then
-                        info.cardStroke.Color = GREEN_GLOW
-                        info.cardStroke.Thickness = 1.8
-                        info.cardStroke.Transparency = 0.3
-                        info.card.BackgroundColor3 = CARD_EQUIPPED
+                        targetBg = info.equippedBg
+                        setCardStroke(info.cardStroke, GREEN_GLOW, 2.0, 0.16)
                     else
-                        info.cardStroke.Color = info.baseStrokeColor
-                        info.cardStroke.Thickness = info.baseStrokeThickness
-                        info.cardStroke.Transparency = info.baseStrokeTransparency
-                        info.card.BackgroundColor3 = CARD_BG
+                        setCardStroke(info.cardStroke, info.baseStrokeColor, info.baseStrokeThickness, info.baseStrokeTransparency)
+                    end
+                    info.card.BackgroundColor3 = targetBg
+                    if info.accentBar then
+                        info.accentBar.BackgroundColor3 = isEquipped and GREEN_GLOW or info.accentColor
+                        info.accentBar.BackgroundTransparency = isEquipped and 0 or 0.1
                     end
 
                     local eqBar = info.card:FindFirstChild("EquippedBar")
@@ -3845,12 +4007,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
 
                 trailDetailName.Text = def.DisplayName or effectId
-                trailDetailName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+                trailDetailName.TextColor3 = isEpic and Color3.fromRGB(220, 185, 255) or brightenColor(effectColor, 0.12)
                 trailDetailRarity.Text = rarity
                 trailDetailRarity.TextColor3 = rarityColor
                 trailDetailDesc.Text = def.IsFree and "Free (default)" or (def.Description or "")
-                trailPreviewVP.BackgroundColor3 = rarityBg
+                trailPreviewVP.BackgroundColor3 = mixColor(rarityBg, effectColor, def.IsRainbow and 0.1 or 0.2)
                 trailVPStroke.Color = rarityColor
+                trailVPStroke.Transparency = 0.12
+                tdpStroke.Color = rarityColor
+                tdpStroke.Transparency = 0.14
 
                 -- Launch 3D trail preview
                 if EffectsPreview then
@@ -3903,10 +4068,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local isEpic      = (def.Rarity == "Epic")
                 local rarity      = def.Rarity or "Common"
                 local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
+                local baseRarityBg = WEAPON_CARD_BG[rarity] or WEAPON_CARD_BG.Common
+                local baseBg = mixColor(baseRarityBg, effectColor, isRainbow and 0.1 or 0.18)
+                local selectedBg = brightenColor(baseBg, 0.05)
+                local equippedBg = mixColor(baseBg, GREEN_GLOW, 0.16)
+                local accentColor = isRainbow and Color3.fromRGB(214, 138, 206) or effectColor
 
                 local card = Instance.new("TextButton")
                 card.Name = "EffectCard_" .. effectId
-                card.BackgroundColor3 = CARD_BG
+                card.BackgroundColor3 = baseBg
                 card.Size = UDim2.new(1, 0, 1, 0)
                 card.Text = ""
                 card.AutoButtonColor = false
@@ -3916,13 +4086,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 card.Parent = trailGridScroll
                 Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
-                local baseStrokeColor = isEpic and Color3.fromRGB(180, 120, 255) or CARD_STROKE
-                local baseStrokeThickness = isEpic and 1.6 or INV_CARD.StrokeThickness
-                local baseStrokeTransparency = isEpic and 0.2 or INV_CARD.StrokeTransparency
+                local baseStrokeColor = isRainbow and Color3.fromRGB(200, 160, 255) or (WEAPON_CARD_BORDER[rarity] or shadeColor(rarityColor, 0.65))
+                local baseStrokeThickness = isEpic and 2.0 or 1.7
+                local baseStrokeTransparency = isEpic and 0.08 or 0.16
                 local eCS = Instance.new("UIStroke", card)
                 eCS.Color = baseStrokeColor
                 eCS.Thickness = baseStrokeThickness
                 eCS.Transparency = baseStrokeTransparency
+                addCardSheen(card, accentColor)
+                local accentBar = addCardAccentBar(card, accentColor)
+                if isRainbow and def.TrailColorSequence then
+                    Instance.new("UIGradient", accentBar).Color = def.TrailColorSequence
+                end
 
                 -- Name label at top (matching weapon card layout)
                 local cardName = Instance.new("TextLabel", card)
@@ -3936,25 +4111,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardName.TextXAlignment = Enum.TextXAlignment.Center
                 cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
                 cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+                cardName.ZIndex = 3
+                addTextOutline(cardName, 0.18, 1.35)
 
                 -- Icon area (centered square, matching weapon card layout)
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
-                iconArea.BackgroundColor3 = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
+                iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, effectColor, isRainbow and 0.08 or 0.24)
                 iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
                 iconArea.AnchorPoint = Vector2.new(0.5, 0)
                 iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
                 iconArea.BorderSizePixel = 0
                 Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+                addIconWellHighlight(iconArea, accentColor)
 
                 -- Color swatch inside icon area
                 local swatch = Instance.new("Frame", iconArea)
                 swatch.Name = "ColorSwatch"
-                swatch.Size = UDim2.new(0.55, 0, 0, px(8))
+                swatch.Size = UDim2.new(0.68, 0, 0, px(9))
                 swatch.AnchorPoint = Vector2.new(0.5, 0)
-                swatch.Position = UDim2.new(0.5, 0, 0.15, 0)
+                swatch.Position = UDim2.new(0.5, 0, 0.14, 0)
                 swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
                 swatch.BorderSizePixel = 0
+                swatch.ZIndex = 4
                 Instance.new("UICorner", swatch).CornerRadius = UDim.new(0.5, 0)
                 if isRainbow and def.TrailColorSequence then
                     Instance.new("UIGradient", swatch).Color = def.TrailColorSequence
@@ -3969,15 +4148,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 trailGlyph.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
                 trailGlyph.TextScaled = true
                 trailGlyph.BackgroundTransparency = 1
-                trailGlyph.Size = UDim2.new(0.7, 0, 0.35, 0)
+                trailGlyph.Size = UDim2.new(0.76, 0, 0.36, 0)
                 trailGlyph.AnchorPoint = Vector2.new(0.5, 1)
-                trailGlyph.Position = UDim2.new(0.5, 0, 0.95, 0)
+                trailGlyph.Position = UDim2.new(0.5, 0, 0.93, 0)
+                trailGlyph.ZIndex = 4
                 if isRainbow and def.TrailColorSequence then
                     Instance.new("UIGradient", trailGlyph).Color = def.TrailColorSequence
                 end
+                addTextOutline(trailGlyph, 0.24, 1.4)
 
                 -- Rarity label (bottom of card)
-                local cardRarity = Instance.new("TextLabel", card)
+                local rarityPill = Instance.new("Frame", card)
+                rarityPill.Name = "RarityPill"
+                rarityPill.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.28)
+                rarityPill.BorderSizePixel = 0
+                rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
+                rarityPill.AnchorPoint = Vector2.new(0.5, 1)
+                rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+                rarityPill.ZIndex = 3
+                Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
+                local rarityPillStroke = Instance.new("UIStroke", rarityPill)
+                rarityPillStroke.Color = rarityColor; rarityPillStroke.Thickness = 1; rarityPillStroke.Transparency = 0.42
+
+                local cardRarity = Instance.new("TextLabel", rarityPill)
                 cardRarity.Name = "RarityLabel"
                 cardRarity.BackgroundTransparency = 1
                 cardRarity.Font = Enum.Font.GothamBold
@@ -3985,9 +4178,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardRarity.TextColor3 = rarityColor
                 cardRarity.TextSize = INV_CARD.Line1TextSize
                 cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-                cardRarity.Size = UDim2.new(1, 0, 0, INV_CARD.Line2Height)
-                cardRarity.AnchorPoint = Vector2.new(0, 1)
-                cardRarity.Position = UDim2.new(0, 0, 1, -INV_CARD.Line2OffBottom)
+                cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
+                cardRarity.Position = UDim2.new(0, px(3), 0, 0)
+                cardRarity.ZIndex = 4
+                addTextOutline(cardRarity, 0.3, 1)
 
                 -- Equipped bar at bottom
                 local eqBar = Instance.new("Frame", card)
@@ -4003,6 +4197,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     card = card,
                     cardStroke = eCS,
                     isFree = isFree,
+                    accentBar = accentBar,
+                    accentColor = accentColor,
+                    baseBg = baseBg,
+                    hoverBg = brightenColor(baseBg, 0.07),
+                    selectedBg = selectedBg,
+                    equippedBg = equippedBg,
                     baseStrokeColor = baseStrokeColor,
                     baseStrokeThickness = baseStrokeThickness,
                     baseStrokeTransparency = baseStrokeTransparency,
@@ -4017,13 +4217,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 if not game:GetService("UserInputService").TouchEnabled then
                     card.MouseEnter:Connect(function()
                         if selectedEffectId ~= effectId then
-                            TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 40, 58)}):Play()
+                            local refs = effectCards[effectId]
+                            TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = refs and refs.hoverBg or brightenColor(baseBg, 0.07)}):Play()
                         end
                     end)
                     card.MouseLeave:Connect(function()
                         if selectedEffectId ~= effectId then
                             local isEq = (equippedTrailId == effectId)
-                            TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = isEq and CARD_EQUIPPED or CARD_BG}):Play()
+                            local refs = effectCards[effectId]
+                            local targetBg = refs and (isEq and refs.equippedBg or refs.baseBg) or baseBg
+                            TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
                         end
                     end)
                 end

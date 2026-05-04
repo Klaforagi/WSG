@@ -4,6 +4,8 @@
 -- Creates RemoteFunctions:
 --   AdminSearchWeaponsRF  – search weapons by ID, owner userId, or username
 --   AdminGrantWeaponRF    – grant a weapon to a target player
+--   AdminGrantCurrencyRF  – grant coins, keys, or salvage to a target player
+--   AdminControlEventRF   – start/stop timed events for testing
 --
 -- Both remotes verify the calling player is a whitelisted dev on every call.
 -- Rate-limited to 1 request per second per player per remote.
@@ -31,6 +33,8 @@ end
 
 local searchRF  = findOrCreate("RemoteFunction", "AdminSearchWeaponsRF", ReplicatedStorage)
 local grantRF   = findOrCreate("RemoteFunction", "AdminGrantWeaponRF", ReplicatedStorage)
+local grantCurrencyRF = findOrCreate("RemoteFunction", "AdminGrantCurrencyRF", ReplicatedStorage)
+local controlEventRF = findOrCreate("RemoteFunction", "AdminControlEventRF", ReplicatedStorage)
 local deleteRF  = findOrCreate("RemoteFunction", "AdminDeleteWeaponRF", ReplicatedStorage)
 
 --------------------------------------------------------------------------------
@@ -38,8 +42,11 @@ local deleteRF  = findOrCreate("RemoteFunction", "AdminDeleteWeaponRF", Replicat
 --------------------------------------------------------------------------------
 local searchDebounce = {} -- [Player] = tick
 local grantDebounce  = {} -- [Player] = tick
+local grantCurrencyDebounce = {} -- [Player] = tick
+local controlEventDebounce = {} -- [Player] = tick
 local deleteDebounce = {} -- [Player] = tick
 local DEBOUNCE_TIME  = 1.0
+local MAX_CURRENCY_GRANT = 1000000
 
 local function checkDebounce(player, debounceTable)
     local now = tick()
@@ -125,6 +132,82 @@ grantRF.OnServerInvoke = function(player, targetUserId, weaponName, sizePercent,
 end
 
 --------------------------------------------------------------------------------
+-- GRANT CURRENCY HANDLER
+--------------------------------------------------------------------------------
+grantCurrencyRF.OnServerInvoke = function(player, targetUserId, currencyType, amount)
+    -- Rate limit
+    if not checkDebounce(player, grantCurrencyDebounce) then
+        return { success = false, error = "Too many requests. Please wait." }
+    end
+
+    -- Server-side dev check
+    if not DevUserIds.IsDev(player) then
+        return { success = false, error = "Unauthorized" }
+    end
+
+    -- Sanitize inputs
+    if type(targetUserId) ~= "number" then
+        targetUserId = tonumber(targetUserId)
+        if not targetUserId then
+            return { success = false, error = "Target UserId must be a number" }
+        end
+    end
+    if type(currencyType) ~= "string" then
+        return { success = false, error = "Currency type must be a string" }
+    end
+    if #currencyType > 20 then
+        return { success = false, error = "Currency type too long" }
+    end
+    if type(amount) ~= "number" then
+        amount = tonumber(amount)
+        if not amount then
+            return { success = false, error = "Amount must be a number" }
+        end
+    end
+
+    amount = math.floor(amount)
+    if amount <= 0 then
+        return { success = false, error = "Amount must be positive" }
+    end
+    if amount > MAX_CURRENCY_GRANT then
+        return { success = false, error = "Amount is too large" }
+    end
+
+    local result = AdminService:GrantCurrency(player, targetUserId, currencyType, amount)
+    return result
+end
+
+--------------------------------------------------------------------------------
+-- EVENT CONTROL HANDLER
+--------------------------------------------------------------------------------
+controlEventRF.OnServerInvoke = function(player, action, eventId)
+    if type(action) ~= "string" then
+        return { success = false, error = "Event action must be a string" }
+    end
+    if #action > 20 then
+        return { success = false, error = "Event action too long" }
+    end
+
+    -- Allow frequent UI refreshes, but rate-limit mutating commands.
+    if action ~= "GetState" and not checkDebounce(player, controlEventDebounce) then
+        return { success = false, error = "Too many requests. Please wait." }
+    end
+
+    if not DevUserIds.IsDev(player) then
+        return { success = false, error = "Unauthorized" }
+    end
+
+    if eventId ~= nil and type(eventId) ~= "string" then
+        eventId = tostring(eventId)
+    end
+    if type(eventId) == "string" and #eventId > 50 then
+        return { success = false, error = "Event id too long" }
+    end
+
+    return AdminService:ControlEvent(player, action, eventId)
+end
+
+--------------------------------------------------------------------------------
 -- DELETE HANDLER
 --------------------------------------------------------------------------------
 deleteRF.OnServerInvoke = function(player, ownerUserId, weaponId)
@@ -159,6 +242,8 @@ end
 Players.PlayerRemoving:Connect(function(player)
     searchDebounce[player] = nil
     grantDebounce[player] = nil
+    grantCurrencyDebounce[player] = nil
+    controlEventDebounce[player] = nil
     deleteDebounce[player] = nil
 end)
 

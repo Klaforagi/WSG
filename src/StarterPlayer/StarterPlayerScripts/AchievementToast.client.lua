@@ -72,7 +72,7 @@ local function showToast(title, icon, reward, ap, achId, category)
     toast.BackgroundTransparency = 0.05
     toast.AutoButtonColor     = false
     toast.Text                = ""
-    toast.Size                = UDim2.new(0, px(340), 0, px(88))
+    toast.Size                = UDim2.new(0, px(360), 0, px(96))
     toast.AnchorPoint         = Vector2.new(0.5, 1)
     toast.Position            = UDim2.new(0.5, 0, 1, px(100)) -- start off-screen below
     toast.Parent              = screenGui
@@ -107,8 +107,8 @@ local function showToast(title, icon, reward, ap, achId, category)
     iconLbl.Font                = Enum.Font.GothamBold
     iconLbl.Text                = icon or "★"
     iconLbl.TextColor3          = GOLD
-    iconLbl.TextSize            = math.max(20, math.floor(px(24)))
-    iconLbl.Size                = UDim2.new(0, px(36), 0, px(36))
+    iconLbl.TextSize            = math.max(22, math.floor(px(26)))
+    iconLbl.Size                = UDim2.new(0, px(40), 0, px(40))
     iconLbl.AnchorPoint         = Vector2.new(0, 0.5)
     iconLbl.Position            = UDim2.new(0, px(16), 0.5, 0)
     iconLbl.Parent              = toast
@@ -122,8 +122,8 @@ local function showToast(title, icon, reward, ap, achId, category)
     headerLbl.TextColor3         = GOLD
     headerLbl.TextSize           = math.max(11, math.floor(px(11)))
     headerLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    headerLbl.Size               = UDim2.new(1, -px(60), 0, px(16))
-    headerLbl.Position           = UDim2.new(0, px(56), 0, px(10))
+    headerLbl.Size               = UDim2.new(1, -px(70), 0, px(16))
+    headerLbl.Position           = UDim2.new(0, px(62), 0, px(12))
     headerLbl.Parent             = toast
 
     -- Achievement title
@@ -135,8 +135,8 @@ local function showToast(title, icon, reward, ap, achId, category)
     titleLbl.TextColor3         = WHITE
     titleLbl.TextSize           = math.max(14, math.floor(px(16)))
     titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    titleLbl.Size               = UDim2.new(1, -px(60), 0, px(20))
-    titleLbl.Position           = UDim2.new(0, px(56), 0, px(28))
+    titleLbl.Size               = UDim2.new(1, -px(70), 0, px(22))
+    titleLbl.Position           = UDim2.new(0, px(62), 0, px(31))
     titleLbl.Parent             = toast
 
     -- Reward text (coins + AP)
@@ -153,8 +153,8 @@ local function showToast(title, icon, reward, ap, achId, category)
     rewardLbl.TextColor3         = DIM_TEXT
     rewardLbl.TextSize           = math.max(10, math.floor(px(11)))
     rewardLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    rewardLbl.Size               = UDim2.new(1, -px(60), 0, px(14))
-    rewardLbl.Position           = UDim2.new(0, px(56), 0, px(50))
+    rewardLbl.Size               = UDim2.new(1, -px(70), 0, px(15))
+    rewardLbl.Position           = UDim2.new(0, px(62), 0, px(55))
     rewardLbl.Parent             = toast
 
     -- "Click to view" hint at the bottom

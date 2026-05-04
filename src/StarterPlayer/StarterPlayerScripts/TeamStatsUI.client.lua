@@ -1,6 +1,6 @@
 -- TeamStatsUI.client.lua
 -- Custom Team Stats overlay for KingsGround.
--- Shows per-player stats organized by Blue/Red team.
+-- Shows per-player stats organized by Knights/Barbarians.
 -- Toggle: Teams button (SideUI), press Tab, or MenuController.
 -- Now managed through the shared MenuController so it participates in
 -- the same open/close system as Shop, Inventory, Quests, etc.
@@ -9,6 +9,8 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -621,7 +623,7 @@ local function refreshTeamButtons()
 		joinBlueBtn.TextColor3      = GRAY
 		joinBlueBtn.AutoButtonColor = false
 		joinBlueBtn.BackgroundTransparency = 0.45
-		joinRedBtn.Text             = "JOIN RED TEAM"
+		joinRedBtn.Text             = "JOIN " .. TeamDisplayNames.GetUpper("Red")
 		joinRedBtn.TextColor3       = WHITE
 		joinRedBtn.AutoButtonColor  = true
 		joinRedBtn.BackgroundTransparency = 0.12
@@ -630,16 +632,16 @@ local function refreshTeamButtons()
 		joinRedBtn.TextColor3       = GRAY
 		joinRedBtn.AutoButtonColor  = false
 		joinRedBtn.BackgroundTransparency = 0.45
-		joinBlueBtn.Text            = "JOIN BLUE TEAM"
+		joinBlueBtn.Text            = "JOIN " .. TeamDisplayNames.GetUpper("Blue")
 		joinBlueBtn.TextColor3      = WHITE
 		joinBlueBtn.AutoButtonColor = true
 		joinBlueBtn.BackgroundTransparency = 0.12
 	else
-		joinBlueBtn.Text            = "JOIN BLUE TEAM"
+		joinBlueBtn.Text            = "JOIN " .. TeamDisplayNames.GetUpper("Blue")
 		joinBlueBtn.TextColor3      = WHITE
 		joinBlueBtn.AutoButtonColor = true
 		joinBlueBtn.BackgroundTransparency = 0.12
-		joinRedBtn.Text             = "JOIN RED TEAM"
+		joinRedBtn.Text             = "JOIN " .. TeamDisplayNames.GetUpper("Red")
 		joinRedBtn.TextColor3       = WHITE
 		joinRedBtn.AutoButtonColor  = true
 		joinRedBtn.BackgroundTransparency = 0.12
@@ -770,7 +772,7 @@ local function createTeamSection(teamName, layoutOrder)
 		for _, plr in ipairs(Players:GetPlayers()) do
 			if plr.Team and plr.Team.Name == teamName then count = count + 1 end
 		end
-		teamLabel.Text = string.upper(teamName) .. " TEAM  (" .. count .. ")"
+		teamLabel.Text = TeamDisplayNames.GetUpper(teamName) .. "  (" .. count .. ")"
 	end
 	updateTeamLabel()
 

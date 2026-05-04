@@ -31,6 +31,22 @@ pcall(function()
     end
 end)
 
+local SizeRollService = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("SizeRollService")
+    if mod and mod:IsA("ModuleScript") then
+        SizeRollService = require(mod)
+    end
+end)
+
+local WeaponEnchantConfig = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponEnchantConfig = require(mod)
+    end
+end)
+
 -- ENCHANT SYSTEM — single source of truth for all enchant/size text styling
 local EnchantTextStyler
 pcall(function()
@@ -74,6 +90,23 @@ local CARD_GAP = 10  -- gap between cards
 local STRIP_CARDS = 40  -- total cards in the roulette strip
 local WINNING_INDEX = 30 -- card index where the winner is placed (near end for nice decel)
 
+local SIZE_TIER_COLORS = {
+    Tiny   = Color3.fromRGB(225, 145, 75),
+    Normal = Color3.fromRGB(165, 165, 178),
+    Large  = Color3.fromRGB(225, 145, 75),
+    Giant  = Color3.fromRGB(205, 215, 225),
+    King   = Color3.fromRGB(255, 215, 80),
+}
+
+local STRIP_ENCHANT_COLORS = {
+    Fiery     = Color3.fromRGB(255, 150, 55),
+    Icy       = Color3.fromRGB(135, 225, 255),
+    Shock     = Color3.fromRGB(255, 225, 65),
+    Toxic     = Color3.fromRGB(115, 255, 90),
+    Lifesteal = Color3.fromRGB(255, 95, 95),
+    Void      = Color3.fromRGB(220, 135, 255),
+}
+
 --------------------------------------------------------------------------------
 -- Get rarity color
 --------------------------------------------------------------------------------
@@ -84,15 +117,67 @@ local function rarityColor(rarity)
     return DIM_TEXT
 end
 
+local function sizeTierColor(sizeTier)
+    return SIZE_TIER_COLORS[sizeTier] or SIZE_TIER_COLORS.Normal
+end
+
+local function enchantColor(enchantName)
+    if STRIP_ENCHANT_COLORS[enchantName] then
+        return STRIP_ENCHANT_COLORS[enchantName]
+    end
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.GetColorForEnchant) == "function" then
+        local ok, color = pcall(function()
+            return WeaponEnchantConfig.GetColorForEnchant(enchantName)
+        end)
+        if ok and color then return color end
+    end
+    return Color3.fromRGB(200, 160, 255)
+end
+
+local function rollVisualSize()
+    if SizeRollService and type(SizeRollService.RollSize) == "function" then
+        local ok, sizePercent, sizeTier = pcall(function()
+            return SizeRollService.RollSize()
+        end)
+        if ok and sizePercent then
+            return sizePercent, sizeTier or "Normal"
+        end
+    end
+
+    local sizePercent = math.random(80, 200)
+    local sizeTier = "Normal"
+    if SizeRollService and type(SizeRollService.GetSizeTier) == "function" then
+        local ok, result = pcall(function()
+            return SizeRollService.GetSizeTier(sizePercent)
+        end)
+        if ok and result then sizeTier = result end
+    end
+    return sizePercent, sizeTier
+end
+
+local function rollVisualEnchant()
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.RollEnchant) == "function" then
+        local ok, enchantName = pcall(function()
+            return WeaponEnchantConfig.RollEnchant()
+        end)
+        if ok then return enchantName or "" end
+    end
+    return ""
+end
+
 --------------------------------------------------------------------------------
 -- Build a randomized strip of weapon cards with the winner at WINNING_INDEX.
 -- Cards are chosen using weighted rarity selection so the visual strip
 -- reflects actual drop rates from CrateConfig.
 -- PREMIUM CRATE / KEY SYSTEM  – uses per-crate rarities table if present.
 --------------------------------------------------------------------------------
-local function buildStrip(crateDef, wonWeapon, wonRarity)
+local function buildStrip(crateDef, resultData)
     local pool = crateDef.pool or {}
     if #pool == 0 then return {} end
+
+    resultData = type(resultData) == "table" and resultData or {}
+    local wonWeapon = resultData.weaponName
+    local wonRarity = resultData.rarity
 
     -- Group weapons by rarity
     local byRarity = {}
@@ -143,12 +228,40 @@ local function buildStrip(crateDef, wonWeapon, wonRarity)
     end
 
     local strip = {}
+    local function makeStripEntry(weapon, rarity, isWinner)
+        local sizePercent = isWinner and resultData.sizePercent or nil
+        local sizeTier = isWinner and resultData.sizeTier or nil
+        local enchantName = isWinner and resultData.enchantName or nil
+
+        if not sizePercent then
+            sizePercent, sizeTier = rollVisualSize()
+        end
+        if not sizeTier and SizeRollService and type(SizeRollService.GetSizeTier) == "function" then
+            local ok, result = pcall(function()
+                return SizeRollService.GetSizeTier(sizePercent)
+            end)
+            if ok then sizeTier = result end
+        end
+        if enchantName == nil then
+            enchantName = rollVisualEnchant()
+        end
+
+        return {
+            weapon = weapon,
+            rarity = rarity,
+            isWinner = isWinner,
+            sizePercent = sizePercent,
+            sizeTier = sizeTier or "Normal",
+            enchantName = enchantName or "",
+        }
+    end
+
     for i = 1, STRIP_CARDS do
         if i == WINNING_INDEX then
-            table.insert(strip, { weapon = wonWeapon, rarity = wonRarity, isWinner = true })
+            table.insert(strip, makeStripEntry(wonWeapon, wonRarity, true))
         else
             local wep, rar = pickWeighted()
-            table.insert(strip, { weapon = wep, rarity = rar, isWinner = false })
+            table.insert(strip, makeStripEntry(wep, rar, false))
         end
     end
     return strip
@@ -411,10 +524,12 @@ function CrateOpeningUI.Init(playerGui)
     -- SALVAGE button (secondary, slightly narrower)
     local salvageBtn = Instance.new("TextButton")
     salvageBtn.Name = "SalvageBtn"
-    salvageBtn.BackgroundColor3 = Color3.fromRGB(40, 55, 40)
+    salvageBtn.BackgroundColor3 = Color3.fromRGB(27, 31, 43)
     salvageBtn.Font = Enum.Font.GothamBold
-    salvageBtn.Text = "SALVAGE +0"
+    salvageBtn.Text = ""
     salvageBtn.TextColor3 = SALVAGE_GREEN
+    salvageBtn.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    salvageBtn.TextStrokeTransparency = 0.1
     salvageBtn.TextSize = math.max(13, math.floor(px(15)))
     salvageBtn.Size = UDim2.new(0.45, -px(4), 1, 0)
     salvageBtn.Position = UDim2.new(0.55, px(4), 0, 0)
@@ -428,9 +543,54 @@ function CrateOpeningUI.Init(playerGui)
 
     local salvageStroke = Instance.new("UIStroke")
     salvageStroke.Color = SALVAGE_GREEN
-    salvageStroke.Thickness = 1
-    salvageStroke.Transparency = 0.5
+    salvageStroke.Thickness = 1.4
+    salvageStroke.Transparency = 0.28
     salvageStroke.Parent = salvageBtn
+
+    local salvageTextLabels = {}
+    local salvageTextOffsets = {
+        Vector2.new(-1, 0), Vector2.new(1, 0), Vector2.new(0, -1), Vector2.new(0, 1),
+        Vector2.new(-1, -1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(1, 1),
+    }
+
+    for index, offset in ipairs(salvageTextOffsets) do
+        local outline = Instance.new("TextLabel")
+        outline.Name = "SalvageTextOutline" .. tostring(index)
+        outline.BackgroundTransparency = 1
+        outline.Font = Enum.Font.GothamBlack
+        outline.Text = ""
+        outline.TextColor3 = Color3.fromRGB(0, 0, 0)
+        outline.TextSize = salvageBtn.TextSize
+        outline.TextXAlignment = Enum.TextXAlignment.Center
+        outline.TextYAlignment = Enum.TextYAlignment.Center
+        outline.Size = UDim2.new(1, 0, 1, 0)
+        outline.Position = UDim2.new(0, px(offset.X), 0, px(offset.Y))
+        outline.ZIndex = salvageBtn.ZIndex + 1
+        outline.Parent = salvageBtn
+        table.insert(salvageTextLabels, outline)
+    end
+
+    local salvageTextFront = Instance.new("TextLabel")
+    salvageTextFront.Name = "SalvageText"
+    salvageTextFront.BackgroundTransparency = 1
+    salvageTextFront.Font = Enum.Font.GothamBlack
+    salvageTextFront.Text = ""
+    salvageTextFront.TextColor3 = SALVAGE_GREEN
+    salvageTextFront.TextSize = salvageBtn.TextSize
+    salvageTextFront.TextXAlignment = Enum.TextXAlignment.Center
+    salvageTextFront.TextYAlignment = Enum.TextYAlignment.Center
+    salvageTextFront.Size = UDim2.new(1, 0, 1, 0)
+    salvageTextFront.ZIndex = salvageBtn.ZIndex + 2
+    salvageTextFront.Parent = salvageBtn
+    table.insert(salvageTextLabels, salvageTextFront)
+
+    local function setSalvageButtonText(text)
+        local displayText = tostring(text or "")
+        for _, label in ipairs(salvageTextLabels) do
+            label.Text = displayText
+        end
+    end
+    setSalvageButtonText("SALVAGE +0")
 
     ---------------------------------------------------------------------------
     -- SALVAGE CONFIRMATION OVERLAY (for Rare+ items)
@@ -751,7 +911,7 @@ function CrateOpeningUI.Init(playerGui)
         local thumb = Instance.new("ImageLabel")
         thumb.Name = "Thumb"
         thumb.BackgroundTransparency = 1
-        thumb.Size = UDim2.new(0.6, 0, 0.45, 0)
+        thumb.Size = UDim2.new(0.58, 0, 0.42, 0)
         thumb.AnchorPoint = Vector2.new(0.5, 0)
         thumb.Position = UDim2.new(0.5, 0, 0, px(12))
         thumb.ScaleType = Enum.ScaleType.Fit
@@ -772,13 +932,67 @@ function CrateOpeningUI.Init(playerGui)
         wname.TextColor3 = WHITE
         wname.TextSize = math.max(11, math.floor(px(13)))
         wname.TextWrapped = true
-        wname.Size = UDim2.new(0.9, 0, 0, px(34))
+        wname.Size = UDim2.new(0.9, 0, 0, px(30))
         wname.AnchorPoint = Vector2.new(0.5, 0)
-        wname.Position = UDim2.new(0.5, 0, 0.58, 0)
+        wname.Position = UDim2.new(0.5, 0, 0.54, 0)
         wname.TextXAlignment = Enum.TextXAlignment.Center
         wname.TextYAlignment = Enum.TextYAlignment.Top
         wname.ZIndex = 8
         wname.Parent = card
+
+        local modifierBox = Instance.new("Frame")
+        modifierBox.Name = "ModifierBox"
+        modifierBox.BackgroundTransparency = 1
+        modifierBox.Size = UDim2.new(0.9, 0, 0, px(36))
+        modifierBox.AnchorPoint = Vector2.new(0.5, 0)
+        modifierBox.Position = UDim2.new(0.5, 0, 0.70, 0)
+        modifierBox.ZIndex = 8
+        modifierBox.Parent = card
+
+        local sizeText = data.sizePercent and (tostring(math.floor(data.sizePercent)) .. "%") or ""
+        local sizeLabel = Instance.new("TextLabel")
+        sizeLabel.Name = "SizePreview"
+        sizeLabel.BackgroundTransparency = 1
+        sizeLabel.Font = Enum.Font.GothamBold
+        sizeLabel.Text = sizeText
+        sizeLabel.TextColor3 = sizeTierColor(data.sizeTier)
+        sizeLabel.TextSize = math.max(10, math.floor(px(12)))
+        sizeLabel.Size = UDim2.new(1, 0, 0, px(16))
+        sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+        sizeLabel.TextYAlignment = Enum.TextYAlignment.Center
+        sizeLabel.ZIndex = 9
+        sizeLabel.Parent = modifierBox
+
+        local sizeStroke = Instance.new("UIStroke")
+        sizeStroke.Color = Color3.fromRGB(0, 0, 0)
+        sizeStroke.Thickness = 1.2
+        sizeStroke.Transparency = 0.25
+        sizeStroke.Parent = sizeLabel
+
+        local enchantName = (data.enchantName and data.enchantName ~= "") and tostring(data.enchantName) or ""
+        local enchantLabel = Instance.new("TextLabel")
+        enchantLabel.Name = "EnchantPreview"
+        enchantLabel.BackgroundTransparency = 1
+        enchantLabel.Font = Enum.Font.GothamBold
+        enchantLabel.Text = enchantName
+        enchantLabel.TextColor3 = enchantName ~= "" and enchantColor(enchantName) or DIM_TEXT
+        enchantLabel.TextSize = math.max(9, math.floor(px(11)))
+        enchantLabel.Size = UDim2.new(1, 0, 0, px(15))
+        enchantLabel.Position = UDim2.new(0, 0, 0, px(16))
+        enchantLabel.TextXAlignment = Enum.TextXAlignment.Center
+        enchantLabel.TextYAlignment = Enum.TextYAlignment.Center
+        enchantLabel.ZIndex = 9
+        enchantLabel.Parent = modifierBox
+
+        if EnchantTextStyler then
+            EnchantTextStyler.Apply(enchantLabel, enchantName)
+        else
+            local enchantStroke = Instance.new("UIStroke")
+            enchantStroke.Color = Color3.fromRGB(0, 0, 0)
+            enchantStroke.Thickness = 1.2
+            enchantStroke.Transparency = enchantName ~= "" and 0.25 or 1
+            enchantStroke.Parent = enchantLabel
+        end
 
         -- Rarity label
         local rlbl = Instance.new("TextLabel")
@@ -787,9 +1001,9 @@ function CrateOpeningUI.Init(playerGui)
         rlbl.Text = data.rarity
         rlbl.TextColor3 = rarityColor(data.rarity)
         rlbl.TextSize = math.max(10, math.floor(px(11)))
-        rlbl.Size = UDim2.new(1, 0, 0, px(16))
+        rlbl.Size = UDim2.new(1, 0, 0, px(14))
         rlbl.AnchorPoint = Vector2.new(0.5, 1)
-        rlbl.Position = UDim2.new(0.5, 0, 1, -px(6))
+        rlbl.Position = UDim2.new(0.5, 0, 1, -px(4))
         rlbl.TextXAlignment = Enum.TextXAlignment.Center
         rlbl.ZIndex = 8
         rlbl.Parent = card
@@ -813,7 +1027,7 @@ function CrateOpeningUI.Init(playerGui)
         end
 
         -- Build strip data
-        local stripData = buildStrip(crateDef, resultData.weaponName, resultData.rarity)
+        local stripData = buildStrip(crateDef, resultData)
         if #stripData == 0 then
             isAnimating = false
             return
@@ -993,7 +1207,7 @@ function CrateOpeningUI.Init(playerGui)
             if resultData.isPending then
                 -- Pending reward: show Keep/Salvage decision
                 local salvVal = resultData.salvageValue or 0
-                salvageBtn.Text = "SALVAGE +" .. tostring(salvVal)
+                setSalvageButtonText("SALVAGE +" .. tostring(salvVal))
                 btnRow.Visible = true
                 confirmFrame.Visible = false
                 closeBtn.Visible = false

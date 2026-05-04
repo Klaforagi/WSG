@@ -2,6 +2,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
+local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -35,13 +37,13 @@ local function colorToHex(c)
     return string.format("#%02X%02X%02X", math.floor(c.R * 255), math.floor(c.G * 255), math.floor(c.B * 255))
 end
 
+local GOLD_HEX = colorToHex(GOLD_TEXT)
+
 local function teamHex(teamName)
     if teamName == "Blue" then return colorToHex(Color3.fromRGB(65, 130, 255)) end
     if teamName == "Red"  then return colorToHex(Color3.fromRGB(255, 75, 75)) end
     return GOLD_HEX
 end
-
-local GOLD_HEX = colorToHex(GOLD_TEXT)
 
 local function escapeRichText(text)
     return tostring(text or "")
@@ -75,7 +77,7 @@ local function buildRichText(item)
     local white = GOLD_HEX
     local pHex = teamHex(item.playerTeamName)
     local fHex = teamHex(item.flagTeamName)
-    local teamWord = item.flagTeamName or ""
+    local teamWord = TeamDisplayNames.Get(item.flagTeamName)
 
     if item.eventType == "pickup" then
         return string.format(

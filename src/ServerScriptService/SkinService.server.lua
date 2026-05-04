@@ -460,7 +460,7 @@ local function createAccentPiece(character, limbPart, name, size, offset, color,
 end
 
 -- Resolve team accent color for armor trim.
--- Blue team → blue trim, Red team → red trim, else → fallback (gold).
+-- Knights side uses blue trim, Barbarians side uses red trim, else fallback gold.
 local TEAM_ACCENT_COLORS = {
     Blue = Color3.fromRGB(40, 90, 220),
     Red  = Color3.fromRGB(220, 45, 45),

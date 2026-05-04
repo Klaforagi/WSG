@@ -19,7 +19,7 @@ screenGui.Parent = playerGui
 local frame = Instance.new("Frame")
 frame.Name = "GameStateFrame"
 frame.Size = UDim2.new(0.14, 0, 0.13, 0)
--- moved to intermediate position between top and minimap
+-- Right side, clear of top match HUD and bottom action HUD.
 frame.Position = UDim2.new(0.98, 0, 0.44, 0)
 frame.AnchorPoint = Vector2.new(1, 0)
 frame.BackgroundColor3 = NAVY

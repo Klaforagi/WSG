@@ -637,8 +637,12 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                             -- and slow it down so it hits at the same point in the animation.
                             s.PlaybackSpeed = math.clamp(1.0 / sizeSpeedMult, 0.25, 1.5)
                             s.Parent = hrp
-                            s:Play()
-                            Debris:AddItem(s, 3)
+                            -- Fire at 0.08s into the swing (scaled with size)
+                            local soundDelay = 0.08 * sizeSpeedMult
+                            task.delay(soundDelay, function()
+                                if s and s.Parent then s:Play() end
+                            end)
+                            Debris:AddItem(s, soundDelay + 3)
                         end
                     end
                 end

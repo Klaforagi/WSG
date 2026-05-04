@@ -5,23 +5,23 @@
 --
 -- Fetches quest data from ReplicatedStorage.Remotes.Quests.GetQuests.
 -- Listens for live progress updates via ReplicatedStorage.Remotes.Quests.QuestProgress.
--- Claims rewards via ReplicatedStorage.Remotes.Quests.ClaimQuest.
 --------------------------------------------------------------------------------
 
 local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TextService       = game:GetService("TextService")
 
 local UITheme = require(script.Parent.UITheme)
+local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
 local ClaimSound
 do
     local ok, mod = pcall(function()
         return require(ReplicatedStorage:WaitForChild("Modules", 10):WaitForChild("ClaimSound", 5))
     end)
-    if ok then ClaimSound = mod end
+    if ok then
+        ClaimSound = mod
+    end
 end
-
 local player = Players.LocalPlayer
 
 --------------------------------------------------------------------------------
@@ -41,7 +41,7 @@ end
 --------------------------------------------------------------------------------
 local ROW_BG           = UITheme.CARD_BG
 local ROW_CLAIMABLE_BG = UITheme.CARD_HIGHLIGHT
-local ROW_CLAIMED_BG   = UITheme.CARD_OWNED
+local ROW_CLAIMED_BG   = Color3.fromRGB(24, 28, 42)
 local SIDEBAR_BG       = UITheme.SIDEBAR_BG
 local TAB_ACTIVE_BG    = UITheme.TAB_ACTIVE
 local CARD_STROKE      = UITheme.CARD_STROKE
@@ -51,7 +51,7 @@ local DIM_TEXT         = UITheme.DIM_TEXT
 local BAR_BG           = UITheme.BAR_BG
 local BAR_FILL         = UITheme.GOLD
 local BTN_CLAIM        = UITheme.GREEN_BTN
-local BTN_CLAIMED      = UITheme.DISABLED_BG
+local BTN_CLAIMED      = Color3.fromRGB(24, 26, 40)
 local BTN_LOCKED       = UITheme.BTN_BG
 local BTN_STROKE       = UITheme.BTN_STROKE
 local GREEN_GLOW       = UITheme.GREEN_GLOW
@@ -355,6 +355,56 @@ local function makeCoinIcon(parentFrame, size)
 
     coin.Parent = parentFrame
     return coin
+end
+
+local function makeOutlinedButtonLabel(button, name)
+    local outlineOffsets = {
+        Vector2.new(-1, 0), Vector2.new(1, 0), Vector2.new(0, -1), Vector2.new(0, 1),
+        Vector2.new(-1, -1), Vector2.new(1, -1), Vector2.new(-1, 1), Vector2.new(1, 1),
+    }
+    local labels = {}
+
+    for index, offset in ipairs(outlineOffsets) do
+        local outline = Instance.new("TextLabel")
+        outline.Name = name .. "Outline" .. tostring(index)
+        outline.BackgroundTransparency = 1
+        outline.Font = Enum.Font.GothamBlack
+        outline.Text = ""
+        outline.TextColor3 = Color3.fromRGB(0, 0, 0)
+        outline.TextXAlignment = Enum.TextXAlignment.Center
+        outline.TextYAlignment = Enum.TextYAlignment.Center
+        outline.Size = UDim2.new(1, 0, 1, 0)
+        outline.Position = UDim2.new(0, px(offset.X), 0, px(offset.Y))
+        outline.Visible = false
+        outline.ZIndex = button.ZIndex + 1
+        outline.Parent = button
+        table.insert(labels, outline)
+    end
+
+    local front = Instance.new("TextLabel")
+    front.Name = name
+    front.BackgroundTransparency = 1
+    front.Font = Enum.Font.GothamBlack
+    front.Text = ""
+    front.TextColor3 = GREEN_GLOW
+    front.TextXAlignment = Enum.TextXAlignment.Center
+    front.TextYAlignment = Enum.TextYAlignment.Center
+    front.Size = UDim2.new(1, 0, 1, 0)
+    front.Visible = false
+    front.ZIndex = button.ZIndex + 2
+    front.Parent = button
+    table.insert(labels, front)
+
+    return function(text, color, textSize, visible)
+        local displayText = tostring(text or "")
+        local show = visible == true and displayText ~= ""
+        for _, label in ipairs(labels) do
+            label.Text = displayText
+            label.TextSize = textSize
+            label.Visible = show
+        end
+        front.TextColor3 = color or GREEN_GLOW
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -1140,7 +1190,7 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     }
 
     local btnSize = px(36)
-    local claimBtnW = px(108)
+    local claimBtnW = px(124)
     local rerollBtn = Instance.new("TextButton")
     rerollBtn.Name = "RerollBtn"
     rerollBtn.AutoButtonColor = false
@@ -1152,7 +1202,7 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     rerollBtn.Size = UDim2.new(0, btnSize, 0, btnSize)
     rerollBtn.AnchorPoint = Vector2.new(1, 0)
     -- Place to the left of the claim button, vertically aligned with it
-    -- Claim button: size px(108) x px(34), at y = px(52) - px(2) = px(50)
+    -- Claim button: size px(124) x px(34), at y = px(52) - px(2) = px(50)
     local barYRef = px(52)
     local claimBtnH = px(34)
     rerollBtn.Position = UDim2.new(1, -(claimBtnW + px(12)), 0, barYRef - px(2) + math.floor((claimBtnH - btnSize) / 2))
@@ -1170,8 +1220,12 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
     rbStr.Transparency = 0.4
     rbStr.Parent = rerollBtn
 
-    -- Visual state for the reroll button (dimmed for completed/claimed, normal otherwise)
+    -- Visual state for the reroll button. Completed/claimed quests cannot be rerolled,
+    -- so the inline icon is hidden instead of showing a disabled affordance.
     local function setRerollVisuals(enabled)
+        rerollBtn.Visible = enabled
+        rerollBtn.Active = enabled
+        rerollBtn.Selectable = enabled
         if enabled then
             rerollBtn.TextColor3 = REROLL_ACCENT
             rerollBtn.BackgroundColor3 = Color3.fromRGB(30, 26, 48)
@@ -1187,11 +1241,7 @@ local function makeRerollButton(card, tabId, serverIdx, questTitle, isClaimed, i
         end
     end
 
-    -- Dim the button visually for completed/claimed quests
     setRerollVisuals(not rerollState.claimed and not rerollState.complete)
-
-    -- Button is always Active so clicks are captured for popup state routing
-    rerollBtn.Active = true
 
     local function getTooltipText()
         if rerollState.complete then
@@ -1353,8 +1403,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Layout constants
     ---------------------------------------------------------------------------
-    local TAB_W   = px(132)
-    local TAB_GAP = px(10)
+    local TAB_W   = px(LeftPanelStyle.TAB_W)
+    local TAB_GAP = px(LeftPanelStyle.TAB_GAP)
     local CARD_H  = px(142)   -- includes space for achievement date line under progress bar
     local HDR_H   = px(66)    -- header + subheader + accent bar
 
@@ -1387,35 +1437,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     local sidebar = Instance.new("Frame")
     sidebar.Name             = "TabSidebar"
-    sidebar.BackgroundColor3 = SIDEBAR_BG
-    sidebar.BorderSizePixel  = 0
-    sidebar.Size             = UDim2.new(0, TAB_W, 1, 0)
-    sidebar.Position         = UDim2.new(0, 0, 0, 0)
-    sidebar.ClipsDescendants = false
     sidebar.Parent           = root
-
-    local sideCorner = Instance.new("UICorner")
-    sideCorner.CornerRadius = UDim.new(0, px(10))
-    sideCorner.Parent = sidebar
-
-    local sideStroke = Instance.new("UIStroke")
-    sideStroke.Color        = CARD_STROKE
-    sideStroke.Thickness    = 1.2
-    sideStroke.Transparency = 0.3
-    sideStroke.Parent       = sidebar
-
-    local sideLayout = Instance.new("UIListLayout")
-    sideLayout.SortOrder           = Enum.SortOrder.LayoutOrder
-    sideLayout.Padding             = UDim.new(0, px(3))
-    sideLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    sideLayout.Parent              = sidebar
-
-    local sidePad = Instance.new("UIPadding")
-    sidePad.PaddingTop    = UDim.new(0, px(10))
-    sidePad.PaddingBottom = UDim.new(0, px(10))
-    sidePad.PaddingLeft   = UDim.new(0, px(6))
-    sidePad.PaddingRight  = UDim.new(0, px(6))
-    sidePad.Parent        = sidebar
+    LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
 
     ---------------------------------------------------------------------------
     -- Content area (right of sidebar)
@@ -1627,14 +1650,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             page.Visible = (id == tabId)
         end
         applyAchievementsScrollStyle(tabId == "achiev")
-        -- Update the modal window title to match the active tab
-        local TAB_TITLES = {
-            daily  = "DAILY QUESTS",
-            weekly = "WEEKLY QUESTS",
-            achiev = "ACHIEVEMENTS",
-        }
+        -- Keep the modal title stable while tabs change the content below it.
         if _G.SideUI and type(_G.SideUI.SetTitle) == "function" then
-            _G.SideUI.SetTitle(TAB_TITLES[tabId] or "QUESTS")
+            _G.SideUI.SetTitle("QUESTS")
         end
         -- Show/hide AP display in header based on active tab
         if apDisplayFrame then
@@ -2013,17 +2031,21 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         progressTexts[quest.id] = progText
 
         -- Claim button
-        local btnW2 = px(108)
+        local btnW2 = px(124)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
         btn.TextSize        = math.max(13, math.floor(px(14)))
+        btn.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        btn.TextStrokeTransparency = 1
         btn.Size            = UDim2.new(0, btnW2, 0, btnH)
         btn.AnchorPoint     = Vector2.new(1, 0)
         btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
         btn.Parent          = card
+
+        local setClaimedButtonOutline = makeOutlinedButtonLabel(btn, "ClaimedText")
 
         local btnCorner = Instance.new("UICorner")
         btnCorner.CornerRadius = UDim.new(0, px(10))
@@ -2066,26 +2088,35 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         -- Button state helper
         local function updateButtonState(progress, goal, claimed)
             if claimed then
-                btn.Text             = "\u{2714} CLAIMED"
+                btn.Text             = ""
+                btn.TextSize         = math.max(12, math.floor(px(13)))
                 btn.BackgroundColor3 = BTN_CLAIMED
                 btn.TextColor3       = GREEN_GLOW
+                btn.TextStrokeTransparency = 0.1
                 btn.Active           = false
                 btnStroke.Color      = GREEN_GLOW
-                btnStroke.Transparency = 0.5
+                btnStroke.Transparency = 0.25
+                setClaimedButtonOutline("CLAIMED", GREEN_GLOW, math.max(12, math.floor(px(13))), true)
             elseif progress >= goal then
+                setClaimedButtonOutline("", GREEN_GLOW, math.max(12, math.floor(px(13))), false)
                 btn.Text             = "\u{2B50} CLAIM"
+                btn.TextSize         = math.max(13, math.floor(px(14)))
                 btn.BackgroundColor3 = BTN_CLAIM
                 btn.TextColor3       = WHITE
+                btn.TextStrokeTransparency = 1
                 btn.Active           = true
                 btnStroke.Color      = GREEN_GLOW
                 btnStroke.Transparency = 0.15
             else
+                setClaimedButtonOutline("", GREEN_GLOW, math.max(12, math.floor(px(13))), false)
                 btn.Text             = FormatProgress(progress, goal)
-                btn.BackgroundColor3 = BTN_LOCKED
-                btn.TextColor3       = DIM_TEXT
+                btn.TextSize         = math.max(14, math.floor(px(15)))
+                btn.BackgroundColor3 = Color3.fromRGB(30, 34, 52)
+                btn.TextColor3       = WHITE
+                btn.TextStrokeTransparency = 0.35
                 btn.Active           = false
                 btnStroke.Color      = BTN_STROKE
-                btnStroke.Transparency = 0.4
+                btnStroke.Transparency = 0.25
             end
             updateCardVisuals(progress, goal, claimed)
         end
@@ -2457,17 +2488,21 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         wkProgressTexts[questIdx] = progText
 
         -- Claim button
-        local btnW2 = px(108)
+        local btnW2 = px(124)
         local btnH  = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "ClaimBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
         btn.TextSize        = math.max(13, math.floor(px(14)))
+        btn.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        btn.TextStrokeTransparency = 1
         btn.Size            = UDim2.new(0, btnW2, 0, btnH)
         btn.AnchorPoint     = Vector2.new(1, 0)
         btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
         btn.Parent          = card
+
+        local setClaimedButtonOutline = makeOutlinedButtonLabel(btn, "ClaimedText")
 
         local btnCorner = Instance.new("UICorner")
         btnCorner.CornerRadius = UDim.new(0, px(10))
@@ -2509,26 +2544,35 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
         local function updateWkBtnState(progress, goal, claimed)
             if claimed then
-                btn.Text             = "\u{2714} CLAIMED"
+                btn.Text             = ""
+                btn.TextSize         = math.max(12, math.floor(px(13)))
                 btn.BackgroundColor3 = BTN_CLAIMED
                 btn.TextColor3       = GREEN_GLOW
+                btn.TextStrokeTransparency = 0.1
                 btn.Active           = false
                 btnStroke.Color      = GREEN_GLOW
-                btnStroke.Transparency = 0.5
+                btnStroke.Transparency = 0.25
+                setClaimedButtonOutline("CLAIMED", GREEN_GLOW, math.max(12, math.floor(px(13))), true)
             elseif progress >= goal then
+                setClaimedButtonOutline("", GREEN_GLOW, math.max(12, math.floor(px(13))), false)
                 btn.Text             = "\u{2B50} CLAIM"
+                btn.TextSize         = math.max(13, math.floor(px(14)))
                 btn.BackgroundColor3 = BTN_CLAIM
                 btn.TextColor3       = WHITE
+                btn.TextStrokeTransparency = 1
                 btn.Active           = true
                 btnStroke.Color      = GREEN_GLOW
                 btnStroke.Transparency = 0.15
             else
+                setClaimedButtonOutline("", GREEN_GLOW, math.max(12, math.floor(px(13))), false)
                 btn.Text             = FormatProgress(progress, goal)
-                btn.BackgroundColor3 = BTN_LOCKED
-                btn.TextColor3       = DIM_TEXT
+                btn.TextSize         = math.max(14, math.floor(px(15)))
+                btn.BackgroundColor3 = Color3.fromRGB(30, 34, 52)
+                btn.TextColor3       = WHITE
+                btn.TextStrokeTransparency = 0.35
                 btn.Active           = false
                 btnStroke.Color      = BTN_STROKE
-                btnStroke.Transparency = 0.4
+                btnStroke.Transparency = 0.25
             end
             updateWkCardVisuals(progress, goal, claimed)
         end
