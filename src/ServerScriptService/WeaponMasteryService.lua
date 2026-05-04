@@ -10,6 +10,7 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage:WaitForChild("WeaponMasteryConfig"))
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 
 local DATASTORE_NAME = "WeaponMastery_v1"
 local DATA_VERSION = 2
@@ -27,6 +28,7 @@ local saveScheduled = {}
 
 local _WeaponInstanceService
 local _CurrencyService
+local _SaveCoordinator
 
 local function getWeaponInstanceService()
     if not _WeaponInstanceService then
@@ -46,6 +48,23 @@ local function getCurrencyService()
         end
     end
     return _CurrencyService
+end
+
+local function getSaveCoordinator()
+    if _SaveCoordinator == nil then
+        local ok, coordinator = pcall(function()
+            return require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+        end)
+        if ok then
+            _SaveCoordinator = coordinator
+        else
+            _SaveCoordinator = false
+        end
+    end
+    if _SaveCoordinator == false then
+        return nil
+    end
+    return _SaveCoordinator
 end
 
 local function ensureRemote(className, name)
@@ -289,14 +308,13 @@ end
 local function markDirty(player)
     if not player then return end
     dirtyPlayers[player] = true
-    if saveScheduled[player] then return end
     saveScheduled[player] = true
-    task.delay(SAVE_DELAY, function()
-        saveScheduled[player] = nil
-        if dirtyPlayers[player] and player.Parent then
-            WeaponMasteryService:SaveForPlayer(player)
-        end
-    end)
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:MarkDirty(player, "WeaponMastery", "weapon_mastery", {
+            delaySeconds = SAVE_DELAY,
+        })
+    end
 end
 
 local function addProgress(player, instanceId, xpAmount, statKey, statAmount, meta)
@@ -378,18 +396,16 @@ local function migrateLegacyByInstance(player, data)
     return changed
 end
 
-function WeaponMasteryService:LoadForPlayer(player)
-    if not player then return {} end
-    local key = dsKey(player)
-    local success, result
-    for attempt = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
-        end)
-        if success then break end
-        warn("[WeaponMasteryService] GetAsync failed (attempt " .. attempt .. "): " .. tostring(result))
-        task.wait(RETRY_DELAY * attempt)
+function WeaponMasteryService:LoadProfileForPlayer(player)
+    if not player then
+        return {
+            status = "failed",
+            data = newDataRecord(),
+            reason = "missing player",
+        }
     end
+    local key = dsKey(player)
+    local success, result, err = DataStoreOps.Load(ds, key, "WeaponMastery/" .. key)
 
     local loaded = newDataRecord()
     local needsSave = false
@@ -400,8 +416,6 @@ function WeaponMasteryService:LoadForPlayer(player)
             loaded = loadLegacy(result)
             needsSave = true
         end
-    elseif not success then
-        warn("[WeaponMasteryService] Failed to load for " .. tostring(player.Name) .. "; starting empty")
     end
 
     if migrateLegacyByInstance(player, loaded) then
@@ -410,20 +424,47 @@ function WeaponMasteryService:LoadForPlayer(player)
 
     playerMasteries[player] = loaded
     dirtyPlayers[player] = nil
+    saveScheduled[player] = nil
 
     if needsSave then
-        dirtyPlayers[player] = true
-        task.spawn(function()
-            WeaponMasteryService:SaveForPlayer(player)
-        end)
+        markDirty(player)
     end
 
-    return loaded
+    if not success then
+        warn("[WeaponMasteryService] Failed to load for " .. tostring(player.Name) .. "; using temporary empty mastery")
+        return {
+            status = "failed",
+            data = DataStoreOps.DeepCopy(loaded),
+            reason = err,
+        }
+    end
+    if result == nil then
+        return {
+            status = "new",
+            data = DataStoreOps.DeepCopy(loaded),
+            markDirty = needsSave,
+        }
+    end
+    return {
+        status = "existing",
+        data = DataStoreOps.DeepCopy(loaded),
+        markDirty = needsSave,
+    }
 end
 
-function WeaponMasteryService:SaveForPlayer(player)
-    if not player then return false end
-    local data = ensureDataForPlayer(player)
+function WeaponMasteryService:LoadForPlayer(player)
+    local result = self:LoadProfileForPlayer(player)
+    return result and result.data or newDataRecord()
+end
+
+function WeaponMasteryService:GetSaveData(player)
+    if not player then return nil end
+    return DataStoreOps.DeepCopy(ensureDataForPlayer(player))
+end
+
+function WeaponMasteryService:SaveProfileForPlayer(player, saveData, oldData)
+    if not player then return false, "missing player" end
+    local data = DataStoreOps.DeepCopy(saveData or ensureDataForPlayer(player))
     for weaponName, entry in pairs(data.byWeaponName) do
         if type(weaponName) == "string" then
             data.byWeaponName[weaponName] = normalizeEntry(entry)
@@ -436,26 +477,36 @@ function WeaponMasteryService:SaveForPlayer(player)
     end
 
     local key = dsKey(player)
-    local success, err
-    for attempt = 1, RETRIES do
-        success, err = pcall(function()
-            ds:SetAsync(key, data)
-        end)
-        if success then break end
-        warn("[WeaponMasteryService] SetAsync failed (attempt " .. attempt .. "): " .. tostring(err))
-        task.wait(RETRY_DELAY * attempt)
-    end
+    local success, _, err = DataStoreOps.Update(ds, key, "WeaponMastery/" .. key, function(storedData)
+        local previousData = oldData or storedData or newDataRecord()
+        local previousCount = DataStoreOps.CountEntries(type(previousData) == "table" and previousData.byWeaponName or nil)
+        local storedCount = DataStoreOps.CountEntries(type(storedData) == "table" and storedData.byWeaponName or nil)
+        local newCount = DataStoreOps.CountEntries(data.byWeaponName)
+        if storedCount > 0 and previousCount > 0 and newCount == 0 then
+            warn("[WeaponMasteryService] suspected wipe blocked for " .. tostring(player.Name))
+            return storedData
+        end
+        return data
+    end)
     if success then
         dirtyPlayers[player] = nil
+        saveScheduled[player] = nil
     else
         warn("[WeaponMasteryService] Failed to save for " .. tostring(player.Name))
     end
-    return success == true
+    return success == true, err
 end
 
+function WeaponMasteryService:SaveForPlayer(player)
+    return self:SaveProfileForPlayer(player)
+end
+
+-- Only saves players whose data has changed since the last save.
 function WeaponMasteryService:SaveAll()
     for _, player in ipairs(Players:GetPlayers()) do
-        self:SaveForPlayer(player)
+        if dirtyPlayers[player] then
+            self:SaveForPlayer(player)
+        end
     end
 end
 
@@ -555,7 +606,12 @@ function WeaponMasteryService:ClaimReward(player, instanceId, level)
 
     entry.claimedRewards[claimKey] = true
     markDirty(player)
-    self:SaveForPlayer(player)
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:RequestImmediateSave(player, "weapon_mastery_reward", {
+            force = true,
+        })
+    end
     fireUpdated(player, instanceId, weaponName, { kind = "RewardClaimed", rewardLevel = level })
 
     return true, {
@@ -570,8 +626,9 @@ claimRewardRF.OnServerInvoke = function(player, instanceId, level)
     return WeaponMasteryService:ClaimReward(player, instanceId, level)
 end
 
-game:BindToClose(function()
-    WeaponMasteryService:SaveAll()
-end)
+-- BindToClose is intentionally NOT registered here.
+-- CrateServiceInit.server.lua owns the shutdown lifecycle for both
+-- WeaponInstance and WeaponMastery and uses SaveGuard to prevent
+-- double-saves when PlayerRemoving and BindToClose fire concurrently.
 
 return WeaponMasteryService

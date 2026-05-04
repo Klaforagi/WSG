@@ -160,15 +160,38 @@ end
 
 --------------------------------------------------------------------------------
 -- READ: full snapshot of a user's saved data across every subsystem.
+-- Reads are serialised with a small delay between each to avoid exhausting
+-- the DataStore budget (which would cause in-game saves to fail / data loss).
+-- Results are cached for READ_CACHE_TTL seconds so repeated admin-panel clicks
+-- on the same user don't re-fire all DataStore requests.
 --------------------------------------------------------------------------------
+local READ_THROTTLE  = 0.065 -- seconds between successive GetAsync calls (~15/s)
+local READ_CACHE_TTL = 30    -- seconds to reuse a cached snapshot
+local _readCache = {} -- [userId] = { snapshot={}, cachedAt=tick() }
+
 local function readAll(userId)
+    -- Return cached result if still fresh.
+    local cached = _readCache[userId]
+    if cached and (tick() - cached.cachedAt) < READ_CACHE_TTL then
+        return cached.snapshot
+    end
+
     local snapshot = {}
     for sub, spec in pairs(DATASTORES) do
         local key = string.format(spec.keyFmt, userId)
         local _, value = tryGet(dsHandle(spec), key)
         snapshot[sub] = value -- may be nil if never saved
+        task.wait(READ_THROTTLE)
     end
+
+    _readCache[userId] = { snapshot = snapshot, cachedAt = tick() }
     return snapshot
+end
+
+-- Invalidate cache for a user (call after any reset/restore so the next read
+-- reflects the new state rather than stale pre-reset values).
+local function invalidateReadCache(userId)
+    _readCache[userId] = nil
 end
 
 --------------------------------------------------------------------------------
@@ -476,6 +499,9 @@ function PlayerDataAdminService:ResetUserData(adminPlayer, userId, resetType)
         "wiped=%d failed=%d backupOk=%s online=%s kicked=%s",
         #wiped, #failed, tostring(backupOk), tostring(online ~= nil), tostring(kicked)
     ))
+
+    -- Invalidate snapshot cache so the next GetUserData reflects the reset.
+    invalidateReadCache(userId)
 
     return {
         success            = true,
@@ -795,6 +821,9 @@ function PlayerDataAdminService:RestoreUserDataBackup(adminPlayer, backupId)
     if not markOk then
         warn("[PlayerDataAdminService] failed to mark backup " .. backupId .. " restored")
     end
+
+    -- Invalidate snapshot cache so the next GetUserData reflects the restored state.
+    invalidateReadCache(userId)
 
     -- 6. Audit
     logAudit(adminPlayer, userId, "Restore_" .. tostring(rec.resetType or "?"),

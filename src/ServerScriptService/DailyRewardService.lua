@@ -19,11 +19,14 @@ local Players             = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+
 local DATASTORE_NAME = "DailyRewards_v1"
 local RETRIES        = 3
 local RETRY_DELAY    = 0.5
 
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
+local _saveCoordinator
 
 --------------------------------------------------------------------------------
 -- Lazy-require dependencies (load-order safe)
@@ -62,6 +65,30 @@ local function getBoostService()
         end
     end)
     return BoostService
+end
+
+local function getSaveCoordinator()
+    if _saveCoordinator == nil then
+        local ok, coordinator = pcall(function()
+            return require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+        end)
+        if ok then
+            _saveCoordinator = coordinator
+        else
+            _saveCoordinator = false
+        end
+    end
+    if _saveCoordinator == false then
+        return nil
+    end
+    return _saveCoordinator
+end
+
+local function markDirty(player, reason, options)
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:MarkDirty(player, "DailyReward", reason or "daily_reward", options)
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -262,19 +289,17 @@ end
 -- Persistence
 --------------------------------------------------------------------------------
 
-function DailyRewardService:LoadForPlayer(player)
-    if not player then return false end
+function DailyRewardService:LoadProfileForPlayer(player)
+    if not player then
+        return {
+            status = "failed",
+            data = makeEmptyState(),
+            reason = "missing player",
+        }
+    end
 
     local key = getKey(player)
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
-        end)
-        if success then break end
-        warn("[DailyRewardService] GetAsync failed (attempt", i, "):", tostring(result))
-        task.wait(RETRY_DELAY * i)
-    end
+    local success, result, err = DataStoreOps.Load(ds, key, "DailyReward/" .. key)
 
     if success then
         playerData[player] = normalizeState(result)
@@ -284,12 +309,40 @@ function DailyRewardService:LoadForPlayer(player)
     end
 
     sessionFlags[player] = { autoPopupShown = false }
-    return success ~= false
+    if not success then
+        return {
+            status = "failed",
+            data = DataStoreOps.DeepCopy(playerData[player]),
+            reason = err,
+        }
+    end
+    if result == nil then
+        return {
+            status = "new",
+            data = DataStoreOps.DeepCopy(playerData[player]),
+        }
+    end
+    return {
+        status = "existing",
+        data = DataStoreOps.DeepCopy(playerData[player]),
+    }
 end
 
-function DailyRewardService:SaveForPlayer(player)
+function DailyRewardService:LoadForPlayer(player)
+    local result = self:LoadProfileForPlayer(player)
+    return result and result.status ~= "failed"
+end
+
+function DailyRewardService:GetSaveData(player)
+    if not player then return nil end
+    return DataStoreOps.DeepCopy(playerData[player])
+end
+
+function DailyRewardService:SaveProfileForPlayer(player, currentData, oldData)
     local pd = playerData[player]
-    if not player or not pd then return false end
+    if not player then return false, "missing player" end
+    pd = currentData or pd
+    if not pd then return false, "missing state" end
 
     local key = getKey(player)
     local payload = {
@@ -300,20 +353,23 @@ function DailyRewardService:SaveForPlayer(player)
         totalClaims   = pd.totalClaims,
     }
 
-    local success, err
-    for i = 1, RETRIES do
-        success, err = pcall(function()
-            ds:SetAsync(key, payload)
-        end)
-        if success then break end
-        warn("[DailyRewardService] SetAsync failed (attempt", i, "):", tostring(err))
-        task.wait(RETRY_DELAY * i)
-    end
+    local success, _, err = DataStoreOps.Update(ds, key, "DailyReward/" .. key, function(storedPayload)
+        local previous = type(oldData) == "table" and oldData or storedPayload or {}
+        if (tonumber(previous.totalClaims) or 0) > 0 and (tonumber(payload.totalClaims) or 0) == 0 then
+            warn("[DailyRewardService] suspected wipe blocked for", player.Name)
+            return storedPayload
+        end
+        return payload
+    end)
 
     if not success then
         warn("[DailyRewardService] Failed to save for", player.Name)
     end
-    return success ~= false
+    return success ~= false, err
+end
+
+function DailyRewardService:SaveForPlayer(player)
+    return self:SaveProfileForPlayer(player)
 end
 
 function DailyRewardService:SaveAll()
@@ -499,10 +555,13 @@ function DailyRewardService:ClaimReward(player)
     pd.lastClaimTime = os.time()
     pd.totalClaims   = pd.totalClaims + 1
 
-    -- Save immediately after claim
-    task.spawn(function()
-        DailyRewardService:SaveForPlayer(player)
-    end)
+    markDirty(player, "daily_reward_claim", { force = true })
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:RequestImmediateSave(player, "daily_reward_claim", {
+            force = true,
+        })
+    end
 
     claimLocks[player] = nil
     print("[DailyRewardService]", player.Name, "claimed Day", nextDay, "reward:", rewardEntry.DisplayName)

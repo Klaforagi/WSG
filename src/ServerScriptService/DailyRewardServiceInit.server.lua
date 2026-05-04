@@ -13,6 +13,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 -- Require modules
 --------------------------------------------------------------------------------
 local DailyRewardService = require(ServerScriptService:WaitForChild("DailyRewardService", 10))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 
 -- Lazy-load AchievementService (may not be ready yet at require time)
 local AchievementService
@@ -73,6 +74,47 @@ local claimRF = ensureInstance(drFolder, "RemoteFunction", "ClaimDailyReward")
 
 -- DailyRewardStateUpdated: server pushes updated state to client
 local stateUpdatedRE = ensureInstance(drFolder, "RemoteEvent", "DailyRewardStateUpdated")
+local dailyRewardSectionRegistered = false
+
+local function validateDailyReward(_, currentData, lastGoodData)
+    if type(currentData) ~= "table" or type(lastGoodData) ~= "table" then
+        return nil
+    end
+    if (tonumber(lastGoodData.totalClaims) or 0) > 0 and (tonumber(currentData.totalClaims) or 0) == 0 then
+        return {
+            suspicious = true,
+            severity = "warning",
+            reason = "daily reward totalClaims reset to zero",
+        }
+    end
+    return nil
+end
+
+local function registerDailyRewardSection()
+    if dailyRewardSectionRegistered then
+        return
+    end
+    dailyRewardSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "DailyReward",
+        Priority = 42,
+        Critical = false,
+        Load = function(player)
+            return DailyRewardService:LoadProfileForPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return DailyRewardService:GetSaveData(player)
+        end,
+        Save = function(player, currentData, lastGoodData)
+            return DailyRewardService:SaveProfileForPlayer(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            DailyRewardService:ClearPlayer(player)
+        end,
+        Validate = validateDailyReward,
+    })
+end
 
 --------------------------------------------------------------------------------
 -- Push state to client (helper)
@@ -117,7 +159,7 @@ end
 -- Player lifecycle
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
-    DailyRewardService:LoadForPlayer(player)
+    DataSaveCoordinator:LoadSection(player, "DailyReward")
 
     -- Sync login streak into achievement stat after both services have loaded
     task.delay(2, function()
@@ -139,6 +181,7 @@ local function onPlayerAdded(player)
     end)
 end
 
+registerDailyRewardSection()
 Players.PlayerAdded:Connect(onPlayerAdded)
 
 -- Handle players already in the server (Team Test / late join)
@@ -147,28 +190,5 @@ for _, player in ipairs(Players:GetPlayers()) do
         onPlayerAdded(player)
     end)
 end
-
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-Players.PlayerRemoving:Connect(function(player)
-    if SaveGuard:ClaimSave(player, "DailyReward") then
-        DailyRewardService:SaveForPlayer(player)
-        SaveGuard:ReleaseSave(player, "DailyReward")
-    end
-    DailyRewardService:ClearPlayer(player)
-end)
-
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "DailyReward") then
-                DailyRewardService:SaveForPlayer(p)
-                SaveGuard:ReleaseSave(p, "DailyReward")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 print("[DailyRewardServiceInit] Daily Reward system initialized")

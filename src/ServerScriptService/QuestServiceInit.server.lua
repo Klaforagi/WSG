@@ -11,8 +11,63 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 -- Require modules
 local QuestService = require(ServerScriptService:WaitForChild("QuestService", 10))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local StatService  = require(ServerScriptService:WaitForChild("StatService", 10))
 local BoostService = require(ServerScriptService:WaitForChild("BoostService", 10))
+
+local questSectionRegistered = false
+
+local function validateDailyQuest(_, currentData, lastGoodData)
+    if type(currentData) ~= "table" or type(lastGoodData) ~= "table" then
+        return nil
+    end
+    local previousCount = 0
+    local newCount = 0
+    if type(lastGoodData.quests) == "table" then
+        for _ in pairs(lastGoodData.quests) do
+            previousCount += 1
+        end
+    end
+    if type(currentData.quests) == "table" then
+        for _ in pairs(currentData.quests) do
+            newCount += 1
+        end
+    end
+    if previousCount > 0 and newCount == 0 then
+        return {
+            suspicious = true,
+            severity = "warning",
+            reason = "daily quest state became empty",
+        }
+    end
+    return nil
+end
+
+local function registerQuestSection()
+    if questSectionRegistered then
+        return
+    end
+    questSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "Quest",
+        Priority = 45,
+        Critical = false,
+        Load = function(player)
+            return QuestService:LoadProfileForPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return QuestService:GetSaveData(player)
+        end,
+        Save = function(player, currentData, lastGoodData)
+            return QuestService:SaveProfileForPlayer(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            QuestService:ClearPlayer(player)
+        end,
+        Validate = validateDailyQuest,
+    })
+end
 
 local function ensureInstance(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -98,43 +153,22 @@ end
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
     task.spawn(function()
-        QuestService:LoadForPlayer(player)
+        DataSaveCoordinator:LoadSection(player, "Quest")
     end)
 end
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
 local function onPlayerRemoving(player)
-    if SaveGuard:ClaimSave(player, "Quest") then
-        QuestService:ClearPlayer(player) -- saves then clears memory
-        SaveGuard:ReleaseSave(player, "Quest")
-    else
-        -- Already saved by BindToClose, just clear memory
-        pcall(function() QuestService:ClearPlayer(player) end)
-    end
+    pcall(function() QuestService:ClearPlayer(player) end)
 end
 
 -- Handle players already in-game (e.g. late script init)
+registerQuestSection()
 for _, p in ipairs(Players:GetPlayers()) do
     task.spawn(onPlayerAdded, p)
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
-
--- Save all on shutdown (was missing – data loss risk)
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "Quest") then
-                QuestService:ClearPlayer(p)
-                SaveGuard:ReleaseSave(p, "Quest")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events  (replaces ALL legacy hooks)

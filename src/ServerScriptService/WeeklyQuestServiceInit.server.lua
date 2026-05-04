@@ -13,9 +13,49 @@ local Players             = game:GetService("Players")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local WeeklyQuestService = require(ServerScriptService:WaitForChild("WeeklyQuestService", 10))
 local StatService         = require(ServerScriptService:WaitForChild("StatService", 10))
 local BoostService        = require(ServerScriptService:WaitForChild("BoostService", 10))
+
+local weeklySectionRegistered = false
+
+local function registerWeeklySection()
+    if weeklySectionRegistered then
+        return
+    end
+    weeklySectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "WeeklyQuest",
+        Priority = 55,
+        Critical = false,
+        Load = function(player)
+            return WeeklyQuestService:LoadPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return WeeklyQuestService:GetSaveData(player)
+        end,
+        Save = function(player, currentData)
+            return WeeklyQuestService:SaveProfileForPlayer(player, currentData)
+        end,
+        Cleanup = function(player)
+            WeeklyQuestService:ClearPlayer(player)
+        end,
+        Validate = function(_, currentData, lastGoodData)
+            local currentCount = currentData and currentData.quests and #currentData.quests or 0
+            local lastCount = lastGoodData and lastGoodData.quests and #lastGoodData.quests or 0
+            if lastCount > 0 and currentCount == 0 then
+                return {
+                    suspicious = true,
+                    severity = "warning",
+                    reason = "weekly quests became empty",
+                }
+            end
+            return nil
+        end,
+    })
+end
 
 local function ensureInstance(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -87,40 +127,16 @@ end
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
     task.spawn(function()
-        WeeklyQuestService:LoadPlayer(player)
+        DataSaveCoordinator:LoadSection(player, "WeeklyQuest")
     end)
 end
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-local function onPlayerRemoving(player)
-    if SaveGuard:ClaimSave(player, "WeeklyQuest") then
-        WeeklyQuestService:ClearPlayer(player)
-        SaveGuard:ReleaseSave(player, "WeeklyQuest")
-    else
-        pcall(function() WeeklyQuestService:ClearPlayer(player) end)
-    end
-end
+registerWeeklySection()
 
 for _, p in ipairs(Players:GetPlayers()) do
     task.spawn(onPlayerAdded, p)
 end
 Players.PlayerAdded:Connect(onPlayerAdded)
-Players.PlayerRemoving:Connect(onPlayerRemoving)
-
--- Save all on shutdown (was missing – data loss risk)
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "WeeklyQuest") then
-                WeeklyQuestService:ClearPlayer(p)
-                SaveGuard:ReleaseSave(p, "WeeklyQuest")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events

@@ -12,10 +12,95 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local CrateService          = require(ServerScriptService:WaitForChild("CrateService"))
 local WeaponInstanceService = require(ServerScriptService:WaitForChild("WeaponInstanceService"))
 local WeaponMasteryService  = require(ServerScriptService:WaitForChild("WeaponMasteryService"))
+local DataSaveCoordinator   = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local AchievementService
 pcall(function()
     AchievementService = require(ServerScriptService:WaitForChild("AchievementService", 10))
 end)
+
+local weaponSectionsRegistered = false
+
+local function countEntries(value)
+    local count = 0
+    if type(value) ~= "table" then
+        return count
+    end
+    for _ in pairs(value) do
+        count += 1
+    end
+    return count
+end
+
+local function validateWeaponInventory(_, currentData, lastGoodData)
+    local oldCount = countEntries(lastGoodData)
+    local newCount = countEntries(currentData)
+    if oldCount > 0 and newCount == 0 then
+        return {
+            suspicious = true,
+            severity = "severe",
+            reason = "weapon inventory became empty",
+        }
+    end
+    return nil
+end
+
+local function validateWeaponMastery(_, currentData, lastGoodData)
+    local oldCount = countEntries(type(lastGoodData) == "table" and lastGoodData.byWeaponName or nil)
+    local newCount = countEntries(type(currentData) == "table" and currentData.byWeaponName or nil)
+    if oldCount > 0 and newCount == 0 then
+        return {
+            suspicious = true,
+            severity = "warning",
+            reason = "weapon mastery became empty",
+        }
+    end
+    return nil
+end
+
+local function registerWeaponSections()
+    if weaponSectionsRegistered then
+        return
+    end
+    weaponSectionsRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "WeaponInventory",
+        Priority = 20,
+        Critical = true,
+        Load = function(player)
+            return WeaponInstanceService:LoadProfileForPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return WeaponInstanceService:GetSaveData(player)
+        end,
+        Save = function(player, currentData, lastGoodData)
+            return WeaponInstanceService:SaveProfileForPlayer(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            WeaponInstanceService:RemovePlayer(player)
+        end,
+        Validate = validateWeaponInventory,
+    })
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "WeaponMastery",
+        Priority = 25,
+        Critical = true,
+        Load = function(player)
+            return WeaponMasteryService:LoadProfileForPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return WeaponMasteryService:GetSaveData(player)
+        end,
+        Save = function(player, currentData, lastGoodData)
+            return WeaponMasteryService:SaveProfileForPlayer(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            WeaponMasteryService:RemovePlayer(player)
+        end,
+        Validate = validateWeaponMastery,
+    })
+end
 
 --------------------------------------------------------------------------------
 -- REMOTE CREATION
@@ -177,8 +262,8 @@ end
 -- PLAYER LIFECYCLE
 --------------------------------------------------------------------------------
 local function onPlayerAdded(player)
-    WeaponInstanceService:LoadForPlayer(player)
-    WeaponMasteryService:LoadForPlayer(player)
+    DataSaveCoordinator:LoadSection(player, "WeaponInventory")
+    DataSaveCoordinator:LoadSection(player, "WeaponMastery")
 
     -- Grant starter weapon instances if player doesn't already have them
     local STARTERS = {
@@ -196,7 +281,6 @@ local function onPlayerAdded(player)
             )
         end
     end
-    WeaponInstanceService:SaveForPlayer(player)
 
     -- Send initial inventory to client
     pcall(function()
@@ -204,27 +288,15 @@ local function onPlayerAdded(player)
     end)
 end
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
 local function onPlayerRemoving(player)
     -- Auto-keep any pending crate reward before saving
     CrateService:AutoKeepOnDisconnect(player)
-
-    if SaveGuard:ClaimSave(player, "WeaponInstance") then
-        WeaponInstanceService:SaveForPlayer(player)
-        SaveGuard:ReleaseSave(player, "WeaponInstance")
-    end
-    if SaveGuard:ClaimSave(player, "WeaponMastery") then
-        WeaponMasteryService:SaveForPlayer(player)
-        SaveGuard:ReleaseSave(player, "WeaponMastery")
-    end
-    WeaponInstanceService:RemovePlayer(player)
-    WeaponMasteryService:RemovePlayer(player)
     openDebounce[player] = nil
     keepDebounce[player] = nil
     salvageDebounce[player] = nil
 end
 
+registerWeaponSections()
 Players.PlayerAdded:Connect(onPlayerAdded)
 Players.PlayerRemoving:Connect(onPlayerRemoving)
 
@@ -232,22 +304,6 @@ Players.PlayerRemoving:Connect(onPlayerRemoving)
 for _, player in ipairs(Players:GetPlayers()) do
     task.spawn(onPlayerAdded, player)
 end
-
--- Save all on shutdown
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            -- Auto-keep any pending crate reward before shutdown save
-            CrateService:AutoKeepOnDisconnect(p)
-            if SaveGuard:ClaimSave(p, "WeaponInstance") then
-                WeaponInstanceService:SaveForPlayer(p)
-                SaveGuard:ReleaseSave(p, "WeaponInstance")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 print("[CrateServiceInit] Crate system ready")
 -- Debug: print WeaponCrate pool contents to verify config changes

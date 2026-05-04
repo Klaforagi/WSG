@@ -13,6 +13,10 @@
 local Players            = game:GetService("Players")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local DataStoreService   = game:GetService("DataStoreService")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 
 local DEBUG = true
 local function dprint(...)
@@ -86,6 +90,28 @@ dprint("Remotes created")
 -- ── Per-player state ───────────────────────────────────────────────────────
 -- playerData[player] = { owned = { [effectId] = true }, equipped = { [subType] = effectId } }
 local playerData = {}
+local effectsSectionRegistered = false
+
+local function markDirty(player, reason, options)
+    DataSaveCoordinator:MarkDirty(player, "Effects", reason or "effects", options)
+end
+
+local function copyEffectState(data)
+    return DataStoreOps.DeepCopy(data)
+end
+
+local function countOwnedEffects(data)
+    if type(data) ~= "table" or type(data.owned) ~= "table" then
+        return 0
+    end
+    local count = 0
+    for effectId, owned in pairs(data.owned) do
+        if owned and effectId ~= DEFAULT_TRAIL_ID then
+            count += 1
+        end
+    end
+    return count
+end
 
 -- ── Persistence helpers ────────────────────────────────────────────────────
 local function dsKey(player)
@@ -93,14 +119,8 @@ local function dsKey(player)
 end
 
 local function loadData(player)
-    if not ds then return { owned = {}, equipped = {} } end
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function() return ds:GetAsync(dsKey(player)) end)
-        if success then break end
-        warn("[Effects] GetAsync fail attempt", i, result)
-        task.wait(RETRY_DELAY * i)
-    end
+    if not ds then return { owned = {}, equipped = {} }, "failed", "missing datastore" end
+    local success, result, err = DataStoreOps.Load(ds, dsKey(player), "Effects/" .. dsKey(player))
     if success and type(result) == "table" then
         -- Parse owned
         local owned = {}
@@ -126,39 +146,69 @@ local function loadData(player)
         for _, def in ipairs(EffectDefs.GetAll()) do
             if def.IsFree then owned[def.Id] = true end
         end
-        return { owned = owned, equipped = equipped }
+        return { owned = owned, equipped = equipped }, "existing", nil
     end
     -- Fresh data: grant free items
     local owned = {}
     for _, def in ipairs(EffectDefs.GetAll()) do
         if def.IsFree then owned[def.Id] = true end
     end
-    return { owned = owned, equipped = {} }
+    return { owned = owned, equipped = {} }, success and "new" or "failed", err
 end
 
-local function saveData(player)
-    if not ds then return end
+local function getSaveData(player)
     local data = playerData[player]
-    if not data then return end
+    if not data then return nil end
+    return copyEffectState(data)
+end
+
+local function saveData(player, data, oldData)
+    if not ds then return false, "missing datastore" end
+    data = data or playerData[player]
+    if not data then return false, "missing data" end
     local ownedArr = {}
     for id, v in pairs(data.owned) do
         if v then table.insert(ownedArr, id) end
     end
     local payload = { owned = ownedArr, equipped = data.equipped }
-    for i = 1, RETRIES do
-        local ok, err = pcall(function() ds:SetAsync(dsKey(player), payload) end)
-        if ok then
-            dprint("saved data for", player.Name)
-            return
+    local success, _, err = DataStoreOps.Update(ds, dsKey(player), "Effects/" .. dsKey(player), function(storedPayload)
+        local previous = type(oldData) == "table" and oldData or storedPayload or {}
+        local previousState = { owned = {}, equipped = {} }
+        if type(previous.owned) == "table" then
+            for _, effectId in ipairs(previous.owned) do
+                previousState.owned[effectId] = true
+            end
         end
-        warn("[Effects] SetAsync fail attempt", i, err)
-        task.wait(RETRY_DELAY * i)
+        if type(previous.equipped) == "table" then
+            previousState.equipped = previous.equipped
+        end
+        if countOwnedEffects(previousState) > 0 and countOwnedEffects(data) == 0 then
+            warn("[Effects] suspected wipe blocked for", player.Name)
+            return storedPayload
+        end
+        return payload
+    end)
+    if success then
+        dprint("saved data for", player.Name)
+        return true
     end
+    return false, err
+end
+
+local function loadProfile(player)
+    local data, status, reason = loadData(player)
+    playerData[player] = data
+    return {
+        status = status,
+        data = copyEffectState(data),
+        reason = reason,
+    }
 end
 
 local function getOrCreateData(player)
     if not playerData[player] then
-        playerData[player] = loadData(player)
+        local data = loadData(player)
+        playerData[player] = data
     end
     return playerData[player]
 end
@@ -196,6 +246,37 @@ end
 -- The default trail every player should have equipped if they haven't chosen one
 local DEFAULT_TRAIL_ID = "DefaultTrail"
 
+local function registerEffectsSection()
+    if effectsSectionRegistered then
+        return
+    end
+    effectsSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "Effects",
+        Priority = 60,
+        Critical = false,
+        Load = loadProfile,
+        GetSaveData = getSaveData,
+        Save = function(player, currentData, lastGoodData)
+            return saveData(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            playerData[player] = nil
+        end,
+        Validate = function(_, currentData, lastGoodData)
+            if countOwnedEffects(lastGoodData) > 0 and countOwnedEffects(currentData) == 0 then
+                return {
+                    suspicious = true,
+                    severity = "warning",
+                    reason = "owned effects became empty",
+                }
+            end
+            return nil
+        end,
+    })
+end
+
 -- Sync equipped dash trail to player attribute (so DashServiceInit can read it)
 local function syncDashTrailAttribute(player)
     local data = getOrCreateData(player)
@@ -212,18 +293,21 @@ end
 
 -- ── Player lifecycle ───────────────────────────────────────────────────────
 Players.PlayerAdded:Connect(function(player)
+    DataSaveCoordinator:LoadSection(player, "Effects")
     local data = getOrCreateData(player)
 
     -- Ensure DefaultTrail is owned (it's free)
     if not data.owned[DEFAULT_TRAIL_ID] then
         data.owned[DEFAULT_TRAIL_ID] = true
         dprint(player.Name, "granted free DefaultTrail")
+        markDirty(player, "default_effect_grant")
     end
 
     -- Auto-equip the default white trail if nothing is equipped
     if not data.equipped.DashTrail or data.equipped.DashTrail == "" then
         data.equipped.DashTrail = DEFAULT_TRAIL_ID
         dprint(player.Name, "auto-equipped DefaultTrail (first join or missing)")
+        markDirty(player, "default_effect_equip")
     end
 
     syncDashTrailAttribute(player)
@@ -234,42 +318,23 @@ Players.PlayerAdded:Connect(function(player)
     end
 end)
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-Players.PlayerRemoving:Connect(function(player)
-    if SaveGuard:ClaimSave(player, "Effects") then
-        saveData(player)
-        SaveGuard:ReleaseSave(player, "Effects")
-    end
-    playerData[player] = nil
-end)
-
+registerEffectsSection()
 for _, p in ipairs(Players:GetPlayers()) do
     task.spawn(function()
+        DataSaveCoordinator:LoadSection(p, "Effects")
         local data = getOrCreateData(p)
         if not data.owned[DEFAULT_TRAIL_ID] then
             data.owned[DEFAULT_TRAIL_ID] = true
+            markDirty(p, "default_effect_grant")
         end
         if not data.equipped.DashTrail or data.equipped.DashTrail == "" then
             data.equipped.DashTrail = DEFAULT_TRAIL_ID
             dprint(p.Name, "auto-equipped DefaultTrail (late init)")
+            markDirty(p, "default_effect_equip")
         end
         syncDashTrailAttribute(p)
     end)
 end
-
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "Effects") then
-                saveData(p)
-                SaveGuard:ReleaseSave(p, "Effects")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 -- ── Remote handlers ────────────────────────────────────────────────────────
 
@@ -304,7 +369,7 @@ purchaseEffectRF.OnServerInvoke = function(player, effectId)
     data.owned[effectId] = true
     dprint("Purchased", def.DisplayName, "for", player.Name)
 
-    task.spawn(function() saveData(player) end)
+    markDirty(player, "purchase_effect")
 
     local newBal = CurrencyService and CurrencyService:GetCoins(player) or 0
     return true, newBal, "ok"
@@ -331,7 +396,7 @@ equipEffectRE.OnServerEvent:Connect(function(player, effectId, subType)
         syncDashTrailAttribute(player)
     end
 
-    task.spawn(function() saveData(player) end)
+    markDirty(player, "equip_effect")
     pushEquippedToClient(player)
 end)
 
@@ -365,7 +430,7 @@ do
         local data = getOrCreateData(player)
         data.owned[effectId] = true
         dprint("Granted effect", effectId, "to", player.Name, "(via BindableFunction)")
-        task.spawn(function() saveData(player) end)
+        markDirty(player, "grant_effect")
         return true
     end
 

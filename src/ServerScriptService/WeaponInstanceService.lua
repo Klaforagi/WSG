@@ -11,6 +11,9 @@
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService      = game:GetService("HttpService")
 local Players          = game:GetService("Players")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 
 local DATASTORE_NAME = "WeaponInstances_v1"
 local RETRIES        = 3
@@ -19,6 +22,7 @@ local RETRY_DELAY    = 0.5
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 
 local WeaponInstanceService = {}
+local _saveCoordinator
 
 -- In-memory cache: [Player] = { [instanceId] = instanceData }
 local playerInventories = {}
@@ -55,53 +59,122 @@ local function dsKey(player)
     return "WpnInv_" .. tostring(player.UserId)
 end
 
-function WeaponInstanceService:LoadForPlayer(player)
-    if not player then return {} end
-    local key = dsKey(player)
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function()
-            return ds:GetAsync(key)
+local function getSaveCoordinator()
+    if _saveCoordinator == nil then
+        local ok, coordinator = pcall(function()
+            return require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
         end)
-        if success then break end
-        warn("[WeaponInstanceService] GetAsync failed (attempt " .. i .. "): " .. tostring(result))
-        task.wait(RETRY_DELAY * i)
+        if ok then
+            _saveCoordinator = coordinator
+        else
+            _saveCoordinator = false
+        end
     end
+    if _saveCoordinator == false then
+        return nil
+    end
+    return _saveCoordinator
+end
+
+local function clearInventoryIds(inventory)
+    if type(inventory) ~= "table" then return end
+    for id in pairs(inventory) do
+        allIds[id] = nil
+    end
+end
+
+local function registerInventoryIds(inventory)
+    if type(inventory) ~= "table" then return end
+    for id in pairs(inventory) do
+        allIds[id] = true
+    end
+end
+
+local function setInventory(player, inventory)
+    clearInventoryIds(playerInventories[player])
+    playerInventories[player] = inventory or {}
+    registerInventoryIds(playerInventories[player])
+end
+
+local function markDirty(player, reason)
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:MarkDirty(player, "WeaponInventory", reason or "weapon_inventory")
+    end
+end
+
+function WeaponInstanceService:LoadProfileForPlayer(player)
+    if not player then
+        return {
+            status = "failed",
+            data = {},
+            reason = "missing player",
+        }
+    end
+    local key = dsKey(player)
+    local success, result, err = DataStoreOps.Load(ds, key, "WeaponInventory/" .. key)
 
     local inv = {}
     if success and type(result) == "table" then
         inv = result
-    elseif not success then
-        warn("[WeaponInstanceService] Failed to load for " .. tostring(player.Name) .. "; starting empty")
     end
 
-    playerInventories[player] = inv
-    -- Register all IDs in collision set
-    for id in pairs(inv) do
-        allIds[id] = true
+    setInventory(player, inv)
+    if not success then
+        warn("[WeaponInstanceService] Failed to load for " .. tostring(player.Name) .. "; using temporary empty inventory")
+        return {
+            status = "failed",
+            data = inv,
+            reason = err,
+        }
     end
-    return inv
+    if result == nil then
+        return {
+            status = "new",
+            data = inv,
+        }
+    end
+    return {
+        status = "existing",
+        data = inv,
+    }
+end
+
+function WeaponInstanceService:LoadForPlayer(player)
+    local result = self:LoadProfileForPlayer(player)
+    return result and result.data or {}
+end
+
+function WeaponInstanceService:GetSaveData(player)
+    if not player then return nil end
+    return DataStoreOps.DeepCopy(playerInventories[player] or {})
+end
+
+function WeaponInstanceService:SaveProfileForPlayer(player, inv, oldInventory)
+    if not player then return false, "missing player" end
+    inv = DataStoreOps.DeepCopy(inv or playerInventories[player] or {})
+    oldInventory = oldInventory or {}
+
+    local key = dsKey(player)
+    local success, _, err = DataStoreOps.Update(ds, key, "WeaponInventory/" .. key, function(storedInventory)
+        local storedCount = DataStoreOps.CountEntries(storedInventory)
+        local previousCount = DataStoreOps.CountEntries(oldInventory)
+        local newCount = DataStoreOps.CountEntries(inv)
+        if storedCount > 0 and previousCount > 0 and newCount == 0 then
+            warn("[WeaponInstanceService] suspected wipe blocked for " .. tostring(player.Name))
+            return storedInventory
+        end
+        return inv
+    end)
+    if success then
+        return true
+    end
+    warn("[WeaponInstanceService] Failed to save for " .. tostring(player.Name))
+    return false, err
 end
 
 function WeaponInstanceService:SaveForPlayer(player)
-    if not player then return false end
-    local inv = playerInventories[player]
-    if not inv then return true end -- nothing to save
-
-    local key = dsKey(player)
-    local success, err
-    for i = 1, RETRIES do
-        success, err = pcall(function()
-            ds:SetAsync(key, inv)
-        end)
-        if success then break end
-        warn("[WeaponInstanceService] SetAsync failed (attempt " .. i .. "): " .. tostring(err))
-        task.wait(RETRY_DELAY * i)
-    end
-    if not success then
-        warn("[WeaponInstanceService] Failed to save for " .. tostring(player.Name))
-    end
-    return success == true
+    return self:SaveProfileForPlayer(player)
 end
 
 function WeaponInstanceService:SaveAll()
@@ -111,13 +184,8 @@ function WeaponInstanceService:SaveAll()
 end
 
 function WeaponInstanceService:RemovePlayer(player)
-    if playerInventories[player] then
-        -- Unregister IDs
-        for id in pairs(playerInventories[player]) do
-            allIds[id] = nil
-        end
-        playerInventories[player] = nil
-    end
+    clearInventoryIds(playerInventories[player])
+    playerInventories[player] = nil
 end
 
 --------------------------------------------------------------------------------
@@ -151,6 +219,7 @@ function WeaponInstanceService:CreateInstance(player, weaponName, rarity, catego
     }
 
     inv[id] = instanceData
+    markDirty(player, "weapon_created")
     return instanceData
 end
 
@@ -172,6 +241,7 @@ function WeaponInstanceService:RemoveInstance(player, instanceId)
     if not inv or not inv[instanceId] then return false end
     inv[instanceId] = nil
     allIds[instanceId] = nil
+    markDirty(player, "weapon_removed")
     return true
 end
 
@@ -206,6 +276,7 @@ function WeaponInstanceService:SetFavorite(player, instanceId, state)
     local inv = playerInventories[player]
     if not inv or not inv[instanceId] then return false end
     inv[instanceId].favorited = (state == true)
+    markDirty(player, "weapon_favorited")
     return inv[instanceId].favorited
 end
 

@@ -16,6 +16,10 @@
 local Players            = game:GetService("Players")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local DataStoreService   = game:GetService("DataStoreService")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 
 print("[EmoteService] initializing")
 
@@ -89,6 +93,28 @@ local activeEmoteTracks = {} -- [player] = AnimationTrack
 local emoteCooldowns    = {} -- [player] = { [emoteId] = os.clock() }
 -- Movement / cancel connections per player
 local cancelConns       = {} -- [player] = { conn1, conn2, ... }
+local emoteSectionRegistered = false
+
+local function copyEmoteData(data)
+    return DataStoreOps.DeepCopy(data)
+end
+
+local function countOwnedEmotes(data)
+    if type(data) ~= "table" or type(data.owned) ~= "table" then
+        return 0
+    end
+    local count = 0
+    for _, owned in pairs(data.owned) do
+        if owned then
+            count += 1
+        end
+    end
+    return count
+end
+
+local function markDirty(player, reason, options)
+    DataSaveCoordinator:MarkDirty(player, "Emote", reason or "emote", options)
+end
 
 -- ── Persistence helpers ────────────────────────────────────────────────────
 local function dsKey(player)
@@ -96,14 +122,8 @@ local function dsKey(player)
 end
 
 local function loadEmoteData(player)
-    if not ds then return { owned = {}, equipped = {} } end
-    local success, result
-    for i = 1, RETRIES do
-        success, result = pcall(function() return ds:GetAsync(dsKey(player)) end)
-        if success then break end
-        warn("[EmoteService] GetAsync fail attempt", i, result)
-        task.wait(RETRY_DELAY * i)
-    end
+    if not ds then return { owned = {}, equipped = {} }, "failed", "missing datastore" end
+    local success, result, err = DataStoreOps.Load(ds, dsKey(player), "Emote/" .. dsKey(player))
     if success and type(result) == "table" then
         -- Normalise owned from array to set if needed (legacy compat)
         local owned = {}
@@ -128,20 +148,26 @@ local function loadEmoteData(player)
         for _, def in ipairs(EmoteConfig.GetAll()) do
             if def.IsFree then owned[def.Id] = true end
         end
-        return { owned = owned, equipped = equipped }
+        return { owned = owned, equipped = equipped }, "existing", nil
     end
     -- Default: grant free emotes
     local owned = {}
     for _, def in ipairs(EmoteConfig.GetAll()) do
         if def.IsFree then owned[def.Id] = true end
     end
-    return { owned = owned, equipped = {} }
+    return { owned = owned, equipped = {} }, success and "new" or "failed", err
 end
 
-local function saveEmoteData(player)
-    if not ds then return end
+local function getSaveData(player)
     local data = playerEmoteData[player]
-    if not data then return end
+    if not data then return nil end
+    return copyEmoteData(data)
+end
+
+local function saveEmoteData(player, data, oldData)
+    if not ds then return false, "missing datastore" end
+    data = data or playerEmoteData[player]
+    if not data then return false, "missing data" end
     -- Convert owned set to array for compact storage
     local ownedArr = {}
     for id, v in pairs(data.owned) do
@@ -153,20 +179,54 @@ local function saveEmoteData(player)
         equippedMap[tostring(slot)] = id
     end
     local payload = { owned = ownedArr, equipped = equippedMap }
-    for i = 1, RETRIES do
-        local ok, err = pcall(function() ds:SetAsync(dsKey(player), payload) end)
-        if ok then
-            print("[EmoteService] saved emote data for", player.Name)
-            return
+    local success, _, err = DataStoreOps.Update(ds, dsKey(player), "Emote/" .. dsKey(player), function(storedPayload)
+        local previous = type(oldData) == "table" and oldData or storedPayload or {}
+        local previousState = { owned = {}, equipped = {} }
+        if type(previous.owned) == "table" then
+            for _, emoteId in ipairs(previous.owned) do
+                if type(emoteId) == "string" and emoteId ~= "" then
+                    previousState.owned[emoteId] = true
+                end
+            end
         end
-        warn("[EmoteService] SetAsync fail attempt", i, err)
-        task.wait(RETRY_DELAY * i)
+        if type(previous.equipped) == "table" then
+            for slot, emoteId in pairs(previous.equipped) do
+                local normalizedSlot = tonumber(slot)
+                if normalizedSlot and type(emoteId) == "string" then
+                    previousState.equipped[normalizedSlot] = emoteId
+                end
+            end
+        end
+        if countOwnedEmotes(previousState) > 0 and countOwnedEmotes(data) == 0 then
+            warn("[EmoteService] suspected wipe blocked for", player.Name)
+            return storedPayload
+        end
+        return payload
+    end)
+    if success then
+        print("[EmoteService] saved emote data for", player.Name)
+        return true
     end
+    return false, err
+end
+
+local function loadProfile(player)
+    local data, status, reason = loadEmoteData(player)
+    playerEmoteData[player] = data
+    print("[EmoteService] loaded emote data for", player.Name,
+          "owned:", playerEmoteData[player].owned,
+          "equipped:", playerEmoteData[player].equipped)
+    return {
+        status = status,
+        data = copyEmoteData(data),
+        reason = reason,
+    }
 end
 
 local function getOrCreateData(player)
     if not playerEmoteData[player] then
-        playerEmoteData[player] = loadEmoteData(player)
+        local data = loadEmoteData(player)
+        playerEmoteData[player] = data
         print("[EmoteService] loaded emote data for", player.Name,
               "owned:", playerEmoteData[player].owned,
               "equipped:", playerEmoteData[player].equipped)
@@ -332,44 +392,52 @@ local function playEmoteForPlayer(player, emoteId)
     return true, "ok"
 end
 
--- ── Player lifecycle ───────────────────────────────────────────────────────
-Players.PlayerAdded:Connect(function(player)
-    getOrCreateData(player)
-    print("[EmoteService] player joined, emote state loaded:", player.Name)
-end)
-
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-Players.PlayerRemoving:Connect(function(player)
-    stopEmoteForPlayer(player, "leaving")
-    if SaveGuard:ClaimSave(player, "Emote") then
-        saveEmoteData(player)
-        SaveGuard:ReleaseSave(player, "Emote")
+local function registerEmoteSection()
+    if emoteSectionRegistered then
+        return
     end
-    playerEmoteData[player]  = nil
-    activeEmoteTracks[player]= nil
-    emoteCooldowns[player]   = nil
-    cancelConns[player]      = nil
+    emoteSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "Emote",
+        Priority = 75,
+        Critical = false,
+        Load = loadProfile,
+        GetSaveData = getSaveData,
+        Save = function(player, currentData, lastGoodData)
+            return saveEmoteData(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            stopEmoteForPlayer(player, "cleanup")
+            playerEmoteData[player] = nil
+            activeEmoteTracks[player] = nil
+            emoteCooldowns[player] = nil
+            cancelConns[player] = nil
+        end,
+        Validate = function(_, currentData, lastGoodData)
+            if countOwnedEmotes(lastGoodData) > 0 and countOwnedEmotes(currentData) == 0 then
+                return {
+                    suspicious = true,
+                    severity = "warning",
+                    reason = "owned emotes became empty",
+                }
+            end
+            return nil
+        end,
+    })
+end
+
+-- ── Player lifecycle ───────────────────────────────────────────────────────
+registerEmoteSection()
+Players.PlayerAdded:Connect(function(player)
+    DataSaveCoordinator:LoadSection(player, "Emote")
+    print("[EmoteService] player joined, emote state loaded:", player.Name)
 end)
 
 -- Hot-reload: initialise existing players
 for _, p in ipairs(Players:GetPlayers()) do
-    task.spawn(function() getOrCreateData(p) end)
+    task.spawn(function() DataSaveCoordinator:LoadSection(p, "Emote") end)
 end
-
--- BindToClose: save all on shutdown
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "Emote") then
-                saveEmoteData(p)
-                SaveGuard:ReleaseSave(p, "Emote")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 -- ── Remote handlers ────────────────────────────────────────────────────────
 
@@ -434,7 +502,7 @@ purchaseEmoteRF.OnServerInvoke = function(player, emoteId)
     end
 
     -- Persist
-    task.spawn(function() saveEmoteData(player) end)
+    markDirty(player, "purchase_emote")
 
     -- Push updates
     pushEquippedToClient(player)
@@ -467,7 +535,7 @@ equipEmoteRE.OnServerEvent:Connect(function(player, emoteId, slot)
     data.equipped[slot] = emoteId
     print("[EmoteService] equipped", emoteId, "in slot", slot, "for", player.Name)
 
-    task.spawn(function() saveEmoteData(player) end)
+    markDirty(player, "equip_emote")
     pushEquippedToClient(player)
 end)
 
@@ -482,7 +550,7 @@ unequipEmoteRE.OnServerEvent:Connect(function(player, slot)
     data.equipped[slot] = nil
     print("[EmoteService] unequipped slot", slot, "for", player.Name, "was:", removed)
 
-    task.spawn(function() saveEmoteData(player) end)
+    markDirty(player, "unequip_emote")
     pushEquippedToClient(player)
 end)
 

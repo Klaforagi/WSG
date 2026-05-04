@@ -14,6 +14,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 -- Require modules
 --------------------------------------------------------------------------------
 local BoostService  = require(ServerScriptService:WaitForChild("BoostService", 10))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local CurrencyService
 pcall(function()
     CurrencyService = require(ServerScriptService:WaitForChild("CurrencyService", 10))
@@ -78,10 +79,68 @@ local getStatesRF = ensureInstance(boostFolder, "RemoteFunction", "GetBoostState
 
 -- BoostStateUpdated: server pushes state changes to client
 local stateUpdatedRE = ensureInstance(remotesFolder, "RemoteEvent", "BoostStateUpdated")
+local boostSectionRegistered = false
+
+local function validateBoostData(_, currentData, lastGoodData)
+    if type(currentData) ~= "table" or type(lastGoodData) ~= "table" then
+        return nil
+    end
+    local previousOwned = 0
+    local newOwned = 0
+    if type(lastGoodData.inventory) == "table" then
+        for _, amount in pairs(lastGoodData.inventory) do
+            if (tonumber(amount) or 0) > 0 then
+                previousOwned += 1
+            end
+        end
+    end
+    if type(currentData.inventory) == "table" then
+        for _, amount in pairs(currentData.inventory) do
+            if (tonumber(amount) or 0) > 0 then
+                newOwned += 1
+            end
+        end
+    end
+    if previousOwned > 0 and newOwned == 0 and (tonumber(currentData.freeRerolls) or 0) == 0 then
+        return {
+            suspicious = true,
+            severity = "warning",
+            reason = "boost inventory became empty",
+        }
+    end
+    return nil
+end
+
+local function registerBoostSection()
+    if boostSectionRegistered then
+        return
+    end
+    boostSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "Boost",
+        Priority = 35,
+        Critical = false,
+        Load = function(player)
+            return BoostService:LoadProfileForPlayer(player)
+        end,
+        GetSaveData = function(player)
+            return BoostService:GetSaveData(player)
+        end,
+        Save = function(player, currentData, lastGoodData)
+            return BoostService:SaveProfileForPlayer(player, currentData, lastGoodData)
+        end,
+        Cleanup = function(player)
+            BoostService:ClearPlayer(player)
+        end,
+        Validate = validateBoostData,
+    })
+end
 
 --------------------------------------------------------------------------------
 -- Init BoostService (passes remote references)
 --------------------------------------------------------------------------------
+registerBoostSection()
 BoostService:Init()
 
 --------------------------------------------------------------------------------
@@ -123,38 +182,18 @@ end
 --------------------------------------------------------------------------------
 -- Player lifecycle
 --------------------------------------------------------------------------------
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-Players.PlayerRemoving:Connect(function(player)
-    if SaveGuard:ClaimSave(player, "Boost") then
-        BoostService:SaveForPlayer(player)
-        SaveGuard:ReleaseSave(player, "Boost")
-    end
-    BoostService:ClearPlayer(player)
+Players.PlayerRemoving:Connect(function()
 end)
 
 Players.PlayerAdded:Connect(function(player)
-    BoostService:LoadForPlayer(player)
+    DataSaveCoordinator:LoadSection(player, "Boost")
 end)
 
 for _, player in ipairs(Players:GetPlayers()) do
     task.spawn(function()
-        BoostService:LoadForPlayer(player)
+        DataSaveCoordinator:LoadSection(player, "Boost")
     end)
 end
-
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, p in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(p, "Boost") then
-                BoostService:SaveForPlayer(p)
-                SaveGuard:ReleaseSave(p, "Boost")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
 
 --------------------------------------------------------------------------------
 -- INTEGRATION: Wrap CurrencyService.AddCoins to apply coin multiplier

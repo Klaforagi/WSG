@@ -12,6 +12,10 @@ local ServerStorage      = game:GetService("ServerStorage")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local DataStoreService   = game:GetService("DataStoreService")
+local ServerScriptService = game:GetService("ServerScriptService")
+
+local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 
 local loadoutStore = DataStoreService:GetDataStore("Loadout_v1")
 
@@ -87,6 +91,57 @@ local promptDebounce = {} -- [player] = tick
 local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
 local chosenInstanceId = {} -- [player] = { Melee = id, Ranged = id }
+local loadoutSectionRegistered = false
+
+local function buildLoadoutData(player)
+    local ids = chosenInstanceId[player]
+    return {
+        melee = chosenMelee[player],
+        ranged = chosenRanged[player],
+        meleeInstanceId = ids and ids.Melee or nil,
+        rangedInstanceId = ids and ids.Ranged or nil,
+    }
+end
+
+local function hasMeaningfulLoadout(data)
+    if type(data) ~= "table" then
+        return false
+    end
+    return (type(data.melee) == "string" and data.melee ~= "")
+        or (type(data.ranged) == "string" and data.ranged ~= "")
+        or (type(data.meleeInstanceId) == "string" and data.meleeInstanceId ~= "")
+        or (type(data.rangedInstanceId) == "string" and data.rangedInstanceId ~= "")
+end
+
+local function markLoadoutDirty(player, reason, options)
+    DataSaveCoordinator:MarkDirty(player, "Loadout", reason or "loadout", options)
+end
+
+local function applyLoadoutData(player, data)
+    chosenMelee[player] = nil
+    chosenRanged[player] = nil
+    chosenInstanceId[player] = nil
+
+    if type(data) ~= "table" then
+        return
+    end
+
+    if type(data.melee) == "string" and #data.melee > 0 then
+        chosenMelee[player] = data.melee
+    end
+    if type(data.ranged) == "string" and #data.ranged > 0 then
+        chosenRanged[player] = data.ranged
+    end
+    if type(data.meleeInstanceId) == "string" or type(data.rangedInstanceId) == "string" then
+        chosenInstanceId[player] = {}
+        if type(data.meleeInstanceId) == "string" then
+            chosenInstanceId[player].Melee = data.meleeInstanceId
+        end
+        if type(data.rangedInstanceId) == "string" then
+            chosenInstanceId[player].Ranged = data.rangedInstanceId
+        end
+    end
+end
 
 --------------------------------------------------------------------------------
 -- SALVAGE SYSTEM  – BindableFunction so SalvageService can check equipped state
@@ -107,60 +162,92 @@ end
 --------------------------------------------------------------------------------
 local function saveLoadout(player)
     local key = "user_" .. player.UserId
-    local ids = chosenInstanceId[player]
-    local data = {
-        melee  = chosenMelee[player],
-        ranged = chosenRanged[player],
-        meleeInstanceId  = ids and ids.Melee or nil,
-        rangedInstanceId = ids and ids.Ranged or nil,
-    }
+    local data = buildLoadoutData(player)
     print("[EquipSave]", player.Name,
         "melee=", data.melee or "(nil)",
         "ranged=", data.ranged or "(nil)",
         "meleeInstId=", data.meleeInstanceId or "(nil)",
         "rangedInstId=", data.rangedInstanceId or "(nil)")
-    local ok, err = pcall(function()
-        loadoutStore:SetAsync(key, data)
+    local ok, _, err = DataStoreOps.Update(loadoutStore, key, "Loadout/" .. key, function(oldData)
+        if hasMeaningfulLoadout(oldData) and not hasMeaningfulLoadout(data) then
+            warn("[EquipSave] Suspected loadout wipe blocked for", player.Name)
+            return oldData
+        end
+        return data
     end)
     if not ok then
         warn("[EquipSave] Failed to save loadout for", player.Name, err)
+        return false, err
     else
         print("[EquipSave] Saved successfully for", player.Name)
+        return true
     end
 end
 
 local function loadLoadout(player)
     local key = "user_" .. player.UserId
-    local ok, data = pcall(function()
-        return loadoutStore:GetAsync(key)
-    end)
+    local ok, data, err = DataStoreOps.Load(loadoutStore, key, "Loadout/" .. key)
     if ok and type(data) == "table" then
         print("[EquipLoad]", player.Name, "raw data:",
             "melee=", data.melee or "(nil)",
             "ranged=", data.ranged or "(nil)",
             "meleeInstId=", data.meleeInstanceId or "(nil)",
             "rangedInstId=", data.rangedInstanceId or "(nil)")
-        if type(data.melee) == "string" and #data.melee > 0 then
-            chosenMelee[player] = data.melee
-        end
-        if type(data.ranged) == "string" and #data.ranged > 0 then
-            chosenRanged[player] = data.ranged
-        end
-        -- Restore equipped instanceIds
-        if type(data.meleeInstanceId) == "string" or type(data.rangedInstanceId) == "string" then
-            if not chosenInstanceId[player] then chosenInstanceId[player] = {} end
-            if type(data.meleeInstanceId) == "string" then
-                chosenInstanceId[player].Melee = data.meleeInstanceId
-            end
-            if type(data.rangedInstanceId) == "string" then
-                chosenInstanceId[player].Ranged = data.rangedInstanceId
-            end
-        end
+        applyLoadoutData(player, data)
+        return data, "existing", nil
     elseif ok then
         print("[EquipLoad]", player.Name, "no saved loadout (new player or empty data)")
+        applyLoadoutData(player, nil)
+        return buildLoadoutData(player), "new", nil
     else
-        warn("[EquipLoad] Failed to load loadout for", player.Name, data)
+        warn("[EquipLoad] Failed to load loadout for", player.Name, err)
+        applyLoadoutData(player, nil)
+        return buildLoadoutData(player), "failed", err
     end
+end
+
+local function registerLoadoutSection()
+    if loadoutSectionRegistered then
+        return
+    end
+    loadoutSectionRegistered = true
+
+    DataSaveCoordinator:RegisterSection({
+        Name = "Loadout",
+        Priority = 65,
+        Critical = false,
+        Load = function(player)
+            local data, status, reason = loadLoadout(player)
+            return {
+                status = status,
+                data = data,
+                reason = reason,
+            }
+        end,
+        GetSaveData = function(player)
+            return buildLoadoutData(player)
+        end,
+        Save = function(player)
+            return saveLoadout(player)
+        end,
+        Cleanup = function(player)
+            unlockState[player] = nil
+            promptDebounce[player] = nil
+            chosenRanged[player] = nil
+            chosenMelee[player] = nil
+            chosenInstanceId[player] = nil
+        end,
+        Validate = function(_, currentData, lastGoodData)
+            if hasMeaningfulLoadout(lastGoodData) and not hasMeaningfulLoadout(currentData) then
+                return {
+                    suspicious = true,
+                    severity = "warning",
+                    reason = "loadout reset to empty",
+                }
+            end
+            return nil
+        end,
+    })
 end
 
 --------------------------------------------------------------------------------
@@ -642,7 +729,7 @@ setRangedRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
         print("[ToolbarSync]", player.Name, "equipped ranged:", toolName, "instanceId:", instanceId or "(nil)")
         grantTool(player, "Ranged", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
-        task.spawn(saveLoadout, player)
+        markLoadoutDirty(player, "set_ranged")
         -- Notify client of loadout change
         pcall(function()
             loadoutChangedRemote:FireClient(player, {
@@ -707,7 +794,7 @@ setMeleeRemote.OnServerEvent:Connect(function(player, toolName, instanceId)
         print("[ToolbarSync]", player.Name, "equipped melee:", toolName, "instanceId:", instanceId or "(nil)")
         grantTool(player, "Melee", toolName, instanceId)
         ensureBackpackFromStarterGear(player)
-        task.spawn(saveLoadout, player)
+        markLoadoutDirty(player, "set_melee")
         -- Notify client of loadout change
         pcall(function()
             loadoutChangedRemote:FireClient(player, {
@@ -783,10 +870,12 @@ end
 --------------------------------------------------------------------------------
 -- PLAYER LIFECYCLE
 --------------------------------------------------------------------------------
+registerLoadoutSection()
+
 local function onPlayerAdded(player)
     print("[EquipLoad]", player.Name, "loading loadout...")
     -- load saved loadout choices before first spawn
-    loadLoadout(player)
+    DataSaveCoordinator:LoadSection(player, "Loadout")
 
     -- Validate saved weapons still exist (falls back to starters if not)
     -- NOTE: validateLoadout calls playerOwnsWeapon which may need
@@ -862,23 +951,7 @@ local function onPlayerAdded(player)
     end
 end
 
-local SaveGuard = require(script.Parent:WaitForChild("SaveGuard"))
-
-local function onPlayerRemoving(player)
-    print("[EquipSave]", player.Name, "saving on leave...")
-    if SaveGuard:ClaimSave(player, "Loadout") then
-        saveLoadout(player)
-        SaveGuard:ReleaseSave(player, "Loadout")
-    end
-    unlockState[player]    = nil
-    promptDebounce[player] = nil
-    chosenRanged[player]     = nil
-    chosenMelee[player]      = nil
-    chosenInstanceId[player] = nil
-end
-
 Players.PlayerAdded:Connect(onPlayerAdded)
-Players.PlayerRemoving:Connect(onPlayerRemoving)
 
 -- catch players already in-game (Studio)
 for _, p in ipairs(Players:GetPlayers()) do
@@ -927,15 +1000,3 @@ end)
 --------------------------------------------------------------------------------
 -- SAVE ALL ON SHUTDOWN
 --------------------------------------------------------------------------------
-game:BindToClose(function()
-    SaveGuard:BeginShutdown()
-    for _, player in ipairs(Players:GetPlayers()) do
-        task.spawn(function()
-            if SaveGuard:ClaimSave(player, "Loadout") then
-                saveLoadout(player)
-                SaveGuard:ReleaseSave(player, "Loadout")
-            end
-        end)
-    end
-    SaveGuard:WaitForAll(5)
-end)
