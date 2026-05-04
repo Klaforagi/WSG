@@ -5,8 +5,14 @@ local DISPLAY_NAMES = {
 	Red = "Barbarians",
 }
 
+local NORMALIZED_DISPLAY_NAMES = {
+	blue = DISPLAY_NAMES.Blue,
+	red = DISPLAY_NAMES.Red,
+}
+
 function TeamDisplayNames.Get(teamName)
-	return DISPLAY_NAMES[teamName] or tostring(teamName or "")
+	local name = tostring(teamName or "")
+	return DISPLAY_NAMES[name] or NORMALIZED_DISPLAY_NAMES[string.lower(name)] or name
 end
 
 function TeamDisplayNames.GetUpper(teamName)

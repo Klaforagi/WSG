@@ -5,13 +5,11 @@
 --
 -- Fetches quest data from ReplicatedStorage.Remotes.Quests.GetQuests.
 -- Listens for live progress updates via ReplicatedStorage.Remotes.Quests.QuestProgress.
--- Claims rewards via ReplicatedStorage.Remotes.Quests.ClaimQuest.
 --------------------------------------------------------------------------------
 
 local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local TextService       = game:GetService("TextService")
 
 local UITheme = require(script.Parent.UITheme)
 local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
@@ -20,9 +18,10 @@ do
     local ok, mod = pcall(function()
         return require(ReplicatedStorage:WaitForChild("Modules", 10):WaitForChild("ClaimSound", 5))
     end)
-    if ok then ClaimSound = mod end
+    if ok then
+        ClaimSound = mod
+    end
 end
-
 local player = Players.LocalPlayer
 
 --------------------------------------------------------------------------------
@@ -2111,13 +2110,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             else
                 setClaimedButtonOutline("", GREEN_GLOW, math.max(12, math.floor(px(13))), false)
                 btn.Text             = FormatProgress(progress, goal)
-                btn.TextSize         = math.max(13, math.floor(px(14)))
-                btn.BackgroundColor3 = BTN_LOCKED
-                btn.TextColor3       = DIM_TEXT
-                btn.TextStrokeTransparency = 1
+                btn.TextSize         = math.max(14, math.floor(px(15)))
+                btn.BackgroundColor3 = Color3.fromRGB(30, 34, 52)
+                btn.TextColor3       = WHITE
+                btn.TextStrokeTransparency = 0.35
                 btn.Active           = false
                 btnStroke.Color      = BTN_STROKE
-                btnStroke.Transparency = 0.4
+                btnStroke.Transparency = 0.25
             end
             updateCardVisuals(progress, goal, claimed)
         end
@@ -2567,13 +2566,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             else
                 setClaimedButtonOutline("", GREEN_GLOW, math.max(12, math.floor(px(13))), false)
                 btn.Text             = FormatProgress(progress, goal)
-                btn.TextSize         = math.max(13, math.floor(px(14)))
-                btn.BackgroundColor3 = BTN_LOCKED
-                btn.TextColor3       = DIM_TEXT
-                btn.TextStrokeTransparency = 1
+                btn.TextSize         = math.max(14, math.floor(px(15)))
+                btn.BackgroundColor3 = Color3.fromRGB(30, 34, 52)
+                btn.TextColor3       = WHITE
+                btn.TextStrokeTransparency = 0.35
                 btn.Active           = false
                 btnStroke.Color      = BTN_STROKE
-                btnStroke.Transparency = 0.4
+                btnStroke.Transparency = 0.25
             end
             updateWkCardVisuals(progress, goal, claimed)
         end
