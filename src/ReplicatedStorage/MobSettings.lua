@@ -20,6 +20,7 @@ local Defaults = {
         Weight   = 1,           -- weighted pool entry count; 0 = disabled
         Tag      = "ZombieNPC", -- CollectionService tag applied on spawn
         XPReward = 1,           -- XP given to the killing player
+        CoinReward = 1,         -- coins given to the killing player; number or { Min = x, Max = y }
     },
     Movement = {
         WalkSpeed        = 8,  -- passive wander speed
@@ -35,7 +36,7 @@ local Defaults = {
         Range       = 9,        -- studs; distance at which attack wind-up begins
         MinimumSpacingDistance = 3.5, -- stop advancing when closer than this
         Windup      = 1,        -- seconds mob is locked before hitbox fires
-        Sound       = "OrcAttack",
+        Sound       = "MobSwing",
         HitboxSize  = Vector3.new(5, 6, 5),
         HitboxOffset = Vector3.new(0, 0, 3),
         Knockback   = 18,       -- horizontal hit impulse scalar (mass-scaled)
@@ -63,11 +64,13 @@ local Presets = {
         Spawn = {
             Weight   = 5,
             XPReward = 8,
+            CoinReward = { Min = 4, Max = 10 },
         },
         Attack = {
             Damage      = 8,
             Cooldown    = .5,
             Windup      = 0.35,
+            Sound       = "OrcSwing",
             Knockback   = 50,
             KnockbackY  = 4,
         },
@@ -87,6 +90,7 @@ local Presets = {
         Spawn = {
             Weight   = 10,  -- 2x Orc's weight of 5
             XPReward = 4,
+            CoinReward = { Min = 1, Max = 6 },
         },
         Movement = {
             WalkSpeed    = 12,  -- Orc default (8) +4
@@ -97,6 +101,7 @@ local Presets = {
             Damage      = 3,   -- ~3x less than Orc's 8
             Cooldown    = 0.5,
             Windup      = 0.35,
+            Sound       = "GoblinSwing",
             Knockback   = 20,
             KnockbackY  = 3,
             HitboxSize  = Vector3.new(3, 5, 4),  -- smaller than Orc default (5, 6, 5)
@@ -114,6 +119,7 @@ local Presets = {
         Spawn = {
             Weight   = 2,
             XPReward = 12,
+            CoinReward = 12,
         },
         Attack = {
             Damage      = 12,
@@ -167,6 +173,24 @@ local function validate(name, cfg)
     local sp = cfg.Spawn
     if sp and sp.Weight < 0 then
         warn(("[MobSettings] '%s' Spawn.Weight is negative (%d)"):format(name, sp.Weight))
+    end
+    if sp then
+        local coinReward = sp.CoinReward
+        if type(coinReward) == "number" then
+            if coinReward < 0 then
+                warn(("[MobSettings] '%s' Spawn.CoinReward must be non-negative"):format(name))
+            end
+        elseif type(coinReward) == "table" then
+            local minReward = coinReward.Min
+            local maxReward = coinReward.Max
+            if type(minReward) ~= "number" or type(maxReward) ~= "number" then
+                warn(("[MobSettings] '%s' Spawn.CoinReward range must define numeric Min and Max"):format(name))
+            elseif minReward < 0 or maxReward < 0 or minReward > maxReward then
+                warn(("[MobSettings] '%s' Spawn.CoinReward range is invalid (Min=%s, Max=%s)"):format(name, tostring(minReward), tostring(maxReward)))
+            end
+        else
+            warn(("[MobSettings] '%s' Spawn.CoinReward must be a number or range table"):format(name))
+        end
     end
     local atk = cfg.Attack
     if atk then

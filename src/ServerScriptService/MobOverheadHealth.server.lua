@@ -247,10 +247,11 @@ local function buildBillboard(attachPart, mobName)
 end
 
 ------------------------------------------------------------------------
--- Set initial bar state (fill + damage bar + hp text) — called once.
--- Thereafter, MobHealthBar.client.lua owns fill/damageBar visuals.
+-- Set or refresh authoritative bar state.
+-- The client may still animate transitions, but the server keeps the bar correct
+-- even if the client-side tracker misses a billboard.
 ------------------------------------------------------------------------
-local function setInitialBar(billboard, health, maxHealth)
+local function updateBarState(billboard, health, maxHealth)
 	local pct    = (maxHealth > 0) and math.clamp(health / maxHealth, 0, 1) or 0
 	local bg     = billboard:FindFirstChild("Background")
 	local outer  = bg and bg:FindFirstChild("BarOuter")
@@ -265,18 +266,6 @@ local function setInitialBar(billboard, health, maxHealth)
 	if dmgBar then
 		dmgBar.Size = UDim2.fromScale(pct, 1)
 	end
-	if hpText then
-		hpText.Text = string.format("%d / %d", math.floor(health), math.floor(maxHealth))
-	end
-end
-
-------------------------------------------------------------------------
--- Update HP text only (server-side; fill animations live in client).
-------------------------------------------------------------------------
-local function updateHPText(billboard, health, maxHealth)
-	local bg     = billboard:FindFirstChild("Background")
-	local outer  = bg and bg:FindFirstChild("BarOuter")
-	local hpText = outer and outer:FindFirstChild("HPText")
 	if hpText then
 		hpText.Text = string.format("%d / %d", math.floor(health), math.floor(maxHealth))
 	end
@@ -304,20 +293,26 @@ local function attachMobUI(model)
 
 	print(string.format("[MobOverheadHealth] Custom health UI created for mob '%s'", model.Name))
 
-	-- Set initial fill/text state (client will own animated updates from here on)
-	setInitialBar(billboard, hum.Health, hum.MaxHealth)
+	updateBarState(billboard, hum.Health, hum.MaxHealth)
 
 	-- Track connections for cleanup
 	local connections = {}
 
-	-- Server only updates the HP text; fill bar animations are client-side
+	-- Keep the server authoritative for correctness; the client may layer on
+	-- cosmetic animation, but a missed client hook should not leave stale bars.
 	connections[1] = hum.HealthChanged:Connect(function(newHealth)
 		if billboard and billboard.Parent then
-			updateHPText(billboard, newHealth, hum.MaxHealth)
+			updateBarState(billboard, newHealth, hum.MaxHealth)
 		end
 	end)
 
-	connections[2] = hum.Died:Connect(function()
+	connections[2] = hum:GetPropertyChangedSignal("MaxHealth"):Connect(function()
+		if billboard and billboard.Parent then
+			updateBarState(billboard, hum.Health, hum.MaxHealth)
+		end
+	end)
+
+	connections[3] = hum.Died:Connect(function()
 		if billboard and billboard.Parent then
 			billboard.Enabled = false
 			-- Small delay so death animation can play before hiding
@@ -331,7 +326,7 @@ local function attachMobUI(model)
 	end)
 
 	-- Clean up if mob model is destroyed before dying
-	connections[3] = model.AncestryChanged:Connect(function()
+	connections[4] = model.AncestryChanged:Connect(function()
 		if not model:IsDescendantOf(game) then
 			for _, c in ipairs(connections) do c:Disconnect() end
 		end

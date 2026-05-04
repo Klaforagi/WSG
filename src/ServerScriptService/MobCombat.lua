@@ -137,6 +137,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local ATTACK_COOLDOWN = cfgAtk.Cooldown or 1
     local ATTACK_RANGE = cfgAtk.Range or 6
     local ATTACK_WINDUP = cfgAtk.Windup or 0.45
+    local ATTACK_SOUND = cfgAtk.Sound or "MobSwing"
     local HITBOX_SIZE = cfgAtk.HitboxSize or Vector3.new(5, 6, 5)
     local HITBOX_OFFSET = cfgAtk.HitboxOffset or Vector3.new(0, 0, 3)
     local HIT_KNOCKBACK = cfgAtk.Knockback or 50
@@ -378,7 +379,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     local mobSoundsFolder = soundsFolder and soundsFolder:FindFirstChild("Mobs")
-    local mobSwingTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("MobSwing")
+    local attackSwingTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild(ATTACK_SOUND)
     local mobHitTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("MobHit")
     local orcNoiseTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("OrcNoise")
     local goblinNoiseTemplate = mobSoundsFolder and mobSoundsFolder:FindFirstChild("GoblinNoise")
@@ -436,8 +437,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
         isAttacking = true
 
-        -- Every mob attack swing plays MobSwing.
-        playTemplateSound(mobSwingTemplate, getRootPart(mobModel) or mobModel)
+        playTemplateSound(attackSwingTemplate, getRootPart(mobModel) or mobModel)
         -- Orc-specific flavor: 25% chance to play OrcNoise on attack (3s proc cooldown).
         playOrcNoise()
         -- Goblin-specific flavor: 25% chance to play GoblinNoise on attack (3s shared cooldown).

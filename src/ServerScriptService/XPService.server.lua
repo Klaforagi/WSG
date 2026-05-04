@@ -218,12 +218,13 @@ if ReplicatedStorage:FindFirstChild("MobSettings") then
 end
 
 --- Returns the XP reward for killing a mob of the given template name.
---- Falls back to XPConfig.DefaultMobXP if the mob has no xp_reward field.
+--- Falls back to XPConfig.DefaultMobXP if the mob has no configured reward.
 local function GetMobXP(mobName)
-    if MobSettings and MobSettings.presets then
-        local cfg = MobSettings.presets[mobName]
-        if cfg and type(cfg.xp_reward) == "number" then
-            return cfg.xp_reward
+    if MobSettings and MobSettings.Get then
+        local cfg = MobSettings.Get(mobName)
+        local spawnCfg = cfg and cfg.Spawn
+        if spawnCfg and type(spawnCfg.XPReward) == "number" then
+            return spawnCfg.XPReward
         end
     end
     return XPConfig.DefaultMobXP or 3
