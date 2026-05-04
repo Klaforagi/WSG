@@ -1,3 +1,10 @@
+-- TeamPicker.client.lua  [DISABLED]
+-- The old team-select screen has been replaced by the lobby touch parts
+-- (workspace.JoinBlue / workspace.JoinRed).  Players now spawn in the lobby
+-- automatically and walk into a zone to join a team.
+-- This script is intentionally a no-op so it can be re-enabled if needed.
+do return end
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 

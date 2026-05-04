@@ -604,7 +604,32 @@ local function makeTeamButton(name, accentColor, bgColor)
 end
 
 local joinBlueBtn = makeTeamButton("Blue", BLUE_ACCENT, BLUE_BG)
+joinBlueBtn.LayoutOrder = 2
 local joinRedBtn  = makeTeamButton("Red",  RED_ACCENT,  RED_BG)
+joinRedBtn.LayoutOrder = 3
+
+-- LOBBY button: returns player to neutral / LobbySpawn (leftmost)
+local lobbyBtn = Instance.new("TextButton")
+lobbyBtn.Name                   = "LobbyBtn"
+lobbyBtn.LayoutOrder            = 1
+lobbyBtn.Size                   = UDim2.new(0, px(140), 0, FOOTER_TEAM_H)
+lobbyBtn.BackgroundColor3       = Color3.fromRGB(38, 40, 55)
+lobbyBtn.BackgroundTransparency = 0.12
+lobbyBtn.Font                   = Enum.Font.GothamBold
+lobbyBtn.Text                   = "LOBBY"
+lobbyBtn.TextSize               = px(17)
+lobbyBtn.TextColor3             = GOLD
+lobbyBtn.AutoButtonColor        = true
+lobbyBtn.Parent                 = teamPicker
+Instance.new("UICorner", lobbyBtn).CornerRadius = UDim.new(0, px(8))
+do
+	local s = Instance.new("UIStroke")
+	s.Color           = GOLD_DIM
+	s.Thickness       = 1.5
+	s.Transparency    = 0.15
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent          = lobbyBtn
+end
 
 -- Track team picker expanded state
 local teamPickerOpen = false
@@ -627,6 +652,10 @@ local function refreshTeamButtons()
 		joinRedBtn.TextColor3       = WHITE
 		joinRedBtn.AutoButtonColor  = true
 		joinRedBtn.BackgroundTransparency = 0.12
+		lobbyBtn.Text               = "LOBBY"
+		lobbyBtn.TextColor3         = GOLD
+		lobbyBtn.AutoButtonColor    = true
+		lobbyBtn.BackgroundTransparency = 0.12
 	elseif currentTeamName == "Red" then
 		joinRedBtn.Text             = "CURRENT TEAM"
 		joinRedBtn.TextColor3       = GRAY
@@ -636,7 +665,12 @@ local function refreshTeamButtons()
 		joinBlueBtn.TextColor3      = WHITE
 		joinBlueBtn.AutoButtonColor = true
 		joinBlueBtn.BackgroundTransparency = 0.12
+		lobbyBtn.Text               = "LOBBY"
+		lobbyBtn.TextColor3         = GOLD
+		lobbyBtn.AutoButtonColor    = true
+		lobbyBtn.BackgroundTransparency = 0.12
 	else
+		-- Already in lobby (Neutral)
 		joinBlueBtn.Text            = "JOIN " .. TeamDisplayNames.GetUpper("Blue")
 		joinBlueBtn.TextColor3      = WHITE
 		joinBlueBtn.AutoButtonColor = true
@@ -645,6 +679,10 @@ local function refreshTeamButtons()
 		joinRedBtn.TextColor3       = WHITE
 		joinRedBtn.AutoButtonColor  = true
 		joinRedBtn.BackgroundTransparency = 0.12
+		lobbyBtn.Text               = "IN LOBBY"
+		lobbyBtn.TextColor3         = GRAY
+		lobbyBtn.AutoButtonColor    = false
+		lobbyBtn.BackgroundTransparency = 0.45
 	end
 end
 
@@ -696,7 +734,15 @@ joinRedBtn.MouseButton1Click:Connect(function()
 	if req then req:FireServer("Red") end
 end)
 
--- Listen for server response
+lobbyBtn.MouseButton1Click:Connect(function()
+	local teamName = player.Team and player.Team.Name or ""
+	if teamName ~= "Blue" and teamName ~= "Red" then return end
+	local req = ReplicatedStorage:FindFirstChild("ReturnToLobbyRequest")
+			or ReplicatedStorage:WaitForChild("ReturnToLobbyRequest", 10)
+	if req then req:FireServer() end
+end)
+
+-- Listen for server response (team change)
 task.spawn(function()
 	local _, resp = getChangeRemotes()
 	if resp then
@@ -704,6 +750,20 @@ task.spawn(function()
 			if success then
 				collapseTeamPicker()
 				-- Rebuild stats after short delay to let team switch propagate
+				task.wait(0.4)
+				if isVisible then rebuildAll() end
+			end
+		end)
+	end
+end)
+
+-- Listen for server response (return to lobby)
+task.spawn(function()
+	local resp = ReplicatedStorage:WaitForChild("ReturnToLobbyResponse", 10)
+	if resp then
+		resp.OnClientEvent:Connect(function(success, _msg)
+			if success then
+				collapseTeamPicker()
 				task.wait(0.4)
 				if isVisible then rebuildAll() end
 			end
