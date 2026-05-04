@@ -61,21 +61,21 @@ local function createBillboard(part, teamName, accentColor)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name           = "TeamJoinBillboard"
 	billboard.Adornee        = part
-	billboard.StudsOffset    = Vector3.new(0, 7, 0)
-	billboard.AlwaysOnTop    = true
+	billboard.StudsOffset    = Vector3.new(0, 10, 0)
+	billboard.AlwaysOnTop    = false
 	billboard.LightInfluence = 0
 	billboard.MaxDistance    = 200
-	billboard.Size           = UDim2.fromOffset(220, 90)
+	billboard.Size           = UDim2.new(16, 0, 8, 0)  -- studs = shrinks with distance
 	billboard.Parent         = part
 
 	-- Team name (e.g. "Knights" / "Barbarians")
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name                   = "TeamName"
-	nameLabel.Size                   = UDim2.new(1, 0, 0, 44)
+	nameLabel.Size                   = UDim2.new(1, 0, 0.52, 0)
 	nameLabel.Position               = UDim2.new(0, 0, 0, 0)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Font                   = Enum.Font.GothamBold
-	nameLabel.TextSize               = 38
+	nameLabel.TextScaled             = true
 	nameLabel.TextColor3             = accentColor
 	nameLabel.TextStrokeTransparency = 0.25
 	nameLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
@@ -85,11 +85,11 @@ local function createBillboard(part, teamName, accentColor)
 	-- Count (e.g. "3/8")
 	local countLabel = Instance.new("TextLabel")
 	countLabel.Name                   = "Count"
-	countLabel.Size                   = UDim2.new(1, 0, 0, 30)
-	countLabel.Position               = UDim2.new(0, 0, 0, 44)
+	countLabel.Size                   = UDim2.new(1, 0, 0.36, 0)
+	countLabel.Position               = UDim2.new(0, 0, 0.50, 0)
 	countLabel.BackgroundTransparency = 1
 	countLabel.Font                   = Enum.Font.GothamBold
-	countLabel.TextSize               = 26
+	countLabel.TextScaled             = true
 	countLabel.TextColor3             = Color3.fromRGB(230, 230, 230)
 	countLabel.TextStrokeTransparency = 0.4
 	countLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
@@ -99,11 +99,11 @@ local function createBillboard(part, teamName, accentColor)
 	-- Status ("FULL" / "LOCKED" / hidden when joinable)
 	local statusLabel = Instance.new("TextLabel")
 	statusLabel.Name                   = "Status"
-	statusLabel.Size                   = UDim2.new(1, 0, 0, 22)
-	statusLabel.Position               = UDim2.new(0, 0, 0, 74)
+	statusLabel.Size                   = UDim2.new(1, 0, 0.24, 0)
+	statusLabel.Position               = UDim2.new(0, 0, 0.78, 0)
 	statusLabel.BackgroundTransparency = 1
 	statusLabel.Font                   = Enum.Font.GothamBold
-	statusLabel.TextSize               = 20
+	statusLabel.TextScaled             = true
 	statusLabel.TextColor3             = Color3.fromRGB(220, 100, 100)
 	statusLabel.TextStrokeTransparency = 0.5
 	statusLabel.TextStrokeColor3       = Color3.fromRGB(0, 0, 0)
