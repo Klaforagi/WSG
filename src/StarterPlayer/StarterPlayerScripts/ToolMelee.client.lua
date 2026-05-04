@@ -512,9 +512,13 @@ local function attachMelee(tool)
         -- Cancel if bandaging
         if _G.IsBandaging then return end
 
-        -- Buffer click if a swing is already active
+        -- Buffer click only in the last 0.25s of the cooldown — fixed window
+        -- so large weapons don't get a proportionally bigger input buffer.
         if isSwinging then
-            bufferedClick = true
+            local elapsed = tick() - lastAttackTime
+            if lastStepCooldown > 0 and elapsed >= lastStepCooldown - 0.15 then
+                bufferedClick = true
+            end
             return
         end
 

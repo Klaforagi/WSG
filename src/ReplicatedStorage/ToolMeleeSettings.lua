@@ -53,7 +53,7 @@ local rarityDefaults = {
         hitboxActive = 0.1,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
-        hitboxSize   = Vector3.new(4, 10, 4),
+        hitboxSize   = Vector3.new(5, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Uncommon = {
@@ -64,7 +64,7 @@ local rarityDefaults = {
         hitboxActive = 0.1,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
-        hitboxSize   = Vector3.new(4, 10, 4),
+        hitboxSize   = Vector3.new(5, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Rare = {
@@ -75,7 +75,7 @@ local rarityDefaults = {
         hitboxActive = 0.1,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
-        hitboxSize   = Vector3.new(4, 10, 4),
+        hitboxSize   = Vector3.new(5, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Epic = {
@@ -86,7 +86,7 @@ local rarityDefaults = {
         hitboxActive = 0.1,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
-        hitboxSize   = Vector3.new(4, 10, 4),
+        hitboxSize   = Vector3.new(6, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Legendary = {
@@ -95,7 +95,7 @@ local rarityDefaults = {
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
-        showHitbox   = true,
+        showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
         hitboxSize   = Vector3.new(6, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),

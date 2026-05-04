@@ -474,8 +474,12 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
 
     local validStep = 1
     if hasCombo then
-        -- Reset if weapon changed or combo window expired
-        local prevBaseCd = (cfg.cd or 0.5) + (cs.step == 3 and ATTACK3_EXTRA or 0)
+        -- Reset if weapon changed or combo window expired.
+        -- Use cfg.cd only (not + ATTACK3_EXTRA) because the window to REACH
+        -- step 3 is gated by the step-2 cooldown (cfg.cd), not the step-3 one.
+        -- Using ATTACK3_EXTRA here made the server window 1.1s while the client
+        -- reset at 0.7s, causing step-3 damage to fire on a step-1 client swing.
+        local prevBaseCd   = cfg.cd or 0.5
         local prevScaledCd = prevBaseCd * sizeSpeedMult
         local comboDeadline = cs.lastTime + prevScaledCd + COMBO_WINDOW
         if cs.toolName ~= toolName or now > comboDeadline then
