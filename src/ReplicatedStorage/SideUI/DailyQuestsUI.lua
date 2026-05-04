@@ -10,6 +10,7 @@
 local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TextService       = game:GetService("TextService")
 
 local UITheme = require(script.Parent.UITheme)
 local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
@@ -236,6 +237,9 @@ local weeklyProgressRE
 local rerollDailyRF
 local rerollWeeklyRF
 local getRerollCooldownsRF
+local backgroundListenersConnected = false
+local backgroundQuestProgress = {}
+local backgroundWeeklyProgress = {}
 
 local function ensureRemotes()
     if questRemotesFolder then return true end
@@ -283,6 +287,36 @@ local function ensureRerollRemotes()
     end
 end
 
+local function ensureBackgroundProgressListeners()
+    if backgroundListenersConnected then return true end
+    if not ensureRemotes() then return false end
+
+    backgroundListenersConnected = true
+
+    if questProgressRE then
+        questProgressRE.OnClientEvent:Connect(function(questId, newProgress)
+            if type(questId) == "string" then
+                backgroundQuestProgress[questId] = tonumber(newProgress) or 0
+            end
+        end)
+    end
+
+    if weeklyProgressRE then
+        weeklyProgressRE.OnClientEvent:Connect(function(questIndex, newProgress)
+            questIndex = tonumber(questIndex)
+            if questIndex then
+                backgroundWeeklyProgress[questIndex] = tonumber(newProgress) or 0
+            end
+        end)
+    end
+
+    return true
+end
+
+task.spawn(function()
+    pcall(ensureBackgroundProgressListeners)
+end)
+
 --------------------------------------------------------------------------------
 -- Connection cleanup
 --------------------------------------------------------------------------------
@@ -300,6 +334,7 @@ local rerollTooltipLayer = nil
 local rerollTooltipPanel = nil
 local rerollTooltipLabel = nil
 local hideRerollTooltip = function() end
+local closeRerollPopup
 local activeCountdownThread = nil   -- coroutine handle for live countdown
 
 local function trackConn(conn)
@@ -654,7 +689,7 @@ local function destroyAllRerollModalArtifacts(reason)
     end
 end
 
-local function closeRerollPopup(reason)
+closeRerollPopup = function(reason)
     print(string.format("[QuestReroll] CloseRerollPopup called (%s)", tostring(reason or "unspecified")))
     hideRerollTooltip()
     if activeRerollOverlay then

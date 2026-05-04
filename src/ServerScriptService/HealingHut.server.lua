@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris = game:GetService("Debris")
+local RunService = game:GetService("RunService")
 
 local HEAL_PART_NAME = "HealPart"
 
@@ -9,6 +10,9 @@ local TOTAL_TICKS = 9 -- first tick is instant, then 8 delayed ticks
 local TICK_DELAY = HEAL_DURATION / (TOTAL_TICKS - 1)
 local RESPAWN_TIME = 30
 local HUT_HEAL_ACTIVE_ATTR = "_hut_heal_active"
+local PICKUP_BOB_HEIGHT = 0.6
+local PICKUP_BOB_SPEED = 1.4
+local PICKUP_SPIN_SPEED = math.rad(40)
 
 -- Guard against overlapping hut-heal runners on the same humanoid.
 local activeHutHeals = {} -- [Humanoid] = true
@@ -19,6 +23,70 @@ local VFXFolder = ReplicatedStorage:WaitForChild("VFX")
 local HealSoundTemplate = SoundsFolder:WaitForChild("Heal")
 local HealWaveTemplate = VFXFolder:WaitForChild("HealWave")
 local PlusHealsTemplate = VFXFolder:WaitForChild("PlusHeals")
+
+local function getAnimationTarget(part)
+	if not part or not part:IsA("BasePart") then
+		return nil, nil
+	end
+
+	local model = part:FindFirstAncestorOfClass("Model")
+	if model then
+		return model, model:GetPivot()
+	end
+
+	return part, part.CFrame
+end
+
+local function applyAnimatedCFrame(target, cframe)
+	if not target or not target.Parent then
+		return
+	end
+
+	if target:IsA("Model") then
+		target:PivotTo(cframe)
+	else
+		target.CFrame = cframe
+	end
+end
+
+local function startPickupAnimation(part)
+	local target, baseCFrame = getAnimationTarget(part)
+	if not target or not baseCFrame then
+		return function() end
+	end
+
+	local startTime = os.clock()
+	local phaseOffset = math.rad((math.abs(baseCFrame.Position.X) + math.abs(baseCFrame.Position.Z)) * 30)
+	local baseRotation = baseCFrame - baseCFrame.Position
+	local connection
+
+	connection = RunService.Heartbeat:Connect(function()
+		if not part.Parent then
+			if connection then
+				connection:Disconnect()
+				connection = nil
+			end
+			return
+		end
+
+		local elapsed = os.clock() - startTime
+		local bobOffset = math.sin((elapsed * PICKUP_BOB_SPEED) + phaseOffset) * PICKUP_BOB_HEIGHT
+		local spinOffset = elapsed * PICKUP_SPIN_SPEED
+		local animatedPosition = baseCFrame.Position + Vector3.new(0, bobOffset, 0)
+		local animatedCFrame = CFrame.new(animatedPosition) * CFrame.Angles(0, spinOffset, 0) * baseRotation
+		applyAnimatedCFrame(target, animatedCFrame)
+	end)
+
+	return function()
+		if connection then
+			connection:Disconnect()
+			connection = nil
+		end
+		if target and target.Parent then
+			applyAnimatedCFrame(target, baseCFrame)
+		end
+	end
+end
 
 local function setTransparencyRecursive(instance, transparency)
 	if instance:IsA("BasePart") then
@@ -34,14 +102,14 @@ end
 
 local function setReadyState(instance, isReady)
 	if instance:IsA("BasePart") then
-		instance.CanCollide = isReady
+		instance.CanCollide = false
 		instance.CanTouch = isReady
 		instance.CanQuery = isReady
 	end
 
 	for _, descendant in ipairs(instance:GetDescendants()) do
 		if descendant:IsA("BasePart") then
-			descendant.CanCollide = isReady
+			descendant.CanCollide = false
 			descendant.CanTouch = isReady
 			descendant.CanQuery = isReady
 		end
@@ -175,6 +243,7 @@ local function setupHealPart(part)
 	local template = part:Clone()
 	local respawnParent = part.Parent
 	local respawnCFrame = part.CFrame
+	local stopAnimation = startPickupAnimation(part)
 
 	local claimed = false
 
@@ -199,6 +268,7 @@ local function setupHealPart(part)
 			end
 
 			claimed = true
+			stopAnimation()
 
 			task.spawn(function()
 				healCharacter(character)
@@ -212,6 +282,7 @@ local function setupHealPart(part)
 				local newPart = template:Clone()
 				newPart.CFrame = respawnCFrame
 				newPart.Parent = respawnParent
+				stopAnimation = startPickupAnimation(newPart)
 
 				setTransparencyRecursive(newPart, 1)
 				setReadyState(newPart, false)
