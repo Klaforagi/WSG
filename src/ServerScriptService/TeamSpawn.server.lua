@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Teams = game:GetService("Teams")
 
 local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+local Map = workspace:WaitForChild("WSG")
 
 -----------------------------------------------------------------------
 -- Prevent ALL players from auto-spawning (this is a Players service property)
@@ -65,7 +66,7 @@ end
 -----------------------------------------------------------------------
 local function getSpawnForTeam(teamName)
 	local spawnName = teamName == "Red" and "RedSpawn" or "BlueSpawn"
-	local part = workspace:FindFirstChild(spawnName)
+	local part = Map:FindFirstChild(spawnName)
 	if part and part:IsA("BasePart") then
 		return part
 	end
@@ -141,7 +142,7 @@ Players.PlayerAdded:Connect(function(player)
 
 			-- Use the player's current team so mid-game switches spawn correctly
 			local curTeam = player:GetAttribute("Team") or teamName
-			local curSpawnPart = workspace:FindFirstChild(
+			local curSpawnPart = Map:FindFirstChild(
 				curTeam == "Red" and "RedSpawn" or "BlueSpawn"
 			)
 

@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Teams = game:GetService("Teams")
 
 local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+local Map = workspace:WaitForChild("WSG")
 
 ---------------------------------------------------------------------------
 -- Remote events
@@ -99,7 +100,7 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 		if hrp then
 			task.wait(0.15) -- let other handlers settle, then override position
 			local spawnName = teamName == "Red" and "RedSpawn" or "BlueSpawn"
-			local spawnPart = workspace:FindFirstChild(spawnName)
+			local spawnPart = Map:FindFirstChild(spawnName)
 			if spawnPart and spawnPart:IsA("BasePart") then
 				hrp.CFrame = randomPointOnPart(spawnPart)
 			end

@@ -1,4 +1,5 @@
 local Workspace = game:GetService("Workspace")
+local Map = Workspace:WaitForChild("WSG")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
@@ -226,7 +227,7 @@ local function respawnFlag(team)
     local info = flags[team]
     if not info or not info.original then return end
     -- remove any existing flag models in the world (dropped or misplaced) to avoid duplicates
-    for _, child in ipairs(Workspace:GetChildren()) do
+    for _, child in ipairs(Map:GetChildren()) do
         if child and child:IsA("Model") then
             local childTeam = getFlagTeamFromName(child.Name)
             if childTeam == team then
@@ -237,7 +238,7 @@ local function respawnFlag(team)
 
     -- clone the canonical original (keep scripts intact for stand behavior)
     local spawnModel = info.original:Clone()
-    spawnModel.Parent = Workspace
+    spawnModel.Parent = Map
     -- ensure PrimaryPart exists so we can position the model correctly
     if not spawnModel.PrimaryPart then
         for _, d in ipairs(spawnModel:GetDescendants()) do
@@ -446,7 +447,7 @@ function setupFlagModel(model)
                 local hrp = char:FindFirstChild("HumanoidRootPart")
                 if hrp then
                     dropModel = flags[team].original:Clone()
-                    dropModel.Parent = Workspace
+                    dropModel.Parent = Map
                 end
                 -- cleanup carried model and state
                 if carrying[pl] and carrying[pl].model then
@@ -558,8 +559,8 @@ function setupFlagModel(model)
     end)
 end
 
--- initial scan for flags in Workspace
-for _, child in ipairs(Workspace:GetChildren()) do
+-- initial scan for flags in Workspace.WSG
+for _, child in ipairs(Map:GetChildren()) do
     for _, name in ipairs(FLAG_NAMES) do
         if child.Name == name then
             -- ensure model has PrimaryPart set if possible
@@ -576,8 +577,8 @@ for _, child in ipairs(Workspace:GetChildren()) do
     end
 end
 
--- watch for flags added dynamically
-Workspace.ChildAdded:Connect(function(child)
+-- watch for flags added dynamically under the map folder
+Map.ChildAdded:Connect(function(child)
     for _, name in ipairs(FLAG_NAMES) do
         if child.Name == name then
             setupFlagModel(child)
@@ -735,8 +736,8 @@ local function resetAllFlags()
         lastCarrierPos[pl] = nil
     end
 
-    -- 2) Remove any flag models currently in Workspace (dropped or leftover)
-    for _, child in ipairs(Workspace:GetChildren()) do
+    -- 2) Remove any flag models currently in Map (dropped or leftover)
+    for _, child in ipairs(Map:GetChildren()) do
         local team = getFlagTeamFromName(child.Name)
         if team and child:IsA("Model") then
             child:Destroy()
@@ -806,7 +807,7 @@ local function forceDropFlag(pl, lastPos)
         print("[FlagPickup] force-dropping", team, "flag for", pl.Name, "at", tostring(dropCFrame.Position))
 
         local dropModel = flags[team].original:Clone()
-        dropModel.Parent = Workspace
+        dropModel.Parent = Map
 
         if not dropModel.PrimaryPart then
             for _, d in ipairs(dropModel:GetDescendants()) do

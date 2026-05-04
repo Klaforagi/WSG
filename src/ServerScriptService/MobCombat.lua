@@ -163,7 +163,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local lastMoveCommandAt = 0
     local REPATH_INTERVAL = 0.20
     local REPATH_DISTANCE = 1.5
-    local lastOrcNoiseProcAt = -math.huge
+    local lastOrcNoiseProcAt = os.clock() -- start at now so full cooldown must expire before first noise (prevents spawn-time audio pop)
     local STUCK_MISS_THRESHOLD = 2
     local STUCK_SPEED_THRESHOLD = 0.6
     local STUCK_RETREAT_TIME = 0.2
