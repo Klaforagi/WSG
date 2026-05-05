@@ -65,27 +65,39 @@ local function setModelCollisionGroup(model, groupName)
 end
 
 -- Keep existing Orc Axe collision cleanup behavior
+-- Weapon names to disable collision on, per mob
+local MOB_WEAPON_NAMES = {
+    Orc    = { "Axe" },
+    Goblin = { "Dagger" },
+    Ogre   = { "Hammer" },
+}
+
+local function disableWeaponCollision(part)
+    pcall(function()
+        part.CanCollide = false
+        part.CanTouch   = false
+        part.CanQuery   = false
+        part.Massless   = true
+    end)
+end
+
 local function applyOrcAxeCollisionFix(mobModel)
-    if mobModel.Name ~= "Orc" then return end
+    local weaponNames = MOB_WEAPON_NAMES[mobModel.Name]
+    if not weaponNames then return end
+
+    local nameSet = {}
+    for _, n in ipairs(weaponNames) do nameSet[n] = true end
 
     for _, d in ipairs(mobModel:GetDescendants()) do
-        if d:IsA("BasePart") and d.Name == "Axe" then
-            pcall(function()
-                d.CanCollide = false
-                d.CanTouch = false
-                d.CanQuery = false
-                d.Massless = true
-            end)
+        -- Direct BasePart with a weapon name
+        if d:IsA("BasePart") and nameSet[d.Name] then
+            disableWeaponCollision(d)
         end
-        if d:IsA("Tool") and d.Name == "Axe" then
+        -- Tool or Model container with a weapon name (disable all BaseParts inside)
+        if (d:IsA("Tool") or d:IsA("Model")) and nameSet[d.Name] then
             for _, p in ipairs(d:GetDescendants()) do
                 if p:IsA("BasePart") then
-                    pcall(function()
-                        p.CanCollide = false
-                        p.CanTouch = false
-                        p.CanQuery = false
-                        p.Massless = true
-                    end)
+                    disableWeaponCollision(p)
                 end
             end
         end
