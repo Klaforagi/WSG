@@ -11,6 +11,7 @@ local Debris            = game:GetService("Debris")
 
 local VFXFolder = ReplicatedStorage:FindFirstChild("VFX")
 local PlusHealsTemplate = VFXFolder and VFXFolder:FindFirstChild("PlusHeals")
+local BANDAGE_END_TIME_ATTR = "BandageEndTime"
 
 --------------------------------------------------------------------------------
 -- LOAD CONFIG
@@ -71,6 +72,7 @@ local function getState(player)
             thread       = nil,
             healthConn   = nil,
             plusHealsVFX = nil,
+            bandageEndTime = 0,
         }
     end
     return playerState[player]
@@ -129,6 +131,7 @@ local function stopBandage(player, reason)
     state.active = false
     state.startPos = nil
     state.totalHealed = 0
+    state.bandageEndTime = 0
 
     -- Cancel running heal thread
     if state.thread then
@@ -149,6 +152,7 @@ local function stopBandage(player, reason)
     local char = player.Character
     if char then
         char:SetAttribute("IsBandaging", false)
+        char:SetAttribute(BANDAGE_END_TIME_ATTR, 0)
     end
 
     -- Notify client
@@ -253,11 +257,13 @@ local function startBandage(player)
     state.active = true
     state.startPos = hrp.Position
     state.totalHealed = 0
+    state.bandageEndTime = workspace:GetServerTimeNow() + (tonumber(BandageConfig.CastDuration) or 0)
 
     -- Set attribute so other systems can check
     local char = player.Character
     if char then
         char:SetAttribute("IsBandaging", true)
+        char:SetAttribute(BANDAGE_END_TIME_ATTR, state.bandageEndTime)
     end
 
     -- Play PlusHeals while the player is actively bandaging
@@ -286,7 +292,7 @@ local function startBandage(player)
 
     -- Notify client bandage confirmed
     pcall(function()
-        bandageStarted:FireClient(player)
+        bandageStarted:FireClient(player, state.bandageEndTime)
     end)
 
     -- Start heal loop in a separate thread
@@ -319,12 +325,14 @@ Players.PlayerAdded:Connect(function(player)
             state.active = false
             state.startPos = nil
             state.totalHealed = 0
+            state.bandageEndTime = 0
             if state.thread then pcall(task.cancel, state.thread); state.thread = nil end
             if state.healthConn then pcall(function() state.healthConn:Disconnect() end); state.healthConn = nil end
             clearBandageVFX(state)
         end
         state.cooldownEnd = 0
         char:SetAttribute("IsBandaging", false)
+        char:SetAttribute(BANDAGE_END_TIME_ATTR, 0)
     end)
 end)
 
@@ -335,6 +343,7 @@ Players.PlayerRemoving:Connect(function(player)
             state.active = false
             if state.thread then pcall(task.cancel, state.thread); state.thread = nil end
             if state.healthConn then pcall(function() state.healthConn:Disconnect() end); state.healthConn = nil end
+            state.bandageEndTime = 0
         end
         clearBandageVFX(state)
     end
@@ -346,5 +355,6 @@ for _, p in ipairs(Players:GetPlayers()) do
     local state = getState(p)
     if p.Character then
         p.Character:SetAttribute("IsBandaging", false)
+        p.Character:SetAttribute(BANDAGE_END_TIME_ATTR, 0)
     end
 end

@@ -10,6 +10,7 @@ local TOTAL_TICKS = 9 -- first tick is instant, then 8 delayed ticks
 local TICK_DELAY = HEAL_DURATION / (TOTAL_TICKS - 1)
 local RESPAWN_TIME = 30
 local HUT_HEAL_ACTIVE_ATTR = "_hut_heal_active"
+local HUT_HEAL_END_ATTR = "_hut_heal_end_time"
 local PICKUP_BOB_HEIGHT = 0.6
 local PICKUP_BOB_SPEED = 1.4
 local PICKUP_SPIN_SPEED = math.rad(40)
@@ -191,6 +192,7 @@ local function healCharacter(character)
 	activeHutHeals[humanoid] = true
 	pcall(function()
 		humanoid:SetAttribute(HUT_HEAL_ACTIVE_ATTR, true)
+		humanoid:SetAttribute(HUT_HEAL_END_ATTR, workspace:GetServerTimeNow() + HEAL_DURATION)
 	end)
 
 	local canceled = false
@@ -235,6 +237,7 @@ local function healCharacter(character)
 	if humanoid and humanoid.Parent then
 		pcall(function()
 			humanoid:SetAttribute(HUT_HEAL_ACTIVE_ATTR, false)
+			humanoid:SetAttribute(HUT_HEAL_END_ATTR, 0)
 		end)
 	end
 end

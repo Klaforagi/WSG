@@ -1,13 +1,11 @@
 --[[
     EventIndicator.client.lua  (StarterPlayerScripts)
-    Shows event UI whenever the server signals that a timed event is active.
-    The left-side menu button/timer is intentionally not created; event state
-    and functionality still drive the popup, objective tracker, and reward UI.
+    Keeps event reward popups alive while the unified BuffBar owns the event
+    timer HUD. The old left-side button and right-side tracker are retired.
 
         Features:
-            - Event popup matches the KingsGround menu window style
-            - Lightweight right-side objective tracker with live countdown
-            - All UI is created when event activates and destroyed when it ends
+            - Meteor Shower / Gold Rush collection popups
+            - Cleanup for stale legacy event HUD instances
 ]]
 
 local Players           = game:GetService("Players")
@@ -92,9 +90,9 @@ local timerConnection   = nil   -- Heartbeat connection for live timer
 local timerLabel        = nil   -- separate timer TextLabel below the Event card
 local popupTimerLabel   = nil   -- timer TextLabel inside the popup
 local popupVisible      = false -- whether the popup is shown
-local objectiveTracker  = nil   -- right-side objective tracker ScreenGui
-local trackerObjLabel   = nil   -- TextLabel that shows shard progress
-local trackerTimerLabel = nil   -- TextLabel that shows remaining event time
+local objectiveTracker  = nil   -- legacy right-side objective tracker ScreenGui
+local trackerObjLabel   = nil   -- legacy objective tracker label
+local trackerTimerLabel = nil   -- legacy objective tracker timer label
 local shardProgressConn = nil   -- connection for EventShardProgress remote
 local currentEventId    = EventConfig and EventConfig.ActiveEventId or "MeteorShower"
 
@@ -134,10 +132,6 @@ local function updateEventTimers()
 
     local remaining = math.max(0, eventEndTime - workspace:GetServerTimeNow())
     local text = formatTime(remaining)
-
-    if trackerTimerLabel then
-        trackerTimerLabel.Text = "Time: " .. text
-    end
 
     if popupTimerLabel and popupVisible then
         popupTimerLabel.Text = text
@@ -649,231 +643,12 @@ local function createIndicator(endTime, eventId)
     end
 
     -----------------------------------------------------------------
-    -- Build the event popup (hidden by default)
+    -- The BuffBar now owns event timer visibility.
     -----------------------------------------------------------------
-    createEventPopup()
-
-    -----------------------------------------------------------------
-    -- Right-side objective tracker (lightweight HUD element)
-    -----------------------------------------------------------------
-    do
-        -- Clean up any leftover tracker (prevents duplicates)
-        if objectiveTracker then
-            pcall(function() objectiveTracker:Destroy() end)
-            objectiveTracker = nil
-        end
-
-        local def = getEventDef()
-        local evtName   = def and def.Name     or "Event"
-        local objective = def and def.Objective or "..."
-        local required = getEventRequiredCount(def)
-
-        local trackerGui = Instance.new("ScreenGui")
-        trackerGui.Name = "EventObjectiveTracker"
-        trackerGui.ResetOnSpawn = false
-        trackerGui.IgnoreGuiInset = false
-        trackerGui.DisplayOrder = 240 -- lower than MainUI (250) so modals render above
-        trackerGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-        trackerGui.Parent = playerGui
-
-        -- Main container — anchored to the right side, below the top HUD
-        local container = Instance.new("Frame")
-        container.Name = "TrackerContainer"
-        container.Size = UDim2.new(0, px(460), 0, px(120))
-        container.AnchorPoint = Vector2.new(1, 0)
-        container.Position = UDim2.new(1, -px(14), 0, px(90))
-        container.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
-        container.BackgroundTransparency = 0.10
-        container.BorderSizePixel = 0
-        container.Active = true
-        container.Parent = trackerGui
-
-        container.InputBegan:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-                togglePopup()
-            end
-        end)
-
-        local cCorner = Instance.new("UICorner")
-        cCorner.CornerRadius = UDim.new(0, px(12))
-        cCorner.Parent = container
-
-        local cStroke = Instance.new("UIStroke")
-        cStroke.Color = Color3.fromRGB(180, 150, 50)
-        cStroke.Thickness = 2
-        cStroke.Transparency = 0.2
-        cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        cStroke.Parent = container
-
-        local cGrad = Instance.new("UIGradient")
-        cGrad.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-            ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 180, 190)),
-        })
-        cGrad.Rotation = 90
-        cGrad.Parent = container
-
-        local cPad = Instance.new("UIPadding")
-        cPad.PaddingTop    = UDim.new(0, px(20))
-        cPad.PaddingBottom = UDim.new(0, px(20))
-        cPad.PaddingLeft   = UDim.new(0, px(24))
-        cPad.PaddingRight  = UDim.new(0, px(24))
-        cPad.Parent = container
-
-        local cLayout = Instance.new("UIListLayout")
-        cLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        cLayout.Padding = UDim.new(0, px(10))
-        cLayout.Parent = container
-
-        local topRow = Instance.new("Frame")
-        topRow.Name = "TrackerTopRow"
-        topRow.LayoutOrder = 1
-        topRow.Size = UDim2.new(1, 0, 0, px(36))
-        topRow.BackgroundTransparency = 1
-        topRow.Parent = container
-
-        local topLayout = Instance.new("UIListLayout")
-        topLayout.FillDirection = Enum.FillDirection.Horizontal
-        topLayout.SortOrder = Enum.SortOrder.LayoutOrder
-        topLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-        topLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-        topLayout.Padding = UDim.new(0, px(12))
-        topLayout.Parent = topRow
-
-        -- Title line: "Event: Meteor Shower"
-        local titleLbl = Instance.new("TextLabel")
-        titleLbl.Name = "TrackerTitle"
-        titleLbl.LayoutOrder = 1
-        titleLbl.Size = UDim2.new(1, -px(124), 1, 0)
-        titleLbl.BackgroundTransparency = 1
-        titleLbl.Font = Enum.Font.GothamBold
-        titleLbl.TextSize = px(25)
-        titleLbl.TextColor3 = COLORS.gold
-        titleLbl.Text = "Event: " .. evtName
-        titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-        titleLbl.TextTruncate = Enum.TextTruncate.AtEnd
-        titleLbl.Parent = topRow
-
-        local titleStroke = Instance.new("UIStroke")
-        titleStroke.Color = Color3.fromRGB(0, 0, 0)
-        titleStroke.Thickness = 1
-        titleStroke.Transparency = 0.15
-        titleStroke.Parent = titleLbl
-
-        local timerBadge = Instance.new("Frame")
-        timerBadge.Name = "TimerBadge"
-        timerBadge.LayoutOrder = 2
-        timerBadge.Size = UDim2.new(0, px(112), 0, px(30))
-        timerBadge.BackgroundColor3 = Color3.fromRGB(18, 18, 30)
-        timerBadge.BackgroundTransparency = 0.08
-        timerBadge.BorderSizePixel = 0
-        timerBadge.Parent = topRow
-
-        local badgeCorner = Instance.new("UICorner")
-        badgeCorner.CornerRadius = UDim.new(0, px(8))
-        badgeCorner.Parent = timerBadge
-
-        local badgeStroke = Instance.new("UIStroke")
-        badgeStroke.Color = COLORS.gold
-        badgeStroke.Thickness = 1
-        badgeStroke.Transparency = 0.45
-        badgeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        badgeStroke.Parent = timerBadge
-
-        local timeLbl = Instance.new("TextLabel")
-        timeLbl.Name = "TimerText"
-        timeLbl.Size = UDim2.new(1, -px(12), 1, 0)
-        timeLbl.Position = UDim2.new(0, px(6), 0, 0)
-        timeLbl.BackgroundTransparency = 1
-        timeLbl.Font = Enum.Font.GothamBold
-        timeLbl.TextSize = px(16)
-        timeLbl.TextColor3 = Color3.fromRGB(245, 245, 255)
-        timeLbl.Text = "Time: 0:00"
-        timeLbl.TextXAlignment = Enum.TextXAlignment.Center
-        timeLbl.TextYAlignment = Enum.TextYAlignment.Center
-        timeLbl.TextTruncate = Enum.TextTruncate.AtEnd
-        timeLbl.Parent = timerBadge
-        trackerTimerLabel = timeLbl
-
-        local timeStroke = Instance.new("UIStroke")
-        timeStroke.Color = Color3.fromRGB(0, 0, 0)
-        timeStroke.Thickness = 0.8
-        timeStroke.Transparency = 0.25
-        timeStroke.Parent = timeLbl
-
-        -- Objective line: "- Collect 3 Meteor Shards (0/3)"
-        local objLbl = Instance.new("TextLabel")
-        objLbl.Name = "TrackerObjective"
-        objLbl.LayoutOrder = 2
-        objLbl.Size = UDim2.new(1, 0, 0, px(30))
-        objLbl.BackgroundTransparency = 1
-        objLbl.Font = Enum.Font.Gotham
-        objLbl.TextSize = px(20)
-        objLbl.TextColor3 = Color3.fromRGB(220, 220, 230)
-        objLbl.Text = required > 0
-            and ("- " .. objective .. "  (0/" .. required .. ")")
-            or ("- " .. objective)
-        objLbl.TextXAlignment = Enum.TextXAlignment.Left
-        objLbl.TextTruncate = Enum.TextTruncate.AtEnd
-        objLbl.Parent = container
-        trackerObjLabel = objLbl
-
-        local objStroke = Instance.new("UIStroke")
-        objStroke.Color = Color3.fromRGB(0, 0, 0)
-        objStroke.Thickness = 0.8
-        objStroke.Transparency = 0.2
-        objStroke.Parent = objLbl
-
-        -- Auto-size container height to fit content
-        cLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-            container.Size = UDim2.new(0, px(460), 0,
-                cLayout.AbsoluteContentSize.Y + px(40))  -- 20+20 padding
-        end)
-        container.Size = UDim2.new(0, px(460), 0,
-            cLayout.AbsoluteContentSize.Y + px(40))
-
-        objectiveTracker = trackerGui
+    local legacyTracker = playerGui:FindFirstChild("EventObjectiveTracker")
+    if legacyTracker then
+        legacyTracker:Destroy()
     end
-
-    -----------------------------------------------------------------
-    -- Listen for shard progress updates from server
-    -----------------------------------------------------------------
-    do
-        if shardProgressConn then
-            pcall(function() shardProgressConn:Disconnect() end)
-            shardProgressConn = nil
-        end
-
-        local progressRemote = ReplicatedStorage:FindFirstChild("EventShardProgress")
-        if progressRemote then
-            shardProgressConn = progressRemote.OnClientEvent:Connect(function(current, required)
-                if trackerObjLabel then
-                    local def = getEventDef()
-                    local objective = def and def.Objective or "..."
-                    current = tonumber(current) or 0
-                    required = tonumber(required) or getEventRequiredCount(def)
-                    if current >= required then
-                        trackerObjLabel.Text = "- " .. objective .. "  (" .. current .. "/" .. required .. ")  COMPLETE!"
-                        trackerObjLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
-                    else
-                        trackerObjLabel.TextColor3 = Color3.fromRGB(220, 220, 230)
-                        trackerObjLabel.Text = "- " .. objective .. "  (" .. current .. "/" .. required .. ")"
-                    end
-                end
-            end)
-        end
-    end
-
-    -----------------------------------------------------------------
-    -- Heartbeat timer update (right tracker badge + popup timer)
-    -----------------------------------------------------------------
-    if timerConnection then
-        pcall(function() timerConnection:Disconnect() end)
-    end
-    timerConnection = RunService.Heartbeat:Connect(function()
-        updateEventTimers()
-    end)
-    updateEventTimers()
 end
 
 ---------------------------------------------------------------------
