@@ -118,19 +118,27 @@ local Presets = {
     Ogre = {
         Spawn = {
             Weight   = 2,
-            XPReward = 12,
-            CoinReward = 12,
+            XPReward = 20,
+            CoinReward = { Min = 10, Max = 20 },
         },
         Attack = {
-            Damage      = 12,
+            Damage      = 24,       -- 3x Orc's 8
             Cooldown    = 1.5,
             Windup      = 0.5,
+            Sound       = "OrcSwing", -- using Orc sounds until Ogre sounds are added
+            Knockback   = 100,      -- 2x Orc's 50
+            KnockbackY  = 8,        -- 2x Orc's 4
+            HitboxSize  = Vector3.new(10, 12, 10),  -- 2x Orc default (5, 6, 5)
+            HitboxOffset = Vector3.new(0, 0, 4),
         },
         Animation = {
+            Walk   = "rbxassetid://657552124",
+            Run    = "rbxassetid://507767714",
+            Idle   = "rbxassetid://507766388",
             Attack = "rbxassetid://72805951274249",
         },
         Debug = {
-            ShowHitbox  = true,
+            ShowHitbox  = false,
             HitboxColor = Color3.fromRGB(180, 50, 255),
         },
     },

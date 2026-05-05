@@ -146,6 +146,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local ORC_NOISE_CHANCE = 0.25
     local ORC_NOISE_COOLDOWN = 3
     local isOrc = (mobModel.Name == "Orc")
+    local isOgre = (mobModel.Name == "Ogre")
     local GOBLIN_NOISE_CHANCE = 0.25
     local GOBLIN_NOISE_COOLDOWN = 3
     local isGoblin = (mobModel.Name == "Goblin")
@@ -396,7 +397,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     end
 
     local function playOrcNoise()
-        if not isOrc then return end
+        if not isOrc and not isOgre then return end
         local now = os.clock()
         if (now - lastOrcNoiseProcAt) < ORC_NOISE_COOLDOWN then return end
         if math.random() < ORC_NOISE_CHANCE then
