@@ -18,19 +18,16 @@ BuffBarConfig.StaticEntries = {
     hut_heal = {
         Id = "hut_heal",
         DisplayName = "Heal Buff",
-        IconKey = "HealBuff",
-        IconGlyph = "+",
+        IconShape = "plus",
         IconColor = {35, 220, 95},
         SortOrder = 20,
     },
     bandage = {
         Id = "bandage",
         DisplayName = "Bandage",
-        IconKey = "Bandage",
-        IconGlyph = "+",
+        IconShape = "plus",
         IconColor = {80, 210, 130},
         SortOrder = 30,
-        TintImage = false,
     },
     flag_blue = {
         Id = "flag_blue",

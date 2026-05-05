@@ -217,7 +217,7 @@ relayoutTiles = function()
         if refs.textConstraint then
             local entry = refs.entryId and activeEntries[refs.entryId]
             local def = entry and entry.def
-            refs.textConstraint.MaxTextSize = px(def and def.IconLabel and 34 or 40)
+            refs.textConstraint.MaxTextSize = px(def and def.IconLabel and 34 or 80)
         end
     end
 end
@@ -284,7 +284,35 @@ local function createTile(entry)
     gradient.Parent = iconFrame
 
     local assetId = resolveAsset(def)
-    if assetId then
+    if def.IconShape == "plus" then
+        local arm = Color3.new(1, 1, 1)
+        local plusV = Instance.new("Frame")
+        plusV.Name = "PlusV"
+        plusV.AnchorPoint = Vector2.new(0.5, 0.5)
+        plusV.Position = UDim2.new(0.5, 0, 0.5, 0)
+        plusV.Size = UDim2.new(0.26, 0, 0.78, 0)
+        plusV.BackgroundColor3 = arm
+        plusV.BorderSizePixel = 0
+        plusV.Parent = iconFrame
+        local cV = Instance.new("UICorner")
+        cV.CornerRadius = UDim.new(0, px(3))
+        cV.Parent = plusV
+
+        local plusH = Instance.new("Frame")
+        plusH.Name = "PlusH"
+        plusH.AnchorPoint = Vector2.new(0.5, 0.5)
+        plusH.Position = UDim2.new(0.5, 0, 0.5, 0)
+        plusH.Size = UDim2.new(0.78, 0, 0.26, 0)
+        plusH.BackgroundColor3 = arm
+        plusH.BorderSizePixel = 0
+        plusH.Parent = iconFrame
+        local cH = Instance.new("UICorner")
+        cH.CornerRadius = UDim.new(0, px(3))
+        cH.Parent = plusH
+
+        -- Tint background slightly with accent for visual identity
+        iconFrame.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.65)
+    elseif assetId then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
         icon.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -300,7 +328,7 @@ local function createTile(entry)
         glyph.Name = "Glyph"
         glyph.AnchorPoint = Vector2.new(0.5, 0.5)
         glyph.Position = def.IconLabel and UDim2.new(0.5, 0, 0.38, 0) or UDim2.new(0.5, 0, 0.5, 0)
-        glyph.Size = def.IconLabel and UDim2.new(0.82, 0, 0.58, 0) or UDim2.new(0.86, 0, 0.76, 0)
+        glyph.Size = def.IconLabel and UDim2.new(0.82, 0, 0.58, 0) or UDim2.new(0.95, 0, 0.95, 0)
         glyph.BackgroundTransparency = 1
         glyph.Font = Enum.Font.GothamBlack
         glyph.Text = tostring(def.IconGlyph or def.DisplayName or "*")
@@ -313,7 +341,7 @@ local function createTile(entry)
 
         local textConstraint = Instance.new("UITextSizeConstraint")
         textConstraint.MinTextSize = 10
-        textConstraint.MaxTextSize = px(def.IconLabel and 34 or 40)
+        textConstraint.MaxTextSize = px(def.IconLabel and 34 or 80)
         textConstraint.Parent = glyph
 
         if def.IconLabel then
