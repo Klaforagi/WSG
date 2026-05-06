@@ -348,10 +348,12 @@ local function raycastSkippingAccessories(origin, direction, rayParams)
         end
         if inst and inst:IsA("BasePart") then
             local instName = tostring(inst.Name)
+            local ogreModel = (instName == "Helmet") and inst:FindFirstAncestor("Ogre") or nil
             shouldSkip = (
                 instName == "InvisWall"
                 or instName == "PickupPart"
                 or instName == "DefaultZone"
+                or (ogreModel and ogreModel:FindFirstChildOfClass("Humanoid") ~= nil)
                 or inst.CanQuery == false
             )
             if not shouldSkip and inst:FindFirstAncestor("EventMeteorZones") then

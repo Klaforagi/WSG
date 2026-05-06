@@ -135,7 +135,7 @@ local Presets = {
             Walk   = "rbxassetid://657552124",
             Run    = "rbxassetid://507767714",
             Idle   = "rbxassetid://507766388",
-            Attack = "rbxassetid://72805951274249",
+            Attack = "rbxassetid://122917464230305",
         },
         Debug = {
             ShowHitbox  = false,

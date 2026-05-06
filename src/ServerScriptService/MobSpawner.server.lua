@@ -81,6 +81,19 @@ local function disableWeaponCollision(part)
     end)
 end
 
+local function applyMobPartCollisionOverrides(mobModel)
+    if mobModel.Name ~= "Ogre" then return end
+
+    for _, d in ipairs(mobModel:GetDescendants()) do
+        if d:IsA("BasePart") and d.Name == "Helmet" then
+            pcall(function()
+                d.CanCollide = false
+                d.Massless = true
+            end)
+        end
+    end
+end
+
 local function applyOrcAxeCollisionFix(mobModel)
     local weaponNames = MOB_WEAPON_NAMES[mobModel.Name]
     if not weaponNames then return end
@@ -300,6 +313,7 @@ local function spawnMobFromTemplate(entry, template)
 
     CollectionService:AddTag(mob, mobTag)
     setModelCollisionGroup(mob, MOB_COLLISION_GROUP)
+    applyMobPartCollisionOverrides(mob)
     applyOrcAxeCollisionFix(mob)
 
     local humanoid = mob:FindFirstChildOfClass("Humanoid")
