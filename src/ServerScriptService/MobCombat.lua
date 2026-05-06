@@ -43,6 +43,15 @@ local function randomPointInArea(areaPart)
     )
 end
 
+local function isInsideAreaXZ(worldPos, areaPart, padding)
+    if not areaPart or not areaPart:IsA("BasePart") then return false end
+    local pad = padding or 0
+    local localPos = areaPart.CFrame:PointToObjectSpace(worldPos)
+    local half = areaPart.Size * 0.5
+    return math.abs(localPos.X) <= (half.X + pad)
+        and math.abs(localPos.Z) <= (half.Z + pad)
+end
+
 local function buildForwardBoxCFrame(root, offset)
     -- Treat positive Z as forward in world space from the mob's current look.
     local right = root.CFrame.RightVector
@@ -579,6 +588,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
     local areaCenter = areaPart and areaPart:IsA("BasePart") and areaPart.Position or nil
     local areaSize = areaPart and areaPart:IsA("BasePart") and areaPart.Size or nil
+    local areaLockActive = areaPart and areaPart:IsA("BasePart") or false
+    local AREA_LOCK_PADDING = 1.5
     local lastWander = 0
     local wanderCooldown = math.random(3, 7)
 
@@ -586,6 +597,24 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         while aiRunning and mobModel and mobModel.Parent and humanoid and humanoid.Health > 0 do
             local root = getRootPart(mobModel)
             if not root then break end
+
+            if areaLockActive and areaCenter then
+                if isInsideAreaXZ(root.Position, areaPart, AREA_LOCK_PADDING) then
+                    areaLockActive = false
+                    stopWalking()
+                else
+                    -- Force a clean first move into the assigned lane before aggro/wander.
+                    chasing = false
+                    aggroPlayer = nil
+                    updateSpeedByState()
+                    startWalkingSmart(Vector3.new(areaCenter.X, root.Position.Y, areaCenter.Z), false)
+                    if not isAttacking then
+                        enforceAnim()
+                    end
+                    task.wait(0.2)
+                    continue
+                end
+            end
 
             local targetRoot, dist
             if aggroPlayer and os.clock() < aggroExpiry then

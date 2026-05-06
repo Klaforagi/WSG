@@ -294,7 +294,8 @@ local function spawnMobFromTemplate(entry, template)
 
     local root = getRootPart(mob)
     local rootHalfY = (root and root:IsA("BasePart")) and (root.Size.Y / 2 + 0.5) or 2
-    local spawnPos = entry.portal.Position - Vector3.new(0, entry.portal.Size.Y / 2 + rootHalfY, 0)
+    local spawnHeightOffset = (type(spawnCfg.SpawnHeightOffset) == "number") and spawnCfg.SpawnHeightOffset or 0
+    local spawnPos = entry.portal.Position - Vector3.new(0, entry.portal.Size.Y / 2 + rootHalfY - spawnHeightOffset, 0)
 
     pcall(function()
         if not mob.PrimaryPart and root then
