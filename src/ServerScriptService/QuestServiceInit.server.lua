@@ -103,6 +103,9 @@ local getQuestsRF = ensureInstance(questsFolder, "RemoteFunction", "GetQuests")
 -- QuestProgress: server pushes live progress updates to client
 local questProgressRE = ensureInstance(questsFolder, "RemoteEvent", "QuestProgress")
 
+-- QuestStateChanged: server pushes claim/reroll state changes to client
+local questStateChangedRE = ensureInstance(questsFolder, "RemoteEvent", "QuestStateChanged")
+
 -- ClaimQuest: client requests reward claim
 local claimQuestRF = ensureInstance(questsFolder, "RemoteFunction", "ClaimQuest")
 
@@ -123,6 +126,7 @@ claimQuestRF.OnServerInvoke = function(player, questId)
     if type(questId) ~= "string" then return false end
     local result = QuestService:ClaimReward(player, questId)
     if result then
+        questStateChangedRE:FireClient(player, questId, "claimed")
         if StatService then
             pcall(function() StatService:RegisterQuestClaimed(player) end)
         end
