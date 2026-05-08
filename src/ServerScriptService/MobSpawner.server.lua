@@ -81,6 +81,19 @@ local function disableWeaponCollision(part)
     end)
 end
 
+local function applyMobPartCollisionOverrides(mobModel)
+    if mobModel.Name ~= "Ogre" then return end
+
+    for _, d in ipairs(mobModel:GetDescendants()) do
+        if d:IsA("BasePart") and d.Name == "Helmet" then
+            pcall(function()
+                d.CanCollide = false
+                d.Massless = true
+            end)
+        end
+    end
+end
+
 local function applyOrcAxeCollisionFix(mobModel)
     local weaponNames = MOB_WEAPON_NAMES[mobModel.Name]
     if not weaponNames then return end
@@ -281,7 +294,8 @@ local function spawnMobFromTemplate(entry, template)
 
     local root = getRootPart(mob)
     local rootHalfY = (root and root:IsA("BasePart")) and (root.Size.Y / 2 + 0.5) or 2
-    local spawnPos = entry.portal.Position - Vector3.new(0, entry.portal.Size.Y / 2 + rootHalfY, 0)
+    local spawnHeightOffset = (type(spawnCfg.SpawnHeightOffset) == "number") and spawnCfg.SpawnHeightOffset or 0
+    local spawnPos = entry.portal.Position - Vector3.new(0, entry.portal.Size.Y / 2 + rootHalfY - spawnHeightOffset, 0)
 
     pcall(function()
         if not mob.PrimaryPart and root then
@@ -300,6 +314,7 @@ local function spawnMobFromTemplate(entry, template)
 
     CollectionService:AddTag(mob, mobTag)
     setModelCollisionGroup(mob, MOB_COLLISION_GROUP)
+    applyMobPartCollisionOverrides(mob)
     applyOrcAxeCollisionFix(mob)
 
     local humanoid = mob:FindFirstChildOfClass("Humanoid")

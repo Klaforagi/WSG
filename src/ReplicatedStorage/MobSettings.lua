@@ -21,6 +21,7 @@ local Defaults = {
         Tag      = "ZombieNPC", -- CollectionService tag applied on spawn
         XPReward = 1,           -- XP given to the killing player
         CoinReward = 1,         -- coins given to the killing player; number or { Min = x, Max = y }
+        SpawnHeightOffset = 0,  -- positive raises spawn point above default placement
     },
     Movement = {
         WalkSpeed        = 8,  -- passive wander speed
@@ -120,6 +121,7 @@ local Presets = {
             Weight   = 2,
             XPReward = 20,
             CoinReward = { Min = 10, Max = 20 },
+            SpawnHeightOffset = 3,
         },
         Attack = {
             Damage      = 24,       -- 3x Orc's 8
@@ -135,7 +137,7 @@ local Presets = {
             Walk   = "rbxassetid://657552124",
             Run    = "rbxassetid://507767714",
             Idle   = "rbxassetid://507766388",
-            Attack = "rbxassetid://72805951274249",
+            Attack = "rbxassetid://122917464230305",
         },
         Debug = {
             ShowHitbox  = false,
@@ -198,6 +200,9 @@ local function validate(name, cfg)
             end
         else
             warn(("[MobSettings] '%s' Spawn.CoinReward must be a number or range table"):format(name))
+        end
+        if type(sp.SpawnHeightOffset) ~= "number" then
+            warn(("[MobSettings] '%s' Spawn.SpawnHeightOffset must be a number"):format(name))
         end
     end
     local atk = cfg.Attack
