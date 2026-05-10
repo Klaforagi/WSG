@@ -6,6 +6,7 @@ local CollectionService = game:GetService("CollectionService")
 local PhysicsService = game:GetService("PhysicsService")
 
 local MobCombat = require(script.Parent:WaitForChild("MobCombat"))
+local MobSkinService = require(script.Parent:WaitForChild("MobSkinService"))
 
 ---------------------------------------------------------------------------
 -- Collision group: mobs don't collide with each other
@@ -286,11 +287,18 @@ local function spawnMobFromTemplate(entry, template)
 
     local mobCfg = MobSettings and MobSettings.Get(tpl.Name) or nil
     local spawnCfg = (mobCfg and mobCfg.Spawn) or {}
+    local appearanceCfg = (mobCfg and mobCfg.Appearance) or {}
     local mobTag = (spawnCfg.Tag and spawnCfg.Tag ~= "") and spawnCfg.Tag or DEFAULT_MOB_TAG
 
     local mob = tpl:Clone()
     mob.Name = tpl.Name
     mob.Parent = Workspace
+
+    if type(appearanceCfg.SkinPalette) == "table" and #appearanceCfg.SkinPalette > 0 then
+        MobSkinService.applyMobSkin(mob, appearanceCfg.SkinPalette, appearanceCfg.SkinVariation)
+    elseif typeof(appearanceCfg.BaseSkinColor) == "Color3" then
+        MobSkinService.applyMobSkin(mob, appearanceCfg.BaseSkinColor, appearanceCfg.SkinVariation)
+    end
 
     local root = getRootPart(mob)
     local rootHalfY = (root and root:IsA("BasePart")) and (root.Size.Y / 2 + 0.5) or 2
