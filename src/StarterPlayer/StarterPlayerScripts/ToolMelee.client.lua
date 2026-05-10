@@ -408,52 +408,8 @@ local function attachMelee(tool)
         end
 
         local duration = endOffset - startOffset
-        -- ENCHANT SYSTEM: use enchant color for trail if weapon has an enchant
-        local trailColorStart = Color3.fromRGB(240, 240, 240)
-        local trailColorEnd   = Color3.fromRGB(190, 190, 190)
-        if WeaponEnchantConfig and tool:GetAttribute("HasEnchant") then
-            local pn = tool:GetAttribute("EnchantName")
-            if pn and pn ~= "" then
-                local enchantColor = WeaponEnchantConfig.GetTrailColorForEnchant(pn)
-                if enchantColor then
-                    trailColorStart = Color3.new(
-                        math.min(enchantColor.R * 1.2, 1),
-                        math.min(enchantColor.G * 1.2, 1),
-                        math.min(enchantColor.B * 1.2, 1)
-                    )
-                    trailColorEnd = enchantColor
-                end
-            end
-        end
-        -- configure trail appearance
         pcall(function()
-            swordTrail.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, trailColorStart),
-                ColorSequenceKeypoint.new(0.4, trailColorEnd),
-                ColorSequenceKeypoint.new(1, trailColorEnd),
-            })
-            -- Enchant trails are much more visible; non-Enchant trails keep a subtler look
-            local hasEnchantTrail = WeaponEnchantConfig and tool:GetAttribute("HasEnchant")
-            if hasEnchantTrail then
-                swordTrail.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 0.1),
-                    NumberSequenceKeypoint.new(0.3, 0.25),
-                    NumberSequenceKeypoint.new(0.7, 0.6),
-                    NumberSequenceKeypoint.new(1, 1),
-                })
-                swordTrail.LightEmission = 0.8
-                swordTrail.LightInfluence = 0
-            else
-                swordTrail.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 0.6),
-                    NumberSequenceKeypoint.new(0.5, 0.8),
-                    NumberSequenceKeypoint.new(1, 1),
-                })
-            end
             swordTrail.Lifetime = math.max(0.14, duration)
-            swordTrail.MinLength = 0
-            swordTrail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.15), NumberSequenceKeypoint.new(0.6, 0.8), NumberSequenceKeypoint.new(1, 0.2)})
-            swordTrail.FaceCamera = false
         end)
 
         -- schedule enable/disable relative to swing start

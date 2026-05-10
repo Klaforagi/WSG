@@ -5,6 +5,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local BANDAGE_ANIM = "rbxassetid://139297808237661"
+local warmedCharacters = setmetatable({}, { __mode = "k" })
 
 local function collectAnimationIds()
 	local ids = {}
@@ -51,8 +52,17 @@ local function collectAnimationIds()
 end
 
 local function warmCharacterAnimations(character)
+	if not character or warmedCharacters[character] then
+		return
+	end
+	warmedCharacters[character] = true
+
 	local humanoid = character:WaitForChild("Humanoid")
-	local animator = humanoid:WaitForChild("Animator")
+	local animator = humanoid:WaitForChild("Animator", 10)
+	if not animator then
+		warmedCharacters[character] = nil
+		return
+	end
 
 	local ids = collectAnimationIds()
 
@@ -75,14 +85,22 @@ local function warmCharacterAnimations(character)
 	end
 end
 
-player.CharacterAdded:Connect(function(character)
-	task.defer(function()
-		warmCharacterAnimations(character)
+local function watchPlayer(targetPlayer)
+	targetPlayer.CharacterAdded:Connect(function(character)
+		task.defer(function()
+			warmCharacterAnimations(character)
+		end)
 	end)
-end)
 
-if player.Character then
-	task.defer(function()
-		warmCharacterAnimations(player.Character)
-	end)
+	if targetPlayer.Character then
+		task.defer(function()
+			warmCharacterAnimations(targetPlayer.Character)
+		end)
+	end
 end
+
+for _, targetPlayer in ipairs(Players:GetPlayers()) do
+	watchPlayer(targetPlayer)
+end
+
+Players.PlayerAdded:Connect(watchPlayer)

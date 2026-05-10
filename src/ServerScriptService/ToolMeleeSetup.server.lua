@@ -53,6 +53,14 @@ if ReplicatedStorage:FindFirstChild("ToolMeleeSettings") then
     MeleeCfg = require(ReplicatedStorage:WaitForChild("ToolMeleeSettings"))
 end
 
+local WeaponEnchantConfig
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponEnchantConfig = require(mod)
+    end
+end)
+
 -- ENCHANT SYSTEM: lazy-load enchant service for hit-burst visuals
 local WeaponEnchantService
 pcall(function()
@@ -164,6 +172,61 @@ end
 local function getScaledHitboxTiming(baseDelay, baseActive, sizePercent)
     local sm = getSizeSpeedMultiplier(sizePercent)
     return baseDelay * sm, baseActive * sm
+end
+
+local function configureSwingTrailAppearance(trail, tool, activeDuration)
+    if not trail or not trail:IsA("Trail") then return end
+
+    local hasEnchant = tool and tool:GetAttribute("HasEnchant") == true
+    local enchantName = tool and tool:GetAttribute("EnchantName")
+    local startColor = Color3.fromRGB(240, 240, 240)
+    local endColor = Color3.fromRGB(190, 190, 190)
+
+    if hasEnchant and WeaponEnchantConfig and type(enchantName) == "string" and enchantName ~= "" then
+        local enchantColor = WeaponEnchantConfig.GetTrailColorForEnchant(enchantName)
+        if enchantColor then
+            local h, s, v = Color3.toHSV(enchantColor)
+            startColor = Color3.fromHSV(h, math.clamp(s * 0.6, 0, 1), math.clamp(v * 1.3, 0, 1))
+            endColor = enchantColor
+        else
+            hasEnchant = false
+        end
+    else
+        hasEnchant = false
+    end
+
+    trail.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, startColor),
+        ColorSequenceKeypoint.new(0.4, endColor),
+        ColorSequenceKeypoint.new(1, endColor),
+    })
+    trail.Lifetime = math.max(0.14, activeDuration or 0.14)
+    trail.MinLength = 0
+    trail.WidthScale = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1.15),
+        NumberSequenceKeypoint.new(0.6, 0.8),
+        NumberSequenceKeypoint.new(1, 0.2),
+    })
+    trail.FaceCamera = false
+
+    if hasEnchant then
+        trail.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.1),
+            NumberSequenceKeypoint.new(0.3, 0.25),
+            NumberSequenceKeypoint.new(0.7, 0.6),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        trail.LightEmission = 0.8
+        trail.LightInfluence = 0
+    else
+        trail.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.6),
+            NumberSequenceKeypoint.new(0.5, 0.8),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        trail.LightEmission = 0
+        trail.LightInfluence = 0
+    end
 end
 
 --- Combo damage multiplier for a given step (1-indexed).
@@ -534,6 +597,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             local startDelay = math.max(0, hd - 0.12)
             local endTime    = hd + ha
             local activeDur  = math.max(0.01, endTime - startDelay)
+            pcall(function() configureSwingTrailAppearance(trail, tool, activeDur) end)
             task.spawn(function()
                 task.wait(startDelay)
                 pcall(function() trail.Enabled = true end)
