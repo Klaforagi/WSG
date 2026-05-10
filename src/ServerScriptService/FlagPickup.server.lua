@@ -69,14 +69,25 @@ local function playFlagSound(soundName, part)
     end
 end
 
--- Configuration: possible flag model names to look for
+-- Configuration: exact object names that belong to the flag system.
 local FLAG_NAMES = {"BlueFlag", "RedFlag", "Blue Flag", "Red Flag"}
+local FLAG_TEAMS_BY_NAME = {
+    BlueFlag = "Blue",
+    ["Blue Flag"] = "Blue",
+    RedFlag = "Red",
+    ["Red Flag"] = "Red",
+}
+local FLAG_STAND_TEAMS_BY_NAME = {
+    BlueFlagStand = "Blue",
+    RedFlagStand = "Red",
+}
 
-local function getFlagTeamFromName(name)
-    local n = tostring(name):lower()
-    if string.find(n, "blue") then return "Blue" end
-    if string.find(n, "red") then return "Red" end
-    return nil
+local function getFlagTeamFromModelName(name)
+    return FLAG_TEAMS_BY_NAME[tostring(name)]
+end
+
+local function getFlagTeamFromStandName(name)
+    return FLAG_STAND_TEAMS_BY_NAME[tostring(name)]
 end
 
 local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=CFrame}
@@ -229,7 +240,7 @@ local function respawnFlag(team)
     -- remove any existing flag models in the world (dropped or misplaced) to avoid duplicates
     for _, child in ipairs(Map:GetChildren()) do
         if child and child:IsA("Model") then
-            local childTeam = getFlagTeamFromName(child.Name)
+            local childTeam = getFlagTeamFromModelName(child.Name)
             if childTeam == team then
                 pcall(function() child:Destroy() end)
             end
@@ -271,7 +282,7 @@ end
 
 function setupFlagModel(model)
     if not model or not model:IsA("Model") then return end
-    local team = getFlagTeamFromName(model.Name)
+    local team = getFlagTeamFromModelName(model.Name)
     if not team then return end
     local pickupPart = findPickupPart(model)
     if not pickupPart then return end
@@ -620,7 +631,7 @@ end
 -- Stand capture detection: when a player carrying an enemy flag touches their own stand
 local function setupStand(standPart)
     if not standPart or not standPart:IsA("BasePart") then return end
-    local standTeam = getFlagTeamFromName(standPart.Name)
+    local standTeam = getFlagTeamFromStandName(standPart.Name)
     if not standTeam then return end
 
     standPart.Touched:Connect(function(hit)
@@ -738,7 +749,7 @@ local function resetAllFlags()
 
     -- 2) Remove any flag models currently in Map (dropped or leftover)
     for _, child in ipairs(Map:GetChildren()) do
-        local team = getFlagTeamFromName(child.Name)
+        local team = getFlagTeamFromModelName(child.Name)
         if team and child:IsA("Model") then
             child:Destroy()
         end
