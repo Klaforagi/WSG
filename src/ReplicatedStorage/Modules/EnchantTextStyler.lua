@@ -10,12 +10,13 @@ local EnchantTextStyler = {}
 --------------------------------------------------------------------------------
 -- Config
 --------------------------------------------------------------------------------
-local SHIMMER_DURATION     = 3.4
-local SHIMMER_START_OFFSET = -0.62
-local SHIMMER_END_OFFSET   =  0.62
-local SHIMMER_BAND_HALF    =  0.035
-local SHIMMER_EDGE_HALF    =  0.015
 local SHIMMER_BAND_CENTER  =  0.50
+local SHIMMER_BAND_HALF_PX =  2.25
+local SHIMMER_EDGE_HALF_PX =  1.00
+local SHIMMER_PADDING_PX   =  5.50
+local SHIMMER_PIXELS_PER_SECOND = 23.5
+local SHIMMER_MIN_DURATION = 1.2
+local SHIMMER_MAX_DURATION = 4.0
 
 local SHIMMER_CONFIGS = {
     Fiery     = { baseColor = Color3.fromRGB(215,  80,  15),  brightColor = Color3.fromRGB(255, 248, 120) },
@@ -42,11 +43,38 @@ local activeEffects = setmetatable({}, {__mode = "k"})
 -- The label keeps rendering normally; only the text color brightens as the band
 -- pass over it, which avoids the glyph-shaped artifacts caused by text masking.
 --------------------------------------------------------------------------------
-local function createShimmerSequence(baseColor, brightColor)
-    local bandStart = SHIMMER_BAND_CENTER - SHIMMER_BAND_HALF
-    local bandPeak1 = SHIMMER_BAND_CENTER - SHIMMER_EDGE_HALF
-    local bandPeak2 = SHIMMER_BAND_CENTER + SHIMMER_EDGE_HALF
-    local bandEnd = SHIMMER_BAND_CENTER + SHIMMER_BAND_HALF
+local function getShimmerMetrics(label)
+    local width = math.max(label.AbsoluteSize.X, 48)
+    local bandHalf = math.max(SHIMMER_BAND_HALF_PX / width, 0.012)
+    local edgeHalf = math.max(SHIMMER_EDGE_HALF_PX / width, 0.005)
+    edgeHalf = math.min(edgeHalf, bandHalf - 0.002)
+    if edgeHalf <= 0 then
+        edgeHalf = bandHalf * 0.5
+    end
+
+    local padding = math.max(SHIMMER_PADDING_PX / width, 0.02)
+    local startOffset = -(0.5 + bandHalf + padding)
+    local endOffset = 0.5 + bandHalf + padding
+    local duration = math.clamp(
+        ((endOffset - startOffset) * width) / SHIMMER_PIXELS_PER_SECOND,
+        SHIMMER_MIN_DURATION,
+        SHIMMER_MAX_DURATION
+    )
+
+    return {
+        bandHalf = bandHalf,
+        edgeHalf = edgeHalf,
+        startOffset = startOffset,
+        endOffset = endOffset,
+        duration = duration,
+    }
+end
+
+local function createShimmerSequence(baseColor, brightColor, shimmerMetrics)
+    local bandStart = SHIMMER_BAND_CENTER - shimmerMetrics.bandHalf
+    local bandPeak1 = SHIMMER_BAND_CENTER - shimmerMetrics.edgeHalf
+    local bandPeak2 = SHIMMER_BAND_CENTER + shimmerMetrics.edgeHalf
+    local bandEnd = SHIMMER_BAND_CENTER + shimmerMetrics.bandHalf
 
     return ColorSequence.new({
         ColorSequenceKeypoint.new(0.00, baseColor),
@@ -58,19 +86,19 @@ local function createShimmerSequence(baseColor, brightColor)
     })
 end
 
-local function createGradient(label, baseColor, brightColor)
+local function createGradient(label, baseColor, brightColor, shimmerMetrics)
     local gradient = Instance.new("UIGradient")
-    gradient.Offset = Vector2.new(SHIMMER_START_OFFSET, 0)
-    gradient.Color = createShimmerSequence(baseColor, brightColor)
+    gradient.Offset = Vector2.new(shimmerMetrics.startOffset, 0)
+    gradient.Color = createShimmerSequence(baseColor, brightColor, shimmerMetrics)
     gradient.Parent = label
     return gradient
 end
 
-local function startTween(gradient)
+local function startTween(gradient, shimmerMetrics)
     local tween = TweenService:Create(
         gradient,
-        TweenInfo.new(SHIMMER_DURATION, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1),
-        { Offset = Vector2.new(SHIMMER_END_OFFSET, 0) }
+        TweenInfo.new(shimmerMetrics.duration, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1),
+        { Offset = Vector2.new(shimmerMetrics.endOffset, 0) }
     )
     tween:Play()
     return tween
@@ -114,8 +142,9 @@ local function applyShimmer(label, baseColor, brightColor)
     stroke.Transparency = 0.2
     stroke.Parent       = label
 
-    local gradient = createGradient(label, baseColor, brightColor)
-    local tween = startTween(gradient)
+    local shimmerMetrics = getShimmerMetrics(label)
+    local gradient = createGradient(label, baseColor, brightColor, shimmerMetrics)
+    local tween = startTween(gradient, shimmerMetrics)
 
     local effect = {
         gradient = gradient,
