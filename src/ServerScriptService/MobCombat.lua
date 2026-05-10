@@ -556,6 +556,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         isAttacking = false
     end
 
+    local areaCenter, areaSize, areaLockActive
+
     local prevHealth = humanoid.Health
     updateSpeedByState()
     humanoid.HealthChanged:Connect(function(newHealth)
@@ -569,12 +571,18 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
             -- Goblin-specific flavor: 25% chance to play GoblinDeath when damaged (3s shared cooldown).
             playGoblinDeath()
 
+            local suppressAggroUntil = humanoid:GetAttribute("SuppressMobAggroUntil")
             local attackerId = humanoid:GetAttribute("lastDamagerUserId")
+            if type(suppressAggroUntil) == "number" and suppressAggroUntil >= os.clock() then
+                attackerId = nil
+            end
             if attackerId then
                 local attacker = Players:GetPlayerByUserId(attackerId)
                 if attacker and attacker.Character then
                     local aHum = attacker.Character:FindFirstChildOfClass("Humanoid")
                     if aHum and aHum.Health > 0 then
+                        areaLockActive = false
+                        stopWalking()
                         aggroPlayer = attacker
                         aggroExpiry = os.clock() + AGGRO_DURATION
                     end
@@ -586,9 +594,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         prevHealth = newHealth
     end)
 
-    local areaCenter = areaPart and areaPart:IsA("BasePart") and areaPart.Position or nil
-    local areaSize = areaPart and areaPart:IsA("BasePart") and areaPart.Size or nil
-    local areaLockActive = areaPart and areaPart:IsA("BasePart") or false
+    areaCenter = areaPart and areaPart:IsA("BasePart") and areaPart.Position or nil
+    areaSize = areaPart and areaPart:IsA("BasePart") and areaPart.Size or nil
+    areaLockActive = areaPart and areaPart:IsA("BasePart") or false
     local AREA_LOCK_PADDING = 1.5
     local lastWander = 0
     local wanderCooldown = math.random(3, 7)

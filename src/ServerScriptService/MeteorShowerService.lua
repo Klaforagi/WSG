@@ -122,12 +122,14 @@ local function getCompletionRewardCoins()
 end
 
 local function fireShardProgress(player, current, required)
+    if required <= 0 then return end
     pcall(function()
         ShardProgressRemote:FireClient(player, current, required)
     end)
 end
 
 local function awardObjectiveCompletion(player, popupPosition)
+    if getRequiredShards() <= 0 then return end
     local rewardCoins = getCompletionRewardCoins()
     if rewardCoins > 0 and CurrencyService and CurrencyService.AddCoins then
         pcall(function()
@@ -183,10 +185,11 @@ end
 
 local function incrementShardObjective(player, popupPosition)
     if not _active then return end
+    local required = getRequiredShards()
+    if required <= 0 then return end
     if tryExternalObjectiveProgress(player) then return end
 
     local userId = player.UserId
-    local required = getRequiredShards()
 
     if _playerCompleted[userId] then
         fireShardProgress(player, required, required)
@@ -530,9 +533,9 @@ local function spawnShard(position)
     light.Range = Config.SHARD_LIGHT_RANGE
     light.Parent = shard
 
-    local bobInfo = TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+    local bobInfo = TweenInfo.new(Config.SHARD_BOB_DURATION or 2.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
     local bobTween = TweenService:Create(shard, bobInfo, {
-        CFrame = shard.CFrame + Vector3.new(0, 1.5, 0),
+        CFrame = shard.CFrame + Vector3.new(0, Config.SHARD_BOB_DISTANCE or 1.5, 0),
     })
     bobTween:Play()
 

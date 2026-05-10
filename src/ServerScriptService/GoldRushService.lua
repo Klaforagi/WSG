@@ -79,6 +79,7 @@ end
 
 local function fireProgress(player)
     local required = getRequiredCoins()
+    if required <= 0 then return end
     local current = math.min(_playerProgress[player.UserId] or 0, required)
     pcall(function()
         ProgressRemote:FireClient(player, current, required)
@@ -104,6 +105,7 @@ local function grantCoins(player, amount, source)
 end
 
 local function awardCompletion(player, popupPosition)
+    if getRequiredCoins() <= 0 then return end
     local userId = player.UserId
     if _playerCompleted[userId] then return end
 
@@ -257,15 +259,19 @@ local function spawnPickup(position)
 
         local granted = grantCoins(player, getPickupRewardCoins(), "GoldRushPickup")
         if granted > 0 then
-            _playerProgress[player.UserId] = math.min((_playerProgress[player.UserId] or 0) + 1, getRequiredCoins())
-            fireProgress(player)
             pcall(function()
                 CoinCollectedRemote:FireClient(player, pickup.Position, granted, "GoldRushPickup")
             end)
 
-            if (_playerProgress[player.UserId] or 0) >= getRequiredCoins() then
-                awardCompletion(player, pickup.Position)
+            local required = getRequiredCoins()
+            if required > 0 then
+                _playerProgress[player.UserId] = math.min((_playerProgress[player.UserId] or 0) + 1, required)
                 fireProgress(player)
+
+                if (_playerProgress[player.UserId] or 0) >= required then
+                    awardCompletion(player, pickup.Position)
+                    fireProgress(player)
+                end
             end
         end
 
