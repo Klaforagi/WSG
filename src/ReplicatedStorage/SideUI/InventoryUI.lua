@@ -1596,10 +1596,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- SIZE ROLL SYSTEM — show size info in detail panel (coloured tier + white %)
         local pct = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
-        detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
+        local detailSizeText = tier .. "  " .. tostring(math.floor(pct)) .. "%"
         if EnchantTextStyler then
-            EnchantTextStyler.ApplySize(detailSize, tier)
-            detailSize.Text = tier .. "  " .. tostring(math.floor(pct)) .. "%"
+            EnchantTextStyler.ApplySize(detailSize, tier, detailSizeText)
+        else
+            detailSize.Text = detailSizeText
         end
 
         -- ENCHANT SYSTEM — show enchant name in detail panel
@@ -1752,7 +1753,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.Text = tier
             tierLabel.ZIndex = 7
             if EnchantTextStyler then
-                EnchantTextStyler.ApplySize(tierLabel, tier)
+                EnchantTextStyler.ApplySize(tierLabel, tier, tier)
             end
             local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
             tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 18
@@ -1768,17 +1769,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.AnchorPoint = Vector2.new(1, 1)
         sizeLabel.Position = UDim2.new(1, -px(4), 0.96, 0)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
-        sizeLabel.Text = tostring(math.floor(pct)) .. "%"
+        local sizePercentText = tostring(math.floor(pct)) .. "%"
         if EnchantTextStyler then
-            EnchantTextStyler.ApplySize(sizeLabel, tier)
-            sizeLabel.Text = tostring(math.floor(pct)) .. "%"
+            EnchantTextStyler.ApplySize(sizeLabel, tier, sizePercentText)
+        else
+            sizeLabel.Text = sizePercentText
         end
         local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
         pctConstraint.MinTextSize = 8
         pctConstraint.MaxTextSize = 18
-        local pctStroke = Instance.new("UIStroke", sizeLabel)
-        pctStroke.Color = Color3.fromRGB(0, 0, 0)
-        pctStroke.Thickness = 1.5; pctStroke.Transparency = 0.15
 
         -- ── Equipped bar indicator (green bottom strip) ─────────────────
         local eqBar = Instance.new("Frame", card)
