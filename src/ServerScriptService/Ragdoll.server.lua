@@ -18,6 +18,20 @@ local function makePartsPhysical(model)
                 p.Massless   = true
                 p.CanTouch   = false
                 p.CanQuery   = false
+            elseif p.Parent and p.Parent:IsA("Accessory") then
+                -- Player avatar accessories should stay attached visually, but
+                -- letting their handles collide can destabilize the ragdoll.
+                p.CanCollide = false
+                p.Massless   = true
+                p.CanTouch   = false
+                p.CanQuery   = false
+            elseif p.Name == "HumanoidRootPart" then
+                -- Keep the invisible root out of ragdoll contact so it cannot
+                -- act like a rigid support under the torso.
+                p.CanCollide = false
+                p.Massless   = true
+                p.CanTouch   = false
+                p.CanQuery   = false
             else
                 p.CanCollide = true
                 p.Massless = false
@@ -55,6 +69,12 @@ local function convertMotorsToConstraints(model)
             -- Revert to original loose joint behavior to match NPC ragdolls.
             bsc.LimitsEnabled = false
             bsc.Parent = model
+
+            local noCollision = Instance.new("NoCollisionConstraint")
+            noCollision.Name = "_rag_ncc_" .. motor.Name
+            noCollision.Part0 = p0
+            noCollision.Part1 = p1
+            noCollision.Parent = model
 
             pcall(function() motor:Destroy() end)
         end
@@ -146,9 +166,12 @@ local function ragdollModel(model)
                 end
             end
         end
+        pcall(function() humanoid.AutoRotate = false end)
         pcall(function() humanoid.PlatformStand = true end)
+        pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Physics) end)
+        pcall(function() humanoid:ChangeState(Enum.HumanoidStateType.Dead) end)
 
-        -- Keep original behavior: do not destroy Animator here and do not special-case HRP collision.
+        -- Keep original behavior: do not destroy Animator here.
     end
 end
 

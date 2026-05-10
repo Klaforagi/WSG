@@ -41,6 +41,8 @@ local prevCameraOffset      = nil
 local prevAutoRotate        = nil
 local renderConn            = nil
 local unequipVersion        = 0      -- bump to cancel pending delayed checks
+local ApplyDefaultCamera
+local HasEquippedWeapon
 
 -- ── helpers ────────────────────────────────────────────────────
 local function isWeapon(tool)
@@ -73,9 +75,20 @@ local function getHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
+local function shouldSuspendWeaponCamera()
+    local char = player.Character
+    if not char then return true end
+    if char:GetAttribute("_ragdolled") then return true end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then return true end
+    return hum.Health <= 0
+end
+
 -- ── enable / disable ──────────────────────────────────────────
 local function ApplyWeaponCamera()
     if active then return end
+    if shouldSuspendWeaponCamera() then return end
     active = true
 
     -- save & apply mouse lock
@@ -96,6 +109,10 @@ local function ApplyWeaponCamera()
     -- each frame: enforce settings + force character to face camera direction
     renderConn = RunService.RenderStepped:Connect(function()
         if not active then return end -- guard against stale frame loops
+        if shouldSuspendWeaponCamera() or not HasEquippedWeapon() then
+            ApplyDefaultCamera()
+            return
+        end
 
         -- re-enforce mouse lock (Roblox can reset it)
         if UserInputService.MouseBehavior ~= Enum.MouseBehavior.LockCenter then
@@ -128,7 +145,7 @@ local function ApplyWeaponCamera()
     end)
 end
 
-local function ApplyDefaultCamera()
+ApplyDefaultCamera = function()
     if not active then return end
     active = false  -- set BEFORE disconnect so the guard stops the loop instantly
 
@@ -170,7 +187,9 @@ local function ApplyDefaultCamera()
 end
 
 -- ── recalculate whether lock should be on ─────────────────────
-local function HasEquippedWeapon()
+HasEquippedWeapon = function()
+    if shouldSuspendWeaponCamera() then return false end
+
     local char = player.Character
     if not char then return false end
     for _, child in ipairs(char:GetChildren()) do
@@ -240,6 +259,18 @@ local function onCharacter(char)
     -- reset state on respawn
     equipped = {}
     if active then ApplyDefaultCamera() end
+
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if hum then
+        hum.Died:Connect(function()
+            ApplyDefaultCamera()
+        end)
+    end
+    char:GetAttributeChangedSignal("_ragdolled"):Connect(function()
+        if char:GetAttribute("_ragdolled") then
+            ApplyDefaultCamera()
+        end
+    end)
 
     for _, child in ipairs(char:GetChildren()) do
         if child:IsA("Tool") then watchTool(child) end
