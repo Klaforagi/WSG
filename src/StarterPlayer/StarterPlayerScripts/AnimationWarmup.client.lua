@@ -5,7 +5,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local BANDAGE_ANIM = "rbxassetid://139297808237661"
-local warmedCharacters = setmetatable({}, { __mode = "k" })
+local warmedAnimators = setmetatable({}, { __mode = "k" })
+local watchedCharacters = setmetatable({}, { __mode = "k" })
 
 local function collectAnimationIds()
 	local ids = {}
@@ -51,22 +52,15 @@ local function collectAnimationIds()
 	return ids
 end
 
-local function warmCharacterAnimations(character)
-	if not character or warmedCharacters[character] then
+local allAnimationIds = collectAnimationIds()
+
+local function warmAnimatorAnimations(animator)
+	if not animator or warmedAnimators[animator] then
 		return
 	end
-	warmedCharacters[character] = true
+	warmedAnimators[animator] = true
 
-	local humanoid = character:WaitForChild("Humanoid")
-	local animator = humanoid:WaitForChild("Animator", 10)
-	if not animator then
-		warmedCharacters[character] = nil
-		return
-	end
-
-	local ids = collectAnimationIds()
-
-	for _, id in ipairs(ids) do
+	for _, id in ipairs(allAnimationIds) do
 		local anim = Instance.new("Animation")
 		anim.AnimationId = id
 
@@ -80,21 +74,45 @@ local function warmCharacterAnimations(character)
 			task.wait()
 			track:Stop(0)
 		else
+			warmedAnimators[animator] = nil
 			warn("Failed to warm animation:", id)
 		end
 	end
 end
 
+local function watchCharacter(character)
+	if not character or watchedCharacters[character] then
+		return
+	end
+	watchedCharacters[character] = true
+
+	for _, desc in ipairs(character:GetDescendants()) do
+		if desc:IsA("Animator") then
+			task.defer(function()
+				warmAnimatorAnimations(desc)
+			end)
+		end
+	end
+
+	character.DescendantAdded:Connect(function(desc)
+		if desc:IsA("Animator") then
+			task.defer(function()
+				warmAnimatorAnimations(desc)
+			end)
+		end
+	end)
+end
+
 local function watchPlayer(targetPlayer)
 	targetPlayer.CharacterAdded:Connect(function(character)
 		task.defer(function()
-			warmCharacterAnimations(character)
+			watchCharacter(character)
 		end)
 	end)
 
 	if targetPlayer.Character then
 		task.defer(function()
-			warmCharacterAnimations(targetPlayer.Character)
+			watchCharacter(targetPlayer.Character)
 		end)
 	end
 end

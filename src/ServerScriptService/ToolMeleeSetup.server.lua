@@ -88,6 +88,7 @@ end
 
 local swingEvent    = ensureEvent("MeleeSwing")   -- client → server
 local meleeHit      = ensureEvent("MeleeHit")      -- server → client (damage popup)
+local meleeSwingVisual = ensureEvent("MeleeSwingVisual") -- server → clients (observer swing playback)
 local KillFeedEvent = ensureEvent("KillFeed")
 local HeadshotEvent = ensureEvent("Headshot")
 
@@ -174,6 +175,133 @@ local function getScaledHitboxTiming(baseDelay, baseActive, sizePercent)
     return baseDelay * sm, baseActive * sm
 end
 
+local function normalizeAnimationId(animId)
+    if not animId or animId == "" then return nil end
+    local normalized = tostring(animId)
+    if tonumber(normalized) then
+        normalized = "rbxassetid://" .. normalized
+    end
+    return normalized
+end
+
+local function collectConfiguredAnimationIds(cfg)
+    local ids = {}
+    local seen = {}
+
+    local function add(animId)
+        local normalized = normalizeAnimationId(animId)
+        if not normalized or seen[normalized] then return end
+        seen[normalized] = true
+        table.insert(ids, normalized)
+    end
+
+    if cfg then
+        if type(cfg.swing_anim_ids) == "table" then
+            for _, animId in ipairs(cfg.swing_anim_ids) do
+                add(animId)
+            end
+        end
+        add(cfg.swing_anim_id)
+    end
+
+    return ids
+end
+
+local function collectAllMeleeAnimationIds()
+    local ids = {}
+    local seen = {}
+
+    local function add(animId)
+        local normalized = normalizeAnimationId(animId)
+        if not normalized or seen[normalized] then return end
+        seen[normalized] = true
+        table.insert(ids, normalized)
+    end
+
+    if MeleeCfg and MeleeCfg.presets then
+        for _, preset in pairs(MeleeCfg.presets) do
+            if type(preset.swing_anim_ids) == "table" then
+                for _, animId in ipairs(preset.swing_anim_ids) do
+                    add(animId)
+                end
+            end
+            add(preset.swing_anim_id)
+        end
+    end
+
+    return ids
+end
+
+local ALL_MELEE_ANIMATION_IDS = collectAllMeleeAnimationIds()
+local humanoidSwingTrackCache = setmetatable({}, { __mode = "k" })
+local swingTrackPlayIds = setmetatable({}, { __mode = "k" })
+
+local function getOrCreateAnimator(humanoid)
+    if not humanoid then return nil end
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = humanoid
+    end
+    return animator
+end
+
+local function getOrCreateSwingTrack(humanoid, animId)
+    local normalized = normalizeAnimationId(animId)
+    if not humanoid or not normalized then return nil end
+
+    local cache = humanoidSwingTrackCache[humanoid]
+    if not cache then
+        cache = {}
+        humanoidSwingTrackCache[humanoid] = cache
+    end
+
+    local cachedTrack = cache[normalized]
+    if cachedTrack then
+        local ok = pcall(function()
+            cachedTrack.Priority = cachedTrack.Priority
+        end)
+        if ok then
+            return cachedTrack
+        end
+        cache[normalized] = nil
+    end
+
+    local animator = getOrCreateAnimator(humanoid)
+    if not animator then return nil end
+
+    local anim = Instance.new("Animation")
+    anim.AnimationId = normalized
+
+    local okLoad, track = pcall(function()
+        return animator:LoadAnimation(anim)
+    end)
+    anim:Destroy()
+    if not okLoad or not track then return nil end
+
+    track.Priority = Enum.AnimationPriority.Action4
+    cache[normalized] = track
+    return track
+end
+
+local function stopCachedSwingTracks(humanoid, exceptTrack)
+    local cache = humanoidSwingTrackCache[humanoid]
+    if not cache then return end
+
+    for _, track in pairs(cache) do
+        if track ~= exceptTrack then
+            pcall(function() track:Stop(0) end)
+        end
+    end
+end
+
+local function warmHumanoidSwingTracks(humanoid, animIds)
+    if not humanoid then return end
+    for _, animId in ipairs(animIds or ALL_MELEE_ANIMATION_IDS) do
+        getOrCreateSwingTrack(humanoid, animId)
+    end
+end
+
 local function configureSwingTrailAppearance(trail, tool, activeDuration)
     if not trail or not trail:IsA("Trail") then return end
 
@@ -226,6 +354,23 @@ local function configureSwingTrailAppearance(trail, tool, activeDuration)
         })
         trail.LightEmission = 0
         trail.LightInfluence = 0
+    end
+end
+
+local function watchPlayerSwingAnimations(player)
+    local function warmCharacter(character)
+        task.defer(function()
+            if not character then return end
+            local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10)
+            if humanoid then
+                warmHumanoidSwingTracks(humanoid)
+            end
+        end)
+    end
+
+    player.CharacterAdded:Connect(warmCharacter)
+    if player.Character then
+        warmCharacter(player.Character)
     end
 end
 
@@ -739,129 +884,10 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             resolvedAnimId = tostring(cfg.swing_anim_id)
         end
 
-        local animObj = nil
-        if resolvedAnimId and resolvedAnimId ~= "" then
-            local a = Instance.new("Animation")
-            local animId = resolvedAnimId
-            if not animId:match("^rbxassetid://") then
-                if tonumber(animId) then
-                    animId = "rbxassetid://" .. animId
-                end
-            end
-            a.AnimationId = animId
-            animObj = a
-        end
-
-        -- find the right-arm Motor6D so we can restore it after animation/tween
-        local motor = nil
-        do
-            local char = player.Character
-            if char then
-                local torso = char:FindFirstChild("Torso")
-                if torso then motor = torso:FindFirstChild("Right Shoulder") end
-                if not motor then
-                    local rua = char:FindFirstChild("RightUpperArm")
-                    if rua then motor = rua:FindFirstChild("RightShoulder") end
-                end
-                if motor and not motor:IsA("Motor6D") then motor = nil end
-            end
-        end
-
-        local originalC1 = motor and motor.C1 or nil
-
-        if animObj then
+        local animId = normalizeAnimationId(resolvedAnimId)
+        if animId then
             pcall(function()
-                local animator = hum:FindFirstChildOfClass("Animator")
-                if not animator then
-                    animator = Instance.new("Animator")
-                    animator.Parent = hum
-                end
-
-                local okLoad, track = pcall(function() return animator:LoadAnimation(animObj) end)
-                if not okLoad or not track then return end
-                track.Priority = Enum.AnimationPriority.Action
-
-                -- Scale animation speed by size only: baseStepCd/cd = 1/sizeSpeedMult
-                -- so bigger weapons play the animation proportionally slower.
-                local fallbackSpeed = math.clamp(baseStepCd / cd, 0.25, 4.0)
-
-                track.Stopped:Connect(function()
-                    if originalC1 and motor and motor.Parent then
-                        pcall(function() motor.C1 = originalC1 end)
-                    end
-                end)
-
-                -- Pass speed as 3rd arg to Play() — omitting it defaults to 1.0
-                -- which silently overrides any prior AdjustSpeed call.
-                pcall(function() track:Play(0.1, 1, fallbackSpeed) end)
-
-                -- Belt-and-suspenders AdjustSpeed after Play
-                pcall(function() track:AdjustSpeed(fallbackSpeed) end)
-
-                -- Once track.Length resolves, refine with exact value
-                task.spawn(function()
-                    task.wait(0.1)
-                    local realLength = 0
-                    pcall(function() realLength = track.Length end)
-                    if realLength > 0 and cd > 0 then
-                        local preciseSpeed = math.clamp(realLength / cd, 0.25, 4.0)
-                        if math.abs(preciseSpeed - fallbackSpeed) > 0.05 then
-                            pcall(function() track:AdjustSpeed(preciseSpeed) end)
-                        end
-                    end
-                end)
-
-                local stopDelay = math.max(cd * 1.05, 0.15)
-                task.delay(stopDelay, function()
-                    if track then pcall(function() track:Stop() end) end
-                    if animObj and animObj:IsA("Animation") and animObj.Parent == nil then
-                        pcall(function() animObj:Destroy() end)
-                    end
-                    if originalC1 and motor and motor.Parent then
-                        pcall(function() motor.C1 = originalC1 end)
-                    end
-                end)
-            end)
-        else
-            -- Procedural swing fallback: tween Motor6D on the right arm
-            pcall(function()
-                local char = player.Character
-                if not char then return end
-                if not motor then return end
-
-                local raiseGoal = originalC1 * CFrame.Angles(math.rad(-90), 0, 0)
-                local slashGoal = originalC1 * CFrame.Angles(math.rad(90), 0, 0)
-
-                -- Scale procedural timings to match size-scaled cooldown
-                local DEFAULT_PROC_TOTAL = 0.48
-                local scale = 1
-                if cd > 0 then scale = cd / DEFAULT_PROC_TOTAL end
-
-                local raiseTI  = TweenInfo.new(0.12 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-                local slashTI  = TweenInfo.new(0.14 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-                local returnTI = TweenInfo.new(0.22 * scale, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
-
-                local raiseTween = TweenService:Create(motor, raiseTI, { C1 = raiseGoal })
-                raiseTween:Play()
-                raiseTween.Completed:Once(function()
-                    local slashTween = TweenService:Create(motor, slashTI, { C1 = slashGoal })
-                    slashTween:Play()
-                    slashTween.Completed:Once(function()
-                        local returnTween = TweenService:Create(motor, returnTI, { C1 = originalC1 })
-                        returnTween:Play()
-                        returnTween.Completed:Once(function()
-                            if originalC1 and motor and motor.Parent then
-                                pcall(function() motor.C1 = originalC1 end)
-                            end
-                        end)
-                    end)
-                end)
-
-                task.delay(math.max(cd * 1.2, 0.5), function()
-                    if originalC1 and motor and motor.Parent then
-                        pcall(function() motor.C1 = originalC1 end)
-                    end
-                end)
+                meleeSwingVisual:FireAllClients(player, animId, cd, baseStepCd)
             end)
         end
     end
