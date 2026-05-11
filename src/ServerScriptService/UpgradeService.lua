@@ -63,6 +63,7 @@ end
 -- Per-player state: playerUpgrades[player] = { melee_weapon = N, ranged_weapon = N }
 --------------------------------------------------------------------------------
 local playerUpgrades = {}
+local stateChangedEvent = Instance.new("BindableEvent")
 
 local function copyUpgradeData(data)
 	return DataStoreOps.DeepCopy(data)
@@ -277,6 +278,7 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 
 	-- Push updated state to client
 	pushState(player)
+	stateChangedEvent:Fire(player, upgradeId, newLevel, copyUpgradeData(levels))
 
 	return true, "Upgraded"
 end
@@ -299,6 +301,10 @@ function UpgradeService:GetAllLevels(player)
 		copy[k] = v
 	end
 	return copy
+end
+
+function UpgradeService:GetStateChangedEvent()
+	return stateChangedEvent.Event
 end
 
 --- Returns the damage multiplier for melee weapons (PvE, uncapped).
