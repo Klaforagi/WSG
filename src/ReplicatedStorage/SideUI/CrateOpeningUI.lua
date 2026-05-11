@@ -77,6 +77,15 @@ local function px(base)
     return math.max(1, math.round(base * screenY / 1080))
 end
 
+local function pxWidth(base)
+    local cam = workspace.CurrentCamera
+    local screenX = 1920
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 then
+        screenX = cam.ViewportSize.X
+    end
+    return math.max(1, math.round(base * screenX / 1920))
+end
+
 -- Colors
 local GOLD      = Color3.fromRGB(255, 215, 80)
 local WHITE     = Color3.fromRGB(255, 255, 255)
@@ -640,6 +649,101 @@ function CrateOpeningUI.Init(playerGui)
     cnCorner.CornerRadius = UDim.new(0, px(8))
     cnCorner.Parent = confirmNo
 
+    local function applyResponsiveLayout()
+        marker.Size = UDim2.new(0, math.max(2, px(3)), 0, math.max(px(CARD_H + 40), pxWidth(220)))
+
+        local clipHeight = math.max(px(CARD_H + 30), pxWidth(230))
+        scrollClip.Size = UDim2.new(1, 0, 0, clipHeight)
+        scrollClip.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+        local resultWidth = math.max(px(360), pxWidth(420))
+        local resultHeight = math.max(px(360), pxWidth(360))
+        resultFrame.Size = UDim2.new(0, resultWidth, 0, resultHeight)
+        resultFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+        rfCorner.CornerRadius = UDim.new(0, math.max(px(16), pxWidth(16)))
+
+        resultTitle.TextSize = math.max(14, math.floor(px(16)))
+        resultTitle.Size = UDim2.new(1, 0, 0, px(24))
+        resultTitle.Position = UDim2.new(0, 0, 0, px(14))
+
+        local imageSize = math.max(px(100), pxWidth(120))
+        resultImage.Size = UDim2.new(0, imageSize, 0, imageSize)
+        resultImage.Position = UDim2.new(0.5, 0, 0, px(42))
+
+        resultName.TextSize = math.max(24, math.floor(px(28)))
+        resultName.Size = UDim2.new(1, -pxWidth(16), 0, px(40))
+        resultName.Position = UDim2.new(0, pxWidth(8), 0, px(150))
+
+        resultRarity.TextSize = math.max(14, math.floor(px(16)))
+        resultRarity.Size = UDim2.new(1, 0, 0, px(22))
+        resultRarity.Position = UDim2.new(0, 0, 0, px(194))
+
+        resultSizeLabel.TextSize = math.max(18, math.floor(px(22)))
+        resultSizeLabel.Size = UDim2.new(1, 0, 0, px(26))
+        resultSizeLabel.Position = UDim2.new(0, 0, 0, px(222))
+
+        resultEnchantLabel.TextSize = math.max(16, math.floor(px(18)))
+        resultEnchantLabel.Size = UDim2.new(1, 0, 0, px(24))
+        resultEnchantLabel.Position = UDim2.new(0, 0, 0, px(248))
+
+        closeBtn.TextSize = math.max(14, math.floor(px(16)))
+        closeBtn.Size = UDim2.new(0, math.max(px(140), pxWidth(160)), 0, px(40))
+        closeBtn.Position = UDim2.new(0.5, 0, 1, -px(16))
+        cbCorner.CornerRadius = UDim.new(0, px(10))
+
+        btnRow.Size = UDim2.new(1, -pxWidth(24), 0, px(44))
+        btnRow.Position = UDim2.new(0.5, 0, 1, -px(14))
+
+        keepBtn.TextSize = math.max(15, math.floor(px(17)))
+        keepBtn.Size = UDim2.new(0.55, -px(4), 1, 0)
+        keepCorner.CornerRadius = UDim.new(0, px(10))
+
+        salvageBtn.TextSize = math.max(13, math.floor(px(15)))
+        salvageBtn.Size = UDim2.new(0.45, -px(4), 1, 0)
+        salvageBtn.Position = UDim2.new(0.55, px(4), 0, 0)
+        salvageCorner.CornerRadius = UDim.new(0, px(10))
+        for _, label in ipairs(salvageTextLabels) do
+            label.TextSize = salvageBtn.TextSize
+        end
+
+        confirmFrame.Size = UDim2.new(0, math.max(px(320), pxWidth(360)), 0, math.max(px(180), pxWidth(200)))
+        confirmFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+        cfCorner.CornerRadius = UDim.new(0, px(14))
+
+        confirmMsg.TextSize = math.max(14, math.floor(px(16)))
+        confirmMsg.Size = UDim2.new(1, -pxWidth(24), 0, px(70))
+        confirmMsg.Position = UDim2.new(0, pxWidth(12), 0, px(16))
+
+        cfBtnRow.Size = UDim2.new(1, -pxWidth(24), 0, px(40))
+        cfBtnRow.Position = UDim2.new(0.5, 0, 1, -px(16))
+
+        confirmYes.TextSize = math.max(13, math.floor(px(14)))
+        cyCorner.CornerRadius = UDim.new(0, px(8))
+
+        confirmNo.TextSize = math.max(13, math.floor(px(14)))
+        cnCorner.CornerRadius = UDim.new(0, px(8))
+    end
+
+    applyResponsiveLayout()
+
+    local viewportConn = nil
+    local function bindViewportResize()
+        if viewportConn then
+            viewportConn:Disconnect()
+            viewportConn = nil
+        end
+        local cam = workspace.CurrentCamera
+        if cam then
+            viewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsiveLayout)
+        end
+    end
+
+    bindViewportResize()
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        bindViewportResize()
+        applyResponsiveLayout()
+    end)
+
     ---------------------------------------------------------------------------
     -- DECISION STATE
     ---------------------------------------------------------------------------
@@ -982,6 +1086,8 @@ function CrateOpeningUI.Init(playerGui)
     function CrateOpeningUI.Play(crateId, resultData, coinApi)
         if isAnimating then return end
         isAnimating = true
+
+        applyResponsiveLayout()
 
         local resolvedCrateId = resolveCrateId(crateId)
         local crateDef = CrateConfig and CrateConfig.Crates[resolvedCrateId]
