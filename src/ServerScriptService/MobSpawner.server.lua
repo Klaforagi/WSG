@@ -43,6 +43,11 @@ if not zombieKillEvent then
     zombieKillEvent.Parent = ReplicatedStorage
 end
 
+local function isMatchActive()
+    local matchState = script.Parent:GetAttribute("MatchState")
+    return matchState == "Game" or matchState == "SuddenDeath"
+end
+
 ---------------------------------------------------------------------------
 -- Shared helpers
 ---------------------------------------------------------------------------
@@ -349,36 +354,38 @@ end
 ---------------------------------------------------------------------------
 task.spawn(function()
     while true do
-        local portals = findPortals()
-        local aliveTotal = countAliveMobs()
+        if isMatchActive() then
+            local portals = findPortals()
+            local aliveTotal = countAliveMobs()
 
-        if #templates > 0 and #portals > 0 and #weightedPool > 0 then
-            for _ = 1, SPAWN_BATCH do
-                if aliveTotal >= MAX_TOTAL then
-                    break
-                end
-
-                local candidatePortals = {}
-                for _, entry in ipairs(portals) do
-                    if countAliveInPortalGroup(entry.groupName) < MAX_PER_PORTAL then
-                        table.insert(candidatePortals, entry)
+            if #templates > 0 and #portals > 0 and #weightedPool > 0 then
+                for _ = 1, SPAWN_BATCH do
+                    if aliveTotal >= MAX_TOTAL then
+                        break
                     end
-                end
 
-                if #candidatePortals == 0 then
-                    break
-                end
+                    local candidatePortals = {}
+                    for _, entry in ipairs(portals) do
+                        if countAliveInPortalGroup(entry.groupName) < MAX_PER_PORTAL then
+                            table.insert(candidatePortals, entry)
+                        end
+                    end
 
-                local entry = candidatePortals[math.random(1, #candidatePortals)]
-                local chosen = pickWeightedTemplate()
-                if not chosen then
-                    warn("[MobSpawner] No enabled templates in weighted pool; skipping spawn")
-                    break
-                end
+                    if #candidatePortals == 0 then
+                        break
+                    end
 
-                local mob = spawnMobFromTemplate(entry, chosen)
-                if mob then
-                    aliveTotal = aliveTotal + 1
+                    local entry = candidatePortals[math.random(1, #candidatePortals)]
+                    local chosen = pickWeightedTemplate()
+                    if not chosen then
+                        warn("[MobSpawner] No enabled templates in weighted pool; skipping spawn")
+                        break
+                    end
+
+                    local mob = spawnMobFromTemplate(entry, chosen)
+                    if mob then
+                        aliveTotal = aliveTotal + 1
+                    end
                 end
             end
         end

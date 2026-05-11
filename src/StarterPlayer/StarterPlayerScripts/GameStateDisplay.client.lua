@@ -9,6 +9,12 @@ local NAVY       = Color3.fromRGB(12, 14, 28)
 local GOLD_TEXT   = Color3.fromRGB(255, 215, 80)
 local WHITE       = GOLD_TEXT
 
+local function wireIntermission(ev, setState)
+    ev.OnClientEvent:Connect(function()
+        setState("Intermission")
+    end)
+end
+
 -- UI: compact panel on the right side
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "GameStateUI"
@@ -95,6 +101,8 @@ local function setState(name)
     stateLabel.Text = string.upper(n)
     if n == "Game" then
         stateLabel.TextColor3 = Color3.fromRGB(120, 255, 120)
+    elseif n == "Intermission" then
+        stateLabel.TextColor3 = Color3.fromRGB(255, 220, 120)
     elseif n == "SuddenDeath" or n == "sudden" then
         stateLabel.TextColor3 = Color3.fromRGB(255, 180, 80)
     elseif n == "EndGame" or n == "win" then
@@ -158,6 +166,11 @@ if matchEnd and matchEnd:IsA("RemoteEvent") then
     end)
 end
 
+local intermissionStart = ReplicatedStorage:FindFirstChild("IntermissionStart")
+if intermissionStart and intermissionStart:IsA("RemoteEvent") then
+    wireIntermission(intermissionStart, setState)
+end
+
 -- If events are created later, wire them
 ReplicatedStorage.ChildAdded:Connect(function(child)
     if child.Name == "MatchStart" and child:IsA("RemoteEvent") then
@@ -172,6 +185,8 @@ ReplicatedStorage.ChildAdded:Connect(function(child)
                 setState("EndGame")
             end
         end)
+    elseif child.Name == "IntermissionStart" and child:IsA("RemoteEvent") then
+        wireIntermission(child, setState)
     end
 end)
 
@@ -184,6 +199,8 @@ spawn(function()
     if not ok2 or type(info) ~= "table" then return end
     if info.state == "Game" then
         setState("Game")
+    elseif info.state == "Intermission" then
+        setState("Intermission")
     elseif info.state == "SuddenDeath" then
         setState("SuddenDeath")
     elseif info.state == "EndGame" then

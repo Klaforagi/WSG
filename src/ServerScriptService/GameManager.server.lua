@@ -11,12 +11,14 @@
 local Players         = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local Teams = game:GetService("Teams")
 
 ---------------------------------------------------------------------
 -- Config
 ---------------------------------------------------------------------
 local MATCH_DURATION   = 10 * 60  -- round duration in seconds (600 s = 10 min)
-local END_SCREEN_TIME  = 10       -- seconds the winner screen stays up
+local END_SCREEN_TIME  = 8        -- seconds the winner screen stays up
+local INTERMISSION_DURATION = 60  -- seconds players wait in the lobby between rounds
 local MIN_PLAYERS      = 0        -- set >0 if you want a lobby phase
 
 ---------------------------------------------------------------------
@@ -35,6 +37,7 @@ end
 local ScoreUpdate = ensureRemote("ScoreUpdate")
 local MatchStart  = ensureRemote("MatchStart")
 local MatchEnd    = ensureRemote("MatchEnd")
+local IntermissionStart = ensureRemote("IntermissionStart")
 local AdjustMatchTime = ensureRemote("AdjustMatchTime")
 
 -- Centralized stat service (single source of truth for all stats & events)
@@ -71,9 +74,15 @@ MatchEndedBE.Parent = ServerScriptService
 ---------------------------------------------------------------------
 -- State  (must be declared BEFORE GetMatchState closure captures them)
 ---------------------------------------------------------------------
-local State = "Idle"   -- Idle | Game | SuddenDeath | EndGame
+local State = "Idle"   -- Idle | Game | SuddenDeath | EndGame | Intermission
 local teamScores = { Blue = 0, Red = 0 }
 local matchStartTick = nil
+local intermissionStartTick = nil
+
+local function setMatchState(newState)
+    State = newState
+    ServerScriptService:SetAttribute("MatchState", State)
+end
 
 -- Expose match state as an attribute so other server scripts can poll it
 -- without race conditions on BindableEvent subscriptions.
@@ -98,6 +107,8 @@ GetMatchState.OnServerInvoke = function(player)
         state = State or "Idle",
         matchStartTick = matchStartTick,
         matchDuration = MATCH_DURATION,
+        intermissionStartTick = intermissionStartTick,
+        intermissionDuration = INTERMISSION_DURATION,
         teamScores = { Blue = teamScores.Blue or 0, Red = teamScores.Red or 0 },
     }
 end
@@ -133,60 +144,93 @@ AddScore.Event:Connect(onAddScore)
 ---------------------------------------------------------------------
 -- End match
 ---------------------------------------------------------------------
+local function setPlayersToNeutralLobby()
+    local neutralTeam = Teams:FindFirstChild("Neutral")
+
+    for _, pl in ipairs(Players:GetPlayers()) do
+        pcall(function()
+            if neutralTeam then
+                pl.Team = neutralTeam
+            end
+            pl:SetAttribute("Team", nil)
+            pl:LoadCharacter()
+        end)
+    end
+end
+
+local function registerMatchOutcome(winnerTeam)
+    if not StatService then return end
+
+    for _, pl in ipairs(Players:GetPlayers()) do
+        pcall(function()
+            StatService:RegisterMatchPlayed(pl)
+            if winnerTeam and pl.Team and pl.Team.Name == winnerTeam then
+                StatService:RegisterMatchWon(pl)
+            end
+        end)
+    end
+end
+
+local function resetMatchForIntermission()
+    local ResetFlags = ServerScriptService:FindFirstChild("ResetFlags")
+    if ResetFlags then
+        pcall(function() ResetFlags:Fire("destroy") end)
+    end
+
+    for _, pl in ipairs(Players:GetPlayers()) do
+        pcall(function()
+            if StatService then
+                StatService:ResetMatchStats(pl)
+            end
+        end)
+    end
+
+    teamScores.Blue = 0
+    teamScores.Red = 0
+    broadcastScore("Blue", 0, true)
+    broadcastScore("Red", 0, true)
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("Model") and obj:GetAttribute("IsSpawnedMob") == true then
+            pcall(function() obj:Destroy() end)
+        end
+    end
+
+    setPlayersToNeutralLobby()
+end
+
+function startIntermission()
+    if State ~= "EndGame" then return end
+
+    resetMatchForIntermission()
+    intermissionStartTick = workspace:GetServerTimeNow()
+    setMatchState("Intermission")
+    print("[GameManager] INTERMISSION —", INTERMISSION_DURATION, "s")
+    pcall(function() IntermissionStart:FireAllClients(INTERMISSION_DURATION, intermissionStartTick) end)
+
+    task.delay(INTERMISSION_DURATION, function()
+        if State ~= "Intermission" then return end
+
+        intermissionStartTick = nil
+        startMatch()   -- forward-declared below
+    end)
+end
+
 function endMatch(winnerTeam)
-    if State == "EndGame" then return end
-    State = "EndGame"
-    ServerScriptService:SetAttribute("MatchState", State)
+    if State == "EndGame" or State == "Intermission" then return end
+    setMatchState("EndGame")
+    matchStartTick = nil
+    intermissionStartTick = nil
     -- Stop event scheduler for this match
     if EventScheduler then pcall(function() EventScheduler:StopMatch() end) end
     print("[GameManager] END — winner:", winnerTeam, "  Blue:", teamScores.Blue, " Red:", teamScores.Red)
     pcall(function() MatchEnd:FireAllClients("win", winnerTeam) end)
     pcall(function() MatchEndedBE:Fire(winnerTeam) end)
+    registerMatchOutcome(winnerTeam)
 
     task.delay(END_SCREEN_TIME, function()
-        -- reset flags before respawning players
-        local ResetFlags = ServerScriptService:FindFirstChild("ResetFlags")
-        if ResetFlags then
-            pcall(function() ResetFlags:Fire() end)
-        end
-
-        -- Fire match completion events through StatService BEFORE resetting stats
-        if StatService then
-            for _, pl in ipairs(Players:GetPlayers()) do
-                pcall(function()
-                    StatService:RegisterMatchPlayed(pl)
-                    if winnerTeam and pl.Team and pl.Team.Name == winnerTeam then
-                        StatService:RegisterMatchWon(pl)
-                    end
-                end)
-            end
-        end
-
-        -- Reset per-match player stats via StatService (single source of truth)
-        for _, pl in ipairs(Players:GetPlayers()) do
-            pcall(function()
-                if StatService then
-                    StatService:ResetMatchStats(pl)
-                end
-            end)
-        end
-
-        -- reset scores
-        teamScores.Blue = 0
-        teamScores.Red = 0
-        broadcastScore("Blue", 0, true)
-        broadcastScore("Red", 0, true)
-
-        -- respawn all players (flag them so TeamSpawn uses the main spawn)
-        for _, pl in ipairs(Players:GetPlayers()) do
-            pcall(function()
-                pl:SetAttribute("MatchRestart", true)
-                pl:LoadCharacter()
-            end)
-        end
-
-        task.wait(1)
-        startMatch()   -- forward-declared below
+        if State ~= "EndGame" then return end
+        startIntermission()
     end)
 end
 
@@ -194,10 +238,15 @@ end
 -- Start match
 ---------------------------------------------------------------------
 function startMatch()
+    local ResetFlags = ServerScriptService:FindFirstChild("ResetFlags")
+    if ResetFlags then
+        pcall(function() ResetFlags:Fire("spawn") end)
+    end
+
     teamScores.Blue = 0
     teamScores.Red = 0
-    State = "Game"
-    ServerScriptService:SetAttribute("MatchState", State)
+    intermissionStartTick = nil
+    setMatchState("Game")
     matchStartTick = workspace:GetServerTimeNow()
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
@@ -214,8 +263,7 @@ function startMatch()
             local remaining = MATCH_DURATION - (now - matchStartTick)
             if remaining <= 1 then
                 if teamScores.Blue == teamScores.Red then
-                    State = "SuddenDeath"
-                    ServerScriptService:SetAttribute("MatchState", State)
+                    setMatchState("SuddenDeath")
                     print("[GameManager] SUDDEN DEATH — scores tied at", teamScores.Blue)
                     pcall(function() MatchEnd:FireAllClients("sudden") end)
                 else
@@ -258,6 +306,10 @@ Players.PlayerAdded:Connect(function(pl)
         end)
         -- Sync event state to the late-joining player
         if EventScheduler then pcall(function() EventScheduler:SyncPlayer(pl) end) end
+    elseif State == "Intermission" and intermissionStartTick then
+        pcall(function()
+            IntermissionStart:FireClient(pl, INTERMISSION_DURATION, intermissionStartTick)
+        end)
     end
 end)
 

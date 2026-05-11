@@ -66,6 +66,11 @@ end
 
 local KillFeed = ensureEvent("KillFeed")
 
+local function isMatchStatsActive()
+    local matchState = ServerScriptService:GetAttribute("MatchState")
+    return matchState == "Game" or matchState == "SuddenDeath"
+end
+
 --------------------------------------------------------------------------------
 -- Kill Card / Death Spectate remotes (inside ReplicatedStorage.Remotes folder)
 --------------------------------------------------------------------------------
@@ -490,14 +495,15 @@ local function onHumanoidDied(humanoid, model)
     -- Determine victim category
     local isPlayerVictim  = victimPlayer ~= nil
     local isMonsterVictim = (not isPlayerVictim) and isMonsterModel(model)
+    local shouldCountElimination = isMatchStatsActive()
 
     -- Award team score
-    if killer.Team then
+    if shouldCountElimination and killer.Team then
         pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
     end
 
     -- Centralized stat events (feeds quests + achievements + scoreboard)
-    if StatService then
+    if shouldCountElimination and StatService then
         if isPlayerVictim then
             StatService:RegisterElimination(killer, victimPlayer)
         elseif isMonsterVictim then
@@ -506,7 +512,7 @@ local function onHumanoidDied(humanoid, model)
     end
 
     local weaponInstanceId = humanoid:GetAttribute("lastDamagerWeaponInstanceId")
-    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+    if shouldCountElimination and WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
         if isPlayerVictim then
             pcall(function() WeaponMasteryService:RegisterElimination(killer, weaponInstanceId) end)
         elseif isMonsterVictim then
@@ -515,13 +521,13 @@ local function onHumanoidDied(humanoid, model)
     end
 
     -- Bump killer's session streak (player victims only – mob kills don't gate streak)
-    if isPlayerVictim then
+    if shouldCountElimination and isPlayerVictim then
         playerKillStreak[killer.UserId] = (playerKillStreak[killer.UserId] or 0) + 1
     end
 
     -- Coin reward
     local coinAward = 0
-    if CurrencyService and CurrencyService.AddCoins then
+    if shouldCountElimination and CurrencyService and CurrencyService.AddCoins then
         local base = isPlayerVictim and PVP_COIN_REWARD or getMobCoinReward(model, victimName)
         local ok, result = pcall(function() return CurrencyService:AddCoins(killer, base, "elimination") end)
         coinAward = (ok and type(result) == "number") and result or base
@@ -531,7 +537,7 @@ local function onHumanoidDied(humanoid, model)
     pcall(function() KillFeed:FireAllClients(killer.Name, victimName, coinAward) end)
 
     -- XP reward (include coinAward in metadata so XP popup can show coins)
-    if XPModule and XPModule.AwardXP then
+    if shouldCountElimination and XPModule and XPModule.AwardXP then
         if isPlayerVictim then
             pcall(function() XPModule.AwardXP(killer, "PlayerKill", nil, { coinAward = coinAward }) end)
         else
