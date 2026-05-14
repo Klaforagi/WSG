@@ -373,6 +373,11 @@ end)
 --- If instanceId is provided, uses that specific instance; otherwise picks
 --- the first matching instance by weapon name.
 local function applyWeaponScale(player, toolClone, toolName, instanceId)
+    if WeaponScaleService then
+        pcall(function()
+            WeaponScaleService.BindGripAlignment(toolClone)
+        end)
+    end
     if not WeaponScaleService or not WeaponInstanceService_scale then return end
     local inv = WeaponInstanceService_scale:GetInventory(player)
     if not inv then return end
@@ -507,6 +512,11 @@ local function ensureBackpackFromStarterGear(player)
                 clone:SetAttribute("HotbarCategory", cat)
             end
             clone.Parent = bp
+            if WeaponScaleService then
+                pcall(function()
+                    WeaponScaleService.BindGripAlignment(clone)
+                end)
+            end
         end
     end
 end

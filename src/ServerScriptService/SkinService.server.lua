@@ -24,12 +24,34 @@ local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local FullBodySkinService = require(ServerScriptService:WaitForChild("CharacterSkins"):WaitForChild("SkinService"))
 
+local WeaponScaleService = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponScaleService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponScaleService = require(mod)
+    end
+end)
+
 local DEBUG = true
 local function dprint(...)
     if DEBUG then print("[SkinService]", ...) end
 end
 
 dprint("initializing")
+
+local function refreshEquippedToolGrips(character)
+    if not WeaponScaleService or not character then
+        return
+    end
+
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Tool") then
+            pcall(function()
+                WeaponScaleService.RefreshGrip(child)
+            end)
+        end
+    end
+end
 
 -- ── Shared config ──────────────────────────────────────────────────────────
 local SkinDefs = nil
@@ -1449,6 +1471,8 @@ local function applySkin(player, character)
         dprint(player.Name, "FAILSAFE: reverted to Default due to application error")
         return
     end
+
+    refreshEquippedToolGrips(character)
 
 end
 

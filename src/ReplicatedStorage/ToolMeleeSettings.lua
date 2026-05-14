@@ -46,7 +46,7 @@ end
 
 local rarityDefaults = {
     Common = {
-        damage       = 5,
+        damage       = 8,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
@@ -57,7 +57,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Uncommon = {
-        damage       = 7,
+        damage       = 12,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
@@ -68,7 +68,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Rare = {
-        damage       = 8.5,
+        damage       = 16,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
@@ -79,7 +79,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Epic = {
-        damage       = 10,
+        damage       = 20,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
@@ -90,7 +90,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Legendary = {
-        damage       = 12,
+        damage       = 24,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,

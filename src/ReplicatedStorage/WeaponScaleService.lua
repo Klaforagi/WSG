@@ -5,8 +5,16 @@
 --  - Cache originals (sizes, mesh scales, weld C0/C1) and always compute from originals.
 
 local WeaponScaleService = {}
+local GRIP_DEBUG = true
 
 local cache = setmetatable({}, { __mode = "k" }) -- weak keys
+local gripMotorDefaults = setmetatable({}, { __mode = "k" })
+local boundGripTools = setmetatable({}, { __mode = "k" })
+local pendingGripRefresh = setmetatable({}, { __mode = "k" })
+
+local APPLIED_MODEL_NAME = "AppliedCharacterSkin"
+local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
+local RunService = game:GetService("RunService")
 
 local function normalizeScaleInput(s)
     if type(s) ~= "number" then return nil end
@@ -24,6 +32,11 @@ local function scaleCFrameTranslationPreserveRotation(cf, scale)
     return CFrame.new(pos) * rot
 end
 
+local function replaceCFrameTranslationPreserveRotation(cf, position)
+    local rot = CFrame.new(cf.Position):Inverse() * cf
+    return CFrame.new(position) * rot
+end
+
 local function getHandle(tool)
     if not tool then return nil end
     local h = tool:FindFirstChild("Handle")
@@ -31,22 +44,295 @@ local function getHandle(tool)
     return nil
 end
 
--- Find and update the character's right-hand grip Motor6D to match the tool Grip.
-local function refreshCharacterRightGrip(tool)
-    if not tool or not tool.Parent then return end
-    local char = tool.Parent
-    if not char:IsA("Model") then return end
-    -- find a Motor6D whose Part1 is the tool's Handle
-    for _, obj in ipairs(char:GetDescendants()) do
-        if obj and obj:IsA("Motor6D") and obj.Part1 == tool:FindFirstChild("Handle") then
-            -- Update only the C1 so the held position follows the tool.Grip
-            pcall(function()
-                obj.C1 = tool.Grip
-            end)
-            print("[WeaponScale] Updated character Motor6D C1 for", tool.Name, "->", obj:GetFullName())
-            return
+local function normalizeName(name)
+    return string.lower((tostring(name):gsub("[%s%p_]", "")))
+end
+
+local function dprint(...)
+    if GRIP_DEBUG then
+        print("[WeaponGripDebug]", ...)
+    end
+end
+
+local function formatVector3(vector)
+    if typeof(vector) ~= "Vector3" then
+        return tostring(vector)
+    end
+    return string.format("(%.3f, %.3f, %.3f)", vector.X, vector.Y, vector.Z)
+end
+
+local function formatAngles(rotationVector)
+    if typeof(rotationVector) ~= "Vector3" then
+        return tostring(rotationVector)
+    end
+    return string.format("(%.1f, %.1f, %.1f)", math.deg(rotationVector.X), math.deg(rotationVector.Y), math.deg(rotationVector.Z))
+end
+
+local function formatCFrame(cf)
+    if typeof(cf) ~= "CFrame" then
+        return tostring(cf)
+    end
+    local rx, ry, rz = cf:ToOrientation()
+    return string.format("pos=%s rot=%s", formatVector3(cf.Position), formatAngles(Vector3.new(rx, ry, rz)))
+end
+
+local function getFullNameSafe(instance)
+    if not instance then
+        return "(nil)"
+    end
+    local ok, fullName = pcall(function()
+        return instance:GetFullName()
+    end)
+    return ok and fullName or tostring(instance)
+end
+
+local function getAppliedSkinModel(character)
+    if not character or not character:IsA("Model") then
+        return nil
+    end
+
+    local direct = character:FindFirstChild(APPLIED_MODEL_NAME)
+    if direct and direct:IsA("Model") then
+        return direct
+    end
+
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Model") and child:GetAttribute(FULL_BODY_SKIN_MODEL_ATTRIBUTE) then
+            return child
         end
     end
+
+    return nil
+end
+
+local function buildRightHandNameSet(handPart)
+    local nameSet = {}
+    local handName = normalizeName(handPart and handPart.Name or "RightHand")
+    nameSet[handName] = true
+
+    if handName == "righthand" then
+        nameSet.rightarm = true
+        nameSet.rightlowerarm = true
+        nameSet.rightupperarm = true
+    elseif handName == "rightarm" then
+        nameSet.righthand = true
+        nameSet.rightlowerarm = true
+        nameSet.rightupperarm = true
+    elseif handName == "rightlowerarm" then
+        nameSet.righthand = true
+        nameSet.rightarm = true
+        nameSet.rightupperarm = true
+    elseif handName == "rightupperarm" then
+        nameSet.righthand = true
+        nameSet.rightarm = true
+        nameSet.rightlowerarm = true
+    end
+
+    return nameSet
+end
+
+local function findSkinGripAttachment(character, handPart)
+    local skinModel = getAppliedSkinModel(character)
+    if not skinModel then
+        return nil
+    end
+
+    local rightHandNames = buildRightHandNameSet(handPart)
+    local fallback = nil
+
+    for _, desc in ipairs(skinModel:GetDescendants()) do
+        if desc:IsA("Attachment") and desc.Name == "Grip" then
+            local parent = desc.Parent
+            if parent and parent:IsA("BasePart") then
+                local parentName = normalizeName(parent.Name)
+                if rightHandNames[parentName] then
+                    return desc
+                end
+                if not fallback and string.find(parentName, "right", 1, true)
+                    and (string.find(parentName, "hand", 1, true) or string.find(parentName, "arm", 1, true)) then
+                    fallback = desc
+                end
+            end
+        end
+    end
+
+    return fallback
+end
+
+local function isToolDescendant(tool, instance)
+    return tool and instance and instance:IsDescendantOf(tool) or false
+end
+
+local function findCharacterGripMotor(character, tool, handle)
+    local bestMatch = nil
+    local fallbackMatch = nil
+
+    for _, obj in ipairs(character:GetDescendants()) do
+        if obj and obj:IsA("JointInstance") and obj.Part1 == handle then
+            local part0 = obj.Part0
+            local name = normalizeName(obj.Name)
+            local isToolMotor = isToolDescendant(tool, obj) or isToolDescendant(tool, part0)
+            if not isToolMotor and part0 and part0:IsDescendantOf(character) then
+                if not fallbackMatch then
+                    fallbackMatch = obj
+                end
+                if name == "rightgrip" or name == "toolgrip" then
+                    bestMatch = obj
+                    break
+                end
+            end
+        end
+    end
+
+    return bestMatch or fallbackMatch
+end
+
+local function debugGripMotorCandidates(character, tool, handle)
+    for _, obj in ipairs(character:GetDescendants()) do
+        if obj and obj:IsA("JointInstance") and obj.Part1 == handle then
+            local part0 = obj.Part0
+            local isToolMotor = isToolDescendant(tool, obj) or isToolDescendant(tool, part0)
+            dprint(
+                "candidate joint",
+                getFullNameSafe(obj),
+                "class=",
+                obj.ClassName,
+                "name=",
+                obj.Name,
+                "part0=",
+                getFullNameSafe(part0),
+                "toolMotor=",
+                tostring(isToolMotor)
+            )
+        end
+    end
+end
+
+local function debugSkinGripCandidates(character)
+    local skinModel = getAppliedSkinModel(character)
+    if not skinModel then
+        dprint("no applied skin model found under", getFullNameSafe(character))
+        return
+    end
+
+    dprint("applied skin model", getFullNameSafe(skinModel))
+    for _, desc in ipairs(skinModel:GetDescendants()) do
+        if desc:IsA("Attachment") and desc.Name == "Grip" then
+            dprint(
+                "skin Grip candidate",
+                getFullNameSafe(desc),
+                "parent=",
+                getFullNameSafe(desc.Parent),
+                "local=",
+                formatCFrame(desc.CFrame)
+            )
+        end
+    end
+end
+
+-- Find and update the character's right-hand grip Motor6D to match the tool Grip.
+local function refreshCharacterRightGrip(tool)
+    if not tool or not tool.Parent then return false end
+    local char = tool.Parent
+    if not char:IsA("Model") then return false end
+    local handle = getHandle(tool)
+    if not handle then return false end
+    dprint("refresh start tool=", getFullNameSafe(tool), "char=", getFullNameSafe(char), "handle=", getFullNameSafe(handle))
+    local handleGripAttachment = handle:FindFirstChild("Grip")
+    if handleGripAttachment and not handleGripAttachment:IsA("Attachment") then
+        handleGripAttachment = nil
+    end
+    local obj = findCharacterGripMotor(char, tool, handle)
+    if obj then
+        if gripMotorDefaults[obj] == nil then
+            gripMotorDefaults[obj] = obj.C0
+        end
+
+        local desiredC0 = gripMotorDefaults[obj]
+        local desiredC1 = tool.Grip
+        local skinGripAttachment = findSkinGripAttachment(char, obj.Part0)
+        if skinGripAttachment then
+            local skinGripWorldCFrame = skinGripAttachment.Parent.CFrame * skinGripAttachment.CFrame
+            local localGripPosition = obj.Part0.CFrame:PointToObjectSpace(skinGripWorldCFrame.Position)
+            desiredC0 = replaceCFrameTranslationPreserveRotation(gripMotorDefaults[obj], localGripPosition)
+        end
+        if handleGripAttachment then
+            desiredC1 = replaceCFrameTranslationPreserveRotation(tool.Grip, handleGripAttachment.Position)
+        end
+
+        pcall(function()
+            obj.C0 = desiredC0
+            obj.C1 = desiredC1
+        end)
+        dprint("selected grip motor", getFullNameSafe(obj), "part0=", getFullNameSafe(obj.Part0), "part1=", getFullNameSafe(obj.Part1))
+        dprint("selected skin Grip", skinGripAttachment and getFullNameSafe(skinGripAttachment) or "(none)")
+        dprint("selected handle Grip", handleGripAttachment and getFullNameSafe(handleGripAttachment) or "(none)")
+        dprint("tool.Grip", formatCFrame(tool.Grip))
+        if skinGripAttachment then
+            dprint("skin Grip local", formatCFrame(skinGripAttachment.CFrame))
+            dprint("skin Grip parent", getFullNameSafe(skinGripAttachment.Parent), "world=", formatCFrame(skinGripAttachment.Parent.CFrame * skinGripAttachment.CFrame))
+        end
+        if handleGripAttachment then
+            dprint("handle Grip local", formatCFrame(handleGripAttachment.CFrame))
+            dprint("handle Grip world", formatCFrame(handleGripAttachment.Parent.CFrame * handleGripAttachment.CFrame))
+        end
+        dprint("applied desired C0", formatCFrame(desiredC0))
+        dprint("applied desired C1", formatCFrame(desiredC1))
+        return true
+    end
+
+    dprint("no valid character grip motor found for", getFullNameSafe(tool))
+    debugGripMotorCandidates(char, tool, handle)
+    debugSkinGripCandidates(char)
+
+    return false
+end
+
+function WeaponScaleService.RefreshGrip(tool)
+    return refreshCharacterRightGrip(tool)
+end
+
+local function scheduleGripRefresh(tool)
+    if not tool or pendingGripRefresh[tool] then
+        return
+    end
+
+    pendingGripRefresh[tool] = true
+    task.spawn(function()
+        for _ = 1, 12 do
+            if not tool or not tool.Parent then
+                break
+            end
+            if refreshCharacterRightGrip(tool) then
+                break
+            end
+            RunService.Heartbeat:Wait()
+        end
+        pendingGripRefresh[tool] = nil
+    end)
+end
+
+function WeaponScaleService.BindGripAlignment(tool)
+    if not tool or not tool:IsA("Tool") then
+        return false
+    end
+    if boundGripTools[tool] then
+        return true
+    end
+
+    boundGripTools[tool] = true
+
+    tool.Equipped:Connect(function()
+        scheduleGripRefresh(tool)
+    end)
+
+    tool.AncestryChanged:Connect(function()
+        scheduleGripRefresh(tool)
+    end)
+
+    scheduleGripRefresh(tool)
+
+    return true
 end
 
 -- Collect BaseParts that are the Handle or descendants of the Handle
