@@ -136,6 +136,36 @@ local function getBoostIconImage(def)
     return nil
 end
 
+local function getSkinIconImage(def)
+    if type(def) ~= "table" then return nil end
+    if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then
+        return def.IconAssetId
+    end
+    local key = def.IconKey
+    if AssetCodes and type(AssetCodes.Get) == "function" and key then
+        local image = AssetCodes.Get(key)
+        if type(image) == "string" and #image > 0 then
+            return image
+        end
+    end
+    return nil
+end
+
+local function getSkinPreviewImage(def)
+    if type(def) ~= "table" then return nil end
+    if type(def.PreviewImageAssetId) == "string" and #def.PreviewImageAssetId > 0 then
+        return def.PreviewImageAssetId
+    end
+    local key = def.PreviewImageKey
+    if AssetCodes and type(AssetCodes.Get) == "function" and key then
+        local image = AssetCodes.Get(key)
+        if type(image) == "string" and #image > 0 then
+            return image
+        end
+    end
+    return getSkinIconImage(def)
+end
+
 local function getCrateRarityColor(rarity)
     if CrateConfig and CrateConfig.Rarities and CrateConfig.Rarities[rarity] then
         return CrateConfig.Rarities[rarity].color or RARITY_COLORS[rarity] or DIM_TEXT
@@ -2667,6 +2697,46 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local skinIconStroke = Instance.new("UIStroke", skinPreviewVP)
             skinIconStroke.Color = RARITY_COLORS.Common; skinIconStroke.Thickness = 1.5; skinIconStroke.Transparency = 0.3
 
+            local skinPreviewImage = Instance.new("ImageLabel", skinPreviewVP)
+            skinPreviewImage.Name = "PreviewImage"
+            skinPreviewImage.BackgroundTransparency = 1
+            skinPreviewImage.Size = UDim2.new(0.9, 0, 0.9, 0)
+            skinPreviewImage.AnchorPoint = Vector2.new(0.5, 0.5)
+            skinPreviewImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+            skinPreviewImage.ScaleType = Enum.ScaleType.Fit
+            skinPreviewImage.Visible = false
+            skinPreviewImage.ZIndex = 2
+
+            local function clearSkinPreviewScene()
+                for _, child in ipairs(skinPreviewVP:GetChildren()) do
+                    if child:IsA("WorldModel") or child:IsA("Camera") or child:IsA("Model") then
+                        child:Destroy()
+                    end
+                end
+            end
+
+            local function updateSkinPreviewDisplay(skinId)
+                clearSkinPreviewScene()
+                skinPreviewImage.Visible = false
+                if not skinId then return end
+
+                local def = SkinDefs and SkinDefs.GetById(skinId)
+                if not def then return end
+
+                local previewImage = getSkinPreviewImage(def)
+                if previewImage then
+                    skinPreviewImage.Image = previewImage
+                    skinPreviewImage.Visible = true
+                    return
+                end
+
+                local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
+                if previewShowHelm == nil then previewShowHelm = true end
+                if SkinPreview then
+                    SkinPreview.Update(skinPreviewVP, skinId, previewShowHelm)
+                end
+            end
+
             -- Skin name
             local skinDetailName = Instance.new("TextLabel", skinDetailContent)
             skinDetailName.Name = "SkinName"
@@ -2741,7 +2811,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 end
             end)
 
-            -- ShowHelm toggle row
+            -- Hide Helm toggle row
             local TOGGLE_ON_C  = Color3.fromRGB(35, 190, 75)
             local TOGGLE_OFF_C = Color3.fromRGB(45, 48, 65)
 
@@ -2754,7 +2824,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local helmLabel = Instance.new("TextLabel", helmRow)
             helmLabel.BackgroundTransparency = 1
             helmLabel.Font = Enum.Font.GothamBold
-            helmLabel.Text = "Show Helm"
+            helmLabel.Text = "Hide Helm"
             helmLabel.TextColor3 = DIM_TEXT
             helmLabel.TextSize = px(17)
             helmLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -2783,27 +2853,29 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             Instance.new("UICorner", helmKnob).CornerRadius = UDim.new(1, 0)
 
             local function syncHelmToggle()
-                local on = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
-                if on == nil then on = true end
-                helmToggleBg.BackgroundColor3 = on and TOGGLE_ON_C or TOGGLE_OFF_C
-                helmKnob.Position = on and UDim2.new(1, -px(21), 0.5, 0) or UDim2.new(0, px(3), 0.5, 0)
+                local hideHelm = _G.PlayerSettings and (_G.PlayerSettings.ShowHelm == false)
+                if hideHelm == nil then hideHelm = false end
+                helmToggleBg.BackgroundColor3 = hideHelm and TOGGLE_ON_C or TOGGLE_OFF_C
+                helmKnob.Position = hideHelm and UDim2.new(1, -px(21), 0.5, 0) or UDim2.new(0, px(3), 0.5, 0)
             end
             syncHelmToggle()
 
             helmToggleBg.MouseButton1Click:Connect(function()
                 if not _G.PlayerSettings then return end
-                local newVal = not (_G.PlayerSettings.ShowHelm ~= false)
-                _G.PlayerSettings.ShowHelm = newVal
+                local hideHelm = (_G.PlayerSettings.ShowHelm == false)
+                local newHideHelm = not hideHelm
+                local newShowHelm = not newHideHelm
+                _G.PlayerSettings.ShowHelm = newShowHelm
                 syncHelmToggle()
                 local updateEV = ReplicatedStorage:FindFirstChild("UpdatePlayerSetting")
                 if updateEV and updateEV:IsA("RemoteEvent") then
-                    updateEV:FireServer("ShowHelm", newVal)
+                    updateEV:FireServer("ShowHelm", newShowHelm)
                 end
                 if _G.ApplySettings then
                     pcall(_G.ApplySettings, _G.PlayerSettings)
                 end
-                if SkinPreview and selectedSkinId then
-                    SkinPreview.Update(skinPreviewVP, selectedSkinId, newVal)
+                if selectedSkinId then
+                    updateSkinPreviewDisplay(selectedSkinId)
                 end
             end)
 
@@ -2921,11 +2993,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 skinIconStroke.Color = rarityColor
 
                 -- Update 3D preview
-                local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
-                if previewShowHelm == nil then previewShowHelm = true end
-                if SkinPreview then
-                    SkinPreview.Update(skinPreviewVP, skinId, previewShowHelm)
-                end
+                updateSkinPreviewDisplay(skinId)
 
                 updateSkinActionButton()
                 syncHelmToggle()
@@ -3049,6 +3117,22 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 cardIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
                 cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
                 cardIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+                local cardIconImage = Instance.new("ImageLabel", iconArea)
+                cardIconImage.Name = "IconImage"
+                cardIconImage.BackgroundTransparency = 1
+                cardIconImage.Size = UDim2.new(0.72, 0, 0.72, 0)
+                cardIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+                cardIconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+                cardIconImage.ScaleType = Enum.ScaleType.Fit
+                cardIconImage.Visible = false
+
+                local skinImage = getSkinIconImage(def)
+                if skinImage then
+                    cardIconImage.Image = skinImage
+                    cardIconImage.Visible = true
+                    cardIcon.Visible = false
+                end
 
                 -- Name label (bottom)
                 local cardName = Instance.new("TextLabel", card)

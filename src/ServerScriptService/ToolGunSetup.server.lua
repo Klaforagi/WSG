@@ -44,6 +44,16 @@ local TOOLCFG = {}
 
 -- Shared weapon switch lock (also used by ToolMeleeSetup)
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
+
+local function shouldIgnoreHumanoidTarget(model, humanoid)
+    if not humanoid then return true end
+    if humanoid:GetAttribute("IgnoreCombatTargeting") then return true end
+    if model and (model:GetAttribute(FULL_BODY_SKIN_MODEL_ATTRIBUTE) or model.Name == "AppliedCharacterSkin") then
+        return true
+    end
+    return false
+end
 
 -- Default: tracers are disabled unless a preset explicitly enables them
 local SHOW_TRACER = false
@@ -601,6 +611,10 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             while parent and parent ~= Workspace do
                 local humanoid = parent:FindFirstChildOfClass("Humanoid")
                 if humanoid and humanoid.Health > 0 then
+                    if shouldIgnoreHumanoidTarget(parent, humanoid) then
+                        parent = parent.Parent
+                        continue
+                    end
                     local isHeadshot = false
                     -- robust headshot detection that handles accessories (hats/hair):
                     local headPart = parent:FindFirstChild("Head")

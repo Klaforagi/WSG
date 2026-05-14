@@ -72,6 +72,16 @@ end)
 
 -- Shared weapon switch lock
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
+
+local function shouldIgnoreHumanoidTarget(model, humanoid)
+    if not humanoid then return true end
+    if humanoid:GetAttribute("IgnoreCombatTargeting") then return true end
+    if model and (model:GetAttribute(FULL_BODY_SKIN_MODEL_ATTRIBUTE) or model.Name == "AppliedCharacterSkin") then
+        return true
+    end
+    return false
+end
 
 ---------------------------------------------------------------------------
 -- Remote events
@@ -531,6 +541,7 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
     for _, model in ipairs(candidates) do
         local hum = model:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then continue end
+        if shouldIgnoreHumanoidTarget(model, hum) then continue end
         local root = model:FindFirstChild("HumanoidRootPart")
             or model:FindFirstChild("Torso")
             or model:FindFirstChild("UpperTorso")
@@ -594,6 +605,7 @@ local function getTargetsInBox(playerChar, boxCFrame, halfSize)
             if model == playerChar then continue end
             local hum = model:FindFirstChildOfClass("Humanoid")
             if not hum or hum.Health <= 0 then continue end
+            if shouldIgnoreHumanoidTarget(model, hum) then continue end
             if seenHum[hum] then continue end
 
             local dir = part.Position - boxCFrame.Position
