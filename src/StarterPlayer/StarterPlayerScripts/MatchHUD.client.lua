@@ -30,6 +30,7 @@ local remaining = START_TIME_SECONDS
 local running = true
 local matchStartTick = nil
 local matchDuration = START_TIME_SECONDS
+local timerMode = "Match"
 
 -- Round floating-point stat values for player-facing UI display
 local function formatInt(v)
@@ -381,6 +382,29 @@ local function refresh()
     timerLabel.Text = formatTime(remaining)
 end
 
+local function beginTimer(durationSeconds, startTick, mode)
+    if type(durationSeconds) == "number" then
+        matchDuration = durationSeconds
+    elseif mode == "Intermission" then
+        matchDuration = 60
+    else
+        matchDuration = START_TIME_SECONDS
+    end
+
+    if type(startTick) == "number" then
+        matchStartTick = startTick
+    else
+        matchStartTick = workspace:GetServerTimeNow()
+    end
+
+    timerMode = mode or "Match"
+    remaining = math.max(0, math.floor(matchDuration))
+    running = true
+    lastIntegerRemaining = nil
+    lastTickSoundTime = 0
+    refresh()
+end
+
 -- Time adjustment pill-shaped tags (dev/creator testing)
 local btnContainer = Instance.new("Frame")
 btnContainer.Name = "TimeAdjust"
@@ -432,6 +456,7 @@ local plusBtn  = makePillBtn("+10s", 1, 0.98)
 --------------------------------------------------------------------------------
 local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
 local AdjustMatchTime = ReplicatedStorage:WaitForChild("AdjustMatchTime", 10)
+local IntermissionStart = ReplicatedStorage:FindFirstChild("IntermissionStart")
 
 minusBtn.MouseButton1Click:Connect(function()
     if AdjustMatchTime then
@@ -629,11 +654,16 @@ spawn(function()
         if running and matchStartTick and matchDuration then
             local now = workspace:GetServerTimeNow()
             local elapsed = now - matchStartTick
-            -- use floor (not rounding) so integer decreases happen exactly when a full second elapses
-            -- clamp at 1 while match is running; server decides at 1s whether to go to 0 (winner) or sudden death
-            local newRemaining = math.max(1, math.floor(matchDuration - elapsed))
+            local floorRemaining = math.floor(matchDuration - elapsed)
+            local newRemaining
+            if timerMode == "Match" then
+                -- clamp at 1 while a live match is running; the server decides when to resolve to 0.
+                newRemaining = math.max(1, floorRemaining)
+            else
+                newRemaining = math.max(0, floorRemaining)
+            end
             -- play tick once when the integer remaining strictly decreases
-            if newRemaining > 0 and newRemaining <= 9 then
+            if timerMode == "Match" and newRemaining > 0 and newRemaining <= 9 then
                 if lastIntegerRemaining ~= nil and newRemaining < lastIntegerRemaining then
                     pcall(playTickSound)
                 end
@@ -662,22 +692,10 @@ end
 
 local function wireMatchStart(ev)
     ev.OnClientEvent:Connect(function(durationSeconds, startTick)
-        if type(durationSeconds) == "number" then
-            matchDuration = durationSeconds
-        else
-            matchDuration = START_TIME_SECONDS
-        end
-        if type(startTick) == "number" then
-            matchStartTick = startTick
-        else
-            matchStartTick = workspace:GetServerTimeNow()
-        end
+        beginTimer(durationSeconds, startTick, "Match")
         -- initialize state
         blueScore = 0
         redScore = 0
-        running = true
-        lastIntegerRemaining = nil
-        lastTickSoundTime = 0
 
         -- clear all carried-flag HUD indicators
         setCarriedFlag("Blue", "Blue", false)
@@ -686,6 +704,12 @@ local function wireMatchStart(ev)
         setCarriedFlag("Red", "Red", false)
 
         refresh()
+    end)
+end
+
+local function wireIntermissionStart(ev)
+    ev.OnClientEvent:Connect(function(durationSeconds, startTick)
+        beginTimer(durationSeconds, startTick, "Intermission")
     end)
 end
 
@@ -708,6 +732,7 @@ local matchEv = ReplicatedStorage:FindFirstChild("MatchStart")
 if matchEv and matchEv:IsA("RemoteEvent") then wireMatchStart(matchEv) end
 local matchEndEv = ReplicatedStorage:FindFirstChild("MatchEnd")
 if matchEndEv and matchEndEv:IsA("RemoteEvent") then wireMatchEnd(matchEndEv) end
+if IntermissionStart and IntermissionStart:IsA("RemoteEvent") then wireIntermissionStart(IntermissionStart) end
 
 -- Listen for server time adjustments (dev buttons) — only updates the tick, no score reset
 if AdjustMatchTime and AdjustMatchTime:IsA("RemoteEvent") then
@@ -725,6 +750,8 @@ ReplicatedStorage.ChildAdded:Connect(function(child)
         wireMatchStart(child)
     elseif child.Name == "MatchEnd" and child:IsA("RemoteEvent") then
         wireMatchEnd(child)
+    elseif child.Name == "IntermissionStart" and child:IsA("RemoteEvent") then
+        wireIntermissionStart(child)
     end
 end)
 
@@ -738,16 +765,15 @@ spawn(function()
     if not fn:IsA("RemoteFunction") then return end
     local ok2, info = pcall(function() return fn:InvokeServer() end)
     if not ok2 or type(info) ~= "table" then return end
+    if info.teamScores and type(info.teamScores) == "table" then
+        blueScore = info.teamScores.Blue or 0
+        redScore = info.teamScores.Red or 0
+    end
     if info.state == "Game" and type(info.matchStartTick) == "number" and type(info.matchDuration) == "number" then
-        matchDuration = info.matchDuration
-        matchStartTick = info.matchStartTick
-        running = true
-        lastIntegerRemaining = nil
-        -- also sync scores if provided
-        if info.teamScores and type(info.teamScores) == "table" then
-            blueScore = info.teamScores.Blue or 0
-            redScore = info.teamScores.Red or 0
-        end
+        beginTimer(info.matchDuration, info.matchStartTick, "Match")
+    elseif info.state == "Intermission" and type(info.intermissionStartTick) == "number" then
+        beginTimer(info.intermissionDuration, info.intermissionStartTick, "Intermission")
+    else
         refresh()
     end
 end)

@@ -10,22 +10,13 @@ local EnchantTextStyler = {}
 --------------------------------------------------------------------------------
 -- Config
 --------------------------------------------------------------------------------
-local SHIMMER_DURATION     = 6.0
-local SHIMMER_SECOND_DELAY = SHIMMER_DURATION / 2
-local SHIMMER_START_OFFSET = -1
-local SHIMMER_END_OFFSET   =  1
-local SHIMMER_BAND_WIDTH   =  0.08
-
--- Transparency mask: fully transparent except for a narrow opaque band at center.
--- Offset sweeps from -1 (band off-screen left) to +1 (band off-screen right),
--- so the TweenService RepeatCount=-1 snap is invisible at both endpoints.
-local BAND_TRANSPARENCY = NumberSequence.new({
-    NumberSequenceKeypoint.new(0.00, 1),
-    NumberSequenceKeypoint.new(0.50 - SHIMMER_BAND_WIDTH, 1),
-    NumberSequenceKeypoint.new(0.50, 0),
-    NumberSequenceKeypoint.new(0.50 + SHIMMER_BAND_WIDTH, 1),
-    NumberSequenceKeypoint.new(1.00, 1),
-})
+local SHIMMER_BAND_CENTER  =  0.50
+local SHIMMER_BAND_HALF_PX =  2.25
+local SHIMMER_EDGE_HALF_PX =  1.00
+local SHIMMER_PADDING_PX   =  5.50
+local SHIMMER_PIXELS_PER_SECOND = 23.5
+local SHIMMER_MIN_DURATION = 1.2
+local SHIMMER_MAX_DURATION = 4.0
 
 local SHIMMER_CONFIGS = {
     Fiery     = { baseColor = Color3.fromRGB(215,  80,  15),  brightColor = Color3.fromRGB(255, 248, 120) },
@@ -48,40 +39,66 @@ local SIZE_NORMAL_COLOR = Color3.fromRGB(160, 160, 170)
 local activeEffects = setmetatable({}, {__mode = "k"})
 
 --------------------------------------------------------------------------------
--- Creates a transparent overlay TextLabel parented to label.Parent.
--- Its UIGradient.Transparency hides all text except where the narrow band is.
--- The base label shows baseColor; the overlay shows brightColor only at the band.
+-- Builds a color sequence with one narrow bright band.
+-- The label keeps rendering normally; only the text color brightens as the band
+-- pass over it, which avoids the glyph-shaped artifacts caused by text masking.
 --------------------------------------------------------------------------------
-local function createOverlay(label, brightColor)
-    local overlay                  = Instance.new("TextLabel")
-    overlay.Size                   = label.Size
-    overlay.Position               = label.Position
-    overlay.AnchorPoint            = label.AnchorPoint
-    overlay.Font                   = label.Font
-    overlay.Text                   = label.Text
-    overlay.TextSize               = label.TextSize
-    overlay.TextScaled             = label.TextScaled
-    overlay.TextXAlignment         = label.TextXAlignment
-    overlay.TextYAlignment         = label.TextYAlignment
-    overlay.ZIndex                 = label.ZIndex + 1
-    overlay.BackgroundTransparency = 1
-    overlay.TextColor3             = brightColor
-    overlay.TextTransparency       = 0
-    overlay.Parent                 = label.Parent
+local function getShimmerMetrics(label)
+    local width = math.max(label.AbsoluteSize.X, 48)
+    local bandHalf = math.max(SHIMMER_BAND_HALF_PX / width, 0.012)
+    local edgeHalf = math.max(SHIMMER_EDGE_HALF_PX / width, 0.005)
+    edgeHalf = math.min(edgeHalf, bandHalf - 0.002)
+    if edgeHalf <= 0 then
+        edgeHalf = bandHalf * 0.5
+    end
 
-    local gradient        = Instance.new("UIGradient")
-    gradient.Transparency = BAND_TRANSPARENCY
-    gradient.Offset       = Vector2.new(SHIMMER_START_OFFSET, 0)
-    gradient.Parent       = overlay
+    local padding = math.max(SHIMMER_PADDING_PX / width, 0.02)
+    local startOffset = -(0.5 + bandHalf + padding)
+    local endOffset = 0.5 + bandHalf + padding
+    local duration = math.clamp(
+        ((endOffset - startOffset) * width) / SHIMMER_PIXELS_PER_SECOND,
+        SHIMMER_MIN_DURATION,
+        SHIMMER_MAX_DURATION
+    )
 
-    return overlay, gradient
+    return {
+        bandHalf = bandHalf,
+        edgeHalf = edgeHalf,
+        startOffset = startOffset,
+        endOffset = endOffset,
+        duration = duration,
+    }
 end
 
-local function startTween(gradient)
+local function createShimmerSequence(baseColor, brightColor, shimmerMetrics)
+    local bandStart = SHIMMER_BAND_CENTER - shimmerMetrics.bandHalf
+    local bandPeak1 = SHIMMER_BAND_CENTER - shimmerMetrics.edgeHalf
+    local bandPeak2 = SHIMMER_BAND_CENTER + shimmerMetrics.edgeHalf
+    local bandEnd = SHIMMER_BAND_CENTER + shimmerMetrics.bandHalf
+
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0.00, baseColor),
+        ColorSequenceKeypoint.new(bandStart, baseColor),
+        ColorSequenceKeypoint.new(bandPeak1, brightColor),
+        ColorSequenceKeypoint.new(bandPeak2, brightColor),
+        ColorSequenceKeypoint.new(bandEnd, baseColor),
+        ColorSequenceKeypoint.new(1.00, baseColor),
+    })
+end
+
+local function createGradient(label, baseColor, brightColor, shimmerMetrics)
+    local gradient = Instance.new("UIGradient")
+    gradient.Offset = Vector2.new(shimmerMetrics.startOffset, 0)
+    gradient.Color = createShimmerSequence(baseColor, brightColor, shimmerMetrics)
+    gradient.Parent = label
+    return gradient
+end
+
+local function startTween(gradient, shimmerMetrics)
     local tween = TweenService:Create(
         gradient,
-        TweenInfo.new(SHIMMER_DURATION, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1),
-        { Offset = Vector2.new(SHIMMER_END_OFFSET, 0) }
+        TweenInfo.new(shimmerMetrics.duration, Enum.EasingStyle.Linear, Enum.EasingDirection.In, -1),
+        { Offset = Vector2.new(shimmerMetrics.endOffset, 0) }
     )
     tween:Play()
     return tween
@@ -93,16 +110,14 @@ end
 local function stopEffect(label)
     local effect = activeEffects[label]
     if not effect then return end
-    if effect.delayThread then
-        pcall(task.cancel, effect.delayThread)
-    end
     for _, tween in ipairs(effect.tweens or {}) do
         pcall(function() tween:Cancel() end)
     end
-    for _, overlay in ipairs(effect.overlays or {}) do
-        pcall(function()
-            if overlay and overlay.Parent then overlay:Destroy() end
-        end)
+    if effect.destroyConn then
+        pcall(function() effect.destroyConn:Disconnect() end)
+    end
+    if effect.gradient and effect.gradient.Parent then
+        pcall(function() effect.gradient:Destroy() end)
     end
     if effect.stroke and effect.stroke.Parent then
         pcall(function() effect.stroke:Destroy() end)
@@ -111,16 +126,15 @@ local function stopEffect(label)
 end
 
 --------------------------------------------------------------------------------
--- Applies the shimmer: base color on label + two transparent overlay bands.
--- The second band is delayed by SHIMMER_SECOND_DELAY so the two bands are
--- always half a cycle apart.
+-- Applies the shimmer with one animated UIGradient on the label itself.
 --------------------------------------------------------------------------------
 local function applyShimmer(label, baseColor, brightColor)
     for _, child in ipairs(label:GetChildren()) do
         if child:IsA("UIGradient") or child:IsA("UIStroke") then child:Destroy() end
     end
 
-    label.TextColor3 = baseColor
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextTransparency = 0
 
     local stroke        = Instance.new("UIStroke")
     stroke.Color        = Color3.fromRGB(0, 0, 0)
@@ -128,29 +142,19 @@ local function applyShimmer(label, baseColor, brightColor)
     stroke.Transparency = 0.2
     stroke.Parent       = label
 
-    local overlay1, gradient1 = createOverlay(label, brightColor)
-    local tween1 = startTween(gradient1)
-
-    local overlay2, gradient2 = createOverlay(label, brightColor)
+    local shimmerMetrics = getShimmerMetrics(label)
+    local gradient = createGradient(label, baseColor, brightColor, shimmerMetrics)
+    local tween = startTween(gradient, shimmerMetrics)
 
     local effect = {
-        overlays    = {overlay1, overlay2},
-        tweens      = {tween1},
-        stroke      = stroke,
-        delayThread = nil,
+        gradient = gradient,
+        tweens = {tween},
+        stroke = stroke,
+        destroyConn = nil,
     }
     activeEffects[label] = effect
 
-    effect.delayThread = task.delay(SHIMMER_SECOND_DELAY, function()
-        local current = activeEffects[label]
-        if current ~= effect then return end
-        gradient2.Offset = Vector2.new(SHIMMER_START_OFFSET, 0)
-        local tween2 = startTween(gradient2)
-        effect.tweens[2] = tween2
-        effect.delayThread = nil
-    end)
-
-    label.Destroying:Connect(function()
+    effect.destroyConn = label.Destroying:Connect(function()
         stopEffect(label)
     end)
 end
@@ -176,6 +180,7 @@ function EnchantTextStyler.Apply(label, enchantName)
 
     label.Font       = Enum.Font.GothamBold
     label.TextColor3 = Color3.fromRGB(255, 255, 255)
+    label.TextTransparency = 0
     label.Text       = cleanName
 
     local config = SHIMMER_CONFIGS[cleanName]
@@ -200,6 +205,7 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
             if child:IsA("UIGradient") or child:IsA("UIStroke") then child:Destroy() end
         end
         label.TextColor3 = SIZE_NORMAL_COLOR
+        label.TextTransparency = 0
         local stroke        = Instance.new("UIStroke")
         stroke.Color        = Color3.fromRGB(0, 0, 0)
         stroke.Thickness    = 1.5

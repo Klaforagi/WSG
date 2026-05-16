@@ -228,20 +228,24 @@ local function ensureListGui(listPart)
     local surfaceGui = ensureSurfaceGui(listPart, LIST_GUI_NAME, 46, LIST_GUI_FACE)
 
     local root = ensureChild(surfaceGui, "Frame", "Root")
+    root.AnchorPoint = Vector2.new(0, 0)
     root.BackgroundColor3 = PANEL_COLOR
     root.BackgroundTransparency = 0.08
     root.BorderSizePixel = 0
+    root.Position = UDim2.new(0, 0, 0, 0)
     root.Size = UDim2.fromScale(1, 1)
     ensureCorner(root, UDim.new(0, 0))
     ensureStroke(root, PANEL_ACCENT, 3, 1)
 
     local accent = ensureChild(root, "Frame", "AccentBar")
+    accent.AnchorPoint = Vector2.new(0, 0)
     accent.BackgroundColor3 = PANEL_ACCENT
     accent.BorderSizePixel = 0
     accent.Position = UDim2.new(0, 0, 0, 0)
     accent.Size = UDim2.new(1, 0, 0, 8)
 
     local header = ensureChild(root, "Frame", "Header")
+    header.AnchorPoint = Vector2.new(0, 0)
     header.BackgroundTransparency = 1
     header.BorderSizePixel = 0
     header.Position = UDim2.new(0, LIST_SIDE_MARGIN, 0, HEADER_TOP)
@@ -255,6 +259,7 @@ local function ensureListGui(listPart)
     divider.Size = UDim2.new(1, 0, 0, 2)
 
     local columns = ensureChild(header, "Frame", "Columns")
+    columns.AnchorPoint = Vector2.new(0, 0)
     columns.BackgroundTransparency = 1
     columns.BorderSizePixel = 0
     columns.Position = UDim2.new(0, 0, 0, 12)
@@ -301,6 +306,7 @@ local function ensureListGui(listPart)
     ensureTextConstraint(levelLabel, 18, 40)
 
     local scroll = ensureChild(root, "ScrollingFrame", "Entries")
+    scroll.AnchorPoint = Vector2.new(0, 0)
     scroll.Active = true
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     scroll.BackgroundTransparency = 1
@@ -311,7 +317,8 @@ local function ensureListGui(listPart)
     scroll.ScrollingEnabled = true
     scroll.ScrollBarImageColor3 = PANEL_ACCENT
     scroll.ScrollBarImageTransparency = 1
-    scroll.ScrollBarThickness = 20
+    scroll.ScrollBarThickness = 6
+    scroll.VerticalScrollBarInset = Enum.ScrollBarInset.None
     scroll.Size = UDim2.new(1, -(LIST_SIDE_MARGIN * 2), 1, -(SCROLL_TOP + SCROLL_BOTTOM_MARGIN))
 
     local padding = ensurePadding(scroll, UDim.new(0, 6))

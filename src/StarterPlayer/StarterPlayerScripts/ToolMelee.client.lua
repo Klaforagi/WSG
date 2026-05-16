@@ -33,6 +33,7 @@ end)
 
 -- remote for swings (server creates this)
 local swingEvent = ReplicatedStorage:WaitForChild("MeleeSwing")
+local meleeSwingVisualEvent = ReplicatedStorage:WaitForChild("MeleeSwingVisual")
 
 -- remote for hit feedback (server → client: damage, isHeadshot, hitPart, hitPos)
 local meleeHitEvent = ReplicatedStorage:WaitForChild("MeleeHit")
@@ -202,6 +203,123 @@ end
 --------------------------------------------------------------------------------
 local currentSwingTrack = nil -- script-level: previous swing track reference
 local swingCycleIndex = {}    -- [toolName] → next index into swing_anim_ids
+local observerSwingTrackCache = setmetatable({}, { __mode = "k" })
+local observerSwingPlayIds = setmetatable({}, { __mode = "k" })
+
+local function normalizeAnimationId(animId)
+    if not animId or animId == "" then return nil end
+    local normalized = tostring(animId)
+    if tonumber(normalized) then
+        normalized = "rbxassetid://" .. normalized
+    end
+    return normalized
+end
+
+local function getOrCreateObserverSwingTrack(humanoid, animId)
+    local normalized = normalizeAnimationId(animId)
+    if not humanoid or not normalized then return nil end
+
+    local cache = observerSwingTrackCache[humanoid]
+    if not cache then
+        cache = {}
+        observerSwingTrackCache[humanoid] = cache
+    end
+
+    local cachedTrack = cache[normalized]
+    if cachedTrack then
+        local ok = pcall(function()
+            cachedTrack.Priority = cachedTrack.Priority
+        end)
+        if ok then
+            return cachedTrack
+        end
+        cache[normalized] = nil
+    end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = humanoid
+    end
+
+    local anim = Instance.new("Animation")
+    anim.AnimationId = normalized
+    local okLoad, track = pcall(function()
+        return animator:LoadAnimation(anim)
+    end)
+    anim:Destroy()
+    if not okLoad or not track then return nil end
+
+    track.Priority = Enum.AnimationPriority.Action4
+    cache[normalized] = track
+    return track
+end
+
+local function stopObservedSwingTracks(humanoid, exceptTrack, animId)
+    if not humanoid then return end
+    local normalized = normalizeAnimationId(animId)
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if animator then
+        for _, playingTrack in ipairs(animator:GetPlayingAnimationTracks()) do
+            local playingId = nil
+            pcall(function()
+                local animation = playingTrack.Animation
+                if animation then
+                    playingId = normalizeAnimationId(animation.AnimationId)
+                end
+            end)
+            if playingTrack ~= exceptTrack and (not normalized or playingId == normalized) then
+                pcall(function() playingTrack:Stop(0) end)
+            end
+        end
+    end
+end
+
+local function playObservedSwing(targetPlayer, animId, scaledCd, baseCd)
+    if not targetPlayer or targetPlayer == player then return end
+
+    local character = targetPlayer.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 1)
+    if not humanoid or humanoid.Health <= 0 then return end
+
+    local normalized = normalizeAnimationId(animId)
+    if not normalized then return end
+
+    local track = getOrCreateObserverSwingTrack(humanoid, normalized)
+    if not track then return end
+
+    stopObservedSwingTracks(humanoid, track, normalized)
+    pcall(function() track:Stop(0) end)
+    track.Priority = Enum.AnimationPriority.Action4
+
+    local cd = scaledCd or baseCd or 0.5
+    local baseStepCd = baseCd or cd
+    local fallbackSpeed = math.clamp(baseStepCd / cd, 0.25, 4.0)
+    local playId = (observerSwingPlayIds[track] or 0) + 1
+    observerSwingPlayIds[track] = playId
+
+    pcall(function() track:Play(0.05, 1, fallbackSpeed) end)
+    pcall(function() track:AdjustSpeed(fallbackSpeed) end)
+
+    task.spawn(function()
+        task.wait(0.1)
+        if observerSwingPlayIds[track] ~= playId then return end
+        local realLength = 0
+        pcall(function() realLength = track.Length end)
+        if realLength > 0 and cd > 0 then
+            local preciseSpeed = math.clamp(realLength / cd, 0.25, 4.0)
+            if math.abs(preciseSpeed - fallbackSpeed) > 0.05 then
+                pcall(function() track:AdjustSpeed(preciseSpeed) end)
+            end
+        end
+    end)
+
+    task.delay(math.max(cd * 1.05, 0.15), function()
+        if observerSwingPlayIds[track] ~= playId then return end
+        pcall(function() track:Stop() end)
+    end)
+end
 
 local function playLocalCfgAnimation(cfg, toolName, scaledCd, baseCdOverride)
     -- Resolve which animation id to use this swing
@@ -408,52 +526,8 @@ local function attachMelee(tool)
         end
 
         local duration = endOffset - startOffset
-        -- ENCHANT SYSTEM: use enchant color for trail if weapon has an enchant
-        local trailColorStart = Color3.fromRGB(240, 240, 240)
-        local trailColorEnd   = Color3.fromRGB(190, 190, 190)
-        if WeaponEnchantConfig and tool:GetAttribute("HasEnchant") then
-            local pn = tool:GetAttribute("EnchantName")
-            if pn and pn ~= "" then
-                local enchantColor = WeaponEnchantConfig.GetTrailColorForEnchant(pn)
-                if enchantColor then
-                    trailColorStart = Color3.new(
-                        math.min(enchantColor.R * 1.2, 1),
-                        math.min(enchantColor.G * 1.2, 1),
-                        math.min(enchantColor.B * 1.2, 1)
-                    )
-                    trailColorEnd = enchantColor
-                end
-            end
-        end
-        -- configure trail appearance
         pcall(function()
-            swordTrail.Color = ColorSequence.new({
-                ColorSequenceKeypoint.new(0, trailColorStart),
-                ColorSequenceKeypoint.new(0.4, trailColorEnd),
-                ColorSequenceKeypoint.new(1, trailColorEnd),
-            })
-            -- Enchant trails are much more visible; non-Enchant trails keep a subtler look
-            local hasEnchantTrail = WeaponEnchantConfig and tool:GetAttribute("HasEnchant")
-            if hasEnchantTrail then
-                swordTrail.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 0.1),
-                    NumberSequenceKeypoint.new(0.3, 0.25),
-                    NumberSequenceKeypoint.new(0.7, 0.6),
-                    NumberSequenceKeypoint.new(1, 1),
-                })
-                swordTrail.LightEmission = 0.8
-                swordTrail.LightInfluence = 0
-            else
-                swordTrail.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 0.6),
-                    NumberSequenceKeypoint.new(0.5, 0.8),
-                    NumberSequenceKeypoint.new(1, 1),
-                })
-            end
             swordTrail.Lifetime = math.max(0.14, duration)
-            swordTrail.MinLength = 0
-            swordTrail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.15), NumberSequenceKeypoint.new(0.6, 0.8), NumberSequenceKeypoint.new(1, 0.2)})
-            swordTrail.FaceCamera = false
         end)
 
         -- schedule enable/disable relative to swing start
@@ -786,6 +860,10 @@ local function scanAndAttach()
 end
 
 scanAndAttach()
+
+meleeSwingVisualEvent.OnClientEvent:Connect(function(attackerPlayer, animId, scaledCd, baseCd)
+    playObservedSwing(attackerPlayer, animId, scaledCd, baseCd)
+end)
 
 player.Backpack.ChildAdded:Connect(function(child) attachMelee(child) end)
 player.CharacterAdded:Connect(function(char)

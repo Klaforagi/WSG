@@ -5,6 +5,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local BANDAGE_ANIM = "rbxassetid://139297808237661"
+local warmedAnimators = setmetatable({}, { __mode = "k" })
+local watchedCharacters = setmetatable({}, { __mode = "k" })
 
 local function collectAnimationIds()
 	local ids = {}
@@ -50,13 +52,15 @@ local function collectAnimationIds()
 	return ids
 end
 
-local function warmCharacterAnimations(character)
-	local humanoid = character:WaitForChild("Humanoid")
-	local animator = humanoid:WaitForChild("Animator")
+local allAnimationIds = collectAnimationIds()
 
-	local ids = collectAnimationIds()
+local function warmAnimatorAnimations(animator)
+	if not animator or warmedAnimators[animator] then
+		return
+	end
+	warmedAnimators[animator] = true
 
-	for _, id in ipairs(ids) do
+	for _, id in ipairs(allAnimationIds) do
 		local anim = Instance.new("Animation")
 		anim.AnimationId = id
 
@@ -70,19 +74,51 @@ local function warmCharacterAnimations(character)
 			task.wait()
 			track:Stop(0)
 		else
+			warmedAnimators[animator] = nil
 			warn("Failed to warm animation:", id)
 		end
 	end
 end
 
-player.CharacterAdded:Connect(function(character)
-	task.defer(function()
-		warmCharacterAnimations(character)
-	end)
-end)
+local function watchCharacter(character)
+	if not character or watchedCharacters[character] then
+		return
+	end
+	watchedCharacters[character] = true
 
-if player.Character then
-	task.defer(function()
-		warmCharacterAnimations(player.Character)
+	for _, desc in ipairs(character:GetDescendants()) do
+		if desc:IsA("Animator") then
+			task.defer(function()
+				warmAnimatorAnimations(desc)
+			end)
+		end
+	end
+
+	character.DescendantAdded:Connect(function(desc)
+		if desc:IsA("Animator") then
+			task.defer(function()
+				warmAnimatorAnimations(desc)
+			end)
+		end
 	end)
 end
+
+local function watchPlayer(targetPlayer)
+	targetPlayer.CharacterAdded:Connect(function(character)
+		task.defer(function()
+			watchCharacter(character)
+		end)
+	end)
+
+	if targetPlayer.Character then
+		task.defer(function()
+			watchCharacter(targetPlayer.Character)
+		end)
+	end
+end
+
+for _, targetPlayer in ipairs(Players:GetPlayers()) do
+	watchPlayer(targetPlayer)
+end
+
+Players.PlayerAdded:Connect(watchPlayer)

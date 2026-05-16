@@ -30,7 +30,7 @@ MeteorShowerConfig.METEOR_COLOR       = Color3.fromRGB(220, 235, 255)  -- pale i
 MeteorShowerConfig.FIRE_COLOR         = Color3.fromRGB(160, 210, 255)  -- cool blue flame
 MeteorShowerConfig.FIRE_SEC_COLOR     = Color3.fromRGB(220, 240, 255)  -- white-blue embers
 MeteorShowerConfig.GLOW_COLOR         = Color3.fromRGB(160, 210, 255)  -- PointLight colour
-MeteorShowerConfig.GLOW_BRIGHTNESS    = 2
+MeteorShowerConfig.GLOW_BRIGHTNESS    = 1.5
 MeteorShowerConfig.GLOW_RANGE         = 30
 
 ---------------------------------------------------------------------
@@ -55,20 +55,22 @@ MeteorShowerConfig.IMPACT_CLEANUP_DELAY   = 0.6  -- seconds after impact before 
 ---------------------------------------------------------------------
 MeteorShowerConfig.DIRECT_HIT_RADIUS       = 8    -- studs – full damage zone
 MeteorShowerConfig.SPLASH_RADIUS           = 20   -- studs – outer splash zone
-MeteorShowerConfig.IMPACT_DAMAGE           = 10   -- flat damage for direct and splash hits
+MeteorShowerConfig.IMPACT_DAMAGE           = 20   -- flat damage for direct and splash hits
 
 ---------------------------------------------------------------------
 -- Meteor Shards (collectible drops)
 ---------------------------------------------------------------------
 MeteorShowerConfig.SHARD_SPAWN_CHANCE      = 1.0  -- 1.0 = every impact drops a shard
-MeteorShowerConfig.SHARD_LIFETIME          = 20   -- seconds before uncollected shard despawns
+MeteorShowerConfig.SHARD_LIFETIME          = 24   -- seconds before uncollected shard despawns
 MeteorShowerConfig.SHARD_REWARD_COINS      = 5    -- coins granted per shard collected
 MeteorShowerConfig.SHARD_SIZE              = Vector3.new(2.5, 2.5, 2.5)  -- sphere diameter
 MeteorShowerConfig.SHARD_COLOR             = Color3.fromRGB(180, 225, 255)  -- light bright blue
 MeteorShowerConfig.SHARD_LIGHT_RANGE       = 18
 MeteorShowerConfig.SHARD_LIGHT_BRIGHTNESS  = 0.3  -- toned down (was 1.5)
-MeteorShowerConfig.SHARD_NEON_TRANSPARENCY = 0.75  -- dim the neon self-glow
-MeteorShowerConfig.SHARD_Y_OFFSET          = -1    -- studs above ground level
+MeteorShowerConfig.SHARD_NEON_TRANSPARENCY = 0.45  -- easier to spot while collectible
+MeteorShowerConfig.SHARD_BOB_DISTANCE      = 0.5
+MeteorShowerConfig.SHARD_BOB_DURATION      = 3.4
+MeteorShowerConfig.SHARD_Y_OFFSET          = -2    -- studs above ground level
 
 ---------------------------------------------------------------------
 -- Target zones

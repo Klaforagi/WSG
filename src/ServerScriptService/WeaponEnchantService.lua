@@ -400,6 +400,30 @@ local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
 local ProcConfig = WeaponEnchantConfig.ProcConfig or {}
+local DOT_DAMAGE_OPTIONS = { SkipLastDamagerTag = true }
+
+local STANDARD_BODY_PARTS = {
+    head = true,
+    torso = true,
+    uppertorso = true,
+    lowertorso = true,
+    leftarm = true,
+    rightarm = true,
+    leftleg = true,
+    rightleg = true,
+    leftupperarm = true,
+    leftlowerarm = true,
+    lefthand = true,
+    rightupperarm = true,
+    rightlowerarm = true,
+    righthand = true,
+    leftupperleg = true,
+    leftlowerleg = true,
+    leftfoot = true,
+    rightupperleg = true,
+    rightlowerleg = true,
+    rightfoot = true,
+}
 
 -- Remote event for enchant proc damage popups (server → attacker client)
 local EnchantProcHit = ReplicatedStorage:FindFirstChild("EnchantProcHit")
@@ -431,6 +455,26 @@ end
 local function getHumanoid(model)
     if not model then return nil end
     return model:FindFirstChildOfClass("Humanoid")
+end
+
+local function isStandardBodyPart(part)
+    if not part or not part:IsA("BasePart") then return false end
+    local normalizedName = string.lower((part.Name or ""):gsub("%s+", ""))
+    return STANDARD_BODY_PARTS[normalizedName] == true
+end
+
+local function applyBodyTint(model, tintColor)
+    if not model then return {} end
+
+    local originals = {}
+    for _, child in ipairs(model:GetChildren()) do
+        if child:IsA("BasePart") and child.Transparency < 1 and isStandardBodyPart(child) then
+            originals[child] = child.Color
+            pcall(function() child.Color = tintColor end)
+        end
+    end
+
+    return originals
 end
 
 -- Play a proc sound at a position (via the target's root if available)
@@ -475,9 +519,10 @@ end
 -- Scales with the attacker's melee upgrade level (same multiplier as base weapon,
 -- no PvP cap -- all targets take the same bonus damage).
 -- Also sends a proc popup to the attacker's client.
-local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantName)
+local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantName, options)
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     if damage <= 0 then return end
+    local skipLastDamagerTag = type(options) == "table" and options.SkipLastDamagerTag == true
     -- Apply melee upgrade multiplier (uncapped for all targets)
     if _G.GetMeleeDamageMultiplier and attackerPlayer then
         local mult = _G.GetMeleeDamageMultiplier(attackerPlayer, false)
@@ -487,10 +532,12 @@ local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantNa
     end
     damage = math.round(damage)
     pcall(function()
-        if attackerPlayer then
+        if attackerPlayer and not skipLastDamagerTag then
             targetHumanoid:SetAttribute("lastDamagerUserId", attackerPlayer.UserId)
             targetHumanoid:SetAttribute("lastDamagerName", attackerPlayer.Name)
             targetHumanoid:SetAttribute("lastDamageTime", tick())
+        elseif skipLastDamagerTag then
+            targetHumanoid:SetAttribute("SuppressMobAggroUntil", os.clock() + 0.25)
         end
         targetHumanoid:TakeDamage(damage)
     end)
@@ -533,15 +580,7 @@ local ICY_SNOWFLAKE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
 
 -- Tint all visible body parts to icy blue and store originals
 local function applyIcyBodyTint(model)
-    if not model then return {} end
-    local originals = {}
-    for _, desc in ipairs(model:GetDescendants()) do
-        if desc:IsA("BasePart") and desc.Transparency < 1 then
-            originals[desc] = desc.Color
-            pcall(function() desc.Color = ICY_COLOR end)
-        end
-    end
-    return originals
+    return applyBodyTint(model, ICY_COLOR)
 end
 
 -- Restore original body part colors
@@ -651,7 +690,7 @@ local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, t
     state.remaining = duration
 
     -- Immediate first tick
-    applyFlatDamage(targetHumanoid, tickDamage, attackerPlayer, "Icy")
+    applyFlatDamage(targetHumanoid, tickDamage, attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
 
     -- Damage tick loop: ticks once per tickInterval after the immediate one
     state.tickThread = task.spawn(function()
@@ -660,7 +699,7 @@ local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, t
             if not icyState[targetHumanoid] then break end
             if not targetHumanoid or not targetHumanoid.Parent or targetHumanoid.Health <= 0 then break end
             state.remaining = state.remaining - tickInterval
-            applyFlatDamage(targetHumanoid, tickDamage, attackerPlayer, "Icy")
+            applyFlatDamage(targetHumanoid, tickDamage, attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
         end
     end)
 
@@ -758,15 +797,7 @@ local toxicState = {} -- [Humanoid] = { remaining, running, originalColors, part
 local POISON_COLOR = Color3.fromRGB(80, 200, 80)
 
 local function applyPoisonBodyTint(model)
-    if not model then return {} end
-    local originals = {}
-    for _, desc in ipairs(model:GetDescendants()) do
-        if desc:IsA("BasePart") and desc.Transparency < 1 then
-            originals[desc] = desc.Color
-            pcall(function() desc.Color = POISON_COLOR end)
-        end
-    end
-    return originals
+    return applyBodyTint(model, POISON_COLOR)
 end
 
 local function removePoisonBodyTint(originals)
@@ -856,7 +887,7 @@ local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
                 break
             end
             state.remaining = state.remaining - tickInterval
-            applyFlatDamage(targetHumanoid, tickDmg, attackerPlayer, "Toxic")
+            applyFlatDamage(targetHumanoid, tickDmg, attackerPlayer, "Toxic", DOT_DAMAGE_OPTIONS)
         end
         -- Cleanup visuals then state
         state.running = false

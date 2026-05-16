@@ -8,6 +8,7 @@
 --   Movement   – walking, chasing, enraged speeds and aggro
 --   Attack     – damage, hitbox, cooldown, sound
 --   Animation  – animation asset IDs (empty string = none / fallback)
+--   Appearance – optional visual overrides such as skin tone
 --   Debug      – development helpers
 
 local MobSettings = {}
@@ -50,6 +51,9 @@ local Defaults = {
         Idle   = "",            -- empty = none
         Attack = "",            -- empty = none (plays during Windup)
     },
+    Appearance = {
+        SkinVariation = 8,       -- max RGB offset applied per channel on spawn
+    },
     Debug = {
         ShowHitbox  = false,
         HitboxColor = Color3.fromRGB(255, 50, 50),
@@ -80,6 +84,15 @@ local Presets = {
             Run    = "rbxassetid://507767714",
             Idle   = "rbxassetid://507766388",
             Attack = "rbxassetid://122917464230305",
+        },
+        Appearance = {
+            SkinPalette = {
+                Color3.fromRGB(161, 196, 140),
+                Color3.fromRGB(93, 102, 70),
+                Color3.fromRGB(117, 107, 57),
+                Color3.fromRGB(115, 115, 96),
+            },
+            SkinVariation = 8,
         },
         Debug = {
             ShowHitbox  = false,
@@ -114,6 +127,15 @@ local Presets = {
             Idle   = "rbxassetid://507766388",
             Attack = "rbxassetid://122917464230305",
         },
+        Appearance = {
+            SkinPalette = {
+                Color3.fromRGB(161, 196, 140),
+                Color3.fromRGB(93, 102, 70),
+                Color3.fromRGB(117, 107, 57),
+                Color3.fromRGB(115, 115, 96),
+            },
+            SkinVariation = 8,
+        },
     },
 
     Ogre = {
@@ -138,6 +160,14 @@ local Presets = {
             Run    = "rbxassetid://507767714",
             Idle   = "rbxassetid://507766388",
             Attack = "rbxassetid://122917464230305",
+        },
+        Appearance = {
+            SkinPalette = {
+                Color3.fromRGB(211, 190, 150),
+                Color3.fromRGB(173, 144, 130),
+                Color3.fromRGB(136, 90, 81),
+            },
+            SkinVariation = 8,
         },
         Debug = {
             ShowHitbox  = false,
@@ -172,7 +202,7 @@ end
 ---------------------------------------------------------------------------
 -- Validation (warns on obviously wrong values; non-fatal)
 ---------------------------------------------------------------------------
-local REQUIRED_SECTIONS = { "Spawn", "Movement", "Attack", "Animation", "Debug" }
+local REQUIRED_SECTIONS = { "Spawn", "Movement", "Attack", "Animation", "Appearance", "Debug" }
 
 local function validate(name, cfg)
     for _, section in ipairs(REQUIRED_SECTIONS) do
@@ -203,6 +233,26 @@ local function validate(name, cfg)
         end
         if type(sp.SpawnHeightOffset) ~= "number" then
             warn(("[MobSettings] '%s' Spawn.SpawnHeightOffset must be a number"):format(name))
+        end
+    end
+    local appearance = cfg.Appearance
+    if appearance then
+        if appearance.BaseSkinColor ~= nil and typeof(appearance.BaseSkinColor) ~= "Color3" then
+            warn(("[MobSettings] '%s' Appearance.BaseSkinColor must be a Color3 when provided"):format(name))
+        end
+        if appearance.SkinPalette ~= nil then
+            if type(appearance.SkinPalette) ~= "table" or #appearance.SkinPalette == 0 then
+                warn(("[MobSettings] '%s' Appearance.SkinPalette must be a non-empty array when provided"):format(name))
+            else
+                for index, paletteColor in ipairs(appearance.SkinPalette) do
+                    if typeof(paletteColor) ~= "Color3" then
+                        warn(("[MobSettings] '%s' Appearance.SkinPalette[%d] must be a Color3"):format(name, index))
+                    end
+                end
+            end
+        end
+        if type(appearance.SkinVariation) ~= "number" or appearance.SkinVariation < 0 then
+            warn(("[MobSettings] '%s' Appearance.SkinVariation must be a non-negative number"):format(name))
         end
     end
     local atk = cfg.Attack

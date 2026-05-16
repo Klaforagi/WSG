@@ -77,6 +77,15 @@ local function px(base)
     return math.max(1, math.round(base * screenY / 1080))
 end
 
+local function pxWidth(base)
+    local cam = workspace.CurrentCamera
+    local screenX = 1920
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 then
+        screenX = cam.ViewportSize.X
+    end
+    return math.max(1, math.round(base * screenX / 1920))
+end
+
 -- Colors
 local GOLD      = Color3.fromRGB(255, 215, 80)
 local WHITE     = Color3.fromRGB(255, 255, 255)
@@ -90,23 +99,6 @@ local CARD_GAP = 10  -- gap between cards
 local STRIP_CARDS = 40  -- total cards in the roulette strip
 local WINNING_INDEX = 30 -- card index where the winner is placed (near end for nice decel)
 
-local SIZE_TIER_COLORS = {
-    Tiny   = Color3.fromRGB(225, 145, 75),
-    Normal = Color3.fromRGB(165, 165, 178),
-    Large  = Color3.fromRGB(225, 145, 75),
-    Giant  = Color3.fromRGB(205, 215, 225),
-    King   = Color3.fromRGB(255, 215, 80),
-}
-
-local STRIP_ENCHANT_COLORS = {
-    Fiery     = Color3.fromRGB(255, 150, 55),
-    Icy       = Color3.fromRGB(135, 225, 255),
-    Shock     = Color3.fromRGB(255, 225, 65),
-    Toxic     = Color3.fromRGB(115, 255, 90),
-    Lifesteal = Color3.fromRGB(255, 95, 95),
-    Void      = Color3.fromRGB(220, 135, 255),
-}
-
 --------------------------------------------------------------------------------
 -- Get rarity color
 --------------------------------------------------------------------------------
@@ -115,23 +107,6 @@ local function rarityColor(rarity)
         return CrateConfig.Rarities[rarity].color
     end
     return DIM_TEXT
-end
-
-local function sizeTierColor(sizeTier)
-    return SIZE_TIER_COLORS[sizeTier] or SIZE_TIER_COLORS.Normal
-end
-
-local function enchantColor(enchantName)
-    if STRIP_ENCHANT_COLORS[enchantName] then
-        return STRIP_ENCHANT_COLORS[enchantName]
-    end
-    if WeaponEnchantConfig and type(WeaponEnchantConfig.GetColorForEnchant) == "function" then
-        local ok, color = pcall(function()
-            return WeaponEnchantConfig.GetColorForEnchant(enchantName)
-        end)
-        if ok and color then return color end
-    end
-    return Color3.fromRGB(200, 160, 255)
 end
 
 local function rollVisualSize()
@@ -674,6 +649,101 @@ function CrateOpeningUI.Init(playerGui)
     cnCorner.CornerRadius = UDim.new(0, px(8))
     cnCorner.Parent = confirmNo
 
+    local function applyResponsiveLayout()
+        marker.Size = UDim2.new(0, math.max(2, px(3)), 0, math.max(px(CARD_H + 40), pxWidth(220)))
+
+        local clipHeight = math.max(px(CARD_H + 30), pxWidth(230))
+        scrollClip.Size = UDim2.new(1, 0, 0, clipHeight)
+        scrollClip.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+        local resultWidth = math.max(px(360), pxWidth(420))
+        local resultHeight = math.max(px(360), pxWidth(360))
+        resultFrame.Size = UDim2.new(0, resultWidth, 0, resultHeight)
+        resultFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+        rfCorner.CornerRadius = UDim.new(0, math.max(px(16), pxWidth(16)))
+
+        resultTitle.TextSize = math.max(14, math.floor(px(16)))
+        resultTitle.Size = UDim2.new(1, 0, 0, px(24))
+        resultTitle.Position = UDim2.new(0, 0, 0, px(14))
+
+        local imageSize = math.max(px(100), pxWidth(120))
+        resultImage.Size = UDim2.new(0, imageSize, 0, imageSize)
+        resultImage.Position = UDim2.new(0.5, 0, 0, px(42))
+
+        resultName.TextSize = math.max(24, math.floor(px(28)))
+        resultName.Size = UDim2.new(1, -pxWidth(16), 0, px(40))
+        resultName.Position = UDim2.new(0, pxWidth(8), 0, px(150))
+
+        resultRarity.TextSize = math.max(14, math.floor(px(16)))
+        resultRarity.Size = UDim2.new(1, 0, 0, px(22))
+        resultRarity.Position = UDim2.new(0, 0, 0, px(194))
+
+        resultSizeLabel.TextSize = math.max(18, math.floor(px(22)))
+        resultSizeLabel.Size = UDim2.new(1, 0, 0, px(26))
+        resultSizeLabel.Position = UDim2.new(0, 0, 0, px(222))
+
+        resultEnchantLabel.TextSize = math.max(16, math.floor(px(18)))
+        resultEnchantLabel.Size = UDim2.new(1, 0, 0, px(24))
+        resultEnchantLabel.Position = UDim2.new(0, 0, 0, px(248))
+
+        closeBtn.TextSize = math.max(14, math.floor(px(16)))
+        closeBtn.Size = UDim2.new(0, math.max(px(140), pxWidth(160)), 0, px(40))
+        closeBtn.Position = UDim2.new(0.5, 0, 1, -px(16))
+        cbCorner.CornerRadius = UDim.new(0, px(10))
+
+        btnRow.Size = UDim2.new(1, -pxWidth(24), 0, px(44))
+        btnRow.Position = UDim2.new(0.5, 0, 1, -px(14))
+
+        keepBtn.TextSize = math.max(15, math.floor(px(17)))
+        keepBtn.Size = UDim2.new(0.55, -px(4), 1, 0)
+        keepCorner.CornerRadius = UDim.new(0, px(10))
+
+        salvageBtn.TextSize = math.max(13, math.floor(px(15)))
+        salvageBtn.Size = UDim2.new(0.45, -px(4), 1, 0)
+        salvageBtn.Position = UDim2.new(0.55, px(4), 0, 0)
+        salvageCorner.CornerRadius = UDim.new(0, px(10))
+        for _, label in ipairs(salvageTextLabels) do
+            label.TextSize = salvageBtn.TextSize
+        end
+
+        confirmFrame.Size = UDim2.new(0, math.max(px(320), pxWidth(360)), 0, math.max(px(180), pxWidth(200)))
+        confirmFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+        cfCorner.CornerRadius = UDim.new(0, px(14))
+
+        confirmMsg.TextSize = math.max(14, math.floor(px(16)))
+        confirmMsg.Size = UDim2.new(1, -pxWidth(24), 0, px(70))
+        confirmMsg.Position = UDim2.new(0, pxWidth(12), 0, px(16))
+
+        cfBtnRow.Size = UDim2.new(1, -pxWidth(24), 0, px(40))
+        cfBtnRow.Position = UDim2.new(0.5, 0, 1, -px(16))
+
+        confirmYes.TextSize = math.max(13, math.floor(px(14)))
+        cyCorner.CornerRadius = UDim.new(0, px(8))
+
+        confirmNo.TextSize = math.max(13, math.floor(px(14)))
+        cnCorner.CornerRadius = UDim.new(0, px(8))
+    end
+
+    applyResponsiveLayout()
+
+    local viewportConn = nil
+    local function bindViewportResize()
+        if viewportConn then
+            viewportConn:Disconnect()
+            viewportConn = nil
+        end
+        local cam = workspace.CurrentCamera
+        if cam then
+            viewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsiveLayout)
+        end
+    end
+
+    bindViewportResize()
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        bindViewportResize()
+        applyResponsiveLayout()
+    end)
+
     ---------------------------------------------------------------------------
     -- DECISION STATE
     ---------------------------------------------------------------------------
@@ -955,7 +1025,7 @@ function CrateOpeningUI.Init(playerGui)
         sizeLabel.BackgroundTransparency = 1
         sizeLabel.Font = Enum.Font.GothamBold
         sizeLabel.Text = sizeText
-        sizeLabel.TextColor3 = sizeTierColor(data.sizeTier)
+        sizeLabel.TextColor3 = WHITE
         sizeLabel.TextSize = math.max(10, math.floor(px(12)))
         sizeLabel.Size = UDim2.new(1, 0, 0, px(16))
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -963,11 +1033,9 @@ function CrateOpeningUI.Init(playerGui)
         sizeLabel.ZIndex = 9
         sizeLabel.Parent = modifierBox
 
-        local sizeStroke = Instance.new("UIStroke")
-        sizeStroke.Color = Color3.fromRGB(0, 0, 0)
-        sizeStroke.Thickness = 1.2
-        sizeStroke.Transparency = 0.25
-        sizeStroke.Parent = sizeLabel
+        if EnchantTextStyler then
+            EnchantTextStyler.ApplySize(sizeLabel, data.sizeTier or "Normal", sizeText)
+        end
 
         local enchantName = (data.enchantName and data.enchantName ~= "") and tostring(data.enchantName) or ""
         local enchantLabel = Instance.new("TextLabel")
@@ -975,7 +1043,7 @@ function CrateOpeningUI.Init(playerGui)
         enchantLabel.BackgroundTransparency = 1
         enchantLabel.Font = Enum.Font.GothamBold
         enchantLabel.Text = enchantName
-        enchantLabel.TextColor3 = enchantName ~= "" and enchantColor(enchantName) or DIM_TEXT
+        enchantLabel.TextColor3 = enchantName ~= "" and WHITE or DIM_TEXT
         enchantLabel.TextSize = math.max(9, math.floor(px(11)))
         enchantLabel.Size = UDim2.new(1, 0, 0, px(15))
         enchantLabel.Position = UDim2.new(0, 0, 0, px(16))
@@ -1018,6 +1086,8 @@ function CrateOpeningUI.Init(playerGui)
     function CrateOpeningUI.Play(crateId, resultData, coinApi)
         if isAnimating then return end
         isAnimating = true
+
+        applyResponsiveLayout()
 
         local resolvedCrateId = resolveCrateId(crateId)
         local crateDef = CrateConfig and CrateConfig.Crates[resolvedCrateId]
@@ -1171,10 +1241,12 @@ function CrateOpeningUI.Init(playerGui)
             -- SIZE ROLL SYSTEM — display exact rolled size percentage
             local sizeTier = resultData.sizeTier or "Normal"
             if resultData.sizePercent then
+                local resultSizeText = tostring(math.floor(resultData.sizePercent)) .. "%"
                 if EnchantTextStyler then
-                    EnchantTextStyler.ApplySize(resultSizeLabel, sizeTier)
+                    EnchantTextStyler.ApplySize(resultSizeLabel, sizeTier, resultSizeText)
+                else
+                    resultSizeLabel.Text = resultSizeText
                 end
-                resultSizeLabel.Text = tostring(math.floor(resultData.sizePercent)) .. "%"
             else
                 resultSizeLabel.Text = ""
             end

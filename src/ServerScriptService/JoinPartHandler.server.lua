@@ -156,6 +156,17 @@ local function isTeamLocked(teamName, blueCount, redCount)
 	return false, ""
 end
 
+local function getJoinDisabledReason()
+	local matchState = ServerScriptService:GetAttribute("MatchState")
+	if matchState == "Intermission" then
+		return "INTERMISSION"
+	end
+	if matchState == "EndGame" then
+		return "CLOSED"
+	end
+	return nil
+end
+
 -----------------------------------------------------------------------
 -- updateJoinState()
 -- Refreshes billboard text and glow beams for both join parts.
@@ -175,7 +186,13 @@ local function updateJoinState()
 	end
 
 	-- ── Blue ────────────────────────────────────────────────────────────────
-	local blueLocked, blueReason = isTeamLocked("Blue", blueCount, redCount)
+	local forcedReason = getJoinDisabledReason()
+	local blueLocked, blueReason
+	if forcedReason then
+		blueLocked, blueReason = true, forcedReason
+	else
+		blueLocked, blueReason = isTeamLocked("Blue", blueCount, redCount)
+	end
 
 	if joinBlue and blueBillboard then
 		local countLbl  = blueBillboard:FindFirstChild("Count",  true)
@@ -187,7 +204,12 @@ local function updateJoinState()
 	if joinBlue then setGlowEnabled(joinBlue, not blueLocked) end
 
 	-- ── Red ─────────────────────────────────────────────────────────────────
-	local redLocked, redReason = isTeamLocked("Red", blueCount, redCount)
+	local redLocked, redReason
+	if forcedReason then
+		redLocked, redReason = true, forcedReason
+	else
+		redLocked, redReason = isTeamLocked("Red", blueCount, redCount)
+	end
 
 	if joinRed and redBillboard then
 		local countLbl  = redBillboard:FindFirstChild("Count",  true)
@@ -219,6 +241,10 @@ Players.PlayerRemoving:Connect(function()
 	task.defer(updateJoinState)
 end)
 
+ServerScriptService:GetAttributeChangedSignal("MatchState"):Connect(function()
+	task.defer(updateJoinState)
+end)
+
 -- Initial state (deferred so teams/players are fully loaded)
 task.defer(updateJoinState)
 
@@ -246,6 +272,7 @@ local function makeTouchHandler(teamName)
 
 		local player = Players:GetPlayerFromCharacter(character)
 		if not player then return end
+		if getJoinDisabledReason() then return end
 
 		-- Debounce: prevent the same player from firing repeatedly
 		local now = tick()

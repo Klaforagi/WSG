@@ -71,6 +71,21 @@ subtitleStroke.Transparency = 0.4
 subtitleStroke.Parent = subtitle
 
 local hideThread = nil
+local WIN_DISPLAY_TIME = 8
+local playGameSound
+
+local function hideEndScreen()
+    if hideThread then
+        pcall(function() task.cancel(hideThread) end)
+        hideThread = nil
+    end
+    frame.Visible = false
+    title.TextTransparency = 0
+    subtitle.TextTransparency = 0
+    frameStroke.Transparency = 0.2
+    frame.BackgroundTransparency = 0.06
+    title.TextColor3 = GOLD_TEXT
+end
 
 local function showEnd(resultType, winner)
     -- cancel any pending hide
@@ -86,7 +101,7 @@ local function showEnd(resultType, winner)
         pcall(function() playGameSound("SuddenDeath") end)
     elseif resultType == "win" and winner then
         title.Text = "⚔ " .. TeamDisplayNames.GetUpper(winner) .. " WIN! ⚔"
-        subtitle.Text = "New match starting soon..."
+        subtitle.Text = "Intermission starts soon..."
         if winner == "Blue" then
             title.TextColor3 = Color3.fromRGB(65, 130, 255)
         elseif winner == "Red" then
@@ -126,7 +141,7 @@ local function showEnd(resultType, winner)
     }):Play()
 
     -- auto-hide after a duration (shorter for sudden death)
-    local displayTime = (resultType == "sudden") and 3 or 10
+    local displayTime = (resultType == "sudden") and 3 or WIN_DISPLAY_TIME
     hideThread = task.delay(displayTime, function()
         local fadeOut = TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
             BackgroundTransparency = 1,
@@ -148,7 +163,7 @@ local function showEnd(resultType, winner)
 end
 
 -- play a sound from ReplicatedStorage.Sounds.Game (search recursively)
-local function playGameSound(soundName)
+playGameSound = function(soundName)
     if not soundName then return end
     local sounds = ReplicatedStorage:FindFirstChild("Sounds")
     if not sounds then
@@ -207,14 +222,10 @@ end)
 -- listen for MatchStart to hide the end screen when a new match begins
 local matchStartEvent = ReplicatedStorage:WaitForChild("MatchStart")
 matchStartEvent.OnClientEvent:Connect(function()
-    if hideThread then
-        pcall(function() task.cancel(hideThread) end)
-        hideThread = nil
-    end
-    frame.Visible = false
-    title.TextTransparency = 0
-    subtitle.TextTransparency = 0
-    frameStroke.Transparency = 0.2
-    frame.BackgroundTransparency = 0.06
-    title.TextColor3 = GOLD_TEXT
+    hideEndScreen()
+end)
+
+local intermissionEvent = ReplicatedStorage:WaitForChild("IntermissionStart")
+intermissionEvent.OnClientEvent:Connect(function()
+    hideEndScreen()
 end)

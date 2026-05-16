@@ -117,6 +117,10 @@ local function getEventRequiredCount(def)
         or 0
 end
 
+local function hasDisplayText(value)
+    return type(value) == "string" and value:match("%S") ~= nil
+end
+
 ---------------------------------------------------------------------
 -- Time formatting — compact M:SS
 ---------------------------------------------------------------------
@@ -281,8 +285,8 @@ local function createEventPopup()
 
     local def = getEventDef()
     local eventName = def and def.Name     or "Event"
-    local objective = def and def.Objective or "..."
-    local reward    = def and def.Reward    or "..."
+    local objective = def and def.Objective or ""
+    local reward    = def and def.Reward    or ""
 
     -- Dedicated ScreenGui so the popup renders above other HUD
     local popupGui = Instance.new("ScreenGui")
@@ -509,9 +513,16 @@ local function createEventPopup()
         return val
     end
 
-    addInfoCard("Objective", objective, Color3.fromRGB(245, 245, 252), 1)
-    addInfoCard("Reward", reward, COLORS.gold, 2)
-    local timeValLabel = addInfoCard("Time Remaining", "--:--", Color3.fromRGB(245, 245, 252), 3)
+    local nextInfoOrder = 1
+    if hasDisplayText(objective) then
+        addInfoCard("Objective", objective, Color3.fromRGB(245, 245, 252), nextInfoOrder)
+        nextInfoOrder = nextInfoOrder + 1
+    end
+    if hasDisplayText(reward) then
+        addInfoCard("Reward", reward, COLORS.gold, nextInfoOrder)
+        nextInfoOrder = nextInfoOrder + 1
+    end
+    local timeValLabel = addInfoCard("Time Remaining", "--:--", Color3.fromRGB(245, 245, 252), nextInfoOrder)
     popupTimerLabel = timeValLabel
 
     -- ── Tween helpers ───────────────────────────────────────────────

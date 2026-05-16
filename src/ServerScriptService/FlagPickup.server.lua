@@ -9,6 +9,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 -- CurrencyService (lazy-loaded for objective coin rewards)
 local CurrencyService
+local XPModule
 pcall(function()
 	local mod = game:GetService("ServerScriptService"):FindFirstChild("CurrencyService")
 	if mod and mod:IsA("ModuleScript") then
@@ -69,14 +70,41 @@ local function playFlagSound(soundName, part)
     end
 end
 
--- Configuration: possible flag model names to look for
+-- Configuration: exact object names that belong to the flag system.
 local FLAG_NAMES = {"BlueFlag", "RedFlag", "Blue Flag", "Red Flag"}
+local FLAG_TEAMS_BY_NAME = {
+    BlueFlag = "Blue",
+    ["Blue Flag"] = "Blue",
+    RedFlag = "Red",
+    ["Red Flag"] = "Red",
+}
+local FLAG_STAND_TEAMS_BY_NAME = {
+    BlueFlagStand = "Blue",
+    RedFlagStand = "Red",
+}
+local PLAYABLE_TEAMS = {
+    Blue = true,
+    Red = true,
+}
 
-local function getFlagTeamFromName(name)
-    local n = tostring(name):lower()
-    if string.find(n, "blue") then return "Blue" end
-    if string.find(n, "red") then return "Red" end
-    return nil
+local function getFlagTeamFromModelName(name)
+    return FLAG_TEAMS_BY_NAME[tostring(name)]
+end
+
+local function getFlagTeamFromStandName(name)
+    return FLAG_STAND_TEAMS_BY_NAME[tostring(name)]
+end
+
+local function isPlayableTeamName(teamName)
+    return PLAYABLE_TEAMS[tostring(teamName)] == true
+end
+
+local function isFlagInteractionState(matchState)
+    return matchState == "Game" or matchState == "SuddenDeath"
+end
+
+local function areFlagsInteractive()
+    return isFlagInteractionState(ServerScriptService:GetAttribute("MatchState"))
 end
 
 local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=CFrame}
@@ -229,7 +257,7 @@ local function respawnFlag(team)
     -- remove any existing flag models in the world (dropped or misplaced) to avoid duplicates
     for _, child in ipairs(Map:GetChildren()) do
         if child and child:IsA("Model") then
-            local childTeam = getFlagTeamFromName(child.Name)
+            local childTeam = getFlagTeamFromModelName(child.Name)
             if childTeam == team then
                 pcall(function() child:Destroy() end)
             end
@@ -271,7 +299,7 @@ end
 
 function setupFlagModel(model)
     if not model or not model:IsA("Model") then return end
-    local team = getFlagTeamFromName(model.Name)
+    local team = getFlagTeamFromModelName(model.Name)
     if not team then return end
     local pickupPart = findPickupPart(model)
     if not pickupPart then return end
@@ -354,10 +382,12 @@ function setupFlagModel(model)
         -- ensure character has humanoid
         local humanoid = char:FindFirstChildOfClass("Humanoid")
         if not humanoid or humanoid.Health <= 0 then return end
-        if not pl.Team then return end
+        local playerTeamName = pl.Team and pl.Team.Name or nil
+        if not isPlayableTeamName(playerTeamName) then return end
+        if not areFlagsInteractive() then return end
 
         -- Same team: return the flag to its stand if it's been dropped
-        if pl.Team.Name == team then
+        if playerTeamName == team then
             if flags[team] and flags[team].dropped then
                 flags[team].dropped = false
                 -- destroy dropped model (cancels auto-return countdown)
@@ -367,7 +397,7 @@ function setupFlagModel(model)
                 -- respawn at stand
                 respawnFlag(team)
                 -- announce with player name
-                FlagStatus:FireAllClients("returned", pl.Name, pl.Team.Name, team)
+                FlagStatus:FireAllClients("returned", pl.Name, playerTeamName, team)
                 FlagStatus:FireAllClients("playSound", "Flag_return")
 
                 -- award XP for returning the flag
@@ -432,7 +462,6 @@ function setupFlagModel(model)
             carrying[pl] = {team = team, model = carried}
             pl:SetAttribute("CarryingFlag", team)
             -- announce pickup to all clients (send player team and flag team)
-            local playerTeamName = (pl.Team and pl.Team.Name) or nil
             FlagStatus:FireAllClients("pickup", pl.Name, playerTeamName, team)
             -- notify clients to play pickup sound locally
             FlagStatus:FireAllClients("playSound", "Flag_taken")
@@ -459,6 +488,9 @@ function setupFlagModel(model)
                 end
                 carrying[pl] = nil
                 pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+                if not areFlagsInteractive() then
+                    return
+                end
                 -- if we created a dropped model, apply rotation and schedule return to base after 8s
                 if hrp and dropModel then
                     if dropModel.PrimaryPart then
@@ -518,6 +550,10 @@ function setupFlagModel(model)
                                 if gui then pcall(function() gui:Destroy() end) end
                                 return
                             end
+                            if not areFlagsInteractive() then
+                                if gui then pcall(function() gui:Destroy() end) end
+                                return
+                            end
                             if label then
                                 label.Text = tostring(i)
                             end
@@ -526,6 +562,10 @@ function setupFlagModel(model)
 
                         -- if flag was picked up in the meantime, abort
                         if not flags[team] or not flags[team].dropped then
+                            if gui then pcall(function() gui:Destroy() end) end
+                            return
+                        end
+                        if not areFlagsInteractive() then
                             if gui then pcall(function() gui:Destroy() end) end
                             return
                         end
@@ -546,6 +586,9 @@ function setupFlagModel(model)
                     else
                     -- ensure original eventually respawns if something went wrong
                     task.delay(FLAG_RETURN_TIME, function()
+                        if not areFlagsInteractive() then
+                            return
+                        end
                         respawnFlag(team)
                         FlagStatus:FireAllClients("playSound", "Flag_return")
                         FlagStatus:FireAllClients("returned", nil, nil, team)
@@ -596,7 +639,6 @@ if not AddScore then
 end
 
 -- XP integration
-local XPModule
 pcall(function()
     XPModule = require(game:GetService("ServerScriptService"):WaitForChild("XPServiceModule", 10))
 end)
@@ -620,7 +662,7 @@ end
 -- Stand capture detection: when a player carrying an enemy flag touches their own stand
 local function setupStand(standPart)
     if not standPart or not standPart:IsA("BasePart") then return end
-    local standTeam = getFlagTeamFromName(standPart.Name)
+    local standTeam = getFlagTeamFromStandName(standPart.Name)
     if not standTeam then return end
 
     standPart.Touched:Connect(function(hit)
@@ -631,8 +673,11 @@ local function setupStand(standPart)
         -- must have a humanoid and be alive
         local hum = char:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then return end
+        if not areFlagsInteractive() then return end
         -- player must belong to the stand's team
-        if not pl.Team or pl.Team.Name ~= standTeam then return end
+        local playerTeamName = pl.Team and pl.Team.Name or nil
+        if not isPlayableTeamName(playerTeamName) then return end
+        if playerTeamName ~= standTeam then return end
         -- player must be carrying a flag, and it must be the enemy flag (not their own)
         local carry = carrying[pl]
         if not carry then return end
@@ -664,7 +709,7 @@ local function setupStand(standPart)
         pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
 
         -- award points to the player's team
-        local capturingTeamName = pl.Team and pl.Team.Name or nil
+        local capturingTeamName = playerTeamName
         awardPoints(capturingTeamName, 100)
 
         -- award XP for flag capture
@@ -718,7 +763,7 @@ end)
 ---------------------------------------------------------------------
 -- Full flag reset (called by GameManager between matches)
 ---------------------------------------------------------------------
-local function resetAllFlags()
+local function destroyAllFlags()
     -- 1) Destroy carried flag models and clear carrying state
     for pl, data in pairs(carrying) do
         if data.model then
@@ -738,23 +783,47 @@ local function resetAllFlags()
 
     -- 2) Remove any flag models currently in Map (dropped or leftover)
     for _, child in ipairs(Map:GetChildren()) do
-        local team = getFlagTeamFromName(child.Name)
+        local team = getFlagTeamFromModelName(child.Name)
         if team and child:IsA("Model") then
             child:Destroy()
         end
     end
 
+    for _, team in ipairs({"Blue", "Red"}) do
+        if flags[team] then
+            flags[team].dropped = false
+            flags[team].dropModel = nil
+            flags[team].model = nil
+            flags[team]._dropVersion = (flags[team]._dropVersion or 0) + 1
+        end
+    end
+
+    print("[FlagPickup] All flags destroyed")
+end
+
+local function spawnAllFlags()
+    destroyAllFlags()
+
     -- 3) Respawn both flags at their stands
     for _, team in ipairs({"Blue", "Red"}) do
         if flags[team] and flags[team].original then
             flags[team].dropped = false
+            flags[team].dropModel = nil
             respawnFlag(team)
         end
     end
 
     -- HUD indicators are cleared by the MatchStart event in MatchHUD,
     -- so no need to fire "returned" here (which would show unwanted alerts).
-    print("[FlagPickup] All flags reset")
+    print("[FlagPickup] All flags spawned")
+end
+
+local function resetAllFlags(mode)
+    if mode == "destroy" then
+        destroyAllFlags()
+    else
+        spawnAllFlags()
+    end
 end
 
 -- Listen for ResetFlags from GameManager
@@ -790,6 +859,10 @@ local function forceDropFlag(pl, lastPos)
     end
     carrying[pl] = nil
     pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+
+    if not areFlagsInteractive() then
+        return
+    end
 
     -- Determine drop position
     local dropCFrame
@@ -869,6 +942,10 @@ local function forceDropFlag(pl, lastPos)
                     print("[FlagPickup] auto-return timer aborted (flag picked up)")
                     return
                 end
+                if not areFlagsInteractive() then
+                    if gui then pcall(function() gui:Destroy() end) end
+                    return
+                end
                 if label then label.Text = tostring(i) end
                 task.wait(1)
             end
@@ -876,6 +953,10 @@ local function forceDropFlag(pl, lastPos)
             -- Final stale check before returning
             if not flags[team] or not flags[team].dropped
                 or flags[team]._dropVersion ~= dropVersion then
+                if gui then pcall(function() gui:Destroy() end) end
+                return
+            end
+            if not areFlagsInteractive() then
                 if gui then pcall(function() gui:Destroy() end) end
                 return
             end

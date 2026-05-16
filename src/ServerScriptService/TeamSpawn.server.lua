@@ -91,6 +91,15 @@ local function randomPointOnPart(part)
 	return part.CFrame * CFrame.new(rx, 3, rz)
 end
 
+local function moveToLobby(hrp)
+	local lobbySpawn = workspace:FindFirstChild("LobbySpawn")
+	if lobbySpawn and lobbySpawn:IsA("BasePart") then
+		hrp.CFrame = randomPointOnPart(lobbySpawn)
+	else
+		warn("[TeamSpawn] workspace.LobbySpawn not found — player will spawn at default location")
+	end
+end
+
 -----------------------------------------------------------------------
 -- doAssignTeam(player, teamName, sendResponse)
 -- Core team-assignment logic reused by both the RemoteEvent and the
@@ -212,14 +221,13 @@ Players.PlayerAdded:Connect(function(player)
 			hasSpawnedOnTeam = false
 		end
 
+		local matchState = ServerScriptService:GetAttribute("MatchState")
+		if matchState == "Intermission" and not isRestart then
+			moveToLobby(hrp)
+		
 		-- ── Neutral / lobby ─────────────────────────────────────────────────
-		if not currentTeam then
-			local lobbySpawn = workspace:FindFirstChild("LobbySpawn")
-			if lobbySpawn and lobbySpawn:IsA("BasePart") then
-				hrp.CFrame = randomPointOnPart(lobbySpawn)
-			else
-				warn("[TeamSpawn] workspace.LobbySpawn not found — player will spawn at default location")
-			end
+		elseif not currentTeam then
+			moveToLobby(hrp)
 
 		-- ── First spawn on a team (or after restart) ────────────────────────
 		elseif not hasSpawnedOnTeam then

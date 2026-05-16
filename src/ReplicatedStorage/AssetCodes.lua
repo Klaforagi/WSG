@@ -24,6 +24,7 @@ AssetCodes.images = {
 
     --WEAPON icons
     --MELEE
+    Melee = "rbxassetid://856575323",
     --Common
     ["Wooden Sword"] = "rbxassetid://137149577851414",
     ["Starter Sword"] = "rbxassetid://137149577851414",
@@ -47,6 +48,8 @@ AssetCodes.images = {
     Bandage = "rbxassetid://14029553034",
 
     --RANGED
+    Ranged = "rbxassetid://13303448470",
+    --Common
     Slingshot = "rbxassetid://5830603041",
     ["Starter Slingshot"] = "rbxassetid://5830603041",
     Shortbow = "rbxassetid://15950019592",
