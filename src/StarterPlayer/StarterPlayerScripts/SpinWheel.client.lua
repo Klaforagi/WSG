@@ -268,6 +268,8 @@ local purchaseModalOpen = false
 local currentState = makeLoadingState()
 local serverTimeOffset = 0
 local lastScreenKey = nil
+local stateFetchInFlight = false
+local lastStateRefreshAt = 0
 
 local function applyWheelAngle(angleDegrees)
     local radians = math.rad((tonumber(angleDegrees) or 0) * (SpinWheelConfig.RotationDirection or 1))
@@ -418,14 +420,22 @@ local function setState(state)
 end
 
 local function refreshState()
+    if stateFetchInFlight then
+        return false
+    end
+
+    stateFetchInFlight = true
     local ok, result = pcall(function()
         return getStateRF:InvokeServer()
     end)
+    stateFetchInFlight = false
+    lastStateRefreshAt = os.clock()
     if not ok then
         warn("[SpinWheel] Failed to fetch state:", result)
-        return
+        return false
     end
     setState(result)
+    return true
 end
 
 local function animateSpin(resultPayload)
@@ -445,9 +455,15 @@ local function animateSpin(resultPayload)
     angleValue.Value = startAngle
 
     local lastTickStep = math.floor(startAngle / sectorAngle)
+    local finalTickMuteAngle = tonumber(SpinWheelConfig.GetFinalTickMuteAngle and SpinWheelConfig.GetFinalTickMuteAngle() or (sectorAngle * 0.85)) or (sectorAngle * 0.85)
     local angleConn = angleValue:GetPropertyChangedSignal("Value"):Connect(function()
         local currentAngle = angleValue.Value
         applyWheelAngle(currentAngle)
+
+        local remainingAngle = targetAngle - currentAngle
+        if remainingAngle <= finalTickMuteAngle then
+            return
+        end
 
         local currentTickStep = math.floor(currentAngle / sectorAngle)
         if currentTickStep > lastTickStep then
@@ -624,6 +640,12 @@ refreshState()
 
 task.spawn(function()
     while true do
+        if currentState.isLoaded ~= true and not stateFetchInFlight and not requestInFlight then
+            local retryInterval = tonumber(SpinWheelConfig.LoadRetryInterval) or 1
+            if (os.clock() - lastStateRefreshAt) >= retryInterval then
+                refreshState()
+            end
+        end
         updateScreen()
         task.wait(0.25)
     end

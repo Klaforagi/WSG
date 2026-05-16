@@ -9,12 +9,13 @@ SpinWheelConfig.PartNames = {
 }
 
 SpinWheelConfig.CooldownSeconds = 2 * 60 * 60
-SpinWheelConfig.SpinDuration = 4.5
+SpinWheelConfig.SpinDuration = 4.2
 SpinWheelConfig.FullRotations = 6
 SpinWheelConfig.EasingStyle = Enum.EasingStyle.Quint
 SpinWheelConfig.EasingDirection = Enum.EasingDirection.Out
 SpinWheelConfig.ScreenFace = Enum.NormalId.Front
 SpinWheelConfig.ScreenPixelsPerStud = 60
+SpinWheelConfig.LoadRetryInterval = 1
 SpinWheelConfig.PromptMaxActivationDistance = 10
 SpinWheelConfig.PromptKeyboardKeyCode = Enum.KeyCode.E
 SpinWheelConfig.RotationAxis = "Z"
@@ -84,6 +85,10 @@ end
 
 function SpinWheelConfig.GetSpinPack(index)
     return SpinWheelConfig.SpinPacks[index]
+end
+
+function SpinWheelConfig.GetFinalTickMuteAngle()
+    return SpinWheelConfig.GetSectorAngle() * 0.85
 end
 
 return SpinWheelConfig
