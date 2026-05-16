@@ -365,6 +365,10 @@ local lastStateRefreshAt = 0
 local lightMode = "loading"
 local lightModeStartedAt = os.clock()
 local lightModeEndsAt = nil
+local lastLightUpdateAt = os.clock()
+local lightHeadPosition = 1
+local startLightAnchorPosition = 1
+local winLightAnchorPosition = 1
 local rainbowCycleColors = {
     Color3.fromRGB(255, 72, 72),
     Color3.fromRGB(255, 150, 56),
@@ -376,14 +380,118 @@ local rainbowCycleColors = {
 local idleLightColor = Color3.fromRGB(255, 244, 196)
 local spinWhiteColor = Color3.fromRGB(255, 252, 244)
 local spinYellowColor = Color3.fromRGB(255, 228, 110)
+local currentSpinColors = {
+    spinWhiteColor,
+    rainbowCycleColors[1],
+}
 
-local function setLightMode(mode, durationSeconds)
+local function wrapLightPosition(position, count)
+    if count <= 0 then
+        return 1
+    end
+    return ((position - 1) % count) + 1
+end
+
+local function setLightHeadPosition(position)
+    local count = #wheelLights
+    if count <= 0 then
+        lightHeadPosition = 1
+        return
+    end
+
+    lightHeadPosition = wrapLightPosition(position, count)
+end
+
+local function getLightOrbitSpeed(mode, count)
+    if count <= 0 then
+        return 0
+    end
+
+    local loopDuration = math.max(0.001, tonumber(SpinWheelConfig.LightShowStartDuration) or 1.0)
+
+    if mode == "idle" then
+        return 3.2
+    end
+
+    if mode == "start" then
+        return count / loopDuration
+    end
+
+    if mode == "spinning" then
+        return 7.5
+    end
+
+    if mode == "win" then
+        return count / loopDuration
+    end
+
+    return 0
+end
+
+local function advanceLightHead(now)
+    local count = #wheelLights
+    if count <= 0 then
+        lastLightUpdateAt = now
+        return
+    end
+
+    local deltaTime = math.max(0, now - lastLightUpdateAt)
+    if deltaTime > 0 then
+        local orbitSpeed = getLightOrbitSpeed(lightMode, count)
+        if orbitSpeed ~= 0 then
+            lightHeadPosition = wrapLightPosition(lightHeadPosition + (orbitSpeed * deltaTime), count)
+        end
+    end
+
+    lastLightUpdateAt = now
+end
+
+local function chooseSpinColors()
+    local colorPool = { spinWhiteColor }
+    for _, color in ipairs(rainbowCycleColors) do
+        table.insert(colorPool, color)
+    end
+
+    if #colorPool <= 1 then
+        currentSpinColors = { spinWhiteColor, spinYellowColor }
+        return
+    end
+
+    local firstIndex = math.random(1, #colorPool)
+    local secondIndex = firstIndex
+    while secondIndex == firstIndex do
+        secondIndex = math.random(1, #colorPool)
+    end
+
+    currentSpinColors = {
+        colorPool[firstIndex],
+        colorPool[secondIndex],
+    }
+end
+
+local function setLightMode(mode, durationSeconds, anchorPosition)
+    local now = os.clock()
+    advanceLightHead(now)
+    if anchorPosition ~= nil then
+        setLightHeadPosition(anchorPosition)
+    end
+
     lightMode = mode
-    lightModeStartedAt = os.clock()
+    lightModeStartedAt = now
     if durationSeconds and durationSeconds > 0 then
         lightModeEndsAt = lightModeStartedAt + durationSeconds
     else
         lightModeEndsAt = nil
+    end
+
+    if mode == "start" then
+        startLightAnchorPosition = lightHeadPosition
+    elseif mode == "win" then
+        winLightAnchorPosition = lightHeadPosition
+    end
+
+    if mode == "spinning" then
+        chooseSpinColors()
     end
 end
 
@@ -413,6 +521,8 @@ local function updateWheelLights(now)
         return
     end
 
+    advanceLightHead(now)
+
     if lightMode == "loading" then
         local pulse = 0.2 + 0.35 * (0.5 + 0.5 * math.sin(now * 2.4))
         for _, lightData in ipairs(wheelLights) do
@@ -422,7 +532,7 @@ local function updateWheelLights(now)
     end
 
     if lightMode == "idle" then
-        local head = ((now * 3.2) % count) + 1
+        local head = lightHeadPosition
         for index, lightData in ipairs(wheelLights) do
             local dist = circularDistance(index, head, count)
             local brightness = math.max(0, 1 - (dist / 3.2))
@@ -432,10 +542,9 @@ local function updateWheelLights(now)
     end
 
     if lightMode == "start" then
-        local phase = now - lightModeStartedAt
-        local shift = math.floor(phase / 0.045)
+        local headIndex = math.floor(wrapLightPosition(lightHeadPosition, count))
         for index, lightData in ipairs(wheelLights) do
-            local segmentIndex = (index - 1 - shift) % count
+            local segmentIndex = (index - headIndex) % count
             local brightness = 0
             local color = lightData.baseColor
             if segmentIndex < 6 then
@@ -448,22 +557,20 @@ local function updateWheelLights(now)
     end
 
     if lightMode == "spinning" then
-        local flashSwap = math.floor((now - lightModeStartedAt) / 0.5)
+        local headIndex = math.floor(wrapLightPosition(lightHeadPosition, count))
         for index, lightData in ipairs(wheelLights) do
-            local isEvenSlot = (index % 2 == 0)
-            local useWhite = flashSwap % 2 == 0 and isEvenSlot or flashSwap % 2 == 1 and not isEvenSlot
-            local brightness = 0.95
-            local color = useWhite and spinWhiteColor or spinYellowColor
+            local patternIndex = ((index - headIndex) % #currentSpinColors) + 1
+            local brightness = 0.85 + (0.15 * (0.5 + 0.5 * math.sin(((now - lightModeStartedAt) * 8) + index)))
+            local color = currentSpinColors[patternIndex]
             applyWheelLightVisual(lightData, brightness, color)
         end
         return
     end
 
     if lightMode == "win" then
-        local phase = now - lightModeStartedAt
-        local shift = math.floor(phase / 0.06)
+        local headIndex = math.floor(wrapLightPosition(lightHeadPosition, count))
         for index, lightData in ipairs(wheelLights) do
-            local segmentIndex = (index - 1 - shift) % count
+            local segmentIndex = (index - headIndex) % count
             local brightness = 0
             local color = lightData.baseColor
             if segmentIndex < #rainbowCycleColors then
@@ -718,7 +825,7 @@ local function animateSpin(resultPayload)
         if not isSpinning or not angleValue.Parent then
             return
         end
-        setLightMode("spinning")
+        setLightMode("spinning", nil, startLightAnchorPosition)
         tween:Play()
     end)
 
@@ -728,7 +835,7 @@ local function animateSpin(resultPayload)
         applyWheelAngle(currentAngleDegrees)
         angleValue:Destroy()
         isSpinning = false
-        setLightMode("win", SpinWheelConfig.LightShowWinDuration or 1.1)
+        setLightMode("win", SpinWheelConfig.LightShowWinDuration or 1.1, 1)
         updatePromptState()
         showToast(string.format("You got %d coins!", tonumber(resultPayload.reward) or 0), Color3.fromRGB(123, 255, 94))
     end)
@@ -898,7 +1005,7 @@ RunService.RenderStepped:Connect(function(deltaTime)
     if lightModeEndsAt and now >= lightModeEndsAt then
         if lightMode == "win" then
             spinSequenceLocked = false
-            syncAmbientWheelMode()
+            setLightMode("idle", nil, winLightAnchorPosition)
             updatePromptState()
         else
             lightModeEndsAt = nil
