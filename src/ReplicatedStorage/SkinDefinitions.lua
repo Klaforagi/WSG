@@ -39,7 +39,10 @@ SkinDefinitions.Skins = {
         ShopVisible     = true,
         InventoryVisible = true,
         IsDefault       = false,
-        ApplicationType = "Cosmetic", -- scripted cosmetic overlay
+        ApplicationType = "ReplacementModel", -- uses ServerStorage.Skins.Knight
+        TemplateName    = "Knight",
+        IconKey         = "KnightPreview",
+        PreviewImageKey = "KnightPreview",
 
         -- Visual spec: shirt/pants overrides + welded armor parts
         -- All parts are built programmatically on the server
@@ -49,6 +52,23 @@ SkinDefinitions.Skins = {
         AccentColor     = Color3.fromRGB(200, 170, 50),  -- gold trim
         HelmetColor     = Color3.fromRGB(140, 145, 155),
         VisorColor      = Color3.fromRGB(30, 30, 35),
+    },
+
+    ---------------------------------------------------------------------------
+    -- GOBLIN  –  purchasable replacement-model skin
+    ---------------------------------------------------------------------------
+    {
+        Id              = "Goblin",
+        DisplayName     = "Goblin",
+        Description     = "Take on the look of a wiry goblin raider.",
+        Price           = 100,
+        Rarity          = "Rare",
+        Category        = "Skin",
+        ShopVisible     = true,
+        InventoryVisible = true,
+        IsDefault       = false,
+        ApplicationType = "ReplacementModel", -- uses ServerStorage.Skins.Goblin
+        TemplateName    = "Goblin",
     },
 
     ---------------------------------------------------------------------------
@@ -65,6 +85,8 @@ SkinDefinitions.Skins = {
         InventoryVisible = true,
         IsDefault       = false,
         ApplicationType = "Cosmetic",
+        IconKey         = "IronKnightPreview",
+        PreviewImageKey = "IronKnightPreview",
 
         ShirtColor      = Color3.fromRGB(35, 35, 40),
         PantsColor      = Color3.fromRGB(30, 28, 32),

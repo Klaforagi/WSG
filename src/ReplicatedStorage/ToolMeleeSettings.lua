@@ -46,51 +46,51 @@ end
 
 local rarityDefaults = {
     Common = {
-        damage       = 5,
+        damage       = 7,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
-        hitboxActive = 0.1,
+        hitboxActive = 0.2,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
         hitboxSize   = Vector3.new(5, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Uncommon = {
-        damage       = 7,
+        damage       = 10,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
-        hitboxActive = 0.1,
+        hitboxActive = 0.2,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
         hitboxSize   = Vector3.new(5, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Rare = {
-        damage       = 8.5,
+        damage       = 13,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
-        hitboxActive = 0.1,
+        hitboxActive = 0.2,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
         hitboxSize   = Vector3.new(5, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Epic = {
-        damage       = 10,
+        damage       = 17,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
-        hitboxActive = 0.1,
+        hitboxActive = 0.2,
         showHitbox   = false,
         hitboxColor  = Color3.fromRGB(255, 100, 50),
         hitboxSize   = Vector3.new(6, 10, 4),
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Legendary = {
-        damage       = 12,
+        damage       = 21,
         cd           = 0.6,
         knockback    = 2,
         hitboxDelay  = 0.35,
@@ -242,6 +242,7 @@ module.rarityDefaults = rarityDefaults
 -- ToolMeleeSetup scales them by sizeSpeedMultiplier at runtime.
 --
 -- ATTACK_DAMAGE_MULTIPLIERS    : per-step scalar applied to base damage
+-- ATTACK_DAMAGE_ROLL_RANGES    : per-step random roll range applied after size/combo scaling
 -- ATTACK_KNOCKBACK_MULTIPLIERS : per-step scalar applied to base knockback
 --   → attacks 1 & 2 have minimal knockback; attack 3 is the big finisher
 --------------------------------------------------------------------------------
@@ -250,7 +251,12 @@ module.rarityDefaults = rarityDefaults
 module.comboConfig = {
     COMBO_WINDOW                = 0.2,
     ATTACK3_EXTRA_CD            = 0.4,
-    ATTACK_DAMAGE_MULTIPLIERS   = { 0.8, 0.85, 1.4 },
+    ATTACK_DAMAGE_MULTIPLIERS   = { 1.0, 1.0, 1.0 },
+    ATTACK_DAMAGE_ROLL_RANGES   = {
+        { 0.7, 1.0 },
+        { 0.7, 1.0 },
+        { 1.2, 1.5 },
+    },
     ATTACK_KNOCKBACK_MULTIPLIERS = { 1.0, 1.25, 10.0 },
 }
 

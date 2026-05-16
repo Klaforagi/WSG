@@ -22,6 +22,15 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+local FullBodySkinService = require(ServerScriptService:WaitForChild("CharacterSkins"):WaitForChild("SkinService"))
+
+local WeaponScaleService = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponScaleService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponScaleService = require(mod)
+    end
+end)
 
 local DEBUG = true
 local function dprint(...)
@@ -29,6 +38,20 @@ local function dprint(...)
 end
 
 dprint("initializing")
+
+local function refreshEquippedToolGrips(character)
+    if not WeaponScaleService or not character then
+        return
+    end
+
+    for _, child in ipairs(character:GetChildren()) do
+        if child:IsA("Tool") then
+            pcall(function()
+                WeaponScaleService.RefreshGrip(child)
+            end)
+        end
+    end
+end
 
 -- ── Shared config ──────────────────────────────────────────────────────────
 local SkinDefs = nil
@@ -1412,13 +1435,20 @@ local function applySkin(player, character)
     -- Protected call: catch ANY error during skin application
     local ok, err = pcall(function()
         local def = SkinDefs.GetById(equipped)
-        if not def or def.IsDefault then
+        if def and def.ApplicationType == "ReplacementModel" then
+			clearSkinCosmetics(character)
+			restoreOriginalBodyColors(character)
+			restoreAccessories(character)
+			FullBodySkinService.ApplySkin(player, def.TemplateName or equipped)
+            FullBodySkinService.SetShowHelm(player, getShowHelm(player))
+		elseif not def or def.IsDefault then
+			FullBodySkinService.RemoveSkin(player)
             applyDefaultSkin(player, character)
-        elseif equipped == "Knight" then
-            applyKnightSkin(player, character)
         elseif equipped == "IronKnight" then
+			FullBodySkinService.RemoveSkin(player)
             applyIronKnightSkin(player, character)
         else
+			FullBodySkinService.RemoveSkin(player)
             dprint(player.Name, "unknown skin '" .. tostring(equipped) .. "' – falling back to Default")
             applyDefaultSkin(player, character)
         end
@@ -1432,6 +1462,7 @@ local function applySkin(player, character)
         local data = getOrCreateData(player)
         data.equipped = "Default"
         pcall(function()
+			FullBodySkinService.RemoveSkin(player)
             clearSkinCosmetics(character)
             restoreOriginalBodyColors(character)
             restoreAccessories(character)
@@ -1440,6 +1471,8 @@ local function applySkin(player, character)
         dprint(player.Name, "FAILSAFE: reverted to Default due to application error")
         return
     end
+
+    refreshEquippedToolGrips(character)
 
 end
 
@@ -1485,7 +1518,22 @@ local function onPlayerAdded(player)
         end
 
         local equipped = getEquipped(player)
+        local def = SkinDefs.GetById(equipped)
+        local usesReplacementModel = def and def.ApplicationType == "ReplacementModel"
         local needsSkin = equipped ~= "Default"
+
+        if usesReplacementModel then
+            if not player:HasAppearanceLoaded() then
+                player.CharacterAppearanceLoaded:Wait()
+            end
+            if humanoid.Health <= 0 then
+                dprint(player.Name, "WARN: humanoid dead after appearance wait – skipping replacement model apply")
+                return
+            end
+            applySkin(player, character)
+            dprint(player.Name, "replacement-model skin pipeline complete")
+            return
+        end
 
         -- ── Visibility suppression for non-Default skins ─────────────
         -- Hide every BasePart + accessory handle so the bare Roblox avatar
@@ -1767,6 +1815,12 @@ do
                 dprint("[ShowHelm] Default skin, nothing to toggle")
                 return
             end
+
+			local def = SkinDefs.GetById(equipped)
+			if def and def.ApplicationType == "ReplacementModel" then
+				FullBodySkinService.SetShowHelm(player, value)
+				return
+			end
 
             if value then
                 -- ShowHelm ON: rebuild helmet parts, re-hide head accessories

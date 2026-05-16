@@ -373,6 +373,11 @@ end)
 --- If instanceId is provided, uses that specific instance; otherwise picks
 --- the first matching instance by weapon name.
 local function applyWeaponScale(player, toolClone, toolName, instanceId)
+    if WeaponScaleService then
+        pcall(function()
+            WeaponScaleService.BindGripAlignment(toolClone)
+        end)
+    end
     if not WeaponScaleService or not WeaponInstanceService_scale then return end
     local inv = WeaponInstanceService_scale:GetInventory(player)
     if not inv then return end
@@ -394,6 +399,26 @@ local function applyWeaponScale(player, toolClone, toolName, instanceId)
         if bestInstance.sizePercent ~= 100 then
             WeaponScaleService.ApplyScale(toolClone, bestInstance.sizePercent)
         end
+    end
+end
+
+local function bindGripAlignmentForTool(tool)
+    if not WeaponScaleService or not tool or not tool:IsA("Tool") then
+        return
+    end
+
+    pcall(function()
+        WeaponScaleService.BindGripAlignment(tool)
+    end)
+end
+
+local function bindGripAlignmentInContainer(container)
+    if not container then
+        return
+    end
+
+    for _, child in ipairs(container:GetChildren()) do
+        bindGripAlignmentForTool(child)
     end
 end
 
@@ -507,6 +532,11 @@ local function ensureBackpackFromStarterGear(player)
                 clone:SetAttribute("HotbarCategory", cat)
             end
             clone.Parent = bp
+            if WeaponScaleService then
+                pcall(function()
+                    WeaponScaleService.BindGripAlignment(clone)
+                end)
+            end
         end
     end
 end
@@ -889,6 +919,14 @@ local function onPlayerAdded(player)
     -- check pass on join
     unlockState[player] = checkGamePass(player)
 
+    local backpack = player:FindFirstChildOfClass("Backpack") or player:WaitForChild("Backpack", 10)
+    if backpack then
+        bindGripAlignmentInContainer(backpack)
+        backpack.ChildAdded:Connect(function(child)
+            bindGripAlignmentForTool(child)
+        end)
+    end
+
     -- tell the client the initial state
     pcall(function()
         specialUnlockGranted:FireClient(player, unlockState[player] == true)
@@ -902,6 +940,8 @@ local function onPlayerAdded(player)
         -- safety net: if the engine's StarterGear → Backpack copy was slow
         task.wait(0.5)
         ensureBackpackFromStarterGear(player)
+        local currentBackpack = player:FindFirstChildOfClass("Backpack")
+        bindGripAlignmentInContainer(currentBackpack)
         -- Notify client that loadout is ready (ensures hotbar refreshes after tools arrive)
         print("[ToolbarSync]", player.Name, "loadout granted, notifying client")
         pcall(function()
@@ -917,7 +957,9 @@ local function onPlayerAdded(player)
         -- MENU-LOCK FAILSAFE: watch for tools parented to Character while menu is open
         local char = player.Character
         if char then
+            bindGripAlignmentInContainer(char)
             char.ChildAdded:Connect(function(child)
+                bindGripAlignmentForTool(child)
                 if child:IsA("Tool") and isPlayerMenuLocked(player) then
                     print("[MenuLock-Server] Failsafe: unequipping", child.Name, "for", player.Name)
                     task.defer(function()
@@ -936,6 +978,9 @@ local function onPlayerAdded(player)
             giveLoadout(player)
             task.wait(0.5)
             ensureBackpackFromStarterGear(player)
+            local currentBackpack = player:FindFirstChildOfClass("Backpack")
+            bindGripAlignmentInContainer(currentBackpack)
+            bindGripAlignmentInContainer(player.Character)
             -- Notify client that loadout is ready
             print("[ToolbarSync]", player.Name, "loadout granted (fast-start), notifying client")
             pcall(function()

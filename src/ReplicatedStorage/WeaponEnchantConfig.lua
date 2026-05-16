@@ -87,44 +87,44 @@ end
 --------------------------------------------------------------------------------
 WeaponEnchantConfig.ProcConfig = {
     Fiery = {
-        ProcChance = 0.22,
-        ProcDamage = 12,
+        ProcChance = 0.28,
+        ProcDamage = 20,
         SoundId    = "rbxassetid://REPLACE_ME",
     },
     Icy = {
-        ProcChance    = 0.24,
-        TickDamage    = 3,          -- damage per tick while slowed
+        ProcChance    = 0.30,
+        TickDamage    = 5,          -- damage per tick while slowed
         TickInterval  = 1,          -- tick once per second
         SlowPercent   = 0.50,
         SlowDuration  = 4,          -- 4 ticks total = 2+2+2+2 = 8 damage
         SoundId       = "rbxassetid://REPLACE_ME",
     },
     Shock = {
-        ProcChance    = 0.2,
-        ProcDamage    = 6,
+        ProcChance    = 0.32,
+        ProcDamage    = 12,
         ChainRange    = 20,
         MaxChains     = 4,
-        ChainDamage   = 4,
+        ChainDamage   = 8,
         ChainCooldown = 0.3,
         SoundId       = "rbxassetid://REPLACE_ME",
     },
     Toxic = {
         ProcChance       = 0.40,
-        TickDamage       = 4,
+        TickDamage       = 7,
         TickInterval     = 2,
         DurationPerProc  = 9,
         MaxDuration      = 18,
         SoundId          = "rbxassetid://REPLACE_ME",
     },
     Lifesteal = {
-        ProcChance = 0.31,
-        ProcDamage = 5,
-        HealAmount = 3,
+        ProcChance = 0.35,
+        ProcDamage = 10,
+        HealAmount = 5,
         SoundId    = "rbxassetid://REPLACE_ME",
     },
     Void = {
-        ProcChance         = 0.14,
-        ProcDamage         = 15,
+        ProcChance         = 0.18,
+        ProcDamage         = 35,
         KnockbackForce     = 45,
         KnockbackUpwardForce = 6,
         SoundId            = "rbxassetid://REPLACE_ME",

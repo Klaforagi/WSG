@@ -440,6 +440,64 @@ local function getBoostIconImage(def)
     return nil
 end
 
+local function getSkinIconImage(def)
+    if type(def) ~= "table" then return nil end
+    if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then return def.IconAssetId end
+    local key = def.IconKey
+    if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
+        local image = AssetCodesGlobal.Get(key)
+        if type(image) == "string" and #image > 0 then return image end
+    end
+    return nil
+end
+
+local function getSkinPreviewImage(def)
+    if type(def) ~= "table" then return nil end
+    if type(def.PreviewImageAssetId) == "string" and #def.PreviewImageAssetId > 0 then
+        return def.PreviewImageAssetId
+    end
+    local key = def.PreviewImageKey
+    if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
+        local image = AssetCodesGlobal.Get(key)
+        if type(image) == "string" and #image > 0 then return image end
+    end
+    return getSkinIconImage(def)
+end
+
+local function clearViewportPreviewScene(viewportFrame)
+    if not viewportFrame then return end
+    for _, child in ipairs(viewportFrame:GetChildren()) do
+        if child:IsA("WorldModel") or child:IsA("Camera") or child:IsA("Model") then
+            child:Destroy()
+        end
+    end
+end
+
+local function updateSkinDetailPreview(viewportFrame, previewImageLabel, skinId, skinDefsModule, skinPreviewModule)
+    if not viewportFrame or not previewImageLabel then return end
+
+    clearViewportPreviewScene(viewportFrame)
+    previewImageLabel.Visible = false
+
+    if not skinId or not skinDefsModule then return end
+
+    local def = skinDefsModule.GetById and skinDefsModule.GetById(skinId)
+    if not def then return end
+
+    local previewImage = getSkinPreviewImage(def)
+    if previewImage then
+        previewImageLabel.Image = previewImage
+        previewImageLabel.Visible = true
+        return
+    end
+
+    local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
+    if previewShowHelm == nil then previewShowHelm = true end
+    if skinPreviewModule then
+        skinPreviewModule.Update(viewportFrame, skinId, previewShowHelm)
+    end
+end
+
 local function ensureBoostRemotes()
     if boostRemotes then return boostRemotes end
     local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -3102,6 +3160,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local skinIconStroke = Instance.new("UIStroke", skinPreviewVP)
         skinIconStroke.Color = RARITY_COLORS.Common; skinIconStroke.Thickness = 1.5; skinIconStroke.Transparency = 0.3
 
+        local skinPreviewImage = Instance.new("ImageLabel", skinPreviewVP)
+        skinPreviewImage.Name = "PreviewImage"
+        skinPreviewImage.BackgroundTransparency = 1
+        skinPreviewImage.Size = UDim2.new(0.9, 0, 0.9, 0)
+        skinPreviewImage.AnchorPoint = Vector2.new(0.5, 0.5)
+        skinPreviewImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+        skinPreviewImage.ScaleType = Enum.ScaleType.Fit
+        skinPreviewImage.Visible = false
+        skinPreviewImage.ZIndex = 2
+
         -- Skin name
         local skinDetailName = Instance.new("TextLabel", skinDetailContent)
         skinDetailName.Name = "SkinName"
@@ -3141,7 +3209,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinDescStroke.Thickness = 1.5
         skinDescStroke.Transparency = 0.15
 
-        -- ShowHelm toggle row
+        -- Hide Helm toggle row
         local TOGGLE_ON_C  = Color3.fromRGB(35, 190, 75)
         local TOGGLE_OFF_C = Color3.fromRGB(45, 48, 65)
         local KNOB_C       = Color3.fromRGB(255, 255, 255)
@@ -3155,7 +3223,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local helmLabel = Instance.new("TextLabel", helmRow)
         helmLabel.BackgroundTransparency = 1
         helmLabel.Font = Enum.Font.GothamBold
-        helmLabel.Text = "Show Helm"
+        helmLabel.Text = "Hide Helm"
         helmLabel.TextColor3 = DIM_TEXT
         helmLabel.TextSize = px(17)
         helmLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -3184,30 +3252,32 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         Instance.new("UICorner", helmKnob).CornerRadius = UDim.new(1, 0)
 
         local function syncHelmToggle()
-            local on = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
-            if on == nil then on = true end
-            helmToggleBg.BackgroundColor3 = on and TOGGLE_ON_C or TOGGLE_OFF_C
-            helmKnob.Position = on and UDim2.new(1, -px(21), 0.5, 0) or UDim2.new(0, px(3), 0.5, 0)
+            local hideHelm = _G.PlayerSettings and (_G.PlayerSettings.ShowHelm == false)
+            if hideHelm == nil then hideHelm = false end
+            helmToggleBg.BackgroundColor3 = hideHelm and TOGGLE_ON_C or TOGGLE_OFF_C
+            helmKnob.Position = hideHelm and UDim2.new(1, -px(21), 0.5, 0) or UDim2.new(0, px(3), 0.5, 0)
         end
         syncHelmToggle()
 
         helmToggleBg.MouseButton1Click:Connect(function()
             if not _G.PlayerSettings then return end
-            local newVal = not (_G.PlayerSettings.ShowHelm ~= false)
-            _G.PlayerSettings.ShowHelm = newVal
+            local hideHelm = (_G.PlayerSettings.ShowHelm == false)
+            local newHideHelm = not hideHelm
+            local newShowHelm = not newHideHelm
+            _G.PlayerSettings.ShowHelm = newShowHelm
             syncHelmToggle()
             -- Fire to server (same as OptionsUI)
             local updateEV = ReplicatedStorage:FindFirstChild("UpdatePlayerSetting")
             if updateEV and updateEV:IsA("RemoteEvent") then
-                updateEV:FireServer("ShowHelm", newVal)
+                updateEV:FireServer("ShowHelm", newShowHelm)
             end
             -- Call global ApplySettings if available
             if _G.ApplySettings then
                 pcall(_G.ApplySettings, _G.PlayerSettings)
             end
             -- Refresh skin preview on helm toggle
-            if SkinPreview and selectedSkinId then
-                SkinPreview.Update(skinPreviewVP, selectedSkinId, newVal)
+            if selectedSkinId then
+                updateSkinDetailPreview(skinPreviewVP, skinPreviewImage, selectedSkinId, SkinDefs, SkinPreview)
             end
         end)
 
@@ -3390,11 +3460,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             sdpStroke.Transparency = 0.14
 
             -- Update 3D preview
-            local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
-            if previewShowHelm == nil then previewShowHelm = true end
-            if SkinPreview then
-                SkinPreview.Update(skinPreviewVP, skinId, previewShowHelm)
-            end
+            updateSkinDetailPreview(skinPreviewVP, skinPreviewImage, skinId, SkinDefs, SkinPreview)
 
             updateSkinEquipButton()
             updateSkinFavButton()
@@ -3450,8 +3516,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
         end)
 
-        -- ── Create skin cards ───────────────────────────────────────────
-        for i_sk, def in ipairs(allSkinDefs) do
+        local function createSkinCard(i_sk, def)
             local skinId      = def.Id
             local displayName = def.DisplayName or skinId
             local isDefault   = def.IsDefault or false
@@ -3487,109 +3552,135 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             addCardSheen(card, rarityColor)
             local accentBar = addCardAccentBar(card, accentColor)
 
-            -- Name label at top (matching weapon card layout)
-            local cardName = Instance.new("TextLabel", card)
-            cardName.Name = "NameLabel"
-            cardName.BackgroundTransparency = 1
-            cardName.Font = Enum.Font.GothamBold
-            cardName.Text = displayName
-            cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
-            cardName.TextSize = INV_CARD.NameTextSize
-            cardName.TextTruncate = Enum.TextTruncate.AtEnd
-            cardName.TextXAlignment = Enum.TextXAlignment.Center
-            cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
-            cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
-            cardName.ZIndex = 3
-            addTextOutline(cardName, 0.18, 1.35)
+            do
+                local cardName = Instance.new("TextLabel", card)
+                cardName.Name = "NameLabel"
+                cardName.BackgroundTransparency = 1
+                cardName.Font = Enum.Font.GothamBold
+                cardName.Text = displayName
+                cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
+                cardName.TextSize = INV_CARD.NameTextSize
+                cardName.TextTruncate = Enum.TextTruncate.AtEnd
+                cardName.TextXAlignment = Enum.TextXAlignment.Center
+                cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
+                cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+                cardName.ZIndex = 3
+                addTextOutline(cardName, 0.18, 1.35)
+            end
 
-            -- Icon area (centered square, matching weapon card layout)
-            local iconArea = Instance.new("Frame", card)
-            iconArea.Name = "IconArea"
-            iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, skinColor, isDefault and 0.06 or 0.26)
-            iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
-            iconArea.AnchorPoint = Vector2.new(0.5, 0)
-            iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
-            iconArea.BorderSizePixel = 0
-            Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
-            addIconWellHighlight(iconArea, accentColor)
+            do
+                local iconArea = Instance.new("Frame", card)
+                iconArea.Name = "IconArea"
+                iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, skinColor, isDefault and 0.06 or 0.26)
+                iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
+                iconArea.AnchorPoint = Vector2.new(0.5, 0)
+                iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
+                iconArea.BorderSizePixel = 0
+                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+                addIconWellHighlight(iconArea, accentColor)
 
-            local cardIcon = Instance.new("TextLabel", iconArea)
-            cardIcon.Name = "Icon"
-            cardIcon.BackgroundTransparency = 1
-            cardIcon.Font = Enum.Font.GothamBold
-            cardIcon.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
-            cardIcon.TextScaled = true
-            cardIcon.TextColor3 = isDefault and DIM_TEXT or skinColor
-            cardIcon.Size = UDim2.new(0.72, 0, 0.72, 0)
-            cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-            cardIcon.Position = UDim2.new(0.5, 0, 0.46, 0)
-            cardIcon.ZIndex = 3
-            addTextOutline(cardIcon, 0.22, 1.4)
+                local cardIcon = Instance.new("TextLabel", iconArea)
+                cardIcon.Name = "Icon"
+                cardIcon.BackgroundTransparency = 1
+                cardIcon.Font = Enum.Font.GothamBold
+                cardIcon.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
+                cardIcon.TextScaled = true
+                cardIcon.TextColor3 = isDefault and DIM_TEXT or skinColor
+                cardIcon.Size = UDim2.new(0.72, 0, 0.72, 0)
+                cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+                cardIcon.Position = UDim2.new(0.5, 0, 0.46, 0)
+                cardIcon.ZIndex = 3
+                addTextOutline(cardIcon, 0.22, 1.4)
 
-            local swatchWrap = Instance.new("Frame", iconArea)
-            swatchWrap.Name = "ArmorSwatch"
-            swatchWrap.BackgroundColor3 = skinColor
-            swatchWrap.BorderSizePixel = 0
-            swatchWrap.Size = UDim2.new(0.62, 0, 0, px(8))
-            swatchWrap.AnchorPoint = Vector2.new(0.5, 1)
-            swatchWrap.Position = UDim2.new(0.5, 0, 0.92, 0)
-            swatchWrap.ZIndex = 4
-            Instance.new("UICorner", swatchWrap).CornerRadius = UDim.new(0.5, 0)
-            local swatchGradient = Instance.new("UIGradient", swatchWrap)
-            swatchGradient.Color = ColorSequence.new(skinColor, accentColor)
-            local swatchStroke = Instance.new("UIStroke", swatchWrap)
-            swatchStroke.Color = accentColor; swatchStroke.Thickness = 1; swatchStroke.Transparency = 0.24
+                local cardIconImage = Instance.new("ImageLabel", iconArea)
+                cardIconImage.Name = "IconImage"
+                cardIconImage.BackgroundTransparency = 1
+                cardIconImage.Size = UDim2.new(0.76, 0, 0.76, 0)
+                cardIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+                cardIconImage.Position = UDim2.new(0.5, 0, 0.46, 0)
+                cardIconImage.ScaleType = Enum.ScaleType.Fit
+                cardIconImage.ZIndex = 4
+                cardIconImage.Visible = false
 
-            -- Rarity label (bottom of card)
-            local rarityPill = Instance.new("Frame", card)
-            rarityPill.Name = "RarityPill"
-            rarityPill.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.28)
-            rarityPill.BorderSizePixel = 0
-            rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
-            rarityPill.AnchorPoint = Vector2.new(0.5, 1)
-            rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
-            rarityPill.ZIndex = 3
-            Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
-            local rarityPillStroke = Instance.new("UIStroke", rarityPill)
-            rarityPillStroke.Color = rarityColor; rarityPillStroke.Thickness = 1; rarityPillStroke.Transparency = 0.42
+                local skinImage = getSkinIconImage(def)
+                if skinImage then
+                    cardIconImage.Image = skinImage
+                    cardIconImage.Visible = true
+                    cardIcon.Visible = false
+                end
 
-            local cardRarity = Instance.new("TextLabel", rarityPill)
-            cardRarity.Name = "RarityLabel"
-            cardRarity.BackgroundTransparency = 1
-            cardRarity.Font = Enum.Font.GothamBold
-            cardRarity.Text = rarity
-            cardRarity.TextColor3 = rarityColor
-            cardRarity.TextSize = INV_CARD.Line1TextSize
-            cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-            cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
-            cardRarity.Position = UDim2.new(0, px(3), 0, 0)
-            cardRarity.ZIndex = 4
-            addTextOutline(cardRarity, 0.3, 1)
+                local swatchWrap = Instance.new("Frame", iconArea)
+                swatchWrap.Name = "ArmorSwatch"
+                swatchWrap.BackgroundColor3 = skinColor
+                swatchWrap.BorderSizePixel = 0
+                swatchWrap.Size = UDim2.new(0.62, 0, 0, px(8))
+                swatchWrap.AnchorPoint = Vector2.new(0.5, 1)
+                swatchWrap.Position = UDim2.new(0.5, 0, 0.92, 0)
+                swatchWrap.ZIndex = 4
+                Instance.new("UICorner", swatchWrap).CornerRadius = UDim.new(0.5, 0)
+                Instance.new("UIGradient", swatchWrap).Color = ColorSequence.new(skinColor, accentColor)
+                local swatchStroke = Instance.new("UIStroke", swatchWrap)
+                swatchStroke.Color = accentColor
+                swatchStroke.Thickness = 1
+                swatchStroke.Transparency = 0.24
+            end
 
-            -- Equipped bar at bottom
-            local eqBar = Instance.new("Frame", card)
-            eqBar.Name = "EquippedBar"
-            eqBar.BackgroundColor3 = GREEN_GLOW
-            eqBar.Size = UDim2.new(1, 0, 0, px(3))
-            eqBar.AnchorPoint = Vector2.new(0, 1)
-            eqBar.Position = UDim2.new(0, 0, 1, 0)
-            eqBar.BorderSizePixel = 0; eqBar.ZIndex = 5
-            eqBar.Visible = false
+            do
+                local rarityPill = Instance.new("Frame", card)
+                rarityPill.Name = "RarityPill"
+                rarityPill.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.28)
+                rarityPill.BorderSizePixel = 0
+                rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
+                rarityPill.AnchorPoint = Vector2.new(0.5, 1)
+                rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+                rarityPill.ZIndex = 3
+                Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
+                local rarityPillStroke = Instance.new("UIStroke", rarityPill)
+                rarityPillStroke.Color = rarityColor
+                rarityPillStroke.Thickness = 1
+                rarityPillStroke.Transparency = 0.42
 
-            -- Favorite star overlay (top-right)
-            local favStar = Instance.new("TextLabel", card)
-            favStar.Name = "FavStar"
-            favStar.BackgroundTransparency = 1
-            favStar.Font = Enum.Font.GothamBold
-            favStar.Text = "\u{2605}"
-            favStar.TextColor3 = SKIN_FAV_YELLOW
-            favStar.TextSize = math.max(14, math.floor(px(16)))
-            favStar.Size = UDim2.new(0, px(20), 0, px(20))
-            favStar.AnchorPoint = Vector2.new(1, 0)
-            favStar.Position = UDim2.new(1, -px(4), 0, px(3))
-            favStar.ZIndex = 8
-            favStar.Visible = false
-            addTextOutline(favStar, 0.2, 1.2)
+                local cardRarity = Instance.new("TextLabel", rarityPill)
+                cardRarity.Name = "RarityLabel"
+                cardRarity.BackgroundTransparency = 1
+                cardRarity.Font = Enum.Font.GothamBold
+                cardRarity.Text = rarity
+                cardRarity.TextColor3 = rarityColor
+                cardRarity.TextSize = INV_CARD.Line1TextSize
+                cardRarity.TextXAlignment = Enum.TextXAlignment.Center
+                cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
+                cardRarity.Position = UDim2.new(0, px(3), 0, 0)
+                cardRarity.ZIndex = 4
+                addTextOutline(cardRarity, 0.3, 1)
+            end
+
+            do
+                local eqBar = Instance.new("Frame", card)
+                eqBar.Name = "EquippedBar"
+                eqBar.BackgroundColor3 = GREEN_GLOW
+                eqBar.Size = UDim2.new(1, 0, 0, px(3))
+                eqBar.AnchorPoint = Vector2.new(0, 1)
+                eqBar.Position = UDim2.new(0, 0, 1, 0)
+                eqBar.BorderSizePixel = 0
+                eqBar.ZIndex = 5
+                eqBar.Visible = false
+            end
+
+            do
+                local favStar = Instance.new("TextLabel", card)
+                favStar.Name = "FavStar"
+                favStar.BackgroundTransparency = 1
+                favStar.Font = Enum.Font.GothamBold
+                favStar.Text = "\u{2605}"
+                favStar.TextColor3 = SKIN_FAV_YELLOW
+                favStar.TextSize = math.max(14, math.floor(px(16)))
+                favStar.Size = UDim2.new(0, px(20), 0, px(20))
+                favStar.AnchorPoint = Vector2.new(1, 0)
+                favStar.Position = UDim2.new(1, -px(4), 0, px(3))
+                favStar.ZIndex = 8
+                favStar.Visible = false
+                addTextOutline(favStar, 0.2, 1.2)
+            end
 
             skinCards[skinId] = {
                 card = card,
@@ -3628,6 +3719,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     end
                 end)
             end
+        end
+
+        -- ── Create skin cards ───────────────────────────────────────────
+        for i_sk, def in ipairs(allSkinDefs) do
+            createSkinCard(i_sk, def)
         end
 
         -- ── Fetch data from server ──────────────────────────────────────

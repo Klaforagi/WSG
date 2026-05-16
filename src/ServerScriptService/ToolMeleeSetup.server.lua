@@ -72,6 +72,16 @@ end)
 
 -- Shared weapon switch lock
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
+
+local function shouldIgnoreHumanoidTarget(model, humanoid)
+    if not humanoid then return true end
+    if humanoid:GetAttribute("IgnoreCombatTargeting") then return true end
+    if model and (model:GetAttribute(FULL_BODY_SKIN_MODEL_ATTRIBUTE) or model.Name == "AppliedCharacterSkin") then
+        return true
+    end
+    return false
+end
 
 ---------------------------------------------------------------------------
 -- Remote events
@@ -388,6 +398,49 @@ local function getComboDamageMultiplier(comboCfg, step)
     return 1.0
 end
 
+--- Random damage roll for a given combo step.
+--- Attacks 1-2 can reach base damage; attack 3 always stays above base.
+local function getComboDamageRollRange(comboCfg, step)
+    local rollRanges = comboCfg.ATTACK_DAMAGE_ROLL_RANGES
+    if type(rollRanges) == "table" then
+        local range = rollRanges[step]
+        if type(range) == "table" then
+            local minRoll = tonumber(range.min) or tonumber(range[1])
+            local maxRoll = tonumber(range.max) or tonumber(range[2])
+            if type(minRoll) == "number" and type(maxRoll) == "number" then
+                if maxRoll < minRoll then
+                    minRoll, maxRoll = maxRoll, minRoll
+                end
+                return minRoll, maxRoll
+            end
+        end
+    end
+
+    if step == 3 then
+        return 1.2, 1.5
+    end
+    return 0.7, 1.0
+end
+
+local function getMeleeDamageUpgradeMultiplier(player)
+    if _G.GetMeleeDamageMultiplier then
+        local mult = _G.GetMeleeDamageMultiplier(player, false)
+        if type(mult) == "number" and mult > 0 then
+            return mult
+        end
+    end
+    return 1.0
+end
+
+local function rollUniformIntegerDamage(baseDamage, minRoll, maxRoll)
+    local minDamage = math.ceil(baseDamage * minRoll)
+    local maxDamage = math.ceil(baseDamage * maxRoll)
+    if maxDamage < minDamage then
+        maxDamage = minDamage
+    end
+    return math.random(minDamage, maxDamage)
+end
+
 --- Combo knockback multiplier for a given step.
 --- Attacks 1-2 are minimal; attack 3 is the big finisher.
 local function getComboKnockbackMultiplier(comboCfg, step)
@@ -421,13 +474,6 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     end
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
-    end
-    -- Apply melee upgrade multiplier (uncapped for all targets -- players take same bonus as mobs)
-    if _G.GetMeleeDamageMultiplier then
-        local mult = _G.GetMeleeDamageMultiplier(player, false)
-        if mult > 1 then
-            damage = damage * mult
-        end
     end
     -- Round to nearest whole number
     damage = math.round(damage)
@@ -531,6 +577,7 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
     for _, model in ipairs(candidates) do
         local hum = model:FindFirstChildOfClass("Humanoid")
         if not hum or hum.Health <= 0 then continue end
+        if shouldIgnoreHumanoidTarget(model, hum) then continue end
         local root = model:FindFirstChild("HumanoidRootPart")
             or model:FindFirstChild("Torso")
             or model:FindFirstChild("UpperTorso")
@@ -594,6 +641,7 @@ local function getTargetsInBox(playerChar, boxCFrame, halfSize)
             if model == playerChar then continue end
             local hum = model:FindFirstChildOfClass("Humanoid")
             if not hum or hum.Health <= 0 then continue end
+            if shouldIgnoreHumanoidTarget(model, hum) then continue end
             if seenHum[hum] then continue end
 
             local dir = part.Position - boxCFrame.Position
@@ -711,11 +759,13 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local cd = baseStepCd * sizeSpeedMult
 
     -- ── SCALED DAMAGE ─────────────────────────────────────────────────
-    -- finalDamage = baseDamage * sizeMult * comboMult * random(0.8–1.0), rounded up
+    -- finalDamage is picked uniformly from the allowed integer damage values
+    -- after deterministic size / combo / upgrade scaling.
     local comboDmgMult = getComboDamageMultiplier(comboCfg, validStep)
-    local rawDamage = baseDamage * sizeDamageMult * comboDmgMult
-    local damageRoll = 0.8 + math.random() * 0.2   -- 80-100% of full value
-    local damage = math.ceil(rawDamage * damageRoll)
+    local upgradeDmgMult = getMeleeDamageUpgradeMultiplier(player)
+    local scaledBaseDamage = baseDamage * sizeDamageMult * comboDmgMult * upgradeDmgMult
+    local minDamageRoll, maxDamageRoll = getComboDamageRollRange(comboCfg, validStep)
+    local damage = rollUniformIntegerDamage(scaledBaseDamage, minDamageRoll, maxDamageRoll)
 
     -- ── SCALED KNOCKBACK ──────────────────────────────────────────────
     -- finalKnockback = baseKnockback * comboKnockbackMult * sizeMult
