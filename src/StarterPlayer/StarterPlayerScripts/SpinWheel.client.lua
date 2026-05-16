@@ -1,6 +1,7 @@
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -74,6 +75,23 @@ local function playTickSound()
     end)
 end
 
+local function playWheelSpinSound()
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    local wheelSpinSound = soundsFolder and soundsFolder:FindFirstChild("WheelSpin")
+    if not (wheelSpinSound and wheelSpinSound:IsA("Sound")) then
+        return
+    end
+
+    local soundClone = wheelSpinSound:Clone()
+    soundClone.Parent = wheelSpinSound.Parent
+    soundClone:Play()
+    soundClone.Ended:Once(function()
+        pcall(function()
+            soundClone:Destroy()
+        end)
+    end)
+end
+
 local function resolveWheelParts()
     local model = Workspace:WaitForChild(SpinWheelConfig.ModelName, 30)
     if not (model and model:IsA("Model")) then
@@ -112,10 +130,83 @@ local function resolveWheelParts()
     }
 end
 
+local function extractWheelLightOrder(part)
+    local attrs = part:GetAttributes()
+
+    local bestNumericKey = nil
+    for key, value in pairs(attrs) do
+        local numericKey = tonumber(key)
+        if numericKey then
+            if not bestNumericKey or numericKey < bestNumericKey then
+                bestNumericKey = numericKey
+            end
+        end
+
+        if key == "WheelLightIndex" or key == "LightIndex" or key == "Order" or key == "Index" then
+            local numericValue = tonumber(value)
+            if numericValue then
+                return numericValue
+            end
+        end
+    end
+
+    if bestNumericKey then
+        return bestNumericKey
+    end
+
+    local suffix = tonumber(string.match(part.Name, "(%d+)$"))
+    return suffix
+end
+
+local function resolveWheelLights(model)
+    local lights = {}
+    local discoveredIndex = 0
+
+    for _, descendant in ipairs(model:GetDescendants()) do
+        if descendant:IsA("BasePart") and descendant.Name == "WheelLight" then
+            discoveredIndex += 1
+
+            local childLights = {}
+            for _, child in ipairs(descendant:GetDescendants()) do
+                if child:IsA("PointLight") or child:IsA("SpotLight") or child:IsA("SurfaceLight") then
+                    table.insert(childLights, {
+                        instance = child,
+                        brightness = child.Brightness,
+                        enabled = child.Enabled,
+                        color = child.Color,
+                    })
+                end
+            end
+
+            table.insert(lights, {
+                part = descendant,
+                order = extractWheelLightOrder(descendant),
+                discoveredIndex = discoveredIndex,
+                baseColor = descendant.Color,
+                baseTransparency = descendant.Transparency,
+                childLights = childLights,
+            })
+        end
+    end
+
+    table.sort(lights, function(a, b)
+        local left = a.order or math.huge
+        local right = b.order or math.huge
+        if left == right then
+            return a.discoveredIndex < b.discoveredIndex
+        end
+        return left < right
+    end)
+
+    return lights
+end
+
 local wheelParts = resolveWheelParts()
 if not wheelParts then
     return
 end
+
+local wheelLights = resolveWheelLights(wheelParts.model)
 
 local function makeLoadingState()
     return {
@@ -264,12 +355,147 @@ local wheelBaseStartCFrame = wheelParts.wheelBase.CFrame
 local currentAngleDegrees = 0
 local requestInFlight = false
 local isSpinning = false
+local spinSequenceLocked = false
 local purchaseModalOpen = false
 local currentState = makeLoadingState()
 local serverTimeOffset = 0
 local lastScreenKey = nil
 local stateFetchInFlight = false
 local lastStateRefreshAt = 0
+local lightMode = "loading"
+local lightModeStartedAt = os.clock()
+local lightModeEndsAt = nil
+local rainbowCycleColors = {
+    Color3.fromRGB(255, 72, 72),
+    Color3.fromRGB(255, 150, 56),
+    Color3.fromRGB(255, 234, 92),
+    Color3.fromRGB(86, 232, 116),
+    Color3.fromRGB(82, 162, 255),
+    Color3.fromRGB(176, 98, 255),
+}
+local idleLightColor = Color3.fromRGB(255, 244, 196)
+local spinWhiteColor = Color3.fromRGB(255, 252, 244)
+local spinYellowColor = Color3.fromRGB(255, 228, 110)
+
+local function setLightMode(mode, durationSeconds)
+    lightMode = mode
+    lightModeStartedAt = os.clock()
+    if durationSeconds and durationSeconds > 0 then
+        lightModeEndsAt = lightModeStartedAt + durationSeconds
+    else
+        lightModeEndsAt = nil
+    end
+end
+
+local function circularDistance(a, b, count)
+    local diff = math.abs(a - b)
+    return math.min(diff, count - diff)
+end
+
+local function applyWheelLightVisual(lightData, brightness, colorOverride)
+    brightness = math.clamp(brightness or 0, 0, 1)
+    local targetColor = colorOverride or lightData.baseColor
+    local partColor = lightData.baseColor:Lerp(targetColor, brightness)
+
+    lightData.part.Color = partColor
+    lightData.part.Transparency = math.clamp(lightData.baseTransparency + (1 - brightness) * 0.65, 0, 0.95)
+
+    for _, childLight in ipairs(lightData.childLights) do
+        childLight.instance.Color = childLight.color:Lerp(targetColor, brightness)
+        childLight.instance.Enabled = brightness > 0.06
+        childLight.instance.Brightness = math.max(0.05, childLight.brightness * (0.2 + brightness * 0.8))
+    end
+end
+
+local function updateWheelLights(now)
+    local count = #wheelLights
+    if count == 0 then
+        return
+    end
+
+    if lightMode == "loading" then
+        local pulse = 0.2 + 0.35 * (0.5 + 0.5 * math.sin(now * 2.4))
+        for _, lightData in ipairs(wheelLights) do
+            applyWheelLightVisual(lightData, pulse, nil)
+        end
+        return
+    end
+
+    if lightMode == "idle" then
+        local head = ((now * 3.2) % count) + 1
+        for index, lightData in ipairs(wheelLights) do
+            local dist = circularDistance(index, head, count)
+            local brightness = math.max(0, 1 - (dist / 3.2))
+            applyWheelLightVisual(lightData, brightness, idleLightColor)
+        end
+        return
+    end
+
+    if lightMode == "start" then
+        local phase = now - lightModeStartedAt
+        local shift = math.floor(phase / 0.045)
+        for index, lightData in ipairs(wheelLights) do
+            local segmentIndex = (index - 1 - shift) % count
+            local brightness = 0
+            local color = lightData.baseColor
+            if segmentIndex < 6 then
+                brightness = 1 - (segmentIndex * 0.1)
+                color = (segmentIndex % 2 == 0) and spinWhiteColor or spinYellowColor
+            end
+            applyWheelLightVisual(lightData, brightness, color)
+        end
+        return
+    end
+
+    if lightMode == "spinning" then
+        local flashSwap = math.floor((now - lightModeStartedAt) / 0.5)
+        for index, lightData in ipairs(wheelLights) do
+            local isEvenSlot = (index % 2 == 0)
+            local useWhite = flashSwap % 2 == 0 and isEvenSlot or flashSwap % 2 == 1 and not isEvenSlot
+            local brightness = 0.95
+            local color = useWhite and spinWhiteColor or spinYellowColor
+            applyWheelLightVisual(lightData, brightness, color)
+        end
+        return
+    end
+
+    if lightMode == "win" then
+        local phase = now - lightModeStartedAt
+        local shift = math.floor(phase / 0.06)
+        for index, lightData in ipairs(wheelLights) do
+            local segmentIndex = (index - 1 - shift) % count
+            local brightness = 0
+            local color = lightData.baseColor
+            if segmentIndex < #rainbowCycleColors then
+                color = rainbowCycleColors[segmentIndex + 1]
+                brightness = 1
+            end
+            applyWheelLightVisual(lightData, brightness, color)
+        end
+        return
+    end
+
+    for _, lightData in ipairs(wheelLights) do
+        applyWheelLightVisual(lightData, 0.35, nil)
+    end
+end
+
+local function syncAmbientWheelMode()
+    if isSpinning then
+        return
+    end
+
+    if currentState.isLoaded ~= true then
+        if lightMode ~= "loading" then
+            setLightMode("loading")
+        end
+        return
+    end
+
+    if lightMode ~= "idle" then
+        setLightMode("idle")
+    end
+end
 
 local function applyWheelAngle(angleDegrees)
     local radians = math.rad((tonumber(angleDegrees) or 0) * (SpinWheelConfig.RotationDirection or 1))
@@ -357,7 +583,7 @@ end
 local function closePurchaseModal()
     purchaseModalOpen = false
     modalShade.Visible = false
-    prompt.Enabled = currentState.isLoaded == true and not requestInFlight and not isSpinning
+    prompt.Enabled = currentState.isLoaded == true and not requestInFlight and not isSpinning and not spinSequenceLocked
 end
 
 local function updatePromptState()
@@ -369,7 +595,7 @@ local function updatePromptState()
     end
 
     prompt.ObjectText = string.format("%s %d", SpinWheelConfig.Labels.PromptObjectPrefix, getWheelSpinsCount())
-    prompt.Enabled = not requestInFlight and not isSpinning and not purchaseModalOpen
+    prompt.Enabled = not requestInFlight and not isSpinning and not spinSequenceLocked and not purchaseModalOpen
 end
 
 local function updateScreen()
@@ -397,12 +623,12 @@ local function updateScreen()
         bodyLabel.TextColor3 = Color3.fromRGB(235, 239, 244)
     elseif secondsRemaining <= 0 then
         headerLabel.Text = SpinWheelConfig.Labels.ReadyHeader
-        headerLabel.TextColor3 = Color3.fromRGB(255, 208, 64)
+        headerLabel.TextColor3 = Color3.fromRGB(123, 255, 94)
         bodyLabel.Text = string.format("%s\n%s %d", SpinWheelConfig.Labels.ReadyBody, SpinWheelConfig.Labels.PromptObjectPrefix, wheelSpinsCount)
         bodyLabel.TextColor3 = Color3.fromRGB(235, 239, 244)
     else
         headerLabel.Text = SpinWheelConfig.Labels.CooldownHeader
-        headerLabel.TextColor3 = Color3.fromRGB(88, 190, 255)
+        headerLabel.TextColor3 = Color3.fromRGB(255, 208, 64)
         bodyLabel.Text = string.format("%s\n%s %d", formatCountdown(secondsRemaining), SpinWheelConfig.Labels.PromptObjectPrefix, wheelSpinsCount)
         bodyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     end
@@ -417,6 +643,7 @@ local function setState(state)
     currentState = state
     updateServerTimeOffset(state)
     updateScreen()
+    syncAmbientWheelMode()
 end
 
 local function refreshState()
@@ -444,6 +671,10 @@ local function animateSpin(resultPayload)
     end
 
     isSpinning = true
+    spinSequenceLocked = true
+    local startupDuration = tonumber(SpinWheelConfig.LightShowStartDuration) or 1.0
+    setLightMode("start", startupDuration)
+    playWheelSpinSound()
     updatePromptState()
 
     local startAngle = currentAngleDegrees
@@ -453,6 +684,7 @@ local function animateSpin(resultPayload)
         + (tonumber(resultPayload.landingAngle) or 0)
     local angleValue = Instance.new("NumberValue")
     angleValue.Value = startAngle
+    angleValue.Parent = wheelParts.model
 
     local lastTickStep = math.floor(startAngle / sectorAngle)
     local finalTickMuteAngle = tonumber(SpinWheelConfig.GetFinalTickMuteAngle and SpinWheelConfig.GetFinalTickMuteAngle() or (sectorAngle * 0.85)) or (sectorAngle * 0.85)
@@ -482,13 +714,21 @@ local function animateSpin(resultPayload)
         Value = targetAngle,
     })
 
-    tween:Play()
+    task.delay(startupDuration, function()
+        if not isSpinning or not angleValue.Parent then
+            return
+        end
+        setLightMode("spinning")
+        tween:Play()
+    end)
+
     tween.Completed:Once(function()
         angleConn:Disconnect()
         currentAngleDegrees = targetAngle % 360
         applyWheelAngle(currentAngleDegrees)
         angleValue:Destroy()
         isSpinning = false
+        setLightMode("win", SpinWheelConfig.LightShowWinDuration or 1.1)
         updatePromptState()
         showToast(string.format("You got %d coins!", tonumber(resultPayload.reward) or 0), Color3.fromRGB(123, 255, 94))
     end)
@@ -583,7 +823,7 @@ cancelButton.MouseButton1Click:Connect(function()
 end)
 
 prompt.Triggered:Connect(function()
-    if requestInFlight or isSpinning or purchaseModalOpen then
+    if requestInFlight or isSpinning or spinSequenceLocked or purchaseModalOpen then
         return
     end
     if currentState.isLoaded ~= true then
@@ -637,6 +877,7 @@ end)
 
 setState(makeLoadingState())
 refreshState()
+syncAmbientWheelMode()
 
 task.spawn(function()
     while true do
@@ -649,4 +890,25 @@ task.spawn(function()
         updateScreen()
         task.wait(0.25)
     end
+end)
+
+RunService.RenderStepped:Connect(function(deltaTime)
+    local now = os.clock()
+
+    if lightModeEndsAt and now >= lightModeEndsAt then
+        if lightMode == "win" then
+            spinSequenceLocked = false
+            syncAmbientWheelMode()
+            updatePromptState()
+        else
+            lightModeEndsAt = nil
+        end
+    end
+
+    if not isSpinning and currentState.isLoaded == true and lightMode == "idle" then
+        currentAngleDegrees = (currentAngleDegrees + (tonumber(SpinWheelConfig.IdleRotationDegreesPerSecond) or 4) * deltaTime) % 360
+        applyWheelAngle(currentAngleDegrees)
+    end
+
+    updateWheelLights(now)
 end)
