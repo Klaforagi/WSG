@@ -92,6 +92,23 @@ local function playWheelSpinSound()
     end)
 end
 
+local function playWheelEndSound()
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    local wheelEndSound = soundsFolder and soundsFolder:FindFirstChild("WheelEnd")
+    if not (wheelEndSound and wheelEndSound:IsA("Sound")) then
+        return
+    end
+
+    local soundClone = wheelEndSound:Clone()
+    soundClone.Parent = wheelEndSound.Parent
+    soundClone:Play()
+    soundClone.Ended:Once(function()
+        pcall(function()
+            soundClone:Destroy()
+        end)
+    end)
+end
+
 local function resolveWheelParts()
     local model = Workspace:WaitForChild(SpinWheelConfig.ModelName, 30)
     if not (model and model:IsA("Model")) then
@@ -495,11 +512,6 @@ local function setLightMode(mode, durationSeconds, anchorPosition)
     end
 end
 
-local function circularDistance(a, b, count)
-    local diff = math.abs(a - b)
-    return math.min(diff, count - diff)
-end
-
 local function applyWheelLightVisual(lightData, brightness, colorOverride)
     brightness = math.clamp(brightness or 0, 0, 1)
     local targetColor = colorOverride or lightData.baseColor
@@ -533,9 +545,24 @@ local function updateWheelLights(now)
 
     if lightMode == "idle" then
         local head = lightHeadPosition
+        local idleSpeed = math.max(0.001, getLightOrbitSpeed("idle", count))
+        local fadeDurationSeconds = 1
         for index, lightData in ipairs(wheelLights) do
-            local dist = circularDistance(index, head, count)
-            local brightness = math.max(0, 1 - (dist / 3.2))
+            local trailDistance = (head - index) % count
+            local leadDistance = (index - head) % count
+            local brightness = 0
+
+            local trailTime = trailDistance / idleSpeed
+            local leadTime = leadDistance / idleSpeed
+
+            if trailTime <= fadeDurationSeconds then
+                local normalized = math.clamp(1 - (trailTime / fadeDurationSeconds), 0, 1)
+                brightness = normalized * normalized * (3 - (2 * normalized))
+            elseif leadTime <= fadeDurationSeconds then
+                local normalized = math.clamp(1 - (leadTime / fadeDurationSeconds), 0, 1)
+                brightness = normalized * normalized * (3 - (2 * normalized))
+            end
+
             applyWheelLightVisual(lightData, brightness, idleLightColor)
         end
         return
@@ -779,7 +806,7 @@ local function animateSpin(resultPayload)
 
     isSpinning = true
     spinSequenceLocked = true
-    local startupDuration = tonumber(SpinWheelConfig.LightShowStartDuration) or 1.0
+    local startupDuration = (tonumber(SpinWheelConfig.LightShowStartDuration) or 1.0) + 0.5
     setLightMode("start", startupDuration)
     playWheelSpinSound()
     updatePromptState()
@@ -836,6 +863,7 @@ local function animateSpin(resultPayload)
         angleValue:Destroy()
         isSpinning = false
         setLightMode("win", SpinWheelConfig.LightShowWinDuration or 1.1, 1)
+        playWheelEndSound()
         updatePromptState()
         showToast(string.format("You got %d coins!", tonumber(resultPayload.reward) or 0), Color3.fromRGB(123, 255, 94))
     end)
