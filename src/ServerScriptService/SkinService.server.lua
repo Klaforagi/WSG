@@ -115,6 +115,7 @@ dprint("Remotes created")
 -- playerData[player] = { owned = { [skinId] = true }, equipped = skinId, favorited = { [skinId] = true } }
 local playerData = {}
 local applyingLock = {}
+local queuedApplyCharacter = {}
 local skinSectionRegistered = false
 
 local function markDirty(player, reason, options)
@@ -263,6 +264,7 @@ local function registerSkinSection()
         Cleanup = function(player)
             playerData[player] = nil
             applyingLock[player] = nil
+            queuedApplyCharacter[player] = nil
         end,
         Validate = function(_, currentData, lastGoodData)
             if countOwnedSkins(lastGoodData) > 0 and countOwnedSkins(currentData) == 0 then
@@ -1418,7 +1420,8 @@ local function applySkin(player, character)
 
     -- Re-entry guard
     if applyingLock[player] then
-        dprint(player.Name, "WARN: skin application already in progress – skipping")
+        queuedApplyCharacter[player] = character
+        dprint(player.Name, "WARN: skin application already in progress – queued latest request")
         return
     end
 
@@ -1456,23 +1459,56 @@ local function applySkin(player, character)
 
     applyingLock[player] = nil
 
+    local queuedCharacter = queuedApplyCharacter[player]
+    queuedApplyCharacter[player] = nil
+
     if not ok then
         warn("[SkinService] ERROR applying skin '" .. tostring(equipped) .. "' to " .. player.Name .. ": " .. tostring(err))
-        -- Emergency revert to Default
-        local data = getOrCreateData(player)
-        data.equipped = "Default"
+        local hasQueuedApply = queuedCharacter ~= nil
+        -- Emergency cleanup/revert so the next apply always starts from a clean state.
         pcall(function()
 			FullBodySkinService.RemoveSkin(player)
             clearSkinCosmetics(character)
             restoreOriginalBodyColors(character)
             restoreAccessories(character)
         end)
-        pushEquippedToClient(player)
-        dprint(player.Name, "FAILSAFE: reverted to Default due to application error")
+
+        if not hasQueuedApply then
+            local data = getOrCreateData(player)
+            data.equipped = "Default"
+            pushEquippedToClient(player)
+            dprint(player.Name, "FAILSAFE: reverted to Default due to application error")
+        else
+            dprint(player.Name, "queued skin apply will retry after cleanup")
+        end
+
+		if queuedCharacter then
+			task.defer(function()
+				local nextCharacter = queuedCharacter
+				if not nextCharacter or not nextCharacter.Parent then
+					nextCharacter = player.Character
+				end
+				if nextCharacter then
+					applySkin(player, nextCharacter)
+				end
+			end)
+		end
         return
     end
 
     refreshEquippedToolGrips(character)
+
+	if queuedCharacter then
+		task.defer(function()
+			local nextCharacter = queuedCharacter
+			if not nextCharacter or not nextCharacter.Parent then
+				nextCharacter = player.Character
+			end
+			if nextCharacter then
+				applySkin(player, nextCharacter)
+			end
+		end)
+	end
 
 end
 
