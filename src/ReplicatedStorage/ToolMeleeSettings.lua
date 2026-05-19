@@ -110,7 +110,7 @@ local rarityDefaults = {
 --   Uncommon  = primitive actual weapons (stone hammer, wooden spear)
 --   Rare      = actual weapons (swords, axes, spear, flanged mace)
 --   Epic      = stronger weapons (spiked mace, crusher)
---   Legendary = best badass 2H weapons (punisher, kingsblade)
+--   Legendary = best badass 2H weapons (punisher, kingsblade, doom sword)
 --------------------------------------------------------------------------------
 
 local presets = {
@@ -123,6 +123,13 @@ local presets = {
         hit_sound       = "SwordHit",
     },
     ["kingsblade"] = {
+        rarity          = "Legendary",
+        swing_anim_id   = "82015832913253",
+        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
+        swing_sound     = "SwordSwing",
+        hit_sound       = "SwordHit",
+    },
+    ["doom sword"] = {
         rarity          = "Legendary",
         swing_anim_id   = "82015832913253",
         swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },

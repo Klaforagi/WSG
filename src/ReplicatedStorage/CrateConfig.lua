@@ -81,6 +81,7 @@ CrateConfig.WeaponsByRarity = {
     Legendary = {
         { weapon = "Punisher", category = "Melee" },
         { weapon = "Kingsblade", category = "Melee" },
+        { weapon = "Doom Sword", category = "Melee" },
         { weapon = "Xbow",  category = "Ranged" },
     },
 }
