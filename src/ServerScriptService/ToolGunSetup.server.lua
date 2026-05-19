@@ -587,6 +587,21 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         end
     end
 
+    if WeaponTrailService and visual then
+        local trailColor = getTracerColor(player)
+        if visual:IsA("BasePart") then
+            trailColor = visual.Color
+        elseif visual:IsA("Model") and visual.PrimaryPart then
+            trailColor = visual.PrimaryPart.Color
+        end
+        pcall(function()
+            WeaponTrailService.ApplyToProjectile(visual, {
+                Color = trailColor,
+                Lifetime = math.clamp(pLifetime * 0.08, 0.18, 0.35),
+            })
+        end)
+    end
+
     local lastPos = origin
     local velocity = initialVelocity
     local startTime = tick()
@@ -614,6 +629,12 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         local rayResult = raycastSkippingAccessories(lastPos, (nextPos - lastPos), params)
         if rayResult and rayResult.Instance then
             -- hit detected
+            if WeaponTrailService and visual then
+                pcall(function()
+                    WeaponTrailService.SetProjectileTrailEnabled(visual, false)
+                end)
+            end
+
             local inst = rayResult.Instance
             local parent = inst
             while parent and parent ~= Workspace do
@@ -1104,13 +1125,6 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end
     if (camOrigin - hrp.Position).Magnitude > 120 then return end
-
-    if WeaponTrailService then
-        local pulseDuration = math.clamp(scaledCooldown * 0.35, 0.12, 0.22)
-        pcall(function()
-            WeaponTrailService.PulseTrail(equippedTool, pulseDuration)
-        end)
-    end
 
     -- perform a server-side hitscan from the camera ray first so shots go where the player's cursor is
     local params = RaycastParams.new()

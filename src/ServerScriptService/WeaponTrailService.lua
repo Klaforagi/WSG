@@ -1,38 +1,49 @@
 --------------------------------------------------------------------------------
 -- WeaponTrailService.lua
--- Ensures weapon Tools get a shared server-created Trail named "SwordTrail".
--- ToolMeleeSetup.server.lua already pulses that name during melee swings, so
--- newly added weapons only need to pass through the shared tool grant path.
+-- Ensures melee weapon Tools get a shared server-created Trail named "SwordTrail".
+-- Ranged weapons use projectile trails instead so the trail follows ammo, not
+-- the held weapon model.
 --------------------------------------------------------------------------------
 
 local WeaponTrailService = {}
 
 local TRAIL_NAME = "SwordTrail"
+local PROJECTILE_TRAIL_NAME = "AmmoTrail"
 local AUTO_ATTACHMENT0_NAME = "_WeaponTrailA0"
 local AUTO_ATTACHMENT1_NAME = "_WeaponTrailA1"
+local AUTO_PROJECTILE_ATTACHMENT0_NAME = "_AmmoTrailA0"
+local AUTO_PROJECTILE_ATTACHMENT1_NAME = "_AmmoTrailA1"
 
 local HANDLE_TRAIL_A_NAMES = { "Trail A", "TrailA", "Trail_A" }
 local HANDLE_TRAIL_B_NAMES = { "Trail B", "TrailB", "Trail_B" }
 
 local ATTACHMENT0_NAMES = {
     AUTO_ATTACHMENT0_NAME,
+    AUTO_PROJECTILE_ATTACHMENT0_NAME,
     "SwordTrailA0",
     "SwordTrailAttachment0",
     "WeaponTrailA0",
     "WeaponTrailAttachment0",
     "TrailAttachment0",
+    "TrailAtt0",
 }
 
 local ATTACHMENT1_NAMES = {
     AUTO_ATTACHMENT1_NAME,
+    AUTO_PROJECTILE_ATTACHMENT1_NAME,
     "SwordTrailA1",
     "SwordTrailAttachment1",
     "WeaponTrailA1",
     "WeaponTrailAttachment1",
     "TrailAttachment1",
+    "TrailAtt1",
 }
 
 local PREFERRED_PART_NAME_FRAGMENTS = {
+    "projectile",
+    "arrow",
+    "bolt",
+    "pebble",
     "blade",
     "tip",
     "head",
@@ -44,13 +55,15 @@ local function isWeaponTool(tool)
     if not tool or not tool:IsA("Tool") then return false end
 
     local category = tool:GetAttribute("WeaponCategory") or tool:GetAttribute("HotbarCategory")
-    if category == "Melee" or category == "Ranged" or category == "DevWeapon" then
+    if category == "Ranged" or tool:GetAttribute("IsRanged") == true then
+        return false
+    end
+    if category == "Melee" or category == "DevWeapon" then
         return true
     end
 
     return tool:GetAttribute("IsWeapon") == true
         or tool:GetAttribute("IsMelee") == true
-        or tool:GetAttribute("IsRanged") == true
         or tool:GetAttribute("IsDevWeapon") == true
 end
 
@@ -74,10 +87,10 @@ local function findAttachmentByExactName(root, names)
     return nil
 end
 
-local function findDirectHandleAttachment(handle, names)
-    if not handle or not handle:IsA("BasePart") then return nil end
+local function findDirectPartAttachment(part, names)
+    if not part or not part:IsA("BasePart") then return nil end
     for _, name in ipairs(names) do
-        local found = handle:FindFirstChild(name)
+        local found = part:FindFirstChild(name)
         if found and found:IsA("Attachment") then
             return found
         end
@@ -89,8 +102,18 @@ local function findHandleTrailPair(tool)
     local handle = tool and tool:FindFirstChild("Handle")
     if not handle or not handle:IsA("BasePart") then return nil, nil end
 
-    local attachment0 = findDirectHandleAttachment(handle, HANDLE_TRAIL_A_NAMES)
-    local attachment1 = findDirectHandleAttachment(handle, HANDLE_TRAIL_B_NAMES)
+    local attachment0 = findDirectPartAttachment(handle, HANDLE_TRAIL_A_NAMES)
+    local attachment1 = findDirectPartAttachment(handle, HANDLE_TRAIL_B_NAMES)
+    if attachment0 and attachment1 then
+        return attachment0, attachment1
+    end
+
+    return nil, nil
+end
+
+local function findNamedAttachmentPair(root, attachment0Names, attachment1Names)
+    local attachment0 = findAttachmentByExactName(root, attachment0Names)
+    local attachment1 = findAttachmentByExactName(root, attachment1Names)
     if attachment0 and attachment1 then
         return attachment0, attachment1
     end
@@ -165,6 +188,18 @@ local function chooseTrailPart(tool)
     return bestPart
 end
 
+local function chooseProjectilePart(projectile)
+    if not projectile then return nil end
+    if projectile:IsA("BasePart") then return projectile end
+    if projectile:IsA("Model") and projectile.PrimaryPart and projectile.PrimaryPart:IsA("BasePart") then
+        return projectile.PrimaryPart
+    end
+    if projectile.GetDescendants then
+        return chooseTrailPart(projectile)
+    end
+    return nil
+end
+
 local function ensureAutoAttachments(tool)
     local handleAttachment0, handleAttachment1 = findHandleTrailPair(tool)
     if handleAttachment0 and handleAttachment1 then
@@ -201,6 +236,46 @@ local function ensureAutoAttachments(tool)
     return attachment0, attachment1
 end
 
+local function ensureProjectileAttachments(projectile)
+    local hostPart = chooseProjectilePart(projectile)
+    if not hostPart then return nil, nil end
+
+    local directAttachment0 = findDirectPartAttachment(hostPart, HANDLE_TRAIL_A_NAMES)
+    local directAttachment1 = findDirectPartAttachment(hostPart, HANDLE_TRAIL_B_NAMES)
+    if directAttachment0 and directAttachment1 then
+        return directAttachment0, directAttachment1
+    end
+
+    local namedAttachment0, namedAttachment1 = findNamedAttachmentPair(
+        projectile,
+        ATTACHMENT0_NAMES,
+        ATTACHMENT1_NAMES
+    )
+    if namedAttachment0 and namedAttachment1 then
+        return namedAttachment0, namedAttachment1
+    end
+
+    local offset = getLongestAxisOffset(hostPart)
+
+    local attachment0 = hostPart:FindFirstChild(AUTO_PROJECTILE_ATTACHMENT0_NAME)
+    if not attachment0 or not attachment0:IsA("Attachment") then
+        attachment0 = Instance.new("Attachment")
+        attachment0.Name = AUTO_PROJECTILE_ATTACHMENT0_NAME
+        attachment0.Parent = hostPart
+    end
+    attachment0.Position = offset * -1
+
+    local attachment1 = hostPart:FindFirstChild(AUTO_PROJECTILE_ATTACHMENT1_NAME)
+    if not attachment1 or not attachment1:IsA("Attachment") then
+        attachment1 = Instance.new("Attachment")
+        attachment1.Name = AUTO_PROJECTILE_ATTACHMENT1_NAME
+        attachment1.Parent = hostPart
+    end
+    attachment1.Position = offset
+
+    return attachment0, attachment1
+end
+
 local function configureTrailDefaults(trail)
     trail.Enabled = false
     trail.Color = ColorSequence.new({
@@ -225,6 +300,33 @@ local function configureTrailDefaults(trail)
     trail:SetAttribute("AutoWeaponTrail", true)
 end
 
+local function configureProjectileTrailDefaults(trail, options)
+    local color = options and options.Color or Color3.fromRGB(255, 220, 140)
+    local lifetime = options and options.Lifetime or 0.22
+
+    trail.Enabled = true
+    trail.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, color),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255)),
+    })
+    trail.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.2),
+        NumberSequenceKeypoint.new(0.6, 0.55),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    trail.Lifetime = math.max(lifetime, 0.08)
+    trail.MinLength = 0
+    trail.WidthScale = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.65),
+        NumberSequenceKeypoint.new(0.65, 0.35),
+        NumberSequenceKeypoint.new(1, 0.05),
+    })
+    trail.FaceCamera = true
+    trail.LightEmission = 0.45
+    trail.LightInfluence = 0
+    trail:SetAttribute("AutoAmmoTrail", true)
+end
+
 function WeaponTrailService.ApplyToTool(tool)
     if not isWeaponTool(tool) then return nil end
 
@@ -247,6 +349,28 @@ function WeaponTrailService.ApplyToTool(tool)
     end
 
     configureTrailDefaults(trail)
+    return trail
+end
+
+function WeaponTrailService.ApplyToProjectile(projectile, options)
+    if not projectile then return nil end
+
+    local attachment0, attachment1 = ensureProjectileAttachments(projectile)
+    if not attachment0 or not attachment1 then return nil end
+
+    local trail = projectile:FindFirstChild(PROJECTILE_TRAIL_NAME, true)
+    if not trail or not trail:IsA("Trail") then
+        trail = projectile:FindFirstChild(TRAIL_NAME, true)
+    end
+    if not trail or not trail:IsA("Trail") then
+        trail = Instance.new("Trail")
+        trail.Name = PROJECTILE_TRAIL_NAME
+        trail.Parent = attachment0.Parent or projectile
+    end
+
+    trail.Attachment0 = attachment0
+    trail.Attachment1 = attachment1
+    configureProjectileTrailDefaults(trail, options)
     return trail
 end
 

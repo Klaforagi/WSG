@@ -62,6 +62,8 @@ local BLUE_ACCENT  = Color3.fromRGB(65, 105, 225)
 local BLUE_BG      = Color3.fromRGB(16, 24, 56)
 local RED_ACCENT   = Color3.fromRGB(255, 75, 75)
 local RED_BG       = Color3.fromRGB(56, 16, 20)
+local NEUTRAL_ACCENT = BrickColor.new("Gold").Color
+local NEUTRAL_BG     = Color3.fromRGB(58, 46, 16)
 local WHITE        = Color3.fromRGB(235, 235, 240)
 local GRAY         = Color3.fromRGB(140, 140, 155)
 
@@ -777,9 +779,24 @@ player:GetPropertyChangedSignal("Team"):Connect(refreshTeamButtons)
 ---------------------------------------------------------------------------
 -- Team section builder
 ---------------------------------------------------------------------------
+local function getScoreboardTeamName(plr)
+	local teamName = plr.Team and plr.Team.Name
+	if teamName == "Blue" or teamName == "Red" then
+		return teamName
+	end
+	return "Neutral"
+end
+
 local function createTeamSection(teamName, layoutOrder)
-	local teamColor = (teamName == "Blue") and BLUE_ACCENT or RED_ACCENT
-	local teamBg    = (teamName == "Blue") and BLUE_BG or RED_BG
+	local teamColor = NEUTRAL_ACCENT
+	local teamBg    = NEUTRAL_BG
+	if teamName == "Blue" then
+		teamColor = BLUE_ACCENT
+		teamBg    = BLUE_BG
+	elseif teamName == "Red" then
+		teamColor = RED_ACCENT
+		teamBg    = RED_BG
+	end
 
 	local section = Instance.new("Frame")
 	section.Name                 = teamName .. "Section"
@@ -830,7 +847,7 @@ local function createTeamSection(teamName, layoutOrder)
 	local function updateTeamLabel()
 		local count = 0
 		for _, plr in ipairs(Players:GetPlayers()) do
-			if plr.Team and plr.Team.Name == teamName then count = count + 1 end
+			if getScoreboardTeamName(plr) == teamName then count = count + 1 end
 		end
 		teamLabel.Text = TeamDisplayNames.GetUpper(teamName) .. "  (" .. count .. ")"
 	end
@@ -1012,6 +1029,7 @@ local playerRows = {}  -- plr -> { row, cells, connections }
 
 local blueSection, updateBlueLabel = createTeamSection("Blue", 1)
 local redSection,  updateRedLabel  = createTeamSection("Red", 2)
+local neutralSection, updateNeutralLabel = createTeamSection("Neutral", 3)
 
 local function updateRow(plr)
 	local info = playerRows[plr]
@@ -1026,7 +1044,7 @@ end
 local function sortTeamSection(section, teamName)
 	local teamPlayers = {}
 	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr.Team and plr.Team.Name == teamName and playerRows[plr] then
+		if getScoreboardTeamName(plr) == teamName and playerRows[plr] then
 			table.insert(teamPlayers, plr)
 		end
 	end
@@ -1052,10 +1070,14 @@ end
 
 local function addPlayerRow(plr)
 	if playerRows[plr] then return end
-	local teamName = plr.Team and plr.Team.Name
-	if teamName ~= "Blue" and teamName ~= "Red" then return end
+	local teamName = getScoreboardTeamName(plr)
 
-	local section = (teamName == "Blue") and blueSection or redSection
+	local section = neutralSection
+	if teamName == "Blue" then
+		section = blueSection
+	elseif teamName == "Red" then
+		section = redSection
+	end
 	local row, cells = createPlayerRow(plr, teamName, 999)
 	row.Parent = section
 
@@ -1096,6 +1118,7 @@ local function rebuildAll()
 	end
 	updateBlueLabel()
 	updateRedLabel()
+	updateNeutralLabel()
 end
 
 ---------------------------------------------------------------------------
@@ -1112,9 +1135,15 @@ local function watchPlayer(plr)
 			addPlayerRow(plr)
 			updateBlueLabel()
 			updateRedLabel()
+			updateNeutralLabel()
 		end
 	end)
-	if isVisible then addPlayerRow(plr) end
+	if isVisible then
+		addPlayerRow(plr)
+		updateBlueLabel()
+		updateRedLabel()
+		updateNeutralLabel()
+	end
 end
 
 local function unwatchPlayer(plr)
@@ -1132,6 +1161,7 @@ local function unwatchPlayer(plr)
 	if isVisible then
 		updateBlueLabel()
 		updateRedLabel()
+		updateNeutralLabel()
 	end
 end
 
