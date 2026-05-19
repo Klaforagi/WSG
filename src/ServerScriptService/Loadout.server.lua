@@ -38,6 +38,14 @@ local SPECIAL_TOOL = { folder = "Special", toolName = "Special" }
 --------------------------------------------------------------------------------
 local toolsRoot = ServerStorage:WaitForChild("Tools")
 
+local WeaponTrailService = nil
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponTrailService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponTrailService = require(mod)
+    end
+end)
+
 -- Create remotes from server code so they always exist
 local function getOrCreateRemote(name)
     local existing = ReplicatedStorage:FindFirstChild(name)
@@ -336,6 +344,13 @@ local function sanitizeTool(tool)
                 d.FaceCamera = false
                 d.LightInfluence = 0
             end)
+        end
+    end
+
+    if WeaponTrailService and tool:IsA("Tool") then
+        local trailOk, trailErr = pcall(WeaponTrailService.ApplyToTool, tool)
+        if not trailOk then
+            warn("[Loadout] WeaponTrailService error:", trailErr)
         end
     end
 end

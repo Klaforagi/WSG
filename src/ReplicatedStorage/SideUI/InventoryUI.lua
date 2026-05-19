@@ -3027,7 +3027,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- ── State ───────────────────────────────────────────────────────
         local ownedSkinSet    = {}
-        local equippedSkinId  = "Default"
+        local equippedSkinId  = nil
         local favoritedSkins  = {}
         local selectedSkinId  = nil
         local skinCards       = {} -- [skinId] = { card, cardStroke, isDefault }
@@ -3362,10 +3362,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if not selectedSkinId then return end
             local isEquipped = (equippedSkinId == selectedSkinId)
             if isEquipped then
-                skinEquipBtn.Text = "\u{2714} EQUIPPED"
-                skinEquipBtn.BackgroundColor3 = DISABLED_BG
-                skinEquipBtn.TextColor3 = GREEN_GLOW
-                skinEquipStroke.Color = Color3.fromRGB(0, 0, 0); skinEquipStroke.Transparency = 0.15
+                skinEquipBtn.Text = "UNEQUIP"
+                skinEquipBtn.BackgroundColor3 = Color3.fromRGB(58, 34, 42)
+                skinEquipBtn.TextColor3 = WHITE
+                skinEquipStroke.Color = RED_TEXT; skinEquipStroke.Transparency = 0.35
             else
                 skinEquipBtn.Text = "EQUIP"
                 skinEquipBtn.BackgroundColor3 = BTN_BG
@@ -3387,7 +3387,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local function refreshSkinCards()
             local visibleCount = 0
             for sid, info in pairs(skinCards) do
-                local sOwned = ownedSkinSet[sid] or info.isDefault
+                local sOwned = ownedSkinSet[sid] == true
                 if sOwned then
                     info.card.Visible = true
                     visibleCount = visibleCount + 1
@@ -3471,17 +3471,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── Equip click ─────────────────────────────────────────────────
         skinEquipBtn.MouseButton1Click:Connect(function()
             if not selectedSkinId then return end
-            if equippedSkinId == selectedSkinId then return end
             local def = SkinDefs and SkinDefs.GetById(selectedSkinId)
             if not def then return end
-            local isOwn = ownedSkinSet[selectedSkinId] or (def.IsDefault == true)
+            local isOwn = ownedSkinSet[selectedSkinId] == true
             if not isOwn then return end
 
+            local willUnequip = (equippedSkinId == selectedSkinId)
             local sRemotes = ensureSkinRemotes()
             if sRemotes and sRemotes.equip and sRemotes.equip:IsA("RemoteEvent") then
                 pcall(function() sRemotes.equip:FireServer(selectedSkinId) end)
             end
-            equippedSkinId = selectedSkinId
+            equippedSkinId = willUnequip and nil or selectedSkinId
             updateSkinEquipButton()
             refreshSkinCards()
         end)
@@ -3489,14 +3489,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Equip button hover
         if not game:GetService("UserInputService").TouchEnabled then
             skinEquipBtn.MouseEnter:Connect(function()
-                if selectedSkinId and equippedSkinId ~= selectedSkinId then
-                    TweenService:Create(skinEquipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+                if selectedSkinId then
+                    local hoverColor = (equippedSkinId == selectedSkinId) and Color3.fromRGB(92, 42, 52) or GREEN_BTN
+                    TweenService:Create(skinEquipBtn, TWEEN_QUICK, {BackgroundColor3 = hoverColor}):Play()
                 end
             end)
             skinEquipBtn.MouseLeave:Connect(function()
-                if selectedSkinId and equippedSkinId ~= selectedSkinId then
-                    TweenService:Create(skinEquipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
-                end
+                updateSkinEquipButton()
             end)
         end
 
@@ -3740,7 +3739,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- Equipped skin
             if sRemotes.getEquipped and sRemotes.getEquipped:IsA("RemoteFunction") then
                 local ok, equipped = pcall(function() return sRemotes.getEquipped:InvokeServer() end)
-                if ok and type(equipped) == "string" then equippedSkinId = equipped end
+                if ok then equippedSkinId = (type(equipped) == "string") and equipped or nil end
             end
             -- Favorites
             if sRemotes.getFavorites and sRemotes.getFavorites:IsA("RemoteFunction") then
@@ -3751,11 +3750,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- Listen for equip changes
             if sRemotes.changed and sRemotes.changed:IsA("RemoteEvent") then
                 sRemotes.changed.OnClientEvent:Connect(function(newEquipped)
-                    if type(newEquipped) == "string" then
-                        equippedSkinId = newEquipped
-                        updateSkinEquipButton()
-                        refreshSkinCards()
-                    end
+                    equippedSkinId = (type(newEquipped) == "string") and newEquipped or nil
+                    updateSkinEquipButton()
+                    refreshSkinCards()
                 end)
             end
         end)

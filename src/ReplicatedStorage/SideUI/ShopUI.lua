@@ -2905,10 +2905,10 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 local price = def.Price or 0
 
                 if owned and isEquipped then
-                    skinActionBtn.Text = "\u{2714} EQUIPPED"
-                    skinActionBtn.BackgroundColor3 = DISABLED_BG
-                    skinActionBtn.TextColor3 = GREEN_GLOW
-                    skinActionStroke.Color = GREEN_GLOW; skinActionStroke.Transparency = 0.45
+                    skinActionBtn.Text = "UNEQUIP"
+                    skinActionBtn.BackgroundColor3 = Color3.fromRGB(58, 34, 42)
+                    skinActionBtn.TextColor3 = WHITE
+                    skinActionStroke.Color = RED_TEXT; skinActionStroke.Transparency = 0.35
                     skinPriceRow.Visible = false
                 elseif owned then
                     skinActionBtn.Text = "EQUIP"
@@ -3010,8 +3010,13 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 local isEquipped = (equippedSkinId == selectedSkinId)
 
                 if owned and isEquipped then
-                    -- Already equipped, do nothing
-                    return
+                    local sRemotes = ensureSkinRemotes()
+                    if sRemotes and sRemotes.equip and sRemotes.equip:IsA("RemoteEvent") then
+                        pcall(function() sRemotes.equip:FireServer(selectedSkinId) end)
+                    end
+                    equippedSkinId = nil
+                    updateSkinActionButton()
+                    refreshSkinCards()
                 elseif owned then
                     -- Equip it
                     local sRemotes = ensureSkinRemotes()
@@ -3060,8 +3065,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 skinActionBtn.MouseEnter:Connect(function()
                     local owned = selectedSkinId and ownedSkinSet[selectedSkinId]
                     local isEquipped = (equippedSkinId == selectedSkinId)
-                    if not (owned and isEquipped) then
-                        TweenService:Create(skinActionBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+                    if selectedSkinId then
+                        local hoverColor = (owned and isEquipped) and Color3.fromRGB(92, 42, 52) or GREEN_BTN
+                        TweenService:Create(skinActionBtn, TWEEN_QUICK, {BackgroundColor3 = hoverColor}):Play()
                     end
                 end)
                 skinActionBtn.MouseLeave:Connect(function()
@@ -3245,17 +3251,15 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 -- Equipped skin
                 if sRemotes.getEquipped and sRemotes.getEquipped:IsA("RemoteFunction") then
                     local ok, equipped = pcall(function() return sRemotes.getEquipped:InvokeServer() end)
-                    if ok and type(equipped) == "string" then equippedSkinId = equipped end
+                    if ok then equippedSkinId = (type(equipped) == "string") and equipped or nil end
                 end
                 refreshSkinCards()
                 -- Listen for equip changes
                 if sRemotes.changed and sRemotes.changed:IsA("RemoteEvent") then
                     sRemotes.changed.OnClientEvent:Connect(function(newEquipped)
-                        if type(newEquipped) == "string" then
-                            equippedSkinId = newEquipped
-                            updateSkinActionButton()
-                            refreshSkinCards()
-                        end
+                        equippedSkinId = (type(newEquipped) == "string") and newEquipped or nil
+                        updateSkinActionButton()
+                        refreshSkinCards()
                     end)
                 end
             end)

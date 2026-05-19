@@ -10,9 +10,9 @@
 -- Remotes (under ReplicatedStorage.Remotes.Skins):
 --   PurchaseSkin          (RF client→server)  buy a skin with coins
 --   GetOwnedSkins        (RF client→server)  fetch list of owned skin ids
---   EquipSkin             (RE client→server)  equip an owned skin
---   GetEquippedSkin       (RF client→server)  fetch currently equipped skin id
---   EquippedSkinChanged   (RE server→client)  pushed after equip changes
+--   EquipSkin             (RE client->server)  equip an owned skin, or unequip if already equipped
+--   GetEquippedSkin       (RF client->server)  fetch currently equipped skin id, or nil
+--   EquippedSkinChanged   (RE server->client)  pushed after equip/unequip changes
 --------------------------------------------------------------------------------
 
 local Players           = game:GetService("Players")
@@ -112,9 +112,10 @@ local getSkinFavoritesRF = ensureInstance(skinsFolder, "RemoteFunction", "GetSki
 dprint("Remotes created")
 
 -- ── Per-player state ───────────────────────────────────────────────────────
--- playerData[player] = { owned = { [skinId] = true }, equipped = skinId, favorited = { [skinId] = true } }
+-- playerData[player] = { owned = { [skinId] = true }, equipped = skinId?, favorited = { [skinId] = true } }
 local playerData = {}
 local applyingLock = {}
+local queuedApplyCharacter = {}
 local skinSectionRegistered = false
 
 local function markDirty(player, reason, options)
@@ -144,29 +145,27 @@ local function dsKey(player)
 end
 
 local function loadData(player)
-    if not ds then return { owned = {}, equipped = "Default", favorited = {} }, "failed", "missing datastore" end
+    if not ds then return { owned = {}, favorited = {} }, "failed", "missing datastore" end
     local success, result, err = DataStoreOps.Load(ds, dsKey(player), "Skin/" .. dsKey(player))
     if success and type(result) == "table" then
         local owned = {}
         if type(result.owned) == "table" then
             for k, v in pairs(result.owned) do
-                if type(k) == "number" and type(v) == "string" then
+                if type(k) == "number" and type(v) == "string" and v ~= "Default" then
                     owned[v] = true
-                elseif type(v) == "boolean" then
+                elseif type(k) == "string" and k ~= "Default" and type(v) == "boolean" then
                     owned[k] = v
                 end
             end
         end
-        local equipped = "Default"
+        local equipped = nil
         if type(result.equipped) == "string" and #result.equipped > 0 then
             -- Validate equipped skin exists
             local def = SkinDefs.GetById(result.equipped)
-            if def then
+            if def and not def.IsDefault then
                 equipped = result.equipped
             end
         end
-        -- Always grant default
-        owned["Default"] = true
         -- Load favorited map
         local favorited = {}
         if type(result.favorited) == "table" then
@@ -178,7 +177,7 @@ local function loadData(player)
         end
         return { owned = owned, equipped = equipped, favorited = favorited }, "existing", nil
     end
-    return { owned = { Default = true }, equipped = "Default", favorited = {} }, success and "new" or "failed", err
+    return { owned = {}, favorited = {} }, success and "new" or "failed", err
 end
 
 local function getSaveData(player)
@@ -197,18 +196,27 @@ local function saveData(player, data, oldData)
             table.insert(ownedArr, id)
         end
     end
-    local payload = { owned = ownedArr, equipped = data.equipped or "Default", favorited = data.favorited or {} }
+    local payload = { owned = ownedArr, favorited = data.favorited or {} }
+    if type(data.equipped) == "string" and data.equipped ~= "" and data.equipped ~= "Default" then
+        payload.equipped = data.equipped
+    end
     local success, _, err = DataStoreOps.Update(ds, dsKey(player), "Skin/" .. dsKey(player), function(storedPayload)
         local previous = type(oldData) == "table" and oldData or storedPayload or {}
-        local previousState = { owned = { Default = true }, equipped = "Default", favorited = {} }
+        local previousState = { owned = {}, favorited = {} }
         if type(previous.owned) == "table" then
-            for _, skinId in ipairs(previous.owned) do
-                if type(skinId) == "string" and skinId ~= "" then
+            for key, value in pairs(previous.owned) do
+                local skinId = nil
+                if type(key) == "number" and type(value) == "string" then
+                    skinId = value
+                elseif type(key) == "string" and value == true then
+                    skinId = key
+                end
+                if type(skinId) == "string" and skinId ~= "" and skinId ~= "Default" then
                     previousState.owned[skinId] = true
                 end
             end
         end
-        if type(previous.equipped) == "string" and previous.equipped ~= "" then
+        if type(previous.equipped) == "string" and previous.equipped ~= "" and previous.equipped ~= "Default" then
             previousState.equipped = previous.equipped
         end
         if type(previous.favorited) == "table" then
@@ -263,6 +271,7 @@ local function registerSkinSection()
         Cleanup = function(player)
             playerData[player] = nil
             applyingLock[player] = nil
+            queuedApplyCharacter[player] = nil
         end,
         Validate = function(_, currentData, lastGoodData)
             if countOwnedSkins(lastGoodData) > 0 and countOwnedSkins(currentData) == 0 then
@@ -288,20 +297,14 @@ local function getOwnedList(player)
     local data = getOrCreateData(player)
     local list = {}
     for id, v in pairs(data.owned) do
-        if v then table.insert(list, id) end
+        if v and id ~= "Default" then table.insert(list, id) end
     end
-    -- Ensure Default is always included
-    local hasDefault = false
-    for _, id in ipairs(list) do
-        if id == "Default" then hasDefault = true; break end
-    end
-    if not hasDefault then table.insert(list, 1, "Default") end
     return list
 end
 
 local function getEquipped(player)
     local data = getOrCreateData(player)
-    return data.equipped or "Default"
+    return data.equipped
 end
 
 local function pushEquippedToClient(player)
@@ -1418,7 +1421,8 @@ local function applySkin(player, character)
 
     -- Re-entry guard
     if applyingLock[player] then
-        dprint(player.Name, "WARN: skin application already in progress – skipping")
+        queuedApplyCharacter[player] = character
+        dprint(player.Name, "WARN: skin application already in progress – queued latest request")
         return
     end
 
@@ -1430,18 +1434,18 @@ local function applySkin(player, character)
 
     applyingLock[player] = true
     local equipped = getEquipped(player)
-    dprint(player.Name, "applySkin – equipped:", equipped)
+    dprint(player.Name, "applySkin – equipped:", tostring(equipped or "none"))
 
     -- Protected call: catch ANY error during skin application
     local ok, err = pcall(function()
-        local def = SkinDefs.GetById(equipped)
+        local def = equipped and SkinDefs.GetById(equipped) or nil
         if def and def.ApplicationType == "ReplacementModel" then
 			clearSkinCosmetics(character)
 			restoreOriginalBodyColors(character)
 			restoreAccessories(character)
 			FullBodySkinService.ApplySkin(player, def.TemplateName or equipped)
             FullBodySkinService.SetShowHelm(player, getShowHelm(player))
-		elseif not def or def.IsDefault then
+		elseif not equipped or not def or def.IsDefault then
 			FullBodySkinService.RemoveSkin(player)
             applyDefaultSkin(player, character)
         elseif equipped == "IronKnight" then
@@ -1456,23 +1460,56 @@ local function applySkin(player, character)
 
     applyingLock[player] = nil
 
+    local queuedCharacter = queuedApplyCharacter[player]
+    queuedApplyCharacter[player] = nil
+
     if not ok then
         warn("[SkinService] ERROR applying skin '" .. tostring(equipped) .. "' to " .. player.Name .. ": " .. tostring(err))
-        -- Emergency revert to Default
-        local data = getOrCreateData(player)
-        data.equipped = "Default"
+        local hasQueuedApply = queuedCharacter ~= nil
+        -- Emergency cleanup/revert so the next apply always starts from a clean state.
         pcall(function()
 			FullBodySkinService.RemoveSkin(player)
             clearSkinCosmetics(character)
             restoreOriginalBodyColors(character)
             restoreAccessories(character)
         end)
-        pushEquippedToClient(player)
-        dprint(player.Name, "FAILSAFE: reverted to Default due to application error")
+
+        if not hasQueuedApply then
+            local data = getOrCreateData(player)
+            data.equipped = nil
+            pushEquippedToClient(player)
+            dprint(player.Name, "FAILSAFE: unequipped skin due to application error")
+        else
+            dprint(player.Name, "queued skin apply will retry after cleanup")
+        end
+
+		if queuedCharacter then
+			task.defer(function()
+				local nextCharacter = queuedCharacter
+				if not nextCharacter or not nextCharacter.Parent then
+					nextCharacter = player.Character
+				end
+				if nextCharacter then
+					applySkin(player, nextCharacter)
+				end
+			end)
+		end
         return
     end
 
     refreshEquippedToolGrips(character)
+
+	if queuedCharacter then
+		task.defer(function()
+			local nextCharacter = queuedCharacter
+			if not nextCharacter or not nextCharacter.Parent then
+				nextCharacter = player.Character
+			end
+			if nextCharacter then
+				applySkin(player, nextCharacter)
+			end
+		end)
+	end
 
 end
 
@@ -1483,22 +1520,21 @@ end
 local function onPlayerAdded(player)
     DataSaveCoordinator:LoadSection(player, "Skin")
     local data = getOrCreateData(player)
-    data.owned["Default"] = true
 
     -- Validate equipped skin is still owned
-    if data.equipped ~= "Default" and not data.owned[data.equipped] then
-        data.equipped = "Default"
+    if data.equipped and not data.owned[data.equipped] then
+        data.equipped = nil
         markDirty(player, "invalid_skin_fallback")
     end
 
-    dprint(player.Name, "joined – equipped:", data.equipped)
+    dprint(player.Name, "joined – equipped:", tostring(data.equipped or "none"))
 
     -- ── Live team-color update: recolor accent trim when team changes ────
     player:GetPropertyChangedSignal("Team"):Connect(function()
         local character = player.Character
         if not character then return end
         local eq = getEquipped(player)
-        if eq == "Default" then return end
+        if not eq or eq == "Default" then return end
         local newColor = getTeamAccentColor(player)
         local newCape = getTeamCapeColor(player)
         updateSkinAccentColor(character, newColor, newCape)
@@ -1518,9 +1554,9 @@ local function onPlayerAdded(player)
         end
 
         local equipped = getEquipped(player)
-        local def = SkinDefs.GetById(equipped)
+        local def = equipped and SkinDefs.GetById(equipped) or nil
         local usesReplacementModel = def and def.ApplicationType == "ReplacementModel"
-        local needsSkin = equipped ~= "Default"
+        local needsSkin = equipped ~= nil and equipped ~= "Default"
 
         if usesReplacementModel then
             if not player:HasAppearanceLoaded() then
@@ -1654,6 +1690,17 @@ getEquippedRF.OnServerInvoke = function(player)
     return getEquipped(player)
 end
 
+local function commitEquippedSkinChange(player, reason)
+    if player.Character then
+        task.spawn(function()
+            applySkin(player, player.Character)
+        end)
+    end
+
+    markDirty(player, reason)
+    pushEquippedToClient(player)
+end
+
 purchaseSkinRF.OnServerInvoke = function(player, skinId)
     if type(skinId) ~= "string" or #skinId == 0 then return false, 0, "invalid_id" end
 
@@ -1688,31 +1735,34 @@ purchaseSkinRF.OnServerInvoke = function(player, skinId)
 end
 
 equipSkinRE.OnServerEvent:Connect(function(player, skinId)
-    if type(skinId) ~= "string" or #skinId == 0 then return end
-
-    local def = SkinDefs.GetById(skinId)
-    if not def then return end
-
-    -- Must own the skin (Default is always owned)
-    if not isOwned(player, skinId) then return end
-
     local data = getOrCreateData(player)
 
-    -- Already equipped? Do nothing
-    if data.equipped == skinId then return end
+    if skinId == nil or skinId == "" or skinId == "Default" then
+        if data.equipped == nil then return end
+        data.equipped = nil
+        dprint("Unequipped skin for", player.Name)
+        commitEquippedSkinChange(player, "unequip_skin")
+        return
+    end
+
+    if type(skinId) ~= "string" then return end
+
+    local def = SkinDefs.GetById(skinId)
+    if not def or def.IsDefault then return end
+
+    -- Must own the skin
+    if not isOwned(player, skinId) then return end
+
+    if data.equipped == skinId then
+        data.equipped = nil
+        dprint("Unequipped skin:", skinId, "for", player.Name)
+        commitEquippedSkinChange(player, "unequip_skin")
+        return
+    end
 
     data.equipped = skinId
     dprint("Equipped skin:", skinId, "for", player.Name)
-
-    -- Apply to current character immediately
-    if player.Character then
-        task.spawn(function()
-            applySkin(player, player.Character)
-        end)
-    end
-
-    markDirty(player, "equip_skin")
-    pushEquippedToClient(player)
+    commitEquippedSkinChange(player, "equip_skin")
 end)
 
 --------------------------------------------------------------------------------
@@ -1811,8 +1861,8 @@ do
 
             local equipped = getEquipped(player)
             dprint("[ShowHelm] Found equipped skin:", tostring(equipped))
-            if equipped == "Default" then
-                dprint("[ShowHelm] Default skin, nothing to toggle")
+            if not equipped or equipped == "Default" then
+                dprint("[ShowHelm] no equipped skin, nothing to toggle")
                 return
             end
 

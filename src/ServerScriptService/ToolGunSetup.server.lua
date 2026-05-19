@@ -46,6 +46,14 @@ local TOOLCFG = {}
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
 local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
 
+local WeaponTrailService = nil
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponTrailService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponTrailService = require(mod)
+    end
+end)
+
 local function shouldIgnoreHumanoidTarget(model, humanoid)
     if not humanoid then return true end
     if humanoid:GetAttribute("IgnoreCombatTargeting") then return true end
@@ -1096,6 +1104,13 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end
     if (camOrigin - hrp.Position).Magnitude > 120 then return end
+
+    if WeaponTrailService then
+        local pulseDuration = math.clamp(scaledCooldown * 0.35, 0.12, 0.22)
+        pcall(function()
+            WeaponTrailService.PulseTrail(equippedTool, pulseDuration)
+        end)
+    end
 
     -- perform a server-side hitscan from the camera ray first so shots go where the player's cursor is
     local params = RaycastParams.new()

@@ -11,7 +11,7 @@ local SkinDefinitions = {}
 
 SkinDefinitions.Skins = {
     ---------------------------------------------------------------------------
-    -- DEFAULT  –  always owned, uses the player's normal Roblox avatar
+    -- DEFAULT  –  legacy fallback for the player's normal Roblox avatar
     ---------------------------------------------------------------------------
     {
         Id              = "Default",
@@ -21,7 +21,7 @@ SkinDefinitions.Skins = {
         Rarity          = "Common",
         Category        = "Skin",
         ShopVisible     = false,   -- never shown in shop
-        InventoryVisible = true,
+        InventoryVisible = false,
         IsDefault       = true,
         ApplicationType = "Avatar", -- restores normal avatar
     },
