@@ -153,6 +153,47 @@ CrateConfig.Crates = {
 
         pool = {},  -- auto-built below
     },
+
+    WheelLegendaryCrate = {
+        id          = "WheelLegendaryCrate",
+        displayName = "Legendary Chest",
+        description = "Wheel reward. Always rolls a Legendary weapon.",
+        weaponTypes = { "Melee", "Ranged" },
+        currency    = "Coins",
+        cost        = 0,
+        price       = 0,
+        iconGlyph   = "\u{1F451}",
+        hiddenFromShop = true,
+
+        rarities = {
+            Legendary = 1,
+        },
+
+        pool = {},
+    },
+
+    WheelGiantCrate = {
+        id          = "WheelGiantCrate",
+        displayName = "Giant Crate",
+        description = "Wheel reward. Rolls any rarity, but always Giant or larger.",
+        weaponTypes = { "Melee", "Ranged" },
+        currency    = "Coins",
+        cost        = 0,
+        price       = 0,
+        iconGlyph   = "\u{1F9F0}",
+        hiddenFromShop = true,
+        minimumSizeTier = "Giant",
+
+        rarities = {
+            Legendary = 1,
+            Epic      = 4,
+            Rare      = 15,
+            Uncommon  = 40,
+            Common    = 40,
+        },
+
+        pool = {},
+    },
 }
 
 --------------------------------------------------------------------------------

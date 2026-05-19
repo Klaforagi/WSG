@@ -31,6 +31,14 @@ local requestSpecialUnlock = ReplicatedStorage:WaitForChild("RequestSpecialUnloc
 local specialUnlockGranted = ReplicatedStorage:WaitForChild("SpecialUnlockGranted")
 local forceEquipRemote     = ReplicatedStorage:WaitForChild("ForceEquipTool")
 
+local HealthPotionConfig = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("HealthPotionConfig")
+    if mod and mod:IsA("ModuleScript") then
+        HealthPotionConfig = require(mod)
+    end
+end)
+
 --------------------------------------------------------------------------------
 -- MENU LOCK CHECK
 -- MenuLockEnforcer.client.lua sets player:SetAttribute("MenuOpen", bool)
@@ -59,8 +67,8 @@ end
 local SLOT_DEFS = {
     { index = 1, key = Enum.KeyCode.One,   category = "Melee",   toolName = "Sword",      label = "1" },
     { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Slingshot",   label = "2" },
-    { index = 3, key = Enum.KeyCode.Three, category = "Utility", toolName = "Bandage",     label = "3", isUtility = true },
-    { index = 4, key = Enum.KeyCode.Four,  category = "Extra",   toolName = "",            label = "4" },
+    { index = 3, key = Enum.KeyCode.Three, category = "Utility", toolName = "Bandage",     label = "3", isUtility = true, utilityType = "bandage" },
+    { index = 4, key = Enum.KeyCode.Four,  category = "Extra",   toolName = "",            label = "4", isUtility = true, utilityType = "potion" },
 }
 
 local SLOT_COUNT = #SLOT_DEFS
@@ -100,6 +108,14 @@ local specialUnlocked = true   -- slot 3 is now always unlocked (Bandage utility
 local selectedSlot    = 0
 local slotUI          = {}
 local slotTools       = {}
+local potionState     = {
+    isLoaded = false,
+    count = 0,
+    equipped = false,
+    cooldownEndsAt = 0,
+    cooldownRemaining = 0,
+}
+local potionCooldownMarker = 0
 -- current cached team tint (Color3 or nil)
 local currentTeamColor = nil
 
@@ -175,6 +191,93 @@ layout.Parent              = container
 -- FORWARD DECLARE
 --------------------------------------------------------------------------------
 local equipSlot
+
+local function buildPotionIcon(parent)
+    local iconFrame = Instance.new("Frame")
+    iconFrame.Name = "PotionIcon"
+    iconFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    iconFrame.Position = UDim2.fromScale(0.5, 0.44)
+    iconFrame.Size = UDim2.fromScale(0.56, 0.56)
+    iconFrame.BackgroundTransparency = 1
+    iconFrame.ZIndex = 2
+    iconFrame.Parent = parent
+
+    local bottleColor = Color3.fromRGB(103, 186, 255)
+    local bottleDark = Color3.fromRGB(40, 92, 140)
+    local liquidColor = Color3.fromRGB(62, 156, 245)
+
+    local body = Instance.new("Frame")
+    body.Name = "Body"
+    body.AnchorPoint = Vector2.new(0.5, 1)
+    body.Position = UDim2.fromScale(0.5, 1)
+    body.Size = UDim2.fromScale(0.62, 0.72)
+    body.BackgroundColor3 = bottleColor
+    body.BorderSizePixel = 0
+    body.ZIndex = 2
+    body.Parent = iconFrame
+    Instance.new("UICorner", body).CornerRadius = UDim.new(0.22, 0)
+
+    local bodyStroke = Instance.new("UIStroke", body)
+    bodyStroke.Color = bottleDark
+    bodyStroke.Thickness = 1.2
+
+    local neck = Instance.new("Frame")
+    neck.Name = "Neck"
+    neck.AnchorPoint = Vector2.new(0.5, 1)
+    neck.Position = UDim2.fromScale(0.5, 0.32)
+    neck.Size = UDim2.fromScale(0.26, 0.24)
+    neck.BackgroundColor3 = bottleColor
+    neck.BorderSizePixel = 0
+    neck.ZIndex = 3
+    neck.Parent = iconFrame
+    Instance.new("UICorner", neck).CornerRadius = UDim.new(0.2, 0)
+
+    local cap = Instance.new("Frame")
+    cap.Name = "Cap"
+    cap.AnchorPoint = Vector2.new(0.5, 0)
+    cap.Position = UDim2.fromScale(0.5, 0.02)
+    cap.Size = UDim2.fromScale(0.32, 0.1)
+    cap.BackgroundColor3 = bottleDark
+    cap.BorderSizePixel = 0
+    cap.ZIndex = 4
+    cap.Parent = iconFrame
+    Instance.new("UICorner", cap).CornerRadius = UDim.new(0.25, 0)
+
+    local liquid = Instance.new("Frame")
+    liquid.Name = "Liquid"
+    liquid.AnchorPoint = Vector2.new(0.5, 1)
+    liquid.Position = UDim2.fromScale(0.5, 0.94)
+    liquid.Size = UDim2.fromScale(0.48, 0.32)
+    liquid.BackgroundColor3 = liquidColor
+    liquid.BorderSizePixel = 0
+    liquid.ZIndex = 3
+    liquid.Parent = iconFrame
+    Instance.new("UICorner", liquid).CornerRadius = UDim.new(0.2, 0)
+
+    local plusH = Instance.new("Frame")
+    plusH.Name = "PlusH"
+    plusH.AnchorPoint = Vector2.new(0.5, 0.5)
+    plusH.Position = UDim2.fromScale(0.5, 0.6)
+    plusH.Size = UDim2.fromScale(0.26, 0.08)
+    plusH.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    plusH.BorderSizePixel = 0
+    plusH.ZIndex = 4
+    plusH.Parent = iconFrame
+    Instance.new("UICorner", plusH).CornerRadius = UDim.new(1, 0)
+
+    local plusV = Instance.new("Frame")
+    plusV.Name = "PlusV"
+    plusV.AnchorPoint = Vector2.new(0.5, 0.5)
+    plusV.Position = UDim2.fromScale(0.5, 0.6)
+    plusV.Size = UDim2.fromScale(0.08, 0.26)
+    plusV.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    plusV.BorderSizePixel = 0
+    plusV.ZIndex = 4
+    plusV.Parent = iconFrame
+    Instance.new("UICorner", plusV).CornerRadius = UDim.new(1, 0)
+
+    return iconFrame
+end
 
 --------------------------------------------------------------------------------
 -- BANDAGE ICON (programmatic — built from UI primitives)
@@ -366,9 +469,40 @@ local function buildSlot(def)
 
     -- Build programmatic bandage icon for the utility slot
     local bandageIcon = nil
-    if def.isUtility then
+    local potionIcon = nil
+    if def.utilityType == "bandage" then
         bandageIcon = buildBandageIcon(btn)
+    elseif def.utilityType == "potion" then
+        potionIcon = buildPotionIcon(btn)
     end
+
+    local countBadge = Instance.new("Frame")
+    countBadge.Name = "CountBadge"
+    countBadge.AnchorPoint = Vector2.new(1, 0)
+    countBadge.Position = UDim2.new(1, -6, 0, 6)
+    countBadge.Size = UDim2.new(0, 24, 0, 18)
+    countBadge.BackgroundColor3 = Color3.fromRGB(18, 26, 40)
+    countBadge.BorderSizePixel = 0
+    countBadge.ZIndex = 6
+    countBadge.Visible = false
+    countBadge.Parent = btn
+    Instance.new("UICorner", countBadge).CornerRadius = UDim.new(0, 8)
+
+    local countStroke = Instance.new("UIStroke", countBadge)
+    countStroke.Color = Color3.fromRGB(103, 186, 255)
+    countStroke.Thickness = 1
+    countStroke.Transparency = 0.25
+
+    local countLabel = Instance.new("TextLabel")
+    countLabel.Name = "CountLabel"
+    countLabel.BackgroundTransparency = 1
+    countLabel.Size = UDim2.fromScale(1, 1)
+    countLabel.Font = Enum.Font.GothamBold
+    countLabel.TextScaled = true
+    countLabel.Text = ""
+    countLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    countLabel.ZIndex = 7
+    countLabel.Parent = countBadge
 
     slotUI[idx] = {
         btn               = btn,
@@ -377,6 +511,9 @@ local function buildSlot(def)
         nameLabel         = nameLabel,
         thumb             = thumb,
         bandageIcon       = bandageIcon,
+        potionIcon        = potionIcon,
+        countBadge        = countBadge,
+        countLabel        = countLabel,
         cooldownOverlay   = cooldownOverlay,
         cooldownCountdown = cdCountdown,
     }
@@ -491,6 +628,7 @@ local function refreshSlots()
         local locked       = isWeaponLocked()
         local lockedName   = getLockedToolName()
         local isUtility  = def.isUtility == true
+        local utilityType = def.utilityType
         local isLocked   = (idx == 3 and not specialUnlocked and not isUtility)
         local isEquipped = (not isUtility and tool ~= nil and player.Character ~= nil
                             and tool.Parent == player.Character)
@@ -505,11 +643,30 @@ local function refreshSlots()
         end
 
         -- thumbnail
-        if isUtility then
+        if utilityType == "bandage" then
             -- Bandage slot: use programmatic icon, hide image thumbnail
             ui.thumb.Visible = false
             if ui.bandageIcon then
                 ui.bandageIcon.Visible = true
+            end
+            if ui.potionIcon then
+                ui.potionIcon.Visible = false
+            end
+            if ui.countBadge then
+                ui.countBadge.Visible = false
+            end
+        elseif utilityType == "potion" then
+            local hasEquippedPotion = potionState.equipped == true and (tonumber(potionState.count) or 0) > 0
+            ui.thumb.Visible = false
+            if ui.bandageIcon then
+                ui.bandageIcon.Visible = false
+            end
+            if ui.potionIcon then
+                ui.potionIcon.Visible = hasEquippedPotion
+            end
+            if ui.countBadge and ui.countLabel then
+                ui.countLabel.Text = tostring(math.max(0, math.floor(tonumber(potionState.count) or 0)))
+                ui.countBadge.Visible = hasEquippedPotion and math.max(0, math.floor(tonumber(potionState.count) or 0)) > 0
             end
         else
             local icon = getToolIcon(tool)
@@ -539,12 +696,26 @@ local function refreshSlots()
                         strokeSel = teamColor:Lerp(Color3.new(1,1,1), 0.6)
                     end
 
-                    if isUtility then
+                    if utilityType == "bandage" then
                         -- Bandage utility slot: always looks ready (not locked)
                         ui.btn.BackgroundColor3 = bgColor
                         ui.stroke.Color         = strokeColor
                         ui.nameLabel.TextColor3 = COLOR_TEXT
                         ui.nameLabel.Text       = "Bandage"
+                    elseif utilityType == "potion" then
+                        local hasEquippedPotion = potionState.equipped == true and (tonumber(potionState.count) or 0) > 0
+                        local isPotionCoolingDown = hasEquippedPotion and (tonumber(potionState.cooldownRemaining) or 0) > 0
+                        if hasEquippedPotion then
+                            ui.btn.BackgroundColor3 = isPotionCoolingDown and Color3.fromRGB(14, 28, 44) or bgColor
+                            ui.stroke.Color         = Color3.fromRGB(103, 186, 255)
+                            ui.nameLabel.TextColor3 = Color3.fromRGB(160, 215, 255)
+                            ui.nameLabel.Text       = (HealthPotionConfig and HealthPotionConfig.HotbarLabel) or "Potion"
+                        else
+                            ui.btn.BackgroundColor3 = bgColor
+                            ui.stroke.Color         = Color3.fromRGB(58, 70, 95)
+                            ui.nameLabel.TextColor3 = Color3.fromRGB(95, 106, 132)
+                            ui.nameLabel.Text       = ""
+                        end
                     elseif isLocked then
                         ui.btn.BackgroundColor3 = lockBg
                         ui.stroke.Color         = COLOR_STROKE_L
@@ -567,6 +738,104 @@ local function refreshSlots()
                         ui.nameLabel.TextColor3 = COLOR_TEXT
                         ui.nameLabel.Text       = tool and tool.Name or ""
                     end
+    end
+end
+
+local function ensurePotionRemotes()
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 10)
+    if not remotesFolder then
+        return nil
+    end
+
+    local potionFolder = remotesFolder:FindFirstChild("Potions") or remotesFolder:WaitForChild("Potions", 5)
+    if not potionFolder then
+        return nil
+    end
+
+    local getState = potionFolder:FindFirstChild("GetPotionState")
+    local usePotion = potionFolder:FindFirstChild("UseEquippedPotion")
+    local stateUpdated = remotesFolder:FindFirstChild("PotionStateUpdated")
+    if not getState or not usePotion or not stateUpdated then
+        return nil
+    end
+
+    return {
+        getState = getState,
+        usePotion = usePotion,
+        stateUpdated = stateUpdated,
+    }
+end
+
+local function clearPotionCooldownVisuals()
+    local ui = slotUI[4]
+    if not ui then
+        return
+    end
+    if ui.cooldownOverlay then
+        ui.cooldownOverlay.Size = UDim2.fromScale(1, 0)
+    end
+    if ui.cooldownCountdown then
+        ui.cooldownCountdown.Text = ""
+        ui.cooldownCountdown.Visible = false
+    end
+    potionCooldownMarker = 0
+end
+
+local function syncPotionCooldownVisuals()
+    local remaining = math.max(0, tonumber(potionState.cooldownRemaining) or 0)
+    local cooldownEndsAt = tonumber(potionState.cooldownEndsAt) or 0
+    local hasEquippedPotion = potionState.equipped == true and math.max(0, math.floor(tonumber(potionState.count) or 0)) > 0
+    if not hasEquippedPotion or remaining <= 0 then
+        clearPotionCooldownVisuals()
+        return
+    end
+
+    if cooldownEndsAt == potionCooldownMarker then
+        return
+    end
+
+    potionCooldownMarker = cooldownEndsAt
+    if _G.HotbarCooldown and _G.HotbarCooldown.start then
+        _G.HotbarCooldown.start(4, remaining)
+    end
+    if _G.HotbarCooldown and _G.HotbarCooldown.startCountdown then
+        _G.HotbarCooldown.startCountdown(4, remaining)
+    end
+end
+
+local function ingestPotionState(state)
+    if type(state) ~= "table" then
+        return
+    end
+
+    potionState = {
+        isLoaded = state.isLoaded == true,
+        count = math.max(0, math.floor(tonumber(state.count) or 0)),
+        equipped = state.equipped == true,
+        cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
+        cooldownRemaining = math.max(0, tonumber(state.cooldownRemaining) or 0),
+        serverTime = tonumber(state.serverTime) or 0,
+    }
+
+    if potionState.count <= 0 then
+        potionState.equipped = false
+    end
+
+    syncPotionCooldownVisuals()
+    task.defer(refreshSlots)
+end
+
+local function refreshPotionState()
+    local remotes = ensurePotionRemotes()
+    if not remotes or not remotes.getState then
+        return
+    end
+
+    local ok, state = pcall(function()
+        return remotes.getState:InvokeServer()
+    end)
+    if ok then
+        ingestPotionState(state)
     end
 end
 
@@ -593,9 +862,35 @@ equipSlot = function(idx)
 
     -- Slot 3 = Bandage utility (not a weapon)
     if def.isUtility then
-        -- Delegate to BandageClient via global
-        if _G.ActivateBandage then
-            _G.ActivateBandage()
+        if def.utilityType == "bandage" then
+            if _G.ActivateBandage then
+                _G.ActivateBandage()
+            end
+        elseif def.utilityType == "potion" then
+            local hasEquippedPotion = potionState.equipped == true and math.max(0, math.floor(tonumber(potionState.count) or 0)) > 0
+            if not hasEquippedPotion then
+                refreshSlots()
+                return
+            end
+            if _G.IsBandaging and _G.CancelBandage then
+                _G.CancelBandage()
+            end
+
+            local remotes = ensurePotionRemotes()
+            if not remotes or not remotes.usePotion then
+                return
+            end
+
+            local ok, success, _, payload = pcall(function()
+                return remotes.usePotion:InvokeServer()
+            end)
+            if ok and success and type(payload) == "table" then
+                ingestPotionState(payload.state)
+            elseif ok and type(payload) == "table" then
+                ingestPotionState(payload.state)
+            else
+                refreshPotionState()
+            end
         end
         return
     end
@@ -695,6 +990,15 @@ specialUnlockGranted.OnClientEvent:Connect(function(unlocked)
     refreshSlots()
 end)
 
+do
+    local remotes = ensurePotionRemotes()
+    if remotes and remotes.stateUpdated and remotes.stateUpdated:IsA("RemoteEvent") then
+        remotes.stateUpdated.OnClientEvent:Connect(function(state)
+            ingestPotionState(state)
+        end)
+    end
+end
+
 --------------------------------------------------------------------------------
 -- WEAPON LOCK ATTRIBUTE LISTENER
 -- WeaponLockService sets WeaponLocked / WeaponLockedTool on the player.
@@ -756,6 +1060,7 @@ end)
 -- INITIAL REFRESH (wait briefly for server to deliver tools)
 --------------------------------------------------------------------------------
 task.spawn(function()
+    refreshPotionState()
     for _ = 1, 30 do
         refreshSlots()
         if slotTools[1] and slotTools[2] then break end

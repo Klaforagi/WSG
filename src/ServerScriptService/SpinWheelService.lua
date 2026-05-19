@@ -18,6 +18,8 @@ local spinLocks = {}
 local randomSource = Random.new()
 local _saveCoordinator
 local CurrencyService
+local CrateService
+local HealthPotionService
 
 local function getSaveCoordinator()
     if _saveCoordinator == nil then
@@ -48,6 +50,28 @@ local function getCurrencyService()
     return CurrencyService
 end
 
+local function getCrateService()
+    if CrateService then
+        return CrateService
+    end
+
+    pcall(function()
+        CrateService = require(ServerScriptService:WaitForChild("CrateService"))
+    end)
+    return CrateService
+end
+
+local function getHealthPotionService()
+    if HealthPotionService then
+        return HealthPotionService
+    end
+
+    pcall(function()
+        HealthPotionService = require(ServerScriptService:WaitForChild("HealthPotionService"))
+    end)
+    return HealthPotionService
+end
+
 local function markDirty(player, reason, options)
     local coordinator = getSaveCoordinator()
     if coordinator then
@@ -59,12 +83,173 @@ local function getKey(player)
     return "User_" .. tostring(player.UserId)
 end
 
+local function makeEmptyRewardState()
+    return {
+        rewardType = "",
+        rewardText = "",
+        amount = 0,
+        sliceId = "",
+        sliceLabel = "",
+        crateType = "",
+    }
+end
+
+local function normalizeRewardState(raw)
+    local rewardState = makeEmptyRewardState()
+
+    if type(raw) == "number" then
+        local amount = math.max(0, math.floor(tonumber(raw) or 0))
+        rewardState.rewardType = amount > 0 and "coins" or ""
+        rewardState.rewardText = amount > 0 and string.format("%d Coins", amount) or ""
+        rewardState.amount = amount
+        return rewardState
+    end
+
+    if type(raw) ~= "table" then
+        return rewardState
+    end
+
+    rewardState.rewardType = type(raw.rewardType) == "string" and raw.rewardType or ""
+    rewardState.rewardText = type(raw.rewardText) == "string" and raw.rewardText or ""
+    rewardState.amount = math.max(0, math.floor(tonumber(raw.amount) or 0))
+    rewardState.sliceId = type(raw.sliceId) == "string" and raw.sliceId or ""
+    rewardState.sliceLabel = type(raw.sliceLabel) == "string" and raw.sliceLabel or ""
+    rewardState.crateType = type(raw.crateType) == "string" and raw.crateType or ""
+    return rewardState
+end
+
+local function buildRewardState(slice, rewardType, rewardText, amount, crateType)
+    local rewardState = makeEmptyRewardState()
+    rewardState.rewardType = type(rewardType) == "string" and rewardType or ""
+    rewardState.rewardText = type(rewardText) == "string" and rewardText or ""
+    rewardState.amount = math.max(0, math.floor(tonumber(amount) or 0))
+    rewardState.sliceId = type(slice) == "table" and (slice.id or "") or ""
+    rewardState.sliceLabel = type(slice) == "table" and (slice.label or "") or ""
+    rewardState.crateType = type(crateType) == "string" and crateType or ""
+    return rewardState
+end
+
+local function formatCountLabel(amount, singularLabel, pluralLabel)
+    amount = math.max(0, math.floor(tonumber(amount) or 0))
+    if amount == 1 then
+        return string.format("1 %s", singularLabel)
+    end
+    return string.format("%d %s", amount, pluralLabel)
+end
+
+local function grantCurrencyReward(player, amount, addMethodName, rewardType, rewardText, source)
+    local currencyService = getCurrencyService()
+    if not currencyService or type(currencyService[addMethodName]) ~= "function" then
+        return false, rewardText .. " unavailable", "currency_unavailable"
+    end
+
+    local ok, err = pcall(function()
+        if addMethodName == "AddCoins" then
+            currencyService:AddCoins(player, amount, source or "spin_wheel")
+        else
+            currencyService[addMethodName](currencyService, player, amount)
+        end
+    end)
+    if not ok then
+        warn("[SpinWheelService] Failed to grant reward:", tostring(err))
+        return false, rewardText .. " unavailable", "grant_failed"
+    end
+
+    return true, {
+        rewardType = rewardType,
+        rewardAmount = amount,
+        rewardText = rewardText,
+    }
+end
+
+local function grantRewardForSlice(player, slice)
+    if type(slice) ~= "table" then
+        return false, "Invalid reward slice", "invalid_slice"
+    end
+
+    if slice.rewardType == "coins" then
+        local rewardEntry = SpinWheelConfig.RollWeightedReward(slice.rewards or {}, randomSource)
+        local amount = rewardEntry and math.max(0, math.floor(tonumber(rewardEntry.amount) or 0)) or 0
+        if amount <= 0 then
+            return false, "Invalid coin reward", "invalid_reward"
+        end
+        return grantCurrencyReward(player, amount, "AddCoins", "coins", string.format("%d Coins", amount), "spin_wheel")
+    end
+
+    if slice.rewardType == "scrap" then
+        local rewardEntry = SpinWheelConfig.RollWeightedReward(slice.rewards or {}, randomSource)
+        local amount = rewardEntry and math.max(0, math.floor(tonumber(rewardEntry.amount) or 0)) or 0
+        if amount <= 0 then
+            return false, "Invalid scrap reward", "invalid_reward"
+        end
+        return grantCurrencyReward(player, amount, "AddSalvage", "scrap", string.format("%d Scrap", amount))
+    end
+
+    if slice.rewardType == "keys" then
+        local amount = math.max(0, math.floor(tonumber(slice.amount) or 0))
+        if amount <= 0 then
+            return false, "Invalid key reward", "invalid_reward"
+        end
+        return grantCurrencyReward(player, amount, "AddKeys", "keys", formatCountLabel(amount, "Key", "Keys"))
+    end
+
+    if slice.rewardType == "health_potions" then
+        local rewardEntry = SpinWheelConfig.RollWeightedReward(slice.rewards or {}, randomSource)
+        local amount = rewardEntry and math.max(0, math.floor(tonumber(rewardEntry.amount) or 0)) or 0
+        local potionService = getHealthPotionService()
+        if amount <= 0 or not potionService or type(potionService.GrantPotions) ~= "function" then
+            return false, "Health Potions unavailable", "health_potions_unavailable"
+        end
+
+        local ok, granted = pcall(function()
+            return potionService:GrantPotions(player, amount)
+        end)
+        if not ok or granted == false then
+            return false, "Health Potions unavailable", "health_potions_unavailable"
+        end
+
+        return true, {
+            rewardType = "health_potions",
+            rewardAmount = amount,
+            rewardText = formatCountLabel(amount, "Health Potion", "Health Potions"),
+        }
+    end
+
+    if slice.rewardType == "crate" then
+        local crateService = getCrateService()
+        if not crateService or type(crateService.RollAndPend) ~= "function" then
+            return false, "Chest reward unavailable", "crate_unavailable"
+        end
+
+        local ok, success, result = pcall(function()
+            return crateService:RollAndPend(player, slice.crateId)
+        end)
+        if not ok then
+            warn("[SpinWheelService] Crate reward failed:", tostring(success))
+            return false, "Chest reward unavailable", "crate_unavailable"
+        end
+        if success ~= true or type(result) ~= "table" then
+            return false, type(result) == "string" and result or "Chest reward unavailable", "crate_unavailable"
+        end
+
+        return true, {
+            rewardType = "crate",
+            rewardAmount = 0,
+            rewardText = slice.label or "Chest Reward",
+            rewardData = result,
+            crateType = result.crateType or slice.crateId,
+        }
+    end
+
+    return false, "Unsupported reward", "unsupported_reward"
+end
+
 local function makeEmptyState()
     return {
         nextFreeSpinAt = 0,
         wheelSpins = 0,
         lastSpinAt = 0,
-        lastReward = 0,
+        lastReward = makeEmptyRewardState(),
         totalSpins = 0,
     }
 end
@@ -78,7 +263,7 @@ local function normalizeState(raw)
     state.nextFreeSpinAt = math.max(0, math.floor(tonumber(raw.nextFreeSpinAt) or 0))
     state.wheelSpins = math.max(0, math.floor(tonumber(raw.wheelSpins) or 0))
     state.lastSpinAt = math.max(0, math.floor(tonumber(raw.lastSpinAt) or 0))
-    state.lastReward = math.max(0, math.floor(tonumber(raw.lastReward) or 0))
+    state.lastReward = normalizeRewardState(raw.lastReward)
     state.totalSpins = math.max(0, math.floor(tonumber(raw.totalSpins) or 0))
     return state
 end
@@ -99,18 +284,20 @@ local function getSecondsRemaining(state, now)
     return math.max(0, (state.nextFreeSpinAt or 0) - now)
 end
 
-local function getSectorPayload(sectorIndex)
-    local sector = SpinWheelConfig.GetRewardSector(sectorIndex)
-    if not sector then
+local function getSlicePayload(slice)
+    if type(slice) ~= "table" then
         return nil
     end
 
-    local sectorAngle = SpinWheelConfig.GetSectorAngle()
-    local landingAngle = (sectorIndex - 0.5) * sectorAngle
+    local landingAngle = SpinWheelConfig.RollLandingAngle(slice, randomSource, SpinWheelConfig.LandingPaddingDegrees)
+    if type(landingAngle) ~= "number" then
+        return nil
+    end
+
     return {
-        sectorIndex = sectorIndex,
-        sectorLabel = sector.label,
-        reward = math.floor(tonumber(sector.reward) or 0),
+        sliceId = slice.id,
+        sliceLabel = slice.label,
+        rewardType = slice.rewardType,
         landingAngle = landingAngle,
     }
 end
@@ -229,9 +416,11 @@ function SpinWheelService:GetState(player)
             cooldownSeconds = SpinWheelConfig.CooldownSeconds,
             wheelSpins = 0,
             lastSpinAt = 0,
-            lastReward = 0,
+            lastReward = makeEmptyRewardState(),
             totalSpins = 0,
-            rewardSectors = SpinWheelConfig.RewardSectors,
+            rewardSlices = SpinWheelConfig.RewardSlices,
+            rewardSectors = SpinWheelConfig.RewardSlices,
+            tickBoundaryAngles = SpinWheelConfig.GetTickBoundaryAngles(),
             spinPacks = SpinWheelConfig.SpinPacks,
             modelName = SpinWheelConfig.ModelName,
         }
@@ -256,7 +445,9 @@ function SpinWheelService:GetState(player)
         lastSpinAt = pd.lastSpinAt,
         lastReward = pd.lastReward,
         totalSpins = pd.totalSpins,
-        rewardSectors = SpinWheelConfig.RewardSectors,
+        rewardSlices = SpinWheelConfig.RewardSlices,
+        rewardSectors = SpinWheelConfig.RewardSlices,
+        tickBoundaryAngles = SpinWheelConfig.GetTickBoundaryAngles(),
         spinPacks = SpinWheelConfig.SpinPacks,
         modelName = SpinWheelConfig.ModelName,
     }
@@ -289,10 +480,8 @@ function SpinWheelService:RequestSpin(player)
     local spinSource = nil
     if secondsRemaining <= 0 then
         spinSource = "free"
-        pd.nextFreeSpinAt = now + SpinWheelConfig.CooldownSeconds
     elseif (pd.wheelSpins or 0) > 0 then
         spinSource = "paid"
-        pd.wheelSpins = math.max(0, pd.wheelSpins - 1)
     else
         spinLocks[player] = nil
         return false, "You are out of Wheel Spins", {
@@ -301,29 +490,33 @@ function SpinWheelService:RequestSpin(player)
         }
     end
 
-    local currencyService = getCurrencyService()
-    if not currencyService then
+    local slice = SpinWheelConfig.RollWeightedReward(SpinWheelConfig.RewardSlices, randomSource)
+    local slicePayload = getSlicePayload(slice)
+    if not slicePayload then
         spinLocks[player] = nil
-        return false, "CurrencyService unavailable", {
-            reasonCode = "currency_unavailable",
+        return false, "Invalid reward slice", {
+            reasonCode = "invalid_slice",
             state = self:GetState(player),
         }
     end
 
-    local sectorIndex = randomSource:NextInteger(1, SpinWheelConfig.GetSectorCount())
-    local sectorPayload = getSectorPayload(sectorIndex)
-    if not sectorPayload then
+    local granted, rewardResult, reasonCode = grantRewardForSlice(player, slice)
+    if granted ~= true then
         spinLocks[player] = nil
-        return false, "Invalid reward sector", {
-            reasonCode = "invalid_sector",
+        return false, rewardResult or "Reward unavailable", {
+            reasonCode = reasonCode or "reward_unavailable",
             state = self:GetState(player),
         }
     end
 
-    currencyService:AddCoins(player, sectorPayload.reward, "spin_wheel")
+    if spinSource == "free" then
+        pd.nextFreeSpinAt = now + SpinWheelConfig.CooldownSeconds
+    else
+        pd.wheelSpins = math.max(0, pd.wheelSpins - 1)
+    end
 
     pd.lastSpinAt = now
-    pd.lastReward = sectorPayload.reward
+    pd.lastReward = buildRewardState(slice, rewardResult.rewardType, rewardResult.rewardText, rewardResult.rewardAmount, rewardResult.crateType)
     pd.totalSpins += 1
 
     markDirty(player, spinSource == "free" and "spin_wheel_free" or "spin_wheel_paid", { force = true })
@@ -332,10 +525,15 @@ function SpinWheelService:RequestSpin(player)
     spinLocks[player] = nil
 
     return true, "Spin granted", {
-        reward = sectorPayload.reward,
-        sectorLabel = sectorPayload.sectorLabel,
-        sectorIndex = sectorPayload.sectorIndex,
-        landingAngle = sectorPayload.landingAngle,
+        reward = rewardResult.rewardAmount,
+        rewardType = rewardResult.rewardType,
+        rewardText = rewardResult.rewardText,
+        rewardData = rewardResult.rewardData,
+        crateType = rewardResult.crateType,
+        sliceId = slicePayload.sliceId,
+        sliceLabel = slicePayload.sliceLabel,
+        sectorLabel = slicePayload.sliceLabel,
+        landingAngle = slicePayload.landingAngle,
         spinSource = spinSource,
         spinDuration = SpinWheelConfig.SpinDuration,
         fullRotations = SpinWheelConfig.FullRotations,

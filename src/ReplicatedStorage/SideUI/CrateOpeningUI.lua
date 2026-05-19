@@ -130,6 +130,58 @@ local function rollVisualSize()
     return sizePercent, sizeTier
 end
 
+local function getMinimumVisualSizePercent(crateDef)
+    if type(crateDef) ~= "table" then
+        return nil
+    end
+
+    local directMinimum = tonumber(crateDef.minimumSizePercent)
+    if directMinimum then
+        return math.clamp(math.floor(directMinimum), 80, 200)
+    end
+
+    if type(crateDef.minimumSizeTier) ~= "string" or not SizeRollService then
+        return nil
+    end
+
+    for _, tier in ipairs(SizeRollService.Tiers or {}) do
+        if tier.name == crateDef.minimumSizeTier then
+            return tier.min
+        end
+    end
+
+    return nil
+end
+
+local function rollVisualSizeForCrate(crateDef)
+    local minimumSizePercent = getMinimumVisualSizePercent(crateDef)
+    local sizePercent, sizeTier = rollVisualSize()
+
+    if not minimumSizePercent then
+        return sizePercent, sizeTier
+    end
+
+    local attempts = 0
+    while sizePercent < minimumSizePercent and attempts < 100 do
+        sizePercent, sizeTier = rollVisualSize()
+        attempts += 1
+    end
+
+    if sizePercent < minimumSizePercent then
+        sizePercent = minimumSizePercent
+        if SizeRollService and type(SizeRollService.GetSizeTier) == "function" then
+            local ok, tierName = pcall(function()
+                return SizeRollService.GetSizeTier(sizePercent)
+            end)
+            if ok and tierName then
+                sizeTier = tierName
+            end
+        end
+    end
+
+    return sizePercent, sizeTier
+end
+
 local function rollVisualEnchant()
     if WeaponEnchantConfig and type(WeaponEnchantConfig.RollEnchant) == "function" then
         local ok, enchantName = pcall(function()
@@ -209,7 +261,7 @@ local function buildStrip(crateDef, resultData)
         local enchantName = isWinner and resultData.enchantName or nil
 
         if not sizePercent then
-            sizePercent, sizeTier = rollVisualSize()
+            sizePercent, sizeTier = rollVisualSizeForCrate(crateDef)
         end
         if not sizeTier and SizeRollService and type(SizeRollService.GetSizeTier) == "function" then
             local ok, result = pcall(function()
@@ -1019,7 +1071,14 @@ function CrateOpeningUI.Init(playerGui)
         modifierBox.ZIndex = 8
         modifierBox.Parent = card
 
-        local sizeText = data.sizePercent and (tostring(math.floor(data.sizePercent)) .. "%") or ""
+        local sizeText = ""
+        if data.sizePercent then
+            if SizeRollService and type(SizeRollService.FormatSizeDisplay) == "function" then
+                sizeText = SizeRollService.FormatSizeDisplay(data.sizePercent, data.sizeTier)
+            else
+                sizeText = string.format("%s %d%%", data.sizeTier or "Normal", math.floor(data.sizePercent))
+            end
+        end
         local sizeLabel = Instance.new("TextLabel")
         sizeLabel.Name = "SizePreview"
         sizeLabel.BackgroundTransparency = 1
@@ -1241,7 +1300,12 @@ function CrateOpeningUI.Init(playerGui)
             -- SIZE ROLL SYSTEM — display exact rolled size percentage
             local sizeTier = resultData.sizeTier or "Normal"
             if resultData.sizePercent then
-                local resultSizeText = tostring(math.floor(resultData.sizePercent)) .. "%"
+                local resultSizeText
+                if SizeRollService and type(SizeRollService.FormatSizeDisplay) == "function" then
+                    resultSizeText = SizeRollService.FormatSizeDisplay(resultData.sizePercent, sizeTier)
+                else
+                    resultSizeText = string.format("%s %d%%", sizeTier, math.floor(resultData.sizePercent))
+                end
                 if EnchantTextStyler then
                     EnchantTextStyler.ApplySize(resultSizeLabel, sizeTier, resultSizeText)
                 else

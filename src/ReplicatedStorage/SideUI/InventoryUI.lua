@@ -249,7 +249,7 @@ end
 local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
     { id = "ranged",  icon = "\u{1F3F9}", label = "Ranged",  order = 2 },
-    { id = "boosts",  icon = "\u{26A1}",  label = "Boosts",  order = 3 },
+    { id = "boosts",  icon = "\u{26A1}",  label = "Potions", order = 3 },
     { id = "skins",   icon = "\u{2726}",  label = "Skins",   order = 4 },
     { id = "effects", icon = "\u{2738}",  label = "Effects", order = 5 },
 }
@@ -402,11 +402,22 @@ local ShopUIModule = nil
 pcall(function() ShopUIModule = require(script.Parent.ShopUI) end)
 
 local BoostConfig = nil
+local HealthPotionConfigGlobal = nil
 local AssetCodesGlobal = nil
 local boostRemotes = nil
+local potionRemotes = nil
 
 local function safeRequireBoostConfig()
     local mod = ReplicatedStorage:FindFirstChild("BoostConfig")
+    if mod and mod:IsA("ModuleScript") then
+        local ok, result = pcall(function() return require(mod) end)
+        if ok and type(result) == "table" then return result end
+    end
+    return nil
+end
+
+local function safeRequireHealthPotionConfig()
+    local mod = ReplicatedStorage:FindFirstChild("HealthPotionConfig")
     if mod and mod:IsA("ModuleScript") then
         local ok, result = pcall(function() return require(mod) end)
         if ok and type(result) == "table" then return result end
@@ -421,6 +432,20 @@ local function safeRequireAssetCodes()
         if ok and type(result) == "table" then return result end
     end
     return nil
+end
+
+local function ensurePotionRemotes()
+    if potionRemotes then return potionRemotes end
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 10)
+    if not remotesFolder then return nil end
+    local potionsFolder = remotesFolder:FindFirstChild("Potions") or remotesFolder:WaitForChild("Potions", 5)
+    if not potionsFolder then return nil end
+    local getStateRF = potionsFolder:FindFirstChild("GetPotionState")
+    local setEquippedRF = potionsFolder:FindFirstChild("SetPotionEquipped")
+    local stateUpdatedRE = remotesFolder:FindFirstChild("PotionStateUpdated")
+    if not getStateRF or not setEquippedRF or not stateUpdatedRE then return nil end
+    potionRemotes = { getState = getStateRF, setEquipped = setEquippedRF, stateUpdated = stateUpdatedRE }
+    return potionRemotes
 end
 
 local BOOST_ACCENT_COLORS = {
@@ -524,6 +549,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     BoostConfig      = BoostConfig or safeRequireBoostConfig()
+    HealthPotionConfigGlobal = HealthPotionConfigGlobal or safeRequireHealthPotionConfig()
     AssetCodesGlobal = AssetCodesGlobal or safeRequireAssetCodes()
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -1810,11 +1836,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.TextYAlignment = Enum.TextYAlignment.Center
             tierLabel.Text = tier
             tierLabel.ZIndex = 7
+            local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
+            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 18
             if EnchantTextStyler then
                 EnchantTextStyler.ApplySize(tierLabel, tier, tier)
             end
-            local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
-            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 18
         end
 
         -- Size percent label — bottom-right corner
@@ -1827,15 +1853,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.AnchorPoint = Vector2.new(1, 1)
         sizeLabel.Position = UDim2.new(1, -px(4), 0.96, 0)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
+        local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
+        pctConstraint.MinTextSize = 8
+        pctConstraint.MaxTextSize = 18
         local sizePercentText = tostring(math.floor(pct)) .. "%"
         if EnchantTextStyler then
             EnchantTextStyler.ApplySize(sizeLabel, tier, sizePercentText)
         else
             sizeLabel.Text = sizePercentText
         end
-        local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
-        pctConstraint.MinTextSize = 8
-        pctConstraint.MaxTextSize = 18
 
         -- ── Equipped bar indicator (green bottom strip) ─────────────────
         local eqBar = Instance.new("Frame", card)
@@ -2288,10 +2314,48 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     boostsPage.Parent = root
 
     do -- Boosts scope block
+        local function shallowCopy(source)
+            local result = {}
+            if type(source) ~= "table" then
+                return result
+            end
+            for key, value in pairs(source) do
+                result[key] = value
+            end
+            return result
+        end
+
         local boostDefs = {}
+        local potionId = HealthPotionConfigGlobal and HealthPotionConfigGlobal.Id or nil
+        local potionRemoteSet = ensurePotionRemotes()
+        local potionState = {
+            isLoaded = false,
+            count = 0,
+            equipped = false,
+            cooldownEndsAt = 0,
+            serverTime = 0,
+        }
+
+        if HealthPotionConfigGlobal and potionRemoteSet then
+            table.insert(boostDefs, {
+                Id = HealthPotionConfigGlobal.Id,
+                Kind = "potion",
+                DisplayName = HealthPotionConfigGlobal.DisplayName,
+                Description = HealthPotionConfigGlobal.Description,
+                DetailText = HealthPotionConfigGlobal.DetailText,
+                IconGlyph = HealthPotionConfigGlobal.IconGlyph,
+                IconColor = HealthPotionConfigGlobal.IconColor,
+                SortOrder = -1000,
+            })
+        end
+
         if BoostConfig and BoostConfig.Boosts then
             for _, def in ipairs(BoostConfig.Boosts) do
-                if not def.InstantUse then table.insert(boostDefs, def) end
+                if not def.InstantUse then
+                    local copied = shallowCopy(def)
+                    copied.Kind = "boost"
+                    table.insert(boostDefs, copied)
+                end
             end
             table.sort(boostDefs, function(a, b) return (a.SortOrder or 0) < (b.SortOrder or 0) end)
         end
@@ -2300,7 +2364,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local boostStates = {}
         local timeDelta = 0
         local boostCards = {}
+        local entryById = {}
         local selectedBoostId = nil
+
+        for _, def in ipairs(boostDefs) do
+            entryById[def.Id] = def
+        end
 
         local function ingestStates(states)
             if type(states) ~= "table" then return end
@@ -2308,8 +2377,25 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             timeDelta = os.time() - (states._serverTime or os.time())
         end
 
+        local function ingestPotionState(state)
+            if type(state) ~= "table" then return end
+            potionState = {
+                isLoaded = state.isLoaded == true,
+                count = math.max(0, math.floor(tonumber(state.count) or 0)),
+                equipped = state.equipped == true,
+                cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
+                serverTime = tonumber(state.serverTime) or 0,
+            }
+            if potionState.count <= 0 then
+                potionState.equipped = false
+            end
+        end
+
         if remotes and remotes.getStates then
             pcall(function() ingestStates(remotes.getStates:InvokeServer()) end)
+        end
+        if potionRemoteSet and potionRemoteSet.getState then
+            pcall(function() ingestPotionState(potionRemoteSet.getState:InvokeServer()) end)
         end
 
         -- ── Grid scroll (left side) ─────────────────────────────────────
@@ -2360,7 +2446,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local beLine1 = Instance.new("TextLabel", beCard)
         beLine1.BackgroundTransparency = 1; beLine1.Font = Enum.Font.GothamMedium
-        beLine1.Text = "You don't own any boosts yet."
+        beLine1.Text = "You don't own any potions or boosts yet."
         beLine1.TextColor3 = DIM_TEXT; beLine1.TextSize = math.max(13, math.floor(px(14)))
         beLine1.TextWrapped = true; beLine1.Size = UDim2.new(0.85, 0, 0, px(40))
         beLine1.AnchorPoint = Vector2.new(0.5, 0); beLine1.Position = UDim2.new(0.5, 0, 0, px(28))
@@ -2368,7 +2454,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local beLine2 = Instance.new("TextLabel", beCard)
         beLine2.BackgroundTransparency = 1; beLine2.Font = Enum.Font.GothamMedium
-        beLine2.Text = "Visit the shop to unlock more."
+        beLine2.Text = "Visit the shop or spin the wheel to stock up."
         beLine2.TextColor3 = UITheme.GOLD_DIM; beLine2.TextSize = math.max(11, math.floor(px(12)))
         beLine2.Size = UDim2.new(0.85, 0, 0, px(20)); beLine2.AnchorPoint = Vector2.new(0.5, 0)
         beLine2.Position = UDim2.new(0.5, 0, 0, px(74)); beLine2.TextXAlignment = Enum.TextXAlignment.Center
@@ -2416,7 +2502,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailPlaceholder.Name = "Placeholder"
         boostDetailPlaceholder.BackgroundTransparency = 1
         boostDetailPlaceholder.Font = Enum.Font.GothamMedium
-        boostDetailPlaceholder.Text = "Select a boost"
+        boostDetailPlaceholder.Text = "Select a potion or boost"
         boostDetailPlaceholder.TextColor3 = DIM_TEXT
         boostDetailPlaceholder.TextSize = px(22)
         boostDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
@@ -2588,6 +2674,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── Helpers ─────────────────────────────────────────────────────
 
         local function getBoostState(boostId)
+            if potionId and boostId == potionId then
+                local owned = math.max(0, math.floor(tonumber(potionState.count) or 0))
+                local equipped = potionState.equipped == true and owned > 0
+                local remaining = math.max(0, (tonumber(potionState.cooldownEndsAt) or 0) - workspace:GetServerTimeNow())
+                return owned, equipped, remaining
+            end
+
             local state = boostStates[boostId] or {}
             local owned = math.max(0, math.floor(tonumber(state.owned) or 0))
             local expiresAt = math.floor(tonumber(state.expiresAt) or 0) + timeDelta
@@ -2606,7 +2699,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             boostDetailPlaceholder.Visible = false
             boostDetailContent.Visible = true
 
-            local def = BoostConfig and BoostConfig.GetById(selectedBoostId)
+            local def = entryById[selectedBoostId]
             if not def then return end
 
             local iconColor = colorFromRGBArray(def.IconColor) or BOOST_ACCENT_COLORS[def.Id] or GOLD
@@ -2641,19 +2734,63 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             boostDetailDesc.Text = def.Description or ""
 
             -- Duration
-            local durSec = def.DurationSeconds or 0
-            if durSec > 0 then
-                local durMin = math.floor(durSec / 60)
-                boostDetailDuration.Text = "Duration: " .. tostring(durMin) .. " minutes"
+            if def.Kind == "potion" then
+                boostDetailDuration.Text = def.DetailText or "Equip to slot 4"
             else
-                boostDetailDuration.Text = ""
+                local durSec = def.DurationSeconds or 0
+                if durSec > 0 then
+                    local durMin = math.floor(durSec / 60)
+                    boostDetailDuration.Text = "Duration: " .. tostring(durMin) .. " minutes"
+                else
+                    boostDetailDuration.Text = ""
+                end
             end
 
             -- State-dependent fields
             local owned, active, remaining = getBoostState(def.Id)
             boostDetailOwned.Text = "Owned: " .. tostring(owned)
 
-            if active then
+            if def.Kind == "potion" then
+                if remaining > 0 then
+                    boostDetailStatus.Text = active and "Cooling Down" or "Cooling Down"
+                    boostDetailStatus.TextColor3 = Color3.fromRGB(160, 215, 255)
+                    boostDetailTimer.Text = string.format("Cooldown: %02d:%02d", math.floor(remaining / 60), remaining % 60)
+                    boostDetailTimer.Visible = true
+                else
+                    boostDetailTimer.Visible = false
+                end
+
+                if owned <= 0 then
+                    boostDetailStatus.Text = "Not Owned"
+                    boostDetailStatus.TextColor3 = DIM_TEXT
+                    boostActivateBtn.Text = "EQUIP"
+                    boostActivateBtn.Active = false
+                    boostActivateBtn.BackgroundColor3 = DISABLED_BG
+                    boostActivateBtn.TextColor3 = DIM_TEXT
+                    boostActivateStroke.Color = CARD_STROKE
+                    boostActivateStroke.Transparency = 0.45
+                elseif active then
+                    if remaining <= 0 then
+                        boostDetailStatus.Text = "Equipped to Slot 4"
+                        boostDetailStatus.TextColor3 = WHITE
+                    end
+                    boostActivateBtn.Text = "UNEQUIP"
+                    boostActivateBtn.Active = true
+                    boostActivateBtn.BackgroundColor3 = Color3.fromRGB(45, 108, 170)
+                    boostActivateBtn.TextColor3 = WHITE
+                    boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
+                    boostActivateStroke.Transparency = 0.15
+                else
+                    boostDetailStatus.Text = "Ready to Equip"
+                    boostDetailStatus.TextColor3 = WHITE
+                    boostActivateBtn.Text = "EQUIP"
+                    boostActivateBtn.Active = true
+                    boostActivateBtn.BackgroundColor3 = BTN_BG
+                    boostActivateBtn.TextColor3 = WHITE
+                    boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
+                    boostActivateStroke.Transparency = 0.15
+                end
+            elseif active then
                 boostDetailStatus.Text = "\u{2714} ACTIVE"
                 boostDetailStatus.TextColor3 = GREEN_GLOW
                 boostDetailTimer.Text = string.format("Remaining: %02d:%02d", math.floor(remaining / 60), remaining % 60)
@@ -2719,7 +2856,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 if eqBar then eqBar.Visible = active end
 
                 -- Card status label
-                if active then
+                if def.Kind == "potion" then
+                    if active and remaining > 0 then
+                        refs.statusLabel.Text = string.format("%02d:%02d", math.floor(remaining / 60), remaining % 60)
+                        refs.statusLabel.TextColor3 = Color3.fromRGB(160, 215, 255)
+                        if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, Color3.fromRGB(70, 145, 220), 0.3) end
+                        if refs.statusStroke then refs.statusStroke.Color = Color3.fromRGB(103, 186, 255); refs.statusStroke.Transparency = 0.22 end
+                    elseif active then
+                        refs.statusLabel.Text = "Equipped"
+                        refs.statusLabel.TextColor3 = WHITE
+                        if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, refs.accentColor or GOLD, 0.24) end
+                        if refs.statusStroke then refs.statusStroke.Color = refs.accentColor or GOLD; refs.statusStroke.Transparency = 0.26 end
+                    elseif owned > 0 then
+                        refs.statusLabel.Text = "Owned: " .. tostring(owned)
+                        refs.statusLabel.TextColor3 = WHITE
+                        if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, refs.accentColor or GOLD, 0.18) end
+                        if refs.statusStroke then refs.statusStroke.Color = refs.accentColor or GOLD; refs.statusStroke.Transparency = 0.35 end
+                    else
+                        refs.statusLabel.Text = "Not Owned"
+                        refs.statusLabel.TextColor3 = DIM_TEXT
+                        if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, Color3.fromRGB(10, 12, 20), 0.28) end
+                        if refs.statusStroke then refs.statusStroke.Color = refs.borderColor or CARD_STROKE; refs.statusStroke.Transparency = 0.5 end
+                    end
+                elseif active then
                     refs.statusLabel.Text = string.format("%02d:%02d", math.floor(remaining / 60), remaining % 60)
                     refs.statusLabel.TextColor3 = GREEN_GLOW
                     if refs.statusPill then refs.statusPill.BackgroundColor3 = mixColor(refs.baseBg or CARD_BG, GREEN_GLOW, 0.3) end
@@ -2748,10 +2907,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         -- ── Create boost cards ──────────────────────────────────────────
-        if #boostDefs == 0 or not remotes then
+        if #boostDefs == 0 or (not remotes and not potionRemoteSet) then
             local unavailable = Instance.new("TextLabel", boostGridScroll)
             unavailable.BackgroundTransparency = 1; unavailable.Font = Enum.Font.GothamMedium
-            unavailable.Text = "Boost inventory is currently unavailable."
+            unavailable.Text = "Potion inventory is currently unavailable."
             unavailable.TextColor3 = DIM_TEXT; unavailable.TextSize = math.max(14, math.floor(px(15)))
             unavailable.Size = UDim2.new(1, 0, 0, px(50)); unavailable.LayoutOrder = 1
         else
@@ -2847,7 +3006,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 durationBadge.Size = UDim2.new(0, px(42), 0, px(18))
                 durationBadge.AnchorPoint = Vector2.new(1, 0)
                 durationBadge.Position = UDim2.new(1, -px(5), 0, px(27))
-                durationBadge.Text = ((def.DurationSeconds or 0) > 0) and (tostring(math.floor((def.DurationSeconds or 0) / 60)) .. "m") or "BOOST"
+                if def.Kind == "potion" then
+                    durationBadge.Text = "HP"
+                else
+                    durationBadge.Text = ((def.DurationSeconds or 0) > 0) and (tostring(math.floor((def.DurationSeconds or 0) / 60)) .. "m") or "BOOST"
+                end
                 durationBadge.ZIndex = 4
                 Instance.new("UICorner", durationBadge).CornerRadius = UDim.new(0, px(6))
                 local durationStroke = Instance.new("UIStroke", durationBadge)
@@ -2935,9 +3098,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
 
             -- Listen for server state updates
-            trackConn(remotes.stateUpdated.OnClientEvent:Connect(function(states)
-                ingestStates(states); refreshBoostCards()
-            end))
+            if remotes and remotes.stateUpdated then
+                trackConn(remotes.stateUpdated.OnClientEvent:Connect(function(states)
+                    ingestStates(states); refreshBoostCards()
+                end))
+            end
+
+            if potionRemoteSet and potionRemoteSet.stateUpdated then
+                trackConn(potionRemoteSet.stateUpdated.OnClientEvent:Connect(function(state)
+                    ingestPotionState(state); refreshBoostCards()
+                end))
+            end
 
             -- Heartbeat timer refresh
             local lastTick = 0
@@ -2951,6 +3122,26 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostActivateBtn.MouseButton1Click:Connect(function()
             if not selectedBoostId then return end
             if not boostActivateBtn.Active then return end
+            local def = entryById[selectedBoostId]
+            if not def then return end
+
+            if def.Kind == "potion" then
+                if not potionRemoteSet or not potionRemoteSet.setEquipped then return end
+                local _, isEquipped = getBoostState(def.Id)
+                local shouldEquip = not isEquipped
+                local ok, success, message, state = pcall(function()
+                    return potionRemoteSet.setEquipped:InvokeServer(shouldEquip)
+                end)
+                if ok and type(state) == "table" then ingestPotionState(state) end
+                refreshBoostCards()
+                if ok and success then
+                    showToast(boostsPage, shouldEquip and "Potion equipped!" or "Potion unequipped!", Color3.fromRGB(103, 186, 255), 2.2)
+                else
+                    showToast(boostsPage, tostring((ok and message) or "Equip failed"), RED_TEXT, 2.2)
+                end
+                return
+            end
+
             if not remotes then return end
 
             local ok, success, message, states = pcall(function()

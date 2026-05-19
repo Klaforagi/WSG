@@ -22,6 +22,7 @@
 --   local pct, tier = SizeRoll.RollSize()
 --   local multiplier = SizeRoll.GetSizeMultiplier(pct)
 --   local formatted  = SizeRoll.FormatSizePercent(pct)  --> "107%"
+--   local display    = SizeRoll.FormatSizeDisplay(pct, tier) --> "Large 107%"
 --------------------------------------------------------------------------------
 
 local SizeRollService = {}
@@ -77,6 +78,16 @@ end
 --------------------------------------------------------------------------------
 function SizeRollService.FormatSizePercent(percent)
     return tostring(math.floor(percent)) .. "%"
+end
+
+--------------------------------------------------------------------------------
+-- FormatSizeDisplay(percent, tierName) -> string
+-- Centralized display formatter for size tier + percent, e.g. 107, "Large"
+-- becomes "Large 107%".
+--------------------------------------------------------------------------------
+function SizeRollService.FormatSizeDisplay(percent, tierName)
+    local resolvedTier = type(tierName) == "string" and tierName ~= "" and tierName or SizeRollService.GetSizeTier(percent)
+    return string.format("%s %s", resolvedTier, SizeRollService.FormatSizePercent(percent))
 end
 
 --------------------------------------------------------------------------------

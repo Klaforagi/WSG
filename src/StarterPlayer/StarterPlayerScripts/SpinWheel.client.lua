@@ -9,6 +9,7 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local SpinWheelConfig = require(ReplicatedStorage:WaitForChild("SpinWheelConfig"))
+local tickBoundaryAngles = SpinWheelConfig.GetTickBoundaryAngles()
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 15)
 if not remotesFolder then
@@ -693,6 +694,102 @@ local function showToast(message, color)
     end)
 end
 
+local function countBoundaryCrossings(fromAngle, toAngle)
+    if #tickBoundaryAngles == 0 or toAngle <= fromAngle then
+        return 0
+    end
+
+    local count = 0
+    local startCycle = math.floor(fromAngle / 360)
+    local endCycle = math.floor(toAngle / 360)
+
+    for cycle = startCycle, endCycle do
+        local cycleBase = cycle * 360
+        for _, boundaryAngle in ipairs(tickBoundaryAngles) do
+            local absoluteBoundary = cycleBase + boundaryAngle
+            if absoluteBoundary > fromAngle and absoluteBoundary <= toAngle then
+                count += 1
+            end
+        end
+    end
+
+    return count
+end
+
+local function getRewardToastColor(resultPayload)
+    local rewardType = type(resultPayload) == "table" and resultPayload.rewardType or nil
+    if rewardType == "scrap" then
+        return Color3.fromRGB(255, 176, 72)
+    end
+    if rewardType == "keys" then
+        return Color3.fromRGB(255, 230, 109)
+    end
+    if rewardType == "health_potions" then
+        return Color3.fromRGB(103, 186, 255)
+    end
+    if rewardType == "crate" then
+        return Color3.fromRGB(255, 210, 94)
+    end
+    return Color3.fromRGB(123, 255, 94)
+end
+
+local function getRewardText(resultPayload)
+    if type(resultPayload) ~= "table" then
+        return ""
+    end
+
+    if type(resultPayload.rewardText) == "string" and resultPayload.rewardText ~= "" then
+        return resultPayload.rewardText
+    end
+
+    if resultPayload.rewardType == "coins" then
+        return string.format("%d Coins", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
+    end
+    if resultPayload.rewardType == "scrap" then
+        return string.format("%d Scrap", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
+    end
+    if resultPayload.rewardType == "keys" then
+        local amount = math.max(0, math.floor(tonumber(resultPayload.reward) or 0))
+        if amount == 1 then
+            return "1 Key"
+        end
+        return string.format("%d Keys", amount)
+    end
+    if resultPayload.rewardType == "health_potions" then
+        local amount = math.max(0, math.floor(tonumber(resultPayload.reward) or 0))
+        if amount == 1 then
+            return "1 Health Potion"
+        end
+        return string.format("%d Health Potions", amount)
+    end
+
+    if type(resultPayload.sliceLabel) == "string" then
+        return resultPayload.sliceLabel
+    end
+
+    return ""
+end
+
+local function showSpinReward(resultPayload)
+    if type(resultPayload) ~= "table" then
+        return
+    end
+
+    if resultPayload.rewardType == "crate" then
+        local rewardData = type(resultPayload.rewardData) == "table" and resultPayload.rewardData or nil
+        local crateType = type(resultPayload.crateType) == "string" and resultPayload.crateType or (rewardData and rewardData.crateType)
+        if rewardData and crateType and type(_G.PlayCrateAnimation) == "function" then
+            _G.PlayCrateAnimation(crateType, rewardData)
+            return
+        end
+    end
+
+    local rewardText = getRewardText(resultPayload)
+    if rewardText ~= "" then
+        showToast(string.format("You got %s!", rewardText), getRewardToastColor(resultPayload))
+    end
+end
+
 local function updateServerTimeOffset(state)
     if type(state) == "table" and type(state.serverTime) == "number" then
         serverTimeOffset = state.serverTime - os.time()
@@ -812,32 +909,35 @@ local function animateSpin(resultPayload)
     updatePromptState()
 
     local startAngle = currentAngleDegrees
-    local sectorAngle = SpinWheelConfig.GetSectorAngle()
+    local startAngleNormalized = SpinWheelConfig.NormalizeAnglePositive and SpinWheelConfig.NormalizeAnglePositive(startAngle) or (startAngle % 360)
+    local landingAngleNormalized = SpinWheelConfig.NormalizeAnglePositive and SpinWheelConfig.NormalizeAnglePositive(tonumber(resultPayload.landingAngle) or 0) or ((tonumber(resultPayload.landingAngle) or 0) % 360)
+    local landingDelta = (landingAngleNormalized - startAngleNormalized) % 360
     local targetAngle = startAngle
         + ((tonumber(resultPayload.fullRotations) or SpinWheelConfig.FullRotations) * 360)
-        + (tonumber(resultPayload.landingAngle) or 0)
+        + landingDelta
     local angleValue = Instance.new("NumberValue")
     angleValue.Value = startAngle
     angleValue.Parent = wheelParts.model
 
-    local lastTickStep = math.floor(startAngle / sectorAngle)
-    local finalTickMuteAngle = tonumber(SpinWheelConfig.GetFinalTickMuteAngle and SpinWheelConfig.GetFinalTickMuteAngle() or (sectorAngle * 0.85)) or (sectorAngle * 0.85)
+    local lastTickAngle = startAngle
+    local finalTickMuteAngle = tonumber(SpinWheelConfig.GetFinalTickMuteAngle and SpinWheelConfig.GetFinalTickMuteAngle() or 6) or 6
     local angleConn = angleValue:GetPropertyChangedSignal("Value"):Connect(function()
         local currentAngle = angleValue.Value
         applyWheelAngle(currentAngle)
 
         local remainingAngle = targetAngle - currentAngle
         if remainingAngle <= finalTickMuteAngle then
+            lastTickAngle = currentAngle
             return
         end
 
-        local currentTickStep = math.floor(currentAngle / sectorAngle)
-        if currentTickStep > lastTickStep then
-            for _ = lastTickStep + 1, currentTickStep do
+        local crossedBoundaryCount = countBoundaryCrossings(lastTickAngle, currentAngle)
+        if crossedBoundaryCount > 0 then
+            for _ = 1, crossedBoundaryCount do
                 playTickSound()
             end
-            lastTickStep = currentTickStep
         end
+        lastTickAngle = currentAngle
     end)
 
     local tween = TweenService:Create(angleValue, TweenInfo.new(
@@ -865,7 +965,7 @@ local function animateSpin(resultPayload)
         setLightMode("win", SpinWheelConfig.LightShowWinDuration or 1.1, 1)
         playWheelEndSound()
         updatePromptState()
-        showToast(string.format("You got %d coins!", tonumber(resultPayload.reward) or 0), Color3.fromRGB(123, 255, 94))
+        showSpinReward(resultPayload)
     end)
 end
 

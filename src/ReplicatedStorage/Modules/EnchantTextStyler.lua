@@ -33,6 +33,32 @@ local SIZE_SHIMMER_CONFIGS = {
     Giant = { baseColor = Color3.fromRGB(155, 165, 175),  brightColor = Color3.fromRGB(240, 245, 250) },
     King  = { baseColor = Color3.fromRGB(185, 130,  10),  brightColor = Color3.fromRGB(255, 240, 130) },
 }
+local SIZE_TEXT_STYLES = {
+    Tiny = {
+        font = Enum.Font.GothamBlack,
+        uppercase = true,
+        textScale = 0.86,
+        strokeThickness = 1.8,
+    },
+    Large = {
+        font = Enum.Font.Fantasy,
+        uppercase = true,
+        textScale = 1.0,
+        strokeThickness = 1.9,
+    },
+    Giant = {
+        font = Enum.Font.Fantasy,
+        uppercase = true,
+        textScale = 1.0,
+        strokeThickness = 2.0,
+    },
+    King = {
+        font = Enum.Font.Fantasy,
+        uppercase = true,
+        textScale = 1.02,
+        strokeThickness = 2.1,
+    },
+}
 
 local SIZE_NORMAL_COLOR = Color3.fromRGB(160, 160, 170)
 
@@ -128,7 +154,7 @@ end
 --------------------------------------------------------------------------------
 -- Applies the shimmer with one animated UIGradient on the label itself.
 --------------------------------------------------------------------------------
-local function applyShimmer(label, baseColor, brightColor)
+local function applyShimmer(label, baseColor, brightColor, strokeThickness)
     for _, child in ipairs(label:GetChildren()) do
         if child:IsA("UIGradient") or child:IsA("UIStroke") then child:Destroy() end
     end
@@ -138,7 +164,7 @@ local function applyShimmer(label, baseColor, brightColor)
 
     local stroke        = Instance.new("UIStroke")
     stroke.Color        = Color3.fromRGB(0, 0, 0)
-    stroke.Thickness    = 1.5
+    stroke.Thickness    = strokeThickness or 1.5
     stroke.Transparency = 0.2
     stroke.Parent       = label
 
@@ -157,6 +183,35 @@ local function applyShimmer(label, baseColor, brightColor)
     effect.destroyConn = label.Destroying:Connect(function()
         stopEffect(label)
     end)
+end
+
+local function applySizeScale(label, scale)
+    scale = tonumber(scale) or 1
+
+    if label:GetAttribute("BaseSizeTextSize") == nil then
+        label:SetAttribute("BaseSizeTextSize", label.TextSize)
+    end
+
+    local baseTextSize = tonumber(label:GetAttribute("BaseSizeTextSize")) or label.TextSize
+    if label.TextScaled ~= true then
+        label.TextSize = math.max(8, math.floor((baseTextSize * scale) + 0.5))
+    end
+
+    for _, child in ipairs(label:GetChildren()) do
+        if child:IsA("UITextSizeConstraint") then
+            if child:GetAttribute("BaseMinTextSize") == nil then
+                child:SetAttribute("BaseMinTextSize", child.MinTextSize)
+            end
+            if child:GetAttribute("BaseMaxTextSize") == nil then
+                child:SetAttribute("BaseMaxTextSize", child.MaxTextSize)
+            end
+
+            local baseMin = tonumber(child:GetAttribute("BaseMinTextSize")) or child.MinTextSize
+            local baseMax = tonumber(child:GetAttribute("BaseMaxTextSize")) or child.MaxTextSize
+            child.MinTextSize = math.max(6, math.floor((baseMin * scale) + 0.5))
+            child.MaxTextSize = math.max(child.MinTextSize, math.floor((baseMax * scale) + 0.5))
+        end
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -195,8 +250,16 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
     if not label or not label:IsA("TextLabel") then return end
     stopEffect(label)
 
-    label.Font = Enum.Font.GothamBold
-    if displayText ~= nil then label.Text = tostring(displayText) end
+    local style = SIZE_TEXT_STYLES[tierName] or {}
+    label.Font = style.font or Enum.Font.GothamBold
+    if displayText ~= nil then
+        local text = tostring(displayText)
+        if style.uppercase then
+            text = string.upper(text)
+        end
+        label.Text = text
+    end
+    applySizeScale(label, style.textScale or 1)
 
     local config = SIZE_SHIMMER_CONFIGS[tierName]
     if not config then
@@ -208,7 +271,7 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
         label.TextTransparency = 0
         local stroke        = Instance.new("UIStroke")
         stroke.Color        = Color3.fromRGB(0, 0, 0)
-        stroke.Thickness    = 1.5
+        stroke.Thickness    = style.strokeThickness or 1.5
         stroke.Transparency = 0.2
         stroke.Parent       = label
         activeEffects[label] = {stroke = stroke}
@@ -216,7 +279,7 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
     end
 
     label.TextColor3 = Color3.fromRGB(255, 255, 255)
-    applyShimmer(label, config.baseColor, config.brightColor)
+    applyShimmer(label, config.baseColor, config.brightColor, style.strokeThickness)
 end
 
 --------------------------------------------------------------------------------
