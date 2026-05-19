@@ -102,6 +102,51 @@ local function rollWeapon(crateDef)
     return entries[#entries].entry
 end
 
+local function getMinimumSizePercent(crateDef)
+    if type(crateDef) ~= "table" then
+        return nil
+    end
+
+    local directMinimum = tonumber(crateDef.minimumSizePercent)
+    if directMinimum then
+        return math.clamp(math.floor(directMinimum), 80, 200)
+    end
+
+    if type(crateDef.minimumSizeTier) ~= "string" then
+        return nil
+    end
+
+    for _, tier in ipairs(SizeRollService.Tiers or {}) do
+        if tier.name == crateDef.minimumSizeTier then
+            return tier.min
+        end
+    end
+
+    return nil
+end
+
+local function rollSizeForCrate(crateDef)
+    local minimumSizePercent = getMinimumSizePercent(crateDef)
+    local sizePercent, sizeTier = SizeRollService.RollSize()
+
+    if not minimumSizePercent then
+        return sizePercent, sizeTier
+    end
+
+    local attempts = 0
+    while sizePercent < minimumSizePercent and attempts < 100 do
+        sizePercent, sizeTier = SizeRollService.RollSize()
+        attempts += 1
+    end
+
+    if sizePercent < minimumSizePercent then
+        sizePercent = minimumSizePercent
+        sizeTier = SizeRollService.GetSizeTier(sizePercent)
+    end
+
+    return sizePercent, sizeTier
+end
+
 --------------------------------------------------------------------------------
 -- OPEN CRATE  (called by RemoteFunction handler)
 -- PREMIUM CRATE / KEY SYSTEM  – generic handler for any crate type.
@@ -169,7 +214,7 @@ function CrateService:OpenCrate(player, crateId)
     end
 
     -- Roll weapon size (80–200%) using weighted tiers
-    local sizePercent, sizeTier = SizeRollService.RollSize()
+    local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
     -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
     local enchantName = WeaponEnchantConfig.RollEnchant() or ""
@@ -403,7 +448,7 @@ function CrateService:RollAndGrant(player, crateId)
     end
 
     -- Roll weapon size
-    local sizePercent, sizeTier = SizeRollService.RollSize()
+    local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
     -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
     local enchantName = WeaponEnchantConfig.RollEnchant() or ""
@@ -476,7 +521,7 @@ function CrateService:RollAndPend(player, crateId)
     end
 
     -- Roll weapon size
-    local sizePercent, sizeTier = SizeRollService.RollSize()
+    local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
     -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
     local enchantName = WeaponEnchantConfig.RollEnchant() or ""

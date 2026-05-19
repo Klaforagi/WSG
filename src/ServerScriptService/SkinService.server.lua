@@ -1473,27 +1473,8 @@ local function applySkin(player, character)
             restoreOriginalBodyColors(character)
             restoreAccessories(character)
         end)
-
-        if not hasQueuedApply then
-            local data = getOrCreateData(player)
-            data.equipped = nil
-            pushEquippedToClient(player)
-            dprint(player.Name, "FAILSAFE: unequipped skin due to application error")
-        else
-            dprint(player.Name, "queued skin apply will retry after cleanup")
-        end
-
-		if queuedCharacter then
-			task.defer(function()
-				local nextCharacter = queuedCharacter
-				if not nextCharacter or not nextCharacter.Parent then
-					nextCharacter = player.Character
-				end
-				if nextCharacter then
-					applySkin(player, nextCharacter)
-				end
-			end)
-		end
+        pushEquippedToClient(player)
+        dprint(player.Name, "FAILSAFE: reverted to Default due to application error")
         return
     end
 
