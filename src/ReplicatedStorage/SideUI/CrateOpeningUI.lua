@@ -93,9 +93,10 @@ local DIM_TEXT  = Color3.fromRGB(140, 140, 160)
 local CARD_BG   = Color3.fromRGB(26, 30, 48)
 local OVERLAY_C = Color3.fromRGB(10, 10, 26)
 
-local CARD_W = 160  -- base card width
-local CARD_H = 200  -- base card height
-local CARD_GAP = 10  -- gap between cards
+local CARD_SCALE = 1.5
+local CARD_W = 160 * CARD_SCALE  -- base card width
+local CARD_H = 200 * CARD_SCALE  -- base card height
+local CARD_GAP = 10 * CARD_SCALE  -- gap between cards
 local STRIP_CARDS = 40  -- total cards in the roulette strip
 local WINNING_INDEX = 30 -- card index where the winner is placed (near end for nice decel)
 
@@ -302,6 +303,7 @@ function CrateOpeningUI.Init(playerGui)
 
     local closeOverlay
     local resultShownCallback = nil
+    local decisionInFlight = false
 
     -- ScreenGui
     local screen = Instance.new("ScreenGui")
@@ -312,7 +314,7 @@ function CrateOpeningUI.Init(playerGui)
     screen.Enabled = false
     screen.Parent = playerGui
     _G.IsCrateRewardSequenceActive = function()
-        return screen.Enabled == true
+        return screen.Enabled == true or decisionInFlight == true
     end
     -- Register with MenuController so the global menu-lock system knows
     -- when the crate opening screen is active.
@@ -870,14 +872,17 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     -- Close handler
     ---------------------------------------------------------------------------
-    closeOverlay = function()
+    closeOverlay = function(preserveDecisionState)
         screen.Enabled = false
         resultFrame.Visible = false
         btnRow.Visible = false
         confirmFrame.Visible = false
         closeBtn.Visible = false
         currentResultData = nil
-        decisionDebounce = false
+        if not preserveDecisionState then
+            decisionDebounce = false
+            decisionInFlight = false
+        end
         resultShownCallback = nil
         -- Clear strip children
         for _, c in ipairs(strip:GetChildren()) do
@@ -911,26 +916,31 @@ function CrateOpeningUI.Init(playerGui)
     keepBtn.MouseButton1Click:Connect(function()
         if decisionDebounce then return end
         if not currentResultData then return end
-        decisionDebounce = true
 
         local rf = getKeepRemote()
         if not rf then
             warn("[CrateOpeningUI] KeepCrateReward remote not found")
-            decisionDebounce = false
             return
         end
 
-        local ok, success, result = pcall(function()
-            return rf:InvokeServer()
+        decisionDebounce = true
+        decisionInFlight = true
+        closeOverlay(true)
+
+        task.spawn(function()
+            local ok, success, result = pcall(function()
+                return rf:InvokeServer()
+            end)
+
+            if ok and success then
+                print("[CrateReward] Keep selected — weapon added to inventory")
+            else
+                warn("[CrateOpeningUI] Keep failed:", ok and result or "pcall error")
+            end
+
+            decisionInFlight = false
+            decisionDebounce = false
         end)
-
-        if ok and success then
-            print("[CrateReward] Keep selected — weapon added to inventory")
-        else
-            warn("[CrateOpeningUI] Keep failed:", ok and result or "pcall error")
-        end
-
-        closeOverlay()
     end)
 
     ---------------------------------------------------------------------------
@@ -938,30 +948,35 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     local function doSalvage()
         if decisionDebounce then return end
-        decisionDebounce = true
 
         local rf = getSalvageRemote()
         if not rf then
             warn("[CrateOpeningUI] SalvageCrateReward remote not found")
-            decisionDebounce = false
             return
         end
 
-        local ok, success, result = pcall(function()
-            return rf:InvokeServer()
-        end)
+        decisionDebounce = true
+        decisionInFlight = true
+        closeOverlay(true)
 
-        if ok and success and type(result) == "table" then
-            print("[CrateReward] Salvage selected — awarded " .. tostring(result.awarded))
-            -- Update salvage balance display if available
-            pcall(function()
-                if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+        task.spawn(function()
+            local ok, success, result = pcall(function()
+                return rf:InvokeServer()
             end)
-        else
-            warn("[CrateOpeningUI] Salvage failed:", ok and result or "pcall error")
-        end
 
-        closeOverlay()
+            if ok and success and type(result) == "table" then
+                print("[CrateReward] Salvage selected — awarded " .. tostring(result.awarded))
+                -- Update salvage balance display if available
+                pcall(function()
+                    if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                end)
+            else
+                warn("[CrateOpeningUI] Salvage failed:", ok and result or "pcall error")
+            end
+
+            decisionInFlight = false
+            decisionDebounce = false
+        end)
     end
 
     salvageBtn.MouseButton1Click:Connect(function()
@@ -1251,11 +1266,6 @@ function CrateOpeningUI.Init(playerGui)
             end
         end)
 
-        local linearSpinDuration = 3.0
-        local slowSpinDuration = 4.0
-        local linearPhaseProgress = 0.60
-        local linearTargetOffset = startOffset + ((targetOffset - startOffset) * linearPhaseProgress)
-
         -- Per-frame tick: play sound each time a new card crosses the center marker
         local lastCardIndex = -1
         local tickConn = nil
@@ -1382,34 +1392,17 @@ function CrateOpeningUI.Init(playerGui)
             isAnimating = false
         end
 
-        local function playSlowPhase()
-            local slowTweenInfo = TweenInfo.new(slowSpinDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-            activeTween = TweenService:Create(strip, slowTweenInfo, {
-                Position = UDim2.new(0, targetOffset, 0, 0)
-            })
-
-            completedConn = activeTween.Completed:Once(function(playbackState)
-                if playbackState ~= Enum.PlaybackState.Completed then
-                    return
-                end
-                finishSpin()
-            end)
-
-            activeTween:Play()
-        end
-
-        local linearTweenInfo = TweenInfo.new(linearSpinDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-        activeTween = TweenService:Create(strip, linearTweenInfo, {
-            Position = UDim2.new(0, linearTargetOffset, 0, 0)
+        local spinDuration = 4.5 * 1.15
+        local tweenInfo = TweenInfo.new(spinDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        activeTween = TweenService:Create(strip, tweenInfo, {
+            Position = UDim2.new(0, targetOffset, 0, 0)
         })
 
         completedConn = activeTween.Completed:Once(function(playbackState)
             if playbackState ~= Enum.PlaybackState.Completed then
                 return
             end
-            activeTween = nil
-            completedConn = nil
-            playSlowPhase()
+            finishSpin()
         end)
 
         activeTween:Play()
