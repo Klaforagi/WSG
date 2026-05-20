@@ -30,39 +30,111 @@ local SHIMMER_CONFIGS = {
 local SIZE_SHIMMER_CONFIGS = {
     Tiny  = { baseColor = Color3.fromRGB(150,  90,  35),  brightColor = Color3.fromRGB(240, 195, 110) },
     Large = { baseColor = Color3.fromRGB(150,  90,  35),  brightColor = Color3.fromRGB(240, 195, 110) },
-    Giant = { baseColor = Color3.fromRGB(155, 165, 175),  brightColor = Color3.fromRGB(240, 245, 250) },
+    Giant = { baseColor = Color3.fromRGB(170, 180, 190),  brightColor = Color3.fromRGB(248, 251, 255) },
     King  = { baseColor = Color3.fromRGB(185, 130,  10),  brightColor = Color3.fromRGB(255, 240, 130) },
 }
+
+local SIZE_DEFAULT_FONT = Enum.Font.Bangers
+local SIZE_NORMAL_FONT = Enum.Font.GothamMedium
+local ENCHANT_FONT = Enum.Font.SourceSansBold
+
+local CANONICAL_TIER_NAMES = {
+    tiny = "Tiny",
+    normal = "Normal",
+    large = "Large",
+    giant = "Giant",
+    king = "King",
+}
+
+local function fontFaceFromEnum(fontEnum)
+    local ok, fontFace = pcall(function()
+        return Font.fromEnum(fontEnum)
+    end)
+    if ok then
+        return fontFace
+    end
+    return nil
+end
+
+local function createFontFace(familyPath, weight, style)
+    local ok, fontFace = pcall(function()
+        return Font.new(familyPath, weight, style)
+    end)
+    if ok then
+        return fontFace
+    end
+    return nil
+end
+
+local SIZE_DEFAULT_FONT_FACE = fontFaceFromEnum(SIZE_DEFAULT_FONT)
+local SIZE_NORMAL_FONT_FACE = fontFaceFromEnum(SIZE_NORMAL_FONT)
+local ENCHANT_FONT_FACE = createFontFace(
+    "rbxasset://fonts/families/SourceSansPro.json",
+    Enum.FontWeight.Bold,
+    Enum.FontStyle.Italic
+)
+
 local SIZE_TEXT_STYLES = {
     Tiny = {
-        font = Enum.Font.GothamBlack,
+        font = SIZE_DEFAULT_FONT,
         uppercase = true,
-        textScale = 0.86,
+        textScale = 0.82,
         strokeThickness = 1.8,
     },
     Large = {
-        font = Enum.Font.Fantasy,
+        font = SIZE_DEFAULT_FONT,
         uppercase = true,
         textScale = 1.0,
         strokeThickness = 1.9,
     },
     Giant = {
-        font = Enum.Font.Fantasy,
+        font = SIZE_DEFAULT_FONT,
         uppercase = true,
         textScale = 1.0,
         strokeThickness = 2.0,
     },
     King = {
-        font = Enum.Font.Fantasy,
+        font = SIZE_DEFAULT_FONT,
         uppercase = true,
         textScale = 1.02,
         strokeThickness = 2.1,
     },
 }
 
-local SIZE_NORMAL_COLOR = Color3.fromRGB(160, 160, 170)
+local SIZE_NORMAL_COLOR = Color3.fromRGB(255, 255, 255)
 
 local activeEffects = setmetatable({}, {__mode = "k"})
+
+local function escapeRichText(text)
+    return tostring(text)
+        :gsub("&", "&amp;")
+        :gsub("<", "&lt;")
+        :gsub(">", "&gt;")
+        :gsub('"', "&quot;")
+        :gsub("'", "&apos;")
+end
+
+local function applyFontChoice(label, fontEnum, fontFace)
+    label.Font = fontEnum
+    if fontFace then
+        pcall(function()
+            label.FontFace = fontFace
+        end)
+    end
+end
+
+local function normalizeTierName(tierName)
+    if type(tierName) ~= "string" then
+        return "Normal"
+    end
+
+    local trimmed = tierName:match("^%s*(.-)%s*$")
+    if not trimmed or trimmed == "" then
+        return "Normal"
+    end
+
+    return CANONICAL_TIER_NAMES[string.lower(trimmed)] or trimmed
+end
 
 --------------------------------------------------------------------------------
 -- Builds a color sequence with one narrow bright band.
@@ -228,15 +300,17 @@ function EnchantTextStyler.Apply(label, enchantName)
     end
 
     if not cleanName then
+        label.RichText = false
         label.Text       = ""
         label.TextColor3 = Color3.fromRGB(255, 255, 255)
         return
     end
 
-    label.Font       = Enum.Font.GothamBold
+    label.RichText = true
+    applyFontChoice(label, ENCHANT_FONT, ENCHANT_FONT_FACE)
     label.TextColor3 = Color3.fromRGB(255, 255, 255)
     label.TextTransparency = 0
-    label.Text       = cleanName
+    label.Text       = string.format("<b><i>%s</i></b>", escapeRichText(cleanName))
 
     local config = SHIMMER_CONFIGS[cleanName]
     if not config then return end
@@ -250,10 +324,15 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
     if not label or not label:IsA("TextLabel") then return end
     stopEffect(label)
 
-    local style = SIZE_TEXT_STYLES[tierName] or {}
-    label.Font = style.font or Enum.Font.GothamBold
+    local resolvedTierName = normalizeTierName(tierName)
+    local style = SIZE_TEXT_STYLES[resolvedTierName] or {}
+    label.RichText = false
+    applyFontChoice(label, style.font or SIZE_NORMAL_FONT, style.font and SIZE_DEFAULT_FONT_FACE or SIZE_NORMAL_FONT_FACE)
     if displayText ~= nil then
         local text = tostring(displayText)
+        if resolvedTierName == "Normal" and string.lower(text) == "normal" then
+            text = "Normal"
+        end
         if style.uppercase then
             text = string.upper(text)
         end
@@ -261,9 +340,9 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
     end
     applySizeScale(label, style.textScale or 1)
 
-    local config = SIZE_SHIMMER_CONFIGS[tierName]
+    local config = SIZE_SHIMMER_CONFIGS[resolvedTierName]
     if not config then
-        -- Normal tier: plain color, no shimmer.
+        -- Normal tier: plain color with a simple outline, no shimmer.
         for _, child in ipairs(label:GetChildren()) do
             if child:IsA("UIGradient") or child:IsA("UIStroke") then child:Destroy() end
         end
@@ -271,7 +350,7 @@ function EnchantTextStyler.ApplySize(label, tierName, displayText)
         label.TextTransparency = 0
         local stroke        = Instance.new("UIStroke")
         stroke.Color        = Color3.fromRGB(0, 0, 0)
-        stroke.Thickness    = style.strokeThickness or 1.5
+        stroke.Thickness    = 1.5
         stroke.Transparency = 0.2
         stroke.Parent       = label
         activeEffects[label] = {stroke = stroke}

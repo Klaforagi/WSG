@@ -1806,11 +1806,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── SECTION 4: Size tier tag (bottom-left) + Size percent (bottom-right) ──
         local pct  = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
+        local isNormalTier = string.lower(tostring(tier)) == "normal"
+
+        local function applyInventoryNormalSizeStyle(label, strokeTransparency)
+            label.Font = Enum.Font.GothamBold
+            pcall(function()
+                label.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+            end)
+            label.TextColor3 = WHITE
+
+            local outline = label:FindFirstChildOfClass("UIStroke")
+            if not outline then
+                outline = Instance.new("UIStroke")
+                outline.Parent = label
+            end
+            outline.Color = Color3.fromRGB(0, 0, 0)
+            outline.Thickness = 1.6
+            outline.Transparency = strokeTransparency or 0.1
+        end
 
         -- Size tier pill tag — bottom-left corner (fixed size, text scales to fit)
         do
-            local tierW = math.floor(px(46))
-            local tierH = math.floor(px(20))
+            local tierW = math.floor(px(isNormalTier and 62 or 46))
+            local tierH = math.floor(px(isNormalTier and 22 or 20))
 
             local tierBg = Instance.new("Frame", card)
             tierBg.Name = "SizeTierBg"
@@ -1837,9 +1855,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.Text = tier
             tierLabel.ZIndex = 7
             local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
-            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 18
+            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = isNormalTier and 20 or 18
             if EnchantTextStyler then
                 EnchantTextStyler.ApplySize(tierLabel, tier, tier)
+            end
+            if isNormalTier then
+                applyInventoryNormalSizeStyle(tierLabel, 0.08)
+                tierLabel.Text = "Normal"
             end
         end
 
@@ -1855,12 +1877,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
         local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
         pctConstraint.MinTextSize = 8
-        pctConstraint.MaxTextSize = 18
+        pctConstraint.MaxTextSize = isNormalTier and 20 or 18
         local sizePercentText = tostring(math.floor(pct)) .. "%"
         if EnchantTextStyler then
             EnchantTextStyler.ApplySize(sizeLabel, tier, sizePercentText)
         else
             sizeLabel.Text = sizePercentText
+        end
+        if isNormalTier then
+            applyInventoryNormalSizeStyle(sizeLabel, 0.08)
         end
 
         -- ── Equipped bar indicator (green bottom strip) ─────────────────
@@ -1892,30 +1917,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         local mastery = getMasteryData(itemData)
-        local masteryLevel = math.max(1, math.floor(tonumber(mastery.level) or 1))
-        local hasReadyReward = tonumber(mastery.readyRewardLevel) ~= nil
-        if itemData.isInstance and (masteryLevel > 1 or hasReadyReward) then
-            local badge = Instance.new("Frame", card)
-            badge.Name = "MasteryBadge"
-            badge.BackgroundColor3 = hasReadyReward and GREEN_GLOW or Color3.fromRGB(28, 30, 44)
-            badge.BorderSizePixel = 0
-            badge.Size = UDim2.new(0.21, 0, 0.12, 0)
-            badge.Position = UDim2.new(0.03, 0, 0.21, 0)
-            badge.ZIndex = 8
-            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, px(6))
-            local badgeLabel = Instance.new("TextLabel", badge)
-            badgeLabel.BackgroundTransparency = 1
-            badgeLabel.Font = Enum.Font.GothamBold
-            badgeLabel.TextColor3 = WHITE
-            badgeLabel.TextScaled = true
-            badgeLabel.Size = UDim2.new(1, -px(4), 1, 0)
-            badgeLabel.Position = UDim2.new(0, px(2), 0, 0)
-            badgeLabel.Text = "M" .. tostring(masteryLevel)
-            badgeLabel.ZIndex = 9
-            local badgeConstraint = Instance.new("UITextSizeConstraint", badgeLabel)
-            badgeConstraint.MinTextSize = 8
-            badgeConstraint.MaxTextSize = 14
-        end
 
         local masteryProgress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
         if itemData.isInstance and masteryProgress > 0 and mastery.maxed ~= true then

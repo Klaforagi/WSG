@@ -1251,12 +1251,10 @@ function CrateOpeningUI.Init(playerGui)
             end
         end)
 
-        -- Animate: ease-out quint for deceleration feel
-        local spinDuration = 3.5
-        local tweenInfo = TweenInfo.new(spinDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        activeTween = TweenService:Create(strip, tweenInfo, {
-            Position = UDim2.new(0, targetOffset, 0, 0)
-        })
+        local linearSpinDuration = 3.0
+        local slowSpinDuration = 4.0
+        local linearPhaseProgress = 0.60
+        local linearTargetOffset = startOffset + ((targetOffset - startOffset) * linearPhaseProgress)
 
         -- Per-frame tick: play sound each time a new card crosses the center marker
         local lastCardIndex = -1
@@ -1284,9 +1282,7 @@ function CrateOpeningUI.Init(playerGui)
             end
         end)
 
-        activeTween:Play()
-
-        completedConn = activeTween.Completed:Once(function()
+        local function finishSpin()
             -- Disconnect tick listener
             if tickConn then
                 tickConn:Disconnect()
@@ -1384,7 +1380,39 @@ function CrateOpeningUI.Init(playerGui)
             end
 
             isAnimating = false
+        end
+
+        local function playSlowPhase()
+            local slowTweenInfo = TweenInfo.new(slowSpinDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+            activeTween = TweenService:Create(strip, slowTweenInfo, {
+                Position = UDim2.new(0, targetOffset, 0, 0)
+            })
+
+            completedConn = activeTween.Completed:Once(function(playbackState)
+                if playbackState ~= Enum.PlaybackState.Completed then
+                    return
+                end
+                finishSpin()
+            end)
+
+            activeTween:Play()
+        end
+
+        local linearTweenInfo = TweenInfo.new(linearSpinDuration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+        activeTween = TweenService:Create(strip, linearTweenInfo, {
+            Position = UDim2.new(0, linearTargetOffset, 0, 0)
+        })
+
+        completedConn = activeTween.Completed:Once(function(playbackState)
+            if playbackState ~= Enum.PlaybackState.Completed then
+                return
+            end
+            activeTween = nil
+            completedConn = nil
+            playSlowPhase()
         end)
+
+        activeTween:Play()
     end
 
     ---------------------------------------------------------------------------
