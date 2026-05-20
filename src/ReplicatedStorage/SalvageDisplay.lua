@@ -12,6 +12,24 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+local AssetCodes = nil
+pcall(function()
+    local mod = ReplicatedStorage:WaitForChild("AssetCodes", 5)
+    if mod and mod:IsA("ModuleScript") then
+        AssetCodes = require(mod)
+    end
+end)
+
+local function getShardCurrencyImage()
+    if AssetCodes and type(AssetCodes.Get) == "function" then
+        local image = AssetCodes.Get("Shards") or AssetCodes.Get("Shard")
+        if type(image) == "string" and #image > 0 then
+            return image
+        end
+    end
+    return nil
+end
+
 local COLORS = {
     salvageGreen = Color3.fromRGB(35, 190, 75),
     white        = Color3.fromRGB(245, 245, 245),
@@ -110,19 +128,31 @@ function SalvageDisplay.Create(parent, layoutOrder)
         end)
     end
 
-    -- Salvage icon (gear glyph)
-    local salvageIcon = Instance.new("TextLabel")
-    salvageIcon.Name = "SalvageIcon"
-    salvageIcon.BackgroundTransparency = 1
-    salvageIcon.AnchorPoint = Vector2.new(0, 0.5)
-    salvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
-    salvageIcon.Size = UDim2.new(0, px(24), 0, px(24))
-    salvageIcon.Font = Enum.Font.GothamBold
-    salvageIcon.Text = "\u{2699}" -- ⚙
-    salvageIcon.TextSize = tpx(18)
-    salvageIcon.TextColor3 = COLORS.salvageGreen
-    salvageIcon.TextXAlignment = Enum.TextXAlignment.Center
-    salvageIcon.Parent = inner
+    local shardImage = getShardCurrencyImage()
+    if shardImage then
+        local salvageIcon = Instance.new("ImageLabel")
+        salvageIcon.Name = "SalvageIcon"
+        salvageIcon.BackgroundTransparency = 1
+        salvageIcon.AnchorPoint = Vector2.new(0, 0.5)
+        salvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        salvageIcon.Size = UDim2.new(0, px(24), 0, px(24))
+        salvageIcon.Image = shardImage
+        salvageIcon.ScaleType = Enum.ScaleType.Fit
+        salvageIcon.Parent = inner
+    else
+        local salvageIcon = Instance.new("TextLabel")
+        salvageIcon.Name = "SalvageIcon"
+        salvageIcon.BackgroundTransparency = 1
+        salvageIcon.AnchorPoint = Vector2.new(0, 0.5)
+        salvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        salvageIcon.Size = UDim2.new(0, px(24), 0, px(24))
+        salvageIcon.Font = Enum.Font.GothamBold
+        salvageIcon.Text = "\u{25C6}"
+        salvageIcon.TextSize = tpx(18)
+        salvageIcon.TextColor3 = COLORS.salvageGreen
+        salvageIcon.TextXAlignment = Enum.TextXAlignment.Center
+        salvageIcon.Parent = inner
+    end
 
     -- Value label
     local valueLabel = Instance.new("TextLabel")

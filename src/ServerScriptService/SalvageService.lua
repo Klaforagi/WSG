@@ -121,32 +121,32 @@ function SalvageService:CanSalvageItem(player, instanceId)
     if not inst then return false, "Item not found in inventory" end
 
     local config = getSalvageConfig()
-    if not config then return false, "Salvage config unavailable" end
+    if not config then return false, "Dismantle config unavailable" end
 
     -- Rule: starter weapons
     if config.BlockStarter and inst.source == "Starter" then
-        return false, "Cannot salvage starter weapons"
+        return false, "Cannot dismantle starter weapons"
     end
 
     -- Rule: specific unsalvageable weapon names
     if config.UnsalvageableWeapons and config.UnsalvageableWeapons[inst.weaponName] then
-        return false, "This weapon cannot be salvaged"
+        return false, "This weapon cannot be dismantled"
     end
 
     -- Rule: favorited items
     if config.BlockFavorited and inst.favorited == true then
-        return false, "Unfavorite the weapon before salvaging"
+        return false, "Unfavorite the weapon before dismantling"
     end
 
     -- Rule: equipped items
     if config.BlockEquipped and isInstanceEquipped(player, instanceId) then
-        return false, "Cannot salvage equipped weapons"
+        return false, "Cannot dismantle equipped weapons"
     end
 
     -- Rule: rarity must have a defined salvage value
     local value = config.GetValueForRarity(inst.rarity)
     if not value or value <= 0 then
-        return false, "No salvage value defined for rarity: " .. tostring(inst.rarity)
+        return false, "No Shard value defined for rarity: " .. tostring(inst.rarity)
     end
 
     return true, "OK"
@@ -192,7 +192,7 @@ function SalvageService:SalvageItem(player, instanceId)
     local rarity     = inst.rarity
     local value      = self:GetSalvageValueForItem(inst)
     if not value or value <= 0 then
-        return false, { reason = "No salvage value" }
+        return false, { reason = "No Shard value" }
     end
 
     -- 3. Remove item from inventory

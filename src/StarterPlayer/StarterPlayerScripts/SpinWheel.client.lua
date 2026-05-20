@@ -913,7 +913,7 @@ local function getRewardText(resultPayload)
         return string.format("%d Coins", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
     end
     if resultPayload.rewardType == "scrap" then
-        return string.format("%d Scrap", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
+        return string.format("%d Shards", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
     end
     if resultPayload.rewardType == "keys" then
         local amount = math.max(0, math.floor(tonumber(resultPayload.reward) or 0))

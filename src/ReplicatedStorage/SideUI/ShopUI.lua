@@ -232,6 +232,10 @@ local function getAssetImage(assetKey)
     return nil
 end
 
+local function getShardCurrencyImage()
+    return getAssetImage("Shards") or getAssetImage("Shard")
+end
+
 local function getFeaturedCrateRewards(crateDef, maxCount)
     local pool = type(crateDef) == "table" and type(crateDef.pool) == "table" and crateDef.pool or {}
     local candidates = {}
@@ -435,7 +439,7 @@ local TAB_DEFS = {
     { id = "skins",   icon = "\u{2726}", label = "Skins",   order = 3 },
     { id = "emotes",  icon = "\u{263A}", label = "Emotes",  order = 4 },
     { id = "effects", icon = "\u{2738}", label = "Effects", order = 5 },
-    { id = "salvage", icon = "\u{2699}", label = "Salvage", order = 6 },
+    { id = "salvage", icon = "\u{25C6}", label = "Shards", order = 6 },
     { id = "currency", icon = "\u{1FA99}", label = "Currency", order = 7 },
 }
 
@@ -1055,7 +1059,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
         -- Keep original glyph rendering for Weapons/Boosts only.
         -- Other tabs get custom vector-style icons for clarity at small size.
-        if def.id == "weapons" or def.id == "boosts" or def.id == "salvage" then
+        if def.id == "weapons" or def.id == "boosts" then
             local iconLbl = Instance.new("TextLabel")
             iconLbl.Name                = "Icon"
             iconLbl.BackgroundTransparency = 1
@@ -1067,6 +1071,31 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             iconLbl.Position            = UDim2.new(0, 0, 0, px(8))
             iconLbl.TextXAlignment      = Enum.TextXAlignment.Center
             iconLbl.Parent              = btn
+        elseif def.id == "salvage" then
+            local shardImage = getShardCurrencyImage()
+            if shardImage then
+                local iconImg = Instance.new("ImageLabel")
+                iconImg.Name = "Icon"
+                iconImg.BackgroundTransparency = 1
+                iconImg.Image = shardImage
+                iconImg.ImageColor3 = DIM_TEXT
+                iconImg.ScaleType = Enum.ScaleType.Fit
+                iconImg.Size = UDim2.new(1, 0, 0, px(24))
+                iconImg.Position = UDim2.new(0, 0, 0, px(8))
+                iconImg.Parent = btn
+            else
+                local iconLbl = Instance.new("TextLabel")
+                iconLbl.Name = "Icon"
+                iconLbl.BackgroundTransparency = 1
+                iconLbl.Font = Enum.Font.GothamBold
+                iconLbl.Text = def.icon
+                iconLbl.TextColor3 = DIM_TEXT
+                iconLbl.TextSize = math.max(16, math.floor(px(18)))
+                iconLbl.Size = UDim2.new(1, 0, 0, px(24))
+                iconLbl.Position = UDim2.new(0, 0, 0, px(8))
+                iconLbl.TextXAlignment = Enum.TextXAlignment.Center
+                iconLbl.Parent = btn
+            end
         else
             local custom = buildCustomTabIcon(btn, def.id)
             setTabIconTint(custom, getCustomTabIconColor(def.id, false))
@@ -1143,27 +1172,43 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             setTabIconTint(iconVisual, getCustomTabIconColor(tabId, true))
             iconRef = "tab:IconCustom"
         else
-            local glyph = fallbackGlyph
-            if sourceGlyph and sourceGlyph:IsA("TextLabel") and sourceGlyph.Text ~= "" then
-                glyph = sourceGlyph.Text
+            if sourceGlyph and sourceGlyph:IsA("ImageLabel") and sourceGlyph.Image ~= "" then
+                local iconImage = Instance.new("ImageLabel")
+                iconImage.Name = "PlaceholderIconVisual"
+                iconImage.BackgroundTransparency = 1
+                iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+                iconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+                iconImage.Size = UDim2.new(1, -px(18), 1, -px(18))
+                iconImage.Image = sourceGlyph.Image
+                iconImage.ImageColor3 = getCustomTabIconColor(tabId, true)
+                iconImage.ScaleType = Enum.ScaleType.Fit
+                iconImage.Parent = iconPlate
+
+                iconVisual = iconImage
+                iconRef = "tab:IconImage"
+            else
+                local glyph = fallbackGlyph
+                if sourceGlyph and sourceGlyph:IsA("TextLabel") and sourceGlyph.Text ~= "" then
+                    glyph = sourceGlyph.Text
+                end
+
+                local iconGlyph = Instance.new("TextLabel")
+                iconGlyph.Name = "PlaceholderIconVisual"
+                iconGlyph.BackgroundTransparency = 1
+                iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+                iconGlyph.Position = UDim2.new(0.5, 0, 0.5, 0)
+                iconGlyph.Size = UDim2.new(1, -px(12), 1, -px(12))
+                iconGlyph.Font = Enum.Font.GothamBold
+                iconGlyph.Text = glyph or "?"
+                iconGlyph.TextSize = math.max(24, math.floor(px(34)))
+                iconGlyph.TextColor3 = getCustomTabIconColor(tabId, true)
+                iconGlyph.TextXAlignment = Enum.TextXAlignment.Center
+                iconGlyph.TextYAlignment = Enum.TextYAlignment.Center
+                iconGlyph.Parent = iconPlate
+
+                iconVisual = iconGlyph
+                iconRef = "tab:IconGlyph"
             end
-
-            local iconGlyph = Instance.new("TextLabel")
-            iconGlyph.Name = "PlaceholderIconVisual"
-            iconGlyph.BackgroundTransparency = 1
-            iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
-            iconGlyph.Position = UDim2.new(0.5, 0, 0.5, 0)
-            iconGlyph.Size = UDim2.new(1, -px(12), 1, -px(12))
-            iconGlyph.Font = Enum.Font.GothamBold
-            iconGlyph.Text = glyph or "?"
-            iconGlyph.TextSize = math.max(24, math.floor(px(34)))
-            iconGlyph.TextColor3 = getCustomTabIconColor(tabId, true)
-            iconGlyph.TextXAlignment = Enum.TextXAlignment.Center
-            iconGlyph.TextYAlignment = Enum.TextYAlignment.Center
-            iconGlyph.Parent = iconPlate
-
-            iconVisual = iconGlyph
-            iconRef = "tab:IconGlyph"
         end
 
         print(string.format("[EmptyStateIconDebug][Shop] category=%s iconRef=%s exists=%s", tostring(tabId), iconRef, tostring(iconVisual ~= nil)))
@@ -1199,7 +1244,13 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local stroke = btn:FindFirstChildOfClass("UIStroke")
 
             if bar    then bar.BackgroundTransparency = active and 0    or 1    end
-            if icon   then icon.TextColor3            = active and GOLD or DIM_TEXT end
+            if icon then
+                if icon:IsA("ImageLabel") then
+                    icon.ImageColor3 = active and GOLD or DIM_TEXT
+                else
+                    icon.TextColor3 = active and GOLD or DIM_TEXT
+                end
+            end
             if iconCustom then setTabIconTint(iconCustom, getCustomTabIconColor(id, active)) end
             if label  then label.TextColor3           = active and WHITE or DIM_TEXT end
             if stroke then stroke.Transparency        = active and 0.2  or 0.6  end
@@ -4645,7 +4696,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         local salvageTitle = Instance.new("TextLabel")
         salvageTitle.BackgroundTransparency = 1
         salvageTitle.Font = Enum.Font.GothamBold
-        salvageTitle.Text = "SALVAGE SHOP"
+        salvageTitle.Text = "SHARD SHOP"
         salvageTitle.TextColor3 = SALVAGE_GREEN
         salvageTitle.TextSize = math.max(20, math.floor(px(24)))
         salvageTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -4655,7 +4706,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
         local salvageSubtitle = Instance.new("TextLabel")
         salvageSubtitle.BackgroundTransparency = 1
         salvageSubtitle.Font = Enum.Font.GothamMedium
-        salvageSubtitle.Text = "Spend Salvage earned from recycling weapons."
+        salvageSubtitle.Text = "Spend Shards earned from dismantling weapons."
         salvageSubtitle.TextColor3 = DIM_TEXT
         salvageSubtitle.TextSize = math.max(11, math.floor(px(12)))
         salvageSubtitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -4762,7 +4813,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 local empty = Instance.new("TextLabel")
                 empty.BackgroundTransparency = 1
                 empty.Font = Enum.Font.GothamMedium
-                empty.Text = "No items available in the Salvage Shop yet."
+                empty.Text = "No items available in the Shard Shop yet."
                 empty.TextColor3 = DIM_TEXT
                 empty.TextSize = math.max(14, math.floor(px(15)))
                 empty.Size = UDim2.new(1, 0, 0, px(50))
@@ -4868,7 +4919,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     desc.Parent = card
 
                     -- Price label
-                    local priceText = tostring(item.SalvagePrice) .. " \u{2699}"
+                    local priceText = tostring(item.SalvagePrice) .. " Shards"
                     local priceLabel = Instance.new("TextLabel")
                     priceLabel.BackgroundTransparency = 1
                     priceLabel.Font = Enum.Font.GothamBold
@@ -4947,7 +4998,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     buyBtn.MouseButton1Click:Connect(function()
                         if purchaseDebounce then return end
                         if currentSalvage < item.SalvagePrice then
-                            showToast(salvagePage, "Not enough Salvage!", RED_TEXT, 2)
+                            showToast(salvagePage, "Not enough Shards!", RED_TEXT, 2)
                             return
                         end
 
@@ -5044,7 +5095,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local empty = Instance.new("TextLabel")
             empty.BackgroundTransparency = 1
             empty.Font = Enum.Font.GothamMedium
-            empty.Text = "Salvage Shop coming soon."
+            empty.Text = "Shard Shop coming soon."
             empty.TextColor3 = DIM_TEXT
             empty.TextSize = math.max(14, math.floor(px(15)))
             empty.Size = UDim2.new(1, 0, 0, px(50))

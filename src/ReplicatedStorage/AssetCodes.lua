@@ -8,6 +8,8 @@ AssetCodes.images = {
     Logo = "rbxassetid://137602836160101",  -- replace with a final uploaded logo asset ID later
     -- UI icons
     Coin = "rbxassetid://15589362394",
+    Shards = "rbxassetid://138717301679393",
+    Key = "rbxassetid://126037497405484",
     BlueFlag = "rbxassetid://397459040",
     RedFlag = "rbxassetid://2017769589",
     Shop = "rbxassetid://12674129868",

@@ -245,11 +245,11 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 
 	if currency == "scrap" then
 		if not cs.GetSalvage or not cs.RemoveSalvage then
-			return false, "Scrap currency unavailable"
+			return false, "Shard currency unavailable"
 		end
 		local balance = cs:GetSalvage(player)
 		if balance < price then
-			return false, "Insufficient scrap"
+			return false, "Insufficient Shards"
 		end
 		cs:RemoveSalvage(player, price)
 	else

@@ -441,7 +441,7 @@ function CrateService:FinalizeCrateSalvage(player)
     end
 
     if salvageValue <= 0 then
-        return false, "No salvage value for this rarity"
+        return false, "No Shard value for this rarity"
     end
 
     -- Award salvage currency

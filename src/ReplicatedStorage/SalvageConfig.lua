@@ -45,8 +45,8 @@ SalvageConfig.UnsalvageableWeapons = {
 --------------------------------------------------------------------------------
 -- DISPLAY HELPERS (for client UI)
 --------------------------------------------------------------------------------
-SalvageConfig.CurrencyName = "Salvage"
-SalvageConfig.CurrencyGlyph = "\u{2699}" -- ⚙
+SalvageConfig.CurrencyName = "Shards"
+SalvageConfig.CurrencyGlyph = "\u{25C6}"
 SalvageConfig.CurrencyColor = Color3.fromRGB(35, 190, 75)
 
 --------------------------------------------------------------------------------

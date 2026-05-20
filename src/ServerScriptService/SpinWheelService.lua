@@ -274,9 +274,9 @@ local function grantRewardForSlice(player, slice)
         local rewardEntry = SpinWheelConfig.RollWeightedReward(slice.rewards or {}, randomSource)
         local amount = rewardEntry and math.max(0, math.floor(tonumber(rewardEntry.amount) or 0)) or 0
         if amount <= 0 then
-            return false, "Invalid scrap reward", "invalid_reward"
+            return false, "Invalid shard reward", "invalid_reward"
         end
-        return grantCurrencyReward(player, amount, "AddSalvage", "scrap", string.format("%d Scrap", amount))
+        return grantCurrencyReward(player, amount, "AddSalvage", "scrap", string.format("%d Shards", amount))
     end
 
     if slice.rewardType == "keys" then

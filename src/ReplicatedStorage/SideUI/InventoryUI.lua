@@ -228,7 +228,7 @@ local function formatMasteryReward(reward)
         table.insert(parts, "+" .. tostring(coins) .. " coins")
     end
     if salvage > 0 then
-        table.insert(parts, "+" .. tostring(salvage) .. " salvage")
+        table.insert(parts, "+" .. tostring(salvage) .. " Shards")
     end
     if #parts == 0 then return "Mastery reward" end
     return table.concat(parts, "  ")
@@ -1349,7 +1349,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     discardBtn.AutoButtonColor = false
     discardBtn.BackgroundColor3 = SALVAGE_BG
     discardBtn.Font = Enum.Font.GothamBold
-    discardBtn.Text = "SALVAGE"
+    discardBtn.Text = "DISMANTLE"
     discardBtn.TextColor3 = SALVAGE_GREEN
     discardBtn.TextSize = px(17)
     discardBtn.Size = UDim2.new(0.48, 0, 1, 0)
@@ -1383,7 +1383,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local confirmTitle = Instance.new("TextLabel", confirmBox)
     confirmTitle.BackgroundTransparency = 1
     confirmTitle.Font = Enum.Font.GothamBold
-    confirmTitle.Text = "Salvage Weapon?"
+    confirmTitle.Text = "Dismantle Weapon?"
     confirmTitle.TextColor3 = SALVAGE_GREEN
     confirmTitle.TextSize = px(18)
     confirmTitle.Size = UDim2.new(1, 0, 0, px(28))
@@ -1410,7 +1410,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmYes.AutoButtonColor = false
     confirmYes.BackgroundColor3 = SALVAGE_GREEN
     confirmYes.Font = Enum.Font.GothamBold
-    confirmYes.Text = "YES, SALVAGE"
+    confirmYes.Text = "DISMANTLE"
     confirmYes.TextColor3 = WHITE
     confirmYes.TextTransparency = 0
     confirmYes.TextSize = px(14)
@@ -1550,21 +1550,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             elseif itemData.favorited == true then
                 discardBtn.Text = "FAVORITED"
             else
-                discardBtn.Text = "SALVAGE"
+                discardBtn.Text = "DISMANTLE"
             end
         elseif showActions then
             discardBtn.BackgroundColor3 = SALVAGE_BG
             discardBtn.TextColor3 = SALVAGE_GREEN
             discardStroke.Color = Color3.fromRGB(0, 0, 0)
             discardStroke.Transparency = 0.15
-            discardBtn.Text = "SALVAGE"
+            discardBtn.Text = "DISMANTLE"
         end
 
         -- Salvage value preview
         if canSalvage and SalvageConfig and itemData.rarity then
             local val = SalvageConfig.GetValueForRarity(itemData.rarity)
             if val and val > 0 then
-                salvageValueLabel.Text = "Salvage value: " .. tostring(val) .. " \u{2699}"
+                salvageValueLabel.Text = "Yield: " .. tostring(val) .. " Shards"
                 salvageValueLabel.Visible = true
             else
                 salvageValueLabel.Visible = false
@@ -2228,9 +2228,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if SalvageConfig and selectedItem.rarity then
             salvageValue = SalvageConfig.GetValueForRarity(selectedItem.rarity) or 0
         end
-        local valueStr = salvageValue > 0 and (" for " .. tostring(salvageValue) .. " \u{2699}") or ""
-        confirmTitle.Text = "Salvage " .. (selectedItem.name or "Weapon") .. "?"
-        confirmDesc.Text = "Salvage" .. valueStr .. "\nThis action cannot be undone."
+        local actionText = salvageValue > 0
+            and ("Dismantle for " .. tostring(salvageValue) .. " Shards")
+            or "Dismantle this weapon"
+        confirmTitle.Text = "Dismantle " .. (selectedItem.name or "Weapon") .. "?"
+        confirmDesc.Text = actionText .. "\nThis action cannot be undone."
         confirmOverlay.Visible = true
     end)
 
@@ -2268,9 +2270,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- Show success feedback with awarded amount
             local awarded = (type(result) == "table" and result.awarded) or 0
             if awarded > 0 then
-                showSalvageFeedback("Salvaged for +" .. tostring(awarded) .. " \u{2699}", SALVAGE_GREEN, 2.5)
+                showSalvageFeedback("Dismantled for +" .. tostring(awarded) .. " Shards", SALVAGE_GREEN, 2.5)
             else
-                showSalvageFeedback("Salvaged!", SALVAGE_GREEN, 2)
+                showSalvageFeedback("Dismantled!", SALVAGE_GREEN, 2)
             end
 
             -- Update header salvage display immediately
@@ -2293,7 +2295,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             renderCategory(currentWeaponCategory)
         else
             -- Salvage failed – show error feedback
-            local reason = "Salvage failed"
+            local reason = "Dismantle failed"
             if type(result) == "table" and result.reason then
                 reason = result.reason
             end

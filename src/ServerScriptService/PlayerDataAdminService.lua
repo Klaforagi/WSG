@@ -320,7 +320,7 @@ local function applyLiveOnlineUpdate(player, subsystems, valueOverrides)
             if subsetSet.Salvage and cur.SetSalvage then
                 local v = num("Salvage")
                 pcall(function() cur:SetSalvage(player, v) end)
-                table.insert(refreshed, "Salvage=" .. tostring(v))
+                table.insert(refreshed, "Shards=" .. tostring(v))
             end
         else
             -- Without CurrencyService we can't push live; force a rejoin.

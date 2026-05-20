@@ -625,7 +625,7 @@ function CrateOpeningUI.Init(playerGui)
             label.Text = displayText
         end
     end
-    setSalvageButtonText("SALVAGE +0")
+    setSalvageButtonText("DISMANTLE +0")
 
     ---------------------------------------------------------------------------
     -- SALVAGE CONFIRMATION OVERLAY (for Rare+ items)
@@ -655,7 +655,7 @@ function CrateOpeningUI.Init(playerGui)
     confirmMsg.Name = "Message"
     confirmMsg.BackgroundTransparency = 1
     confirmMsg.Font = Enum.Font.GothamBold
-    confirmMsg.Text = "Salvage this weapon?"
+    confirmMsg.Text = "Dismantle this weapon?"
     confirmMsg.TextColor3 = WHITE
     confirmMsg.TextSize = math.max(14, math.floor(px(16)))
     confirmMsg.TextWrapped = true
@@ -968,7 +968,7 @@ function CrateOpeningUI.Init(playerGui)
                 print("[CrateReward] Salvage selected — awarded " .. tostring(result.awarded))
                 -- Update salvage balance display if available
                 pcall(function()
-                    if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                    if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
                 end)
             else
                 warn("[CrateOpeningUI] Salvage failed:", ok and result or "pcall error")
@@ -988,8 +988,8 @@ function CrateOpeningUI.Init(playerGui)
         if rarity ~= "Common" then
             local salvVal = currentResultData.salvageValue or 0
             confirmMsg.Text = string.format(
-                'Are you sure you want to salvage\nthis %s weapon for %d %s?',
-                rarity, salvVal, "\u{2699}"
+                "Are you sure you want to dismantle\nthis %s weapon for %d Shards?",
+                rarity, salvVal
             )
             print("[CrateReward] Salvage confirmation required for rarity: " .. rarity)
             confirmFrame.Visible = true
@@ -1358,7 +1358,7 @@ function CrateOpeningUI.Init(playerGui)
             if resultData.isPending then
                 -- Pending reward: show Keep/Salvage decision
                 local salvVal = resultData.salvageValue or 0
-                setSalvageButtonText("SALVAGE +" .. tostring(salvVal))
+                setSalvageButtonText("DISMANTLE +" .. tostring(salvVal))
                 btnRow.Visible = true
                 confirmFrame.Visible = false
                 closeBtn.Visible = false
@@ -1378,7 +1378,7 @@ function CrateOpeningUI.Init(playerGui)
                 pcall(function() coinApi.SetKeys(resultData.newKeyBalance) end)
             end
             pcall(function()
-                if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
             end)
 
             local callback = resultShownCallback

@@ -57,6 +57,16 @@ do
     end
 end
 
+local function getShardCurrencyImage()
+    if AssetCodes and type(AssetCodes.Get) == "function" then
+        local image = AssetCodes.Get("Shards") or AssetCodes.Get("Shard")
+        if type(image) == "string" and #image > 0 then
+            return image
+        end
+    end
+    return nil
+end
+
 -- Config / constants
 -- Panel sizing: narrower on desktop (8%), wider on mobile (16%)
 local PANEL_WIDTH_SCALE = UserInputService.TouchEnabled and 0.16 or 0.11
@@ -1160,18 +1170,32 @@ titleLabel.ZIndex = 275
     headerSalvageFrame.Parent = currencyRow
     styleCurrencyChip(headerSalvageFrame, Color3.fromRGB(35, 190, 75), 98)
 
-    local headerSalvageIcon = Instance.new("TextLabel")
-    headerSalvageIcon.Name = "SalvageIcon"
-    headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
-    headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
-    headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
-    headerSalvageIcon.BackgroundTransparency = 1
-    headerSalvageIcon.Font = Enum.Font.GothamBold
-    headerSalvageIcon.Text = "\u{2699}"
-    headerSalvageIcon.TextColor3 = Color3.fromRGB(35, 190, 75)
-    headerSalvageIcon.ZIndex = 277
-    headerSalvageIcon.Parent = headerSalvageFrame
-    addHeaderTextConstraint(headerSalvageIcon, 18)
+    local shardImage = getShardCurrencyImage()
+    if shardImage then
+        local headerSalvageIcon = Instance.new("ImageLabel")
+        headerSalvageIcon.Name = "SalvageIcon"
+        headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
+        headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
+        headerSalvageIcon.BackgroundTransparency = 1
+        headerSalvageIcon.Image = shardImage
+        headerSalvageIcon.ScaleType = Enum.ScaleType.Fit
+        headerSalvageIcon.ZIndex = 277
+        headerSalvageIcon.Parent = headerSalvageFrame
+    else
+        local headerSalvageIcon = Instance.new("TextLabel")
+        headerSalvageIcon.Name = "SalvageIcon"
+        headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
+        headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
+        headerSalvageIcon.BackgroundTransparency = 1
+        headerSalvageIcon.Font = Enum.Font.GothamBold
+        headerSalvageIcon.Text = "\u{25C6}"
+        headerSalvageIcon.TextColor3 = Color3.fromRGB(35, 190, 75)
+        headerSalvageIcon.ZIndex = 277
+        headerSalvageIcon.Parent = headerSalvageFrame
+        addHeaderTextConstraint(headerSalvageIcon, 18)
+    end
 
     local headerSalvageLabel = Instance.new("TextLabel")
     headerSalvageLabel.Name = "SalvageLabel"
