@@ -25,6 +25,30 @@ local MenuController = {}
 local menus = {}        -- { [name] = { open, close, closeInstant, isOpen, group } }
 local currentMenu = nil -- name of the currently open menu (or nil)
 
+local function isMenuOpenBlocked(name)
+	if name == "CrateOpening" then
+		return false
+	end
+
+	local spinSequenceLock = rawget(_G, "IsSpinWheelRewardSequenceLocked")
+	if type(spinSequenceLock) == "function" then
+		local ok, isLocked = pcall(spinSequenceLock)
+		if ok and isLocked == true then
+			return true
+		end
+	end
+
+	local crateRewardActive = rawget(_G, "IsCrateRewardSequenceActive")
+	if type(crateRewardActive) == "function" then
+		local ok, isActive = pcall(crateRewardActive)
+		if ok and isActive == true then
+			return true
+		end
+	end
+
+	return false
+end
+
 -- Callbacks fired whenever the overall "any menu open" state changes.
 -- Each callback receives (isAnyOpen: boolean, menuName: string, action: "open"|"close")
 local _onChangeCallbacks = {}
@@ -76,6 +100,10 @@ function MenuController.OpenMenu(name, ...)
 	local menu = menus[name]
 	if not menu then
 		warn("[MenuController] OpenMenu: unknown menu", name)
+		return
+	end
+
+	if isMenuOpenBlocked(name) then
 		return
 	end
 

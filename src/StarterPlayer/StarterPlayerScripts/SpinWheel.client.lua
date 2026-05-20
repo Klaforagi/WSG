@@ -2,12 +2,15 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+local CrateConfig = require(ReplicatedStorage:WaitForChild("CrateConfig"))
 local SpinWheelConfig = require(ReplicatedStorage:WaitForChild("SpinWheelConfig"))
 local tickBoundaryAngles = SpinWheelConfig.GetTickBoundaryAngles()
 
@@ -26,10 +29,21 @@ end
 local getStateRF = spinWheelFolder:WaitForChild("GetSpinWheelState", 15)
 local requestSpinRF = spinWheelFolder:WaitForChild("RequestSpinWheelSpin", 15)
 local buyPackRF = spinWheelFolder:WaitForChild("RequestBuyWheelSpinPack", 15)
+local chatAnnouncementRE = spinWheelFolder:FindFirstChild("SpinWheelChatAnnouncement")
+if not (chatAnnouncementRE and chatAnnouncementRE:IsA("RemoteEvent")) then
+    chatAnnouncementRE = spinWheelFolder:WaitForChild("SpinWheelChatAnnouncement", 15)
+    if not (chatAnnouncementRE and chatAnnouncementRE:IsA("RemoteEvent")) then
+        chatAnnouncementRE = nil
+    end
+end
 if not getStateRF or not requestSpinRF or not buyPackRF then
     warn("[SpinWheel] SpinWheel remote functions missing")
     return
 end
+
+local SPIN_CHAT_COLOR = Color3.fromRGB(255, 179, 71)
+local SPIN_CHAT_COLOR_HEX = "#FFB347"
+local spinChatChannel
 
 local function ensureChild(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -57,6 +71,155 @@ end
 
 local function getAdjustedServerTime(serverTimeOffset)
     return os.time() + (serverTimeOffset or 0)
+end
+
+local function escapeRichText(text)
+    text = tostring(text or "")
+    text = text:gsub("&", "&amp;")
+    text = text:gsub("<", "&lt;")
+    text = text:gsub(">", "&gt;")
+    text = text:gsub('"', "&quot;")
+    text = text:gsub("'", "&apos;")
+    return text
+end
+
+local function color3ToHex(color)
+    if typeof(color) ~= "Color3" then
+        return nil
+    end
+
+    local r = math.clamp(math.floor((color.R * 255) + 0.5), 0, 255)
+    local g = math.clamp(math.floor((color.G * 255) + 0.5), 0, 255)
+    local b = math.clamp(math.floor((color.B * 255) + 0.5), 0, 255)
+    return string.format("#%02X%02X%02X", r, g, b)
+end
+
+local function getRarityHex(rarityName)
+    if type(rarityName) ~= "string" or rarityName == "" then
+        return nil
+    end
+
+    local rarityDef = CrateConfig and CrateConfig.Rarities and CrateConfig.Rarities[rarityName]
+    if rarityDef and typeof(rarityDef.color) == "Color3" then
+        return color3ToHex(rarityDef.color)
+    end
+
+    return nil
+end
+
+local function buildAnnouncementParts(announcement)
+    if type(announcement) == "string" then
+        return announcement, nil, "", announcement, ""
+    end
+
+    if type(announcement) ~= "table" then
+        return "", nil, "", "", ""
+    end
+
+    local bodyText = tostring(announcement.bodyText or announcement.text or "")
+    local highlightText = tostring(announcement.highlightText or "")
+    local suffixText = tostring(announcement.suffixText or "")
+    local plainText = tostring(announcement.text or (bodyText .. highlightText .. suffixText))
+    return bodyText, announcement.highlightRarity, suffixText, plainText, highlightText
+end
+
+local function isCrateRewardSequenceActive()
+    local activeCheck = _G.IsCrateRewardSequenceActive
+    if type(activeCheck) ~= "function" then
+        return false
+    end
+
+    local ok, active = pcall(activeCheck)
+    return ok and active == true
+end
+
+local function getSpinChatChannel()
+    if spinChatChannel and spinChatChannel.Parent then
+        return spinChatChannel
+    end
+
+    local textChannels = TextChatService:FindFirstChild("TextChannels")
+    if not textChannels then
+        textChannels = TextChatService:WaitForChild("TextChannels", 5)
+    end
+    if not textChannels then
+        return nil
+    end
+
+    local channel = textChannels:FindFirstChild("RBXGeneral") or textChannels:FindFirstChild("RBXSystem")
+    if not channel then
+        for _, child in ipairs(textChannels:GetChildren()) do
+            if child:IsA("TextChannel") then
+                channel = child
+                break
+            end
+        end
+    end
+
+    if channel and channel:IsA("TextChannel") then
+        spinChatChannel = channel
+        return channel
+    end
+
+    return nil
+end
+
+local function displaySpinChatMessage(announcement)
+    local bodyText, highlightRarity, suffixText, plainText, highlightText = buildAnnouncementParts(announcement)
+    if plainText == "" then
+        return
+    end
+
+    local richTextParts = {
+        string.format('<font color="%s">[Server]</font>', SPIN_CHAT_COLOR_HEX),
+    }
+
+    local escapedBodyText = escapeRichText(bodyText)
+    local escapedHighlightText = escapeRichText(highlightText)
+    local escapedSuffixText = escapeRichText(suffixText)
+
+    if escapedBodyText ~= "" or escapedHighlightText ~= "" or escapedSuffixText ~= "" then
+        table.insert(richTextParts, " ")
+        table.insert(richTextParts, escapedBodyText)
+        if escapedHighlightText ~= "" then
+            local rarityHex = getRarityHex(highlightRarity)
+            if rarityHex then
+                table.insert(richTextParts, string.format('<font color="%s">%s</font>', rarityHex, escapedHighlightText))
+            else
+                table.insert(richTextParts, escapedHighlightText)
+            end
+        end
+        table.insert(richTextParts, escapedSuffixText)
+    end
+
+    local richTextMessage = table.concat(richTextParts)
+
+    local channel = getSpinChatChannel()
+    if channel then
+        local ok = pcall(function()
+            channel:DisplaySystemMessage(richTextMessage)
+        end)
+        if ok then
+            return
+        end
+    end
+
+    pcall(function()
+        StarterGui:SetCore("ChatMakeSystemMessage", {
+            Text = "[Server] " .. plainText,
+            Color = SPIN_CHAT_COLOR,
+            Font = Enum.Font.GothamBold,
+            TextSize = 18,
+        })
+    end)
+end
+
+local function displayLocalSpinAnnouncement(chatAnnouncement)
+    if not chatAnnouncement or chatAnnouncement.scope ~= "local" then
+        return
+    end
+
+    displaySpinChatMessage(chatAnnouncement)
 end
 
 local function playTickSound()
@@ -402,6 +565,10 @@ local currentSpinColors = {
     spinWhiteColor,
     rainbowCycleColors[1],
 }
+
+local function isSpinWheelRewardSequenceLocked()
+    return requestInFlight or isSpinning or spinSequenceLocked or isCrateRewardSequenceActive()
+end
 
 local function wrapLightPosition(position, count)
     if count <= 0 then
@@ -778,8 +945,11 @@ local function showSpinReward(resultPayload)
     if resultPayload.rewardType == "crate" then
         local rewardData = type(resultPayload.rewardData) == "table" and resultPayload.rewardData or nil
         local crateType = type(resultPayload.crateType) == "string" and resultPayload.crateType or (rewardData and rewardData.crateType)
+        local chatAnnouncement = type(resultPayload.chatAnnouncement) == "table" and resultPayload.chatAnnouncement or nil
         if rewardData and crateType and type(_G.PlayCrateAnimation) == "function" then
-            _G.PlayCrateAnimation(crateType, rewardData)
+            _G.PlayCrateAnimation(crateType, rewardData, function()
+                displayLocalSpinAnnouncement(chatAnnouncement)
+            end)
             return
         end
     end
@@ -788,6 +958,17 @@ local function showSpinReward(resultPayload)
     if rewardText ~= "" then
         showToast(string.format("You got %s!", rewardText), getRewardToastColor(resultPayload))
     end
+    displayLocalSpinAnnouncement(type(resultPayload.chatAnnouncement) == "table" and resultPayload.chatAnnouncement or nil)
+end
+
+if chatAnnouncementRE then
+    chatAnnouncementRE.OnClientEvent:Connect(function(payload)
+        if type(payload) ~= "table" then
+            return
+        end
+
+        displaySpinChatMessage(payload)
+    end)
 end
 
 local function updateServerTimeOffset(state)
@@ -814,7 +995,7 @@ end
 local function closePurchaseModal()
     purchaseModalOpen = false
     modalShade.Visible = false
-    prompt.Enabled = currentState.isLoaded == true and not requestInFlight and not isSpinning and not spinSequenceLocked
+    prompt.Enabled = currentState.isLoaded == true and not requestInFlight and not isSpinning and not spinSequenceLocked and not isCrateRewardSequenceActive()
 end
 
 local function updatePromptState()
@@ -826,7 +1007,7 @@ local function updatePromptState()
     end
 
     prompt.ObjectText = string.format("%s %d", SpinWheelConfig.Labels.PromptObjectPrefix, getWheelSpinsCount())
-    prompt.Enabled = not requestInFlight and not isSpinning and not spinSequenceLocked and not purchaseModalOpen
+    prompt.Enabled = not requestInFlight and not isSpinning and not spinSequenceLocked and not purchaseModalOpen and not isCrateRewardSequenceActive()
 end
 
 local function updateScreen()
@@ -1058,7 +1239,7 @@ cancelButton.MouseButton1Click:Connect(function()
 end)
 
 prompt.Triggered:Connect(function()
-    if requestInFlight or isSpinning or spinSequenceLocked or purchaseModalOpen then
+    if isSpinWheelRewardSequenceLocked() or purchaseModalOpen then
         return
     end
     if currentState.isLoaded ~= true then
@@ -1114,6 +1295,10 @@ setState(makeLoadingState())
 refreshState()
 syncAmbientWheelMode()
 
+_G.IsSpinWheelRewardSequenceLocked = function()
+    return isSpinWheelRewardSequenceLocked()
+end
+
 task.spawn(function()
     while true do
         if currentState.isLoaded ~= true and not stateFetchInFlight and not requestInFlight then
@@ -1132,12 +1317,19 @@ RunService.RenderStepped:Connect(function(deltaTime)
 
     if lightModeEndsAt and now >= lightModeEndsAt then
         if lightMode == "win" then
-            spinSequenceLocked = false
             setLightMode("idle", nil, winLightAnchorPosition)
+            if not isCrateRewardSequenceActive() then
+                spinSequenceLocked = false
+            end
             updatePromptState()
         else
             lightModeEndsAt = nil
         end
+    end
+
+    if spinSequenceLocked and not isSpinning and lightMode == "idle" and not isCrateRewardSequenceActive() then
+        spinSequenceLocked = false
+        updatePromptState()
     end
 
     if not isSpinning and currentState.isLoaded == true and lightMode == "idle" then

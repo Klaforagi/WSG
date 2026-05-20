@@ -300,6 +300,9 @@ end
 function CrateOpeningUI.Init(playerGui)
     if not playerGui then return end
 
+    local closeOverlay
+    local resultShownCallback = nil
+
     -- ScreenGui
     local screen = Instance.new("ScreenGui")
     screen.Name = "CrateOpenScreen"
@@ -308,6 +311,9 @@ function CrateOpeningUI.Init(playerGui)
     screen.IgnoreGuiInset = true
     screen.Enabled = false
     screen.Parent = playerGui
+    _G.IsCrateRewardSequenceActive = function()
+        return screen.Enabled == true
+    end
     -- Register with MenuController so the global menu-lock system knows
     -- when the crate opening screen is active.
     local CrateMC = nil
@@ -319,10 +325,10 @@ function CrateOpeningUI.Init(playerGui)
         CrateMC.RegisterMenu("CrateOpening", {
             open = function() end, -- opened by Play() directly
             close = function()
-                if screen.Enabled then screen.Enabled = false end
+                if screen.Enabled and closeOverlay then closeOverlay() end
             end,
             closeInstant = function()
-                if screen.Enabled then screen.Enabled = false end
+                if screen.Enabled and closeOverlay then closeOverlay() end
             end,
             isOpen = function()
                 return screen.Enabled
@@ -864,7 +870,7 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     -- Close handler
     ---------------------------------------------------------------------------
-    local function closeOverlay()
+    closeOverlay = function()
         screen.Enabled = false
         resultFrame.Visible = false
         btnRow.Visible = false
@@ -872,6 +878,7 @@ function CrateOpeningUI.Init(playerGui)
         closeBtn.Visible = false
         currentResultData = nil
         decisionDebounce = false
+        resultShownCallback = nil
         -- Clear strip children
         for _, c in ipairs(strip:GetChildren()) do
             pcall(function() c:Destroy() end)
@@ -1142,9 +1149,10 @@ function CrateOpeningUI.Init(playerGui)
     -- PLAY ANIMATION
     -- Called with the server result after the server confirms the crate open.
     ---------------------------------------------------------------------------
-    function CrateOpeningUI.Play(crateId, resultData, coinApi)
+    function CrateOpeningUI.Play(crateId, resultData, coinApi, onResultShown)
         if isAnimating then return end
         isAnimating = true
+        resultShownCallback = onResultShown
 
         applyResponsiveLayout()
 
@@ -1159,6 +1167,7 @@ function CrateOpeningUI.Init(playerGui)
         local stripData = buildStrip(crateDef, resultData)
         if #stripData == 0 then
             isAnimating = false
+            resultShownCallback = nil
             return
         end
 
@@ -1366,6 +1375,14 @@ function CrateOpeningUI.Init(playerGui)
                 if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
             end)
 
+            local callback = resultShownCallback
+            resultShownCallback = nil
+            if type(callback) == "function" then
+                task.spawn(function()
+                    pcall(callback, resultData)
+                end)
+            end
+
             isAnimating = false
         end)
     end
@@ -1376,9 +1393,9 @@ function CrateOpeningUI.Init(playerGui)
 
     -- Direct animation trigger (no server call) for pre-rolled results
     -- Used by salvage crate purchases that already handled payment + rolling.
-    _G.PlayCrateAnimation = function(crateId, resultData)
+    _G.PlayCrateAnimation = function(crateId, resultData, onResultShown)
         if isAnimating then return end
-        CrateOpeningUI.Play(crateId, resultData, _G.CrateOpeningCoinApi)
+        CrateOpeningUI.Play(crateId, resultData, _G.CrateOpeningCoinApi, onResultShown)
     end
 
     _G.OpenCrateRequested = function(crateId)

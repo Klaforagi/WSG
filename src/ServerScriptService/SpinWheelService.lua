@@ -137,6 +137,100 @@ local function formatCountLabel(amount, singularLabel, pluralLabel)
     return string.format("%d %s", amount, pluralLabel)
 end
 
+local function normalizeOptionalText(value)
+    if type(value) ~= "string" then
+        return ""
+    end
+
+    value = value:gsub("^%s+", ""):gsub("%s+$", "")
+    if value == "None" then
+        return ""
+    end
+    return value
+end
+
+local function getSpinAnnouncementDelaySeconds(rewardType)
+    local startupDuration = (tonumber(SpinWheelConfig.LightShowStartDuration) or 0) + 0.5
+    local spinDuration = tonumber(SpinWheelConfig.SpinDuration) or 0
+    local totalDelay = startupDuration + spinDuration
+    if rewardType == "crate" then
+        totalDelay += 3.9
+    end
+    return math.max(0, totalDelay)
+end
+
+local function formatWeaponRewardText(rewardData)
+    if type(rewardData) ~= "table" then
+        return ""
+    end
+
+    local weaponName = normalizeOptionalText(rewardData.weaponName)
+    if weaponName == "" then
+        return ""
+    end
+
+    local parts = {}
+    local sizePercent = math.max(0, math.floor(tonumber(rewardData.sizePercent) or 0))
+    if sizePercent > 0 then
+        table.insert(parts, string.format("%d%%", sizePercent))
+    end
+
+    local enchantName = normalizeOptionalText(rewardData.enchantName)
+    if enchantName ~= "" then
+        table.insert(parts, enchantName)
+    end
+
+    table.insert(parts, weaponName)
+    return table.concat(parts, " ")
+end
+
+local function buildChatAnnouncement(player, rewardResult)
+    if not player or type(rewardResult) ~= "table" then
+        return nil
+    end
+
+    if rewardResult.rewardType == "crate" then
+        local rewardData = type(rewardResult.rewardData) == "table" and rewardResult.rewardData or nil
+        local weaponText = formatWeaponRewardText(rewardData)
+        if weaponText == "" then
+            return nil
+        end
+
+        local rarity = normalizeOptionalText(rewardData and rewardData.rarity)
+        if string.lower(rarity) == "legendary" then
+            return {
+                scope = "global",
+                text = string.format("%s has won %s!", player.Name, weaponText),
+                bodyText = string.format("%s has won ", player.Name),
+                highlightText = weaponText,
+                highlightRarity = rarity,
+                suffixText = "!",
+                delaySeconds = getSpinAnnouncementDelaySeconds("crate"),
+            }
+        end
+
+        return {
+            scope = "local",
+            text = string.format("You won %s!", weaponText),
+            bodyText = "You won ",
+            highlightText = weaponText,
+            highlightRarity = rarity,
+            suffixText = "!",
+        }
+    end
+
+    local rewardText = normalizeOptionalText(rewardResult.rewardText)
+    if rewardText == "" then
+        return nil
+    end
+
+    return {
+        scope = "local",
+        text = string.format("You won %s!", rewardText),
+        bodyText = string.format("You won %s!", rewardText),
+    }
+end
+
 local function grantCurrencyReward(player, amount, addMethodName, rewardType, rewardText, source)
     local currencyService = getCurrencyService()
     if not currencyService or type(currencyService[addMethodName]) ~= "function" then
@@ -522,6 +616,7 @@ function SpinWheelService:RequestSpin(player)
     markDirty(player, spinSource == "free" and "spin_wheel_free" or "spin_wheel_paid", { force = true })
 
     local updatedState = self:GetState(player)
+    local chatAnnouncement = buildChatAnnouncement(player, rewardResult)
     spinLocks[player] = nil
 
     return true, "Spin granted", {
@@ -537,6 +632,7 @@ function SpinWheelService:RequestSpin(player)
         spinSource = spinSource,
         spinDuration = SpinWheelConfig.SpinDuration,
         fullRotations = SpinWheelConfig.FullRotations,
+        chatAnnouncement = chatAnnouncement,
         nextFreeSpinAt = pd.nextFreeSpinAt,
         state = updatedState,
     }
