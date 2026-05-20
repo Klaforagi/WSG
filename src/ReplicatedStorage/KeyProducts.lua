@@ -19,28 +19,28 @@ KeyProducts.LARGE_KEY_PRODUCT_ID  = 0   -- ← Replace with real ID
 ----------------------------------------------------------------------
 -- Robux prices displayed in the UI  ← UPDATE to match your Creator Dashboard
 ----------------------------------------------------------------------
-KeyProducts.SMALL_PACK_PRICE  = 49    -- ← Robux price for Small Pack
-KeyProducts.MEDIUM_PACK_PRICE = 99    -- ← Robux price for Medium Pack
-KeyProducts.LARGE_PACK_PRICE  = 199   -- ← Robux price for Large Pack
+KeyProducts.SMALL_PACK_PRICE  = 99    -- ← Robux price for Small Pack
+KeyProducts.MEDIUM_PACK_PRICE = 399   -- ← Robux price for Medium Pack
+KeyProducts.LARGE_PACK_PRICE  = 1299  -- ← Robux price for Large Pack
 
 ----------------------------------------------------------------------
 -- Pack definitions (order = display order in the popup)
 ----------------------------------------------------------------------
 KeyProducts.Packs = {
 	{
-		Name       = "Small Key Pack",
-		Keys       = 3,
+		Name       = "Single Key Pack",
+		Keys       = 1,
 		ProductId  = KeyProducts.SMALL_KEY_PRODUCT_ID,
 		Price      = KeyProducts.SMALL_PACK_PRICE,
 	},
 	{
-		Name       = "Medium Key Pack",
-		Keys       = 8,
+		Name       = "5 Key Pack",
+		Keys       = 5,
 		ProductId  = KeyProducts.MEDIUM_KEY_PRODUCT_ID,
 		Price      = KeyProducts.MEDIUM_PACK_PRICE,
 	},
 	{
-		Name       = "Large Key Pack",
+		Name       = "20 Key Pack",
 		Keys       = 20,
 		ProductId  = KeyProducts.LARGE_KEY_PRODUCT_ID,
 		Price      = KeyProducts.LARGE_PACK_PRICE,

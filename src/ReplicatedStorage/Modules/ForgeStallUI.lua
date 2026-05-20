@@ -6,6 +6,7 @@
 local Players = game:GetService("Players")
 local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
@@ -69,6 +70,8 @@ local getSalvageRF
 local salvageUpdatedRE
 
 local activeConnections = {}
+local forgeSoundTemplate
+local warnedMissingForgeSound = false
 
 local function trackConn(conn)
 	table.insert(activeConnections, conn)
@@ -244,6 +247,58 @@ local function makeRobuxIcon(parent, size)
 	return label
 end
 
+local function findForgeSoundTemplate()
+	if forgeSoundTemplate and forgeSoundTemplate.Parent then
+		return forgeSoundTemplate
+	end
+
+	local template = nil
+	local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+	if soundsFolder then
+		local soundMatch = soundsFolder:FindFirstChild("Forge", true)
+		if soundMatch and soundMatch:IsA("Sound") then
+			template = soundMatch
+		end
+	end
+	if not template then
+		local replicatedMatch = ReplicatedStorage:FindFirstChild("Forge", true)
+		if replicatedMatch and replicatedMatch:IsA("Sound") then
+			template = replicatedMatch
+		end
+	end
+	if not template then
+		local soundServiceMatch = SoundService:FindFirstChild("Forge", true)
+		if soundServiceMatch and soundServiceMatch:IsA("Sound") then
+			template = soundServiceMatch
+		end
+	end
+	if template then
+		forgeSoundTemplate = template
+	end
+	return forgeSoundTemplate
+end
+
+local function playForgeSound()
+	local template = findForgeSoundTemplate()
+	if not template then
+		if not warnedMissingForgeSound then
+			warnedMissingForgeSound = true
+			warn("[ForgeStallUI] Local sound 'Forge' not found")
+		end
+		return false
+	end
+
+	local clone = template:Clone()
+	clone.Parent = SoundService
+	clone:Play()
+	task.delay(math.max(1, (clone.TimeLength or 1) + 0.25), function()
+		if clone and clone.Parent then
+			clone:Destroy()
+		end
+	end)
+	return true
+end
+
 local function createHealthEmblem(parent, size)
 	local wrapper = Instance.new("Frame")
 	wrapper.BackgroundTransparency = 1
@@ -394,9 +449,10 @@ function ForgeStallUI.Create(parent, options)
 	local stageBottomPadding = px(14)
 	local railGap = px(20)
 	local leftWidth = px(214)
-	local balanceHeight = px(92)
+	local balanceHeight = px(82)
 	local cardGap = px(12)
 	local packHeight = px(108)
+	local balanceGap = px(16)
 	local rowGap = px(12)
 	local rowHeight = px(210)
 	local contentTopInset = px(52)
@@ -408,7 +464,7 @@ function ForgeStallUI.Create(parent, options)
 	end
 	local rowsHeight = (rowHeight * 3) + (rowGap * 2)
 	local panelHeight = rowsHeight + contentTopInset + contentBottomInset
-	local leftColumnHeight = (packCount * packHeight) + (math.max(0, packCount - 1) * cardGap) + cardGap + balanceHeight
+	local leftColumnHeight = (packCount * packHeight) + (math.max(0, packCount - 1) * cardGap) + balanceGap + balanceHeight
 	local stageInnerHeight = math.max(panelHeight, leftColumnHeight + px(18))
 	local stageHeight = stageInnerHeight + stageTopPadding + stageBottomPadding
 
@@ -421,7 +477,7 @@ function ForgeStallUI.Create(parent, options)
 	stage.BorderSizePixel = 0
 	stage.Parent = root
 	local stageConstraint = Instance.new("UISizeConstraint")
-	stageConstraint.MaxSize = Vector2.new(780, px(900))
+	stageConstraint.MaxSize = Vector2.new(720, px(900))
 	stageConstraint.MinSize = Vector2.new(660, px(700))
 	stageConstraint.Parent = stage
 
@@ -460,7 +516,7 @@ function ForgeStallUI.Create(parent, options)
 	local titleBadge = Instance.new("Frame")
 	titleBadge.Name = "TitleBadge"
 	titleBadge.Position = UDim2.new(0, px(18), 0, -px(30))
-	titleBadge.Size = UDim2.new(0, px(316), 0, px(74))
+	titleBadge.Size = UDim2.new(0, px(346), 0, px(74))
 	titleBadge.BackgroundColor3 = Color3.fromRGB(19, 19, 20)
 	titleBadge.BorderSizePixel = 0
 	titleBadge.Parent = panel
@@ -469,7 +525,7 @@ function ForgeStallUI.Create(parent, options)
 
 	local titleText = Instance.new("TextLabel")
 	titleText.BackgroundTransparency = 1
-	titleText.Position = UDim2.new(0, px(18), 0, -px(8))
+	titleText.Position = UDim2.new(0, px(18), 0, -px(12))
 	titleText.Size = UDim2.new(1, -px(28), 1, 0)
 	titleText.Font = Enum.Font.GothamBlack
 	titleText.Text = "FORGE"
@@ -523,7 +579,7 @@ function ForgeStallUI.Create(parent, options)
 
 	local packsHost = Instance.new("Frame")
 	packsHost.BackgroundTransparency = 1
-	packsHost.Size = UDim2.new(1, 0, 1, -(balanceHeight + cardGap))
+	packsHost.Size = UDim2.new(1, 0, 1, -(balanceHeight + balanceGap))
 	packsHost.Parent = leftColumn
 
 	local packsLayout = Instance.new("UIListLayout")
@@ -585,7 +641,7 @@ function ForgeStallUI.Create(parent, options)
 		amountLabel.Font = Enum.Font.GothamBlack
 		amountLabel.Text = formatNumber(pack.Shards)
 		amountLabel.TextColor3 = WHITE
-		amountLabel.TextSize = math.max(20, px(20))
+		amountLabel.TextSize = math.max(26, px(26))
 		amountLabel.TextXAlignment = Enum.TextXAlignment.Left
 		amountLabel.Parent = card
 
@@ -607,7 +663,7 @@ function ForgeStallUI.Create(parent, options)
 		priceLabel.Font = Enum.Font.GothamBlack
 		priceLabel.Text = tostring(pack.Price or 0)
 		priceLabel.TextColor3 = ORANGE_BRIGHT
-		priceLabel.TextSize = math.max(15, px(15))
+		priceLabel.TextSize = math.max(19, px(19))
 		priceLabel.TextXAlignment = Enum.TextXAlignment.Left
 		priceLabel.Parent = priceRow
 
@@ -620,7 +676,7 @@ function ForgeStallUI.Create(parent, options)
 			bestLabel.Font = Enum.Font.GothamBlack
 			bestLabel.Text = "BEST VALUE"
 			bestLabel.TextColor3 = ORANGE_BRIGHT
-			bestLabel.TextSize = math.max(10, px(10))
+			bestLabel.TextSize = math.max(12, px(12))
 			bestLabel.TextXAlignment = Enum.TextXAlignment.Right
 			bestLabel.Parent = card
 		end
@@ -683,18 +739,18 @@ function ForgeStallUI.Create(parent, options)
 
 	local balanceIconWrap = Instance.new("Frame")
 	balanceIconWrap.BackgroundTransparency = 1
-	balanceIconWrap.Position = UDim2.new(0, -px(24), 0, px(12))
-	balanceIconWrap.Size = UDim2.new(0, px(88), 0, px(88))
+	balanceIconWrap.Position = UDim2.new(0, -px(16), 0, px(8))
+	balanceIconWrap.Size = UDim2.new(0, px(72), 0, px(72))
 	balanceIconWrap.Parent = balanceCard
-	makeShardIcon(balanceIconWrap, px(88))
+	makeShardIcon(balanceIconWrap, px(72))
 
 	local balanceValue = Instance.new("TextLabel")
 	balanceValue.BackgroundTransparency = 1
-	balanceValue.Position = UDim2.new(0, px(62), 0, px(36))
-	balanceValue.Size = UDim2.new(1, -px(66), 0, px(28))
+	balanceValue.Position = UDim2.new(0, px(52), 0, px(28))
+	balanceValue.Size = UDim2.new(1, -px(56), 0, px(26))
 	balanceValue.Font = Enum.Font.GothamBlack
 	balanceValue.TextColor3 = WHITE
-	balanceValue.TextSize = math.max(20, px(20))
+	balanceValue.TextSize = math.max(18, px(18))
 	balanceValue.TextXAlignment = Enum.TextXAlignment.Left
 	balanceValue.Parent = balanceCard
 
@@ -764,7 +820,7 @@ function ForgeStallUI.Create(parent, options)
 		local details = Instance.new("Frame")
 		details.BackgroundTransparency = 1
 		details.Position = UDim2.new(0, artWidth + px(24), 0, px(16))
-		details.Size = UDim2.new(1, -(artWidth + actionWidth + px(54)), 1, -px(32))
+		details.Size = UDim2.new(1, -(artWidth + actionWidth + px(48)), 1, -px(32))
 		details.Parent = row
 
 		local title = Instance.new("TextLabel")
@@ -790,11 +846,13 @@ function ForgeStallUI.Create(parent, options)
 
 		local description = Instance.new("TextLabel")
 		description.BackgroundTransparency = 1
-		description.Size = UDim2.new(1, 0, 0, px(22))
+		description.Size = UDim2.new(1, 0, 0, px(38))
 		description.Font = Enum.Font.GothamBold
 		description.TextColor3 = GRAY
 		description.TextSize = math.max(14, px(14))
 		description.TextXAlignment = Enum.TextXAlignment.Left
+		description.TextWrapped = true
+		description.TextYAlignment = Enum.TextYAlignment.Top
 		description.Parent = details
 
 		local progressTrack = Instance.new("Frame")
@@ -836,28 +894,27 @@ function ForgeStallUI.Create(parent, options)
 		end
 
 		if isHealth then
-			description.Position = UDim2.new(0, 0, 0, px(136))
+			description.Position = UDim2.new(0, 0, 0, px(126))
 		else
-			description.Position = UDim2.new(0, 0, 0, px(88))
+			description.Position = UDim2.new(0, 0, 0, px(78))
 		end
 
 		local levelLabel = Instance.new("TextLabel")
 		levelLabel.BackgroundTransparency = 1
-		levelLabel.AnchorPoint = Vector2.new(1, 0)
-		levelLabel.Position = UDim2.new(1, -px(14), 0, px(12))
-		levelLabel.Size = UDim2.new(0, actionWidth, 0, px(22))
+		levelLabel.Position = UDim2.new(0, 0, 0, isHealth and px(168) or px(120))
+		levelLabel.Size = UDim2.new(1, 0, 0, px(22))
 		levelLabel.Font = Enum.Font.GothamBlack
 		levelLabel.TextColor3 = GREEN
-		levelLabel.TextSize = math.max(18, px(18))
-		levelLabel.TextXAlignment = Enum.TextXAlignment.Right
-		levelLabel.Parent = row
+		levelLabel.TextSize = math.max(16, px(16))
+		levelLabel.TextXAlignment = Enum.TextXAlignment.Left
+		levelLabel.Parent = details
 
 		local purchaseBox = Instance.new("Frame")
 		purchaseBox.BackgroundColor3 = CARD_BG_ALT
 		purchaseBox.BorderSizePixel = 0
-		purchaseBox.AnchorPoint = Vector2.new(1, 1)
-		purchaseBox.Position = UDim2.new(1, -px(14), 1, -px(16))
-		purchaseBox.Size = UDim2.new(0, actionWidth, 0, px(104))
+		purchaseBox.AnchorPoint = Vector2.new(1, 0)
+		purchaseBox.Position = UDim2.new(1, -px(14), 0, px(14))
+		purchaseBox.Size = UDim2.new(0, actionWidth, 1, -px(28))
 		purchaseBox.Parent = row
 		purchaseBox.ClipsDescendants = false
 		applyCorners(purchaseBox, px(12))
@@ -866,34 +923,35 @@ function ForgeStallUI.Create(parent, options)
 		local costPill = Instance.new("Frame")
 		costPill.BackgroundColor3 = Color3.fromRGB(23, 23, 25)
 		costPill.BorderSizePixel = 0
-		costPill.Position = UDim2.new(0, px(14), 0, px(10))
-		costPill.Size = UDim2.new(1, -px(28), 0, px(42))
+		costPill.Position = UDim2.new(0, px(12), 0, px(10))
+		costPill.Size = UDim2.new(1, -px(24), 0, px(58))
 		costPill.Parent = purchaseBox
 		applyCorners(costPill, px(12))
 
 		local costIconWrap = Instance.new("Frame")
 		costIconWrap.BackgroundTransparency = 1
-		costIconWrap.Position = UDim2.new(0, -px(28), 0.5, -px(36))
-		costIconWrap.Size = UDim2.new(0, px(72), 0, px(72))
+		costIconWrap.Position = UDim2.new(0, -px(18), 0.5, -px(44))
+		costIconWrap.Size = UDim2.new(0, px(88), 0, px(88))
 		costIconWrap.Parent = costPill
-		local costIcon = makeShardIcon(costIconWrap, px(72))
+		local costIcon = makeShardIcon(costIconWrap, px(88))
 
 		local costValue = Instance.new("TextLabel")
 		costValue.BackgroundTransparency = 1
-		costValue.Position = UDim2.new(0, px(44), 0, 0)
-		costValue.Size = UDim2.new(1, -px(20), 1, 0)
+		costValue.Position = UDim2.new(0, px(58), 0, 0)
+		costValue.Size = UDim2.new(1, -px(62), 1, 0)
 		costValue.Font = Enum.Font.GothamBlack
 		costValue.TextColor3 = WHITE
-		costValue.TextSize = math.max(18, px(18))
+		costValue.TextSize = math.max(24, px(24))
 		costValue.TextXAlignment = Enum.TextXAlignment.Center
+		costValue.TextYAlignment = Enum.TextYAlignment.Center
 		costValue.Parent = costPill
 
 		local actionButton = Instance.new("TextButton")
 		actionButton.AutoButtonColor = false
 		actionButton.BackgroundColor3 = BUTTON_READY
 		actionButton.BorderSizePixel = 0
-		actionButton.Position = UDim2.new(0, px(14), 1, -px(48))
-		actionButton.Size = UDim2.new(1, -px(28), 0, px(38))
+		actionButton.Position = UDim2.new(0, px(12), 1, -px(60))
+		actionButton.Size = UDim2.new(1, -px(24), 0, px(48))
 		actionButton.Font = Enum.Font.GothamBlack
 		actionButton.Text = "UPGRADE"
 		actionButton.TextColor3 = WHITE
@@ -920,17 +978,18 @@ function ForgeStallUI.Create(parent, options)
 			currentCost = 0,
 			lockedLevel = nil,
 			canAfford = false,
+			isPending = false,
 		}
 
 		trackConn(actionButton.MouseEnter:Connect(function()
-			if refs.currentMode ~= "ready" then
+			if refs.currentMode ~= "ready" or refs.isPending then
 				return
 			end
 			TweenService:Create(actionButton, QUICK_TWEEN, { BackgroundColor3 = BUTTON_READY_HOVER }):Play()
 			refs.rowStroke.Color = ORANGE_BRIGHT
 		end))
 		trackConn(actionButton.MouseLeave:Connect(function()
-			if refs.currentMode ~= "ready" then
+			if refs.currentMode ~= "ready" or refs.isPending then
 				return
 			end
 			TweenService:Create(actionButton, QUICK_TWEEN, {
@@ -950,24 +1009,52 @@ function ForgeStallUI.Create(parent, options)
 		balanceValue.Text = formatCompactNumber(shardBalance)
 	end
 
+	local function applyUpgradeState(levels)
+		if type(levels) ~= "table" then
+			return false
+		end
+
+		local nextLevels = {}
+		for key, value in pairs(levels) do
+			if key ~= "_playerLevel" then
+				nextLevels[key] = value
+			end
+		end
+		upgradeLevels = nextLevels
+
+		if levels._playerLevel ~= nil then
+			playerLevel = math.max(1, math.floor(tonumber(levels._playerLevel) or playerLevel))
+		end
+
+		return true
+	end
+
 	local function setButtonMode(refs, mode, cost, canAfford, requiredLevel)
 		refs.currentMode = mode
 		refs.currentCost = cost or 0
 		refs.canAfford = canAfford == true
 		refs.lockedLevel = requiredLevel
+		refs.costPill.Visible = true
+		refs.costIcon.Visible = mode ~= "max"
+		if mode == "max" then
+			refs.costValue.Text = "MAX"
+		else
+			refs.costValue.Text = formatNumber(cost)
+		end
+
+		if refs.isPending then
+			refs.actionButton.Text = "UPGRADING"
+			refs.actionButton.BackgroundColor3 = BUTTON_LOCKED
+			refs.rowStroke.Color = ORANGE_BRIGHT
+			return
+		end
 
 		if mode == "max" then
-			refs.costPill.Visible = true
-			refs.costValue.Text = "MAX"
 			refs.actionButton.Text = "MAX LEVEL"
 			refs.actionButton.BackgroundColor3 = BUTTON_MAX
 			refs.rowStroke.Color = ORANGE
 			return
 		end
-
-		refs.costPill.Visible = true
-		refs.costValue.Text = formatNumber(cost)
-		refs.costIcon.Visible = true
 
 		if mode == "locked" then
 			refs.actionButton.Text = "LOCKED"
@@ -999,7 +1086,7 @@ function ForgeStallUI.Create(parent, options)
 		local canAfford = shardBalance >= cost
 
 		if refs.isHealth then
-			refs.levelLabel.Text = string.format("Lv. %d/%d", level, maxLevel)
+			refs.levelLabel.Text = string.format("Level %d/%d", level, maxLevel)
 			refs.subtitle.Text = string.format("+%d max health per upgrade", UpgradeConfig.HEALTH_BONUS_PER_LEVEL or 10)
 			if locked and requiredLevel and not isMax then
 				refs.description.Text = string.format("Increase your max health. Unlocks at player level %d.", requiredLevel)
@@ -1012,7 +1099,7 @@ function ForgeStallUI.Create(parent, options)
 			end
 			refs.progressFill.Size = UDim2.new(fillScale, 0, 1, 0)
 		else
-			refs.levelLabel.Text = "Lv. " .. formatNumber(level)
+			refs.levelLabel.Text = "Level " .. formatNumber(level)
 			local bonusText = UpgradeConfig.GetBonusText and UpgradeConfig.GetBonusText(level, upgradeId) or "+0%"
 			if bonusText == "No bonus" then
 				bonusText = "+0%"
@@ -1041,9 +1128,36 @@ function ForgeStallUI.Create(parent, options)
 		updateRow(UpgradeConfig.HEALTH)
 	end
 
+	local function requestLatestState()
+		local refreshed = false
+
+		pcall(function()
+			refreshed = applyUpgradeState(getStatesRF:InvokeServer()) or refreshed
+		end)
+
+		pcall(function()
+			local result = getSalvageRF:InvokeServer()
+			if type(result) == "number" then
+				shardBalance = math.max(0, math.floor(result))
+				refreshed = true
+			end
+		end)
+
+		if refreshed then
+			refreshAll()
+		end
+
+		return refreshed
+	end
+
 	for upgradeId, refs in pairs(rowRefs) do
 		trackConn(refs.actionButton.MouseButton1Click:Connect(function()
+			if refs.isPending then
+				return
+			end
+
 			local level = math.max(0, math.floor(tonumber(upgradeLevels[upgradeId]) or 0))
+			local purchaseCost = refs.currentCost
 			local definition = UpgradeConfig.GetDefinition and UpgradeConfig.GetDefinition(upgradeId) or {}
 			local title = definition.Title or "Upgrade"
 
@@ -1055,24 +1169,38 @@ function ForgeStallUI.Create(parent, options)
 				showToast(panel, string.format("Reach player level %d to unlock that upgrade.", refs.lockedLevel or 0), ORANGE_BRIGHT, 2.4)
 				return
 			end
-			if shardBalance < refs.currentCost then
+			if shardBalance < purchaseCost then
 				showToast(panel, "You need more Shards for that upgrade.", RED, 2.4)
 				return
 			end
 
-			refs.actionButton.Text = "..."
-			local success, msg = false, "Upgrade failed"
-			pcall(function()
-				success, msg = purchaseRF:InvokeServer(upgradeId)
-			end)
-			if success then
-				upgradeLevels[upgradeId] = level + 1
-				shardBalance = math.max(0, shardBalance - refs.currentCost)
-				showToast(panel, title .. " upgraded.", GREEN, 2.0)
-			else
-				showToast(panel, tostring(msg or "Upgrade failed"), RED, 2.5)
-			end
+			refs.isPending = true
+			upgradeLevels[upgradeId] = level + 1
+			shardBalance = math.max(0, shardBalance - purchaseCost)
+			playForgeSound()
 			refreshAll()
+
+			task.spawn(function()
+				local success, msg = false, "Upgrade failed"
+				pcall(function()
+					success, msg = purchaseRF:InvokeServer(upgradeId)
+				end)
+
+				refs.isPending = false
+				if success then
+					showToast(panel, title .. " upgraded.", GREEN, 2.0)
+					refreshAll()
+					return
+				end
+
+				local refreshed = requestLatestState()
+				if not refreshed then
+					upgradeLevels[upgradeId] = level
+					shardBalance = math.max(0, shardBalance + purchaseCost)
+					refreshAll()
+				end
+				showToast(panel, tostring(msg or "Upgrade failed"), RED, 2.5)
+			end)
 		end))
 	end
 
@@ -1083,18 +1211,8 @@ function ForgeStallUI.Create(parent, options)
 
 	if stateUpdatedRE then
 		trackConn(stateUpdatedRE.OnClientEvent:Connect(function(levels)
-			if type(levels) ~= "table" then
+			if not applyUpgradeState(levels) then
 				return
-			end
-			local nextLevels = {}
-			for key, value in pairs(levels) do
-				if key ~= "_playerLevel" then
-					nextLevels[key] = value
-				end
-			end
-			upgradeLevels = nextLevels
-			if levels._playerLevel ~= nil then
-				playerLevel = math.max(1, math.floor(tonumber(levels._playerLevel) or playerLevel))
 			end
 			refreshAll()
 		end))

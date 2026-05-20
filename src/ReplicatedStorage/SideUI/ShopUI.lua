@@ -5418,7 +5418,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 keyLabel.Position = UDim2.new(0, keyIconSize + px(16), 0, px(10))
                 keyLabel.BackgroundTransparency = 1
                 keyLabel.Font = Enum.Font.GothamBlack
-                keyLabel.Text = tostring(pack.Keys) .. " Keys"
+                keyLabel.Text = string.format("%d %s", pack.Keys, (pack.Keys == 1) and "Key" or "Keys")
                 keyLabel.TextColor3 = KEY_BLUE
                 keyLabel.TextSize = math.max(18, math.floor(px(22)))
                 keyLabel.TextXAlignment = Enum.TextXAlignment.Left

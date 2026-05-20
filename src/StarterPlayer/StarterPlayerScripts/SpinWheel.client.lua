@@ -12,6 +12,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local CrateConfig = require(ReplicatedStorage:WaitForChild("CrateConfig"))
 local SpinWheelConfig = require(ReplicatedStorage:WaitForChild("SpinWheelConfig"))
+local RobuxPurchaseUI = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("RobuxPurchaseUI"))
 local tickBoundaryAngles = SpinWheelConfig.GetTickBoundaryAngles()
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 15)
@@ -477,17 +478,26 @@ modalShade.Visible = false
 local modalCard = ensureChild(modalShade, "Frame", "PurchaseCard")
 modalCard.AnchorPoint = Vector2.new(0.5, 0.5)
 modalCard.Position = UDim2.fromScale(0.5, 0.5)
-modalCard.Size = UDim2.new(0, 430, 0, 330)
-modalCard.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
+modalCard.Size = UDim2.new(0, 430, 0, 390)
+modalCard.BackgroundColor3 = RobuxPurchaseUI.Colors.ModalBackground
 modalCard.BorderSizePixel = 0
 
 local modalCorner = ensureChild(modalCard, "UICorner", "Corner")
 modalCorner.CornerRadius = UDim.new(0, 14)
 
 local modalStroke = ensureChild(modalCard, "UIStroke", "Stroke")
-modalStroke.Color = Color3.fromRGB(74, 85, 110)
+modalStroke.Color = Color3.fromRGB(0, 0, 0)
 modalStroke.Thickness = 2
-modalStroke.Transparency = 0.1
+modalStroke.Transparency = 0
+
+local modalAccent = ensureChild(modalCard, "Frame", "Accent")
+modalAccent.BackgroundColor3 = RobuxPurchaseUI.Colors.Gold
+modalAccent.BorderSizePixel = 0
+modalAccent.Position = UDim2.new(0, 15, 0, 12)
+modalAccent.Size = UDim2.new(1, -30, 0, 4)
+
+local modalAccentCorner = ensureChild(modalAccent, "UICorner", "Corner")
+modalAccentCorner.CornerRadius = UDim.new(0, 10)
 
 local modalHeader = ensureChild(modalCard, "TextLabel", "Header")
 modalHeader.BackgroundTransparency = 1
@@ -495,39 +505,37 @@ modalHeader.Size = UDim2.new(1, -30, 0, 56)
 modalHeader.Position = UDim2.new(0, 15, 0, 18)
 modalHeader.Font = Enum.Font.GothamBlack
 modalHeader.TextSize = 30
-modalHeader.TextColor3 = Color3.fromRGB(255, 208, 64)
 modalHeader.Text = SpinWheelConfig.Labels.PurchaseHeader
+RobuxPurchaseUI.ApplyOutlinedText(modalHeader, RobuxPurchaseUI.Colors.Gold)
 
 local modalBody = ensureChild(modalCard, "TextLabel", "Body")
 modalBody.BackgroundTransparency = 1
-modalBody.Size = UDim2.new(1, -30, 0, 56)
+modalBody.Size = UDim2.new(1, -30, 0, 64)
 modalBody.Position = UDim2.new(0, 15, 0, 68)
 modalBody.Font = Enum.Font.GothamMedium
 modalBody.TextSize = 20
-modalBody.TextColor3 = Color3.fromRGB(227, 232, 240)
 modalBody.TextWrapped = true
 modalBody.Text = SpinWheelConfig.Labels.PurchaseBody
+RobuxPurchaseUI.ApplyOutlinedText(modalBody, RobuxPurchaseUI.Colors.GoldSoft)
 
 local buttonList = ensureChild(modalCard, "Frame", "ButtonList")
 buttonList.BackgroundTransparency = 1
-buttonList.Size = UDim2.new(1, -30, 0, 150)
-buttonList.Position = UDim2.new(0, 15, 0, 128)
+buttonList.Size = UDim2.new(1, -30, 0, 188)
+buttonList.Position = UDim2.new(0, 15, 0, 138)
 
 local buttonLayout = ensureChild(buttonList, "UIListLayout", "Layout")
 buttonLayout.FillDirection = Enum.FillDirection.Vertical
 buttonLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 buttonLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-buttonLayout.Padding = UDim.new(0, 10)
+buttonLayout.Padding = UDim.new(0, 8)
 
 local cancelButton = ensureChild(modalCard, "TextButton", "CancelButton")
 cancelButton.Size = UDim2.new(1, -30, 0, 44)
 cancelButton.Position = UDim2.new(0, 15, 1, -58)
-cancelButton.BackgroundColor3 = Color3.fromRGB(42, 47, 60)
-cancelButton.BorderSizePixel = 0
 cancelButton.Font = Enum.Font.GothamBold
 cancelButton.TextSize = 18
-cancelButton.TextColor3 = Color3.fromRGB(235, 239, 244)
 cancelButton.Text = SpinWheelConfig.Labels.PurchaseCancel
+RobuxPurchaseUI.StyleCancelButton(cancelButton)
 
 local cancelCorner = ensureChild(cancelButton, "UICorner", "Corner")
 cancelCorner.CornerRadius = UDim.new(0, 10)
@@ -1177,23 +1185,19 @@ local function handlePurchaseResult(success, message, payload)
 end
 
 for index, pack in ipairs(SpinWheelConfig.SpinPacks) do
-    local button = ensureChild(buttonList, "TextButton", "PackButton" .. tostring(index))
-    button.Size = UDim2.new(1, 0, 0, 42)
-    button.BackgroundColor3 = Color3.fromRGB(34, 39, 52)
-    button.BorderSizePixel = 0
-    button.AutoButtonColor = true
-    button.Font = Enum.Font.GothamBold
-    button.TextSize = 19
-    button.TextColor3 = Color3.fromRGB(245, 247, 250)
-    button.Text = string.format("%d Wheel Spins  •  R$%d", pack.spins, pack.robuxPrice)
+    local existingButton = buttonList:FindFirstChild("PackButton" .. tostring(index))
+    if existingButton and existingButton:IsA("GuiButton") then
+        existingButton:Destroy()
+    end
 
-    local buttonCorner = ensureChild(button, "UICorner", "Corner")
-    buttonCorner.CornerRadius = UDim.new(0, 10)
-
-    local buttonStroke = ensureChild(button, "UIStroke", "Stroke")
-    buttonStroke.Color = Color3.fromRGB(255, 208, 64)
-    buttonStroke.Transparency = 0.35
-    buttonStroke.Thickness = 1
+    local spinTitle = string.format("%d WHEEL SPIN%s", pack.spins, pack.spins == 1 and "" or "S")
+    local button = RobuxPurchaseUI.CreatePackCard(buttonList, {
+        name = "PackButton" .. tostring(index),
+        title = spinTitle,
+        subtitle = pack.name or "Wheel Spin Pack",
+        price = pack.robuxPrice,
+        layoutOrder = index,
+    })
 
     button.MouseButton1Click:Connect(function()
         if requestInFlight then
