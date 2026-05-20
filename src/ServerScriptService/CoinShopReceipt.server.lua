@@ -4,7 +4,8 @@
 --
 -- Handles MarketplaceService.ProcessReceipt for coin packs defined in
 -- ReplicatedStorage.CoinProducts and key packs defined in
--- ReplicatedStorage.KeyProducts.  Awards currency via the existing
+-- ReplicatedStorage.KeyProducts and shard packs defined in
+-- ReplicatedStorage.ShardProducts. Awards currency via the existing
 -- CurrencyService module and persists receipt IDs to prevent duplicates.
 --------------------------------------------------------------------------------
 
@@ -47,6 +48,24 @@ do
 		end
 	else
 		warn("[CoinShopReceipt] KeyProducts module not found – key receipt handler disabled")
+	end
+end
+
+--------------------------------------------------------------------------------
+-- Load shared ShardProducts config
+--------------------------------------------------------------------------------
+local ShardProducts
+do
+	local mod = ReplicatedStorage:WaitForChild("ShardProducts", 15)
+	if mod and mod:IsA("ModuleScript") then
+		local ok, result = pcall(require, mod)
+		if ok then
+			ShardProducts = result
+		else
+			warn("[CoinShopReceipt] Failed to require ShardProducts:", tostring(result))
+		end
+	else
+		warn("[CoinShopReceipt] ShardProducts module not found – shard receipt handler disabled")
 	end
 end
 
@@ -104,13 +123,14 @@ local function isReceiptProcessed(receiptId)
 	return false
 end
 
---- Mark a receipt as processed.
-local function markReceiptProcessed(receiptId, playerId, productId, coins)
+-- Mark a receipt as processed.
+local function markReceiptProcessed(receiptId, playerId, productId, amount, awardedType)
 	local ok, err = pcall(function()
 		receiptStore:SetAsync(receiptKey(receiptId), {
 			playerId  = playerId,
 			productId = productId,
-			coins     = coins,
+			amount    = amount,
+			type      = awardedType,
 			time      = os.time(),
 		})
 	end)
@@ -131,11 +151,12 @@ local function processReceipt(receiptInfo)
 	print("[CoinShopReceipt] Processing receipt:", receiptId,
 		"Player:", playerId, "Product:", productId)
 
-	-- 1) Determine what this product grants (coins or keys)
+	-- 1) Determine what this product grants (coins, keys, or shards)
 	local coinsToAward = CoinProducts and CoinProducts.CoinsByProductId and CoinProducts.CoinsByProductId[productId]
 	local keysToAward  = KeyProducts and KeyProducts.KeysByProductId and KeyProducts.KeysByProductId[productId]
+	local shardsToAward = ShardProducts and ShardProducts.ShardsByProductId and ShardProducts.ShardsByProductId[productId]
 
-	if not coinsToAward and not keysToAward then
+	if not coinsToAward and not keysToAward and not shardsToAward then
 		-- Not one of our products – another ProcessReceipt handler may
 		-- handle it if you add one later. Return NotProcessedYet so Roblox
 		-- retries and the correct handler can pick it up (or it times out).
@@ -184,15 +205,25 @@ local function processReceipt(receiptInfo)
 		end
 	end
 
+	if shardsToAward then
+		local awardOk, awardErr = pcall(function()
+			CurrencyService:AddSalvage(playerObj, shardsToAward, "purchase")
+		end)
+		if not awardOk then
+			warn("[CoinShopReceipt] AddSalvage failed for", playerObj.Name, ":", tostring(awardErr))
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+	end
+
 	-- 5) Save immediately so the balance is persisted
 	pcall(function()
 		CurrencyService:SaveForPlayer(playerObj)
 	end)
 
 	-- 6) Mark receipt as processed
-	local awardedAmount = coinsToAward or keysToAward
-	local awardedType = coinsToAward and "coins" or "keys"
-	markReceiptProcessed(receiptId, playerId, productId, awardedAmount)
+	local awardedAmount = coinsToAward or keysToAward or shardsToAward
+	local awardedType = coinsToAward and "coins" or (keysToAward and "keys" or "shards")
+	markReceiptProcessed(receiptId, playerId, productId, awardedAmount, awardedType)
 
 	-- 7) Track Robux spent for achievements
 	local robuxPrice = nil
@@ -200,6 +231,8 @@ local function processReceipt(receiptInfo)
 		robuxPrice = CoinProducts.PriceByProductId[productId]
 	elseif keysToAward and KeyProducts and KeyProducts.PriceByProductId then
 		robuxPrice = KeyProducts.PriceByProductId[productId]
+	elseif shardsToAward and ShardProducts and ShardProducts.PriceByProductId then
+		robuxPrice = ShardProducts.PriceByProductId[productId]
 	end
 	if robuxPrice and robuxPrice > 0 then
 		task.spawn(function()

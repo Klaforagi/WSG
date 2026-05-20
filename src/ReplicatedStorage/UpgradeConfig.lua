@@ -10,26 +10,26 @@
 local UpgradeConfig = {}
 
 --------------------------------------------------------------------------------
--- Upgrade IDs (the only two upgrade paths)
+-- Upgrade IDs
 --------------------------------------------------------------------------------
 UpgradeConfig.MELEE  = "melee_weapon"
 UpgradeConfig.RANGED = "ranged_weapon"
-
---- All valid upgrade ids for validation
-UpgradeConfig.ValidIds = {
-	[UpgradeConfig.MELEE]  = true,
-	[UpgradeConfig.RANGED] = true,
-}
+UpgradeConfig.HEALTH = "max_health"
 
 --------------------------------------------------------------------------------
--- Cost tuning  (Scrap-based, flat per-level cost)
+-- Cost tuning  (Shard-based)
 --------------------------------------------------------------------------------
 UpgradeConfig.CURRENCY      = "scrap"  -- payment currency for upgrades
-UpgradeConfig.BASE_COST     = 50       -- flat scrap cost per level (was coin-based exponential)
-UpgradeConfig.COST_EXPONENT = 1.0      -- 1.0 = flat (kept for legacy compatibility)
+UpgradeConfig.BASE_COST     = 50        -- legacy default for weapon upgrades
+UpgradeConfig.COST_EXPONENT = 1.0       -- 1.0 = flat (kept for legacy compatibility)
 
--- Player-level requirement to upgrade. Set to false to disable the gate.
+-- Legacy global player-level requirement for weapon upgrades.
 UpgradeConfig.REQUIRE_PLAYER_LEVEL = false
+
+UpgradeConfig.HEALTH_COST = 100
+UpgradeConfig.HEALTH_MAX_LEVEL = 10
+UpgradeConfig.HEALTH_LEVEL_STEP = 10
+UpgradeConfig.HEALTH_BONUS_PER_LEVEL = 10
 
 --------------------------------------------------------------------------------
 -- PvP damage tuning  (capped for balance)
@@ -63,24 +63,59 @@ UpgradeConfig.PvE = {
 --------------------------------------------------------------------------------
 -- Display metadata per upgrade type
 --------------------------------------------------------------------------------
-UpgradeConfig.Display = {
+UpgradeConfig.Definitions = {
 	[UpgradeConfig.MELEE] = {
-		Title         = "MELEE",
+		Title         = "Melee Damage",
 		Description   = "Permanently increases melee weapon power.",
 		Glyph         = "\u{2694}",    -- ⚔
 		Accent        = Color3.fromRGB(255, 120, 65),
 		ImageId       = "",
 		ImageRotation = -12,
+		Cost          = UpgradeConfig.BASE_COST,
+		Currency      = UpgradeConfig.CURRENCY,
+		Infinite      = true,
+		ButtonText    = "UPGRADE",
+		StatText      = "+damage",
 	},
 	[UpgradeConfig.RANGED] = {
-		Title         = "RANGED",
+		Title         = "Ranged Damage",
 		Description   = "Permanently increases ranged weapon power.",
 		Glyph         = "\u{1F3AF}",   -- 🎯
 		Accent        = Color3.fromRGB(80, 165, 255),
 		ImageId       = "",
 		ImageRotation = 12,
+		Cost          = UpgradeConfig.BASE_COST,
+		Currency      = UpgradeConfig.CURRENCY,
+		Infinite      = true,
+		ButtonText    = "UPGRADE",
+		StatText      = "+damage",
+	},
+	[UpgradeConfig.HEALTH] = {
+		Title              = "Max Health",
+		Description        = "Increase your maximum health.",
+		Glyph              = "\u{2665}",
+		Accent             = Color3.fromRGB(95, 235, 120),
+		ImageId            = "",
+		ImageRotation      = 0,
+		Cost               = UpgradeConfig.HEALTH_COST,
+		Currency           = UpgradeConfig.CURRENCY,
+		MaxLevel           = UpgradeConfig.HEALTH_MAX_LEVEL,
+		PlayerLevelStep    = UpgradeConfig.HEALTH_LEVEL_STEP,
+		HealthPerLevel     = UpgradeConfig.HEALTH_BONUS_PER_LEVEL,
+		UsesLevelBar       = true,
+		ButtonText         = "UPGRADE",
+		LevelLabelPrefix   = "Lv.",
+		ProgressLabel      = "Health Progress",
+		StatText           = "+10 HP",
 	},
 }
+
+UpgradeConfig.Display = UpgradeConfig.Definitions
+
+UpgradeConfig.ValidIds = {}
+for upgradeId, _ in pairs(UpgradeConfig.Definitions) do
+	UpgradeConfig.ValidIds[upgradeId] = true
+end
 
 --------------------------------------------------------------------------------
 -- Internal: round a raw cost to a clean player-facing number.
@@ -95,15 +130,27 @@ local function roundCost(raw)
 	end
 end
 
+local function getDefinition(upgradeId)
+	return UpgradeConfig.Definitions[upgradeId]
+end
+
 --------------------------------------------------------------------------------
 -- Helper functions  (used by server AND client)
 --------------------------------------------------------------------------------
 
+function UpgradeConfig.GetDefinition(upgradeId)
+	return getDefinition(upgradeId)
+end
+
 --- Cost for the next upgrade at the given level.
 --- Returns a flat scrap cost (50) by default; preserved exponent path for
 --- legacy callers that may still want a curve.
-function UpgradeConfig.GetCost(level)
+function UpgradeConfig.GetCost(level, upgradeId)
 	level = math.max(0, math.floor(level or 0))
+	local def = getDefinition(upgradeId)
+	if def and type(def.Cost) == "number" then
+		return math.max(0, math.floor(def.Cost))
+	end
 	local exp = UpgradeConfig.COST_EXPONENT or 1.0
 	if exp <= 1.000001 then
 		return UpgradeConfig.BASE_COST
@@ -113,8 +160,59 @@ function UpgradeConfig.GetCost(level)
 end
 
 --- Currency type accessor (always "scrap" now; older code may have asked for coins).
-function UpgradeConfig.GetCurrency()
-	return UpgradeConfig.CURRENCY or "scrap"
+function UpgradeConfig.GetCurrency(upgradeId)
+	local def = getDefinition(upgradeId)
+	return (def and def.Currency) or UpgradeConfig.CURRENCY or "scrap"
+end
+
+function UpgradeConfig.GetMaxLevel(upgradeId)
+	local def = getDefinition(upgradeId)
+	if not def then return nil end
+	if type(def.MaxLevel) == "number" and def.MaxLevel >= 0 then
+		return math.floor(def.MaxLevel)
+	end
+	return nil
+end
+
+function UpgradeConfig.HasCap(upgradeId)
+	return UpgradeConfig.GetMaxLevel(upgradeId) ~= nil
+end
+
+function UpgradeConfig.IsCapped(level, upgradeId)
+	level = math.max(0, math.floor(level or 0))
+	local maxLevel = UpgradeConfig.GetMaxLevel(upgradeId)
+	return maxLevel ~= nil and level >= maxLevel
+end
+
+function UpgradeConfig.GetRequiredPlayerLevel(level, upgradeId)
+	level = math.max(0, math.floor(level or 0))
+	local def = getDefinition(upgradeId)
+	if def and type(def.PlayerLevelStep) == "number" and def.PlayerLevelStep > 0 then
+		local nextLevel = level + 1
+		local maxLevel = UpgradeConfig.GetMaxLevel(upgradeId)
+		if maxLevel and nextLevel > maxLevel then
+			return nil
+		end
+		return nextLevel * math.floor(def.PlayerLevelStep)
+	end
+	if UpgradeConfig.REQUIRE_PLAYER_LEVEL == true then
+		return level + 1
+	end
+	return nil
+end
+
+function UpgradeConfig.IsPlayerLevelLocked(level, playerLevel, upgradeId)
+	local requiredLevel = UpgradeConfig.GetRequiredPlayerLevel(level, upgradeId)
+	if requiredLevel == nil then
+		return false, nil
+	end
+	playerLevel = math.max(1, math.floor(playerLevel or 1))
+	return playerLevel < requiredLevel, requiredLevel
+end
+
+function UpgradeConfig.GetHealthBonus(level)
+	level = math.max(0, math.floor(level or 0))
+	return level * UpgradeConfig.HEALTH_BONUS_PER_LEVEL
 end
 
 --- PvP damage multiplier (capped).

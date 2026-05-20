@@ -133,7 +133,6 @@ end
 
 local MENU_DEFS = {
     { id = "Missions", label = "QUESTS", iconKey = "Quests" },
-    { id = "Upgrade", label = "UPGRADE", iconKey = "Upgrade" },
     { id = "Team", label = "TEAM", iconKey = "Team" },
 }
 
@@ -1441,6 +1440,9 @@ local function tweenWindowOut(done)
     end
 end
 
+local MenuController = nil
+local salvageApi = nil
+
 closeBtn.MouseButton1Click:Connect(function()
     if MenuController then
         MenuController.CloseAllMenus()
@@ -1457,14 +1459,12 @@ local invModule = sideUIFolder and sideUIFolder:WaitForChild("InventoryUI", 5)
 local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
 local questsModule = sideUIFolder and sideUIFolder:WaitForChild("DailyQuestsUI", 5)
 local boostsModule = sideUIFolder and sideUIFolder:WaitForChild("BoostsUI", 5)
-local upgradesModule = sideUIFolder and sideUIFolder:WaitForChild("UpgradesUI", 5)
 local crateOpeningModule = sideUIFolder and sideUIFolder:WaitForChild("CrateOpeningUI", 5)
 if not sideUIFolder then
     warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
 end
 
 -- MenuController: centralized menu management (shared by all menus including Team)
-local MenuController = nil
 do
     local mcMod = sideUIFolder and sideUIFolder:WaitForChild("MenuController", 5)
     if mcMod and mcMod:IsA("ModuleScript") then
@@ -1568,7 +1568,7 @@ local function populateModalContent(mod, label)
     -- Currency row visibility rules:
     -- Shop: show Coins + Keys + Salvage
     -- Inventory: show Coins + Keys + Salvage
-    local isShop = (label == "SHOP" or label == "BOOSTS" or label == "UPGRADES")
+    local isShop = (label == "SHOP" or label == "BOOSTS")
     local isInventory = (label == "INVENTORY")
     local showCurrency = isShop or isInventory
     currencyRow.Visible = showCurrency
@@ -1689,8 +1689,6 @@ if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
 if questsModule then registerModalMenu("Quests", questsModule, "QUESTS") end
-if upgradesModule then registerModalMenu("Upgrades", upgradesModule, "UPGRADES") end
-
 -- Legacy helper kept for any external code that may still reference it
 local function requestShowModule(mod, label)
     if not mod then return end
@@ -1700,7 +1698,6 @@ local function requestShowModule(mod, label)
         [invModule]      = "Inventory",
         [optionsModule]  = "Options",
         [questsModule]   = "Quests",
-        [upgradesModule] = "Upgrades",
     }
     local menuName = nameMap[mod]
     if MenuController and menuName then
@@ -1751,7 +1748,6 @@ if KeyDisplayModule and KeyDisplayModule.Create then
 end
 
 -- SALVAGE SYSTEM  – Salvage API (no HUD row; displayed in Inventory/Shop only)
-local salvageApi
 if SalvageDisplayModule and SalvageDisplayModule.Create then
     local hiddenHost = Instance.new("Frame")
     hiddenHost.Name = "SalvageApiHost"
@@ -1862,7 +1858,6 @@ local function OpenPage(id)
         local idToMenu = {
             Options  = "Options",
             Missions = "Quests",
-            Upgrade  = "Upgrades",
             Team     = "Team",
         }
         local menuName = idToMenu[id]
@@ -1874,7 +1869,6 @@ local function OpenPage(id)
         -- Fallback if MenuController failed to load
         if id == "Options" then toggleOptionsMenu(); return end
         if id == "Missions" then requestShowModule(questsModule, "QUESTS"); return end
-        if id == "Upgrade" then requestShowModule(upgradesModule, "UPGRADES"); return end
         if id == "Team" then
             if type(_G.TeamStatsToggle) == "function" then pcall(_G.TeamStatsToggle) end
             return

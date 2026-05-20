@@ -636,13 +636,23 @@ pcall(function()
 	if sideUIFolder then
 		local moduleNames = {
 			"DailyQuestsUI", "ShopUI", "InventoryUI", "OptionsUI",
-			"UpgradesUI", "BoostsUI", "DailyRewardsUI", "EmoteUI",
+			"BoostsUI", "DailyRewardsUI", "EmoteUI",
 		}
 		for _, name in ipairs(moduleNames) do
 			local mod = sideUIFolder:FindFirstChild(name)
 			if mod and mod:IsA("ModuleScript") then
 				pcall(require, mod)
 			end
+		end
+	end
+end)
+
+pcall(function()
+	local modulesFolder = ReplicatedStorage:FindFirstChild("Modules")
+	if modulesFolder then
+		local forgeModule = modulesFolder:FindFirstChild("ForgeStallUI")
+		if forgeModule and forgeModule:IsA("ModuleScript") then
+			pcall(require, forgeModule)
 		end
 	end
 end)

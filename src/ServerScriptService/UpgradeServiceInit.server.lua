@@ -93,6 +93,17 @@ local function syncUpgradeLevelAchievements(player)
 	end
 end
 
+local function applyLoadedHealthUpgrade(player)
+	if not player or not UpgradeService.ApplyHealthUpgrade then return end
+	local character = player.Character
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or not humanoid.Parent then return end
+	UpgradeService:ApplyHealthUpgrade(player, humanoid, {
+		adjustCurrentHealth = true,
+	})
+end
+
 --------------------------------------------------------------------------------
 -- Create Remotes (inside ReplicatedStorage.Remotes folder)
 --------------------------------------------------------------------------------
@@ -178,6 +189,7 @@ Players.PlayerAdded:Connect(function(player)
 		end
 		local state = UpgradeService:GetAllLevels(player)
 		state._playerLevel = UpgradeService:GetPlayerLevel(player)
+		applyLoadedHealthUpgrade(player)
 		pcall(function()
 			stateUpdatedRE:FireClient(player, state)
 		end)
@@ -199,6 +211,7 @@ for _, player in ipairs(Players:GetPlayers()) do
 		end
 		local state = UpgradeService:GetAllLevels(player)
 		state._playerLevel = UpgradeService:GetPlayerLevel(player)
+		applyLoadedHealthUpgrade(player)
 		pcall(function()
 			stateUpdatedRE:FireClient(player, state)
 		end)

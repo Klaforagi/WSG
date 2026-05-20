@@ -10,6 +10,7 @@ AssetCodes.images = {
     Coin = "rbxassetid://15589362394",
     Shards = "rbxassetid://138717301679393",
     Key = "rbxassetid://126037497405484",
+    Robux = "rbxassetid://11560341824",
     BlueFlag = "rbxassetid://397459040",
     RedFlag = "rbxassetid://2017769589",
     Shop = "rbxassetid://12674129868",

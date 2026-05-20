@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 
 -- Load server-side player settings module
 local PlayerSettingsConfig = nil
+local UpgradeService = nil
 do
 	local ok, mod = pcall(function()
 		return require(script.Parent:WaitForChild("PlayerSettingsConfig"))
@@ -14,6 +15,17 @@ do
 	else
 		warn("[PlayerSettings] PlayerSettingsConfig missing or failed to load; using defaults")
 		PlayerSettingsConfig = {}
+	end
+end
+
+do
+	local ok, mod = pcall(function()
+		return require(script.Parent:WaitForChild("UpgradeService"))
+	end)
+	if ok and type(mod) == "table" then
+		UpgradeService = mod
+	else
+		warn("[PlayerSettings] UpgradeService missing or failed to load; health upgrades will not apply on spawn")
 	end
 end
 
@@ -100,6 +112,13 @@ local function applyCharacterSettings(char: Model)
 
 	-- Start server-authoritative passive health regen if enabled in config
 	local hum = char:FindFirstChildOfClass("Humanoid")
+	local player = Players:GetPlayerFromCharacter(char)
+	if hum and player and UpgradeService and type(UpgradeService.ApplyHealthUpgrade) == "function" then
+		UpgradeService:ApplyHealthUpgrade(player, hum, {
+			adjustCurrentHealth = true,
+		})
+	end
+
 	if hum and PlayerSettingsConfig and PlayerSettingsConfig.HealthRegen and PlayerSettingsConfig.HealthRegen.Enabled then
 		local regenCfg = PlayerSettingsConfig.HealthRegen
 		local configuredStages = regenCfg.Stages
