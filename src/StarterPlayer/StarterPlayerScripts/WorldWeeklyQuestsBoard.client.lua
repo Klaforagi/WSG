@@ -3,15 +3,15 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
-local BOARD_MODEL_NAME = "LeaderboardQuests"
+local BOARD_MODEL_NAME = "LeaderboardWeeklyQuests"
 local TITLE_PART_NAME = "Leaderboardtitlescreen"
 local LIST_PART_NAME = "Leaderboardscreen"
 local TIMER_PART_NAME = "Leaderboardtimer"
 local RESET_PART_NAME = "ResetQuests"
-local TITLE_GUI_NAME = "DailyQuestBoardTitleSurfaceGui"
-local LIST_GUI_NAME = "DailyQuestBoardListSurfaceGui"
-local TIMER_GUI_NAME = "DailyQuestBoardTimerSurfaceGui"
-local RESET_OVERLAY_GUI_NAME = "DailyQuestResetOverlayGui"
+local TITLE_GUI_NAME = "WeeklyQuestBoardTitleSurfaceGui"
+local LIST_GUI_NAME = "WeeklyQuestBoardListSurfaceGui"
+local TIMER_GUI_NAME = "WeeklyQuestBoardTimerSurfaceGui"
+local RESET_OVERLAY_GUI_NAME = "WeeklyQuestResetOverlayGui"
 local BOARD_FACE = Enum.NormalId.Right
 local REFRESH_INTERVAL_SECONDS = 15
 
@@ -36,11 +36,11 @@ local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local questRemotesFolder = remotesFolder:WaitForChild("Quests")
-local getQuestsRF = questRemotesFolder:WaitForChild("GetQuests")
-local questProgressRE = questRemotesFolder:WaitForChild("QuestProgress")
-local questStateChangedRE = questRemotesFolder:WaitForChild("QuestStateChanged")
-local claimQuestRF = questRemotesFolder:WaitForChild("ClaimQuest")
-local resetDailyQuestsRF = questRemotesFolder:WaitForChild("RequestResetDailyQuests")
+local getWeeklyQuestsRF = questRemotesFolder:WaitForChild("GetWeeklyQuests")
+local weeklyProgressRE = questRemotesFolder:WaitForChild("WeeklyQuestProgress")
+local weeklyStateChangedRE = questRemotesFolder:WaitForChild("WeeklyQuestStateChanged")
+local claimWeeklyQuestRF = questRemotesFolder:WaitForChild("ClaimWeeklyQuest")
+local resetWeeklyQuestsRF = questRemotesFolder:WaitForChild("RequestResetWeeklyQuests")
 local TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
 
 local claimSoundOk, ClaimSound = pcall(function()
@@ -59,10 +59,9 @@ if assetCodesOk and type(AssetCodes) == "table" then
 end
 
 local latestQuests = {}
-local questIndexById = {}
-local rowByQuestId = {}
-local pendingClaimsById = {}
-local titleGui = nil
+local questPositionByIndex = {}
+local rowByQuestIndex = {}
+local pendingClaimsByIndex = {}
 local fetchQuests
 local applyQuestList
 local activeResetPart = nil
@@ -225,20 +224,20 @@ local function buildCoinIcon(parent)
     return coin
 end
 
-local function closeResetPurchaseModal()
-    resetRequestInFlight = false
-    if resetModalLayer then
-        resetModalLayer:Destroy()
-        resetModalLayer = nil
-    end
-end
-
 local function disconnectResetTouchConnection()
     if resetTouchConnection then
         resetTouchConnection:Disconnect()
         resetTouchConnection = nil
     end
     activeResetPart = nil
+end
+
+local function closeResetPurchaseModal()
+    resetRequestInFlight = false
+    if resetModalLayer then
+        resetModalLayer:Destroy()
+        resetModalLayer = nil
+    end
 end
 
 local function isLocalCharacterHit(hit)
@@ -288,7 +287,7 @@ local function showResetPurchaseModal()
     title.BackgroundTransparency = 1
     title.Font = Enum.Font.GothamBlack
     title.Size = UDim2.new(1, 0, 0, 34)
-    title.Text = "BUY DAILY QUEST RESET?"
+    title.Text = "BUY WEEKLY QUEST RESET?"
     title.TextColor3 = GOLD
     title.TextScaled = true
     title.TextXAlignment = Enum.TextXAlignment.Center
@@ -302,7 +301,7 @@ local function showResetPurchaseModal()
     body.Font = Enum.Font.GothamMedium
     body.Position = UDim2.new(0, 0, 0, 48)
     body.Size = UDim2.new(1, 0, 0, 94)
-    body.Text = "This will replace all 3 current daily quests with 3 new ones.\n\nPlaceholder purchase flow: confirming here will reset them immediately."
+    body.Text = "This will replace all 3 current weekly quests with 3 new ones.\n\nPlaceholder purchase flow: confirming here will reset them immediately."
     body.TextColor3 = WHITE
     body.TextScaled = true
     body.TextWrapped = true
@@ -381,11 +380,11 @@ local function showResetPurchaseModal()
         confirmButton.Active = false
         cancelButton.Active = false
         status.TextColor3 = WHITE
-        status.Text = "Resetting daily quests..."
+        status.Text = "Resetting weekly quests..."
 
         local success, message, updatedQuests = false, "Request failed", nil
         local ok = pcall(function()
-            success, message, updatedQuests = resetDailyQuestsRF:InvokeServer()
+            success, message, updatedQuests = resetWeeklyQuestsRF:InvokeServer()
         end)
 
         resetRequestInFlight = false
@@ -403,7 +402,7 @@ local function showResetPurchaseModal()
         end
 
         status.TextColor3 = ERROR_RED
-        status.Text = tostring(message or "Could not reset daily quests.")
+        status.Text = tostring(message or "Could not reset weekly quests.")
     end)
 end
 
@@ -449,7 +448,7 @@ local function ensureTitleGui(titlePart)
     label.BorderSizePixel = 0
     label.Size = UDim2.fromScale(1, 1)
     label.Font = Enum.Font.GothamBlack
-    label.Text = "DAILY QUESTS"
+    label.Text = "WEEKLY QUESTS"
     label.TextColor3 = GOLD
     label.TextScaled = true
     label.TextXAlignment = Enum.TextXAlignment.Center
@@ -516,7 +515,7 @@ local function ensureListGui(listPart)
 end
 
 local function clearQuestRows(scroll)
-    rowByQuestId = {}
+    rowByQuestIndex = {}
     for _, child in ipairs(scroll:GetChildren()) do
         if child:GetAttribute("QuestRow") then
             child:Destroy()
@@ -524,12 +523,20 @@ local function clearQuestRows(scroll)
     end
 end
 
+local function formatProgressText(quest, progress, goal)
+    local displayUnit = quest.displayUnit
+    if type(displayUnit) == "string" and displayUnit ~= "" then
+        return string.format("%d/%d %s", progress, goal, displayUnit)
+    end
+    return string.format("%d/%d", progress, goal)
+end
+
 local function setRowState(row, quest)
     local progress = math.clamp(tonumber(quest.progress) or 0, 0, tonumber(quest.goal) or 0)
     local goal = math.max(1, tonumber(quest.goal) or 1)
     local complete = progress >= goal
     local claimed = quest.claimed == true
-    local claimable = complete and not claimed and not pendingClaimsById[quest.id]
+    local claimable = complete and not claimed and not pendingClaimsByIndex[quest.index]
 
     local titleLabel = row:FindFirstChild("QuestTitle", true)
     local progressLabel = row:FindFirstChild("ProgressText", true)
@@ -539,7 +546,7 @@ local function setRowState(row, quest)
     local claimButton = row:FindFirstChild("ClaimButton", true)
 
     if titleLabel and titleLabel:IsA("TextLabel") then
-        titleLabel.Text = tostring(quest.desc or quest.title or "Daily Quest")
+        titleLabel.Text = tostring(quest.desc or quest.title or "Weekly Quest")
         titleLabel.TextColor3 = claimed and MUTED or WHITE
     end
     if progressLabel and progressLabel:IsA("TextLabel") then
@@ -547,7 +554,7 @@ local function setRowState(row, quest)
             progressLabel.Text = "CLAIMED"
             progressLabel.TextColor3 = CLAIMED
         else
-            progressLabel.Text = string.format("%d/%d", progress, goal)
+            progressLabel.Text = formatProgressText(quest, progress, goal)
             progressLabel.TextColor3 = complete and WHITE or MUTED
         end
     end
@@ -578,7 +585,7 @@ end
 
 local function createQuestRow(scroll, quest, layoutOrder)
     local row = Instance.new("Frame")
-    row.Name = tostring(quest.id or ("Quest_" .. tostring(layoutOrder)))
+    row.Name = tostring(quest.id or ("WeeklyQuest_" .. tostring(quest.index or layoutOrder)))
     row.BackgroundColor3 = ROW_BG
     row.BorderSizePixel = 0
     row.LayoutOrder = layoutOrder
@@ -641,7 +648,7 @@ local function createQuestRow(scroll, quest, layoutOrder)
     titleLabel.Position = UDim2.new(0, 0, 0, 0)
     titleLabel.Size = UDim2.new(0.72, 0, 0.48, 0)
     titleLabel.Font = Enum.Font.GothamBlack
-    titleLabel.Text = tostring(quest.desc or quest.title or "Daily Quest")
+    titleLabel.Text = tostring(quest.desc or quest.title or "Weekly Quest")
     titleLabel.TextScaled = true
     titleLabel.TextColor3 = WHITE
     titleLabel.TextWrapped = false
@@ -680,8 +687,13 @@ local function createQuestRow(scroll, quest, layoutOrder)
     progressFill.Parent = progressTrack
 
     claimButton.MouseButton1Click:Connect(function()
-        local currentQuest = latestQuests[questIndexById[quest.id] or layoutOrder]
-        if not currentQuest or pendingClaimsById[quest.id] then
+        local questIndex = tonumber(quest.index)
+        if not questIndex then
+            return
+        end
+
+        local currentQuest = latestQuests[questPositionByIndex[questIndex] or layoutOrder]
+        if not currentQuest or pendingClaimsByIndex[questIndex] then
             return
         end
 
@@ -692,15 +704,15 @@ local function createQuestRow(scroll, quest, layoutOrder)
             return
         end
 
-        pendingClaimsById[quest.id] = true
+        pendingClaimsByIndex[questIndex] = true
         setRowState(row, currentQuest)
 
         local success = false
         local ok = pcall(function()
-            success = claimQuestRF:InvokeServer(quest.id)
+            success = claimWeeklyQuestRF:InvokeServer(questIndex)
         end)
 
-        pendingClaimsById[quest.id] = nil
+        pendingClaimsByIndex[questIndex] = nil
 
         if ok and success then
             currentQuest.claimed = true
@@ -715,7 +727,7 @@ local function createQuestRow(scroll, quest, layoutOrder)
         fetchQuests()
     end)
 
-    rowByQuestId[quest.id] = row
+    rowByQuestIndex[quest.index] = row
     setRowState(row, quest)
 end
 
@@ -725,7 +737,7 @@ local function renderQuestBoard(quests)
         return false
     end
 
-    titleGui = ensureTitleGui(titlePart)
+    ensureTitleGui(titlePart)
     local _, scroll = ensureListGui(listPart)
     clearQuestRows(scroll)
 
@@ -736,7 +748,7 @@ local function renderQuestBoard(quests)
         empty.BorderSizePixel = 0
         empty.Size = UDim2.new(1, 0, 0, 120)
         empty.Font = Enum.Font.GothamBold
-        empty.Text = "No daily quests available."
+        empty.Text = "No weekly quests available."
         empty.TextColor3 = MUTED
         empty.TextScaled = true
         empty.Parent = scroll
@@ -762,18 +774,21 @@ local function renderResetTimer()
     local root = surfaceGui:FindFirstChild("Root")
     local label = root and root:FindFirstChild("Timer")
     if label and label:IsA("TextLabel") then
-        label.Text = "Resets in " .. TimeHelper.FormatCountdown(TimeHelper.SecondsUntilNextDailyReset())
+        label.Text = "Resets in " .. TimeHelper.FormatCountdown(TimeHelper.SecondsUntilNextWeeklyReset())
     end
     return true
 end
 
 applyQuestList = function(result)
     latestQuests = {}
-    questIndexById = {}
-    pendingClaimsById = {}
-    for index, quest in ipairs(result) do
-        if type(quest) == "table" and type(quest.id) == "string" then
-            latestQuests[index] = {
+    questPositionByIndex = {}
+    pendingClaimsByIndex = {}
+
+    for position, quest in ipairs(result) do
+        local questIndex = tonumber(quest.index)
+        if type(quest) == "table" and questIndex then
+            latestQuests[position] = {
+                index = questIndex,
                 id = quest.id,
                 title = quest.title,
                 desc = quest.desc,
@@ -781,8 +796,9 @@ applyQuestList = function(result)
                 goal = tonumber(quest.goal) or 1,
                 reward = tonumber(quest.reward) or 0,
                 claimed = quest.claimed == true,
+                displayUnit = quest.displayUnit,
             }
-            questIndexById[quest.id] = index
+            questPositionByIndex[questIndex] = position
         end
     end
 
@@ -792,7 +808,7 @@ end
 
 fetchQuests = function()
     local ok, result = pcall(function()
-        return getQuestsRF:InvokeServer()
+        return getWeeklyQuestsRF:InvokeServer()
     end)
     if not ok or type(result) ~= "table" then
         return false
@@ -801,21 +817,21 @@ fetchQuests = function()
     return applyQuestList(result)
 end
 
-local function updateQuestProgress(questId, newProgress)
-    local index = questIndexById[questId]
-    if not index then
+local function updateQuestProgress(questIndex, newProgress)
+    local position = questPositionByIndex[questIndex]
+    if not position then
         fetchQuests()
         return
     end
 
-    local quest = latestQuests[index]
+    local quest = latestQuests[position]
     if not quest then
         fetchQuests()
         return
     end
 
     quest.progress = math.min(tonumber(newProgress) or 0, quest.goal)
-    local row = rowByQuestId[questId]
+    local row = rowByQuestIndex[questIndex]
     if row and row.Parent then
         setRowState(row, quest)
     else
@@ -823,17 +839,15 @@ local function updateQuestProgress(questId, newProgress)
     end
 end
 
-questProgressRE.OnClientEvent:Connect(function(questId, newProgress)
-    if type(questId) ~= "string" then
+weeklyProgressRE.OnClientEvent:Connect(function(questIndex, newProgress)
+    questIndex = tonumber(questIndex)
+    if not questIndex then
         return
     end
-    updateQuestProgress(questId, newProgress)
+    updateQuestProgress(questIndex, newProgress)
 end)
 
-questStateChangedRE.OnClientEvent:Connect(function(questId, state)
-    if type(questId) ~= "string" then
-        return
-    end
+weeklyStateChangedRE.OnClientEvent:Connect(function(_, state)
     if state == "claimed" or state == "reset" then
         fetchQuests()
     end

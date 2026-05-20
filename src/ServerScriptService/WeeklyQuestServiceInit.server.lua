@@ -91,7 +91,11 @@ local claimWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "ClaimWeekl
 
 local weeklyProgressRE = ensureInstance(questsFolder, "RemoteEvent", "WeeklyQuestProgress")
 
+local weeklyStateChangedRE = ensureInstance(questsFolder, "RemoteEvent", "WeeklyQuestStateChanged")
+
 local rerollWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "RequestRerollWeeklyQuest")
+
+local resetWeeklyRF = ensureInstance(questsFolder, "RemoteFunction", "RequestResetWeeklyQuests")
 
 --------------------------------------------------------------------------------
 -- Remote handlers
@@ -104,6 +108,7 @@ claimWeeklyRF.OnServerInvoke = function(player, questIndex)
     if type(questIndex) ~= "number" then return false end
     local result = WeeklyQuestService:ClaimReward(player, questIndex)
     if result then
+        weeklyStateChangedRE:FireClient(player, questIndex, "claimed")
         -- Track weekly quest completion for achievements
         pcall(function()
             local AchievementService = require(ServerScriptService:FindFirstChild("AchievementService"))
@@ -120,6 +125,14 @@ rerollWeeklyRF.OnServerInvoke = function(player, questIndex)
         return false, "Invalid"
     end
     return BoostService:RerollQuest(player, "weekly", questIndex)
+end
+
+resetWeeklyRF.OnServerInvoke = function(player)
+    local success, message, updatedQuests = WeeklyQuestService:ResetAllQuests(player)
+    if success then
+        weeklyStateChangedRE:FireClient(player, "__all__", "reset")
+    end
+    return success, message, updatedQuests
 end
 
 --------------------------------------------------------------------------------
