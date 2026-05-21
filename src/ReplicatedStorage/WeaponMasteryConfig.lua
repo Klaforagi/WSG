@@ -5,6 +5,12 @@
 --------------------------------------------------------------------------------
 
 local WeaponMasteryConfig = {}
+local XP_PRECISION_SCALE = 10
+
+local function normalizeXPValue(xp)
+    xp = math.max(0, tonumber(xp) or 0)
+    return math.round(xp * XP_PRECISION_SCALE) / XP_PRECISION_SCALE
+end
 
 WeaponMasteryConfig.Levels = {
     { Level = 1,  XP = 0,     Title = "I",    RomanNumeral = "I",    DamageBonus = 0.0 },
@@ -20,10 +26,11 @@ WeaponMasteryConfig.Levels = {
 }
 
 WeaponMasteryConfig.XP = {
+    Hit = 0.3,
     PlayerElimination = 10,
-    MobKill = 2,
-    FlagCapture = 25,
-    DamagePer100 = 1,
+    GoblinKill = 3,
+    OrcKill = 7,
+    OgreKill = 20,
 }
 
 WeaponMasteryConfig.MaxLevel = WeaponMasteryConfig.Levels[#WeaponMasteryConfig.Levels].Level
@@ -49,7 +56,7 @@ function WeaponMasteryConfig.GetDamageBonus(level)
 end
 
 function WeaponMasteryConfig.GetLevelForXP(xp)
-    xp = math.max(0, math.floor(tonumber(xp) or 0))
+    xp = normalizeXPValue(xp)
     local level = 1
     for _, def in ipairs(WeaponMasteryConfig.Levels) do
         if xp >= def.XP then
@@ -77,7 +84,7 @@ function WeaponMasteryConfig.GetReward(level)
 end
 
 function WeaponMasteryConfig.GetProgressForXP(xp)
-    xp = math.max(0, math.floor(tonumber(xp) or 0))
+    xp = normalizeXPValue(xp)
     local level = WeaponMasteryConfig.GetLevelForXP(xp)
     local currentDef = WeaponMasteryConfig.GetLevelDef(level)
     local nextDef = WeaponMasteryConfig.GetNextLevelDef(level)

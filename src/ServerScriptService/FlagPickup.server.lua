@@ -753,13 +753,6 @@ local function setupStand(standPart)
             StatService:RegisterFlagCapture(pl)
         end
 
-        if WeaponMasteryService then
-            local instanceId = getEquippedWeaponInstanceId(pl)
-            if instanceId then
-                pcall(function() WeaponMasteryService:RegisterCapture(pl, instanceId) end)
-            end
-        end
-
         -- announce capture to clients
         local playerTeamName = capturingTeamName
         FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)

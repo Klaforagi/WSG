@@ -69,6 +69,41 @@ local function ensureRemote(className, name)
 end
 
 local masteryUpdatedRE = ensureRemote("RemoteEvent", "WeaponMasteryUpdated")
+local XP_PRECISION_SCALE = 10
+local TRACKED_MOB_XP = {
+    Goblin = Config.XP.GoblinKill or 0,
+    Orc = Config.XP.OrcKill or 0,
+    Ogre = Config.XP.OgreKill or 0,
+}
+
+local function normalizeXPValue(xp)
+    xp = math.max(0, tonumber(xp) or 0)
+    return math.round(xp * XP_PRECISION_SCALE) / XP_PRECISION_SCALE
+end
+
+local function isTrackedTeamPlayer(player)
+    if not player or not player:IsA("Player") then return false end
+    local team = player.Team
+    if not team then return false end
+    return team.Name ~= "Neutral"
+end
+
+local function getTrackedMobType(mobName)
+    if type(mobName) ~= "string" or mobName == "" then
+        return nil
+    end
+    local lowered = string.lower(mobName)
+    if string.find(lowered, "goblin", 1, true) then
+        return "Goblin"
+    end
+    if string.find(lowered, "orc", 1, true) then
+        return "Orc"
+    end
+    if string.find(lowered, "ogre", 1, true) then
+        return "Ogre"
+    end
+    return nil
+end
 
 local function dsKey(player)
     return "WpnMastery_" .. tostring(player.UserId)
@@ -104,7 +139,7 @@ local function normalizeEntry(entry)
     if type(entry) ~= "table" then
         entry = newEntry()
     end
-    entry.xp = math.max(0, math.floor(tonumber(entry.xp) or 0))
+    entry.xp = normalizeXPValue(entry.xp)
     entry.level = Config.GetLevelForXP(entry.xp)
     entry.eliminations = math.max(0, math.floor(tonumber(entry.eliminations) or 0))
     entry.mobKills = math.max(0, math.floor(tonumber(entry.mobKills) or 0))
@@ -152,7 +187,7 @@ local function mergeEntryInto(targetEntry, sourceEntry)
     targetEntry = normalizeEntry(targetEntry or newEntry())
     sourceEntry = normalizeEntry(copyTable(sourceEntry))
 
-    targetEntry.xp = (targetEntry.xp or 0) + (sourceEntry.xp or 0)
+    targetEntry.xp = normalizeXPValue((targetEntry.xp or 0) + (sourceEntry.xp or 0))
     targetEntry.eliminations = (targetEntry.eliminations or 0) + (sourceEntry.eliminations or 0)
     targetEntry.mobKills = (targetEntry.mobKills or 0) + (sourceEntry.mobKills or 0)
     targetEntry.captures = (targetEntry.captures or 0) + (sourceEntry.captures or 0)
@@ -311,12 +346,13 @@ end
 
 local function addProgress(player, instanceId, xpAmount, statKey, statAmount, meta)
     if not player or not player.Parent then return nil end
+    if not isTrackedTeamPlayer(player) then return nil end
     if type(instanceId) ~= "string" or instanceId == "" then return nil end
 
     local entry, weaponName = getEntryForInstance(player, instanceId, true)
     if not entry or not weaponName then return nil end
 
-    xpAmount = math.max(0, math.floor(tonumber(xpAmount) or 0))
+    xpAmount = normalizeXPValue(xpAmount)
     statAmount = math.max(0, math.floor(tonumber(statAmount) or 0))
     local oldLevel = entry.level or 1
 
@@ -324,7 +360,7 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
         entry[statKey] = math.max(0, math.floor(tonumber(entry[statKey]) or 0)) + statAmount
     end
     if xpAmount > 0 then
-        entry.xp = (entry.xp or 0) + xpAmount
+        entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
         entry.level = Config.GetLevelForXP(entry.xp)
     end
     entry.lastUsedAt = os.time()
@@ -527,16 +563,26 @@ function WeaponMasteryService:RegisterElimination(player, instanceId)
     return addProgress(player, instanceId, Config.XP.PlayerElimination, "eliminations", 1, { kind = "PlayerElimination" })
 end
 
-function WeaponMasteryService:RegisterMobKill(player, instanceId)
-    return addProgress(player, instanceId, Config.XP.MobKill, "mobKills", 1, { kind = "MobKill" })
+function WeaponMasteryService:RegisterMobKill(player, instanceId, mobName)
+    local mobType = getTrackedMobType(mobName)
+    local xpAmount = mobType and TRACKED_MOB_XP[mobType] or 0
+    if xpAmount <= 0 then
+        return nil
+    end
+    return addProgress(player, instanceId, xpAmount, "mobKills", 1, {
+        kind = "MobKill",
+        mobType = mobType,
+        mobName = mobName,
+    })
 end
 
 function WeaponMasteryService:RegisterCapture(player, instanceId)
-    return addProgress(player, instanceId, Config.XP.FlagCapture, "captures", 1, { kind = "FlagCapture" })
+    return nil
 end
 
 function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     if not player or not player.Parent then return nil end
+    if not isTrackedTeamPlayer(player) then return nil end
     if type(instanceId) ~= "string" or instanceId == "" then return nil end
 
     local entry, weaponName = getEntryForInstance(player, instanceId, true)
@@ -545,18 +591,16 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     amount = math.max(0, math.floor(tonumber(amount) or 0))
     if amount <= 0 then return nil end
 
-    local beforeBucket = math.floor((entry.damage or 0) / 100)
     entry.damage = (entry.damage or 0) + amount
     entry.lastUsedAt = os.time()
-    local afterBucket = math.floor((entry.damage or 0) / 100)
-    local xpAmount = math.max(0, afterBucket - beforeBucket) * (Config.XP.DamagePer100 or 0)
+    local xpAmount = normalizeXPValue(Config.XP.Hit or 0)
 
     if xpAmount > 0 then
         local oldLevel = entry.level or 1
-        entry.xp = (entry.xp or 0) + xpAmount
+        entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
         entry.level = Config.GetLevelForXP(entry.xp)
         fireUpdated(player, instanceId, weaponName, {
-            kind = "Damage",
+            kind = "Hit",
             deltaXP = xpAmount,
             leveledUp = (entry.level or 1) > oldLevel,
             oldLevel = oldLevel,

@@ -231,6 +231,29 @@ currentStreaks = {}  -- [Player] -> number (declared before PlayerRemoving handl
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
+local function getMonsterCareerStatKey(metadata)
+    if type(metadata) ~= "table" then
+        return nil
+    end
+
+    local mobName = metadata.mobType or metadata.mobName
+    if type(mobName) ~= "string" or mobName == "" then
+        return nil
+    end
+
+    local lowered = string.lower(mobName)
+    if string.find(lowered, "goblin", 1, true) then
+        return "GoblinsEliminated"
+    end
+    if string.find(lowered, "orc", 1, true) then
+        return "OrcsEliminated"
+    end
+    if string.find(lowered, "ogre", 1, true) then
+        return "OgresEliminated"
+    end
+    return nil
+end
+
 StatService:OnStatEvent(function(payload)
     local player = payload.player
     local action = payload.action
@@ -245,6 +268,10 @@ StatService:OnStatEvent(function(payload)
 
     elseif action == Actions.MobKill then
         CareerStatsService:IncrementStat(player, "MonstersEliminated", 1)
+        local monsterStatKey = getMonsterCareerStatKey(payload.metadata)
+        if monsterStatKey then
+            CareerStatsService:IncrementStat(player, monsterStatKey, 1)
+        end
 
     elseif action == Actions.Death then
         CareerStatsService:IncrementStat(player, "Deaths", 1)

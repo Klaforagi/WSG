@@ -260,6 +260,16 @@ local function formatWholeNumber(value)
     return formatted
 end
 
+local function formatMasteryXP(value)
+    local rounded = math.max(0, math.round((tonumber(value) or 0) * 10) / 10)
+    local whole = math.floor(rounded)
+    local tenths = math.floor(((rounded - whole) * 10) + 0.5)
+    if tenths <= 0 then
+        return formatWholeNumber(whole)
+    end
+    return formatWholeNumber(whole) .. "." .. tostring(tenths)
+end
+
 local function getMasteryRoman(level, romanNumeral)
     if type(romanNumeral) == "string" and romanNumeral ~= "" then
         return romanNumeral
@@ -1520,19 +1530,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local mastery = getMasteryData(itemData)
         local level = math.max(1, math.floor(tonumber(mastery.level) or 1))
         local romanNumeral = getMasteryRoman(level, mastery.romanNumeral or mastery.title)
-        local xp = math.max(0, math.floor(tonumber(mastery.xp) or 0))
+        local xp = math.max(0, tonumber(mastery.xp) or 0)
         local progress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
-        local nextLevelXP = math.max(0, math.floor(tonumber(mastery.nextLevelXP) or 25))
+        local nextLevelXP = math.max(0, tonumber(mastery.nextLevelXP) or 25)
         local damageBonus = math.max(0, tonumber(mastery.damageBonus) or 0)
 
         masteryPanel.Visible = true
         masteryTitle.Text = "MASTERY " .. romanNumeral
 
         if mastery.maxed == true then
-            masteryXP.Text = formatWholeNumber(xp) .. " XP TOTAL"
+            masteryXP.Text = formatMasteryXP(xp) .. " XP TOTAL"
             masteryBarFill.Size = UDim2.new(1, 0, 1, 0)
         else
-            masteryXP.Text = formatWholeNumber(xp) .. " / " .. formatWholeNumber(nextLevelXP) .. " XP"
+            masteryXP.Text = formatMasteryXP(xp) .. " / " .. formatMasteryXP(nextLevelXP) .. " XP"
             masteryBarFill.Size = UDim2.new(progress, 0, 1, 0)
         end
 
@@ -4645,22 +4655,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 if type(instanceId) ~= "string" then return end
                 if type(meta) == "table" and meta.removed == true then return end
                 if type(mastery) ~= "table" then return end
+                local sharedWeaponName = mastery.weaponName or (type(meta) == "table" and meta.weaponName) or nil
 
                 local touched = false
                 for _, item in ipairs(allWeaponItems) do
-                    if item.instanceId == instanceId then
+                    if item.instanceId == instanceId or (sharedWeaponName and item.weaponName == sharedWeaponName) then
                         item.mastery = mastery
                         touched = true
-                        break
                     end
                 end
                 if not touched then return end
 
-                if selectedItem and selectedItem.instanceId == instanceId then
+                if selectedItem and (selectedItem.instanceId == instanceId or (sharedWeaponName and selectedItem.weaponName == sharedWeaponName)) then
                     selectedItem.mastery = mastery
                     updateMasteryPanel(selectedItem)
                 end
-                renderCategory(currentWeaponCategory)
             end))
         end
     end)

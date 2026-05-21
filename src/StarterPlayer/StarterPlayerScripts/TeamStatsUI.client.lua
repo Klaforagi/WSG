@@ -710,6 +710,8 @@ local function collapseTeamPicker()
 	end
 end
 
+local rebuildAll
+
 changeTeamBtn.MouseButton1Click:Connect(toggleTeamPicker)
 
 -- Fire team change requests
@@ -1107,7 +1109,7 @@ local function addPlayerRow(plr)
 	sortTeamSection(section, teamName)
 end
 
-local function rebuildAll()
+rebuildAll = function()
 	-- Clear previous rows
 	for plr, _ in pairs(playerRows) do
 		cleanupPlayerRow(plr)
@@ -1832,6 +1834,9 @@ function populateCareerTab()
 	buildStatSection("Combat", {
 		{ key = "PlayersEliminated",       label = "Players Eliminated" },
 		{ key = "MonstersEliminated",      label = "Monsters Eliminated" },
+		{ key = "GoblinsEliminated",       label = "Goblins Eliminated" },
+		{ key = "OrcsEliminated",          label = "Orcs Eliminated" },
+		{ key = "OgresEliminated",         label = "Ogres Eliminated" },
 		{ key = "Deaths",                  label = "Deaths" },
 		{ key = "TotalDamageDone",         label = "Total Damage Done" },
 		{ key = "HighestEliminationStreak", label = "Highest Elimination Streak" },

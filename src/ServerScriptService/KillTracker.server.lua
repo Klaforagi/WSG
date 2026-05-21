@@ -530,7 +530,7 @@ local function onHumanoidDied(humanoid, model)
         if isPlayerVictim then
             pcall(function() WeaponMasteryService:RegisterElimination(killer, weaponInstanceId) end)
         elseif isMonsterVictim then
-            pcall(function() WeaponMasteryService:RegisterMobKill(killer, weaponInstanceId) end)
+            pcall(function() WeaponMasteryService:RegisterMobKill(killer, weaponInstanceId, rewardMobName) end)
         end
     end
 
