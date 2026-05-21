@@ -81,13 +81,16 @@ end
 -- GetSalvageValueForItem(instanceData)
 --
 -- Calculates the Salvage currency value for a weapon instance based on its
--- rarity, using SalvageConfig.ValueByRarity.
+-- rarity plus any size/enchant bonuses defined in SalvageConfig.
 -- Returns: number or nil (nil = no value / unsalvageable rarity)
 --------------------------------------------------------------------------------
 function SalvageService:GetSalvageValueForItem(instanceData)
     if not instanceData or type(instanceData) ~= "table" then return nil end
     local config = getSalvageConfig()
     if not config then return nil end
+    if type(config.GetValueForItem) == "function" then
+        return config.GetValueForItem(instanceData)
+    end
     local rarity = instanceData.rarity
     if not rarity then return nil end
     return config.GetValueForRarity(rarity)
@@ -144,7 +147,7 @@ function SalvageService:CanSalvageItem(player, instanceId)
     end
 
     -- Rule: rarity must have a defined salvage value
-    local value = config.GetValueForRarity(inst.rarity)
+    local value = self:GetSalvageValueForItem(inst)
     if not value or value <= 0 then
         return false, "No Shard value defined for rarity: " .. tostring(inst.rarity)
     end

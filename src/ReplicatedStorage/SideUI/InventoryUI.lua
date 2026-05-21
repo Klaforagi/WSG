@@ -59,6 +59,22 @@ pcall(function()
     end
 end)
 
+local function getSalvageValueForItem(itemData)
+    if not SalvageConfig or type(itemData) ~= "table" then
+        return nil
+    end
+
+    if type(SalvageConfig.GetValueForItem) == "function" then
+        return SalvageConfig.GetValueForItem(itemData)
+    end
+
+    if type(SalvageConfig.GetValueForRarity) == "function" then
+        return SalvageConfig.GetValueForRarity(itemData.rarity)
+    end
+
+    return nil
+end
+
 local WeaponMasteryConfig = nil
 pcall(function()
     local mod = ReplicatedStorage:FindFirstChild("WeaponMasteryConfig")
@@ -1403,6 +1419,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmDesc.AnchorPoint = Vector2.new(0.5, 0)
     confirmDesc.Position = UDim2.new(0.5, 0, 0, px(48))
     confirmDesc.TextXAlignment = Enum.TextXAlignment.Center
+    confirmDesc.TextYAlignment = Enum.TextYAlignment.Top
     confirmDesc.ZIndex = 52
 
     local confirmYes = Instance.new("TextButton", confirmBox)
@@ -1438,6 +1455,41 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     Instance.new("UICorner", confirmNo).CornerRadius = UDim.new(0, px(8))
     local confirmNoStroke = Instance.new("UIStroke", confirmNo)
     confirmNoStroke.Color = Color3.fromRGB(0, 0, 0); confirmNoStroke.Thickness = 1.5; confirmNoStroke.Transparency = 0.15
+
+    local CONFIRM_BOX_BASE_HEIGHT = px(160)
+    local CONFIRM_DESC_WIDTH_SCALE = 0.85
+    local CONFIRM_DESC_MIN_HEIGHT = px(36)
+    local CONFIRM_DESC_TOP = px(48)
+    local CONFIRM_DESC_EXTRA_PADDING = px(6)
+    local CONFIRM_DESC_TO_BUTTON_GAP = px(12)
+    local CONFIRM_BUTTON_HEIGHT = px(36)
+    local CONFIRM_BUTTON_BOTTOM_MARGIN = px(14)
+
+    local function updateConfirmBoxLayout()
+        local descWidth = math.floor(confirmBox.AbsoluteSize.X * CONFIRM_DESC_WIDTH_SCALE)
+        if descWidth <= 0 then
+            descWidth = math.floor(detailsPanel.AbsoluteSize.X * 0.88 * CONFIRM_DESC_WIDTH_SCALE)
+        end
+        descWidth = math.max(descWidth, 1)
+
+        local measuredDesc = TextService:GetTextSize(
+            confirmDesc.Text or "",
+            confirmDesc.TextSize,
+            confirmDesc.Font,
+            Vector2.new(descWidth, 1000)
+        )
+        local descHeight = math.max(CONFIRM_DESC_MIN_HEIGHT, measuredDesc.Y + CONFIRM_DESC_EXTRA_PADDING)
+        confirmDesc.Size = UDim2.new(CONFIRM_DESC_WIDTH_SCALE, 0, 0, descHeight)
+
+        local requiredHeight = CONFIRM_DESC_TOP
+            + descHeight
+            + CONFIRM_DESC_TO_BUTTON_GAP
+            + CONFIRM_BUTTON_HEIGHT
+            + CONFIRM_BUTTON_BOTTOM_MARGIN
+        confirmBox.Size = UDim2.new(0.88, 0, 0, math.max(CONFIRM_BOX_BASE_HEIGHT, requiredHeight))
+    end
+
+    task.defer(updateConfirmBoxLayout)
 
     -- ══════════════════════════════════════════════════════════════════════
     --  SELECTION & EQUIP STATE
@@ -1562,7 +1614,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- Salvage value preview
         if canSalvage and SalvageConfig and itemData.rarity then
-            local val = SalvageConfig.GetValueForRarity(itemData.rarity)
+            local val = getSalvageValueForItem(itemData)
             if val and val > 0 then
                 salvageValueLabel.Text = "Yield: " .. tostring(val) .. " Shards"
                 salvageValueLabel.Visible = true
@@ -2226,7 +2278,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Show salvage value preview from SalvageConfig (client-side read; server is authoritative)
         local salvageValue = 0
         if SalvageConfig and selectedItem.rarity then
-            salvageValue = SalvageConfig.GetValueForRarity(selectedItem.rarity) or 0
+            salvageValue = getSalvageValueForItem(selectedItem) or 0
         end
         local actionText = salvageValue > 0
             and ("Dismantle for " .. tostring(salvageValue) .. " Shards")
@@ -2234,6 +2286,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         confirmTitle.Text = "Dismantle " .. (selectedItem.name or "Weapon") .. "?"
         confirmDesc.Text = actionText .. "\nThis action cannot be undone."
         confirmOverlay.Visible = true
+        updateConfirmBoxLayout()
+        task.defer(updateConfirmBoxLayout)
     end)
 
     discardBtn.MouseEnter:Connect(function()

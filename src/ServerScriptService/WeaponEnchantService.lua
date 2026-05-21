@@ -203,7 +203,7 @@ end
 function WeaponEnchantService.RollAndAssignEnchant(tool, instanceData)
     if not tool then return nil end
 
-    local enchantName = WeaponEnchantConfig.RollEnchant()
+    local enchantName = WeaponEnchantConfig.RollEnchant(instanceData)
 
     if enchantName then
         tool:SetAttribute("HasEnchant", true)

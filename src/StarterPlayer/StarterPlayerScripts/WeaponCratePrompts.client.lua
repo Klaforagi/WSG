@@ -2,6 +2,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
@@ -18,11 +19,14 @@ local CHEST_DEFS = {
         crateId = "WeaponCrate",
     },
     {
-        modelName = "PremiumChest",
-        promptName = "PremiumChestPrompt",
+        modelName = "GoldenChest",
+        promptName = "GoldenChestPrompt",
         crateId = "PremiumWeaponCrate",
+        openSoundName = "Key",
     },
 }
+
+CHEST_DEFS[1].openSoundName = "Buy"
 
 local overlayGui = Instance.new("ScreenGui")
 overlayGui.Name = "WeaponChestPromptGui"
@@ -98,6 +102,7 @@ RobuxPurchaseUI.StyleCancelButton(cancelButton)
 local purchaseModalOpen = false
 local triggerDebounce = false
 local promptEntries = {}
+local warnedMissingOpenSounds = {}
 
 local function ensureChild(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -129,7 +134,7 @@ local function canUseChestPrompts()
     return type(_G.OpenCrateRequested) == "function" and not purchaseModalOpen and not isCrateRewardSequenceActive()
 end
 
-local function getCurrencyAmount(apiGetterName, remoteName)
+local function getCurrencyAmount(apiGetterName, remoteName, allowRemoteFallback)
     local coinApi = _G.CrateOpeningCoinApi
     if coinApi and type(coinApi[apiGetterName]) == "function" then
         local ok, amount = pcall(function()
@@ -138,6 +143,10 @@ local function getCurrencyAmount(apiGetterName, remoteName)
         if ok and type(amount) == "number" then
             return math.max(0, math.floor(amount))
         end
+    end
+
+    if allowRemoteFallback == false then
+        return 0
     end
 
     local remote = ReplicatedStorage:FindFirstChild(remoteName)
@@ -153,12 +162,20 @@ local function getCurrencyAmount(apiGetterName, remoteName)
     return 0
 end
 
-local function getCoins()
-    return getCurrencyAmount("GetCoins", "GetCoins")
+local function getCoins(allowRemoteFallback)
+    return getCurrencyAmount("GetCoins", "GetCoins", allowRemoteFallback)
 end
 
-local function getKeys()
-    return getCurrencyAmount("GetKeys", "GetKeys")
+local function getKeys(allowRemoteFallback)
+    return getCurrencyAmount("GetKeys", "GetKeys", allowRemoteFallback)
+end
+
+local function getPromptCurrencyText(currencyType)
+    if currencyType == "Keys" then
+        return string.format("Keys: %d", getKeys(false))
+    end
+
+    return string.format("Coins: %d", getCoins(false))
 end
 
 local function closePurchaseModal()
@@ -169,6 +186,55 @@ end
 local function openPurchaseModal()
     purchaseModalOpen = true
     modalShade.Visible = true
+end
+
+local function findOpenSoundTemplate(soundName)
+    if type(soundName) ~= "string" or soundName == "" then
+        return nil
+    end
+
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    if not soundsFolder then
+        return nil
+    end
+
+    local direct = soundsFolder:FindFirstChild(soundName)
+    if direct and direct:IsA("Sound") then
+        return direct
+    end
+
+    local uiFolder = soundsFolder:FindFirstChild("UI")
+    if uiFolder then
+        local nested = uiFolder:FindFirstChild(soundName)
+        if nested and nested:IsA("Sound") then
+            return nested
+        end
+    end
+
+    return nil
+end
+
+local function playOpenSound(soundName)
+    local template = findOpenSoundTemplate(soundName)
+    if not template then
+        if not warnedMissingOpenSounds[soundName] then
+            warnedMissingOpenSounds[soundName] = true
+            warn(string.format("[WeaponCratePrompts] Sound '%s' not found in ReplicatedStorage.Sounds", tostring(soundName)))
+        end
+        return false
+    end
+
+    local clone = template:Clone()
+    clone.Parent = SoundService
+    clone:Play()
+    task.delay(math.max(1, (clone.TimeLength or 1) + 0.25), function()
+        if clone and clone.Parent then
+            pcall(function()
+                clone:Destroy()
+            end)
+        end
+    end)
+    return true
 end
 
 local function requestOpenCrate(crateId)
@@ -231,15 +297,12 @@ for _, chestInfo in ipairs(CHEST_DEFS) do
         continue
     end
 
-    local price = math.max(0, math.floor(tonumber(crateDef.cost or crateDef.price) or 0))
     local currencyType = tostring(crateDef.currency or "Coins")
-    local currencyLabel = currencyType == "Keys"
-        and string.format("%d %s", price, price == 1 and "Key" or "Keys")
-        or string.format("%d Coins", price)
+    local price = math.max(0, math.floor(tonumber(crateDef.cost or crateDef.price) or 0))
 
     local prompt = ensureChild(promptPart, "ProximityPrompt", chestInfo.promptName)
     prompt.ActionText = "Open"
-    prompt.ObjectText = string.format("%s • %s", crateDef.displayName or chestInfo.crateId, currencyLabel)
+    prompt.ObjectText = getPromptCurrencyText(currencyType)
     prompt.KeyboardKeyCode = Enum.KeyCode.E
     prompt.MaxActivationDistance = 10
     prompt.HoldDuration = 0
@@ -247,7 +310,10 @@ for _, chestInfo in ipairs(CHEST_DEFS) do
     prompt.Style = Enum.ProximityPromptStyle.Default
     prompt.Enabled = false
 
-    table.insert(promptEntries, prompt)
+    table.insert(promptEntries, {
+        prompt = prompt,
+        currencyType = currencyType,
+    })
 
     prompt.Triggered:Connect(function()
         if triggerDebounce or not canUseChestPrompts() then
@@ -257,7 +323,7 @@ for _, chestInfo in ipairs(CHEST_DEFS) do
         triggerDebounce = true
 
         if currencyType == "Keys" then
-            if getKeys() < price then
+            if getKeys(true) < price then
                 openPurchaseModal()
                 task.delay(0.2, function()
                     triggerDebounce = false
@@ -265,7 +331,7 @@ for _, chestInfo in ipairs(CHEST_DEFS) do
                 return
             end
         else
-            if getCoins() < price then
+            if getCoins(true) < price then
                 task.delay(0.2, function()
                     triggerDebounce = false
                 end)
@@ -273,6 +339,7 @@ for _, chestInfo in ipairs(CHEST_DEFS) do
             end
         end
 
+        playOpenSound(chestInfo.openSoundName)
         requestOpenCrate(chestInfo.crateId)
 
         task.delay(1.05, function()
@@ -283,8 +350,11 @@ end
 
 RunService.Heartbeat:Connect(function()
     local enabled = canUseChestPrompts()
-    for _, prompt in ipairs(promptEntries) do
-        if prompt.Parent then
+    for _, entry in ipairs(promptEntries) do
+        local prompt = entry.prompt
+        if prompt and prompt.Parent then
+            prompt.ActionText = "Open"
+            prompt.ObjectText = getPromptCurrencyText(entry.currencyType)
             prompt.Enabled = enabled
         end
     end

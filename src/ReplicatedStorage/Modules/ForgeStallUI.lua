@@ -12,12 +12,16 @@ local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 
-local function px(base)
+local function getViewportSize()
 	local cam = Workspace.CurrentCamera
-	local screenY = 1080
-	if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
-		screenY = cam.ViewportSize.Y
+	if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+		return cam.ViewportSize
 	end
+	return Vector2.new(1920, 1080)
+end
+
+local function px(base)
+	local screenY = getViewportSize().Y
 	return math.max(1, math.round(base * screenY / 1080))
 end
 
@@ -445,6 +449,27 @@ function ForgeStallUI.Create(parent, options)
 	root.BorderSizePixel = 0
 	root.Parent = parent
 
+	local rebuildQueued = false
+	local function queueResponsiveRebuild()
+		if rebuildQueued then
+			return
+		end
+		rebuildQueued = true
+		task.delay(0.05, function()
+			rebuildQueued = false
+			if not (root and root.Parent and parent and parent.Parent) then
+				return
+			end
+			ForgeStallUI.Create(parent, options)
+		end)
+	end
+
+	local currentCamera = Workspace.CurrentCamera
+	if currentCamera then
+		trackConn(currentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(queueResponsiveRebuild))
+	end
+	trackConn(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(queueResponsiveRebuild))
+
 	local stageTopPadding = px(62)
 	local stageBottomPadding = px(14)
 	local railGap = px(20)
@@ -467,6 +492,7 @@ function ForgeStallUI.Create(parent, options)
 	local leftColumnHeight = (packCount * packHeight) + (math.max(0, packCount - 1) * cardGap) + balanceGap + balanceHeight
 	local stageInnerHeight = math.max(panelHeight, leftColumnHeight + px(18))
 	local stageHeight = stageInnerHeight + stageTopPadding + stageBottomPadding
+	local viewportSize = getViewportSize()
 
 	local stage = Instance.new("Frame")
 	stage.Name = "ForgeStage"
@@ -477,7 +503,10 @@ function ForgeStallUI.Create(parent, options)
 	stage.BorderSizePixel = 0
 	stage.Parent = root
 	local stageConstraint = Instance.new("UISizeConstraint")
-	stageConstraint.MaxSize = Vector2.new(720, px(900))
+	stageConstraint.MaxSize = Vector2.new(
+		math.max(660, math.floor(viewportSize.X * 0.92)),
+		math.max(px(900), math.floor(viewportSize.Y * 0.96))
+	)
 	stageConstraint.MinSize = Vector2.new(660, px(700))
 	stageConstraint.Parent = stage
 

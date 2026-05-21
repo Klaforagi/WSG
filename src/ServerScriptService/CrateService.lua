@@ -56,6 +56,34 @@ local function resolveCrateId(crateId)
     return crateId
 end
 
+local function computeSalvageValue(itemData)
+    if type(itemData) ~= "table" or not SalvageConfig then
+        return 0
+    end
+
+    if type(SalvageConfig.GetValueForItem) == "function" then
+        return math.max(0, tonumber(SalvageConfig.GetValueForItem(itemData)) or 0)
+    end
+
+    if type(SalvageConfig.GetValueForRarity) == "function" then
+        return math.max(0, tonumber(SalvageConfig.GetValueForRarity(itemData.rarity)) or 0)
+    end
+
+    return 0
+end
+
+local function rollEnchantForRarity(rarityName, crateDef)
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.RollEnchant) == "function" then
+        return WeaponEnchantConfig.RollEnchant({
+            rarity = rarityName,
+            enchantChance = crateDef and crateDef.enchantChance,
+            enchantChanceMultiplier = crateDef and crateDef.enchantChanceMultiplier,
+        }) or ""
+    end
+
+    return ""
+end
+
 -- Pending crate rewards: PendingRewards[player] = { weaponName, rarity, ... }
 local PendingRewards = {}
 
@@ -270,7 +298,7 @@ function CrateService:OpenCrate(player, crateId)
     local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
     -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
-    local enchantName = WeaponEnchantConfig.RollEnchant() or ""
+    local enchantName = rollEnchantForRarity(rolled.rarity, crateDef)
 
     print(string.format("[CrateService] Rolled: %s (%s) Size: %d%% [%s] Enchant: %s",
         rolled.weapon, rolled.rarity, sizePercent, sizeTier, enchantName ~= "" and enchantName or "None"))
@@ -286,10 +314,11 @@ function CrateService:OpenCrate(player, crateId)
     local category = rolled.category or crateDef.category or "Melee"
 
     -- Compute salvage value for display on the client popup
-    local salvageValue = 0
-    if SalvageConfig and SalvageConfig.GetValueForRarity then
-        salvageValue = SalvageConfig.GetValueForRarity(rolled.rarity) or 0
-    end
+    local salvageValue = computeSalvageValue({
+        rarity = rolled.rarity,
+        sizeTier = sizeTier,
+        enchantName = enchantName,
+    })
 
     local granted, pendingData, instanceData = grantWeaponAndStorePending(
         player,
@@ -434,10 +463,7 @@ function CrateService:FinalizeCrateSalvage(player)
 
     local salvageValue = pending.salvageValue or 0
     if salvageValue <= 0 then
-        -- Fallback: recalculate from config
-        if SalvageConfig and SalvageConfig.GetValueForRarity then
-            salvageValue = SalvageConfig.GetValueForRarity(pending.rarity) or 0
-        end
+        salvageValue = computeSalvageValue(pending)
     end
 
     if salvageValue <= 0 then
@@ -551,7 +577,7 @@ function CrateService:RollAndGrant(player, crateId)
     local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
     -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
-    local enchantName = WeaponEnchantConfig.RollEnchant() or ""
+    local enchantName = rollEnchantForRarity(rolled.rarity, crateDef)
 
     print(string.format("[CrateService] RollAndGrant: %s (%s) Size: %d%% [%s] Enchant: %s",
         rolled.weapon, rolled.rarity, sizePercent, sizeTier, enchantName ~= "" and enchantName or "None"))
@@ -624,15 +650,16 @@ function CrateService:RollAndPend(player, crateId)
     local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
     -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
-    local enchantName = WeaponEnchantConfig.RollEnchant() or ""
+    local enchantName = rollEnchantForRarity(rolled.rarity, crateDef)
 
     local category = rolled.category or crateDef.category or "Melee"
 
     -- Compute salvage value for display on the client popup
-    local salvageValue = 0
-    if SalvageConfig and SalvageConfig.GetValueForRarity then
-        salvageValue = SalvageConfig.GetValueForRarity(rolled.rarity) or 0
-    end
+    local salvageValue = computeSalvageValue({
+        rarity = rolled.rarity,
+        sizeTier = sizeTier,
+        enchantName = enchantName,
+    })
 
     local granted, pendingData, instanceData = grantWeaponAndStorePending(
         player,
