@@ -32,6 +32,19 @@ local function mergeTables(base, override)
     return out
 end
 
+local defaultSwingAnimationConfig = {
+    swing_anim_id   = "131848181334604",
+    swing_anim_ids  = { "131848181334604", "86527473231278", "81535913836580" },
+}
+
+local function buildPresets(overrides)
+    local out = {}
+    for weaponName, weaponOverride in pairs(overrides) do
+        out[weaponName] = mergeTables(defaultSwingAnimationConfig, weaponOverride)
+    end
+    return out
+end
+
 --------------------------------------------------------------------------------
 -- RARITY DEFAULTS  (combat / hitbox stats — all values are at 100% weapon size)
 --
@@ -118,26 +131,20 @@ local rarityDefaults = {
 --   Legendary = best badass 2H weapons (punisher, kingsblade, doom sword)
 --------------------------------------------------------------------------------
 
-local presets = {
+local presetOverrides = {
     -- Legendary
     ["punisher"] = {
         rarity          = "Legendary",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["kingsblade"] = {
         rarity          = "Legendary",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["doom sword"] = {
         rarity          = "Legendary",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -145,15 +152,11 @@ local presets = {
     -- Epic
     ["spiked mace"] = {
         rarity          = "Epic",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["crusher"] = {
         rarity          = "Epic",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -161,29 +164,21 @@ local presets = {
     -- Rare
     ["flanged mace"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["axe"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["shortsword"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["spear"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -191,15 +186,11 @@ local presets = {
     -- Uncommon
     ["stone hammer"] = {
         rarity          = "Uncommon",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["wooden spear"] = {
         rarity          = "Uncommon",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -208,26 +199,22 @@ local presets = {
     ["starter sword"] = {
         rarity          = "Common",
         damage          = 7, -- override: early game feels better
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["wooden sword"] = {
         rarity          = "Common",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["branch"] = {
         rarity          = "Common",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
 }
+
+local presets = buildPresets(presetOverrides)
 
 --------------------------------------------------------------------------------
 -- MODULE
@@ -246,6 +233,7 @@ end
 
 module.presets        = presets
 module.rarityDefaults = rarityDefaults
+module.defaultSwingAnimationConfig = defaultSwingAnimationConfig
 
 --------------------------------------------------------------------------------
 -- COMBO SYSTEM CONFIG  (shared between client & server)
