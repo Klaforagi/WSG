@@ -2,7 +2,7 @@
 -- InventoryUI.lua  –  Compact grid inventory with right-side details panel
 --
 -- Layout:
---   Left sidebar:   Melee · Ranged · Boosts · Skins · Effects
+--   Left sidebar:   Melee · Ranged · Boosts · Skins · Effects · Emotes
 --   Centre:         Scrollable weapon card grid (compact, rarity-coloured)
 --   Right panel:    Selected weapon details + Equip button
 --
@@ -288,7 +288,7 @@ end
 -- (SIZE_TIER_STYLES removed — EnchantTextStyler is the sole source of size-tier colors)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects)
+-- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects/Emotes)
 -- ═══════════════════════════════════════════════════════════════════════════
 local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
@@ -296,6 +296,7 @@ local TAB_DEFS = {
     { id = "boosts",  icon = "\u{26A1}",  label = "Potions", order = 3 },
     { id = "skins",   icon = "\u{2726}",  label = "Skins",   order = 4 },
     { id = "effects", icon = "\u{2738}",  label = "Effects", order = 5 },
+    { id = "emotes",  icon = "\u{263A}",  label = "Emotes",  order = 6 },
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -908,7 +909,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         bar.BackgroundTransparency = 1
         Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5, 0)
 
-        if def.id == "melee" or def.id == "ranged" or def.id == "boosts" then
+        if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" then
             local iconLbl = Instance.new("TextLabel", btn)
             iconLbl.Name = "Icon"
             iconLbl.BackgroundTransparency = 1
@@ -4547,6 +4548,823 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     -- ══════════════════════════════════════════════════════════════════════
+    --  EMOTES PAGE  (ordered equip loadout with slot compaction)
+    -- ══════════════════════════════════════════════════════════════════════
+    local emotesPage = Instance.new("Frame")
+    emotesPage.Name = "EmotesPage"
+    emotesPage.BackgroundTransparency = 1
+    emotesPage.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
+    emotesPage.Position = UDim2.new(0, CONTENT_X, 0, 0)
+    emotesPage.Visible = false
+    emotesPage.Parent = root
+
+    do
+        local EmoteConfig = nil
+        pcall(function()
+            local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+            local mod = sideUI and sideUI:FindFirstChild("EmoteConfig")
+            if mod and mod:IsA("ModuleScript") then EmoteConfig = require(mod) end
+        end)
+
+        local emoteRemotes = nil
+        local function ensureEmoteRemotes()
+            if emoteRemotes then return emoteRemotes end
+            local rf = ReplicatedStorage:FindFirstChild("Remotes")
+            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
+            if not rf then return nil end
+            local ef = rf:FindFirstChild("Emotes") or rf:WaitForChild("Emotes", 5)
+            if not ef then return nil end
+            emoteRemotes = {
+                getOwned    = ef:FindFirstChild("GetOwnedEmotes"),
+                getEquipped = ef:FindFirstChild("GetEquippedEmotes"),
+                equip       = ef:FindFirstChild("EquipEmote"),
+                unequip     = ef:FindFirstChild("UnequipEmote"),
+                changed     = ef:FindFirstChild("EquippedEmotesChanged"),
+            }
+            return emoteRemotes
+        end
+
+        local EMOTE_SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 8
+        local EMOTE_GLYPHS = {
+            wave = "\u{1F44B}",
+            dance = "\u{1F57A}",
+            i_want_money = "\u{1F4B0}",
+            take_the_l = "L",
+        }
+
+        local function getEmoteIconImage(def)
+            if type(def) ~= "table" then return nil end
+            if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then return def.IconAssetId end
+            local key = def.IconKey
+            if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
+                local image = AssetCodesGlobal.Get(key)
+                if type(image) == "string" and #image > 0 then return image end
+            end
+            return nil
+        end
+
+        local function getEmoteGlyph(emoteId)
+            return EMOTE_GLYPHS[emoteId] or "\u{1F3AD}"
+        end
+
+        local allEmoteDefs = EmoteConfig and EmoteConfig.GetAll() or {}
+
+        local emoteGridScroll = Instance.new("ScrollingFrame")
+        emoteGridScroll.Name = "EmoteGridScroll"
+        emoteGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
+        emoteGridScroll.BackgroundTransparency = 0.5
+        emoteGridScroll.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        emoteGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        emoteGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        emoteGridScroll.ScrollBarThickness = px(4)
+        emoteGridScroll.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
+        emoteGridScroll.BorderSizePixel = 0
+        emoteGridScroll.Parent = emotesPage
+        Instance.new("UICorner", emoteGridScroll).CornerRadius = UDim.new(0, px(10))
+
+        local emoteGridLayout = Instance.new("UIGridLayout", emoteGridScroll)
+        emoteGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
+        emoteGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
+        emoteGridLayout.FillDirection = Enum.FillDirection.Horizontal
+        emoteGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        emoteGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local emoteGridPad = Instance.new("UIPadding", emoteGridScroll)
+        emoteGridPad.PaddingTop = UDim.new(0, px(8))
+        emoteGridPad.PaddingLeft = UDim.new(0, px(8))
+        emoteGridPad.PaddingRight = UDim.new(0, px(8))
+        emoteGridPad.PaddingBottom = UDim.new(0, px(8))
+
+        local emotesEmptyState = Instance.new("Frame")
+        emotesEmptyState.Name = "EmotesEmptyState"
+        emotesEmptyState.BackgroundTransparency = 1
+        emotesEmptyState.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        emotesEmptyState.Visible = false
+        emotesEmptyState.Parent = emotesPage
+
+        local eeCard = Instance.new("Frame", emotesEmptyState)
+        eeCard.BackgroundColor3 = accentPanelColor(GOLD, 0.22)
+        eeCard.Size = UDim2.new(0.7, 0, 0, px(130))
+        eeCard.AnchorPoint = Vector2.new(0.5, 0.5)
+        eeCard.Position = UDim2.new(0.5, 0, 0.45, 0)
+        Instance.new("UICorner", eeCard).CornerRadius = UDim.new(0, px(14))
+        local eeStroke = Instance.new("UIStroke", eeCard)
+        eeStroke.Color = GOLD
+        eeStroke.Thickness = 1.4
+        eeStroke.Transparency = 0.22
+        addCardSheen(eeCard, GOLD)
+
+        local eeLbl = Instance.new("TextLabel", eeCard)
+        eeLbl.BackgroundTransparency = 1
+        eeLbl.Font = Enum.Font.GothamMedium
+        eeLbl.Text = "You don't own any emotes yet.\nVisit the shop to unlock more."
+        eeLbl.TextColor3 = DIM_TEXT
+        eeLbl.TextSize = math.max(13, math.floor(px(14)))
+        eeLbl.TextWrapped = true
+        eeLbl.Size = UDim2.new(0.85, 0, 0, px(60))
+        eeLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+        eeLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
+        eeLbl.TextXAlignment = Enum.TextXAlignment.Center
+
+        local eeShopBtn = Instance.new("TextButton", emotesEmptyState)
+        eeShopBtn.Name = "ShopNavBtn"
+        eeShopBtn.AutoButtonColor = false
+        eeShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        eeShopBtn.Font = Enum.Font.GothamBold
+        eeShopBtn.Text = "\u{1F6D2}  Browse Emotes Shop"
+        eeShopBtn.TextColor3 = WHITE
+        eeShopBtn.TextTransparency = 0
+        eeShopBtn.TextSize = math.max(14, math.floor(px(15)))
+        eeShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        eeShopBtn.Size = UDim2.new(0, 0, 0, px(36))
+        eeShopBtn.AnchorPoint = Vector2.new(0.5, 0)
+        eeShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
+        Instance.new("UICorner", eeShopBtn).CornerRadius = UDim.new(0, px(8))
+        local eeShopPad = Instance.new("UIPadding", eeShopBtn)
+        eeShopPad.PaddingLeft = UDim.new(0, px(20))
+        eeShopPad.PaddingRight = UDim.new(0, px(20))
+        local eeShopStroke = Instance.new("UIStroke", eeShopBtn)
+        eeShopStroke.Color = Color3.fromRGB(0, 0, 0)
+        eeShopStroke.Thickness = 1.5
+        eeShopStroke.Transparency = 0.15
+        eeShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then
+                mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("emotes") end
+            end
+        end)
+
+        local emoteDetailsPanel = Instance.new("Frame")
+        emoteDetailsPanel.Name = "EmoteDetailsPanel"
+        emoteDetailsPanel.BackgroundColor3 = CARD_BG
+        emoteDetailsPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
+        emoteDetailsPanel.AnchorPoint = Vector2.new(1, 0)
+        emoteDetailsPanel.Position = UDim2.new(1, 0, 0, 0)
+        emoteDetailsPanel.Parent = emotesPage
+        Instance.new("UICorner", emoteDetailsPanel).CornerRadius = UDim.new(0, px(12))
+        local edpStroke = Instance.new("UIStroke", emoteDetailsPanel)
+        edpStroke.Color = CARD_STROKE
+        edpStroke.Thickness = 1.4
+        edpStroke.Transparency = 0.2
+
+        local emoteDetailPlaceholder = Instance.new("TextLabel", emoteDetailsPanel)
+        emoteDetailPlaceholder.Name = "Placeholder"
+        emoteDetailPlaceholder.BackgroundTransparency = 1
+        emoteDetailPlaceholder.Font = Enum.Font.GothamMedium
+        emoteDetailPlaceholder.Text = "Select an emote"
+        emoteDetailPlaceholder.TextColor3 = DIM_TEXT
+        emoteDetailPlaceholder.TextSize = px(22)
+        emoteDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
+        emoteDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
+        emoteDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
+
+        local emoteDetailContent = Instance.new("Frame", emoteDetailsPanel)
+        emoteDetailContent.Name = "DetailContent"
+        emoteDetailContent.BackgroundTransparency = 1
+        emoteDetailContent.Size = UDim2.new(1, 0, 1, 0)
+        emoteDetailContent.Visible = false
+
+        local edPad = Instance.new("UIPadding", emoteDetailContent)
+        edPad.PaddingTop = UDim.new(0, px(12))
+        edPad.PaddingBottom = UDim.new(0, px(12))
+        edPad.PaddingLeft = UDim.new(0, px(12))
+        edPad.PaddingRight = UDim.new(0, px(12))
+
+        local emoteHero = Instance.new("Frame", emoteDetailContent)
+        emoteHero.Name = "Hero"
+        emoteHero.BackgroundColor3 = accentPanelColor(GOLD, 0.24)
+        emoteHero.Size = UDim2.new(1, 0, 0, px(184))
+        emoteHero.ClipsDescendants = true
+        Instance.new("UICorner", emoteHero).CornerRadius = UDim.new(0, px(10))
+        local emoteHeroStroke = Instance.new("UIStroke", emoteHero)
+        emoteHeroStroke.Color = GOLD
+        emoteHeroStroke.Thickness = 1.5
+        emoteHeroStroke.Transparency = 0.2
+        addCardSheen(emoteHero, GOLD)
+
+        local emoteHeroGlyph = Instance.new("TextLabel", emoteHero)
+        emoteHeroGlyph.Name = "Glyph"
+        emoteHeroGlyph.BackgroundTransparency = 1
+        emoteHeroGlyph.Size = UDim2.new(0.7, 0, 0.7, 0)
+        emoteHeroGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+        emoteHeroGlyph.Position = UDim2.new(0.5, 0, 0.52, 0)
+        emoteHeroGlyph.Font = Enum.Font.GothamBlack
+        emoteHeroGlyph.TextScaled = true
+        emoteHeroGlyph.TextColor3 = GOLD
+        addTextOutline(emoteHeroGlyph, 0.24, 1.5)
+
+        local emoteHeroImage = Instance.new("ImageLabel", emoteHero)
+        emoteHeroImage.Name = "IconImage"
+        emoteHeroImage.BackgroundTransparency = 1
+        emoteHeroImage.Size = UDim2.new(0.54, 0, 0.54, 0)
+        emoteHeroImage.AnchorPoint = Vector2.new(0.5, 0.5)
+        emoteHeroImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+        emoteHeroImage.ScaleType = Enum.ScaleType.Fit
+        emoteHeroImage.Visible = false
+
+        local emoteDetailName = Instance.new("TextLabel", emoteDetailContent)
+        emoteDetailName.Name = "EmoteName"
+        emoteDetailName.BackgroundTransparency = 1
+        emoteDetailName.Font = Enum.Font.GothamBold
+        emoteDetailName.TextColor3 = WHITE
+        emoteDetailName.TextSize = px(26)
+        emoteDetailName.TextXAlignment = Enum.TextXAlignment.Center
+        emoteDetailName.Size = UDim2.new(1, 0, 0, px(34))
+        emoteDetailName.Position = UDim2.new(0, 0, 0, px(192))
+        emoteDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+
+        local emoteDetailDesc = Instance.new("TextLabel", emoteDetailContent)
+        emoteDetailDesc.Name = "Description"
+        emoteDetailDesc.BackgroundTransparency = 1
+        emoteDetailDesc.Font = Enum.Font.GothamBold
+        emoteDetailDesc.TextColor3 = DIM_TEXT
+        emoteDetailDesc.TextSize = px(16)
+        emoteDetailDesc.TextWrapped = true
+        emoteDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
+        emoteDetailDesc.Size = UDim2.new(1, 0, 0, px(48))
+        emoteDetailDesc.Position = UDim2.new(0, 0, 0, px(228))
+        local descStroke = Instance.new("UIStroke", emoteDetailDesc)
+        descStroke.Color = Color3.fromRGB(0, 0, 0)
+        descStroke.Thickness = 1.4
+        descStroke.Transparency = 0.15
+
+        local emoteStatusLabel = Instance.new("TextLabel", emoteDetailContent)
+        emoteStatusLabel.Name = "StatusLabel"
+        emoteStatusLabel.BackgroundTransparency = 1
+        emoteStatusLabel.Font = Enum.Font.GothamBold
+        emoteStatusLabel.TextColor3 = GOLD
+        emoteStatusLabel.TextSize = px(15)
+        emoteStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+        emoteStatusLabel.Size = UDim2.new(1, 0, 0, px(22))
+        emoteStatusLabel.Position = UDim2.new(0, 0, 0, px(278))
+
+        local emoteSlotsPanel = Instance.new("Frame", emoteDetailContent)
+        emoteSlotsPanel.Name = "SlotsPanel"
+        emoteSlotsPanel.BackgroundColor3 = accentPanelColor(GOLD, 0.12)
+        emoteSlotsPanel.Size = UDim2.new(1, 0, 0, px(190))
+        emoteSlotsPanel.Position = UDim2.new(0, 0, 0, px(306))
+        Instance.new("UICorner", emoteSlotsPanel).CornerRadius = UDim.new(0, px(10))
+        local emoteSlotsStroke = Instance.new("UIStroke", emoteSlotsPanel)
+        emoteSlotsStroke.Color = GOLD
+        emoteSlotsStroke.Thickness = 1.2
+        emoteSlotsStroke.Transparency = 0.32
+
+        local slotsTitle = Instance.new("TextLabel", emoteSlotsPanel)
+        slotsTitle.BackgroundTransparency = 1
+        slotsTitle.Font = Enum.Font.GothamBold
+        slotsTitle.Text = "LOADOUT"
+        slotsTitle.TextColor3 = GOLD
+        slotsTitle.TextSize = px(16)
+        slotsTitle.TextXAlignment = Enum.TextXAlignment.Left
+        slotsTitle.Size = UDim2.new(1, -px(18), 0, px(20))
+        slotsTitle.Position = UDim2.new(0, px(10), 0, px(8))
+
+        local slotsRows = Instance.new("Frame", emoteSlotsPanel)
+        slotsRows.Name = "Rows"
+        slotsRows.BackgroundTransparency = 1
+        slotsRows.Size = UDim2.new(1, -px(18), 1, -px(34))
+        slotsRows.Position = UDim2.new(0, px(9), 0, px(28))
+
+        local slotsRowsLayout = Instance.new("UIListLayout", slotsRows)
+        slotsRowsLayout.FillDirection = Enum.FillDirection.Vertical
+        slotsRowsLayout.Padding = UDim.new(0, px(3))
+        slotsRowsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local slotRows = {}
+        for slotIndex = 1, EMOTE_SLOT_COUNT do
+            local row = Instance.new("Frame", slotsRows)
+            row.Name = "SlotRow_" .. slotIndex
+            row.BackgroundColor3 = Color3.fromRGB(18, 20, 34)
+            row.BackgroundTransparency = 0.08
+            row.Size = UDim2.new(1, 0, 0, px(18))
+            row.LayoutOrder = slotIndex
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, px(6))
+            local rowStroke = Instance.new("UIStroke", row)
+            rowStroke.Color = CARD_STROKE
+            rowStroke.Thickness = 1
+            rowStroke.Transparency = 0.45
+
+            local slotLabel = Instance.new("TextLabel", row)
+            slotLabel.BackgroundTransparency = 1
+            slotLabel.Font = Enum.Font.GothamBold
+            slotLabel.Text = string.format("%02d", slotIndex)
+            slotLabel.TextColor3 = GOLD
+            slotLabel.TextSize = px(12)
+            slotLabel.TextXAlignment = Enum.TextXAlignment.Left
+            slotLabel.Size = UDim2.new(0, px(24), 1, 0)
+            slotLabel.Position = UDim2.new(0, px(8), 0, 0)
+
+            local valueLabel = Instance.new("TextLabel", row)
+            valueLabel.BackgroundTransparency = 1
+            valueLabel.Font = Enum.Font.GothamMedium
+            valueLabel.Text = "Empty"
+            valueLabel.TextColor3 = DIM_TEXT
+            valueLabel.TextSize = px(12)
+            valueLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+            valueLabel.Size = UDim2.new(1, -px(102), 1, 0)
+            valueLabel.Position = UDim2.new(0, px(36), 0, 0)
+
+            local removeBtn = Instance.new("TextButton", row)
+            removeBtn.Name = "RemoveBtn"
+            removeBtn.AutoButtonColor = false
+            removeBtn.BackgroundColor3 = Color3.fromRGB(58, 34, 28)
+            removeBtn.Text = "REMOVE"
+            removeBtn.TextColor3 = WHITE
+            removeBtn.TextSize = px(10)
+            removeBtn.Font = Enum.Font.GothamBold
+            removeBtn.Size = UDim2.new(0, px(58), 1, -px(2))
+            removeBtn.AnchorPoint = Vector2.new(1, 0.5)
+            removeBtn.Position = UDim2.new(1, -px(4), 0.5, 0)
+            removeBtn.Visible = false
+            Instance.new("UICorner", removeBtn).CornerRadius = UDim.new(0, px(5))
+            local removeStroke = Instance.new("UIStroke", removeBtn)
+            removeStroke.Color = Color3.fromRGB(0, 0, 0)
+            removeStroke.Thickness = 1
+            removeStroke.Transparency = 0.15
+
+            slotRows[slotIndex] = {
+                row = row,
+                rowStroke = rowStroke,
+                valueLabel = valueLabel,
+                removeBtn = removeBtn,
+            }
+        end
+
+        local emoteShopNavW = Instance.new("Frame", emoteDetailContent)
+        emoteShopNavW.Name = "ShopNavWrap"
+        emoteShopNavW.BackgroundTransparency = 1
+        emoteShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
+        emoteShopNavW.AnchorPoint = Vector2.new(0.5, 1)
+        emoteShopNavW.Position = UDim2.new(0.5, 0, 1, -px(58))
+
+        local emoteShopBtn = Instance.new("TextButton", emoteShopNavW)
+        emoteShopBtn.AutoButtonColor = false
+        emoteShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        emoteShopBtn.Font = Enum.Font.GothamBold
+        emoteShopBtn.Text = "\u{1F6D2}  Browse Emotes Shop"
+        emoteShopBtn.TextColor3 = WHITE
+        emoteShopBtn.TextTransparency = 0
+        emoteShopBtn.TextSize = math.max(13, math.floor(px(15)))
+        emoteShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        emoteShopBtn.Size = UDim2.new(0, 0, 1, 0)
+        emoteShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+        emoteShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+        Instance.new("UICorner", emoteShopBtn).CornerRadius = UDim.new(0, px(8))
+        local esnPad = Instance.new("UIPadding", emoteShopBtn)
+        esnPad.PaddingLeft = UDim.new(0, px(14))
+        esnPad.PaddingRight = UDim.new(0, px(14))
+        local esnStroke = Instance.new("UIStroke", emoteShopBtn)
+        esnStroke.Color = Color3.fromRGB(0, 0, 0)
+        esnStroke.Thickness = 1.5
+        esnStroke.Transparency = 0.15
+        emoteShopBtn.MouseEnter:Connect(function() TweenService:Create(emoteShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
+        emoteShopBtn.MouseLeave:Connect(function() TweenService:Create(emoteShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
+        emoteShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then
+                mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("emotes") end
+            end
+        end)
+
+        local emoteActionBtn = Instance.new("TextButton", emoteDetailContent)
+        emoteActionBtn.Name = "EquipBtn"
+        emoteActionBtn.AutoButtonColor = false
+        emoteActionBtn.BackgroundColor3 = BTN_BG
+        emoteActionBtn.Font = Enum.Font.GothamBold
+        emoteActionBtn.Text = "EQUIP"
+        emoteActionBtn.TextColor3 = WHITE
+        emoteActionBtn.TextTransparency = 0
+        emoteActionBtn.TextSize = px(22)
+        emoteActionBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+        emoteActionBtn.AnchorPoint = Vector2.new(0.5, 1)
+        emoteActionBtn.Position = UDim2.new(0.5, 0, 1, 0)
+        Instance.new("UICorner", emoteActionBtn).CornerRadius = UDim.new(0, px(10))
+        local emoteActionStroke = Instance.new("UIStroke", emoteActionBtn)
+        emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+        emoteActionStroke.Thickness = 1.5
+        emoteActionStroke.Transparency = 0.15
+
+        local ownedEmoteSet = {}
+        local equippedSlots = {}
+        local selectedEmoteId = nil
+        local emoteCards = {}
+
+        local function getEquippedSlotForEmote(emoteId)
+            for slot = 1, EMOTE_SLOT_COUNT do
+                if equippedSlots[slot] == emoteId then
+                    return slot
+                end
+            end
+            return nil
+        end
+
+        local function countEquippedEmotes()
+            local count = 0
+            for slot = 1, EMOTE_SLOT_COUNT do
+                if equippedSlots[slot] then
+                    count += 1
+                end
+            end
+            return count
+        end
+
+        local function setEquippedFromList(list)
+            equippedSlots = {}
+            if type(list) ~= "table" then
+                return
+            end
+            for _, entry in ipairs(list) do
+                if type(entry) == "table" then
+                    local slot = tonumber(entry.Slot)
+                    local emoteId = entry.Id
+                    if slot and slot >= 1 and slot <= EMOTE_SLOT_COUNT and type(emoteId) == "string" and emoteId ~= "" then
+                        equippedSlots[slot] = emoteId
+                    end
+                end
+            end
+        end
+
+        local refreshEmoteCards
+        local refreshEmoteSlots
+
+        local function updateEmoteActionButton()
+            if not selectedEmoteId then return end
+            local equippedSlot = getEquippedSlotForEmote(selectedEmoteId)
+            if equippedSlot then
+                emoteActionBtn.Text = string.format("UNEQUIP SLOT %d", equippedSlot)
+                emoteActionBtn.BackgroundColor3 = DISABLED_BG
+                emoteActionBtn.TextColor3 = GOLD
+                emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+                emoteActionStroke.Transparency = 0.15
+                return
+            end
+
+            local nextSlot = countEquippedEmotes() + 1
+            if nextSlot > EMOTE_SLOT_COUNT then
+                emoteActionBtn.Text = "SLOTS FULL"
+                emoteActionBtn.BackgroundColor3 = DISABLED_BG
+                emoteActionBtn.TextColor3 = DIM_TEXT
+                emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+                emoteActionStroke.Transparency = 0.15
+            else
+                emoteActionBtn.Text = string.format("EQUIP TO SLOT %d", nextSlot)
+                emoteActionBtn.BackgroundColor3 = BTN_BG
+                emoteActionBtn.TextColor3 = WHITE
+                emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+                emoteActionStroke.Transparency = 0.15
+            end
+        end
+
+        local function setSelectedEmote(emoteId)
+            selectedEmoteId = emoteId
+            if not emoteId then
+                emoteDetailPlaceholder.Visible = true
+                emoteDetailContent.Visible = false
+                if refreshEmoteCards then refreshEmoteCards() end
+                if refreshEmoteSlots then refreshEmoteSlots() end
+                return
+            end
+
+            local def = EmoteConfig and EmoteConfig.GetById(emoteId)
+            if not def then return end
+
+            emoteDetailPlaceholder.Visible = false
+            emoteDetailContent.Visible = true
+
+            emoteHeroGlyph.Text = getEmoteGlyph(emoteId)
+            local imageId = getEmoteIconImage(def)
+            emoteHeroImage.Visible = type(imageId) == "string" and #imageId > 0
+            if emoteHeroImage.Visible then
+                emoteHeroImage.Image = imageId
+            else
+                emoteHeroImage.Image = ""
+            end
+
+            emoteDetailName.Text = def.DisplayName or emoteId
+            emoteDetailDesc.Text = def.Description or ""
+
+            local equippedSlot = getEquippedSlotForEmote(emoteId)
+            if equippedSlot then
+                emoteStatusLabel.Text = string.format("Equipped in slot %d", equippedSlot)
+            else
+                local nextSlot = countEquippedEmotes() + 1
+                if nextSlot <= EMOTE_SLOT_COUNT then
+                    emoteStatusLabel.Text = string.format("Next equip fills slot %d", nextSlot)
+                else
+                    emoteStatusLabel.Text = "All slots are full"
+                end
+            end
+
+            updateEmoteActionButton()
+            if refreshEmoteCards then refreshEmoteCards() end
+            if refreshEmoteSlots then refreshEmoteSlots() end
+        end
+
+        refreshEmoteSlots = function()
+            local selectedSlot = selectedEmoteId and getEquippedSlotForEmote(selectedEmoteId) or nil
+            for slotIndex = 1, EMOTE_SLOT_COUNT do
+                local refs = slotRows[slotIndex]
+                local emoteId = equippedSlots[slotIndex]
+                local def = emoteId and EmoteConfig and EmoteConfig.GetById(emoteId) or nil
+                refs.valueLabel.Text = def and (def.DisplayName or emoteId) or "Empty"
+                refs.valueLabel.TextColor3 = def and WHITE or DIM_TEXT
+                refs.removeBtn.Visible = def ~= nil
+
+                local isSelectedSlot = (selectedSlot == slotIndex)
+                refs.row.BackgroundColor3 = isSelectedSlot and accentPanelColor(GOLD, 0.28) or Color3.fromRGB(18, 20, 34)
+                refs.rowStroke.Color = isSelectedSlot and GOLD or CARD_STROKE
+                refs.rowStroke.Transparency = isSelectedSlot and 0.18 or 0.45
+            end
+        end
+
+        refreshEmoteCards = function()
+            local visibleCount = 0
+            for emoteId, refs in pairs(emoteCards) do
+                local def = refs.def
+                local isOwned = ownedEmoteSet[emoteId] or (def and def.IsFree == true)
+                refs.card.Visible = isOwned
+                if isOwned then
+                    visibleCount += 1
+                end
+
+                local equippedSlot = getEquippedSlotForEmote(emoteId)
+                local isSelected = (selectedEmoteId == emoteId)
+                if isSelected then
+                    refs.card.BackgroundColor3 = refs.selectedBg
+                    setCardStroke(refs.cardStroke, GOLD, 2.2, 0)
+                elseif equippedSlot then
+                    refs.card.BackgroundColor3 = refs.equippedBg
+                    setCardStroke(refs.cardStroke, GREEN_GLOW, 1.9, 0.16)
+                else
+                    refs.card.BackgroundColor3 = refs.baseBg
+                    setCardStroke(refs.cardStroke, refs.baseStrokeColor, refs.baseStrokeThickness, refs.baseStrokeTransparency)
+                end
+
+                refs.slotBadge.Visible = (equippedSlot ~= nil)
+                refs.slotBadge.Text = equippedSlot and string.format("SLOT %d", equippedSlot) or ""
+                refs.eqBar.Visible = (equippedSlot ~= nil)
+            end
+
+            emotesEmptyState.Visible = (visibleCount == 0)
+            emoteGridScroll.Visible = (visibleCount > 0)
+        end
+
+        for slotIndex = 1, EMOTE_SLOT_COUNT do
+            local refs = slotRows[slotIndex]
+            refs.removeBtn.MouseButton1Click:Connect(function()
+                if not equippedSlots[slotIndex] then return end
+                local remotes = ensureEmoteRemotes()
+                if remotes and remotes.unequip and remotes.unequip:IsA("RemoteEvent") then
+                    pcall(function() remotes.unequip:FireServer(slotIndex) end)
+                end
+            end)
+        end
+
+        emoteActionBtn.MouseButton1Click:Connect(function()
+            if not selectedEmoteId then return end
+            local remotes = ensureEmoteRemotes()
+            if not remotes then return end
+
+            local equippedSlot = getEquippedSlotForEmote(selectedEmoteId)
+            if equippedSlot then
+                if remotes.unequip and remotes.unequip:IsA("RemoteEvent") then
+                    pcall(function() remotes.unequip:FireServer(equippedSlot) end)
+                end
+                return
+            end
+
+            if countEquippedEmotes() >= EMOTE_SLOT_COUNT then
+                showToast(emotesPage, "All emote slots are full. Unequip one first.", RED_TEXT, 2.2)
+                return
+            end
+
+            if remotes.equip and remotes.equip:IsA("RemoteEvent") then
+                pcall(function() remotes.equip:FireServer(selectedEmoteId) end)
+            end
+        end)
+
+        emoteActionBtn.MouseEnter:Connect(function()
+            local equippedSlot = selectedEmoteId and getEquippedSlotForEmote(selectedEmoteId) or nil
+            if not equippedSlot and countEquippedEmotes() < EMOTE_SLOT_COUNT then
+                TweenService:Create(emoteActionBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+            end
+        end)
+        emoteActionBtn.MouseLeave:Connect(function()
+            updateEmoteActionButton()
+        end)
+
+        for i_emote, def in ipairs(allEmoteDefs) do
+            local emoteId = def.Id
+            local displayName = def.DisplayName or emoteId
+            local baseBg = accentPanelColor(GOLD, 0.18)
+            local selectedBg = brightenColor(baseBg, 0.05)
+            local equippedBg = mixColor(baseBg, GREEN_GLOW, 0.16)
+            local baseStrokeColor = Color3.fromRGB(145, 116, 74)
+            local baseStrokeThickness = 1.5
+            local baseStrokeTransparency = 0.28
+
+            local card = Instance.new("TextButton")
+            card.Name = "EmoteCard_" .. emoteId
+            card.BackgroundColor3 = baseBg
+            card.Size = UDim2.new(1, 0, 1, 0)
+            card.Text = ""
+            card.AutoButtonColor = false
+            card.BorderSizePixel = 0
+            card.LayoutOrder = i_emote
+            card.ClipsDescendants = true
+            card.Parent = emoteGridScroll
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
+
+            local cardStroke = Instance.new("UIStroke", card)
+            cardStroke.Color = baseStrokeColor
+            cardStroke.Thickness = baseStrokeThickness
+            cardStroke.Transparency = baseStrokeTransparency
+            addCardSheen(card, GOLD)
+            local accentBar = addCardAccentBar(card, GOLD)
+
+            local cardName = Instance.new("TextLabel", card)
+            cardName.Name = "NameLabel"
+            cardName.BackgroundTransparency = 1
+            cardName.Font = Enum.Font.GothamBold
+            cardName.Text = displayName
+            cardName.TextColor3 = WHITE
+            cardName.TextSize = INV_CARD.NameTextSize
+            cardName.TextTruncate = Enum.TextTruncate.AtEnd
+            cardName.TextXAlignment = Enum.TextXAlignment.Center
+            cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
+            cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+            cardName.ZIndex = 3
+            addTextOutline(cardName, 0.18, 1.35)
+
+            local iconArea = Instance.new("Frame", card)
+            iconArea.Name = "IconArea"
+            iconArea.BackgroundColor3 = mixColor(CARD_BG, GOLD, 0.16)
+            iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
+            iconArea.AnchorPoint = Vector2.new(0.5, 0)
+            iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
+            iconArea.BorderSizePixel = 0
+            Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+            addIconWellHighlight(iconArea, GOLD)
+
+            local iconGlyph = Instance.new("TextLabel", iconArea)
+            iconGlyph.Name = "Glyph"
+            iconGlyph.BackgroundTransparency = 1
+            iconGlyph.Size = UDim2.new(0.72, 0, 0.72, 0)
+            iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconGlyph.Position = UDim2.new(0.5, 0, 0.54, 0)
+            iconGlyph.Font = Enum.Font.GothamBlack
+            iconGlyph.Text = getEmoteGlyph(emoteId)
+            iconGlyph.TextScaled = true
+            iconGlyph.TextColor3 = GOLD
+            iconGlyph.ZIndex = 4
+            addTextOutline(iconGlyph, 0.24, 1.4)
+
+            local iconImage = Instance.new("ImageLabel", iconArea)
+            iconImage.Name = "IconImage"
+            iconImage.BackgroundTransparency = 1
+            iconImage.Size = UDim2.new(0.62, 0, 0.62, 0)
+            iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+            iconImage.ScaleType = Enum.ScaleType.Fit
+            iconImage.ZIndex = 5
+            local iconImageId = getEmoteIconImage(def)
+            iconImage.Visible = type(iconImageId) == "string" and #iconImageId > 0
+            iconImage.Image = iconImage.Visible and iconImageId or ""
+
+            local cardType = Instance.new("TextLabel", card)
+            cardType.Name = "TypeLabel"
+            cardType.BackgroundTransparency = 1
+            cardType.Font = Enum.Font.GothamBold
+            cardType.Text = "Emote"
+            cardType.TextColor3 = GOLD
+            cardType.TextSize = INV_CARD.Line1TextSize
+            cardType.TextXAlignment = Enum.TextXAlignment.Center
+            cardType.Size = UDim2.new(1, -px(10), 0, INV_CARD.Line1Height)
+            cardType.Position = UDim2.new(0, px(5), 1, -INV_CARD.Line1OffBottom - INV_CARD.Line1Height)
+            cardType.ZIndex = 4
+
+            local slotBadge = Instance.new("TextLabel", card)
+            slotBadge.Name = "SlotBadge"
+            slotBadge.BackgroundColor3 = Color3.fromRGB(24, 28, 42)
+            slotBadge.BackgroundTransparency = 0.12
+            slotBadge.BorderSizePixel = 0
+            slotBadge.Visible = false
+            slotBadge.Font = Enum.Font.GothamBold
+            slotBadge.Text = ""
+            slotBadge.TextColor3 = GREEN_GLOW
+            slotBadge.TextSize = INV_CARD.Line1TextSize
+            slotBadge.Size = UDim2.new(0.68, 0, 0, INV_CARD.Line2Height + px(4))
+            slotBadge.AnchorPoint = Vector2.new(0.5, 1)
+            slotBadge.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+            slotBadge.ZIndex = 4
+            Instance.new("UICorner", slotBadge).CornerRadius = UDim.new(0, px(7))
+            local slotBadgeStroke = Instance.new("UIStroke", slotBadge)
+            slotBadgeStroke.Color = GREEN_GLOW
+            slotBadgeStroke.Thickness = 1
+            slotBadgeStroke.Transparency = 0.36
+
+            local eqBar = Instance.new("Frame", card)
+            eqBar.Name = "EquippedBar"
+            eqBar.BackgroundColor3 = GREEN_GLOW
+            eqBar.Size = UDim2.new(1, 0, 0, px(3))
+            eqBar.AnchorPoint = Vector2.new(0, 1)
+            eqBar.Position = UDim2.new(0, 0, 1, 0)
+            eqBar.BorderSizePixel = 0
+            eqBar.ZIndex = 5
+            eqBar.Visible = false
+
+            emoteCards[emoteId] = {
+                card = card,
+                def = def,
+                cardStroke = cardStroke,
+                accentBar = accentBar,
+                eqBar = eqBar,
+                slotBadge = slotBadge,
+                baseBg = baseBg,
+                hoverBg = brightenColor(baseBg, 0.07),
+                selectedBg = selectedBg,
+                equippedBg = equippedBg,
+                baseStrokeColor = baseStrokeColor,
+                baseStrokeThickness = baseStrokeThickness,
+                baseStrokeTransparency = baseStrokeTransparency,
+            }
+
+            card.MouseButton1Click:Connect(function()
+                setSelectedEmote(emoteId)
+            end)
+
+            if not game:GetService("UserInputService").TouchEnabled then
+                card.MouseEnter:Connect(function()
+                    if selectedEmoteId ~= emoteId then
+                        local refs = emoteCards[emoteId]
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = refs and refs.hoverBg or brightenColor(baseBg, 0.07)}):Play()
+                    end
+                end)
+                card.MouseLeave:Connect(function()
+                    if selectedEmoteId ~= emoteId then
+                        local refs = emoteCards[emoteId]
+                        local equippedSlot = getEquippedSlotForEmote(emoteId)
+                        local targetBg = refs and (equippedSlot and refs.equippedBg or refs.baseBg) or baseBg
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
+                    end
+                end)
+            end
+        end
+
+        task.spawn(function()
+            local remotes = ensureEmoteRemotes()
+            if not remotes then return end
+
+            if remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
+                local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
+                if ok and type(list) == "table" then
+                    for _, emoteId in ipairs(list) do
+                        if type(emoteId) == "string" and emoteId ~= "" then
+                            ownedEmoteSet[emoteId] = true
+                        end
+                    end
+                end
+            end
+
+            if remotes.getEquipped and remotes.getEquipped:IsA("RemoteFunction") then
+                local ok, equippedList = pcall(function() return remotes.getEquipped:InvokeServer() end)
+                if ok then
+                    setEquippedFromList(equippedList)
+                end
+            end
+
+            refreshEmoteCards()
+            refreshEmoteSlots()
+
+            if not selectedEmoteId then
+                for _, def in ipairs(allEmoteDefs) do
+                    if ownedEmoteSet[def.Id] or def.IsFree then
+                        setSelectedEmote(def.Id)
+                        break
+                    end
+                end
+            elseif selectedEmoteId then
+                setSelectedEmote(selectedEmoteId)
+            end
+
+            if remotes.changed and remotes.changed:IsA("RemoteEvent") then
+                trackConn(remotes.changed.OnClientEvent:Connect(function(newEquipped)
+                    setEquippedFromList(newEquipped)
+                    if selectedEmoteId then
+                        setSelectedEmote(selectedEmoteId)
+                    else
+                        refreshEmoteCards()
+                        refreshEmoteSlots()
+                    end
+                end))
+            end
+        end)
+    end
+
+    -- ══════════════════════════════════════════════════════════════════════
     --  TAB SWITCHING
     -- ══════════════════════════════════════════════════════════════════════
     local function setActiveTab(tabId)
@@ -4575,6 +5393,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostsPage.Visible  = (tabId == "boosts")
         skinsArea.Visible   = (tabId == "skins")
         effectsPage.Visible = (tabId == "effects")
+        emotesPage.Visible  = (tabId == "emotes")
 
         -- Stop trail preview animation when leaving effects tab
         if tabId ~= "effects" and _stopEffectsPreview then

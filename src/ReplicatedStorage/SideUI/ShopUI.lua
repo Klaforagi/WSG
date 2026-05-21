@@ -4202,6 +4202,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
             local function buildEmotePreviewRig()
                 cleanupEmotePreview()
 
+                local previewLift = 0.75
+                local previewFacing = math.rad(180)
+
                 local player = game:GetService("Players").LocalPlayer
                 if not player then return nil end
                 local desc = nil
@@ -4230,7 +4233,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 -- Position rig
                 local hrp = rig:FindFirstChild("HumanoidRootPart")
                 if hrp then
-                    rig:PivotTo(CFrame.new(0, 0, 0))
+                    rig:PivotTo(CFrame.new(0, previewLift, 0) * CFrame.Angles(0, previewFacing, 0))
                 end
 
                 -- Camera: front-facing, slightly above center
@@ -4510,6 +4513,9 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 local EMOTE_GLYPHS = {
                     wave   = "\u{1F44B}",  -- 👋
                     dance  = "\u{1F57A}",  -- 🕺
+                    floss  = "\u{1F57A}",  -- 🕺
+                    i_want_money = "\u{1F4B0}",  -- 💰
+                    take_the_l = "L",
                     cheer  = "\u{1F389}",  -- 🎉
                     salute = "\u{270B}",   -- ✋
                     laugh  = "\u{1F602}",  -- 😂
@@ -4517,14 +4523,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     flex   = "\u{1F4AA}",  -- 💪
                     point  = "\u{1F449}",  -- 👉
                 }
-                local EMOTE_GLYPH_COLORS = {
-                    wave   = Color3.fromRGB(255, 210, 80),
-                    dance  = Color3.fromRGB(180, 120, 255),
-                    cheer  = Color3.fromRGB(255, 180, 50),
-                    salute = Color3.fromRGB(200, 200, 220),
-                }
                 local glyphText = EMOTE_GLYPHS[emoteId] or "\u{1F3AD}" -- 🎭 generic
-                local glyphColor = EMOTE_GLYPH_COLORS[emoteId] or GOLD
+                local glyphColor = GOLD
 
                 local cardGlyph = Instance.new("TextLabel", iconArea)
                 cardGlyph.Name = "EmoteGlyph"

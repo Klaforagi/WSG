@@ -28,6 +28,7 @@ EmoteConfig.SLOT_COUNT = 8
 --   AnimationId (string)  Roblox animation asset id (placeholder for now)
 --   CoinCost    (number)  purchase price in the Shop
 --   Cooldown    (number)  seconds before this emote can be played again
+--   Looped      (boolean) animation repeats until the server cancels it
 --   IsFree      (boolean) granted to all players automatically if true
 --
 -- To add a new emote: copy one of the entries below, give it a unique Id,
@@ -46,17 +47,37 @@ EmoteConfig.Emotes = {
         Cooldown    = 3,
         IsFree      = false,
     },
-    -- Future emotes go here:
-    -- {
-    --     Id          = "dance",
-    --     DisplayName = "Dance",
-    --     Description = "Break it down!",
-    --     IconKey     = "EmoteDance",
-    --     AnimationId = "rbxassetid://0",
-    --     CoinCost    = 150,
-    --     Cooldown    = 5,
-    --     IsFree      = false,
-    -- },
+    {
+        Id          = "dance",
+        DisplayName = "Dance",
+        Description = "Break into a dance.",
+        AnimationId = "rbxassetid://122221160021248",
+        CoinCost    = 20,
+        Cooldown    = 3,
+        Looped      = true,
+        IsFree      = false,
+    },
+    {
+        Id          = "i_want_money",
+        DisplayName = "I Want Money",
+        Description = "Make it rain.",
+        AnimationId = "rbxassetid://100054170665680",
+        CoinCost    = 20,
+        Cooldown    = 3,
+        Looped      = true,
+        IsFree      = false,
+    },
+    {
+        Id          = "take_the_l",
+        DisplayName = "Take The L",
+        Description = "Rub in the win.",
+        AnimationId = "rbxassetid://78954441062079",
+        CoinCost    = 20,
+        Cooldown    = 3,
+        Looped      = true,
+        IsFree      = false,
+    },
+    -- Future emotes go here.
 }
 
 -- ── Cooldown defaults ─────────────────────────────────────────────────────
