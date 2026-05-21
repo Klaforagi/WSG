@@ -23,8 +23,14 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris            = game:GetService("Debris")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local WeaponEnchantConfig = require(ReplicatedStorage:WaitForChild("WeaponEnchantConfig"))
+
+local StatService
+pcall(function()
+    StatService = require(ServerScriptService:WaitForChild("StatService", 10))
+end)
 
 local WeaponEnchantService = {}
 
@@ -294,93 +300,17 @@ end
 -- enchantName    : string  – which enchant to color the burst
 -- hitPart     : BasePart (optional) – if provided, attach to it instead
 --------------------------------------------------------------------------------
+local EnchantHitVFX
+
 function WeaponEnchantService.SpawnHitEffect(hitPosition, enchantName, hitPart)
     if not hitPosition or typeof(hitPosition) ~= "Vector3" then return end
 
     local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
     if not enchantData then return end
 
-    local color = enchantData.color
-    local h, s, v = Color3.toHSV(color)
-    local brightColor = Color3.fromHSV(h, math.clamp(s * 0.5, 0, 1), math.clamp(v * 1.3, 0, 1))
-
-    -- Create a tiny invisible anchored part at the hit location
-    local anchor = Instance.new("Part")
-    anchor.Name = "_EnchantHitFX"
-    anchor.Size = Vector3.new(0.2, 0.2, 0.2)
-    anchor.Transparency = 1
-    anchor.Anchored = true
-    anchor.CanCollide = false
-    anchor.CanQuery = false
-    anchor.CanTouch = false
-    anchor.CFrame = CFrame.new(hitPosition)
-    anchor.Parent = workspace
-
-    -- Primary impact burst — bright fast outward flash
-    local burst = Instance.new("ParticleEmitter")
-    burst.Name = "EnchantHitBurst"
-    burst.Texture = SOFT_GLOW_TEXTURE
-
-    burst.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, brightColor),
-        ColorSequenceKeypoint.new(0.5, color),
-        ColorSequenceKeypoint.new(1, color),
-    })
-    burst.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.5),
-        NumberSequenceKeypoint.new(0.3, 0.3),
-        NumberSequenceKeypoint.new(1, 0),
-    })
-    burst.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0),
-        NumberSequenceKeypoint.new(0.3, 0.2),
-        NumberSequenceKeypoint.new(0.7, 0.6),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    burst.LightEmission = 1
-    burst.LightInfluence = 0
-
-    burst.Lifetime = NumberRange.new(0.15, 0.35)
-    burst.Speed = NumberRange.new(5, 14)
-    burst.SpreadAngle = Vector2.new(180, 180)
-    burst.Drag = 6
-    burst.Rate = 0
-
-    burst.RotSpeed = NumberRange.new(-180, 180)
-    burst.Rotation = NumberRange.new(0, 360)
-
-    burst.Parent = anchor
-    burst:Emit(18)
-
-    -- Secondary flash — a few larger soft particles for impact fullness
-    local flash = Instance.new("ParticleEmitter")
-    flash.Name = "EnchantHitFlash"
-    flash.Texture = SOFT_GLOW_TEXTURE
-
-    flash.Color = ColorSequence.new(brightColor)
-    flash.Size = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.8),
-        NumberSequenceKeypoint.new(1, 0.1),
-    })
-    flash.Transparency = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.15),
-        NumberSequenceKeypoint.new(0.5, 0.5),
-        NumberSequenceKeypoint.new(1, 1),
-    })
-    flash.LightEmission = 1
-    flash.LightInfluence = 0
-
-    flash.Lifetime = NumberRange.new(0.1, 0.2)
-    flash.Speed = NumberRange.new(1, 4)
-    flash.SpreadAngle = Vector2.new(180, 180)
-    flash.Drag = 3
-    flash.Rate = 0
-
-    flash.Parent = anchor
-    flash:Emit(5)
-
-    -- Clean up after particles have fully died
-    Debris:AddItem(anchor, 0.8)
+    pcall(function()
+        EnchantHitVFX:FireAllClients(hitPosition, enchantName)
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -402,6 +332,12 @@ local CollectionService = game:GetService("CollectionService")
 local ProcConfig = WeaponEnchantConfig.ProcConfig or {}
 local DOT_DAMAGE_OPTIONS = { SkipLastDamagerTag = true }
 local PRACTICE_DUMMY_TAG = "PracticeDummy"
+
+local function isPracticeDummyModel(model)
+    return model
+        and model:IsA("Model")
+        and (model:GetAttribute("IsPracticeDummy") == true or CollectionService:HasTag(model, PRACTICE_DUMMY_TAG))
+end
 
 local STANDARD_BODY_PARTS = {
     head = true,
@@ -434,6 +370,13 @@ if not EnchantProcHit then
     EnchantProcHit.Parent = ReplicatedStorage
 end
 
+EnchantHitVFX = ReplicatedStorage:FindFirstChild("EnchantHitVFX")
+if not EnchantHitVFX then
+    EnchantHitVFX = Instance.new("RemoteEvent")
+    EnchantHitVFX.Name = "EnchantHitVFX"
+    EnchantHitVFX.Parent = ReplicatedStorage
+end
+
 -- Remote event for shock chain lightning VFX (server → all clients)
 local ShockChainVFX = ReplicatedStorage:FindFirstChild("ShockChainVFX")
 if not ShockChainVFX then
@@ -449,7 +392,12 @@ end
 -- Safe get HumanoidRootPart (or Torso fallback)
 local function getRoot(model)
     if not model then return nil end
-    return model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
+    return model:FindFirstChild("HumanoidRootPart")
+        or model:FindFirstChild("UpperTorso")
+        or model:FindFirstChild("Torso")
+        or model:FindFirstChild("Head")
+        or model.PrimaryPart
+        or model:FindFirstChildWhichIsA("BasePart", true)
 end
 
 -- Safe get Humanoid
@@ -506,47 +454,55 @@ local function getTorso(model)
         or model:FindFirstChild("HumanoidRootPart")
 end
 
-local function sendProcPopup(attackerPlayer, damage, enchantName, targetRoot)
+local function sendProcPopup(attackerPlayer, damage, enchantName, targetRoot, targetPosition)
     if not attackerPlayer or not attackerPlayer.Parent then return end
-    -- Send the torso part as an Instance so the client can adorn the popup to it
-    local model = targetRoot and targetRoot.Parent
-    local torsoPart = model and getTorso(model) or targetRoot
+    local popupPosition = targetPosition
+    if not popupPosition and targetRoot and targetRoot:IsA("BasePart") then
+        popupPosition = targetRoot.Position
+    end
     pcall(function()
-        EnchantProcHit:FireClient(attackerPlayer, damage, enchantName, torsoPart)
+        EnchantProcHit:FireClient(attackerPlayer, damage, enchantName, targetRoot, popupPosition)
     end)
 end
 
+local function rollEnchantDamage(baseDamage)
+    if type(baseDamage) ~= "number" or baseDamage <= 0 then
+        return 0
+    end
+    return baseDamage * (math.random(80, 120) / 100)
+end
+
 -- Apply flat enchant damage to a humanoid.
--- Scales with the attacker's melee upgrade level (same multiplier as base weapon,
--- no PvP cap -- all targets take the same bonus damage).
+-- Does not scale from melee or ranged upgrades.
 -- Also sends a proc popup to the attacker's client.
 local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantName, options)
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     if damage <= 0 then return end
     local skipLastDamagerTag = type(options) == "table" and options.SkipLastDamagerTag == true
-    -- Apply melee upgrade multiplier (uncapped for all targets)
-    if _G.GetMeleeDamageMultiplier and attackerPlayer then
-        local mult = _G.GetMeleeDamageMultiplier(attackerPlayer, false)
-        if mult > 1 then
-            damage = damage * mult
-        end
-    end
     damage = math.round(damage)
     pcall(function()
-        if attackerPlayer and not skipLastDamagerTag then
+        if attackerPlayer then
             targetHumanoid:SetAttribute("lastDamagerUserId", attackerPlayer.UserId)
             targetHumanoid:SetAttribute("lastDamagerName", attackerPlayer.Name)
             targetHumanoid:SetAttribute("lastDamageTime", tick())
-        elseif skipLastDamagerTag then
+        end
+        if skipLastDamagerTag then
             targetHumanoid:SetAttribute("SuppressMobAggroUntil", os.clock() + 0.25)
         end
         targetHumanoid:TakeDamage(damage)
     end)
+    if StatService and StatService.RegisterDamageDealt and attackerPlayer then
+        pcall(function() StatService:RegisterDamageDealt(attackerPlayer, damage) end)
+    end
     -- Send popup to attacker
     if enchantName and attackerPlayer then
         local model = targetHumanoid and targetHumanoid.Parent
-        local root = model and getRoot(model)
-        sendProcPopup(attackerPlayer, damage, enchantName, root)
+        local popupPart = type(options) == "table" and options.PopupPart or nil
+        local popupPosition = type(options) == "table" and options.PopupPosition or nil
+        if not (popupPart and popupPart:IsA("BasePart")) then
+            popupPart = model and (getTorso(model) or getRoot(model)) or nil
+        end
+        sendProcPopup(attackerPlayer, damage, enchantName, popupPart, popupPosition)
     end
 end
 
@@ -691,7 +647,7 @@ local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, t
     state.remaining = duration
 
     -- Immediate first tick
-    applyFlatDamage(targetHumanoid, tickDamage, attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
+    applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDamage), attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
 
     -- Damage tick loop: ticks once per tickInterval after the immediate one
     state.tickThread = task.spawn(function()
@@ -700,7 +656,7 @@ local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, t
             if not icyState[targetHumanoid] then break end
             if not targetHumanoid or not targetHumanoid.Parent or targetHumanoid.Health <= 0 then break end
             state.remaining = state.remaining - tickInterval
-            applyFlatDamage(targetHumanoid, tickDamage, attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
+            applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDamage), attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
         end
     end)
 
@@ -898,7 +854,7 @@ local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
                 break
             end
             state.remaining = state.remaining - tickInterval
-            applyFlatDamage(targetHumanoid, tickDmg, attackerPlayer, "Toxic", DOT_DAMAGE_OPTIONS)
+            applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDmg), attackerPlayer, "Toxic", DOT_DAMAGE_OPTIONS)
         end
         -- Cleanup visuals then state
         state.running = false
@@ -927,13 +883,14 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
     if math.random() > chance then return false end
 
     local targetRoot = getRoot(targetModel)
+    local primaryDamageOptions = hitPos and { PopupPosition = hitPos } or nil
 
     -- Play proc sound
     playProcSound(enchantName, targetRoot)
 
     ---------- FIERY ----------
     if enchantName == "Fiery" then
-        applyFlatDamage(targetHumanoid, cfg.ProcDamage or 20, attackerPlayer, enchantName)
+        applyFlatDamage(targetHumanoid, rollEnchantDamage(cfg.ProcDamage or 20), attackerPlayer, enchantName, primaryDamageOptions)
 
     ---------- ICY ----------
     elseif enchantName == "Icy" then
@@ -949,7 +906,7 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
 
     ---------- SHOCK ----------
     elseif enchantName == "Shock" then
-        applyFlatDamage(targetHumanoid, cfg.ProcDamage or 10, attackerPlayer, enchantName)
+        applyFlatDamage(targetHumanoid, rollEnchantDamage(cfg.ProcDamage or 10), attackerPlayer, enchantName, primaryDamageOptions)
 
         -- Always show impact sparks on the original target
         ShockChainVFX:FireAllClients(targetModel, nil)
@@ -993,7 +950,7 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
 
     ---------- LIFESTEAL ----------
     elseif enchantName == "Lifesteal" then
-        applyFlatDamage(targetHumanoid, cfg.ProcDamage or 6, attackerPlayer, enchantName)
+        applyFlatDamage(targetHumanoid, rollEnchantDamage(cfg.ProcDamage or 6), attackerPlayer, enchantName, primaryDamageOptions)
         -- Heal attacker
         if attackerHumanoid and attackerHumanoid.Parent and attackerHumanoid.Health > 0 then
             pcall(function()
@@ -1004,7 +961,7 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
 
     ---------- VOID ----------
     elseif enchantName == "Void" then
-        applyFlatDamage(targetHumanoid, cfg.ProcDamage or 30, attackerPlayer, enchantName)
+        applyFlatDamage(targetHumanoid, rollEnchantDamage(cfg.ProcDamage or 30), attackerPlayer, enchantName, primaryDamageOptions)
         -- Knockback blast
         if targetRoot and targetRoot:IsA("BasePart") then
             local attackerRoot = attackerPlayer and attackerPlayer.Character

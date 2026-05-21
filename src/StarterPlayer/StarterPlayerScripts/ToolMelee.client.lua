@@ -170,6 +170,85 @@ local function showDamagePopup(damage, isHeadshot, hitPart, hitPos)
     if anchor and anchor.Parent then anchor:Destroy() end
 end
 
+local function showEnchantHitEffect(hitPos, enchantName)
+    if not hitPos or typeof(hitPos) ~= "Vector3" then return end
+    if not WeaponEnchantConfig then return end
+
+    local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
+    if not enchantData then return end
+
+    local color = enchantData.color
+    local h, s, v = Color3.toHSV(color)
+    local brightColor = Color3.fromHSV(h, math.clamp(s * 0.5, 0, 1), math.clamp(v * 1.3, 0, 1))
+
+    local anchor = Instance.new("Part")
+    anchor.Name = "_EnchantHitFX"
+    anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+    anchor.Transparency = 1
+    anchor.Anchored = true
+    anchor.CanCollide = false
+    anchor.CanQuery = false
+    anchor.CanTouch = false
+    anchor.CFrame = CFrame.new(hitPos)
+    anchor.Parent = workspace
+
+    local burst = Instance.new("ParticleEmitter")
+    burst.Name = "EnchantHitBurst"
+    burst.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    burst.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, brightColor),
+        ColorSequenceKeypoint.new(0.5, color),
+        ColorSequenceKeypoint.new(1, color),
+    })
+    burst.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.5),
+        NumberSequenceKeypoint.new(0.3, 0.3),
+        NumberSequenceKeypoint.new(1, 0),
+    })
+    burst.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0),
+        NumberSequenceKeypoint.new(0.3, 0.2),
+        NumberSequenceKeypoint.new(0.7, 0.6),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    burst.LightEmission = 1
+    burst.LightInfluence = 0
+    burst.Lifetime = NumberRange.new(0.15, 0.35)
+    burst.Speed = NumberRange.new(5, 14)
+    burst.SpreadAngle = Vector2.new(180, 180)
+    burst.Drag = 6
+    burst.Rate = 0
+    burst.RotSpeed = NumberRange.new(-180, 180)
+    burst.Rotation = NumberRange.new(0, 360)
+    burst.Parent = anchor
+    burst:Emit(18)
+
+    local flash = Instance.new("ParticleEmitter")
+    flash.Name = "EnchantHitFlash"
+    flash.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    flash.Color = ColorSequence.new(brightColor)
+    flash.Size = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.8),
+        NumberSequenceKeypoint.new(1, 0.1),
+    })
+    flash.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.15),
+        NumberSequenceKeypoint.new(0.5, 0.5),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    flash.LightEmission = 1
+    flash.LightInfluence = 0
+    flash.Lifetime = NumberRange.new(0.1, 0.2)
+    flash.Speed = NumberRange.new(1, 4)
+    flash.SpreadAngle = Vector2.new(180, 180)
+    flash.Drag = 3
+    flash.Rate = 0
+    flash.Parent = anchor
+    flash:Emit(5)
+
+    Debris:AddItem(anchor, 0.8)
+end
+
 --------------------------------------------------------------------------------
 -- Debug: show hitbox disk locally for tuning (client-only part)
 --------------------------------------------------------------------------------
@@ -781,7 +860,7 @@ if not enchantProcEvent then
 end
 
 if enchantProcEvent then
-    enchantProcEvent.OnClientEvent:Connect(function(damage, enchantName, torsoPart)
+    enchantProcEvent.OnClientEvent:Connect(function(damage, enchantName, targetPart, targetPos)
         spawn(function()
             if not damage or not enchantName then return end
 
@@ -795,17 +874,16 @@ if enchantProcEvent then
             -- Adorn to the target's torso part; fall back to anchored part if needed
             local parentPart
             local anchor
-            if torsoPart and typeof(torsoPart) == "Instance" and torsoPart:IsA("BasePart") then
-                parentPart = torsoPart
-            elseif torsoPart and typeof(torsoPart) == "Vector3" then
-                -- Legacy fallback: if a position was sent instead of a part
+            if targetPart and typeof(targetPart) == "Instance" and targetPart:IsA("BasePart") and targetPart.Parent then
+                parentPart = targetPart
+            elseif targetPos and typeof(targetPos) == "Vector3" then
                 anchor = Instance.new("Part")
                 anchor.Name = "_EnchantProcAnchor"
                 anchor.Size = Vector3.new(0.2, 0.2, 0.2)
                 anchor.Transparency = 1
                 anchor.Anchored = true
                 anchor.CanCollide = false
-                anchor.CFrame = CFrame.new(torsoPart)
+                anchor.CFrame = CFrame.new(targetPos)
                 anchor.Parent = workspace
                 parentPart = anchor
             end
@@ -843,6 +921,19 @@ if enchantProcEvent then
             tween:Cancel()
             gui:Destroy()
             if anchor and anchor.Parent then anchor:Destroy() end
+        end)
+    end)
+end
+
+local enchantHitVFXEvent = ReplicatedStorage:FindFirstChild("EnchantHitVFX")
+if not enchantHitVFXEvent then
+    enchantHitVFXEvent = ReplicatedStorage:WaitForChild("EnchantHitVFX", 10)
+end
+
+if enchantHitVFXEvent then
+    enchantHitVFXEvent.OnClientEvent:Connect(function(hitPos, enchantName)
+        spawn(function()
+            showEnchantHitEffect(hitPos, enchantName)
         end)
     end)
 end

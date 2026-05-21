@@ -27,7 +27,10 @@
 --------------------------------------------------------------------------------
 
 local Players             = game:GetService("Players")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+
+local MobSettings = require(ReplicatedStorage:WaitForChild("MobSettings"))
 
 local StatService = {}
 
@@ -77,6 +80,20 @@ local MATCH_STAT_DEFAULTS = {
 -- Per-player stat storage  (server-authoritative, single source of truth)
 --------------------------------------------------------------------------------
 local playerStats = {}  -- [Player] -> { Score = 0, Eliminations = 0, ... }
+
+local function getMobScoreReward(mobName)
+    if type(mobName) ~= "string" or mobName == "" then
+        return 3
+    end
+
+    local cfg = MobSettings.Get(mobName)
+    local spawnCfg = cfg and cfg.Spawn
+    if spawnCfg and type(spawnCfg.ScoreReward) == "number" then
+        return spawnCfg.ScoreReward
+    end
+
+    return 3
+end
 
 --------------------------------------------------------------------------------
 -- Central event pipeline  (BindableEvent)
@@ -212,7 +229,7 @@ end
 function StatService:RegisterMobKill(killer, mobName)
     if not killer or not killer:IsA("Player") then return end
     if not isTrackedTeamPlayer(killer) then return end
-    incrementStat(killer, "Score", 3)
+    incrementStat(killer, "Score", getMobScoreReward(mobName))
     fireEvent(killer, self.Actions.MobKill, 1, { mobName = mobName })
 end
 

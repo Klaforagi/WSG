@@ -22,6 +22,7 @@ local Defaults = {
         Tag      = "ZombieNPC", -- CollectionService tag applied on spawn
         XPReward = 1,           -- XP given to the killing player
         CoinReward = 1,         -- coins given to the killing player; number or { Min = x, Max = y }
+        ScoreReward = 3,        -- player/team score given for killing this mob
         SpawnHeightOffset = 0,  -- positive raises spawn point above default placement
     },
     Movement = {
@@ -68,8 +69,9 @@ local Presets = {
     Orc = {
         Spawn = {
             Weight   = 5,
-            XPReward = 8,
+            XPReward = 16,
             CoinReward = { Min = 4, Max = 10 },
+            ScoreReward = 5,
         },
         Attack = {
             Damage      = 8,
@@ -103,8 +105,9 @@ local Presets = {
     Goblin = {
         Spawn = {
             Weight   = 10,  -- 2x Orc's weight of 5
-            XPReward = 4,
+            XPReward = 8,
             CoinReward = { Min = 1, Max = 6 },
+            ScoreReward = 3,
         },
         Movement = {
             WalkSpeed    = 12,  -- Orc default (8) +4
@@ -141,8 +144,9 @@ local Presets = {
     Ogre = {
         Spawn = {
             Weight   = 2,
-            XPReward = 20,
-            CoinReward = { Min = 10, Max = 20 },
+            XPReward = 60,
+            CoinReward = { Min = 20, Max = 40 },
+            ScoreReward = 20,
             SpawnHeightOffset = 3,
         },
         Attack = {
@@ -230,6 +234,9 @@ local function validate(name, cfg)
             end
         else
             warn(("[MobSettings] '%s' Spawn.CoinReward must be a number or range table"):format(name))
+        end
+        if type(sp.ScoreReward) ~= "number" or sp.ScoreReward < 0 then
+            warn(("[MobSettings] '%s' Spawn.ScoreReward must be a non-negative number"):format(name))
         end
         if type(sp.SpawnHeightOffset) ~= "number" then
             warn(("[MobSettings] '%s' Spawn.SpawnHeightOffset must be a number"):format(name))

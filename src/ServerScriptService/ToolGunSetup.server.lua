@@ -35,6 +35,14 @@ pcall(function()
     end
 end)
 
+local WeaponEnchantService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponEnchantService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponEnchantService = require(mod)
+    end
+end)
+
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
@@ -396,7 +404,7 @@ end
 
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
-local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos, weaponInstanceId, weaponName)
+local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos, weaponInstanceId, weaponName, enchantName)
     -- prevent friendly fire: if the victim is a player on the same Team, skip damage
     local victimPlayer = nil
     if victimModel and Players then
@@ -429,6 +437,27 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
         end
     end)
     humanoid:TakeDamage(damage)
+
+    if WeaponEnchantService and type(enchantName) == "string" and enchantName ~= "" then
+        local attackerHumanoid = player and player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        local procSucceeded = false
+        pcall(function()
+            procSucceeded = WeaponEnchantService.TryProcEnchant(
+                player,
+                attackerHumanoid,
+                victimModel,
+                humanoid,
+                enchantName,
+                hitPos
+            ) == true
+        end)
+        if procSucceeded and hitPos then
+            pcall(function()
+                WeaponEnchantService.SpawnHitEffect(hitPos, enchantName, hitPart)
+            end)
+        end
+    end
+
     -- Track damage dealt for quest progress
     if StatService and StatService.RegisterDamageDealt then
         pcall(function() StatService:RegisterDamageDealt(player, damage) end)
@@ -691,7 +720,8 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         inst,
                         rayResult.Position,
                         projCfg and projCfg._weaponInstanceId,
-                        (projCfg and projCfg._weaponName) or toolName
+                        (projCfg and projCfg._weaponName) or toolName,
+                        projCfg and projCfg._enchantName
                     )
                     -- play sniper headshot sound at victim head when appropriate
                     if isHeadshot then
@@ -1121,6 +1151,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     scaledCfg._projVisualScale = projVisualScale
     scaledCfg._weaponInstanceId = equippedTool:GetAttribute("WeaponInstanceId")
     scaledCfg._weaponName = equippedTool:GetAttribute("WeaponName") or toolName
+    scaledCfg._enchantName = equippedTool:GetAttribute("EnchantName")
 
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end

@@ -401,10 +401,9 @@ function WeeklyQuestService:ClaimReward(player, questIndex)
 
     q.claimed = true
     markDirty(player)
-
-    -- Force immediate save after claim
-    DataSaveCoordinator:RequestImmediateSave(player, "weekly_quest_claim", { sections = { "WeeklyQuest" }, force = true })
-
+    task.spawn(function()
+        WeeklyQuestService:SavePlayer(player)
+    end)
     return true
 end
 

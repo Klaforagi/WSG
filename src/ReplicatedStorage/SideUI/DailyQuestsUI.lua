@@ -4339,8 +4339,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             local fillBar = wkProgressBars[questIdx]
             if fillBar and fillBar.Parent then
-                TweenService:Create(fillBar, TWEEN_QUICK,
-                    {Size = UDim2.new(pctW2, 0, 1, 0)}):Play()
+                if newProgress >= goal then
+                    fillBar.Size = UDim2.new(1, 0, 1, 0)
+                else
+                    TweenService:Create(fillBar, TWEEN_QUICK,
+                        {Size = UDim2.new(pctW2, 0, 1, 0)}):Play()
+                end
             end
 
             local txt = wkProgressTexts[questIdx]
@@ -4412,8 +4416,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             local fillBar = progressBars[questId]
             if fillBar and fillBar.Parent then
-                TweenService:Create(fillBar, TWEEN_QUICK,
-                    {Size = UDim2.new(pct2, 0, 1, 0)}):Play()
+                if newProgress >= goal then
+                    fillBar.Size = UDim2.new(1, 0, 1, 0)
+                else
+                    TweenService:Create(fillBar, TWEEN_QUICK,
+                        {Size = UDim2.new(pct2, 0, 1, 0)}):Play()
+                end
             end
 
             local txt = progressTexts[questId]

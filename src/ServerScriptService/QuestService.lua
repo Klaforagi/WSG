@@ -514,8 +514,6 @@ function QuestService:ClaimReward(player, questId)
 
     state.claimed = true
     markDirty(player)
-
-    -- Force immediate save after claim
     task.spawn(function()
         QuestService:SaveForPlayer(player)
     end)
