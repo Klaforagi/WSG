@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 -- WeaponMasteryService.lua
--- Server-authoritative per-weapon-name progression and milestone rewards.
+-- Server-authoritative per-weapon-name progression and automatic damage bonuses.
 -- Public APIs still accept weapon instance IDs for compatibility with tools/UI.
 --------------------------------------------------------------------------------
 
@@ -27,7 +27,6 @@ local dirtyPlayers = {}
 local saveScheduled = {}
 
 local _WeaponInstanceService
-local _CurrencyService
 local _SaveCoordinator
 
 local function getWeaponInstanceService()
@@ -38,16 +37,6 @@ local function getWeaponInstanceService()
         end
     end
     return _WeaponInstanceService
-end
-
-local function getCurrencyService()
-    if not _CurrencyService then
-        local mod = ServerScriptService:FindFirstChild("CurrencyService")
-        if mod and mod:IsA("ModuleScript") then
-            _CurrencyService = require(mod)
-        end
-    end
-    return _CurrencyService
 end
 
 local function getSaveCoordinator()
@@ -80,7 +69,6 @@ local function ensureRemote(className, name)
 end
 
 local masteryUpdatedRE = ensureRemote("RemoteEvent", "WeaponMasteryUpdated")
-local claimRewardRF = ensureRemote("RemoteFunction", "ClaimWeaponMasteryReward")
 
 local function dsKey(player)
     return "WpnMastery_" .. tostring(player.UserId)
@@ -235,36 +223,24 @@ local function getEntryForInstance(player, instanceId, createIfMissing)
     return getEntryForWeaponName(player, weaponName, createIfMissing), weaponName
 end
 
-local function getReadyRewardLevel(entry)
-    if not entry then return nil end
-    for _, def in ipairs(Config.Levels) do
-        if def.Reward and def.Level <= (entry.level or 1) then
-            local claimKey = tostring(def.Level)
-            if entry.claimedRewards[claimKey] ~= true then
-                return def.Level
-            end
-        end
-    end
-    return nil
-end
-
 local function buildPayload(entry, weaponName)
     entry = normalizeEntry(entry or newEntry())
     local progress = Config.GetProgressForXP(entry.xp)
-    local levelDef = Config.GetLevelDef(entry.level)
+    local romanNumeral = Config.GetRomanNumeral(entry.level)
+    local damageBonus = Config.GetDamageBonus(entry.level)
 
     return {
         weaponName = weaponName,
         masteryKey = weaponName,
         xp = entry.xp,
         level = entry.level,
-        title = levelDef and levelDef.Title or "Fresh",
+        title = romanNumeral,
+        romanNumeral = romanNumeral,
         eliminations = entry.eliminations,
         mobKills = entry.mobKills,
         captures = entry.captures,
         damage = entry.damage,
-        claimedRewards = copyTable(entry.claimedRewards),
-        readyRewardLevel = getReadyRewardLevel(entry),
+        damageBonus = damageBonus,
         currentLevelXP = progress.currentLevelXP,
         nextLevelXP = progress.nextLevelXP,
         nextLevel = progress.nextLevel,
@@ -281,6 +257,22 @@ end
 function WeaponMasteryService:GetMasteryPayload(player, instanceId)
     local entry, weaponName = getEntryForInstance(player, instanceId, false)
     return buildPayload(entry or newEntry(), weaponName)
+end
+
+function WeaponMasteryService:GetDamageBonusForWeaponName(player, weaponName)
+    if not player or type(weaponName) ~= "string" or weaponName == "" then
+        return 0
+    end
+    local entry = getEntryForWeaponName(player, weaponName, false)
+    return Config.GetDamageBonus(entry and entry.level or 1)
+end
+
+function WeaponMasteryService:GetDamageBonus(player, instanceId)
+    if not player or type(instanceId) ~= "string" or instanceId == "" then
+        return 0
+    end
+    local entry = getEntryForInstance(player, instanceId, false)
+    return Config.GetDamageBonus(entry and entry.level or 1)
 end
 
 function WeaponMasteryService:AttachMasteryToInventory(player, inventory)
@@ -342,6 +334,7 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     local updateMeta = meta or {}
     updateMeta.deltaXP = xpAmount
     updateMeta.leveledUp = (entry.level or 1) > oldLevel
+    updateMeta.oldLevel = oldLevel
     if updateMeta.leveledUp then
         updateMeta.newLevel = entry.level
     end
@@ -566,64 +559,13 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
             kind = "Damage",
             deltaXP = xpAmount,
             leveledUp = (entry.level or 1) > oldLevel,
+            oldLevel = oldLevel,
             newLevel = entry.level,
         })
     end
 
     markDirty(player)
     return self:GetMasteryPayloadForWeaponName(player, weaponName)
-end
-
-function WeaponMasteryService:ClaimReward(player, instanceId, level)
-    if not player or not player.Parent then return false, { reason = "No player" } end
-    if type(instanceId) ~= "string" or instanceId == "" then return false, { reason = "Invalid weapon" } end
-
-    local entry, weaponName = getEntryForInstance(player, instanceId, false)
-    if not entry or not weaponName then return false, { reason = "Weapon not found" } end
-
-    level = math.floor(tonumber(level) or 0)
-    local reward = Config.GetReward(level)
-    if not reward then return false, { reason = "No reward for this level" } end
-
-    if (entry.level or 1) < level then
-        return false, { reason = "Mastery level not reached" }
-    end
-
-    local claimKey = tostring(level)
-    if entry.claimedRewards[claimKey] == true then
-        return false, { reason = "Reward already claimed" }
-    end
-
-    local currency = getCurrencyService()
-    if currency then
-        if reward.Coins and currency.AddCoins then
-            pcall(function() currency:AddCoins(player, reward.Coins, "weaponMastery") end)
-        end
-        if reward.Salvage and currency.AddSalvage then
-            pcall(function() currency:AddSalvage(player, reward.Salvage) end)
-        end
-    end
-
-    entry.claimedRewards[claimKey] = true
-    markDirty(player)
-    local coordinator = getSaveCoordinator()
-    if coordinator then
-        coordinator:RequestImmediateSave(player, "weapon_mastery_reward", {
-            force = true,
-        })
-    end
-    fireUpdated(player, instanceId, weaponName, { kind = "RewardClaimed", rewardLevel = level })
-
-    return true, {
-        level = level,
-        weaponName = weaponName,
-        reward = copyTable(reward),
-        mastery = self:GetMasteryPayloadForWeaponName(player, weaponName),
-    }
-end
-
-claimRewardRF.OnServerInvoke = function(player, instanceId, level)
-    return WeaponMasteryService:ClaimReward(player, instanceId, level)
 end
 
 -- BindToClose is intentionally NOT registered here.

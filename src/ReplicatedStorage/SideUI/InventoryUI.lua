@@ -235,26 +235,44 @@ local function setCardStroke(stroke, color, thickness, transparency)
     stroke.Transparency = transparency
 end
 
-local function formatMasteryReward(reward)
-    if type(reward) ~= "table" then return "Mastery reward" end
-    local parts = {}
-    local coins = tonumber(reward.Coins) or 0
-    local salvage = tonumber(reward.Salvage) or 0
-    if coins > 0 then
-        table.insert(parts, "+" .. tostring(coins) .. " coins")
+local MASTERY_ROMAN_FALLBACK = {
+    [1] = "I",
+    [2] = "II",
+    [3] = "III",
+    [4] = "IV",
+    [5] = "V",
+    [6] = "VI",
+    [7] = "VII",
+    [8] = "VIII",
+    [9] = "IX",
+    [10] = "X",
+}
+
+local function formatWholeNumber(value)
+    local formatted = tostring(math.max(0, math.floor(tonumber(value) or 0)))
+    while true do
+        local updated, count = string.gsub(formatted, "^(%-?%d+)(%d%d%d)", "%1,%2")
+        formatted = updated
+        if count == 0 then
+            break
+        end
     end
-    if salvage > 0 then
-        table.insert(parts, "+" .. tostring(salvage) .. " Shards")
-    end
-    if #parts == 0 then return "Mastery reward" end
-    return table.concat(parts, "  ")
+    return formatted
 end
 
-local function getMasteryReward(level)
-    if WeaponMasteryConfig and WeaponMasteryConfig.GetReward then
-        return WeaponMasteryConfig.GetReward(level)
+local function getMasteryRoman(level, romanNumeral)
+    if type(romanNumeral) == "string" and romanNumeral ~= "" then
+        return romanNumeral
     end
-    return nil
+    if WeaponMasteryConfig and WeaponMasteryConfig.GetRomanNumeral then
+        return WeaponMasteryConfig.GetRomanNumeral(level)
+    end
+    local numericLevel = math.max(1, math.floor(tonumber(level) or 1))
+    return MASTERY_ROMAN_FALLBACK[numericLevel] or tostring(numericLevel)
+end
+
+local function formatMasteryBonus(bonus)
+    return string.format("+%.1f DMG", math.max(0, tonumber(bonus) or 0))
 end
 
 -- (SIZE_TIER_STYLES removed — EnchantTextStyler is the sole source of size-tier colors)
@@ -1149,7 +1167,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryPanel.Name = "MasteryPanel"
     masteryPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 38)
     masteryPanel.BackgroundTransparency = 0.08
-    masteryPanel.Size = UDim2.new(0.9, 0, 0, px(128))
+    masteryPanel.Size = UDim2.new(0.9, 0, 0, px(112))
     masteryPanel.AnchorPoint = Vector2.new(0.5, 0)
     masteryPanel.Position = UDim2.new(0.5, 0, 0, px(324))
     masteryPanel.Visible = false
@@ -1164,34 +1182,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryTitle.BackgroundTransparency = 1
     masteryTitle.Font = Enum.Font.GothamBold
     masteryTitle.TextColor3 = GOLD
-    masteryTitle.TextSize = px(17)
+    masteryTitle.TextSize = px(18)
     masteryTitle.TextXAlignment = Enum.TextXAlignment.Left
-    masteryTitle.Size = UDim2.new(1, -px(92), 0, px(24))
+    masteryTitle.Size = UDim2.new(1, -px(24), 0, px(24))
     masteryTitle.Position = UDim2.new(0, px(12), 0, px(8))
-    masteryTitle.Text = "MASTERY 1"
-
-    local masteryClaimBtn = Instance.new("TextButton", masteryPanel)
-    masteryClaimBtn.Name = "ClaimRewardBtn"
-    masteryClaimBtn.AutoButtonColor = false
-    masteryClaimBtn.BackgroundColor3 = Color3.fromRGB(38, 95, 54)
-    masteryClaimBtn.Font = Enum.Font.GothamBold
-    masteryClaimBtn.TextColor3 = WHITE
-    masteryClaimBtn.TextSize = px(13)
-    masteryClaimBtn.Text = "CLAIM"
-    masteryClaimBtn.Size = UDim2.new(0, px(72), 0, px(28))
-    masteryClaimBtn.AnchorPoint = Vector2.new(1, 0)
-    masteryClaimBtn.Position = UDim2.new(1, -px(9), 0, px(7))
-    masteryClaimBtn.Visible = false
-    Instance.new("UICorner", masteryClaimBtn).CornerRadius = UDim.new(0, px(7))
+    masteryTitle.Text = "MASTERY I"
 
     local masteryXP = Instance.new("TextLabel", masteryPanel)
     masteryXP.Name = "XP"
     masteryXP.BackgroundTransparency = 1
     masteryXP.Font = Enum.Font.GothamBold
     masteryXP.TextColor3 = WHITE
-    masteryXP.TextSize = px(14)
+    masteryXP.TextSize = px(13)
     masteryXP.TextXAlignment = Enum.TextXAlignment.Left
-    masteryXP.Size = UDim2.new(1, -px(24), 0, px(20))
+    masteryXP.Size = UDim2.new(1, -px(24), 0, px(18))
     masteryXP.Position = UDim2.new(0, px(12), 0, px(34))
     masteryXP.Text = "0 / 25 XP"
 
@@ -1200,7 +1204,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryBarBg.BackgroundColor3 = Color3.fromRGB(11, 12, 20)
     masteryBarBg.BorderSizePixel = 0
     masteryBarBg.Size = UDim2.new(1, -px(24), 0, px(10))
-    masteryBarBg.Position = UDim2.new(0, px(12), 0, px(58))
+    masteryBarBg.Position = UDim2.new(0, px(12), 0, px(56))
     Instance.new("UICorner", masteryBarBg).CornerRadius = UDim.new(0, px(5))
 
     local masteryBarFill = Instance.new("Frame", masteryBarBg)
@@ -1216,11 +1220,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryElims.BackgroundTransparency = 0.05
     masteryElims.Font = Enum.Font.GothamBold
     masteryElims.TextColor3 = WHITE
-    masteryElims.TextSize = px(13)
+    masteryElims.TextSize = px(12)
     masteryElims.TextXAlignment = Enum.TextXAlignment.Center
     masteryElims.TextYAlignment = Enum.TextYAlignment.Center
-    masteryElims.Size = UDim2.new(0.48, -px(3), 0, px(26))
-    masteryElims.Position = UDim2.new(0, px(12), 0, px(75))
+    masteryElims.Size = UDim2.new(0.48, -px(3), 0, px(30))
+    masteryElims.Position = UDim2.new(0, px(12), 0, px(74))
     masteryElims.Text = "ELIMS 0"
     Instance.new("UICorner", masteryElims).CornerRadius = UDim.new(0, px(6))
 
@@ -1230,27 +1234,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.BackgroundTransparency = 0.05
     masteryDamage.Font = Enum.Font.GothamBold
     masteryDamage.TextColor3 = WHITE
-    masteryDamage.TextSize = px(13)
+    masteryDamage.TextSize = px(12)
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
-    masteryDamage.Size = UDim2.new(0.48, -px(3), 0, px(26))
+    masteryDamage.Size = UDim2.new(0.48, -px(3), 0, px(30))
     masteryDamage.AnchorPoint = Vector2.new(1, 0)
-    masteryDamage.Position = UDim2.new(1, -px(12), 0, px(75))
-    masteryDamage.Text = "DAMAGE 0"
+    masteryDamage.Position = UDim2.new(1, -px(12), 0, px(74))
+    masteryDamage.Text = "BONUS +0.0 DMG"
     Instance.new("UICorner", masteryDamage).CornerRadius = UDim.new(0, px(6))
-
-    local masteryNext = Instance.new("TextLabel", masteryPanel)
-    masteryNext.Name = "NextReward"
-    masteryNext.BackgroundTransparency = 1
-    masteryNext.Font = Enum.Font.GothamBold
-    masteryNext.TextColor3 = WHITE
-    masteryNext.TextSize = px(13)
-    masteryNext.TextWrapped = true
-    masteryNext.TextXAlignment = Enum.TextXAlignment.Left
-    masteryNext.TextYAlignment = Enum.TextYAlignment.Top
-    masteryNext.Size = UDim2.new(1, -px(24), 0, px(24))
-    masteryNext.Position = UDim2.new(0, px(12), 0, px(105))
-    masteryNext.Text = "Next: Mastery 2"
 
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
@@ -1504,7 +1495,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
         return {
             level = 1,
-            title = "Fresh",
+            title = "I",
+            romanNumeral = "I",
             xp = 0,
             progress = 0,
             nextLevel = 2,
@@ -1514,6 +1506,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             mobKills = 0,
             captures = 0,
             damage = 0,
+            damageBonus = 0,
             maxed = false,
         }
     end
@@ -1521,50 +1514,30 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function updateMasteryPanel(itemData)
         if not itemData or not itemData.isInstance then
             masteryPanel.Visible = false
-            masteryClaimBtn.Visible = false
             return
         end
 
         local mastery = getMasteryData(itemData)
         local level = math.max(1, math.floor(tonumber(mastery.level) or 1))
-        local title = mastery.title or "Fresh"
+        local romanNumeral = getMasteryRoman(level, mastery.romanNumeral or mastery.title)
         local xp = math.max(0, math.floor(tonumber(mastery.xp) or 0))
         local progress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
         local nextLevelXP = math.max(0, math.floor(tonumber(mastery.nextLevelXP) or 25))
-        local nextLevel = tonumber(mastery.nextLevel)
-        local readyRewardLevel = tonumber(mastery.readyRewardLevel)
+        local damageBonus = math.max(0, tonumber(mastery.damageBonus) or 0)
 
         masteryPanel.Visible = true
-        masteryTitle.Text = "MASTERY " .. tostring(level)
+        masteryTitle.Text = "MASTERY " .. romanNumeral
 
         if mastery.maxed == true then
-            masteryXP.Text = string.upper(tostring(title)) .. "  " .. tostring(xp) .. " XP  MAX"
+            masteryXP.Text = formatWholeNumber(xp) .. " XP TOTAL"
             masteryBarFill.Size = UDim2.new(1, 0, 1, 0)
         else
-            masteryXP.Text = string.upper(tostring(title)) .. "  " .. tostring(xp) .. " / " .. tostring(nextLevelXP) .. " XP"
+            masteryXP.Text = formatWholeNumber(xp) .. " / " .. formatWholeNumber(nextLevelXP) .. " XP"
             masteryBarFill.Size = UDim2.new(progress, 0, 1, 0)
         end
 
-        masteryElims.Text = "ELIMS " .. tostring(mastery.eliminations or 0)
-        masteryDamage.Text = "DAMAGE " .. tostring(mastery.damage or 0)
-
-        if readyRewardLevel then
-            masteryNext.Text = "CLAIM: " .. formatMasteryReward(getMasteryReward(readyRewardLevel))
-            masteryNext.TextColor3 = GREEN_GLOW
-            masteryClaimBtn.Visible = true
-            masteryClaimBtn:SetAttribute("RewardLevel", readyRewardLevel)
-        elseif nextLevel then
-            local rewardText = formatMasteryReward(getMasteryReward(nextLevel))
-            masteryNext.Text = "NEXT M" .. tostring(nextLevel) .. ": " .. rewardText
-            masteryNext.TextColor3 = WHITE
-            masteryClaimBtn.Visible = false
-            masteryClaimBtn:SetAttribute("RewardLevel", nil)
-        else
-            masteryNext.Text = "Fully mastered"
-            masteryNext.TextColor3 = GOLD
-            masteryClaimBtn.Visible = false
-            masteryClaimBtn:SetAttribute("RewardLevel", nil)
-        end
+        masteryElims.Text = "ELIMS " .. formatWholeNumber(mastery.eliminations or 0)
+        masteryDamage.Text = "BONUS " .. formatMasteryBonus(damageBonus)
     end
 
     ---------------------------------------------------------------------------
@@ -1968,26 +1941,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             favConstraint.MaxTextSize = 18
         end
 
-        local mastery = getMasteryData(itemData)
-
-        local masteryProgress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
-        if itemData.isInstance and masteryProgress > 0 and mastery.maxed ~= true then
-            local masteryStripBg = Instance.new("Frame", card)
-            masteryStripBg.Name = "MasteryProgressBg"
-            masteryStripBg.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
-            masteryStripBg.BorderSizePixel = 0
-            masteryStripBg.Size = UDim2.new(1, 0, 0, 3)
-            masteryStripBg.AnchorPoint = Vector2.new(0, 1)
-            masteryStripBg.Position = UDim2.new(0, 0, 1, -3)
-            masteryStripBg.ZIndex = 5
-            local masteryStripFill = Instance.new("Frame", masteryStripBg)
-            masteryStripFill.Name = "Fill"
-            masteryStripFill.BackgroundColor3 = GOLD
-            masteryStripFill.BorderSizePixel = 0
-            masteryStripFill.Size = UDim2.new(masteryProgress, 0, 1, 0)
-            masteryStripFill.ZIndex = 6
-        end
-
         -- ── Store ref (bgColor/borderColor for selection/equip reset) ────
         allCardRefs[itemData.id] = { card = card, stroke = stroke, itemData = itemData, bgColor = cardBg, borderColor = borderC }
 
@@ -2172,51 +2125,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if selectedItem and not isItemEquipped(selectedItem) then
             TweenService:Create(detailEquipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
         end
-    end)
-
-    masteryClaimBtn.MouseButton1Click:Connect(function()
-        if not selectedItem or not selectedItem.isInstance then return end
-        local instanceId = selectedItem.instanceId
-        if not instanceId then return end
-        local rewardLevel = masteryClaimBtn:GetAttribute("RewardLevel")
-        if not rewardLevel then return end
-
-        local claimRF = ReplicatedStorage:FindFirstChild("ClaimWeaponMasteryReward")
-        if not claimRF or not claimRF:IsA("RemoteFunction") then return end
-
-        local ok, success, result = pcall(function()
-            return claimRF:InvokeServer(instanceId, rewardLevel)
-        end)
-
-        if ok and success and type(result) == "table" then
-            if type(result.mastery) == "table" then
-                selectedItem.mastery = result.mastery
-                for _, item in ipairs(allWeaponItems) do
-                    if item.instanceId == instanceId then
-                        item.mastery = result.mastery
-                        break
-                    end
-                end
-            end
-            showSalvageFeedback("Claimed " .. formatMasteryReward(result.reward), GOLD, 2.5)
-            updateMasteryPanel(selectedItem)
-            renderCategory(currentWeaponCategory)
-        else
-            local reason = "Claim failed"
-            if type(result) == "table" and result.reason then
-                reason = result.reason
-            end
-            showSalvageFeedback(reason, RED_TEXT, 3)
-        end
-    end)
-
-    masteryClaimBtn.MouseEnter:Connect(function()
-        if masteryClaimBtn.Visible then
-            TweenService:Create(masteryClaimBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(48, 120, 66)}):Play()
-        end
-    end)
-    masteryClaimBtn.MouseLeave:Connect(function()
-        TweenService:Create(masteryClaimBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 95, 54)}):Play()
     end)
 
     ---------------------------------------------------------------------------

@@ -480,8 +480,15 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
     end
-    -- Round to nearest whole number
-    damage = math.round(damage)
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        local ok, masteryBonus = pcall(function()
+            return WeaponMasteryService:GetDamageBonus(player, weaponInstanceId)
+        end)
+        if ok and type(masteryBonus) == "number" and masteryBonus > 0 then
+            damage = damage + masteryBonus
+        end
+    end
+    damage = math.max(0, math.round(damage))
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)

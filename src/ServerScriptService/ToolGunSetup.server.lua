@@ -353,6 +353,15 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
             damage = damage * mult
         end
     end
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        local ok, masteryBonus = pcall(function()
+            return WeaponMasteryService:GetDamageBonus(player, weaponInstanceId)
+        end)
+        if ok and type(masteryBonus) == "number" and masteryBonus > 0 then
+            damage = damage + masteryBonus
+        end
+    end
+    damage = math.max(0, math.round(damage))
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
