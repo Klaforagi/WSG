@@ -52,13 +52,13 @@ local function isMeleeTool(tool)
     return false
 end
 
-local function getCfg(tool)
+local function getCfg(tool, sizePercent)
     local cfg = {}
     local suffix = tostring(tool.Name):match("^Tool(.+)") or tostring(tool.Name):match("^(.+)$")
     local key = suffix and suffix:lower()
     if key and MeleeCfgModule then
         if MeleeCfgModule.getPreset then
-            local preset = MeleeCfgModule.getPreset(key)
+            local preset = MeleeCfgModule.getPreset(key, sizePercent)
             if preset then
                 for k, v in pairs(preset) do cfg[k] = v end
             end
@@ -618,7 +618,7 @@ local function attachMelee(tool)
         end)
     end
 
-    local cfg = getCfg(tool)
+    local cfg = getCfg(tool, getToolSizePercent(tool))
 
     --------------------------------------------------------------------------
     -- COMBO SYSTEM CONFIG

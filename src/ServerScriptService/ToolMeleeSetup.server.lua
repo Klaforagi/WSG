@@ -121,12 +121,12 @@ local KILL_POINTS = 10
 -- Resolve per-tool config from presets (uses getPreset which merges
 -- rarity defaults + weapon overrides)
 ---------------------------------------------------------------------------
-local function getServerMeleeCfg(toolName)
+local function getServerMeleeCfg(toolName, sizePercent)
     if not MeleeCfg or not MeleeCfg.getPreset then return {} end
     local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
     local key = suffix and suffix:lower()
     if not key then return {} end
-    return MeleeCfg.getPreset(key) or {}
+    return MeleeCfg.getPreset(key, sizePercent) or {}
 end
 
 ---------------------------------------------------------------------------
@@ -233,7 +233,11 @@ local function collectAllMeleeAnimationIds()
         table.insert(ids, normalized)
     end
 
-    if MeleeCfg and MeleeCfg.presets then
+    if MeleeCfg and type(MeleeCfg.getAllSwingAnimationIds) == "function" then
+        for _, animId in ipairs(MeleeCfg.getAllSwingAnimationIds()) do
+            add(animId)
+        end
+    elseif MeleeCfg and MeleeCfg.presets then
         for _, preset in pairs(MeleeCfg.presets) do
             if type(preset.swing_anim_ids) == "table" then
                 for _, animId in ipairs(preset.swing_anim_ids) do
@@ -729,10 +733,10 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     end
 
     -- resolve config (rarity defaults merged with weapon overrides)
-    local cfg = getServerMeleeCfg(toolName)
+    local sizePercent     = getToolSizePercent(tool)
+    local cfg = getServerMeleeCfg(toolName, sizePercent)
 
     -- ── SIZE SCALING ──────────────────────────────────────────────────
-    local sizePercent     = getToolSizePercent(tool)
     local sizeDamageMult  = getSizeDamageMultiplier(sizePercent)
     local sizeSpeedMult   = getSizeSpeedMultiplier(sizePercent)
 
