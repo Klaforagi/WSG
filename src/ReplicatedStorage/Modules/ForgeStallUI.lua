@@ -483,16 +483,18 @@ function ForgeStallUI.Create(parent, options)
 	local contentTopInset = px(52)
 	local contentBottomInset = px(16)
 	local contentSideInset = px(14)
+	local viewportSize = getViewportSize()
+	local balanceCardDrop = math.max(px(18), math.floor(viewportSize.Y * 0.05))
+	local balanceCardWidthScale = 0.9
 	local packCount = 0
 	if ShardProducts and type(ShardProducts.Packs) == "table" then
 		packCount = #ShardProducts.Packs
 	end
 	local rowsHeight = (rowHeight * 3) + (rowGap * 2)
 	local panelHeight = rowsHeight + contentTopInset + contentBottomInset
-	local leftColumnHeight = (packCount * packHeight) + (math.max(0, packCount - 1) * cardGap) + balanceGap + balanceHeight
+	local leftColumnHeight = (packCount * packHeight) + (math.max(0, packCount - 1) * cardGap) + balanceGap + balanceHeight + balanceCardDrop
 	local stageInnerHeight = math.max(panelHeight, leftColumnHeight + px(18))
 	local stageHeight = stageInnerHeight + stageTopPadding + stageBottomPadding
-	local viewportSize = getViewportSize()
 
 	local stage = Instance.new("Frame")
 	stage.Name = "ForgeStage"
@@ -608,7 +610,7 @@ function ForgeStallUI.Create(parent, options)
 
 	local packsHost = Instance.new("Frame")
 	packsHost.BackgroundTransparency = 1
-	packsHost.Size = UDim2.new(1, 0, 1, -(balanceHeight + balanceGap))
+	packsHost.Size = UDim2.new(1, 0, 1, -(balanceHeight + balanceGap + balanceCardDrop))
 	packsHost.Parent = leftColumn
 
 	local packsLayout = Instance.new("UIListLayout")
@@ -746,9 +748,9 @@ function ForgeStallUI.Create(parent, options)
 
 	local balanceCard = Instance.new("Frame")
 	balanceCard.Name = "BalanceCard"
-	balanceCard.AnchorPoint = Vector2.new(0, 1)
-	balanceCard.Position = UDim2.new(0, 0, 1, 0)
-	balanceCard.Size = UDim2.new(1, 0, 0, balanceHeight)
+	balanceCard.AnchorPoint = Vector2.new(0.5, 1)
+	balanceCard.Position = UDim2.new(0.5, 0, 1, 0)
+	balanceCard.Size = UDim2.new(balanceCardWidthScale, 0, 0, balanceHeight)
 	balanceCard.BackgroundColor3 = CARD_BG_ALT
 	balanceCard.BorderSizePixel = 0
 	balanceCard.Parent = leftColumn

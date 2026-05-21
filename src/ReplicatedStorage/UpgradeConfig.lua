@@ -20,13 +20,15 @@ UpgradeConfig.HEALTH = "max_health"
 -- Cost tuning  (Shard-based)
 --------------------------------------------------------------------------------
 UpgradeConfig.CURRENCY      = "scrap"  -- payment currency for upgrades
-UpgradeConfig.BASE_COST     = 50        -- legacy default for weapon upgrades
+UpgradeConfig.BASE_COST     = 50        -- first weapon upgrade cost
+UpgradeConfig.WEAPON_COST_STEP = 5
+UpgradeConfig.WEAPON_COST_CAP = 100
 UpgradeConfig.COST_EXPONENT = 1.0       -- 1.0 = flat (kept for legacy compatibility)
 
 -- Legacy global player-level requirement for weapon upgrades.
 UpgradeConfig.REQUIRE_PLAYER_LEVEL = false
 
-UpgradeConfig.HEALTH_COST = 100
+UpgradeConfig.HEALTH_COST_PER_LEVEL = 100
 UpgradeConfig.HEALTH_MAX_LEVEL = 10
 UpgradeConfig.HEALTH_LEVEL_STEP = 10
 UpgradeConfig.HEALTH_BONUS_PER_LEVEL = 10
@@ -97,7 +99,7 @@ UpgradeConfig.Definitions = {
 		Accent             = Color3.fromRGB(95, 235, 120),
 		ImageId            = "",
 		ImageRotation      = 0,
-		Cost               = UpgradeConfig.HEALTH_COST,
+		Cost               = UpgradeConfig.HEALTH_COST_PER_LEVEL,
 		Currency           = UpgradeConfig.CURRENCY,
 		MaxLevel           = UpgradeConfig.HEALTH_MAX_LEVEL,
 		PlayerLevelStep    = UpgradeConfig.HEALTH_LEVEL_STEP,
@@ -143,10 +145,15 @@ function UpgradeConfig.GetDefinition(upgradeId)
 end
 
 --- Cost for the next upgrade at the given level.
---- Returns a flat scrap cost (50) by default; preserved exponent path for
---- legacy callers that may still want a curve.
 function UpgradeConfig.GetCost(level, upgradeId)
 	level = math.max(0, math.floor(level or 0))
+	if upgradeId == UpgradeConfig.MELEE or upgradeId == UpgradeConfig.RANGED then
+		local steppedCost = UpgradeConfig.BASE_COST + (level * UpgradeConfig.WEAPON_COST_STEP)
+		return math.min(UpgradeConfig.WEAPON_COST_CAP, steppedCost)
+	end
+	if upgradeId == UpgradeConfig.HEALTH then
+		return math.max(0, (level + 1) * UpgradeConfig.HEALTH_COST_PER_LEVEL)
+	end
 	local def = getDefinition(upgradeId)
 	if def and type(def.Cost) == "number" then
 		return math.max(0, math.floor(def.Cost))
