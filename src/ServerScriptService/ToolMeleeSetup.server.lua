@@ -18,6 +18,8 @@ local Debris              = game:GetService("Debris")
 local CollectionService   = game:GetService("CollectionService")
 local TweenService        = game:GetService("TweenService")
 
+local PRACTICE_DUMMY_TAG = "PracticeDummy"
+
 -- XP integration
 local XPModule
 pcall(function()
@@ -560,18 +562,30 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
     lookFlat = lookFlat.Unit
 
     local candidates = {}
+    local seenCandidates = {}
+    local function addCandidate(model)
+        if model and not seenCandidates[model] then
+            seenCandidates[model] = true
+            table.insert(candidates, model)
+        end
+    end
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Character and p.Character ~= playerChar then
-            table.insert(candidates, p.Character)
+            addCandidate(p.Character)
         end
     end
     for _, obj in ipairs(Workspace:GetChildren()) do
         if obj:IsA("Model") and obj.Name == "Dummy" then
-            table.insert(candidates, obj)
+            addCandidate(obj)
+        end
+    end
+    for _, obj in ipairs(CollectionService:GetTagged(PRACTICE_DUMMY_TAG)) do
+        if obj:IsA("Model") then
+            addCandidate(obj)
         end
     end
     for _, z in ipairs(CollectionService:GetTagged("ZombieNPC")) do
-        if z:IsA("Model") then table.insert(candidates, z) end
+        if z:IsA("Model") then addCandidate(z) end
     end
 
     for _, model in ipairs(candidates) do

@@ -41,6 +41,7 @@ local STAT_DEFAULTS = {
     PlayersEliminated      = 0,
     MonstersEliminated     = 0,
     Deaths                 = 0,
+    TotalDamageDone        = 0,
     FlagCaptures           = 0,
     FlagReturns            = 0,
     HighestEliminationStreak = 0,

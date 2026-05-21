@@ -401,6 +401,7 @@ local CollectionService = game:GetService("CollectionService")
 
 local ProcConfig = WeaponEnchantConfig.ProcConfig or {}
 local DOT_DAMAGE_OPTIONS = { SkipLastDamagerTag = true }
+local PRACTICE_DUMMY_TAG = "PracticeDummy"
 
 local STANDARD_BODY_PARTS = {
     head = true,
@@ -752,19 +753,29 @@ local function findNextChainTarget(attackerPlayer, currentPos, chainRange, seen)
 
     -- Gather all candidate models
     local candidates = {}
+    local function addCandidate(model)
+        if model and not seen[model] then
+            table.insert(candidates, model)
+        end
+    end
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Character and not seen[p.Character] then
-            table.insert(candidates, p.Character)
+            addCandidate(p.Character)
         end
     end
     for _, obj in ipairs(workspace:GetChildren()) do
         if obj:IsA("Model") and obj.Name == "Dummy" and not seen[obj] then
-            table.insert(candidates, obj)
+            addCandidate(obj)
+        end
+    end
+    for _, obj in ipairs(CollectionService:GetTagged(PRACTICE_DUMMY_TAG)) do
+        if obj:IsA("Model") then
+            addCandidate(obj)
         end
     end
     for _, z in ipairs(CollectionService:GetTagged("ZombieNPC")) do
-        if z:IsA("Model") and not seen[z] then
-            table.insert(candidates, z)
+        if z:IsA("Model") then
+            addCandidate(z)
         end
     end
 
