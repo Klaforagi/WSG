@@ -31,11 +31,11 @@ local requestSpecialUnlock = ReplicatedStorage:WaitForChild("RequestSpecialUnloc
 local specialUnlockGranted = ReplicatedStorage:WaitForChild("SpecialUnlockGranted")
 local forceEquipRemote     = ReplicatedStorage:WaitForChild("ForceEquipTool")
 
-local HealthPotionConfig = nil
+local PotionConfig = nil
 pcall(function()
-    local mod = ReplicatedStorage:FindFirstChild("HealthPotionConfig")
+    local mod = ReplicatedStorage:FindFirstChild("PotionConfig")
     if mod and mod:IsA("ModuleScript") then
-        HealthPotionConfig = require(mod)
+        PotionConfig = require(mod)
     end
 end)
 
@@ -110,6 +110,8 @@ local slotUI          = {}
 local slotTools       = {}
 local potionState     = {
     isLoaded = false,
+    potions = {},
+    equippedPotionId = nil,
     count = 0,
     equipped = false,
     cooldownEndsAt = 0,
@@ -118,6 +120,29 @@ local potionState     = {
 local potionCooldownMarker = 0
 -- current cached team tint (Color3 or nil)
 local currentTeamColor = nil
+
+local function getPotionDefinition(potionId)
+    if type(potionId) ~= "string" or potionId == "" then
+        return nil
+    end
+    if not PotionConfig or type(PotionConfig.GetById) ~= "function" then
+        return nil
+    end
+    return PotionConfig.GetById(potionId)
+end
+
+local function getPotionAccentColor(potionDef)
+    local iconColor = potionDef and potionDef.IconColor
+    if type(iconColor) == "table" then
+        local red = tonumber(iconColor[1])
+        local green = tonumber(iconColor[2])
+        local blue = tonumber(iconColor[3])
+        if red and green and blue then
+            return Color3.fromRGB(red, green, blue)
+        end
+    end
+    return Color3.fromRGB(103, 186, 255)
+end
 
 -- Weapon cooldown lock state (driven by player attributes set by WeaponLockService)
 local weaponLocked     = false
@@ -703,13 +728,15 @@ local function refreshSlots()
                         ui.nameLabel.TextColor3 = COLOR_TEXT
                         ui.nameLabel.Text       = "Bandage"
                     elseif utilityType == "potion" then
+                        local equippedPotionDef = getPotionDefinition(potionState.equippedPotionId)
+                        local potionAccent = getPotionAccentColor(equippedPotionDef)
                         local hasEquippedPotion = potionState.equipped == true and (tonumber(potionState.count) or 0) > 0
                         local isPotionCoolingDown = hasEquippedPotion and (tonumber(potionState.cooldownRemaining) or 0) > 0
                         if hasEquippedPotion then
                             ui.btn.BackgroundColor3 = isPotionCoolingDown and Color3.fromRGB(14, 28, 44) or bgColor
-                            ui.stroke.Color         = Color3.fromRGB(103, 186, 255)
-                            ui.nameLabel.TextColor3 = Color3.fromRGB(160, 215, 255)
-                            ui.nameLabel.Text       = (HealthPotionConfig and HealthPotionConfig.HotbarLabel) or "Potion"
+                            ui.stroke.Color         = potionAccent
+                            ui.nameLabel.TextColor3 = potionAccent:Lerp(Color3.fromRGB(255, 255, 255), 0.22)
+                            ui.nameLabel.Text       = equippedPotionDef and (equippedPotionDef.HotbarLabel or equippedPotionDef.DisplayName) or "Potion"
                         else
                             ui.btn.BackgroundColor3 = bgColor
                             ui.stroke.Color         = Color3.fromRGB(58, 70, 95)
@@ -810,6 +837,8 @@ local function ingestPotionState(state)
 
     potionState = {
         isLoaded = state.isLoaded == true,
+        potions = type(state.potions) == "table" and state.potions or {},
+        equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
         count = math.max(0, math.floor(tonumber(state.count) or 0)),
         equipped = state.equipped == true,
         cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
@@ -819,6 +848,7 @@ local function ingestPotionState(state)
 
     if potionState.count <= 0 then
         potionState.equipped = false
+        potionState.equippedPotionId = nil
     end
 
     syncPotionCooldownVisuals()

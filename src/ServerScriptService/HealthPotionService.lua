@@ -3,9 +3,12 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
-local HealthPotionConfig = require(ReplicatedStorage:WaitForChild("HealthPotionConfig"))
+local PotionConfig = require(ReplicatedStorage:WaitForChild("PotionConfig"))
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 
 local DATASTORE_NAME = "HealthPotions_v1"
+local DEFAULT_POTION_ID = "health_potion"
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
 
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 
@@ -55,13 +58,56 @@ local function getKey(player)
     return "User_" .. tostring(player.UserId)
 end
 
+local function getPotionDefinition(potionId)
+    if type(potionId) ~= "string" or potionId == "" then
+        return nil
+    end
+    return PotionConfig.GetById(potionId)
+end
+
+local function resolvePotionId(potionId)
+    local resolvedPotionId = potionId
+    if type(resolvedPotionId) ~= "string" or resolvedPotionId == "" then
+        resolvedPotionId = DEFAULT_POTION_ID
+    end
+    return getPotionDefinition(resolvedPotionId) and resolvedPotionId or nil
+end
+
+local function normalizePotionEntry(rawEntry)
+    return {
+        count = math.max(0, math.floor(tonumber(type(rawEntry) == "table" and rawEntry.count or 0) or 0)),
+        totalGranted = math.max(0, math.floor(tonumber(type(rawEntry) == "table" and rawEntry.totalGranted or 0) or 0)),
+    }
+end
+
+local function makePotionTable()
+    local potions = {}
+    for _, potionDef in ipairs(PotionConfig.GetOrderedPotions()) do
+        potions[potionDef.Id] = normalizePotionEntry(nil)
+    end
+    return potions
+end
+
 local function makeEmptyState()
     return {
-        count = 0,
-        totalGranted = 0,
-        equipped = false,
+        potions = makePotionTable(),
+        equippedPotionId = nil,
         cooldownEndTime = 0,
     }
+end
+
+local function sanitizeEquippedPotion(state)
+    local equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil
+    local equippedPotion = equippedPotionId and state.potions[equippedPotionId] or nil
+    if not equippedPotionId or not getPotionDefinition(equippedPotionId) or type(equippedPotion) ~= "table" then
+        state.equippedPotionId = nil
+        return nil
+    end
+    if math.max(0, math.floor(tonumber(equippedPotion.count) or 0)) <= 0 then
+        state.equippedPotionId = nil
+        return nil
+    end
+    return equippedPotionId
 end
 
 local function normalizeState(raw)
@@ -70,18 +116,39 @@ local function normalizeState(raw)
         return state
     end
 
-    state.count = math.max(0, math.floor(tonumber(raw.count) or 0))
-    state.totalGranted = math.max(0, math.floor(tonumber(raw.totalGranted) or 0))
-    state.equipped = raw.equipped == true and state.count > 0
+    if type(raw.potions) == "table" then
+        for _, potionDef in ipairs(PotionConfig.GetOrderedPotions()) do
+            state.potions[potionDef.Id] = normalizePotionEntry(raw.potions[potionDef.Id])
+        end
+        state.equippedPotionId = type(raw.equippedPotionId) == "string" and raw.equippedPotionId or nil
+    else
+        local healthEntry = state.potions[DEFAULT_POTION_ID] or normalizePotionEntry(nil)
+        healthEntry.count = math.max(0, math.floor(tonumber(raw.count) or 0))
+        healthEntry.totalGranted = math.max(0, math.floor(tonumber(raw.totalGranted) or 0))
+        state.potions[DEFAULT_POTION_ID] = healthEntry
+        if raw.equipped == true and healthEntry.count > 0 then
+            state.equippedPotionId = DEFAULT_POTION_ID
+        end
+    end
+
+    sanitizeEquippedPotion(state)
     return state
 end
 
 local function getSavedState(state)
     local normalized = normalizeState(state)
+    local potions = {}
+    for _, potionDef in ipairs(PotionConfig.GetOrderedPotions()) do
+        local entry = normalized.potions[potionDef.Id] or normalizePotionEntry(nil)
+        potions[potionDef.Id] = {
+            count = math.max(0, math.floor(tonumber(entry.count) or 0)),
+            totalGranted = math.max(0, math.floor(tonumber(entry.totalGranted) or 0)),
+        }
+    end
+
     return {
-        count = normalized.count,
-        totalGranted = normalized.totalGranted,
-        equipped = normalized.equipped == true and normalized.count > 0,
+        potions = potions,
+        equippedPotionId = sanitizeEquippedPotion(normalized),
     }
 end
 
@@ -92,19 +159,48 @@ local function ensurePlayerData(player)
     return playerData[player]
 end
 
+local function ensurePotionEntry(state, potionId)
+    state.potions = type(state.potions) == "table" and state.potions or makePotionTable()
+    if not state.potions[potionId] then
+        state.potions[potionId] = normalizePotionEntry(nil)
+    end
+    return state.potions[potionId]
+end
+
+local function buildPotionSnapshot(state, potionId)
+    local entry = ensurePotionEntry(state, potionId)
+    local count = math.max(0, math.floor(tonumber(entry.count) or 0))
+    local totalGranted = math.max(0, math.floor(tonumber(entry.totalGranted) or 0))
+    return {
+        count = count,
+        totalGranted = totalGranted,
+        equipped = state.equippedPotionId == potionId and count > 0,
+    }
+end
+
 local function getStateSnapshot(player, state)
     local pd = state or ensurePlayerData(player)
-    if pd.count <= 0 then
-        pd.equipped = false
-    end
-
+    local equippedPotionId = sanitizeEquippedPotion(pd)
     local cooldownEndsAt = tonumber(pd.cooldownEndTime) or 0
     local serverTime = getServerTime()
+    local potions = {}
+    local counts = {}
+
+    for _, potionDef in ipairs(PotionConfig.GetOrderedPotions()) do
+        local entrySnapshot = buildPotionSnapshot(pd, potionDef.Id)
+        potions[potionDef.Id] = entrySnapshot
+        counts[potionDef.Id] = entrySnapshot.count
+    end
+
+    local equippedSnapshot = equippedPotionId and potions[equippedPotionId] or nil
     return {
         isLoaded = loadedPlayers[player] == true,
-        count = math.max(0, math.floor(tonumber(pd.count) or 0)),
-        totalGranted = math.max(0, math.floor(tonumber(pd.totalGranted) or 0)),
-        equipped = pd.equipped == true and math.max(0, math.floor(tonumber(pd.count) or 0)) > 0,
+        potions = potions,
+        counts = counts,
+        equippedPotionId = equippedPotionId,
+        count = equippedSnapshot and equippedSnapshot.count or 0,
+        totalGranted = equippedSnapshot and equippedSnapshot.totalGranted or 0,
+        equipped = equippedSnapshot ~= nil,
         cooldownEndsAt = cooldownEndsAt,
         cooldownRemaining = math.max(0, cooldownEndsAt - serverTime),
         serverTime = serverTime,
@@ -116,6 +212,40 @@ local function fireStateChanged(player)
         return
     end
     stateChangedEvent:Fire(player, getStateSnapshot(player))
+end
+
+local function applyPotionEffect(player, potionDef, humanoid)
+    if potionDef.EffectType == "Heal" then
+        local missingHealth = math.max(0, humanoid.MaxHealth - humanoid.Health)
+        if missingHealth <= 0 then
+            return false, "Health is already full", nil
+        end
+
+        local healAmount = math.min(
+            missingHealth,
+            math.max(1, math.floor(tonumber(potionDef.HealAmount) or 40))
+        )
+        humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + healAmount)
+        return true, nil, {
+            healed = healAmount,
+        }
+    end
+
+    if potionDef.EffectType == "MovementSpeed" then
+        local additiveBonus = tonumber(potionDef.AdditiveBonus) or 0
+        local durationSeconds = math.max(0, tonumber(potionDef.DurationSeconds) or 0)
+        HumanoidStatService:SetModifier(player, MOVEMENT_SPEED_STAT, potionDef.ModifierId or potionDef.Id, {
+            additive = additiveBonus,
+            duration = durationSeconds > 0 and durationSeconds or nil,
+            source = potionDef.DisplayName,
+        })
+        return true, nil, {
+            additive = additiveBonus,
+            duration = durationSeconds,
+        }
+    end
+
+    return false, "Potion effect unavailable", nil
 end
 
 function HealthPotionService:MarkLoading(player)
@@ -210,21 +340,34 @@ function HealthPotionService:ClearPlayer(player)
     loadedPlayers[player] = nil
 end
 
-function HealthPotionService:GetPotionCount(player)
+function HealthPotionService:GetPotionCount(player, potionId)
     if not player then
         return 0
     end
+
+    local resolvedPotionId = resolvePotionId(potionId)
+    if not resolvedPotionId then
+        return 0
+    end
+
     local pd = ensurePlayerData(player)
-    return math.max(0, math.floor(tonumber(pd.count) or 0))
+    local entry = ensurePotionEntry(pd, resolvedPotionId)
+    return math.max(0, math.floor(tonumber(entry.count) or 0))
 end
 
 function HealthPotionService:GetState(player)
     return getStateSnapshot(player)
 end
 
-function HealthPotionService:GrantPotions(player, amount)
+function HealthPotionService:GrantPotions(player, amount, potionId)
     if not player then
         return false, "missing player"
+    end
+
+    local resolvedPotionId = resolvePotionId(potionId)
+    local potionDef = resolvedPotionId and getPotionDefinition(resolvedPotionId) or nil
+    if not potionDef then
+        return false, "invalid potion"
     end
 
     amount = math.max(0, math.floor(tonumber(amount) or 0))
@@ -237,19 +380,25 @@ function HealthPotionService:GrantPotions(player, amount)
     end
 
     local pd = ensurePlayerData(player)
-    pd.count += amount
-    pd.totalGranted += amount
-    markDirty(player, "health_potions_grant", { force = true })
+    local entry = ensurePotionEntry(pd, resolvedPotionId)
+    entry.count += amount
+    entry.totalGranted += amount
+
+    markDirty(player, resolvedPotionId .. "_grant", { force = true })
     fireStateChanged(player)
 
-    return true, pd.count
+    return true, entry.count
+end
+
+function HealthPotionService:GrantPotion(player, potionId, amount)
+    return self:GrantPotions(player, amount, potionId)
 end
 
 function HealthPotionService:GetStateChangedEvent()
     return stateChangedEvent.Event
 end
 
-function HealthPotionService:SetEquipped(player, shouldEquip)
+function HealthPotionService:SetEquipped(player, shouldEquip, potionId)
     if not player then
         return false, "missing player", nil
     end
@@ -261,23 +410,35 @@ function HealthPotionService:SetEquipped(player, shouldEquip)
     local pd = ensurePlayerData(player)
     shouldEquip = shouldEquip == true
 
-    if shouldEquip and pd.count <= 0 then
-        return false, "No Health Potions owned", self:GetState(player)
+    if shouldEquip then
+        local resolvedPotionId = resolvePotionId(potionId)
+        local potionDef = resolvedPotionId and getPotionDefinition(resolvedPotionId) or nil
+        if not potionDef then
+            return false, "Invalid potion", self:GetState(player)
+        end
+
+        local entry = ensurePotionEntry(pd, resolvedPotionId)
+        if entry.count <= 0 then
+            return false, string.format("No %s owned", potionDef.DisplayName), self:GetState(player)
+        end
+
+        local changed = pd.equippedPotionId ~= resolvedPotionId
+        pd.equippedPotionId = resolvedPotionId
+        if changed then
+            markDirty(player, resolvedPotionId .. "_equip", { force = true })
+            fireStateChanged(player)
+        end
+
+        return true, string.format("%s equipped", potionDef.DisplayName), self:GetState(player)
     end
 
-    if pd.count <= 0 then
-        shouldEquip = false
-    end
-
-    local changed = pd.equipped ~= shouldEquip
-    pd.equipped = shouldEquip
-
+    local changed = sanitizeEquippedPotion(pd) ~= nil
+    pd.equippedPotionId = nil
     if changed then
-        markDirty(player, "health_potions_equip", { force = true })
+        markDirty(player, "potion_unequip", { force = true })
         fireStateChanged(player)
     end
-
-    return true, shouldEquip and "Potion equipped" or "Potion unequipped", self:GetState(player)
+    return true, "Potion unequipped", self:GetState(player)
 end
 
 function HealthPotionService:UseEquippedPotion(player)
@@ -291,16 +452,25 @@ function HealthPotionService:UseEquippedPotion(player)
 
     local pd = ensurePlayerData(player)
     local currentState = self:GetState(player)
+    local equippedPotionId = currentState.equippedPotionId
 
-    if pd.count <= 0 then
-        pd.equipped = false
-        markDirty(player, "health_potions_empty", { force = true })
-        fireStateChanged(player)
-        return false, "No Health Potions left", { state = self:GetState(player) }
+    if not equippedPotionId then
+        return false, "Equip a potion first", { state = currentState }
     end
 
-    if pd.equipped ~= true then
-        return false, "Equip a Health Potion first", { state = currentState }
+    local potionDef = getPotionDefinition(equippedPotionId)
+    if not potionDef then
+        pd.equippedPotionId = nil
+        fireStateChanged(player)
+        return false, "Potion is unavailable", { state = self:GetState(player) }
+    end
+
+    local entry = ensurePotionEntry(pd, equippedPotionId)
+    if entry.count <= 0 then
+        pd.equippedPotionId = nil
+        markDirty(player, equippedPotionId .. "_empty", { force = true })
+        fireStateChanged(player)
+        return false, string.format("No %s left", potionDef.DisplayName), { state = self:GetState(player) }
     end
 
     if currentState.cooldownRemaining > 0 then
@@ -313,31 +483,28 @@ function HealthPotionService:UseEquippedPotion(player)
         return false, "You cannot use that right now", { state = currentState }
     end
 
-    local missingHealth = math.max(0, humanoid.MaxHealth - humanoid.Health)
-    if missingHealth <= 0 then
-        return false, "Health is already full", { state = currentState }
+    local ok, errorMessage, payload = applyPotionEffect(player, potionDef, humanoid)
+    if not ok then
+        return false, errorMessage or "Potion effect failed", { state = currentState }
     end
 
-    local healAmount = math.min(
-        missingHealth,
-        math.max(1, math.floor(tonumber(HealthPotionConfig.HealAmount) or 40))
-    )
-    humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + healAmount)
-
-    pd.count = math.max(0, pd.count - 1)
-    if pd.count <= 0 then
-        pd.equipped = false
+    entry.count = math.max(0, entry.count - 1)
+    if entry.count <= 0 and pd.equippedPotionId == equippedPotionId then
+        pd.equippedPotionId = nil
     end
-    pd.cooldownEndTime = getServerTime() + math.max(0, tonumber(HealthPotionConfig.CooldownSeconds) or 0)
 
-    markDirty(player, "health_potions_use", { force = true })
+    local cooldownSeconds = math.max(0, tonumber(potionDef.CooldownSeconds) or 0)
+    pd.cooldownEndTime = getServerTime() + cooldownSeconds
+
+    markDirty(player, equippedPotionId .. "_use", { force = true })
     fireStateChanged(player)
 
-    return true, "Potion used", {
-        healed = healAmount,
-        cooldown = math.max(0, tonumber(HealthPotionConfig.CooldownSeconds) or 0),
-        state = self:GetState(player),
-    }
+    payload = payload or {}
+    payload.cooldown = cooldownSeconds
+    payload.potionId = equippedPotionId
+    payload.state = self:GetState(player)
+
+    return true, "Potion used", payload
 end
 
 return HealthPotionService

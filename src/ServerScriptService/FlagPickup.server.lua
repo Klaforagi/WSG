@@ -30,6 +30,29 @@ pcall(function()
         WeaponMasteryService = require(mod)
     end
 end)
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local FLAG_CARRY_SPEED_MODIFIER_ID = "flag_carry"
+local FLAG_CARRY_SPEED_PENALTY = -1
+
+local function applyFlagCarrySlow(player)
+    if not player then
+        return
+    end
+    HumanoidStatService:SetModifier(player, MOVEMENT_SPEED_STAT, FLAG_CARRY_SPEED_MODIFIER_ID, {
+        additive = FLAG_CARRY_SPEED_PENALTY,
+        source = "FlagCarry",
+    })
+end
+
+local function clearFlagCarrySlow(player)
+    if not player then
+        return
+    end
+    pcall(function()
+        HumanoidStatService:RemoveModifier(player, MOVEMENT_SPEED_STAT, FLAG_CARRY_SPEED_MODIFIER_ID)
+    end)
+end
 
 local function getEquippedWeaponInstanceId(player)
     local char = player and player.Character
@@ -461,6 +484,7 @@ function setupFlagModel(model)
         if carried then
             carrying[pl] = {team = team, model = carried}
             pl:SetAttribute("CarryingFlag", team)
+            applyFlagCarrySlow(pl)
             -- announce pickup to all clients (send player team and flag team)
             FlagStatus:FireAllClients("pickup", pl.Name, playerTeamName, team)
             -- notify clients to play pickup sound locally
@@ -488,6 +512,7 @@ function setupFlagModel(model)
                 end
                 carrying[pl] = nil
                 pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+                clearFlagCarrySlow(pl)
                 if not areFlagsInteractive() then
                     return
                 end
@@ -707,6 +732,7 @@ local function setupStand(standPart)
         end
         carrying[pl] = nil
         pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+        clearFlagCarrySlow(pl)
 
         -- award points to the player's team
         local capturingTeamName = playerTeamName
@@ -773,6 +799,7 @@ local function destroyAllFlags()
             pcall(function() data.deathConn:Disconnect() end)
         end
         pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+        clearFlagCarrySlow(pl)
     end
     carrying = {}
     captureDebounce = {}
@@ -859,6 +886,7 @@ local function forceDropFlag(pl, lastPos)
     end
     carrying[pl] = nil
     pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+    clearFlagCarrySlow(pl)
 
     if not areFlagsInteractive() then
         return

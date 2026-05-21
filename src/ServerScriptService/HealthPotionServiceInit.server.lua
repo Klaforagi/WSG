@@ -5,6 +5,8 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local HealthPotionService = require(ServerScriptService:WaitForChild("HealthPotionService"))
 
+local HEALTH_POTION_ID = "health_potion"
+
 local sectionRegistered = false
 
 local function ensureInstance(parent, className, name)
@@ -42,14 +44,46 @@ local setPotionEquippedRF = ensureInstance(potionFolder, "RemoteFunction", "SetP
 local useEquippedPotionRF = ensureInstance(potionFolder, "RemoteFunction", "UseEquippedPotion")
 local potionStateUpdatedRE = ensureInstance(remotesFolder, "RemoteEvent", "PotionStateUpdated")
 
+local function getHealthPotionCount(data)
+    if type(data) ~= "table" then
+        return 0
+    end
+
+    if type(data.potions) == "table" then
+        local entry = data.potions[HEALTH_POTION_ID]
+        if type(entry) == "table" then
+            return math.max(0, math.floor(tonumber(entry.count) or 0))
+        end
+        return 0
+    end
+
+    return math.max(0, math.floor(tonumber(data.count) or 0))
+end
+
+local function getHealthPotionGranted(data)
+    if type(data) ~= "table" then
+        return 0
+    end
+
+    if type(data.potions) == "table" then
+        local entry = data.potions[HEALTH_POTION_ID]
+        if type(entry) == "table" then
+            return math.max(0, math.floor(tonumber(entry.totalGranted) or 0))
+        end
+        return 0
+    end
+
+    return math.max(0, math.floor(tonumber(data.totalGranted) or 0))
+end
+
 local function validateHealthPotionData(_, currentData, lastGoodData)
     if type(currentData) ~= "table" or type(lastGoodData) ~= "table" then
         return nil
     end
 
-    local previousCount = math.max(0, math.floor(tonumber(lastGoodData.count) or 0))
-    local currentCount = math.max(0, math.floor(tonumber(currentData.count) or 0))
-    local currentGranted = math.max(0, math.floor(tonumber(currentData.totalGranted) or 0))
+    local previousCount = getHealthPotionCount(lastGoodData)
+    local currentCount = getHealthPotionCount(currentData)
+    local currentGranted = getHealthPotionGranted(currentData)
 
     if previousCount > 0 and currentCount == 0 and currentGranted == 0 then
         return {
@@ -109,8 +143,8 @@ getPotionStateRF.OnServerInvoke = function(player)
     return HealthPotionService:GetState(player)
 end
 
-setPotionEquippedRF.OnServerInvoke = function(player, shouldEquip)
-    return HealthPotionService:SetEquipped(player, shouldEquip == true)
+setPotionEquippedRF.OnServerInvoke = function(player, shouldEquip, potionId)
+    return HealthPotionService:SetEquipped(player, shouldEquip == true, potionId)
 end
 
 useEquippedPotionRF.OnServerInvoke = function(player)
@@ -126,4 +160,7 @@ for _, player in ipairs(Players:GetPlayers()) do
     end)
 end
 
-print("[HealthPotionServiceInit] Health Potion system initialized")
+_G.HealthPotionService = HealthPotionService
+_G.PotionService = HealthPotionService
+
+print("[HealthPotionServiceInit] Potion system initialized")

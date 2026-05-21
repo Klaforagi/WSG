@@ -418,7 +418,7 @@ local ShopUIModule = nil
 pcall(function() ShopUIModule = require(script.Parent.ShopUI) end)
 
 local BoostConfig = nil
-local HealthPotionConfigGlobal = nil
+local PotionConfigGlobal = nil
 local AssetCodesGlobal = nil
 local boostRemotes = nil
 local potionRemotes = nil
@@ -432,8 +432,8 @@ local function safeRequireBoostConfig()
     return nil
 end
 
-local function safeRequireHealthPotionConfig()
-    local mod = ReplicatedStorage:FindFirstChild("HealthPotionConfig")
+local function safeRequirePotionConfig()
+    local mod = ReplicatedStorage:FindFirstChild("PotionConfig")
     if mod and mod:IsA("ModuleScript") then
         local ok, result = pcall(function() return require(mod) end)
         if ok and type(result) == "table" then return result end
@@ -565,7 +565,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     BoostConfig      = BoostConfig or safeRequireBoostConfig()
-    HealthPotionConfigGlobal = HealthPotionConfigGlobal or safeRequireHealthPotionConfig()
+    PotionConfigGlobal = PotionConfigGlobal or safeRequirePotionConfig()
     AssetCodesGlobal = AssetCodesGlobal or safeRequireAssetCodes()
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -2383,27 +2383,35 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         local boostDefs = {}
-        local potionId = HealthPotionConfigGlobal and HealthPotionConfigGlobal.Id or nil
         local potionRemoteSet = ensurePotionRemotes()
         local potionState = {
             isLoaded = false,
-            count = 0,
-            equipped = false,
+            potions = {},
+            equippedPotionId = nil,
             cooldownEndsAt = 0,
             serverTime = 0,
         }
 
-        if HealthPotionConfigGlobal and potionRemoteSet then
-            table.insert(boostDefs, {
-                Id = HealthPotionConfigGlobal.Id,
-                Kind = "potion",
-                DisplayName = HealthPotionConfigGlobal.DisplayName,
-                Description = HealthPotionConfigGlobal.Description,
-                DetailText = HealthPotionConfigGlobal.DetailText,
-                IconGlyph = HealthPotionConfigGlobal.IconGlyph,
-                IconColor = HealthPotionConfigGlobal.IconColor,
-                SortOrder = -1000,
-            })
+        local function getPotionCount(potionId)
+            local potions = type(potionState.potions) == "table" and potionState.potions or {}
+            local entry = potions[potionId]
+            return math.max(0, math.floor(tonumber(type(entry) == "table" and entry.count or 0) or 0))
+        end
+
+        if PotionConfigGlobal and type(PotionConfigGlobal.GetOrderedPotions) == "function" and potionRemoteSet then
+            for _, potionDef in ipairs(PotionConfigGlobal.GetOrderedPotions()) do
+                table.insert(boostDefs, {
+                    Id = potionDef.Id,
+                    Kind = "potion",
+                    DisplayName = potionDef.DisplayName,
+                    Description = potionDef.Description,
+                    DetailText = potionDef.DetailText,
+                    IconGlyph = potionDef.IconGlyph,
+                    IconColor = potionDef.IconColor,
+                    BadgeText = potionDef.BadgeText,
+                    SortOrder = potionDef.SortOrder or -1000,
+                })
+            end
         end
 
         if BoostConfig and BoostConfig.Boosts then
@@ -2438,13 +2446,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if type(state) ~= "table" then return end
             potionState = {
                 isLoaded = state.isLoaded == true,
-                count = math.max(0, math.floor(tonumber(state.count) or 0)),
-                equipped = state.equipped == true,
+                potions = type(state.potions) == "table" and state.potions or {},
+                equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
                 cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
                 serverTime = tonumber(state.serverTime) or 0,
             }
-            if potionState.count <= 0 then
-                potionState.equipped = false
+            if potionState.equippedPotionId and getPotionCount(potionState.equippedPotionId) <= 0 then
+                potionState.equippedPotionId = nil
             end
         end
 
@@ -2731,9 +2739,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── Helpers ─────────────────────────────────────────────────────
 
         local function getBoostState(boostId)
-            if potionId and boostId == potionId then
-                local owned = math.max(0, math.floor(tonumber(potionState.count) or 0))
-                local equipped = potionState.equipped == true and owned > 0
+            local boostDef = entryById[boostId]
+            if boostDef and boostDef.Kind == "potion" then
+                local owned = getPotionCount(boostId)
+                local equipped = potionState.equippedPotionId == boostId and owned > 0
                 local remaining = math.max(0, (tonumber(potionState.cooldownEndsAt) or 0) - workspace:GetServerTimeNow())
                 return owned, equipped, remaining
             end
@@ -2838,8 +2847,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
                     boostActivateStroke.Transparency = 0.15
                 else
-                    boostDetailStatus.Text = "Ready to Equip"
-                    boostDetailStatus.TextColor3 = WHITE
+                    boostDetailStatus.Text = remaining > 0 and "Shared Cooldown Active" or "Ready to Equip"
+                    boostDetailStatus.TextColor3 = remaining > 0 and Color3.fromRGB(160, 215, 255) or WHITE
                     boostActivateBtn.Text = "EQUIP"
                     boostActivateBtn.Active = true
                     boostActivateBtn.BackgroundColor3 = BTN_BG
@@ -3064,7 +3073,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 durationBadge.AnchorPoint = Vector2.new(1, 0)
                 durationBadge.Position = UDim2.new(1, -px(5), 0, px(27))
                 if def.Kind == "potion" then
-                    durationBadge.Text = "HP"
+                    durationBadge.Text = def.BadgeText or def.IconGlyph or "P"
                 else
                     durationBadge.Text = ((def.DurationSeconds or 0) > 0) and (tostring(math.floor((def.DurationSeconds or 0) / 60)) .. "m") or "BOOST"
                 end
@@ -3187,12 +3196,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local _, isEquipped = getBoostState(def.Id)
                 local shouldEquip = not isEquipped
                 local ok, success, message, state = pcall(function()
-                    return potionRemoteSet.setEquipped:InvokeServer(shouldEquip)
+                    return potionRemoteSet.setEquipped:InvokeServer(shouldEquip, def.Id)
                 end)
                 if ok and type(state) == "table" then ingestPotionState(state) end
                 refreshBoostCards()
                 if ok and success then
-                    showToast(boostsPage, shouldEquip and "Potion equipped!" or "Potion unequipped!", Color3.fromRGB(103, 186, 255), 2.2)
+                    showToast(boostsPage, shouldEquip and ((def.DisplayName or "Potion") .. " equipped!") or "Potion unequipped!", Color3.fromRGB(103, 186, 255), 2.2)
                 else
                     showToast(boostsPage, tostring((ok and message) or "Equip failed"), RED_TEXT, 2.2)
                 end

@@ -74,7 +74,10 @@ end)
 
 -- Shared weapon switch lock
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local MELEE_ATTACK_SPEED_MODIFIER_ID = "melee_attack_slow"
 
 local function shouldIgnoreHumanoidTarget(model, humanoid)
     if not humanoid then return true end
@@ -686,7 +689,6 @@ end
 -- Rate limiting & combo state
 ---------------------------------------------------------------------------
 local lastSwing  = {} -- [player] = { [toolName] = tick() }
-local slowState  = {} -- [player] = { count = n, base = number, factors = {..} }
 local comboState = {} -- [player] = { step = 1, lastTime = 0, toolName = "" }
 
 -- Combo config from shared module
@@ -842,53 +844,15 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         end
     end
 
-    -- ── SLOWDOWN (size-scaled duration) ───────────────────────────────
+    -- ── MOVEMENT PENALTY (size-scaled duration) ───────────────────────
     do
-        local slowFactor = 0.75
-        if cfg.slow_factor and type(cfg.slow_factor) == "number" then
-            slowFactor = math.clamp(cfg.slow_factor, 0.1, 1)
-        end
+        local speedPenalty = tonumber(cfg.movement_speed_penalty) or -3
         local slowDuration = math.max(cd * 0.95, 0.01)
-
-        if not slowState[player] then
-            slowState[player] = { count = 0, base = nil, factors = {} }
-        end
-        local st = slowState[player]
-        if st.count == 0 then
-            st.base = hum and hum.WalkSpeed or 16
-        end
-        st.count = st.count + 1
-        table.insert(st.factors, slowFactor)
-
-        local minFactor = 1
-        for _, f in ipairs(st.factors) do minFactor = math.min(minFactor, f) end
-        if hum and hum.Parent then
-            pcall(function() hum.WalkSpeed = math.max((st.base or 16) * minFactor, 0.1) end)
-        end
-
-        task.delay(slowDuration, function()
-            local s = slowState[player]
-            if not s then return end
-            s.count = math.max(s.count - 1, 0)
-            for i, v in ipairs(s.factors) do
-                if v == slowFactor then
-                    table.remove(s.factors, i)
-                    break
-                end
-            end
-            if s.count <= 0 then
-                if s.base and hum and hum.Parent then
-                    pcall(function() hum.WalkSpeed = s.base end)
-                end
-                slowState[player] = nil
-            else
-                local mf = 1
-                for _, f in ipairs(s.factors) do mf = math.min(mf, f) end
-                if hum and hum.Parent then
-                    pcall(function() hum.WalkSpeed = math.max((s.base or 16) * mf, 0.1) end)
-                end
-            end
-        end)
+        HumanoidStatService:SetModifier(player, MOVEMENT_SPEED_STAT, MELEE_ATTACK_SPEED_MODIFIER_ID, {
+            additive = speedPenalty,
+            duration = slowDuration,
+            source = toolName,
+        })
     end
 
     -- ── LOOK DIRECTION (server-blended) ───────────────────────────────
@@ -1127,21 +1091,31 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     end)
 end)
 
+local function clearMeleeAttackSlow(player)
+    pcall(function()
+        HumanoidStatService:RemoveModifier(player, MOVEMENT_SPEED_STAT, MELEE_ATTACK_SPEED_MODIFIER_ID)
+    end)
+end
+
+local function setupPlayerCleanup(player)
+    player.CharacterRemoving:Connect(function()
+        clearMeleeAttackSlow(player)
+    end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    setupPlayerCleanup(player)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    setupPlayerCleanup(player)
+end)
+
 -- clean up on leave
 Players.PlayerRemoving:Connect(function(player)
     lastSwing[player] = nil
     comboState[player] = nil
-    if slowState[player] then
-        local st = slowState[player]
-        local char = player.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and st.base then
-                pcall(function() hum.WalkSpeed = st.base end)
-            end
-        end
-        slowState[player] = nil
-    end
+    clearMeleeAttackSlow(player)
     WeaponLockService.cleanupPlayer(player)
 end)
 

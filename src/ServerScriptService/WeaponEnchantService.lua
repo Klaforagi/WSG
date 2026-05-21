@@ -31,6 +31,7 @@ local StatService
 pcall(function()
     StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 
 local WeaponEnchantService = {}
 
@@ -328,6 +329,8 @@ end
 
 local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local ICY_MOVEMENT_MODIFIER_ID = "icy_debuff"
 
 local ProcConfig = WeaponEnchantConfig.ProcConfig or {}
 local DOT_DAMAGE_OPTIONS = { SkipLastDamagerTag = true }
@@ -523,14 +526,13 @@ end
 
 ---------------------------------------------------------------------------
 -- ICY STATE  –  One slow + damage-tick tracker per target humanoid
--- Uses an "IcySlowPercent" attribute on the Humanoid so that external
--- systems (e.g. MobSpawner AI) can check it and scale their own speed
--- assignments.  Also directly sets WalkSpeed for player targets.
+-- Applies the slow through HumanoidStatService so players and mobs both use
+-- the same movement speed formula.
 -- Ticks damage immediately on application, then once per interval.
 -- Re-procs refresh the timer and restart ticks.
 -- Tints body parts icy blue and spawns snowflake particles for the duration.
 ---------------------------------------------------------------------------
-local icyState = {} -- [Humanoid] = { base, expireThread, tickThread, remaining, originalColors, particles }
+local icyState = {} -- [Humanoid] = { subject, expireThread, tickThread, remaining, originalColors, particles }
 
 local ICY_COLOR = Color3.fromRGB(95, 220, 255)
 local ICY_SNOWFLAKE_TEXTURE = "rbxasset://textures/particles/sparkles_main.dds"
@@ -597,59 +599,63 @@ local function removeIcyParticles(attachment)
     end
 end
 
+local function resolveMovementSubjectFromHumanoid(targetHumanoid)
+    if not targetHumanoid then
+        return nil
+    end
+
+    local model = targetHumanoid.Parent
+    local player = model and Players:GetPlayerFromCharacter(model)
+    return player or targetHumanoid
+end
+
 local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, tickInterval, attackerPlayer)
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     tickDamage   = tickDamage   or 2
     tickInterval = tickInterval or 1
 
     local model = targetHumanoid.Parent
+    local subject = resolveMovementSubjectFromHumanoid(targetHumanoid)
     local existing = icyState[targetHumanoid]
 
     if not existing then
-        -- First application: record base speed, apply visuals
-        local base = targetHumanoid.WalkSpeed
         local origColors = applyIcyBodyTint(model)
         local particleAttach = createIcyParticles(model)
         icyState[targetHumanoid] = {
-            base = base,
+            subject = subject,
             expireThread = nil,
             tickThread = nil,
             remaining = duration,
             originalColors = origColors,
             particles = particleAttach,
         }
-        -- Set attribute so mob AI and other systems can respect the slow
-        pcall(function() targetHumanoid:SetAttribute("IcySlowPercent", slowPercent) end)
-        -- Also directly apply for players and anything not checking the attribute
-        pcall(function()
-            targetHumanoid.WalkSpeed = math.max(base * (1 - slowPercent), 1)
-        end)
     else
-        -- Re-proc: refresh duration
         existing.remaining = duration
+        existing.subject = subject
     end
 
     local state = icyState[targetHumanoid]
+    local speedMultiplier = math.max(0, 1 - (tonumber(slowPercent) or 0))
+    HumanoidStatService:SetModifier(subject, MOVEMENT_SPEED_STAT, ICY_MOVEMENT_MODIFIER_ID, {
+        multiplier = speedMultiplier,
+        duration = duration,
+        source = "Icy",
+    })
 
-    -- Cancel previous expire thread if any
     if state.expireThread then
         pcall(function() task.cancel(state.expireThread) end)
         state.expireThread = nil
     end
 
-    -- Cancel previous tick thread if any (will restart)
     if state.tickThread then
         pcall(function() task.cancel(state.tickThread) end)
         state.tickThread = nil
     end
 
-    -- Reset remaining for the tick loop
     state.remaining = duration
 
-    -- Immediate first tick
     applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDamage), attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
 
-    -- Damage tick loop: ticks once per tickInterval after the immediate one
     state.tickThread = task.spawn(function()
         while state.remaining >= tickInterval do
             task.wait(tickInterval)
@@ -660,20 +666,18 @@ local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, t
         end
     end)
 
-    -- Schedule restore after full duration
     state.expireThread = task.delay(duration, function()
         local s = icyState[targetHumanoid]
         if s then
             if s.tickThread then
                 pcall(function() task.cancel(s.tickThread) end)
             end
-            -- Clear visuals
             removeIcyBodyTint(s.originalColors)
             removeIcyParticles(s.particles)
-            -- Clear the slow attribute
-            pcall(function() targetHumanoid:SetAttribute("IcySlowPercent", nil) end)
-            if targetHumanoid and targetHumanoid.Parent and targetHumanoid.Health > 0 then
-                pcall(function() targetHumanoid.WalkSpeed = s.base end)
+            if s.subject then
+                pcall(function()
+                    HumanoidStatService:RemoveModifier(s.subject, MOVEMENT_SPEED_STAT, ICY_MOVEMENT_MODIFIER_ID)
+                end)
             end
             icyState[targetHumanoid] = nil
         end
@@ -692,7 +696,11 @@ local function cleanIcyOnDeath(targetHumanoid)
     end
     removeIcyBodyTint(s.originalColors)
     removeIcyParticles(s.particles)
-    pcall(function() targetHumanoid:SetAttribute("IcySlowPercent", nil) end)
+    if s.subject then
+        pcall(function()
+            HumanoidStatService:RemoveModifier(s.subject, MOVEMENT_SPEED_STAT, ICY_MOVEMENT_MODIFIER_ID)
+        end)
+    end
     icyState[targetHumanoid] = nil
 end
 

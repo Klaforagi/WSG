@@ -95,7 +95,7 @@ WeaponEnchantConfig.ProcConfig = {
         ProcChance    = 0.30,
         TickDamage    = 5,          -- damage per tick while slowed
         TickInterval  = 1,          -- tick once per second
-        SlowPercent   = 0.50,
+        SlowPercent   = 0.30,
         SlowDuration  = 4,          -- 4 ticks total = 2+2+2+2 = 8 damage
         SoundId       = "rbxassetid://REPLACE_ME",
     },
