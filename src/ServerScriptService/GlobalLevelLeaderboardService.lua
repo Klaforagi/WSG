@@ -291,24 +291,22 @@ local function placePodiumRig(model, podiumPart)
     model:PivotTo(podiumPart.CFrame * CFrame.new(0, lift, 0))
 end
 
-local function attachPodiumNameLabel(model, userId, rank)
-    if not model then
+local function attachPodiumNameLabel(model, podiumPart, userId, rank)
+    if not model or not podiumPart or not podiumPart:IsA("BasePart") then
         return
     end
 
-    local adornee = model:FindFirstChild("Head") or model:FindFirstChild("UpperTorso") or model:FindFirstChild("HumanoidRootPart")
-    if not adornee or not adornee:IsA("BasePart") then
-        return
-    end
+    local _, rigSize = model:GetBoundingBox()
+    local verticalOffset = (podiumPart.Size.Y * 0.5) + rigSize.Y + 0.9
 
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "PodiumNameLabel"
-    billboard.Adornee = adornee
+    billboard.Adornee = podiumPart
     billboard.AlwaysOnTop = false
     billboard.LightInfluence = 0
     billboard.MaxDistance = 250
     billboard.Size = UDim2.new(4.6, 0, 0.85, 0)
-    billboard.StudsOffsetWorldSpace = Vector3.new(0, 2.35, 0)
+    billboard.StudsOffsetWorldSpace = Vector3.new(0, verticalOffset, 0)
     billboard.Parent = model
 
     local label = Instance.new("TextLabel")
@@ -411,7 +409,7 @@ local function rebuildPodiumRank(rank, entry, podiumPart, podiumModel)
             rootPart.Anchored = true
         end
 
-        attachPodiumNameLabel(rig, entry.userId, rank)
+        attachPodiumNameLabel(rig, podiumPart, entry.userId, rank)
         placePodiumRig(rig, podiumPart)
         return rig, rigHumanoid
     end)
