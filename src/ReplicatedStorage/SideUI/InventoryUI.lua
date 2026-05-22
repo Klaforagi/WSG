@@ -17,16 +17,73 @@ local TweenService       = game:GetService("TweenService")
 local UITheme = require(script.Parent.UITheme)
 local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
 
+local INVENTORY_GRID_COLUMNS = 5
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Responsive pixel helper
 -- ═══════════════════════════════════════════════════════════════════════════
-local function px(base)
+local function getViewportSize()
     local cam = workspace.CurrentCamera
-    local screenY = 1080
-    if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
-        screenY = cam.ViewportSize.Y
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
     end
-    return math.max(1, math.round(base * screenY / 1080))
+    return 1920, 1080
+end
+
+local function getResponsiveViewportScale()
+    local screenX, screenY = getViewportSize()
+    local widthScale = screenX / 1920
+    local heightScale = screenY / 1080
+    return math.clamp(math.min(widthScale, heightScale), 0.38, 1.6)
+end
+
+local function px(base)
+    return math.max(1, math.round(base * getResponsiveViewportScale()))
+end
+
+local function attachResponsiveRootScale(root)
+    if not root then return end
+
+    root:SetAttribute("InventoryInitialResponsiveScale", getResponsiveViewportScale())
+
+    local rootScale = Instance.new("UIScale")
+    rootScale.Name = "ResponsiveScale"
+    rootScale.Scale = 1
+    rootScale.Parent = root
+end
+
+local function updateResponsiveRootScale(root)
+    if not root then return end
+
+    local rootScale = root:FindFirstChild("ResponsiveScale")
+    if not (rootScale and rootScale:IsA("UIScale")) then return end
+
+    local initialResponsiveScale = tonumber(root:GetAttribute("InventoryInitialResponsiveScale")) or getResponsiveViewportScale()
+    rootScale.Scale = getResponsiveViewportScale() / math.max(0.001, initialResponsiveScale)
+end
+
+local function bindViewportResize(trackConn, callback)
+    if not (trackConn and callback) then return end
+
+    local cameraViewportConn = nil
+
+    local function attachCamera(camera)
+        if cameraViewportConn then
+            pcall(function() cameraViewportConn:Disconnect() end)
+            cameraViewportConn = nil
+        end
+        if camera then
+            cameraViewportConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(callback)
+            trackConn(cameraViewportConn)
+        end
+    end
+
+    trackConn(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        attachCamera(workspace.CurrentCamera)
+        callback()
+    end))
+
+    attachCamera(workspace.CurrentCamera)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -479,6 +536,87 @@ local function safeRequireAssetCodes()
     return nil
 end
 
+local function getShardCurrencyImage()
+    AssetCodesGlobal = AssetCodesGlobal or safeRequireAssetCodes()
+    if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" then
+        local image = AssetCodesGlobal.Get("Shards") or AssetCodesGlobal.Get("Shard")
+        if type(image) == "string" and #image > 0 then return image end
+    end
+    return nil
+end
+
+local SHARD_UI_ACCENT = Color3.fromRGB(255, 158, 74)
+local SHARD_UI_BG = Color3.fromRGB(74, 42, 18)
+local SHARD_UI_DIM = Color3.fromRGB(190, 118, 52)
+local SHARD_UI_FEEDBACK_BG = Color3.fromRGB(58, 33, 14)
+local SHARD_UI_OVERLAY_BG = Color3.fromRGB(22, 12, 4)
+local SHARD_UI_CONFIRM_BG = Color3.fromRGB(48, 29, 14)
+
+local function createShardRewardRow(parent, name, size, anchorPoint, position, textSize, shardImage, zIndex, pxFn)
+    local row = Instance.new("Frame")
+    row.Name = name
+    row.BackgroundTransparency = 1
+    row.Size = size
+    row.AnchorPoint = anchorPoint
+    row.Position = position
+    row.Visible = false
+    if zIndex then row.ZIndex = zIndex end
+    row.Parent = parent
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.Padding = UDim.new(0, pxFn(5))
+    layout.Parent = row
+
+    local label = Instance.new("TextLabel")
+    label.Name = "ValueText"
+    label.BackgroundTransparency = 1
+    label.AutomaticSize = Enum.AutomaticSize.X
+    label.Size = UDim2.new(0, 0, 1, 0)
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = SHARD_UI_ACCENT
+    label.TextSize = textSize
+    label.TextXAlignment = Enum.TextXAlignment.Center
+    label.Text = ""
+    if zIndex then label.ZIndex = zIndex end
+    label.Parent = row
+
+    if shardImage then
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "ShardIcon"
+        icon.BackgroundTransparency = 1
+        icon.Size = UDim2.new(0, pxFn(18), 0, pxFn(18))
+        icon.Image = shardImage
+        icon.ScaleType = Enum.ScaleType.Fit
+        if zIndex then icon.ZIndex = zIndex end
+        icon.Parent = row
+    else
+        local suffix = Instance.new("TextLabel")
+        suffix.Name = "ShardText"
+        suffix.BackgroundTransparency = 1
+        suffix.AutomaticSize = Enum.AutomaticSize.X
+        suffix.Size = UDim2.new(0, 0, 1, 0)
+        suffix.Font = Enum.Font.GothamBold
+        suffix.Text = "SHARDS"
+        suffix.TextColor3 = SHARD_UI_ACCENT
+        suffix.TextSize = textSize
+        if zIndex then suffix.ZIndex = zIndex end
+        suffix.Parent = row
+    end
+
+    return row, label
+end
+
+local function addBlackTextStroke(label)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.15
+    stroke.Parent = label
+end
+
 local function ensurePotionRemotes()
     if potionRemotes then return potionRemotes end
     local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 10)
@@ -624,11 +762,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         Line2TextSize      = math.max(12, math.floor(px(14))),
     }
 
-    local screenY   = 1080
-    pcall(function()
-        local cam = workspace.CurrentCamera
-        if cam and cam.ViewportSize.Y > 0 then screenY = cam.ViewportSize.Y end
-    end)
+    local _, screenY = getViewportSize()
     local rootHeight = math.max(px(380), math.floor(screenY * 0.58))
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -639,6 +773,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function cleanup()
         for _, conn in ipairs(cleanupConnections) do pcall(function() conn:Disconnect() end) end
         table.clear(cleanupConnections)
+    end
+
+    local function bindFixedColumnGrid(scrollFrame, gridLayout, gridPadding, baseCellWidth, baseCellHeight)
+        if not (scrollFrame and gridLayout and gridPadding) then return end
+
+        local aspectRatio = (tonumber(baseCellHeight) or 1) / math.max(1, tonumber(baseCellWidth) or 1)
+
+        local function updateCellSize()
+            local availableWidth = scrollFrame.AbsoluteSize.X
+                - (gridPadding.PaddingLeft.Offset or 0)
+                - (gridPadding.PaddingRight.Offset or 0)
+                - math.max(0, scrollFrame.ScrollBarThickness or 0)
+            local horizontalPadding = gridLayout.CellPadding.X.Offset * math.max(0, INVENTORY_GRID_COLUMNS - 1)
+            local cellWidth = math.max(1, math.floor((availableWidth - horizontalPadding) / INVENTORY_GRID_COLUMNS))
+            local cellHeight = math.max(1, math.floor(cellWidth * aspectRatio))
+            gridLayout.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+        end
+
+        gridLayout.FillDirectionMaxCells = INVENTORY_GRID_COLUMNS
+        trackConn(scrollFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize))
+        task.defer(updateCellSize)
     end
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -877,6 +1032,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     root.LayoutOrder = 1
     root.ClipsDescendants = true
     root.Parent = parent
+    attachResponsiveRootScale(root)
 
     -- ══════════════════════════════════════════════════════════════════════
     --  SIDEBAR  (tab buttons)
@@ -986,6 +1142,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     gridPad.PaddingLeft   = UDim.new(0, px(8))
     gridPad.PaddingRight  = UDim.new(0, px(8))
     gridPad.PaddingBottom = UDim.new(0, px(8))
+    bindFixedColumnGrid(gridScroll, gridLayout, gridPad, 158, 188)
 
     -- Empty state overlay (shown when a category has no items)
     local emptyState = Instance.new("Frame")
@@ -1291,31 +1448,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     actionRow.Position = UDim2.new(0.5, 0, 1, -px(60))
 
     -- Salvage value preview label (shown above action row for salvageable items)
-    local SALVAGE_GREEN = Color3.fromRGB(35, 190, 75)
-    local salvageValueLabel = Instance.new("TextLabel", detailContent)
-    salvageValueLabel.Name = "SalvageValuePreview"
-    salvageValueLabel.BackgroundTransparency = 1
-    salvageValueLabel.Font = Enum.Font.GothamBold
-    salvageValueLabel.TextColor3 = SALVAGE_GREEN
-    salvageValueLabel.TextSize = px(18)
-    salvageValueLabel.TextXAlignment = Enum.TextXAlignment.Center
-    salvageValueLabel.Size = UDim2.new(0.88, 0, 0, px(24))
-    salvageValueLabel.AnchorPoint = Vector2.new(0.5, 1)
-    salvageValueLabel.Position = UDim2.new(0.5, 0, 1, -px(114))
-    salvageValueLabel.Text = ""
-    salvageValueLabel.Visible = false
-    local salvageValueStroke = Instance.new("UIStroke", salvageValueLabel)
-    salvageValueStroke.Color = Color3.fromRGB(0, 0, 0)
-    salvageValueStroke.Thickness = 1.5
-    salvageValueStroke.Transparency = 0.15
+    local shardWidgets = {}
+
+    shardWidgets.salvageValueRow, shardWidgets.salvageValueLabel = createShardRewardRow(
+        detailContent,
+        "SalvageValuePreview",
+        UDim2.new(0.88, 0, 0, px(24)),
+        Vector2.new(0.5, 1),
+        UDim2.new(0.5, 0, 1, -px(114)),
+        px(18),
+        getShardCurrencyImage(),
+        nil,
+        px
+    )
+    addBlackTextStroke(shardWidgets.salvageValueLabel)
 
     -- Feedback label (transient success/error message after salvage)
     local salvageFeedback = Instance.new("TextLabel", detailContent)
     salvageFeedback.Name = "SalvageFeedback"
-    salvageFeedback.BackgroundColor3 = Color3.fromRGB(20, 40, 26)
+    salvageFeedback.BackgroundColor3 = SHARD_UI_FEEDBACK_BG
     salvageFeedback.BackgroundTransparency = 0.15
     salvageFeedback.Font = Enum.Font.GothamBold
-    salvageFeedback.TextColor3 = SALVAGE_GREEN
+    salvageFeedback.TextColor3 = SHARD_UI_ACCENT
     salvageFeedback.TextSize = px(14)
     salvageFeedback.TextWrapped = true
     salvageFeedback.TextXAlignment = Enum.TextXAlignment.Center
@@ -1328,8 +1482,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local function showSalvageFeedback(text, color, duration)
         salvageFeedback.Text = text
-        salvageFeedback.TextColor3 = color or SALVAGE_GREEN
-        salvageFeedback.BackgroundColor3 = color == RED_TEXT and Color3.fromRGB(50, 20, 20) or Color3.fromRGB(20, 40, 26)
+        salvageFeedback.TextColor3 = color or SHARD_UI_ACCENT
+        salvageFeedback.BackgroundColor3 = color == RED_TEXT and Color3.fromRGB(50, 20, 20) or SHARD_UI_FEEDBACK_BG
         salvageFeedback.Visible = true
         task.delay(duration or 2.5, function()
             if salvageFeedback and salvageFeedback.Parent then
@@ -1358,29 +1512,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local favStroke = Instance.new("UIStroke", favBtn)
     favStroke.Color = FAV_DIM; favStroke.Thickness = 1.2; favStroke.Transparency = 0.3
 
-    -- Salvage button (green – replaces old Discard)
-    local SALVAGE_BG    = Color3.fromRGB(24, 56, 32)
-    local SALVAGE_DIM   = Color3.fromRGB(60, 100, 70)
+    -- Salvage button (orange – replaces old Discard)
 
     local discardBtn = Instance.new("TextButton", actionRow)
     discardBtn.Name = "SalvageBtn"
     discardBtn.AutoButtonColor = false
-    discardBtn.BackgroundColor3 = SALVAGE_BG
+    discardBtn.BackgroundColor3 = SHARD_UI_BG
     discardBtn.Font = Enum.Font.GothamBold
     discardBtn.Text = "DISMANTLE"
-    discardBtn.TextColor3 = SALVAGE_GREEN
+    discardBtn.TextColor3 = SHARD_UI_ACCENT
     discardBtn.TextSize = px(17)
     discardBtn.Size = UDim2.new(0.48, 0, 1, 0)
     discardBtn.AnchorPoint = Vector2.new(1, 0)
     discardBtn.Position = UDim2.new(1, 0, 0, 0)
     Instance.new("UICorner", discardBtn).CornerRadius = UDim.new(0, px(8))
     local discardStroke = Instance.new("UIStroke", discardBtn)
-    discardStroke.Color = SALVAGE_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
+    discardStroke.Color = SHARD_UI_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
 
     -- Salvage confirmation overlay
     local confirmOverlay = Instance.new("Frame", detailsPanel)
     confirmOverlay.Name = "ConfirmOverlay"
-    confirmOverlay.BackgroundColor3 = Color3.fromRGB(10, 10, 26)
+    confirmOverlay.BackgroundColor3 = SHARD_UI_OVERLAY_BG
     confirmOverlay.BackgroundTransparency = 0.08
     confirmOverlay.Size = UDim2.new(1, 0, 1, 0)
     confirmOverlay.ZIndex = 50
@@ -1389,25 +1541,37 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local confirmBox = Instance.new("Frame", confirmOverlay)
     confirmBox.Name = "ConfirmBox"
-    confirmBox.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
+    confirmBox.BackgroundColor3 = SHARD_UI_CONFIRM_BG
     confirmBox.Size = UDim2.new(0.88, 0, 0, px(160))
     confirmBox.AnchorPoint = Vector2.new(0.5, 0.5)
     confirmBox.Position = UDim2.new(0.5, 0, 0.5, 0)
     confirmBox.ZIndex = 51
     Instance.new("UICorner", confirmBox).CornerRadius = UDim.new(0, px(10))
     local cbStroke = Instance.new("UIStroke", confirmBox)
-    cbStroke.Color = SALVAGE_GREEN; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
+    cbStroke.Color = SHARD_UI_ACCENT; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
 
     local confirmTitle = Instance.new("TextLabel", confirmBox)
     confirmTitle.BackgroundTransparency = 1
     confirmTitle.Font = Enum.Font.GothamBold
     confirmTitle.Text = "Dismantle Weapon?"
-    confirmTitle.TextColor3 = SALVAGE_GREEN
+    confirmTitle.TextColor3 = SHARD_UI_ACCENT
     confirmTitle.TextSize = px(18)
     confirmTitle.Size = UDim2.new(1, 0, 0, px(28))
     confirmTitle.Position = UDim2.new(0, 0, 0, px(16))
     confirmTitle.TextXAlignment = Enum.TextXAlignment.Center
     confirmTitle.ZIndex = 52
+
+    shardWidgets.confirmRewardRow, shardWidgets.confirmRewardLabel = createShardRewardRow(
+        confirmBox,
+        "RewardRow",
+        UDim2.new(0.88, 0, 0, px(24)),
+        Vector2.new(0.5, 0),
+        UDim2.new(0.5, 0, 0, px(48)),
+        px(16),
+        getShardCurrencyImage(),
+        52,
+        px
+    )
 
     local confirmDesc = Instance.new("TextLabel", confirmBox)
     confirmDesc.Name = "Desc"
@@ -1419,7 +1583,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmDesc.TextWrapped = true
     confirmDesc.Size = UDim2.new(0.85, 0, 0, px(36))
     confirmDesc.AnchorPoint = Vector2.new(0.5, 0)
-    confirmDesc.Position = UDim2.new(0.5, 0, 0, px(48))
+    confirmDesc.Position = UDim2.new(0.5, 0, 0, px(76))
     confirmDesc.TextXAlignment = Enum.TextXAlignment.Center
     confirmDesc.TextYAlignment = Enum.TextYAlignment.Top
     confirmDesc.ZIndex = 52
@@ -1427,7 +1591,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local confirmYes = Instance.new("TextButton", confirmBox)
     confirmYes.Name = "YesBtn"
     confirmYes.AutoButtonColor = false
-    confirmYes.BackgroundColor3 = SALVAGE_GREEN
+    confirmYes.BackgroundColor3 = SHARD_UI_ACCENT
     confirmYes.Font = Enum.Font.GothamBold
     confirmYes.Text = "DISMANTLE"
     confirmYes.TextColor3 = WHITE
@@ -1461,13 +1625,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local CONFIRM_BOX_BASE_HEIGHT = px(160)
     local CONFIRM_DESC_WIDTH_SCALE = 0.85
     local CONFIRM_DESC_MIN_HEIGHT = px(36)
-    local CONFIRM_DESC_TOP = px(48)
+    local CONFIRM_REWARD_TOP = px(48)
+    local CONFIRM_REWARD_HEIGHT = px(24)
+    local CONFIRM_DESC_TOP = px(76)
+    local CONFIRM_DESC_TOP_NO_REWARD = px(52)
     local CONFIRM_DESC_EXTRA_PADDING = px(6)
     local CONFIRM_DESC_TO_BUTTON_GAP = px(12)
     local CONFIRM_BUTTON_HEIGHT = px(36)
     local CONFIRM_BUTTON_BOTTOM_MARGIN = px(14)
 
     local function updateConfirmBoxLayout()
+        local descTop = shardWidgets.confirmRewardRow.Visible and CONFIRM_DESC_TOP or CONFIRM_DESC_TOP_NO_REWARD
+        shardWidgets.confirmRewardRow.Position = UDim2.new(0.5, 0, 0, CONFIRM_REWARD_TOP)
+        shardWidgets.confirmRewardRow.Size = UDim2.new(0.88, 0, 0, CONFIRM_REWARD_HEIGHT)
+        confirmDesc.Position = UDim2.new(0.5, 0, 0, descTop)
+
         local descWidth = math.floor(confirmBox.AbsoluteSize.X * CONFIRM_DESC_WIDTH_SCALE)
         if descWidth <= 0 then
             descWidth = math.floor(detailsPanel.AbsoluteSize.X * 0.88 * CONFIRM_DESC_WIDTH_SCALE)
@@ -1483,7 +1655,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local descHeight = math.max(CONFIRM_DESC_MIN_HEIGHT, measuredDesc.Y + CONFIRM_DESC_EXTRA_PADDING)
         confirmDesc.Size = UDim2.new(CONFIRM_DESC_WIDTH_SCALE, 0, 0, descHeight)
 
-        local requiredHeight = CONFIRM_DESC_TOP
+        local requiredHeight = descTop
             + descHeight
             + CONFIRM_DESC_TO_BUTTON_GAP
             + CONFIRM_BUTTON_HEIGHT
@@ -1589,8 +1761,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 discardBtn.Text = "DISMANTLE"
             end
         elseif showActions then
-            discardBtn.BackgroundColor3 = SALVAGE_BG
-            discardBtn.TextColor3 = SALVAGE_GREEN
+            discardBtn.BackgroundColor3 = SHARD_UI_BG
+            discardBtn.TextColor3 = SHARD_UI_ACCENT
             discardStroke.Color = Color3.fromRGB(0, 0, 0)
             discardStroke.Transparency = 0.15
             discardBtn.Text = "DISMANTLE"
@@ -1600,13 +1772,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if canSalvage and SalvageConfig and itemData.rarity then
             local val = getSalvageValueForItem(itemData)
             if val and val > 0 then
-                salvageValueLabel.Text = "Yield: " .. tostring(val) .. " Shards"
-                salvageValueLabel.Visible = true
+                shardWidgets.salvageValueLabel.Text = "Yield: " .. tostring(val)
+                shardWidgets.salvageValueRow.Visible = true
             else
-                salvageValueLabel.Visible = false
+                shardWidgets.salvageValueRow.Visible = false
             end
         else
-            salvageValueLabel.Visible = false
+            shardWidgets.salvageValueRow.Visible = false
         end
     end
 
@@ -1618,7 +1790,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             equipStroke.Color = Color3.fromRGB(0, 0, 0)
             equipStroke.Transparency = 0.15
             actionRow.Visible = false
-            salvageValueLabel.Visible = false
+            shardWidgets.salvageValueRow.Visible = false
             return
         end
         if isItemEquipped(itemData) then
@@ -1677,6 +1849,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if not itemData then
             detailPlaceholder.Visible = true
             detailContent.Visible = false
+            detailsPanel.BackgroundColor3 = CARD_BG
+            dpStroke.Color = CARD_STROKE
+            detailImageBg.BackgroundColor3 = RARITY_BG_COLORS.Common
+            imgBgStroke.Color = RARITY_COLORS.Common
             updateMasteryPanel(nil)
             selectedCard = nil
             return
@@ -1696,9 +1872,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Update panel
         local rarColor = getRarityColor(itemData.rarity)
         local rarBg    = getRarityBgColor(itemData.rarity)
+        local cardBg   = WEAPON_CARD_BG[itemData.rarity] or WEAPON_CARD_BG.Common
+        local borderC  = WEAPON_CARD_BORDER[itemData.rarity] or WEAPON_CARD_BORDER.Common
 
-        detailImageBg.BackgroundColor3 = rarBg
-        imgBgStroke.Color = rarColor
+        detailsPanel.BackgroundColor3 = accentPanelColor(cardBg, 0.18)
+        dpStroke.Color = borderC
+        detailImageBg.BackgroundColor3 = cardBg
+        imgBgStroke.Color = borderC
 
         detailImage.Image = ""
         pcall(function()
@@ -2199,11 +2379,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if SalvageConfig and selectedItem.rarity then
             salvageValue = getSalvageValueForItem(selectedItem) or 0
         end
-        local actionText = salvageValue > 0
-            and ("Dismantle for " .. tostring(salvageValue) .. " Shards")
-            or "Dismantle this weapon"
         confirmTitle.Text = "Dismantle " .. (selectedItem.name or "Weapon") .. "?"
-        confirmDesc.Text = actionText .. "\nThis action cannot be undone."
+        shardWidgets.confirmRewardRow.Visible = salvageValue > 0
+        if salvageValue > 0 then
+            shardWidgets.confirmRewardLabel.Text = "Dismantle for " .. tostring(salvageValue)
+            confirmDesc.Text = "This action cannot be undone."
+        else
+            shardWidgets.confirmRewardLabel.Text = ""
+            confirmDesc.Text = "Dismantle this weapon\nThis action cannot be undone."
+        end
         confirmOverlay.Visible = true
         updateConfirmBoxLayout()
         task.defer(updateConfirmBoxLayout)
@@ -2211,11 +2395,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     discardBtn.MouseEnter:Connect(function()
         if selectedItem and not isItemEquipped(selectedItem) and selectedItem.source ~= "Starter" and selectedItem.favorited ~= true then
-            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(32, 76, 42)}):Play()
+            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(96, 56, 24)}):Play()
         end
     end)
     discardBtn.MouseLeave:Connect(function()
-        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = SALVAGE_BG}):Play()
+        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = SHARD_UI_BG}):Play()
     end)
 
     confirmNo.MouseButton1Click:Connect(function()
@@ -2243,9 +2427,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- Show success feedback with awarded amount
             local awarded = (type(result) == "table" and result.awarded) or 0
             if awarded > 0 then
-                showSalvageFeedback("Dismantled for +" .. tostring(awarded) .. " Shards", SALVAGE_GREEN, 2.5)
+                showSalvageFeedback("Dismantled for +" .. tostring(awarded) .. " Shards", SHARD_UI_ACCENT, 2.5)
             else
-                showSalvageFeedback("Dismantled!", SALVAGE_GREEN, 2)
+                showSalvageFeedback("Dismantled!", SHARD_UI_ACCENT, 2)
             end
 
             -- Update header salvage display immediately
@@ -2408,6 +2592,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostGridPad.PaddingLeft   = UDim.new(0, px(8))
         boostGridPad.PaddingRight  = UDim.new(0, px(8))
         boostGridPad.PaddingBottom = UDim.new(0, px(8))
+        bindFixedColumnGrid(boostGridScroll, boostGridLayout, boostGridPad, 140, 178)
 
         -- Empty state (shown when no boosts owned)
         local boostEmptyState = Instance.new("Frame")
@@ -3234,6 +3419,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinGridPad.PaddingLeft   = UDim.new(0, px(8))
         skinGridPad.PaddingRight  = UDim.new(0, px(8))
         skinGridPad.PaddingBottom = UDim.new(0, px(8))
+        bindFixedColumnGrid(skinGridScroll, skinGridLayout, skinGridPad, 140, 178)
 
         -- Empty state (shown when no owned skins)
         local skinEmptyState = Instance.new("Frame")
@@ -4009,6 +4195,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailGridPad.PaddingLeft   = UDim.new(0, px(8))
             trailGridPad.PaddingRight  = UDim.new(0, px(8))
             trailGridPad.PaddingBottom = UDim.new(0, px(8))
+            bindFixedColumnGrid(trailGridScroll, trailGridLayout, trailGridPad, 140, 178)
 
             -- Empty state (overlays the grid area)
             local effectsEmptyState = Instance.new("Frame")
@@ -4641,6 +4828,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         emoteGridPad.PaddingLeft = UDim.new(0, px(8))
         emoteGridPad.PaddingRight = UDim.new(0, px(8))
         emoteGridPad.PaddingBottom = UDim.new(0, px(8))
+        bindFixedColumnGrid(emoteGridScroll, emoteGridLayout, emoteGridPad, 140, 178)
 
         local emotesEmptyState = Instance.new("Frame")
         emotesEmptyState.Name = "EmotesEmptyState"
@@ -5500,21 +5688,93 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
     end)
 
+    local function applyResponsivePanelLayout()
+        local rootWidth = root.AbsoluteSize.X
+        if rootWidth <= 0 then return end
+
+        local scaleObject = root:FindFirstChild("ResponsiveScale")
+        local rootScale = 1
+        if scaleObject and scaleObject:IsA("UIScale") then
+            rootScale = math.max(0.001, scaleObject.Scale)
+        end
+
+        local function offsetFromVisual(visualPixels)
+            return math.max(1, math.floor(visualPixels / rootScale))
+        end
+
+        local gapVisual = math.clamp(math.floor(rootWidth * 0.012), 6, 18)
+        local edgeVisual = math.clamp(math.floor(rootWidth * 0.008), 4, 10)
+        local verticalVisual = math.clamp(math.floor(rootWidth * 0.006), 3, 8)
+        local sidebarVisual = math.clamp(math.floor(rootWidth * 0.122), 50, 112)
+        local detailVisual = math.clamp(math.floor(rootWidth * 0.255), 96, 248)
+        local minGridVisual = math.max(160, math.floor(rootWidth * 0.37))
+        local availableForPanels = math.max(0, rootWidth - minGridVisual - (gapVisual * 2) - (edgeVisual * 2))
+
+        if availableForPanels > 0 and (sidebarVisual + detailVisual) > availableForPanels then
+            local scaleDown = availableForPanels / math.max(1, sidebarVisual + detailVisual)
+            sidebarVisual = math.max(40, math.floor(sidebarVisual * scaleDown))
+            detailVisual = math.max(78, math.floor(detailVisual * scaleDown))
+        end
+
+        local sidebarWidth = offsetFromVisual(sidebarVisual)
+        local detailWidth = offsetFromVisual(detailVisual)
+        local gapWidth = offsetFromVisual(gapVisual)
+        local edgeInset = offsetFromVisual(edgeVisual)
+        local verticalInset = offsetFromVisual(verticalVisual)
+        local contentX = edgeInset + sidebarWidth + gapWidth
+        local contentWOff = -(contentX + edgeInset)
+        local contentWidthOffset = detailWidth + gapWidth
+
+        sidebar.AutomaticSize = Enum.AutomaticSize.None
+        sidebar.Position = UDim2.new(0, edgeInset, 0, verticalInset)
+        sidebar.Size = UDim2.new(0, sidebarWidth, 1, -(verticalInset * 2))
+
+        local function resizePage(pageName, gridName, emptyName, detailName)
+            local page = root:FindFirstChild(pageName)
+            if not (page and page:IsA("GuiObject")) then return end
+
+            page.Position = UDim2.new(0, contentX, 0, verticalInset)
+            page.Size = UDim2.new(1, contentWOff, 1, -(verticalInset * 2))
+
+            local detailPanel = page:FindFirstChild(detailName)
+            if detailPanel and detailPanel:IsA("GuiObject") then
+                detailPanel.Size = UDim2.new(0, detailWidth, 1, 0)
+                detailPanel.Position = UDim2.new(1, 0, 0, 0)
+            end
+
+            local grid = page:FindFirstChild(gridName)
+            if grid and grid:IsA("GuiObject") then
+                grid.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+            end
+
+            local emptyState = page:FindFirstChild(emptyName)
+            if emptyState and emptyState:IsA("GuiObject") then
+                emptyState.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+            end
+        end
+
+        resizePage("WeaponArea", "GridScroll", "EmptyState", "DetailsPanel")
+        resizePage("BoostsPage", "BoostGridScroll", "BoostEmptyState", "BoostDetailsPanel")
+        resizePage("SkinsArea", "SkinGridScroll", "SkinEmptyState", "SkinDetailsPanel")
+        resizePage("EffectsPage", "TrailGridScroll", "EffectsEmptyState", "TrailDetailsPanel")
+        resizePage("EmotesPage", "EmoteGridScroll", "EmotesEmptyState", "EmoteDetailsPanel")
+    end
+
     -- Adapt root height to parent size
-    task.defer(function()
+    local function updateRootLayout()
         local pH = parent.AbsoluteSize.Y
         if pH > 50 then
             rootHeight = math.max(px(380), pH - px(8))
             root.Size = UDim2.new(1, 0, 0, rootHeight)
         end
-    end)
-    trackConn(parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-        local pH = parent.AbsoluteSize.Y
-        if pH > 50 then
-            rootHeight = math.max(px(380), pH - px(8))
-            root.Size = UDim2.new(1, 0, 0, rootHeight)
-        end
-    end))
+        updateResponsiveRootScale(root)
+        applyResponsivePanelLayout()
+    end
+
+    task.defer(updateRootLayout)
+    trackConn(parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootLayout))
+    trackConn(root:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootLayout))
+    bindViewportResize(trackConn, updateRootLayout)
 
     -- Cleanup on removal
     root.AncestryChanged:Connect(function(_, newParent)
