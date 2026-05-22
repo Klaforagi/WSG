@@ -70,6 +70,24 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- Load shared SkinProducts config
+--------------------------------------------------------------------------------
+local SkinProducts
+do
+	local mod = ReplicatedStorage:WaitForChild("SkinProducts", 15)
+	if mod and mod:IsA("ModuleScript") then
+		local ok, result = pcall(require, mod)
+		if ok then
+			SkinProducts = result
+		else
+			warn("[CoinShopReceipt] Failed to require SkinProducts:", tostring(result))
+		end
+	else
+		warn("[CoinShopReceipt] SkinProducts module not found – skin receipt handler disabled")
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Load existing CurrencyService (server module under ServerScriptService)
 --------------------------------------------------------------------------------
 local CurrencyService
@@ -100,6 +118,20 @@ local function getAchievementService()
 		end
 	end)
 	return AchievementService
+end
+
+local grantSkinBindable = nil
+
+local function getGrantSkinBindable()
+	if grantSkinBindable and grantSkinBindable.Parent then
+		return grantSkinBindable
+	end
+	local bindable = SSS:FindFirstChild("GrantSkin")
+	if bindable and bindable:IsA("BindableFunction") then
+		grantSkinBindable = bindable
+		return grantSkinBindable
+	end
+	return nil
 end
 
 --------------------------------------------------------------------------------
@@ -155,8 +187,9 @@ local function processReceipt(receiptInfo)
 	local coinsToAward = CoinProducts and CoinProducts.CoinsByProductId and CoinProducts.CoinsByProductId[productId]
 	local keysToAward  = KeyProducts and KeyProducts.KeysByProductId and KeyProducts.KeysByProductId[productId]
 	local shardsToAward = ShardProducts and ShardProducts.ShardsByProductId and ShardProducts.ShardsByProductId[productId]
+	local skinIdToGrant = SkinProducts and SkinProducts.SkinIdByProductId and SkinProducts.SkinIdByProductId[productId]
 
-	if not coinsToAward and not keysToAward and not shardsToAward then
+	if not coinsToAward and not keysToAward and not shardsToAward and not skinIdToGrant then
 		-- Not one of our products – another ProcessReceipt handler may
 		-- handle it if you add one later. Return NotProcessedYet so Roblox
 		-- retries and the correct handler can pick it up (or it times out).
@@ -179,8 +212,8 @@ local function processReceipt(receiptInfo)
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- 4) Award currency via CurrencyService
-	if not CurrencyService then
+	-- 4) Award the product.
+	if (coinsToAward or keysToAward or shardsToAward) and not CurrencyService then
 		warn("[CoinShopReceipt] CurrencyService unavailable – cannot award currency")
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
@@ -215,14 +248,35 @@ local function processReceipt(receiptInfo)
 		end
 	end
 
+	if skinIdToGrant then
+		local grantSkin = getGrantSkinBindable()
+		if not grantSkin then
+			warn("[CoinShopReceipt] GrantSkin bindable unavailable – cannot award skin")
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+
+		local grantOk, grantResult = pcall(function()
+			return grantSkin:Invoke(playerObj, skinIdToGrant)
+		end)
+		if not grantOk or not grantResult then
+			warn("[CoinShopReceipt] GrantSkin failed for", playerObj.Name, "skin", tostring(skinIdToGrant), ":", tostring(grantResult))
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+	end
+
 	-- 5) Save immediately so the balance is persisted
-	pcall(function()
-		CurrencyService:SaveForPlayer(playerObj)
-	end)
+	if (coinsToAward or keysToAward or shardsToAward) and CurrencyService then
+		pcall(function()
+			CurrencyService:SaveForPlayer(playerObj)
+		end)
+	end
 
 	-- 6) Mark receipt as processed
-	local awardedAmount = coinsToAward or keysToAward or shardsToAward
-	local awardedType = coinsToAward and "coins" or (keysToAward and "keys" or "shards")
+	local awardedAmount = coinsToAward or keysToAward or shardsToAward or skinIdToGrant
+	local awardedType = coinsToAward and "coins"
+		or (keysToAward and "keys")
+		or (shardsToAward and "shards")
+		or "skin"
 	markReceiptProcessed(receiptId, playerId, productId, awardedAmount, awardedType)
 
 	-- 7) Track Robux spent for achievements
@@ -233,6 +287,8 @@ local function processReceipt(receiptInfo)
 		robuxPrice = KeyProducts.PriceByProductId[productId]
 	elseif shardsToAward and ShardProducts and ShardProducts.PriceByProductId then
 		robuxPrice = ShardProducts.PriceByProductId[productId]
+	elseif skinIdToGrant and SkinProducts and SkinProducts.PriceByProductId then
+		robuxPrice = SkinProducts.PriceByProductId[productId]
 	end
 	if robuxPrice and robuxPrice > 0 then
 		task.spawn(function()

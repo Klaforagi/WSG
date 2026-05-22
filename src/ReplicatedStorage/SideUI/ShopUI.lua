@@ -2953,7 +2953,12 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 if not def then return end
                 local owned = ownedSkinSet[selectedSkinId] == true
                 local isEquipped = (equippedSkinId == selectedSkinId)
-                local price = def.Price or 0
+                local price = 0
+                if SkinDefs and type(SkinDefs.GetCoinPrice) == "function" then
+                    price = SkinDefs.GetCoinPrice(def)
+                else
+                    price = def.Price or 0
+                end
 
                 if owned and isEquipped then
                     skinActionBtn.Text = "UNEQUIP"
@@ -3134,7 +3139,12 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 local skinColor   = def.ArmorColor or Color3.fromRGB(150, 150, 155)
                 local rarity      = def.Rarity or "Common"
                 local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
-                local price       = def.Price or 0
+                local price       = 0
+                if SkinDefs and type(SkinDefs.GetCoinPrice) == "function" then
+                    price = SkinDefs.GetCoinPrice(def)
+                else
+                    price = def.Price or 0
+                end
 
                 local card = Instance.new("TextButton")
                 card.Name = "SkinCard_" .. skinId

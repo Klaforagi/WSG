@@ -106,6 +106,7 @@ local getOwnedRF         = ensureInstance(skinsFolder, "RemoteFunction", "GetOwn
 local equipSkinRE        = ensureInstance(skinsFolder, "RemoteEvent",    "EquipSkin")
 local getEquippedRF      = ensureInstance(skinsFolder, "RemoteFunction", "GetEquippedSkin")
 local equippedChangedRE  = ensureInstance(skinsFolder, "RemoteEvent",    "EquippedSkinChanged")
+local ownedChangedRE     = ensureInstance(skinsFolder, "RemoteEvent",    "OwnedSkinsChanged")
 local favoriteSkinRF     = ensureInstance(skinsFolder, "RemoteFunction", "FavoriteSkin")
 local getSkinFavoritesRF = ensureInstance(skinsFolder, "RemoteFunction", "GetSkinFavorites")
 
@@ -312,6 +313,32 @@ local function pushEquippedToClient(player)
     pcall(function() equippedChangedRE:FireClient(player, equipped) end)
 end
 
+local function pushOwnedToClient(player)
+    local owned = getOwnedList(player)
+    pcall(function() ownedChangedRE:FireClient(player, owned) end)
+end
+
+local function grantSkinOwnership(player, skinId, reason)
+    if not player or type(skinId) ~= "string" or skinId == "" or skinId == "Default" then
+        return false, "invalid_skin"
+    end
+
+    local def = SkinDefs.GetById(skinId)
+    if not def or def.IsDefault then
+        return false, "unknown_skin"
+    end
+
+    if isOwned(player, skinId) then
+        return true, "already_owned"
+    end
+
+    local data = getOrCreateData(player)
+    data.owned[skinId] = true
+    markDirty(player, reason or "grant_skin")
+    pushOwnedToClient(player)
+    return true, "ok"
+end
+
 --------------------------------------------------------------------------------
 -- SKIN APPLICATION  (COSMETIC-ONLY – never destroys original character parts)
 --------------------------------------------------------------------------------
@@ -329,8 +356,8 @@ local function getShowHelm(player)
         dprint("[ShowHelm] Loaded setting for", player.Name, ":", tostring(settings.ShowHelm))
         return settings.ShowHelm
     end
-    dprint("[ShowHelm] No saved setting for", player.Name, ", defaulting to true")
-    return true -- default ON
+    dprint("[ShowHelm] No saved setting for", player.Name, ", defaulting to false")
+    return false -- default OFF / Keep Head ON
 end
 
 -- Re-entry guard: prevents double-application
@@ -1509,6 +1536,8 @@ local function onPlayerAdded(player)
     end
 
     dprint(player.Name, "joined – equipped:", tostring(data.equipped or "none"))
+    pushOwnedToClient(player)
+    pushEquippedToClient(player)
 
     -- ── Live team-color update: recolor accent trim when team changes ────
     player:GetPropertyChangedSignal("Team"):Connect(function()
@@ -1688,28 +1717,30 @@ purchaseSkinRF.OnServerInvoke = function(player, skinId)
     local def = SkinDefs.GetById(skinId)
     if not def then return false, 0, "unknown_skin" end
 
-    -- Cannot purchase default or non-shop skins
+    local balance = CurrencyService and CurrencyService:GetCoins(player) or 0
+
+    -- Cannot purchase default or skins without a configured coin price.
     if def.IsDefault then return false, 0, "cannot_purchase_default" end
-    if not def.ShopVisible then return false, 0, "not_purchasable" end
+    if not SkinDefs.IsCoinPurchasable(def) then return false, balance, "not_purchasable" end
 
     if isOwned(player, skinId) then
-        local bal = CurrencyService and CurrencyService:GetCoins(player) or 0
-        return false, bal, "already_owned"
+        return false, balance, "already_owned"
     end
 
-    local price = def.Price or 0
+    local price = SkinDefs.GetCoinPrice(def)
     if price > 0 then
         if not CurrencyService then return false, 0, "no_currency" end
-        local balance = CurrencyService:GetCoins(player)
+        balance = CurrencyService:GetCoins(player)
         if balance < price then return false, balance, "not_enough_coins" end
         CurrencyService:SetCoins(player, balance - price)
     end
 
-    local data = getOrCreateData(player)
-    data.owned[skinId] = true
-    dprint("Purchased", def.DisplayName, "for", player.Name)
+    local grantOk, grantReason = grantSkinOwnership(player, skinId, "purchase_skin")
+    if not grantOk then
+        return false, CurrencyService and CurrencyService:GetCoins(player) or 0, grantReason
+    end
 
-    markDirty(player, "purchase_skin")
+    dprint("Purchased", def.DisplayName, "for", player.Name)
 
     local newBal = CurrencyService and CurrencyService:GetCoins(player) or 0
     return true, newBal, "ok"
@@ -1786,18 +1817,15 @@ do
     grantBF.Name = "GrantSkin"
     grantBF.Parent = ServerScriptService
     grantBF.OnInvoke = function(player, skinId)
-        if not player or type(skinId) ~= "string" then return false end
-        if isOwned(player, skinId) then return true end -- already owned, success
-        local def = SkinDefs.GetById(skinId)
-        if not def then
-            warn("[SkinService] GrantSkin: unknown skinId:", skinId)
-            return false
+        local ok, reason = grantSkinOwnership(player, skinId, "grant_skin")
+        if ok then
+            dprint("Granted skin", skinId, "to", player.Name, "(via BindableFunction)")
+            return true
         end
-        local data = getOrCreateData(player)
-        data.owned[skinId] = true
-        dprint("Granted skin", skinId, "to", player.Name, "(via BindableFunction)")
-        markDirty(player, "grant_skin")
-        return true
+        if reason ~= "already_owned" then
+            warn("[SkinService] GrantSkin failed for", tostring(skinId), ":", tostring(reason))
+        end
+        return reason == "already_owned"
     end
 
     dprint("BindableFunction API registered (CheckSkinOwnership, GrantSkin)")

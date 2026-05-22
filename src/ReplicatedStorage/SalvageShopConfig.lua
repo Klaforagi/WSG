@@ -44,7 +44,7 @@ SalvageShopConfig.Items = {
         Rarity       = "Epic",
         IconGlyph    = "\u{1F6E1}",
         Unique       = true,
-        Enabled      = true,
+        Enabled      = false,
     },
     {
         Id           = "salvage_crate_weapon",
