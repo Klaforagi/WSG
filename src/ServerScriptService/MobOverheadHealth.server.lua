@@ -1,7 +1,7 @@
 --[[
 	MobOverheadHealth.server.lua
 	- Disables default Roblox humanoid name/health display for all players and mobs.
-	- Adds a polished overhead health bar to every mob (not players).
+	- Adds the shared polished overhead name + health UI to every player and mob.
 	- Visual animations (smooth tween, damage lag bar, hit flash) are handled
 	  client-side in MobHealthBar.client.lua.
 	Mob detection: CollectionService tag "ZombieNPC" or "PracticeDummy",
@@ -15,37 +15,37 @@ local Workspace         = game:GetService("Workspace")
 ------------------------------------------------------------------------
 -- Constants
 ------------------------------------------------------------------------
-local MOB_TAG        = "ZombieNPC"
-local PRACTICE_DUMMY_TAG = "PracticeDummy"
-local BILLBOARD_NAME = "MobOverheadHealth"
-local BILLBOARD_SIZE = UDim2.fromOffset(200, 50)
-local STUDS_OFFSET   = Vector3.new(0, 3.5, 0)
-local MAX_DISTANCE   = 55
+local MOB_TAG              = "ZombieNPC"
+local PRACTICE_DUMMY_TAG   = "PracticeDummy"
+local BILLBOARD_NAME       = "MobOverheadHealth"
+local OWNER_TYPE_ATTRIBUTE = "OverheadOwnerType"
+local ATTACHED_ATTRIBUTE   = "_overheadUIAttached"
+local BILLBOARD_SIZE       = UDim2.fromOffset(200, 50)
+local NPC_NAMEPLATE_OFFSET = Vector3.new(0, 3.5, 0)
+-- Player nameplates are intentionally lower because avatars already have visible head height;
+-- the NPC offset floated too far above player characters.
+local PLAYER_NAMEPLATE_OFFSET = Vector3.new(0, 1.35, 0)
+local PLAYER_NAMEPLATE_MAX_DISTANCE = 45
+local NPC_NAMEPLATE_MAX_DISTANCE    = 35
 
--- Health-percent colour thresholds (mirrored in MobHealthBar.client.lua)
-local COLOR_HIGH = Color3.fromRGB(80, 210, 80)   -- green  (> 60 %)
-local COLOR_MID  = Color3.fromRGB(235, 165, 40)  -- orange (30–60 %)
-local COLOR_LOW  = Color3.fromRGB(210, 55, 55)   -- red    (< 30 %)
-local COLOR_DMG  = Color3.fromRGB(180, 40, 40)   -- damage lag bar tint
+-- Health-percent color thresholds (mirrored in MobHealthBar.client.lua)
+local COLOR_HIGH = Color3.fromRGB(80, 210, 80)
+local COLOR_MID  = Color3.fromRGB(235, 165, 40)
+local COLOR_LOW  = Color3.fromRGB(210, 55, 55)
+local COLOR_DMG  = Color3.fromRGB(180, 40, 40)
+local PLAYER_TEAM_COLOR_FALLBACK = Color3.fromRGB(80, 220, 120)
 
 ------------------------------------------------------------------------
 -- Helpers
 ------------------------------------------------------------------------
 local function isMob(model)
 	if not model or not model:IsA("Model") then return false end
-	-- Must have a Humanoid to be considered
 	local hum = model:FindFirstChildOfClass("Humanoid")
 	if not hum then return false end
-	-- Exclude player characters
-	for _, p in ipairs(Players:GetPlayers()) do
-		if p.Character == model then return false end
-	end
-	-- Tag check
+	if Players:GetPlayerFromCharacter(model) then return false end
 	if CollectionService:HasTag(model, MOB_TAG) then return true end
 	if CollectionService:HasTag(model, PRACTICE_DUMMY_TAG) then return true end
-	-- Name check
 	if model.Name == "Dummy" then return true end
-	-- Attribute check
 	if model:GetAttribute("IsMob") == true then return true end
 	return false
 end
@@ -64,33 +64,98 @@ local function healthColor(pct)
 	else return COLOR_LOW end
 end
 
+local function getPlayerTeamColor(player)
+	local team = player and player.Team
+	if team then
+		local okTeamColor, teamColor = pcall(function()
+			return team.TeamColor
+		end)
+		if okTeamColor and typeof(teamColor) == "BrickColor" then
+			return teamColor.Color
+		end
+
+		local attributeColor = team:GetAttribute("Color")
+		if typeof(attributeColor) == "Color3" then
+			return attributeColor
+		end
+
+		local okColor, color = pcall(function()
+			return team.Color
+		end)
+		if okColor and typeof(color) == "Color3" then
+			return color
+		end
+	end
+
+	return PLAYER_TEAM_COLOR_FALLBACK
+end
+
+local function getFillColor(ownerType, pct, ownerPlayer)
+	if ownerType == "Player" then
+		return getPlayerTeamColor(ownerPlayer)
+	end
+	return healthColor(pct)
+end
+
+local function getPlayerDisplayName(player)
+	local displayName = player.DisplayName
+	if displayName and displayName ~= "" then
+		return displayName
+	end
+	return player.Name
+end
+
+local function getNameplateOffset(ownerType)
+	if ownerType == "Player" then
+		return PLAYER_NAMEPLATE_OFFSET
+	end
+	return NPC_NAMEPLATE_OFFSET
+end
+
+local function getNameplateMaxDistance(ownerType)
+	if ownerType == "Player" then
+		return PLAYER_NAMEPLATE_MAX_DISTANCE
+	end
+	return NPC_NAMEPLATE_MAX_DISTANCE
+end
+
 ------------------------------------------------------------------------
--- Disable default display
+-- Disable default Roblox display
 ------------------------------------------------------------------------
-local function disableDefaultDisplay(hum, label)
+local function disableDefaultDisplay(hum)
 	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	hum.HealthDisplayType   = Enum.HumanoidHealthDisplayType.AlwaysOff
-	print(string.format("[MobOverheadHealth] Default display disabled for %s", label))
+	pcall(function() hum.NameDisplayDistance = 0 end)
+	pcall(function() hum.HealthDisplayDistance = 0 end)
 end
 
 ------------------------------------------------------------------------
 -- Build BillboardGui
 ------------------------------------------------------------------------
-local function buildBillboard(attachPart, mobName)
+local function buildBillboard(attachPart, displayName, ownerType)
 	local existing = attachPart:FindFirstChild(BILLBOARD_NAME)
-	if existing then return existing end
+	if existing and existing:IsA("BillboardGui") then
+		existing:SetAttribute(OWNER_TYPE_ATTRIBUTE, ownerType)
+		existing.StudsOffset = getNameplateOffset(ownerType)
+		existing.MaxDistance = getNameplateMaxDistance(ownerType)
+		local bg = existing:FindFirstChild("Background")
+		local nameLabel = bg and bg:FindFirstChild("NameLabel")
+		if nameLabel and nameLabel:IsA("TextLabel") then
+			nameLabel.Text = displayName
+		end
+		return existing
+	end
 
-	-- Root billboard
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name         = BILLBOARD_NAME
 	billboard.Size         = BILLBOARD_SIZE
-	billboard.StudsOffset  = STUDS_OFFSET
+	billboard.StudsOffset  = getNameplateOffset(ownerType)
 	billboard.AlwaysOnTop  = true
-	billboard.MaxDistance  = MAX_DISTANCE
+	billboard.MaxDistance  = getNameplateMaxDistance(ownerType)
 	billboard.ResetOnSpawn = false
 	billboard.Enabled      = true
+	billboard:SetAttribute(OWNER_TYPE_ATTRIBUTE, ownerType)
 
-	-- Invisible root container
 	local bg = Instance.new("Frame")
 	bg.Name                   = "Background"
 	bg.Size                   = UDim2.fromScale(1, 1)
@@ -99,19 +164,18 @@ local function buildBillboard(attachPart, mobName)
 	bg.BorderSizePixel        = 0
 	bg.Parent                 = billboard
 
-	------------ Name label (bold, crisp UIStroke outline) ------------
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name                   = "NameLabel"
 	nameLabel.Size                   = UDim2.new(1, 0, 0, 16)
 	nameLabel.Position               = UDim2.new(0, 0, 0, 1)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text                   = mobName
+	nameLabel.Text                   = displayName
 	nameLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 	nameLabel.TextSize               = 14
 	nameLabel.Font                   = Enum.Font.GothamBlack
 	nameLabel.TextXAlignment         = Enum.TextXAlignment.Center
 	nameLabel.TextTransparency       = 0
-	nameLabel.TextStrokeTransparency = 1  -- disabled; UIStroke below handles it
+	nameLabel.TextStrokeTransparency = 1
 	nameLabel.ZIndex                 = 2
 	nameLabel.Parent                 = bg
 
@@ -123,11 +187,10 @@ local function buildBillboard(attachPart, mobName)
 	nameStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	nameStroke.Parent          = nameLabel
 
-	------------ Drop shadow behind health bar (subtle depth halo) ------------
 	local barShadow = Instance.new("Frame")
 	barShadow.Name                   = "BarShadow"
-	barShadow.Size                   = UDim2.new(0.76, 6, 0, 20)   -- slightly larger than barOuter
-	barShadow.Position               = UDim2.new(0.12, -3, 0, 16)  -- centred around barOuter with 1px offset
+	barShadow.Size                   = UDim2.new(0.76, 6, 0, 20)
+	barShadow.Position               = UDim2.new(0.12, -3, 0, 16)
 	barShadow.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
 	barShadow.BackgroundTransparency = 0.60
 	barShadow.BorderSizePixel        = 0
@@ -138,23 +201,21 @@ local function buildBillboard(attachPart, mobName)
 	shadowCorner.CornerRadius = UDim.new(0, 10)
 	shadowCorner.Parent       = barShadow
 
-	------------ Health bar outer frame (dark track, rounded, padded) ------------
 	local barOuter = Instance.new("Frame")
 	barOuter.Name                   = "BarOuter"
-	barOuter.Size                   = UDim2.new(0.76, 0, 0, 16)  -- ~12% narrower than before
-	barOuter.Position               = UDim2.new(0.12, 0, 0, 18)  -- slight gap reduction from name
+	barOuter.Size                   = UDim2.new(0.76, 0, 0, 16)
+	barOuter.Position               = UDim2.new(0.12, 0, 0, 18)
 	barOuter.BackgroundColor3       = Color3.fromRGB(18, 18, 18)
-	barOuter.BackgroundTransparency = 0.50  -- lighter so missing-HP area reads clearly
+	barOuter.BackgroundTransparency = 0.50
 	barOuter.BorderSizePixel        = 0
-	barOuter.ClipsDescendants       = true  -- clips fill/damage bar to rounded bounds
+	barOuter.ClipsDescendants       = true
 	barOuter.ZIndex                 = 1
 	barOuter.Parent                 = bg
 
 	local outerCorner = Instance.new("UICorner")
-	outerCorner.CornerRadius = UDim.new(0, 8)  -- near-pill on a 16 px tall bar
+	outerCorner.CornerRadius = UDim.new(0, 8)
 	outerCorner.Parent       = barOuter
 
-	-- Dark border for depth
 	local outerStroke = Instance.new("UIStroke")
 	outerStroke.Name            = "BarStroke"
 	outerStroke.Color           = Color3.fromRGB(0, 0, 0)
@@ -163,14 +224,11 @@ local function buildBillboard(attachPart, mobName)
 	outerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	outerStroke.Parent          = barOuter
 
-	-- UIScale used by MobHealthBar.client.lua for the hit-pulse (tweens 1 → 1.03 → 1)
 	local barScale = Instance.new("UIScale")
 	barScale.Name   = "BarScale"
 	barScale.Scale  = 1
 	barScale.Parent = barOuter
 
-	------------ Damage lag bar (dark red, sits behind fill) ------------
-	-- Reveals between Fill's right edge and DamageBar's right edge on damage.
 	local damageBar = Instance.new("Frame")
 	damageBar.Name             = "DamageBar"
 	damageBar.Size             = UDim2.fromScale(1, 1)
@@ -184,7 +242,6 @@ local function buildBillboard(attachPart, mobName)
 	damageBarCorner.CornerRadius = UDim.new(0, 8)
 	damageBarCorner.Parent       = damageBar
 
-	------------ Health fill (client tweens this; server sets initial state) ------------
 	local fill = Instance.new("Frame")
 	fill.Name             = "Fill"
 	fill.Size             = UDim2.fromScale(1, 1)
@@ -198,18 +255,16 @@ local function buildBillboard(attachPart, mobName)
 	fillCorner.CornerRadius = UDim.new(0, 8)
 	fillCorner.Parent       = fill
 
-	-- Top-to-bottom gradient: lighter highlight at top, slightly darker at bottom
 	local fillGradient = Instance.new("UIGradient")
 	fillGradient.Name     = "FillGradient"
 	fillGradient.Rotation = 90
 	fillGradient.Color    = ColorSequence.new({
-		ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 255, 255)), -- top: bright highlight
-		ColorSequenceKeypoint.new(0.45, Color3.fromRGB(210, 210, 210)), -- mid fade
-		ColorSequenceKeypoint.new(1,    Color3.fromRGB(115, 115, 115)), -- bottom: ~45% brightness
+		ColorSequenceKeypoint.new(0,    Color3.fromRGB(255, 255, 255)),
+		ColorSequenceKeypoint.new(0.45, Color3.fromRGB(210, 210, 210)),
+		ColorSequenceKeypoint.new(1,    Color3.fromRGB(115, 115, 115)),
 	})
 	fillGradient.Parent = fill
 
-	------------ HP text (centred over the bar) ------------
 	local hpText = Instance.new("TextLabel")
 	hpText.Name                   = "HPText"
 	hpText.Size                   = UDim2.fromScale(1, 1)
@@ -220,7 +275,7 @@ local function buildBillboard(attachPart, mobName)
 	hpText.TextSize               = 11
 	hpText.Font                   = Enum.Font.GothamBold
 	hpText.TextXAlignment         = Enum.TextXAlignment.Center
-	hpText.TextStrokeTransparency = 1  -- disabled; UIStroke below handles it
+	hpText.TextStrokeTransparency = 1
 	hpText.ZIndex                 = 4
 	hpText.Parent                 = barOuter
 
@@ -232,8 +287,6 @@ local function buildBillboard(attachPart, mobName)
 	hpStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
 	hpStroke.Parent          = hpText
 
-	------------ Hit flash overlay (white, invisible by default) ------------
-	-- MobHealthBar.client.lua briefly turns this semi-opaque on damage.
 	local hitFlash = Instance.new("Frame")
 	hitFlash.Name                   = "HitFlash"
 	hitFlash.Size                   = UDim2.fromScale(1, 1)
@@ -249,21 +302,20 @@ local function buildBillboard(attachPart, mobName)
 end
 
 ------------------------------------------------------------------------
--- Set or refresh authoritative bar state.
--- The client may still animate transitions, but the server keeps the bar correct
--- even if the client-side tracker misses a billboard.
+-- Set or refresh authoritative bar state
 ------------------------------------------------------------------------
-local function updateBarState(billboard, health, maxHealth)
+local function updateBarState(billboard, health, maxHealth, ownerPlayer)
 	local pct    = (maxHealth > 0) and math.clamp(health / maxHealth, 0, 1) or 0
 	local bg     = billboard:FindFirstChild("Background")
 	local outer  = bg and bg:FindFirstChild("BarOuter")
 	local fill   = outer and outer:FindFirstChild("Fill")
 	local dmgBar = outer and outer:FindFirstChild("DamageBar")
 	local hpText = outer and outer:FindFirstChild("HPText")
+	local ownerType = billboard:GetAttribute(OWNER_TYPE_ATTRIBUTE)
 
 	if fill then
 		fill.Size             = UDim2.fromScale(pct, 1)
-		fill.BackgroundColor3 = healthColor(pct)
+		fill.BackgroundColor3 = getFillColor(ownerType, pct, ownerPlayer)
 	end
 	if dmgBar then
 		dmgBar.Size = UDim2.fromScale(pct, 1)
@@ -274,79 +326,103 @@ local function updateBarState(billboard, health, maxHealth)
 end
 
 ------------------------------------------------------------------------
--- Attach custom health UI to a mob
+-- Attach shared overhead UI to a character or NPC model
 ------------------------------------------------------------------------
-local function attachMobUI(model)
+local function attachOverheadUI(model, ownerType, displayName, ownerPlayer)
 	local hum = model:FindFirstChildOfClass("Humanoid")
-	if not hum then return end
+	if not hum then
+		hum = model:WaitForChild("Humanoid", ownerType == "Player" and 10 or 2)
+	end
+	if not hum or not hum:IsA("Humanoid") then return end
 
-	-- Disable default display on mob
-	disableDefaultDisplay(hum, "mob " .. model.Name)
+	disableDefaultDisplay(hum)
 
 	local attachPart = getAttachPart(model)
 	if not attachPart then
-		warn("[MobOverheadHealth] No attach part found for " .. model:GetFullName())
+		local head = model:WaitForChild("Head", ownerType == "Player" and 5 or 1)
+		if head and head:IsA("BasePart") then
+			attachPart = head
+		end
+	end
+	if not attachPart then
+		warn("[OverheadUI] No attach part found for " .. model:GetFullName())
 		return
 	end
 
-	if model:GetAttribute("_mobOverheadAttached") then return end
-	model:SetAttribute("_mobOverheadAttached", true)
+	local existingBillboard = attachPart:FindFirstChild(BILLBOARD_NAME)
+	if model:GetAttribute(ATTACHED_ATTRIBUTE) and existingBillboard then
+		buildBillboard(attachPart, displayName, ownerType)
+		return
+	end
+	model:SetAttribute(ATTACHED_ATTRIBUTE, true)
 
-	-- Reuse existing billboard if present
-	local billboard = attachPart:FindFirstChild(BILLBOARD_NAME)
-		or buildBillboard(attachPart, model.Name)
+	local billboard = buildBillboard(attachPart, displayName, ownerType)
+	local ownerLabel = (ownerType == "NPC") and "NPC" or "player"
+	print(string.format("[OverheadUI] Attached %s nameplate for %s", ownerLabel, displayName))
 
-	print(string.format("[MobOverheadHealth] Custom health UI created for mob '%s'", model.Name))
+	updateBarState(billboard, hum.Health, hum.MaxHealth, ownerPlayer)
 
-	updateBarState(billboard, hum.Health, hum.MaxHealth)
-
-	-- Track connections for cleanup
+	local cleaned = false
 	local connections = {}
+	local function cleanup()
+		if cleaned then return end
+		cleaned = true
+		for _, c in ipairs(connections) do
+			c:Disconnect()
+		end
+	end
 
-	-- Keep the server authoritative for correctness; the client may layer on
-	-- cosmetic animation, but a missed client hook should not leave stale bars.
 	connections[1] = hum.HealthChanged:Connect(function(newHealth)
 		if billboard and billboard.Parent then
-			updateBarState(billboard, newHealth, hum.MaxHealth)
+			updateBarState(billboard, newHealth, hum.MaxHealth, ownerPlayer)
 		end
 	end)
 
 	connections[2] = hum:GetPropertyChangedSignal("MaxHealth"):Connect(function()
 		if billboard and billboard.Parent then
-			updateBarState(billboard, hum.Health, hum.MaxHealth)
+			updateBarState(billboard, hum.Health, hum.MaxHealth, ownerPlayer)
 		end
 	end)
 
-	connections[3] = hum.Died:Connect(function()
+	if ownerType == "Player" and ownerPlayer then
+		connections[#connections + 1] = ownerPlayer:GetPropertyChangedSignal("Team"):Connect(function()
+			if billboard and billboard.Parent then
+				updateBarState(billboard, hum.Health, hum.MaxHealth, ownerPlayer)
+			end
+		end)
+	end
+
+	connections[#connections + 1] = hum.Died:Connect(function()
 		if billboard and billboard.Parent then
 			billboard.Enabled = false
-			-- Small delay so death animation can play before hiding
 			task.delay(0.5, function()
 				if billboard and billboard.Parent then
 					billboard:Destroy()
 				end
 			end)
 		end
-		for _, c in ipairs(connections) do c:Disconnect() end
+		cleanup()
 	end)
 
-	-- Clean up if mob model is destroyed before dying
-	connections[4] = model.AncestryChanged:Connect(function()
+	connections[#connections + 1] = model.AncestryChanged:Connect(function()
 		if not model:IsDescendantOf(game) then
-			for _, c in ipairs(connections) do c:Disconnect() end
+			cleanup()
 		end
 	end)
 end
 
+local function attachMobUI(model)
+	attachOverheadUI(model, "NPC", model.Name)
+end
+
 ------------------------------------------------------------------------
--- Player setup: disable default display only, no custom UI
+-- Player setup
 ------------------------------------------------------------------------
 local function setupPlayer(player)
 	local function onCharacter(character)
-		local hum = character:WaitForChild("Humanoid", 10)
-		if hum then
-			disableDefaultDisplay(hum, "player " .. player.Name)
-		end
+		task.defer(function()
+			attachOverheadUI(character, "Player", getPlayerDisplayName(player), player)
+		end)
 	end
 
 	player.CharacterAdded:Connect(onCharacter)
@@ -358,23 +434,27 @@ end
 ------------------------------------------------------------------------
 -- Startup
 ------------------------------------------------------------------------
+print(string.format("[OverheadUI] Player max distance = %d", PLAYER_NAMEPLATE_MAX_DISTANCE))
+print(string.format("[OverheadUI] NPC max distance = %d", NPC_NAMEPLATE_MAX_DISTANCE))
 
--- Existing players
 for _, player in ipairs(Players:GetPlayers()) do
 	setupPlayer(player)
 end
 Players.PlayerAdded:Connect(setupPlayer)
 
--- Existing tagged mobs
 for _, model in ipairs(CollectionService:GetTagged(MOB_TAG)) do
 	if isMob(model) then
 		attachMobUI(model)
 	end
 end
 
--- Future tagged mobs
+for _, model in ipairs(CollectionService:GetTagged(PRACTICE_DUMMY_TAG)) do
+	if isMob(model) then
+		attachMobUI(model)
+	end
+end
+
 CollectionService:GetInstanceAddedSignal(MOB_TAG):Connect(function(model)
-	-- Wait one frame so the model is fully parented/set up
 	task.defer(function()
 		if isMob(model) then
 			attachMobUI(model)
@@ -390,25 +470,29 @@ CollectionService:GetInstanceAddedSignal(PRACTICE_DUMMY_TAG):Connect(function(mo
 	end)
 end)
 
--- Scan Workspace for untagged mobs (Dummy models or IsMob attribute)
 local function scanWorkspace()
 	for _, desc in ipairs(Workspace:GetDescendants()) do
 		if desc:IsA("Model") and isMob(desc) then
-			-- Avoid double-processing tagged mobs already handled above
-			if not CollectionService:HasTag(desc, MOB_TAG) then
-				attachMobUI(desc)
-			end
+			attachMobUI(desc)
 		end
 	end
 end
 scanWorkspace()
 
--- Watch for future untagged mobs added to Workspace
 Workspace.DescendantAdded:Connect(function(desc)
-	if desc:IsA("Model") and isMob(desc) then
-		if not CollectionService:HasTag(desc, MOB_TAG) then
-			task.defer(function()
+	if desc:IsA("Model") then
+		task.defer(function()
+			if isMob(desc) then
 				attachMobUI(desc)
+			end
+		end)
+	elseif desc:IsA("Humanoid") then
+		local model = desc.Parent
+		if model and model:IsA("Model") then
+			task.defer(function()
+				if isMob(model) then
+					attachMobUI(model)
+				end
 			end)
 		end
 	end

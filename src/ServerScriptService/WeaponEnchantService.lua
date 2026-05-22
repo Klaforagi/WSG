@@ -475,6 +475,19 @@ local function rollEnchantDamage(baseDamage)
     return baseDamage * (math.random(80, 120) / 100)
 end
 
+local function applyDamageOutputModifiers(attackerPlayer, damage)
+    if not attackerPlayer or not _G.GetRevengeCurseDamageMultiplier then
+        return damage
+    end
+    local ok, multiplier = pcall(function()
+        return _G.GetRevengeCurseDamageMultiplier(attackerPlayer)
+    end)
+    if ok and type(multiplier) == "number" and multiplier > 0 then
+        return damage * multiplier
+    end
+    return damage
+end
+
 -- Apply flat enchant damage to a humanoid.
 -- Does not scale from melee or ranged upgrades.
 -- Also sends a proc popup to the attacker's client.
@@ -482,6 +495,7 @@ local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantNa
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     if damage <= 0 then return end
     local skipLastDamagerTag = type(options) == "table" and options.SkipLastDamagerTag == true
+    damage = applyDamageOutputModifiers(attackerPlayer, damage)
     damage = math.round(damage)
     pcall(function()
         if attackerPlayer then

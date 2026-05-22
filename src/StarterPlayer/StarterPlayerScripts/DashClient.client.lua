@@ -99,6 +99,7 @@ end
 local isCoolingDown  = false
 local cooldownEnd    = 0
 local isDashing      = false
+local currentDashId  = 0       -- bumps each dash attempt; stale callbacks are ignored
 local currentTeamColor = nil
 
 --------------------------------------------------------------------------------
@@ -422,6 +423,9 @@ local function startCooldownUI()
         local remaining = cooldownEnd - tick()
         if remaining <= 0 then
             isCoolingDown = false
+            -- Defence-in-depth: if a server response was ever lost, do not let
+            -- `isDashing` outlive the cooldown. Cooldown end == dash usable again.
+            isDashing = false
             cdOverlay.Size = UDim2.fromScale(1, 0)
             cdText.TextTransparency = 1
             cdText.Text = ""
@@ -657,6 +661,20 @@ local function playDashAnimation()
 end
 
 --------------------------------------------------------------------------------
+-- finishDash: idempotent cleanup. Safe to call from any code path (approved,
+-- rejected, watchdog timeout, character respawn, cooldown end). Stale callbacks
+-- whose dashId does not match the latest attempt are ignored.
+--------------------------------------------------------------------------------
+local function finishDash(dashId, reason)
+    -- Allow dashId == nil for unconditional cleanup (e.g. respawn).
+    if dashId ~= nil and dashId ~= currentDashId then return end
+    if isDashing or not isCoolingDown then
+        log("finishDash", dashId, reason)
+    end
+    isDashing = false
+end
+
+--------------------------------------------------------------------------------
 -- CORE DASH REQUEST
 --------------------------------------------------------------------------------
 local function requestDashAction()
@@ -671,6 +689,8 @@ local function requestDashAction()
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid or humanoid.Health <= 0 then return end
 
+    currentDashId = currentDashId + 1
+    local thisDashId = currentDashId
     isDashing = true
 
     -- Optimistic: start cooldown UI immediately for responsiveness
@@ -678,7 +698,14 @@ local function requestDashAction()
 
     -- Fire to server
     requestDash:FireServer()
-    log("dash requested")
+    log("dash requested", thisDashId)
+
+    -- Hard watchdog: if no server response ever arrives (silent drop, network
+    -- loss, server error), force cleanup once cooldown has fully elapsed. This
+    -- guarantees Dash can NEVER be permanently stuck regardless of failure mode.
+    task.delay(DashConfig.Cooldown + 1, function()
+        finishDash(thisDashId, "watchdog_timeout")
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -686,9 +713,9 @@ end
 --------------------------------------------------------------------------------
 dashApproved.OnClientEvent:Connect(function()
     log("dash approved")
-    isDashing = false
+    finishDash(currentDashId, "approved")
     -- VFX now comes from PlayDashVFX broadcast so all clients see the same dash.
-    playDashAnimation()
+    pcall(playDashAnimation)
     -- Flash button briefly to give feedback
     task.spawn(function()
         setButtonPressed()
@@ -713,8 +740,10 @@ end
 if dashRejected then
     dashRejected.OnClientEvent:Connect(function(reason)
         log("dash rejected:", reason)
-        isDashing = false
-        -- If server rejected, reset the optimistic cooldown
+        finishDash(currentDashId, "rejected_" .. tostring(reason))
+        -- If server rejected, reset the optimistic cooldown so the player can
+        -- retry immediately (blocked, rate_limited, dead, no_character, etc).
+        -- Only keep the cooldown if the server itself says we are on cooldown.
         if reason ~= "cooldown" then
             resetCooldownUI()
         end
@@ -772,6 +801,9 @@ end)
 -- Animation cache should be cleared when character respawns
 --------------------------------------------------------------------------------
 player.CharacterAdded:Connect(function()
+    -- New character = new dash session. Bump id so any in-flight watchdog or
+    -- server callback from the previous life is treated as stale and ignored.
+    currentDashId = currentDashId + 1
     isDashing = false
     loadedAnim = nil
     animTrack = nil

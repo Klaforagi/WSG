@@ -1377,15 +1377,20 @@ _G.NavigateToAchievement = function(achId, category)
     end
 end
 
-function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
+function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptions)
     if not parent then return nil end
+
+    local options = type(initialTabOrOptions) == "table" and initialTabOrOptions or nil
+    local initialTabId = options and options.initialTabId or initialTabOrOptions
+    -- Side UI now opens achievements only; daily/weekly quest boards own those quest views.
+    local achievementsOnly = options and options.achievementsOnly == true
 
     questsScreenGui = parent:FindFirstAncestorOfClass("ScreenGui")
     if questsScreenGui then
         debugLog("QuestReroll", "Resolved modal host: " .. questsScreenGui:GetFullName())
     end
 
-    local preferredTab = (initialTabId == "weekly" or initialTabId == "achiev") and initialTabId or "daily"
+    local preferredTab = achievementsOnly and "achiev" or ((initialTabId == "weekly" or initialTabId == "achiev") and initialTabId or "daily")
 
     -- Cleanup from previous open
     cleanupConnections()
@@ -1406,7 +1411,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     end
 
     -- Ensure remotes are available
-    if not ensureRemotes() then
+    if not achievementsOnly and not ensureRemotes() then
         local errLabel = Instance.new("TextLabel")
         errLabel.BackgroundTransparency = 1
         errLabel.Font      = Enum.Font.GothamMedium
@@ -1419,13 +1424,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     end
 
     -- Fetch reroll cooldown state from server on UI open
-    task.spawn(fetchServerCooldowns)
+    if not achievementsOnly then
+        task.spawn(fetchServerCooldowns)
+    end
 
     -- Fetch quest data from server
     local quests = {}
-    pcall(function()
-        quests = getQuestsRF:InvokeServer()
-    end)
+    if getQuestsRF then
+        pcall(function()
+            quests = getQuestsRF:InvokeServer()
+        end)
+    end
     if type(quests) ~= "table" then quests = {} end
 
     local dailyQuestServerIndexById = {}
@@ -1447,8 +1456,18 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         return HDR_H + math.max(1, count) * CARD_H + px(24)
     end
 
+    local function getHostHeight()
+        if parent and parent.AbsoluteSize and parent.AbsoluteSize.Y > 0 then
+            return parent.AbsoluteSize.Y
+        end
+        if parent and parent.Parent and parent.Parent.AbsoluteSize and parent.Parent.AbsoluteSize.Y > 0 then
+            return parent.Parent.AbsoluteSize.Y
+        end
+        return px(520)
+    end
+
     local dailyH = pageHeightForCount(#quests)
-    local rootH  = math.max(dailyH, px(220))
+    local rootH  = achievementsOnly and math.max(getHostHeight(), px(360)) or math.max(dailyH, px(220))
 
     ---------------------------------------------------------------------------
     -- Root container (single direct child of the ScrollingFrame parent)
@@ -1474,6 +1493,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     sidebar.Name             = "TabSidebar"
     sidebar.Parent           = root
     LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
+    sidebar.Visible          = not achievementsOnly
 
     ---------------------------------------------------------------------------
     -- Content area (right of sidebar)
@@ -1481,8 +1501,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     local contentArea = Instance.new("Frame")
     contentArea.Name                = "ContentArea"
     contentArea.BackgroundTransparency = 1
-    contentArea.Size                = UDim2.new(1, -(TAB_W + TAB_GAP), 1, 0)
-    contentArea.Position            = UDim2.new(0, TAB_W + TAB_GAP, 0, 0)
+    contentArea.Size                = achievementsOnly and UDim2.new(1, 0, 1, 0) or UDim2.new(1, -(TAB_W + TAB_GAP), 1, 0)
+    contentArea.Position            = achievementsOnly and UDim2.new(0, 0, 0, 0) or UDim2.new(0, TAB_W + TAB_GAP, 0, 0)
     contentArea.ClipsDescendants    = false
     contentArea.Parent              = root
 
@@ -1493,7 +1513,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Tab definitions
     ---------------------------------------------------------------------------
-    local TAB_DEFS = {
+    local TAB_DEFS = achievementsOnly and {
+        { id = "achiev", icon = "\u{2605}", label = "Achievements", order = 1 },   -- ★
+    } or {
         { id = "daily",  icon = "\u{25C6}", label = "Daily",        order = 1 },   -- ◆
         { id = "weekly", icon = "\u{25C8}", label = "Weekly",       order = 2 },   -- ◈
         { id = "achiev", icon = "\u{2605}", label = "Achievements", order = 3 },   -- ★
@@ -1523,6 +1545,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     end
 
     local function updateRootHeight(minRows)
+        if achievementsOnly then return end
         local targetHeight = math.max(pageHeightForCount(minRows), px(220))
         if targetHeight <= rootH then return end
         rootH = targetHeight
@@ -1644,10 +1667,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             return dot
         end
 
-        dailyIndicator  = makeClaimIndicator(tabButtons["daily"])
-        weeklyIndicator = makeClaimIndicator(tabButtons["weekly"])
+        dailyIndicator  = tabButtons["daily"] and makeClaimIndicator(tabButtons["daily"])
+        weeklyIndicator = tabButtons["weekly"] and makeClaimIndicator(tabButtons["weekly"])
         -- Achievement tab indicator (dot for unclaimed achievement rewards)
-        achDataRef.achTabIndicator = makeClaimIndicator(tabButtons["achiev"])
+        achDataRef.achTabIndicator = tabButtons["achiev"] and makeClaimIndicator(tabButtons["achiev"])
     end
 
     -- Forward declaration; body assigned after weekly quest data is available.
@@ -1656,7 +1679,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- Active-tab state management
     ---------------------------------------------------------------------------
-    local currentTab = "daily"
+    local currentTab = preferredTab
     local apDisplayFrame  -- forward declaration; created later when Achievements tab builds
 
     local function setActiveTab(tabId)
@@ -1687,7 +1710,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         applyAchievementsScrollStyle(tabId == "achiev")
         -- Keep the modal title stable while tabs change the content below it.
         if _G.SideUI and type(_G.SideUI.SetTitle) == "function" then
-            _G.SideUI.SetTitle("QUESTS")
+            _G.SideUI.SetTitle(achievementsOnly and "Achievements" or "QUESTS")
         end
         -- Show/hide AP display in header based on active tab
         if apDisplayFrame then
@@ -1865,7 +1888,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     -- DAILY page
     ---------------------------------------------------------------------------
-    local dailyPage = makePage("DailyPage", true)
+    local dailyPage = makePage("DailyPage", not achievementsOnly and preferredTab == "daily")
     contentPages["daily"] = dailyPage
 
     makeHeader("DAILY QUESTS", "Complete quests to earn coin rewards. Resets daily!", dailyPage, "daily")
@@ -4025,6 +4048,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
             -- Fit root to the parent viewport so the hub fills available space
             if parentScroll and parentScroll.AbsoluteSize.Y > 0 then
                 root.Size = UDim2.new(1, 0, 0, parentScroll.AbsoluteSize.Y)
+            elseif parent and parent.AbsoluteSize.Y > 0 then
+                root.Size = UDim2.new(1, 0, 0, parent.AbsoluteSize.Y)
             end
         else
             achRestoreParentScroll()

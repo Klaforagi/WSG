@@ -21,6 +21,7 @@ local Workspace    = game:GetService("Workspace")
 -- Constants (must match MobOverheadHealth.server.lua)
 --------------------------------------------------------------------------------
 local BILLBOARD_NAME = "MobOverheadHealth"
+local OWNER_TYPE_ATTRIBUTE = "OverheadOwnerType"
 
 -- Timings
 local FILL_SNAP           = true   -- main fill snaps instantly (no tween, most responsive)
@@ -33,11 +34,57 @@ local PULSE_OUT_TIME      = 0.14   -- bar scale pulse return duration
 local COLOR_HIGH = Color3.fromRGB(80, 210, 80)
 local COLOR_MID  = Color3.fromRGB(235, 165, 40)
 local COLOR_LOW  = Color3.fromRGB(210, 55, 55)
+local PLAYER_TEAM_COLOR_FALLBACK = Color3.fromRGB(80, 220, 120)
 
 local function healthColor(pct)
 	if pct > 0.6 then return COLOR_HIGH
 	elseif pct > 0.3 then return COLOR_MID
 	else return COLOR_LOW end
+end
+
+local function getAttachedModel(billboard)
+	local attachPart = billboard and billboard.Parent
+	if not attachPart or not attachPart:IsA("BasePart") then return nil end
+	local model = attachPart.Parent
+	if model and model:IsA("Model") then
+		return model
+	end
+	return nil
+end
+
+local function getPlayerTeamColor(player)
+	local team = player and player.Team
+	if team then
+		local okTeamColor, teamColor = pcall(function()
+			return team.TeamColor
+		end)
+		if okTeamColor and typeof(teamColor) == "BrickColor" then
+			return teamColor.Color
+		end
+
+		local attributeColor = team:GetAttribute("Color")
+		if typeof(attributeColor) == "Color3" then
+			return attributeColor
+		end
+
+		local okColor, color = pcall(function()
+			return team.Color
+		end)
+		if okColor and typeof(color) == "Color3" then
+			return color
+		end
+	end
+
+	return PLAYER_TEAM_COLOR_FALLBACK
+end
+
+local function getFillColor(billboard, pct)
+	local model = getAttachedModel(billboard)
+	local ownerPlayer = model and Players:GetPlayerFromCharacter(model)
+	if ownerPlayer or (billboard and billboard:GetAttribute(OWNER_TYPE_ATTRIBUTE) == "Player") then
+		return getPlayerTeamColor(ownerPlayer)
+	end
+	return healthColor(pct)
 end
 
 --------------------------------------------------------------------------------
@@ -103,7 +150,7 @@ local function onHealthChanged(billboard, newHealth, maxHealth)
 	-- ── Main fill: instant snap to new health ─────────────────────────────
 	if el.fill then
 		el.fill.Size             = UDim2.fromScale(newPct, 1)
-		el.fill.BackgroundColor3 = healthColor(newPct)
+		el.fill.BackgroundColor3 = getFillColor(billboard, newPct)
 	end
 
 	-- ── Hit flash: brief white overlay on any damage ────────────────────────
@@ -197,6 +244,13 @@ local function cleanupBillboard(billboard)
 	state[billboard] = nil
 end
 
+local function refreshFillColor(billboard, hum)
+	local el = getElements(billboard)
+	if not el or not el.fill then return end
+	local pct = (hum and hum.MaxHealth > 0) and math.clamp(hum.Health / hum.MaxHealth, 0, 1) or 0
+	el.fill.BackgroundColor3 = getFillColor(billboard, pct)
+end
+
 --------------------------------------------------------------------------------
 -- Begin tracking a billboard
 --------------------------------------------------------------------------------
@@ -232,7 +286,7 @@ trackBillboard = function(billboard)
 	local initPct = (hum.MaxHealth > 0) and math.clamp(hum.Health / hum.MaxHealth, 0, 1) or 0
 	if el.fill then
 		el.fill.Size             = UDim2.fromScale(initPct, 1)
-		el.fill.BackgroundColor3 = healthColor(initPct)
+		el.fill.BackgroundColor3 = getFillColor(billboard, initPct)
 	end
 	if el.damageBar then
 		el.damageBar.Size = UDim2.fromScale(initPct, 1)
@@ -255,6 +309,15 @@ trackBillboard = function(billboard)
 			onHealthChanged(billboard, hum.Health, hum.MaxHealth)
 		end
 	end)
+
+	local ownerPlayer = Players:GetPlayerFromCharacter(model)
+	if ownerPlayer then
+		connections[#connections + 1] = ownerPlayer:GetPropertyChangedSignal("Team"):Connect(function()
+			if billboard.Parent then
+				refreshFillColor(billboard, hum)
+			end
+		end)
+	end
 
 	-- Billboard removed from workspace → clean up
 	connections[#connections + 1] = billboard.AncestryChanged:Connect(function()

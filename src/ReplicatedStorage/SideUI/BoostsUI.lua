@@ -184,7 +184,17 @@ function BoostsUI.Create(parent, _coinApi, _inventoryApi)
 
     local boostDefs = {}
     for _, def in ipairs(BoostConfig.Boosts or {}) do
-        if not def.InstantUse then
+        local visible = false
+        if type(BoostConfig.ShouldShowInPotionsStall) == "function" then
+            visible = BoostConfig.ShouldShowInPotionsStall(def)
+        else
+            visible = type(def) == "table"
+                and not def.InstantUse
+                and def.ShowInPotionsStall == true
+                and def.RemovedFromShop ~= true
+                and def.Purchasable ~= false
+        end
+        if visible then
             table.insert(boostDefs, def)
         end
     end

@@ -393,6 +393,10 @@ function BoostService:PurchaseOwnedBoost(player, boostId)
         return false, "Use the dedicated action for this boost"
     end
 
+    if def.RemovedFromShop == true or def.Purchasable == false then
+        return false, "Boost unavailable"
+    end
+
     local pd = ensurePlayerData(player)
 
     local cs = getCurrencyService()

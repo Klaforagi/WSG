@@ -349,7 +349,7 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
     if _G.GetRangedDamageMultiplier then
         local isPvP = (victimPlayer ~= nil)
         local mult = _G.GetRangedDamageMultiplier(player, isPvP)
-        if mult > 1 then
+        if type(mult) == "number" and mult > 0 and mult ~= 1 then
             damage = damage * mult
         end
     end

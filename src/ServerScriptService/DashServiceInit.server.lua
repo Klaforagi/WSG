@@ -83,17 +83,22 @@ if not playDashVFX then
 end
 
 --------------------------------------------------------------------------------
--- Rate-limit: ignore requests that arrive faster than once per second
+-- Rate-limit: burst guard only. Real cooldown is enforced inside DashService.
+-- Critical: we must ALWAYS send a response (approved or rejected). Silently
+-- dropping requests strands the client's `isDashing` flag and permanently
+-- locks Dash until the player respawns.
 --------------------------------------------------------------------------------
+local REQUEST_BURST_GUARD = 0.1
 local lastRequestTime = {}
 
 --------------------------------------------------------------------------------
 -- Handle dash requests
 --------------------------------------------------------------------------------
 requestDash.OnServerEvent:Connect(function(player)
-    -- Basic rate limit
+    -- Burst guard against duplicate frame fires; respond so client never hangs.
     local now = tick()
-    if lastRequestTime[player] and (now - lastRequestTime[player]) < 1 then
+    if lastRequestTime[player] and (now - lastRequestTime[player]) < REQUEST_BURST_GUARD then
+        dashRejected:FireClient(player, "rate_limited")
         return
     end
     lastRequestTime[player] = now

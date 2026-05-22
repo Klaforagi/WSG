@@ -228,22 +228,35 @@ end
 --------------------------------------------------------------------------------
 _G.UpgradeService = UpgradeService
 
+local function applyDamageOutputModifiers(player, multiplier)
+	local finalMultiplier = tonumber(multiplier) or 1
+	if _G.GetRevengeCurseDamageMultiplier then
+		local ok, curseMultiplier = pcall(function()
+			return _G.GetRevengeCurseDamageMultiplier(player)
+		end)
+		if ok and type(curseMultiplier) == "number" and curseMultiplier > 0 then
+			finalMultiplier = finalMultiplier * curseMultiplier
+		end
+	end
+	return finalMultiplier
+end
+
 --- Melee damage multiplier (isPvP = true → capped, false/nil → uncapped PvE)
 _G.GetMeleeDamageMultiplier = function(player, isPvP)
 	if not player then return 1 end
 	if isPvP then
-		return UpgradeService:GetMeleePvPMultiplier(player)
+		return applyDamageOutputModifiers(player, UpgradeService:GetMeleePvPMultiplier(player))
 	end
-	return UpgradeService:GetMeleePvEMultiplier(player)
+	return applyDamageOutputModifiers(player, UpgradeService:GetMeleePvEMultiplier(player))
 end
 
 --- Ranged damage multiplier (isPvP = true → capped, false/nil → uncapped PvE)
 _G.GetRangedDamageMultiplier = function(player, isPvP)
 	if not player then return 1 end
 	if isPvP then
-		return UpgradeService:GetRangedPvPMultiplier(player)
+		return applyDamageOutputModifiers(player, UpgradeService:GetRangedPvPMultiplier(player))
 	end
-	return UpgradeService:GetRangedPvEMultiplier(player)
+	return applyDamageOutputModifiers(player, UpgradeService:GetRangedPvEMultiplier(player))
 end
 
 print("[UpgradeServiceInit] Weapon upgrade system initialized")

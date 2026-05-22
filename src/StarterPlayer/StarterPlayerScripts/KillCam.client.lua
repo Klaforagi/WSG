@@ -7,7 +7,7 @@
 --     • Switches the camera to spectate the killer's character/model.
 --     • Shows the KillCardUI on the right side.
 --     • Restores Camera.Custom and hides the card on respawn.
---     • Wires the Revenge button to fire `Remotes.RequestRevengeKill` (stub).
+--     • Wires the Revenge button to fire `Remotes.RequestRevengeKill`.
 --------------------------------------------------------------------------------
 
 local Players           = game:GetService("Players")
@@ -93,16 +93,14 @@ end
 
 local function onRevengeClicked(payload)
     if not RequestRevengeKill then return end
+    if not payload or payload.revengeAvailable ~= true or payload.killerKind ~= "Player" then return end
     local info = {
         killerKind   = payload.killerKind,
         killerName   = payload.killerName,
         killerUserId = payload.killerUserId,
     }
-    -- TODO (future): instead of FireServer here, call
-    --   MarketplaceService:PromptProductPurchase(player, REVENGE_PRODUCT_ID)
-    -- and let the server's ProcessReceipt path apply the revenge kill.
     pcall(function() RequestRevengeKill:FireServer(info) end)
-    print("[KillCam] Revenge requested against", payload.killerName, "(placeholder, no damage yet)")
+    print("[KillCam] Revenge requested against", payload.killerName)
 end
 
 if DeathSpectateEvent then

@@ -60,6 +60,19 @@ local KILL_POINTS = 10
 
 local DevRocketService = {}
 
+local function applyDamageOutputModifiers(attackerPlayer, damage)
+    if not attackerPlayer or not _G.GetRevengeCurseDamageMultiplier then
+        return damage
+    end
+    local ok, multiplier = pcall(function()
+        return _G.GetRevengeCurseDamageMultiplier(attackerPlayer)
+    end)
+    if ok and type(multiplier) == "number" and multiplier > 0 then
+        return damage * multiplier
+    end
+    return damage
+end
+
 --------------------------------------------------------------------------------
 -- COOLDOWN STATE
 --------------------------------------------------------------------------------
@@ -276,7 +289,7 @@ end
 --------------------------------------------------------------------------------
 local function applyAoEDamage(shooter, hitPosition)
     local blastRadius = DevWeaponConfig.ROCKET_BLAST_RADIUS
-    local damage = DevWeaponConfig.ROCKET_DAMAGE
+    local damage = math.max(0, math.round(applyDamageOutputModifiers(shooter, DevWeaponConfig.ROCKET_DAMAGE)))
 
     -- Find all humanoids within blast radius
     for _, otherPlayer in ipairs(Players:GetPlayers()) do

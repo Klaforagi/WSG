@@ -50,6 +50,8 @@ local KILL_CREDIT_WINDOW = 15  -- seconds: ignore stale damage tags older than t
 local KILL_POINTS        = 10  -- team score per elimination
 local PVP_COIN_REWARD    = 5
 local MOB_COIN_REWARD    = 1
+local REVENGE_REQUEST_WINDOW = 120
+local REVENGE_CURSE_DURATION = 75
 
 --------------------------------------------------------------------------------
 -- Remotes / BindableEvents
@@ -143,6 +145,14 @@ pcall(function()
     local mod = ServerScriptService:FindFirstChild("WeaponEnchantService")
     if mod and mod:IsA("ModuleScript") then
         WeaponEnchantService = require(mod)
+    end
+end)
+
+local RevengeCurseService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("RevengeCurseService")
+    if mod and mod:IsA("ModuleScript") then
+        RevengeCurseService = require(mod)
     end
 end)
 
@@ -401,6 +411,117 @@ local function fireKillCard(victimPlayer, payload)
 end
 
 --------------------------------------------------------------------------------
+-- Revenge eligibility (server-authoritative, PvP only)
+--------------------------------------------------------------------------------
+local revengeEntitlements = {}  -- [victimUserId] = { targetUserId, targetName, grantedAt }
+
+local function grantRevenge(victimPlayer, killerPlayer)
+    if not victimPlayer or not killerPlayer then
+        return false
+    end
+    if victimPlayer == killerPlayer then
+        return false
+    end
+    if not killerPlayer:IsA("Player") or killerPlayer.Parent ~= Players then
+        return false
+    end
+
+    revengeEntitlements[victimPlayer.UserId] = {
+        targetUserId = killerPlayer.UserId,
+        targetName = killerPlayer.Name,
+        grantedAt = tick(),
+    }
+    return true
+end
+
+local function clearRevenge(victimPlayer)
+    if victimPlayer then
+        revengeEntitlements[victimPlayer.UserId] = nil
+    end
+end
+
+local function hideRevengeForNonPlayerDeath(victimPlayer)
+    clearRevenge(victimPlayer)
+    if victimPlayer then
+        print("[Revenge] Death source was NPC/non-player; revenge hidden.")
+    end
+end
+
+local function getAliveHumanoid(player)
+    local character = player and player.Character
+    if not character or not character.Parent then
+        return nil
+    end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        return nil
+    end
+    return humanoid
+end
+
+local function resolveRevengeTarget(player, info)
+    local entitlement = revengeEntitlements[player.UserId]
+    if not entitlement then
+        print(string.format("[Revenge] Rejected request from %s; no valid PvP revenge target.", player.Name))
+        return nil, nil
+    end
+
+    if tick() - entitlement.grantedAt > REVENGE_REQUEST_WINDOW then
+        revengeEntitlements[player.UserId] = nil
+        print(string.format("[Revenge] Rejected request from %s; revenge target expired.", player.Name))
+        return nil, nil
+    end
+
+    if typeof(info) == "table" and info.killerUserId ~= nil then
+        local requestedUserId = tonumber(info.killerUserId)
+        if requestedUserId ~= entitlement.targetUserId then
+            warn(string.format("[Revenge] Rejected request from %s; client target did not match server target.", player.Name))
+            return nil, nil
+        end
+    end
+
+    local target = Players:GetPlayerByUserId(entitlement.targetUserId)
+    if not target or target.Parent ~= Players then
+        revengeEntitlements[player.UserId] = nil
+        print(string.format("[Revenge] Rejected request from %s; target player left.", player.Name))
+        return nil, nil
+    end
+    if target == player then
+        revengeEntitlements[player.UserId] = nil
+        warn(string.format("[Revenge] Rejected request from %s; self target is invalid.", player.Name))
+        return nil, nil
+    end
+
+    local humanoid = getAliveHumanoid(target)
+    if not humanoid then
+        print(string.format("[Revenge] Rejected request from %s; target %s is not alive.", player.Name, target.Name))
+        return nil, nil
+    end
+
+    return target, humanoid
+end
+
+local function applyRevengeKill(attackerPlayer, targetPlayer, targetHumanoid)
+    if RevengeCurseService and RevengeCurseService.Apply then
+        pcall(function()
+            RevengeCurseService:Apply(targetPlayer, REVENGE_CURSE_DURATION)
+        end)
+    end
+
+    registerCombatHit(targetHumanoid, attackerPlayer)
+    pcall(function()
+        targetHumanoid:SetAttribute("lastDamagerWeapon", "Revenge")
+        targetHumanoid:SetAttribute("lastDamagerWeaponInstanceId", nil)
+    end)
+
+    local damage = math.max(targetHumanoid.Health, targetHumanoid.MaxHealth) + 1000
+    targetHumanoid:TakeDamage(damage)
+    if targetHumanoid.Health > 0 then
+        targetHumanoid.Health = 0
+    end
+end
+
+--------------------------------------------------------------------------------
 -- Death handler — single source of truth
 --------------------------------------------------------------------------------
 local function onHumanoidDied(humanoid, model)
@@ -441,6 +562,7 @@ local function onHumanoidDied(humanoid, model)
             local count = bumpKillCount(victimPlayer.UserId, key)
             local killerChar = killer.Character
             if killerChar and not killerChar.Parent then killerChar = nil end
+            local revengeAvailable = grantRevenge(victimPlayer, killer)
             payload = {
                 killerKind                 = "Player",
                 killerName                 = killer.Name,
@@ -451,11 +573,13 @@ local function onHumanoidDied(humanoid, model)
                 killedByThisKillerCount    = count,
                 killerModel                = killerChar,
                 killerWeaponName           = humanoid:GetAttribute("lastDamagerWeapon"),
+                revengeAvailable           = revengeAvailable,
                 deathMessage               = nil,
             }
         else
             local npcModel, npcName = resolveNpcKiller(humanoid)
             if npcName then
+                hideRevengeForNonPlayerDeath(victimPlayer)
                 local key = npcKillerKey(npcModel, npcName)
                 local count = bumpKillCount(victimPlayer.UserId, key)
                 -- Resolve a clean template name the client can look up in
@@ -484,14 +608,17 @@ local function onHumanoidDied(humanoid, model)
                     npcTemplateName            = templateName,
                     killerCategory             = categorizeNpc(npcModel, npcName),
                     killerWeaponName           = nil,
+                    revengeAvailable           = false,
                     deathMessage               = nil,
                 }
             else
+                hideRevengeForNonPlayerDeath(victimPlayer)
                 payload = {
                     killerKind                 = "Unknown",
                     killerName                 = "Unknown",
                     killerDisplayName          = "Unknown",
                     killedByThisKillerCount    = 0,
+                    revengeAvailable           = false,
                     deathMessage               = "You were defeated",
                 }
             end
@@ -609,52 +736,28 @@ Workspace.DescendantAdded:Connect(function(desc)
 end)
 
 --------------------------------------------------------------------------------
--- Revenge placeholder handler
---   Client fires RequestRevengeKill with the killer info from the kill card.
---   For now this is a NO-OP: it just logs.
---
---   FUTURE Robux Developer Product flow:
---     1. Add a Developer Product ID to a config (e.g. RevengeProducts.lua).
---     2. Client side: on Revenge button click, instead of FireServer here,
---        call MarketplaceService:PromptProductPurchase(player, REVENGE_PRODUCT_ID).
---     3. Server stores pendingRevengeTarget[player.UserId] = killerKey BEFORE prompt.
---     4. ProcessReceipt validates productId, re-resolves the killer target via
---        the stored key (Player_<id> or NPC_<id>), validates target still exists,
---        is not on the same team / not protected, and applies a kill or explosion.
---     5. Clear pendingRevengeTarget on success / failure.
---     6. Anti-abuse: cooldown per buyer; ignore if killer is gone; refund-friendly.
+-- Revenge remote handler
 --------------------------------------------------------------------------------
-local pendingRevengeTarget = {}  -- [userId] = { killerKind, killerKey, killerName, ts }
-
 RequestRevengeKill.OnServerEvent:Connect(function(player, info)
-    if typeof(info) ~= "table" then return end
-    local killerKind = tostring(info.killerKind or "Unknown")
-    local killerName = tostring(info.killerName or "Unknown")
-    local killerKey
-    if killerKind == "Player" and tonumber(info.killerUserId) then
-        killerKey = "Player_" .. tostring(info.killerUserId)
-    elseif killerKind == "NPC" then
-        killerKey = "NPC_" .. (tostring(info.killerId or info.killerName or "Unknown"))
-    else
-        warn(string.format("[Revenge] Ignoring revenge request from %s (no valid killer)", player.Name))
+    if not player or player.Parent ~= Players then
         return
     end
 
-    pendingRevengeTarget[player.UserId] = {
-        killerKind = killerKind,
-        killerKey  = killerKey,
-        killerName = killerName,
-        ts         = tick(),
-    }
+    local targetPlayer, targetHumanoid = resolveRevengeTarget(player, info)
+    if not targetPlayer or not targetHumanoid then
+        return
+    end
 
-    warn(string.format("[Revenge] Placeholder requested by %s against %s (%s)",
-        player.Name, killerName, killerKind))
-
-    -- TODO: MarketplaceService:PromptProductPurchase(player, REVENGE_PRODUCT_ID)
-    -- TODO: implement ProcessReceipt path that consumes pendingRevengeTarget[userId]
-    --       and applies the kill/explosion to the resolved target.
+    revengeEntitlements[player.UserId] = nil
+    print(string.format("[Revenge] Revenge used by %s against %s.", player.Name, targetPlayer.Name))
+    applyRevengeKill(player, targetPlayer, targetHumanoid)
 end)
 
 Players.PlayerRemoving:Connect(function(p)
-    pendingRevengeTarget[p.UserId] = nil
+    revengeEntitlements[p.UserId] = nil
+    for userId, entitlement in pairs(revengeEntitlements) do
+        if entitlement.targetUserId == p.UserId then
+            revengeEntitlements[userId] = nil
+        end
+    end
 end)

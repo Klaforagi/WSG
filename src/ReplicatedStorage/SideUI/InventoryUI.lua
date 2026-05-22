@@ -2501,25 +2501,45 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             return math.max(0, math.floor(tonumber(type(entry) == "table" and entry.count or 0) or 0))
         end
 
+        local function shouldShowPotionInPotionsInventory(potionDef)
+            if PotionConfigGlobal and type(PotionConfigGlobal.ShouldShowInPotionsStall) == "function" then
+                return PotionConfigGlobal.ShouldShowInPotionsStall(potionDef)
+            end
+            return type(potionDef) == "table" and potionDef.ShowInPotionsStall == true
+        end
+
+        local function shouldShowBoostInPotionsInventory(boostDef)
+            if BoostConfig and type(BoostConfig.ShouldShowInPotionsStall) == "function" then
+                return BoostConfig.ShouldShowInPotionsStall(boostDef)
+            end
+            return type(boostDef) == "table"
+                and not boostDef.InstantUse
+                and boostDef.ShowInPotionsStall == true
+                and boostDef.RemovedFromShop ~= true
+                and boostDef.Purchasable ~= false
+        end
+
         if PotionConfigGlobal and type(PotionConfigGlobal.GetOrderedPotions) == "function" and potionRemoteSet then
             for _, potionDef in ipairs(PotionConfigGlobal.GetOrderedPotions()) do
-                table.insert(boostDefs, {
-                    Id = potionDef.Id,
-                    Kind = "potion",
-                    DisplayName = potionDef.DisplayName,
-                    Description = potionDef.Description,
-                    DetailText = potionDef.DetailText,
-                    IconGlyph = potionDef.IconGlyph,
-                    IconColor = potionDef.IconColor,
-                    BadgeText = potionDef.BadgeText,
-                    SortOrder = potionDef.SortOrder or -1000,
-                })
+                if shouldShowPotionInPotionsInventory(potionDef) then
+                    table.insert(boostDefs, {
+                        Id = potionDef.Id,
+                        Kind = "potion",
+                        DisplayName = potionDef.DisplayName,
+                        Description = potionDef.Description,
+                        DetailText = potionDef.DetailText,
+                        IconGlyph = potionDef.IconGlyph,
+                        IconColor = potionDef.IconColor,
+                        BadgeText = potionDef.BadgeText,
+                        SortOrder = potionDef.SortOrder or -1000,
+                    })
+                end
             end
         end
 
         if BoostConfig and BoostConfig.Boosts then
             for _, def in ipairs(BoostConfig.Boosts) do
-                if not def.InstantUse then
+                if shouldShowBoostInPotionsInventory(def) then
                     local copied = shallowCopy(def)
                     copied.Kind = "boost"
                     table.insert(boostDefs, copied)

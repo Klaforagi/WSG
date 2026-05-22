@@ -21,6 +21,14 @@ end
 
 local RING_SIZE = Vector3.new(4, 0.2, 4)
 local RING_OFFSET_Y = -3.15
+local PLAYER_RING_ATTRIBUTE = "PlayerHealthRing"
+local PLAYER_RING_OWNER_ATTRIBUTE = "PlayerHealthRingOwnerUserId"
+
+local function markPlayerRing(instance, player)
+	if not instance or not player then return end
+	instance:SetAttribute(PLAYER_RING_ATTRIBUTE, true)
+	instance:SetAttribute(PLAYER_RING_OWNER_ATTRIBUTE, player.UserId)
+end
 
 local function teamColorOfPlayer(player)
 	if player and player.Team and player.Team.TeamColor then
@@ -66,6 +74,7 @@ local function createRingForCharacter(player, character)
 	if TEMPLATE_IS_MODEL then
 		-- Clone the model template and position it under the root part.
 		local modelClone = RING_TEMPLATE:Clone()
+		markPlayerRing(modelClone, player)
 		-- Ensure there's a PrimaryPart to position the model; prefer a child named
 		-- "PrimaryPart" if present, otherwise fall back to the first BasePart.
 		if not modelClone.PrimaryPart then
@@ -133,6 +142,7 @@ local function createRingForCharacter(player, character)
 		ringInstance = modelClone
 	else
 		local partClone = RING_TEMPLATE:Clone()
+		markPlayerRing(partClone, player)
 		partClone.Anchored = false
 		partClone.Massless = true
 		partClone.CanCollide = false

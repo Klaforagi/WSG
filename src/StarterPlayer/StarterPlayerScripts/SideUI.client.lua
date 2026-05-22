@@ -176,7 +176,7 @@ local function makeButtonGradient(parent)
 end
 
 local MENU_DEFS = {
-    { id = "Missions", label = "QUESTS", iconKey = "Quests" },
+    { id = "Missions", label = "Achieves", iconKey = "Quests" },
     { id = "Team", label = "TEAM", iconKey = "Team" },
 }
 
@@ -1761,7 +1761,7 @@ end
 _G.UpdateShopHeaderSalvage = updateHeaderSalvage
 
 -- Populate modal content without animation (used by MenuController open callbacks)
-local function populateModalContent(mod, label)
+local function populateModalContent(mod, label, createOptions)
     if not mod then return end
     modalBuildToken += 1
     local token = modalBuildToken
@@ -1798,7 +1798,7 @@ local function populateModalContent(mod, label)
             end
             if token ~= modalBuildToken or not contentHost.Parent then return end
 
-            loaded.Create(contentHost, coinApi, Inventory)
+            loaded.Create(contentHost, coinApi, Inventory, createOptions)
 
             if token ~= modalBuildToken or not contentHost.Parent then return end
             local hasContent = false
@@ -1849,12 +1849,12 @@ end
 -- Register a modal-based menu (Shop, Inventory, etc.) with the MenuController.
 -- All modal menus share the same overlay/window; they form a "modal" group so
 -- switching between them swaps content in-place without a full close/open cycle.
-local function registerModalMenu(name, mod, label)
+local function registerModalMenu(name, mod, label, createOptions)
     if not MenuController then return end
     MenuController.RegisterMenu(name, {
         group = "modal",
         open = function(sameGroup)
-            populateModalContent(mod, label)
+            populateModalContent(mod, label, createOptions)
             isAnimating = false
             if sameGroup then
                 -- Switching within the modal group: overlay already visible, just swap content
@@ -1890,7 +1890,7 @@ end
 if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
-if questsModule then registerModalMenu("Quests", questsModule, "QUESTS") end
+if questsModule then registerModalMenu("Quests", questsModule, "Achievements", { achievementsOnly = true, initialTabId = "achiev" }) end
 -- Legacy helper kept for any external code that may still reference it
 local function requestShowModule(mod, label)
     if not mod then return end
@@ -2070,7 +2070,7 @@ local function OpenPage(id)
     else
         -- Fallback if MenuController failed to load
         if id == "Options" then toggleOptionsMenu(); return end
-        if id == "Missions" then requestShowModule(questsModule, "QUESTS"); return end
+        if id == "Missions" then requestShowModule(questsModule, "Achievements"); return end
         if id == "Team" then
             if type(_G.TeamStatsToggle) == "function" then pcall(_G.TeamStatsToggle) end
             return

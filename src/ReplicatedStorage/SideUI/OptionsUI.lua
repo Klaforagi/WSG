@@ -75,6 +75,9 @@ local DEFAULT_SETTINGS = {
 	ShowGameState     = true,
 	ShowHelm          = true,
 	ShowPlayerHighlights = false,
+	ShowPlayerHealthBars = true,
+	ShowNPCHealthBars = true,
+	ShowPlayerRings = true,
 	-- UIScale removed from options
 }
 
@@ -183,6 +186,34 @@ local function ApplySettings(settings)
 
 	-- Player Highlights toggle – expose globally for TeamHighlight script
 	_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
+
+	-- Overhead health bars toggle; names are intentionally unaffected.
+	local playerHealthBarsVisible = (settings.ShowPlayerHealthBars ~= false)
+	local npcHealthBarsVisible = (settings.ShowNPCHealthBars ~= false)
+	if _G.ShowPlayerHealthBars ~= playerHealthBarsVisible then
+		print(string.format("[OverheadUI] Player health bars visible = %s", tostring(playerHealthBarsVisible)))
+	end
+	if _G.ShowNPCHealthBars ~= npcHealthBarsVisible then
+		print(string.format("[OverheadUI] NPC health bars visible = %s", tostring(npcHealthBarsVisible)))
+	end
+	_G.ShowPlayerHealthBars = playerHealthBarsVisible
+	_G.ShowNPCHealthBars = npcHealthBarsVisible
+	pcall(function()
+		if type(_G.RefreshOverheadUISettings) == "function" then
+			_G.RefreshOverheadUISettings()
+		end
+	end)
+
+	local playerRingsVisible = (settings.ShowPlayerRings ~= false)
+	if _G.ShowPlayerRings ~= playerRingsVisible then
+		print(string.format("[PlayerRings] Player rings visible = %s", tostring(playerRingsVisible)))
+	end
+	_G.ShowPlayerRings = playerRingsVisible
+	pcall(function()
+		if type(_G.RefreshPlayerRingVisibility) == "function" then
+			_G.RefreshPlayerRingVisibility()
+		end
+	end)
 
 	-- Sync changed settings to server via lightweight RemoteEvent (no DataStore write)
 	pcall(function()
@@ -885,6 +916,9 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	createSectionHeader(root, "UI", nextOrder())
 	createToggle(root, "Show Scoreboard", "ShowGameState", nextOrder())
 	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
+	createToggle(root, "Show Player Health Bars", "ShowPlayerHealthBars", nextOrder())
+	createToggle(root, "Show Player Rings", "ShowPlayerRings", nextOrder())
+	createToggle(root, "Show NPC Health Bars", "ShowNPCHealthBars", nextOrder())
 	-- UI Scale removed per request
 
 	---------------------------------------------------------------------------

@@ -27,6 +27,9 @@ local DEFAULTS = {
     ShowGameState = true,
     ShowHelm = false,
     ShowPlayerHighlights = false,
+    ShowPlayerHealthBars = true,
+    ShowNPCHealthBars = true,
+    ShowPlayerRings = true,
 }
 
 local cache = {}

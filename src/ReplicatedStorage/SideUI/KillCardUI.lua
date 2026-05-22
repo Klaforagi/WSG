@@ -508,7 +508,7 @@ function KillCardUI.Mount(parentScreenGui)
     revengeSub.Position = UDim2.new(0.5, 0, 1, -px(4))
     revengeSub.Size = UDim2.new(1, 0, 0, px(12))
     revengeSub.BackgroundTransparency = 1
-    revengeSub.Text = "Coming soon  •  Robux"
+    revengeSub.Text = "Marks the killer"
     revengeSub.Font = Enum.Font.Gotham
     revengeSub.TextColor3 = UITheme.DIM_TEXT
     revengeSub.TextSize = px(10)
@@ -659,7 +659,10 @@ function KillCardUI.Mount(parentScreenGui)
 
         -- Re-bind revenge button each Show.
         if revengeConn then revengeConn:Disconnect(); revengeConn = nil end
-        revengeBtn.Visible = (kind ~= "Unknown")
+        local revengeAvailable = payload.revengeAvailable == true
+            and kind == "Player"
+            and payload.killerUserId ~= nil
+        revengeBtn.Visible = revengeAvailable
         revengeSub.Visible = revengeBtn.Visible
         if revengeBtn.Visible then
             revengeConn = revengeBtn.MouseButton1Click:Connect(function()

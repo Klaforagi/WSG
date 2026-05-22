@@ -1,6 +1,7 @@
 --[[
 	MobHealthFade.client.lua
-	Fades mob overhead health bars in/out based on distance from the local player.
+	Fades overhead health bars in/out based on distance from the local player.
+	Names stay visible; Options toggles hide only the health-bar pieces.
 	Pairs with MobOverheadHealth.server.lua.
 --]]
 
@@ -9,10 +10,11 @@ local RunService  = game:GetService("RunService")
 local Workspace   = game:GetService("Workspace")
 
 local BILLBOARD_NAME = "MobOverheadHealth"
+local OWNER_TYPE_ATTRIBUTE = "OverheadOwnerType"
 
--- Distance band: UI is barely visible at FADE_START (the billboard's MaxDistance),
--- and fully opaque at FADE_FULL. Alpha ramps linearly from 0.01 → 1 across this range.
-local FADE_START = 55   -- studs — matches MaxDistance; barely visible here
+-- Distance band: health bars are barely visible at FADE_START and fully opaque
+-- at FADE_FULL. Names do not fade.
+local FADE_START = 55   -- studs — health bars are barely visible here
 local FADE_FULL  = 22   -- studs — fully opaque
 
 -- Base (fully-visible) transparencies for each element.
@@ -35,59 +37,131 @@ local function lerp(a, b, t)
 	return a + (b - a) * t
 end
 
--- alpha: 0 = invisible, 1 = fully visible
-local function applyAlpha(billboard, alpha)
+local function getOwnerType(billboard)
+	local ownerType = billboard:GetAttribute(OWNER_TYPE_ATTRIBUTE)
+	if ownerType == "Player" then
+		return "Player"
+	end
+	return "NPC"
+end
+
+local function healthBarsEnabled(billboard)
+	if getOwnerType(billboard) == "Player" then
+		return _G.ShowPlayerHealthBars ~= false
+	end
+	return _G.ShowNPCHealthBars ~= false
+end
+
+local function getElements(billboard)
 	local bg = billboard:FindFirstChild("Background")
-	if not bg then return end
+	if not bg then return nil end
 
 	local nameLabel  = bg:FindFirstChild("NameLabel")
-	local nameStroke = nameLabel and nameLabel:FindFirstChild("NameStroke")
 	local barShadow  = bg:FindFirstChild("BarShadow")
 	local barOuter   = bg:FindFirstChild("BarOuter")
-	local barStroke  = barOuter and barOuter:FindFirstChild("BarStroke")
-	local fill       = barOuter and barOuter:FindFirstChild("Fill")
-	local damageBar  = barOuter and barOuter:FindFirstChild("DamageBar")
 	local hpText     = barOuter and barOuter:FindFirstChild("HPText")
-	local hpStroke   = hpText and hpText:FindFirstChild("HPStroke")
 
-	if nameLabel then
-		nameLabel.TextTransparency = lerp(1, BASE.nameText, alpha)
-		-- TextStrokeTransparency is disabled (= 1); UIStroke below handles it
+	return {
+		nameLabel = nameLabel,
+		nameStroke = nameLabel and nameLabel:FindFirstChild("NameStroke"),
+		barShadow = barShadow,
+		barOuter = barOuter,
+		barStroke = barOuter and barOuter:FindFirstChild("BarStroke"),
+		fill = barOuter and barOuter:FindFirstChild("Fill"),
+		damageBar = barOuter and barOuter:FindFirstChild("DamageBar"),
+		hpText = hpText,
+		hpStroke = hpText and hpText:FindFirstChild("HPStroke"),
+	}
+end
+
+local function applyNameVisibility(elements)
+	if elements.nameLabel then
+		elements.nameLabel.TextTransparency = BASE.nameText
+		elements.nameLabel.TextStrokeTransparency = 1
 	end
-
-	if nameStroke then
-		nameStroke.Transparency = lerp(1, BASE.nameUIStroke, alpha)
-	end
-
-	if barShadow then
-		barShadow.BackgroundTransparency = lerp(1, BASE.barShadowBG, alpha)
-	end
-
-	if barOuter then
-		barOuter.BackgroundTransparency = lerp(1, BASE.barOuterBG, alpha)
-	end
-
-	if barStroke then
-		barStroke.Transparency = lerp(1, BASE.barStroke, alpha)
-	end
-
-	if fill then
-		fill.BackgroundTransparency = lerp(1, BASE.fillBG, alpha)
-	end
-
-	if damageBar then
-		damageBar.BackgroundTransparency = lerp(1, BASE.damageBarBG, alpha)
-	end
-
-	if hpText then
-		hpText.TextTransparency       = lerp(1, BASE.hpText, alpha)
-		hpText.TextStrokeTransparency = 1  -- disabled; UIStroke handles it
-	end
-
-	if hpStroke then
-		hpStroke.Transparency = lerp(1, BASE.hpUIStroke, alpha)
+	if elements.nameStroke then
+		elements.nameStroke.Transparency = BASE.nameUIStroke
 	end
 end
+
+local function applyHealthBarVisibility(elements, visible)
+	if elements.barShadow then
+		elements.barShadow.Visible = visible
+	end
+	if elements.barOuter then
+		elements.barOuter.Visible = visible
+	end
+end
+
+local function applyBillboardSettings(billboard)
+	local elements = getElements(billboard)
+	if not elements then return end
+	applyNameVisibility(elements)
+	applyHealthBarVisibility(elements, healthBarsEnabled(billboard))
+end
+
+local function refreshOverheadUISettings()
+	for _, billboard in ipairs(Workspace:GetDescendants()) do
+		if billboard:IsA("BillboardGui") and billboard.Name == BILLBOARD_NAME then
+			applyBillboardSettings(billboard)
+		end
+	end
+end
+
+_G.RefreshOverheadUISettings = refreshOverheadUISettings
+
+-- alpha: 0 = invisible, 1 = fully visible
+local function applyAlpha(billboard, alpha)
+	local elements = getElements(billboard)
+	if not elements then return end
+
+	applyNameVisibility(elements)
+
+	local showHealthBar = healthBarsEnabled(billboard)
+	applyHealthBarVisibility(elements, showHealthBar)
+	if not showHealthBar then return end
+
+	if elements.barShadow then
+		elements.barShadow.BackgroundTransparency = lerp(1, BASE.barShadowBG, alpha)
+	end
+
+	if elements.barOuter then
+		elements.barOuter.BackgroundTransparency = lerp(1, BASE.barOuterBG, alpha)
+	end
+
+	if elements.barStroke then
+		elements.barStroke.Transparency = lerp(1, BASE.barStroke, alpha)
+	end
+
+	if elements.fill then
+		elements.fill.BackgroundTransparency = lerp(1, BASE.fillBG, alpha)
+	end
+
+	if elements.damageBar then
+		elements.damageBar.BackgroundTransparency = lerp(1, BASE.damageBarBG, alpha)
+	end
+
+	if elements.hpText then
+		elements.hpText.TextTransparency       = lerp(1, BASE.hpText, alpha)
+		elements.hpText.TextStrokeTransparency = 1  -- disabled; UIStroke handles it
+	end
+
+	if elements.hpStroke then
+		elements.hpStroke.Transparency = lerp(1, BASE.hpUIStroke, alpha)
+	end
+end
+
+Workspace.DescendantAdded:Connect(function(inst)
+	if inst:IsA("BillboardGui") and inst.Name == BILLBOARD_NAME then
+		task.defer(function()
+			if inst.Parent then
+				applyBillboardSettings(inst)
+			end
+		end)
+	end
+end)
+
+refreshOverheadUISettings()
 
 RunService.Heartbeat:Connect(function()
 	local character = localPlayer.Character

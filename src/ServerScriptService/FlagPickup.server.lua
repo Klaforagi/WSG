@@ -77,6 +77,17 @@ if not FlagStatus or not FlagStatus:IsA("RemoteEvent") then
     FlagStatus.Parent = ReplicatedStorage
 end
 
+local FlagStatesFolder = ReplicatedStorage:FindFirstChild("FlagStates")
+if FlagStatesFolder and not FlagStatesFolder:IsA("Folder") then
+    FlagStatesFolder:Destroy()
+    FlagStatesFolder = nil
+end
+if not FlagStatesFolder then
+    FlagStatesFolder = Instance.new("Folder")
+    FlagStatesFolder.Name = "FlagStates"
+    FlagStatesFolder.Parent = ReplicatedStorage
+end
+
 -- helper: play a sound from ReplicatedStorage.Sounds.Flag at a given part
 local function playFlagSound(soundName, part)
     if not part then return end
@@ -109,6 +120,7 @@ local PLAYABLE_TEAMS = {
     Blue = true,
     Red = true,
 }
+local FLAG_TEAM_ORDER = {"Blue", "Red"}
 
 local function getFlagTeamFromModelName(name)
     return FLAG_TEAMS_BY_NAME[tostring(name)]
@@ -134,6 +146,99 @@ local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=C
 local carrying = {} -- map player -> data {team, modelClone}
 local captureDebounce = {}
 local lastCarrierPos = {} -- player -> Vector3 (tracked for disconnect safety)
+
+local function getFlagStateObject(team)
+    local stateObject = FlagStatesFolder:FindFirstChild(team)
+    if not stateObject or not stateObject:IsA("Folder") then
+        if stateObject then
+            stateObject:Destroy()
+        end
+        stateObject = Instance.new("Folder")
+        stateObject.Name = team
+        stateObject.Parent = FlagStatesFolder
+    end
+    return stateObject
+end
+
+local function getCarrierForFlag(team)
+    for carrierPlayer, carryData in pairs(carrying) do
+        if carryData and carryData.team == team then
+            return carrierPlayer
+        end
+    end
+    return nil
+end
+
+local function findFlagStandPart(team)
+    for standName, standTeam in pairs(FLAG_STAND_TEAMS_BY_NAME) do
+        if standTeam == team then
+            local standPart = Map:FindFirstChild(standName, true) or Workspace:FindFirstChild(standName, true)
+            if standPart and standPart:IsA("BasePart") then
+                return standPart
+            end
+        end
+    end
+    return nil
+end
+
+local function setFlagInstanceAttributes(instance, team, atBase, isCarried, isDropped, carrierPlayer)
+    if not instance then return end
+    local carrierTeamName = ""
+    if carrierPlayer and carrierPlayer.Team then
+        carrierTeamName = carrierPlayer.Team.Name
+    end
+
+    instance:SetAttribute("Team", team)
+    instance:SetAttribute("AtBase", atBase == true)
+    instance:SetAttribute("CarrierUserId", carrierPlayer and carrierPlayer.UserId or 0)
+    instance:SetAttribute("CarrierTeam", carrierTeamName)
+    instance:SetAttribute("CarrierName", carrierPlayer and carrierPlayer.Name or "")
+    instance:SetAttribute("IsCarried", isCarried == true)
+    instance:SetAttribute("IsDropped", isDropped == true)
+end
+
+local function syncFlagState(team)
+    local flagInfo = flags[team]
+    local carrierPlayer = getCarrierForFlag(team)
+    local isCarried = carrierPlayer ~= nil
+    local isDropped = flagInfo and flagInfo.dropped == true
+    local activeModel = flagInfo and (flagInfo.dropModel or flagInfo.model) or nil
+    local atBase = false
+
+    if flagInfo and flagInfo.model and flagInfo.model.Parent == Map and not isCarried and not isDropped then
+        atBase = true
+    end
+
+    local stateObject = getFlagStateObject(team)
+    setFlagInstanceAttributes(stateObject, team, atBase, isCarried, isDropped, carrierPlayer)
+
+    if activeModel then
+        setFlagInstanceAttributes(activeModel, team, atBase, isCarried, isDropped, carrierPlayer)
+    end
+
+    local standPart = findFlagStandPart(team)
+    if standPart then
+        setFlagInstanceAttributes(standPart, team, atBase, isCarried, isDropped, carrierPlayer)
+    end
+end
+
+local function syncAllFlagStates()
+    for _, team in ipairs(FLAG_TEAM_ORDER) do
+        syncFlagState(team)
+    end
+end
+
+for _, team in ipairs(FLAG_TEAM_ORDER) do
+    getFlagStateObject(team)
+end
+
+for _, playerInstance in ipairs(Players:GetPlayers()) do
+    playerInstance:GetPropertyChangedSignal("Team"):Connect(syncAllFlagStates)
+end
+Players.PlayerAdded:Connect(function(playerInstance)
+    playerInstance:GetPropertyChangedSignal("Team"):Connect(syncAllFlagStates)
+    syncAllFlagStates()
+end)
 
 -- Global: seconds before a dropped flag auto-returns to base (all drop reasons)
 local FLAG_RETURN_TIME = 15
@@ -305,6 +410,7 @@ local function respawnFlag(team)
     setupFlagModel(spawnModel)
     info.model = spawnModel
     info.dropped = false
+    syncFlagState(team)
 end
 
 local function findPickupPart(model)
@@ -396,6 +502,8 @@ function setupFlagModel(model)
         flags[team].pickupTemplate = pickupTemplate
     end
 
+    syncFlagState(team)
+
     local conn
     conn = pickupPart.Touched:Connect(function(part)
         local char = part and part:FindFirstAncestorOfClass("Model")
@@ -484,6 +592,8 @@ function setupFlagModel(model)
         if carried then
             carrying[pl] = {team = team, model = carried}
             pl:SetAttribute("CarryingFlag", team)
+            setFlagInstanceAttributes(carried, team, false, true, false, pl)
+            syncFlagState(team)
             applyFlagCarrySlow(pl)
             -- announce pickup to all clients (send player team and flag team)
             FlagStatus:FireAllClients("pickup", pl.Name, playerTeamName, team)
@@ -526,6 +636,7 @@ function setupFlagModel(model)
                     setupFlagModel(dropModel)
                     flags[team].dropped = true
                     flags[team].dropModel = dropModel
+                    syncFlagState(team)
 
                     -- create a visible countdown above the dropped flag and return it to the stand
                     -- only if nobody picks it up within FLAG_RETURN_TIME seconds
@@ -733,6 +844,7 @@ local function setupStand(standPart)
         carrying[pl] = nil
         pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
         clearFlagCarrySlow(pl)
+        syncFlagState(flagTeam)
 
         -- award points to the player's team
         local capturingTeamName = playerTeamName
@@ -817,6 +929,7 @@ local function destroyAllFlags()
             flags[team]._dropVersion = (flags[team]._dropVersion or 0) + 1
         end
     end
+    syncAllFlagStates()
 
     print("[FlagPickup] All flags destroyed")
 end
@@ -882,6 +995,7 @@ local function forceDropFlag(pl, lastPos)
     clearFlagCarrySlow(pl)
 
     if not areFlagsInteractive() then
+        syncFlagState(team)
         return
     end
 
@@ -918,6 +1032,7 @@ local function forceDropFlag(pl, lastPos)
         setupFlagModel(dropModel)
         flags[team].dropped = true
         flags[team].dropModel = dropModel
+        syncFlagState(team)
 
         -- Announce that the flag was dropped (show as auto-returned message)
         FlagStatus:FireAllClients("returned", nil, nil, team)

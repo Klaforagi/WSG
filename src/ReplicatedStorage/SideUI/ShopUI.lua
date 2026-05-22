@@ -2294,9 +2294,20 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
     local boostCards = {}
     local shopBoostDefs = {}
 
+    local function shouldShowBoostInPotionsShop(def)
+        if BoostConfig and type(BoostConfig.ShouldShowInPotionsStall) == "function" then
+            return BoostConfig.ShouldShowInPotionsStall(def)
+        end
+        return type(def) == "table"
+            and not def.InstantUse
+            and def.ShowInPotionsStall == true
+            and def.RemovedFromShop ~= true
+            and def.Purchasable ~= false
+    end
+
     if BoostConfig and BoostConfig.Boosts then
         for _, def in ipairs(BoostConfig.Boosts) do
-            if not def.InstantUse then
+            if shouldShowBoostInPotionsShop(def) then
                 table.insert(shopBoostDefs, def)
             end
         end
