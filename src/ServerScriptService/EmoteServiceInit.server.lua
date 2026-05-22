@@ -344,6 +344,11 @@ local function pushEquippedToClient(player)
 end
 
 -- ── Emote animation state ──────────────────────────────────────────────────
+local function setActiveEmoteAttributes(player, emoteId, useRunning)
+    player:SetAttribute("ActiveEmoteId", emoteId)
+    player:SetAttribute("ActiveEmoteUseRunning", useRunning == true)
+end
+
 local function stopEmoteForPlayer(player, reason)
     local track = activeEmoteTracks[player]
     if track then
@@ -351,6 +356,7 @@ local function stopEmoteForPlayer(player, reason)
         activeEmoteTracks[player] = nil
         print("[EmoteService] emote stopped for", player.Name, "reason:", reason or "unknown")
     end
+    setActiveEmoteAttributes(player, nil, false)
     -- Disconnect cancel connections
     local conns = cancelConns[player]
     if conns then
@@ -371,6 +377,7 @@ local function playEmoteForPlayer(player, emoteId)
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then return false, "no_humanoid" end
     if humanoid.Health <= 0 then return false, "dead" end
+    if player:GetAttribute("IsDashing") == true then return false, "dashing" end
 
     -- Cooldown check
     local now = os.clock()
@@ -402,9 +409,10 @@ local function playEmoteForPlayer(player, emoteId)
     end
 
     track.Priority = Enum.AnimationPriority.Action
-    track.Looped = (def.Looped == true)
+    track.Looped = (def.Looped ~= false)
     pcall(function() track:Play(0.25) end)
     activeEmoteTracks[player] = track
+    setActiveEmoteAttributes(player, emoteId, def.UseRunning)
     print("[EmoteService] animation started for", player.Name, "emote:", emoteId)
 
     -- Set cooldown
@@ -419,6 +427,7 @@ local function playEmoteForPlayer(player, emoteId)
     table.insert(conns, track.Stopped:Connect(function()
         if activeEmoteTracks[player] == track then
             activeEmoteTracks[player] = nil
+            setActiveEmoteAttributes(player, nil, false)
             print("[EmoteService] emote ended naturally for", player.Name)
         end
         -- Clean up connections
@@ -436,8 +445,15 @@ local function playEmoteForPlayer(player, emoteId)
 
     -- Cancel on significant movement (MoveDirection changes from zero)
     table.insert(conns, humanoid:GetPropertyChangedSignal("MoveDirection"):Connect(function()
-        if humanoid.MoveDirection.Magnitude > 0.1 then
+        if def.UseRunning ~= true and humanoid.MoveDirection.Magnitude > 0.1 then
             stopEmoteForPlayer(player, "moved")
+        end
+    end))
+
+    -- Cancel on dash start
+    table.insert(conns, player:GetAttributeChangedSignal("IsDashing"):Connect(function()
+        if player:GetAttribute("IsDashing") == true then
+            stopEmoteForPlayer(player, "dashed")
         end
     end))
 

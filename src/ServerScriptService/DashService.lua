@@ -93,11 +93,13 @@ local function executeDash(player, humanoid, rootPart)
     local distance = clampDistanceToWall(rootPart, flatDir, cfg.Distance)
     if distance < 1 then
         state.isDashing = false
+        player:SetAttribute("IsDashing", false)
         return false, "blocked"
     end
 
     local duration = cfg.Duration
     local speed = distance / duration -- studs/s
+    player:SetAttribute("IsDashing", true)
 
     -- Apply velocity via LinearVelocity (modern, clean, no lingering objects after removal)
     local attachment = Instance.new("Attachment")
@@ -137,6 +139,7 @@ local function executeDash(player, humanoid, rootPart)
         if state then
             state.isDashing = false
         end
+        player:SetAttribute("IsDashing", false)
         log(player.Name, "dash complete")
     end)
 
@@ -159,6 +162,9 @@ function DashService:TryDash(player)
     -- Ensure state table
     if not playerState[player] then
         playerState[player] = { lastDashTime = 0, isDashing = false }
+    end
+    if player:GetAttribute("IsDashing") == nil then
+        player:SetAttribute("IsDashing", false)
     end
     local state = playerState[player]
 
@@ -202,6 +208,7 @@ end
 
 function DashService:ClearPlayer(player)
     playerState[player] = nil
+    player:SetAttribute("IsDashing", false)
     log("cleared state for", player.Name)
 end
 

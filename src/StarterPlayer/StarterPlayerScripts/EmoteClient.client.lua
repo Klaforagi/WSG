@@ -164,6 +164,74 @@ local function GetEquippedEmotes()
     return cachedEquipped
 end
 
+local locomotionSuppressToken = 0
+
+local function getLocalHumanoid()
+    local character = player.Character
+    if not character then return nil end
+    return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function stopLocalLocomotionTracks()
+    local humanoid = getLocalHumanoid()
+    if not humanoid then return end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return end
+
+    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+        local priority = track.Priority
+        if priority == Enum.AnimationPriority.Core
+            or priority == Enum.AnimationPriority.Idle
+            or priority == Enum.AnimationPriority.Movement then
+            pcall(function() track:Stop(0) end)
+        end
+    end
+end
+
+local function setAnimateSuppressed(suppressed)
+    local character = player.Character
+    if not character then return end
+
+    local animateScript = character:FindFirstChild("Animate")
+    if animateScript and (animateScript:IsA("LocalScript") or animateScript:IsA("Script")) then
+        animateScript.Disabled = suppressed
+    end
+
+    if suppressed then
+        stopLocalLocomotionTracks()
+    end
+end
+
+local function refreshLocalEmoteMovementState()
+    local useRunning = player:GetAttribute("ActiveEmoteUseRunning") == true
+    local emoteId = player:GetAttribute("ActiveEmoteId")
+    local shouldSuppress = useRunning and type(emoteId) == "string" and emoteId ~= ""
+
+    locomotionSuppressToken += 1
+    local token = locomotionSuppressToken
+
+    setAnimateSuppressed(shouldSuppress)
+
+    if shouldSuppress then
+        task.spawn(function()
+            while locomotionSuppressToken == token
+                and player:GetAttribute("ActiveEmoteUseRunning") == true
+                and type(player:GetAttribute("ActiveEmoteId")) == "string" do
+                stopLocalLocomotionTracks()
+                task.wait(0.1)
+            end
+        end)
+    end
+end
+
+player:GetAttributeChangedSignal("ActiveEmoteId"):Connect(refreshLocalEmoteMovementState)
+player:GetAttributeChangedSignal("ActiveEmoteUseRunning"):Connect(refreshLocalEmoteMovementState)
+player.CharacterAdded:Connect(function()
+    task.defer(refreshLocalEmoteMovementState)
+end)
+refreshLocalEmoteMovementState()
+
 -- ── Open / close helpers ──────────────────────────────────────────────────
 local function OpenEmoteMenu()
     print("[EmoteClient] >>> OpenEmoteMenu() called")

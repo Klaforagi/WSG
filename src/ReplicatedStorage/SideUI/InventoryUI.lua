@@ -4588,6 +4588,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local EMOTE_GLYPHS = {
             wave = "\u{1F44B}",
             dance = "\u{1F57A}",
+            headless = "\u{1F480}",
+            rat_dance = "\u{1F400}",
+            floss = "\u{1F57A}",
+            dab = "DAB",
+            macarena = "\u{1F483}",
+            ride_the_pony = "\u{1F434}",
+            the_robot = "\u{1F916}",
             i_want_money = "\u{1F4B0}",
             take_the_l = "L",
         }
