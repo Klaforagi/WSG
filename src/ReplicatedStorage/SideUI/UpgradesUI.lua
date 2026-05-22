@@ -54,6 +54,24 @@ pcall(function()
 	end
 end)
 
+local AssetCodes
+pcall(function()
+	local mod = ReplicatedStorage:WaitForChild("AssetCodes", 5)
+	if mod and mod:IsA("ModuleScript") then
+		AssetCodes = require(mod)
+	end
+end)
+
+local function getShardCurrencyImage()
+	if AssetCodes and type(AssetCodes.Get) == "function" then
+		local image = AssetCodes.Get("Shards") or AssetCodes.Get("Shard")
+		if type(image) == "string" and #image > 0 then
+			return image
+		end
+	end
+	return nil
+end
+
 --------------------------------------------------------------------------------
 -- Remotes
 --------------------------------------------------------------------------------
@@ -173,25 +191,37 @@ end
 -- Scrap icon widget (mirrors coin look but with steel/grey palette).
 --------------------------------------------------------------------------------
 local function makeScrapIcon(parentFrame, size)
+	local shardImage = getShardCurrencyImage()
+	if shardImage then
+		local scrap = Instance.new("ImageLabel")
+		scrap.Name = "ScrapIcon"
+		scrap.Size = UDim2.new(0, size, 0, size)
+		scrap.BackgroundTransparency = 1
+		scrap.Image = shardImage
+		scrap.ScaleType = Enum.ScaleType.Fit
+		scrap.Parent = parentFrame
+		return scrap
+	end
+
 	local scrap = Instance.new("Frame")
 	scrap.Name            = "ScrapIcon"
 	scrap.Size            = UDim2.new(0, size, 0, size)
-	scrap.BackgroundColor3 = Color3.fromRGB(170, 178, 190)
+	scrap.BackgroundColor3 = Color3.fromRGB(40, 92, 54)
 	scrap.BorderSizePixel = 0
 	local cr = Instance.new("UICorner")
 	cr.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.18)))
 	cr.Parent = scrap
 	local stroke = Instance.new("UIStroke")
-	stroke.Color           = Color3.fromRGB(80, 88, 98)
+	stroke.Color           = Color3.fromRGB(18, 42, 26)
 	stroke.Thickness       = math.max(1, math.floor(size * 0.10))
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Parent          = scrap
 	local lbl = Instance.new("TextLabel")
 	lbl.BackgroundTransparency = 1
 	lbl.Size = UDim2.fromScale(1, 1)
-	lbl.Text = "S"
+	lbl.Text = "\u{25C6}"
 	lbl.Font = Enum.Font.GothamBlack
-	lbl.TextColor3 = Color3.fromRGB(35, 40, 48)
+	lbl.TextColor3 = WHITE
 	lbl.TextScaled = true
 	lbl.Parent = scrap
 	scrap.Parent = parentFrame
@@ -634,7 +664,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		costHeader.Name = "CostHeader"
 		costHeader.BackgroundTransparency = 1
 		costHeader.Font = Enum.Font.GothamMedium
-		costHeader.Text = "Next Upgrade (Scrap):"
+		costHeader.Text = "Next Upgrade (Shards):"
 		costHeader.TextColor3 = DIM_TEXT
 		costHeader.TextSize = math.max(10, math.floor(px(11)))
 		costHeader.TextXAlignment = Enum.TextXAlignment.Center
@@ -771,15 +801,16 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 					end
 				end)
 
-				-- Refresh header coins
+				-- Refresh currency headers
 				pcall(function()
 					if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+					if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
 				end)
 			else
 				local toastMsg = msg or "Purchase failed"
 				local toastColor = RED_TEXT
 				if tostring(msg):find("Insufficient") then
-					toastMsg = "Not enough scrap!"
+					toastMsg = "Not enough Shards!"
 				elseif tostring(msg):find("capped") then
 					toastMsg = "Upgrade capped by player level!"
 				end

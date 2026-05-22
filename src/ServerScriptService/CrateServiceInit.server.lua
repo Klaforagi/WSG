@@ -219,7 +219,9 @@ keepCrateRewardRF.OnServerInvoke = function(player)
 
     local success, result = CrateService:FinalizeCrateKeep(player)
     if success then
-        -- Save inventory and notify client
+        -- The weapon is already in inventory for modern rolls; keeping only
+        -- clears the reversible pending state. Re-save and push the current
+        -- inventory so any open views resync cleanly.
         WeaponInstanceService:SaveForPlayer(player)
         pcall(function()
             weaponInvUpdatedRE:FireClient(player, WeaponMasteryService:AttachMasteryToInventory(player, WeaponInstanceService:GetInventory(player)))
@@ -247,6 +249,16 @@ salvageCrateRewardRF.OnServerInvoke = function(player)
 
     local success, result = CrateService:FinalizeCrateSalvage(player)
     if success then
+        local removedInstanceId = type(result) == "table" and result.removedInstanceId or nil
+        if type(removedInstanceId) == "string" and removedInstanceId ~= "" then
+            WeaponMasteryService:RemoveWeapon(player, removedInstanceId)
+            WeaponInstanceService:SaveForPlayer(player)
+            WeaponMasteryService:SaveForPlayer(player)
+            pcall(function()
+                weaponInvUpdatedRE:FireClient(player, WeaponMasteryService:AttachMasteryToInventory(player, WeaponInstanceService:GetInventory(player)))
+            end)
+        end
+
         -- Fire salvage currency update to client
         pcall(function()
             local salvageUpdated = ReplicatedStorage:FindFirstChild("SalvageUpdated")

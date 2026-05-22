@@ -18,6 +18,8 @@ local Debris              = game:GetService("Debris")
 local CollectionService   = game:GetService("CollectionService")
 local TweenService        = game:GetService("TweenService")
 
+local PRACTICE_DUMMY_TAG = "PracticeDummy"
+
 -- XP integration
 local XPModule
 pcall(function()
@@ -72,7 +74,10 @@ end)
 
 -- Shared weapon switch lock
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local MELEE_ATTACK_SPEED_MODIFIER_ID = "melee_attack_slow"
 
 local function shouldIgnoreHumanoidTarget(model, humanoid)
     if not humanoid then return true end
@@ -116,12 +121,12 @@ local KILL_POINTS = 10
 -- Resolve per-tool config from presets (uses getPreset which merges
 -- rarity defaults + weapon overrides)
 ---------------------------------------------------------------------------
-local function getServerMeleeCfg(toolName)
+local function getServerMeleeCfg(toolName, sizePercent)
     if not MeleeCfg or not MeleeCfg.getPreset then return {} end
     local suffix = toolName and (tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$"))
     local key = suffix and suffix:lower()
     if not key then return {} end
-    return MeleeCfg.getPreset(key) or {}
+    return MeleeCfg.getPreset(key, sizePercent) or {}
 end
 
 ---------------------------------------------------------------------------
@@ -228,7 +233,11 @@ local function collectAllMeleeAnimationIds()
         table.insert(ids, normalized)
     end
 
-    if MeleeCfg and MeleeCfg.presets then
+    if MeleeCfg and type(MeleeCfg.getAllSwingAnimationIds) == "function" then
+        for _, animId in ipairs(MeleeCfg.getAllSwingAnimationIds()) do
+            add(animId)
+        end
+    elseif MeleeCfg and MeleeCfg.presets then
         for _, preset in pairs(MeleeCfg.presets) do
             if type(preset.swing_anim_ids) == "table" then
                 for _, animId in ipairs(preset.swing_anim_ids) do
@@ -475,8 +484,15 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
     end
-    -- Round to nearest whole number
-    damage = math.round(damage)
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        local ok, masteryBonus = pcall(function()
+            return WeaponMasteryService:GetDamageBonus(player, weaponInstanceId)
+        end)
+        if ok and type(masteryBonus) == "number" and masteryBonus > 0 then
+            damage = damage + masteryBonus
+        end
+    end
+    damage = math.max(0, math.round(damage))
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
@@ -560,18 +576,30 @@ local function getTargetsInCone(playerChar, origin, lookDir, range, arcDeg)
     lookFlat = lookFlat.Unit
 
     local candidates = {}
+    local seenCandidates = {}
+    local function addCandidate(model)
+        if model and not seenCandidates[model] then
+            seenCandidates[model] = true
+            table.insert(candidates, model)
+        end
+    end
     for _, p in ipairs(Players:GetPlayers()) do
         if p.Character and p.Character ~= playerChar then
-            table.insert(candidates, p.Character)
+            addCandidate(p.Character)
         end
     end
     for _, obj in ipairs(Workspace:GetChildren()) do
         if obj:IsA("Model") and obj.Name == "Dummy" then
-            table.insert(candidates, obj)
+            addCandidate(obj)
+        end
+    end
+    for _, obj in ipairs(CollectionService:GetTagged(PRACTICE_DUMMY_TAG)) do
+        if obj:IsA("Model") then
+            addCandidate(obj)
         end
     end
     for _, z in ipairs(CollectionService:GetTagged("ZombieNPC")) do
-        if z:IsA("Model") then table.insert(candidates, z) end
+        if z:IsA("Model") then addCandidate(z) end
     end
 
     for _, model in ipairs(candidates) do
@@ -672,7 +700,6 @@ end
 -- Rate limiting & combo state
 ---------------------------------------------------------------------------
 local lastSwing  = {} -- [player] = { [toolName] = tick() }
-local slowState  = {} -- [player] = { count = n, base = number, factors = {..} }
 local comboState = {} -- [player] = { step = 1, lastTime = 0, toolName = "" }
 
 -- Combo config from shared module
@@ -706,10 +733,10 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     end
 
     -- resolve config (rarity defaults merged with weapon overrides)
-    local cfg = getServerMeleeCfg(toolName)
+    local sizePercent     = getToolSizePercent(tool)
+    local cfg = getServerMeleeCfg(toolName, sizePercent)
 
     -- ── SIZE SCALING ──────────────────────────────────────────────────
-    local sizePercent     = getToolSizePercent(tool)
     local sizeDamageMult  = getSizeDamageMultiplier(sizePercent)
     local sizeSpeedMult   = getSizeSpeedMultiplier(sizePercent)
 
@@ -828,53 +855,15 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
         end
     end
 
-    -- ── SLOWDOWN (size-scaled duration) ───────────────────────────────
+    -- ── MOVEMENT PENALTY (size-scaled duration) ───────────────────────
     do
-        local slowFactor = 0.75
-        if cfg.slow_factor and type(cfg.slow_factor) == "number" then
-            slowFactor = math.clamp(cfg.slow_factor, 0.1, 1)
-        end
+        local speedPenalty = tonumber(cfg.movement_speed_penalty) or -3
         local slowDuration = math.max(cd * 0.95, 0.01)
-
-        if not slowState[player] then
-            slowState[player] = { count = 0, base = nil, factors = {} }
-        end
-        local st = slowState[player]
-        if st.count == 0 then
-            st.base = hum and hum.WalkSpeed or 16
-        end
-        st.count = st.count + 1
-        table.insert(st.factors, slowFactor)
-
-        local minFactor = 1
-        for _, f in ipairs(st.factors) do minFactor = math.min(minFactor, f) end
-        if hum and hum.Parent then
-            pcall(function() hum.WalkSpeed = math.max((st.base or 16) * minFactor, 0.1) end)
-        end
-
-        task.delay(slowDuration, function()
-            local s = slowState[player]
-            if not s then return end
-            s.count = math.max(s.count - 1, 0)
-            for i, v in ipairs(s.factors) do
-                if v == slowFactor then
-                    table.remove(s.factors, i)
-                    break
-                end
-            end
-            if s.count <= 0 then
-                if s.base and hum and hum.Parent then
-                    pcall(function() hum.WalkSpeed = s.base end)
-                end
-                slowState[player] = nil
-            else
-                local mf = 1
-                for _, f in ipairs(s.factors) do mf = math.min(mf, f) end
-                if hum and hum.Parent then
-                    pcall(function() hum.WalkSpeed = math.max((s.base or 16) * mf, 0.1) end)
-                end
-            end
-        end)
+        HumanoidStatService:SetModifier(player, MOVEMENT_SPEED_STAT, MELEE_ATTACK_SPEED_MODIFIER_ID, {
+            additive = speedPenalty,
+            duration = slowDuration,
+            source = toolName,
+        })
     end
 
     -- ── LOOK DIRECTION (server-blended) ───────────────────────────────
@@ -1113,21 +1102,31 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     end)
 end)
 
+local function clearMeleeAttackSlow(player)
+    pcall(function()
+        HumanoidStatService:RemoveModifier(player, MOVEMENT_SPEED_STAT, MELEE_ATTACK_SPEED_MODIFIER_ID)
+    end)
+end
+
+local function setupPlayerCleanup(player)
+    player.CharacterRemoving:Connect(function()
+        clearMeleeAttackSlow(player)
+    end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    setupPlayerCleanup(player)
+end
+
+Players.PlayerAdded:Connect(function(player)
+    setupPlayerCleanup(player)
+end)
+
 -- clean up on leave
 Players.PlayerRemoving:Connect(function(player)
     lastSwing[player] = nil
     comboState[player] = nil
-    if slowState[player] then
-        local st = slowState[player]
-        local char = player.Character
-        if char then
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum and st.base then
-                pcall(function() hum.WalkSpeed = st.base end)
-            end
-        end
-        slowState[player] = nil
-    end
+    clearMeleeAttackSlow(player)
     WeaponLockService.cleanupPlayer(player)
 end)
 

@@ -2,7 +2,7 @@
 -- InventoryUI.lua  –  Compact grid inventory with right-side details panel
 --
 -- Layout:
---   Left sidebar:   Melee · Ranged · Boosts · Skins · Effects
+--   Left sidebar:   Melee · Ranged · Boosts · Skins · Effects · Emotes
 --   Centre:         Scrollable weapon card grid (compact, rarity-coloured)
 --   Right panel:    Selected weapon details + Equip button
 --
@@ -17,16 +17,73 @@ local TweenService       = game:GetService("TweenService")
 local UITheme = require(script.Parent.UITheme)
 local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
 
+local INVENTORY_GRID_COLUMNS = 5
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Responsive pixel helper
 -- ═══════════════════════════════════════════════════════════════════════════
-local function px(base)
+local function getViewportSize()
     local cam = workspace.CurrentCamera
-    local screenY = 1080
-    if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
-        screenY = cam.ViewportSize.Y
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
     end
-    return math.max(1, math.round(base * screenY / 1080))
+    return 1920, 1080
+end
+
+local function getResponsiveViewportScale()
+    local screenX, screenY = getViewportSize()
+    local widthScale = screenX / 1920
+    local heightScale = screenY / 1080
+    return math.clamp(math.min(widthScale, heightScale), 0.38, 1.6)
+end
+
+local function px(base)
+    return math.max(1, math.round(base * getResponsiveViewportScale()))
+end
+
+local function attachResponsiveRootScale(root)
+    if not root then return end
+
+    root:SetAttribute("InventoryInitialResponsiveScale", getResponsiveViewportScale())
+
+    local rootScale = Instance.new("UIScale")
+    rootScale.Name = "ResponsiveScale"
+    rootScale.Scale = 1
+    rootScale.Parent = root
+end
+
+local function updateResponsiveRootScale(root)
+    if not root then return end
+
+    local rootScale = root:FindFirstChild("ResponsiveScale")
+    if not (rootScale and rootScale:IsA("UIScale")) then return end
+
+    local initialResponsiveScale = tonumber(root:GetAttribute("InventoryInitialResponsiveScale")) or getResponsiveViewportScale()
+    rootScale.Scale = getResponsiveViewportScale() / math.max(0.001, initialResponsiveScale)
+end
+
+local function bindViewportResize(trackConn, callback)
+    if not (trackConn and callback) then return end
+
+    local cameraViewportConn = nil
+
+    local function attachCamera(camera)
+        if cameraViewportConn then
+            pcall(function() cameraViewportConn:Disconnect() end)
+            cameraViewportConn = nil
+        end
+        if camera then
+            cameraViewportConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(callback)
+            trackConn(cameraViewportConn)
+        end
+    end
+
+    trackConn(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        attachCamera(workspace.CurrentCamera)
+        callback()
+    end))
+
+    attachCamera(workspace.CurrentCamera)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -58,6 +115,22 @@ pcall(function()
         SalvageConfig = require(mod)
     end
 end)
+
+local function getSalvageValueForItem(itemData)
+    if not SalvageConfig or type(itemData) ~= "table" then
+        return nil
+    end
+
+    if type(SalvageConfig.GetValueForItem) == "function" then
+        return SalvageConfig.GetValueForItem(itemData)
+    end
+
+    if type(SalvageConfig.GetValueForRarity) == "function" then
+        return SalvageConfig.GetValueForRarity(itemData.rarity)
+    end
+
+    return nil
+end
 
 local WeaponMasteryConfig = nil
 pcall(function()
@@ -219,32 +292,60 @@ local function setCardStroke(stroke, color, thickness, transparency)
     stroke.Transparency = transparency
 end
 
-local function formatMasteryReward(reward)
-    if type(reward) ~= "table" then return "Mastery reward" end
-    local parts = {}
-    local coins = tonumber(reward.Coins) or 0
-    local salvage = tonumber(reward.Salvage) or 0
-    if coins > 0 then
-        table.insert(parts, "+" .. tostring(coins) .. " coins")
+local MASTERY_ROMAN_FALLBACK = {
+    [1] = "I",
+    [2] = "II",
+    [3] = "III",
+    [4] = "IV",
+    [5] = "V",
+    [6] = "VI",
+    [7] = "VII",
+    [8] = "VIII",
+    [9] = "IX",
+    [10] = "X",
+}
+
+local function formatWholeNumber(value)
+    local formatted = tostring(math.max(0, math.floor(tonumber(value) or 0)))
+    while true do
+        local updated, count = string.gsub(formatted, "^(%-?%d+)(%d%d%d)", "%1,%2")
+        formatted = updated
+        if count == 0 then
+            break
+        end
     end
-    if salvage > 0 then
-        table.insert(parts, "+" .. tostring(salvage) .. " salvage")
-    end
-    if #parts == 0 then return "Mastery reward" end
-    return table.concat(parts, "  ")
+    return formatted
 end
 
-local function getMasteryReward(level)
-    if WeaponMasteryConfig and WeaponMasteryConfig.GetReward then
-        return WeaponMasteryConfig.GetReward(level)
+local function formatMasteryXP(value)
+    local rounded = math.max(0, math.round((tonumber(value) or 0) * 10) / 10)
+    local whole = math.floor(rounded)
+    local tenths = math.floor(((rounded - whole) * 10) + 0.5)
+    if tenths <= 0 then
+        return formatWholeNumber(whole)
     end
-    return nil
+    return formatWholeNumber(whole) .. "." .. tostring(tenths)
+end
+
+local function getMasteryRoman(level, romanNumeral)
+    if type(romanNumeral) == "string" and romanNumeral ~= "" then
+        return romanNumeral
+    end
+    if WeaponMasteryConfig and WeaponMasteryConfig.GetRomanNumeral then
+        return WeaponMasteryConfig.GetRomanNumeral(level)
+    end
+    local numericLevel = math.max(1, math.floor(tonumber(level) or 1))
+    return MASTERY_ROMAN_FALLBACK[numericLevel] or tostring(numericLevel)
+end
+
+local function formatMasteryBonus(bonus)
+    return string.format("+%.1f DMG", math.max(0, tonumber(bonus) or 0))
 end
 
 -- (SIZE_TIER_STYLES removed — EnchantTextStyler is the sole source of size-tier colors)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects)
+-- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects/Emotes)
 -- ═══════════════════════════════════════════════════════════════════════════
 local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
@@ -252,6 +353,7 @@ local TAB_DEFS = {
     { id = "boosts",  icon = "\u{26A1}",  label = "Potions", order = 3 },
     { id = "skins",   icon = "\u{2726}",  label = "Skins",   order = 4 },
     { id = "effects", icon = "\u{2738}",  label = "Effects", order = 5 },
+    { id = "emotes",  icon = "\u{263A}",  label = "Emotes",  order = 6 },
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -402,7 +504,7 @@ local ShopUIModule = nil
 pcall(function() ShopUIModule = require(script.Parent.ShopUI) end)
 
 local BoostConfig = nil
-local HealthPotionConfigGlobal = nil
+local PotionConfigGlobal = nil
 local AssetCodesGlobal = nil
 local boostRemotes = nil
 local potionRemotes = nil
@@ -416,8 +518,8 @@ local function safeRequireBoostConfig()
     return nil
 end
 
-local function safeRequireHealthPotionConfig()
-    local mod = ReplicatedStorage:FindFirstChild("HealthPotionConfig")
+local function safeRequirePotionConfig()
+    local mod = ReplicatedStorage:FindFirstChild("PotionConfig")
     if mod and mod:IsA("ModuleScript") then
         local ok, result = pcall(function() return require(mod) end)
         if ok and type(result) == "table" then return result end
@@ -432,6 +534,87 @@ local function safeRequireAssetCodes()
         if ok and type(result) == "table" then return result end
     end
     return nil
+end
+
+local function getShardCurrencyImage()
+    AssetCodesGlobal = AssetCodesGlobal or safeRequireAssetCodes()
+    if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" then
+        local image = AssetCodesGlobal.Get("Shards") or AssetCodesGlobal.Get("Shard")
+        if type(image) == "string" and #image > 0 then return image end
+    end
+    return nil
+end
+
+local SHARD_UI_ACCENT = Color3.fromRGB(255, 158, 74)
+local SHARD_UI_BG = Color3.fromRGB(74, 42, 18)
+local SHARD_UI_DIM = Color3.fromRGB(190, 118, 52)
+local SHARD_UI_FEEDBACK_BG = Color3.fromRGB(58, 33, 14)
+local SHARD_UI_OVERLAY_BG = Color3.fromRGB(22, 12, 4)
+local SHARD_UI_CONFIRM_BG = Color3.fromRGB(48, 29, 14)
+
+local function createShardRewardRow(parent, name, size, anchorPoint, position, textSize, shardImage, zIndex, pxFn)
+    local row = Instance.new("Frame")
+    row.Name = name
+    row.BackgroundTransparency = 1
+    row.Size = size
+    row.AnchorPoint = anchorPoint
+    row.Position = position
+    row.Visible = false
+    if zIndex then row.ZIndex = zIndex end
+    row.Parent = parent
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.Padding = UDim.new(0, pxFn(5))
+    layout.Parent = row
+
+    local label = Instance.new("TextLabel")
+    label.Name = "ValueText"
+    label.BackgroundTransparency = 1
+    label.AutomaticSize = Enum.AutomaticSize.X
+    label.Size = UDim2.new(0, 0, 1, 0)
+    label.Font = Enum.Font.GothamBold
+    label.TextColor3 = SHARD_UI_ACCENT
+    label.TextSize = textSize
+    label.TextXAlignment = Enum.TextXAlignment.Center
+    label.Text = ""
+    if zIndex then label.ZIndex = zIndex end
+    label.Parent = row
+
+    if shardImage then
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "ShardIcon"
+        icon.BackgroundTransparency = 1
+        icon.Size = UDim2.new(0, pxFn(18), 0, pxFn(18))
+        icon.Image = shardImage
+        icon.ScaleType = Enum.ScaleType.Fit
+        if zIndex then icon.ZIndex = zIndex end
+        icon.Parent = row
+    else
+        local suffix = Instance.new("TextLabel")
+        suffix.Name = "ShardText"
+        suffix.BackgroundTransparency = 1
+        suffix.AutomaticSize = Enum.AutomaticSize.X
+        suffix.Size = UDim2.new(0, 0, 1, 0)
+        suffix.Font = Enum.Font.GothamBold
+        suffix.Text = "SHARDS"
+        suffix.TextColor3 = SHARD_UI_ACCENT
+        suffix.TextSize = textSize
+        if zIndex then suffix.ZIndex = zIndex end
+        suffix.Parent = row
+    end
+
+    return row, label
+end
+
+local function addBlackTextStroke(label)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(0, 0, 0)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.15
+    stroke.Parent = label
 end
 
 local function ensurePotionRemotes()
@@ -549,7 +732,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     BoostConfig      = BoostConfig or safeRequireBoostConfig()
-    HealthPotionConfigGlobal = HealthPotionConfigGlobal or safeRequireHealthPotionConfig()
+    PotionConfigGlobal = PotionConfigGlobal or safeRequirePotionConfig()
     AssetCodesGlobal = AssetCodesGlobal or safeRequireAssetCodes()
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -579,11 +762,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         Line2TextSize      = math.max(12, math.floor(px(14))),
     }
 
-    local screenY   = 1080
-    pcall(function()
-        local cam = workspace.CurrentCamera
-        if cam and cam.ViewportSize.Y > 0 then screenY = cam.ViewportSize.Y end
-    end)
+    local _, screenY = getViewportSize()
     local rootHeight = math.max(px(380), math.floor(screenY * 0.58))
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -594,6 +773,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function cleanup()
         for _, conn in ipairs(cleanupConnections) do pcall(function() conn:Disconnect() end) end
         table.clear(cleanupConnections)
+    end
+
+    local function bindFixedColumnGrid(scrollFrame, gridLayout, gridPadding, baseCellWidth, baseCellHeight)
+        if not (scrollFrame and gridLayout and gridPadding) then return end
+
+        local aspectRatio = (tonumber(baseCellHeight) or 1) / math.max(1, tonumber(baseCellWidth) or 1)
+
+        local function updateCellSize()
+            local availableWidth = scrollFrame.AbsoluteSize.X
+                - (gridPadding.PaddingLeft.Offset or 0)
+                - (gridPadding.PaddingRight.Offset or 0)
+                - math.max(0, scrollFrame.ScrollBarThickness or 0)
+            local horizontalPadding = gridLayout.CellPadding.X.Offset * math.max(0, INVENTORY_GRID_COLUMNS - 1)
+            local cellWidth = math.max(1, math.floor((availableWidth - horizontalPadding) / INVENTORY_GRID_COLUMNS))
+            local cellHeight = math.max(1, math.floor(cellWidth * aspectRatio))
+            gridLayout.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+        end
+
+        gridLayout.FillDirectionMaxCells = INVENTORY_GRID_COLUMNS
+        trackConn(scrollFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize))
+        task.defer(updateCellSize)
     end
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -832,6 +1032,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     root.LayoutOrder = 1
     root.ClipsDescendants = true
     root.Parent = parent
+    attachResponsiveRootScale(root)
 
     -- ══════════════════════════════════════════════════════════════════════
     --  SIDEBAR  (tab buttons)
@@ -864,7 +1065,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         bar.BackgroundTransparency = 1
         Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5, 0)
 
-        if def.id == "melee" or def.id == "ranged" or def.id == "boosts" then
+        if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" then
             local iconLbl = Instance.new("TextLabel", btn)
             iconLbl.Name = "Icon"
             iconLbl.BackgroundTransparency = 1
@@ -941,6 +1142,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     gridPad.PaddingLeft   = UDim.new(0, px(8))
     gridPad.PaddingRight  = UDim.new(0, px(8))
     gridPad.PaddingBottom = UDim.new(0, px(8))
+    bindFixedColumnGrid(gridScroll, gridLayout, gridPad, 158, 188)
 
     -- Empty state overlay (shown when a category has no items)
     local emptyState = Instance.new("Frame")
@@ -1133,7 +1335,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryPanel.Name = "MasteryPanel"
     masteryPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 38)
     masteryPanel.BackgroundTransparency = 0.08
-    masteryPanel.Size = UDim2.new(0.9, 0, 0, px(128))
+    masteryPanel.Size = UDim2.new(0.9, 0, 0, px(112))
     masteryPanel.AnchorPoint = Vector2.new(0.5, 0)
     masteryPanel.Position = UDim2.new(0.5, 0, 0, px(324))
     masteryPanel.Visible = false
@@ -1148,34 +1350,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryTitle.BackgroundTransparency = 1
     masteryTitle.Font = Enum.Font.GothamBold
     masteryTitle.TextColor3 = GOLD
-    masteryTitle.TextSize = px(17)
+    masteryTitle.TextSize = px(18)
     masteryTitle.TextXAlignment = Enum.TextXAlignment.Left
-    masteryTitle.Size = UDim2.new(1, -px(92), 0, px(24))
+    masteryTitle.Size = UDim2.new(1, -px(24), 0, px(24))
     masteryTitle.Position = UDim2.new(0, px(12), 0, px(8))
-    masteryTitle.Text = "MASTERY 1"
-
-    local masteryClaimBtn = Instance.new("TextButton", masteryPanel)
-    masteryClaimBtn.Name = "ClaimRewardBtn"
-    masteryClaimBtn.AutoButtonColor = false
-    masteryClaimBtn.BackgroundColor3 = Color3.fromRGB(38, 95, 54)
-    masteryClaimBtn.Font = Enum.Font.GothamBold
-    masteryClaimBtn.TextColor3 = WHITE
-    masteryClaimBtn.TextSize = px(13)
-    masteryClaimBtn.Text = "CLAIM"
-    masteryClaimBtn.Size = UDim2.new(0, px(72), 0, px(28))
-    masteryClaimBtn.AnchorPoint = Vector2.new(1, 0)
-    masteryClaimBtn.Position = UDim2.new(1, -px(9), 0, px(7))
-    masteryClaimBtn.Visible = false
-    Instance.new("UICorner", masteryClaimBtn).CornerRadius = UDim.new(0, px(7))
+    masteryTitle.Text = "MASTERY I"
 
     local masteryXP = Instance.new("TextLabel", masteryPanel)
     masteryXP.Name = "XP"
     masteryXP.BackgroundTransparency = 1
     masteryXP.Font = Enum.Font.GothamBold
     masteryXP.TextColor3 = WHITE
-    masteryXP.TextSize = px(14)
+    masteryXP.TextSize = px(13)
     masteryXP.TextXAlignment = Enum.TextXAlignment.Left
-    masteryXP.Size = UDim2.new(1, -px(24), 0, px(20))
+    masteryXP.Size = UDim2.new(1, -px(24), 0, px(18))
     masteryXP.Position = UDim2.new(0, px(12), 0, px(34))
     masteryXP.Text = "0 / 25 XP"
 
@@ -1184,7 +1372,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryBarBg.BackgroundColor3 = Color3.fromRGB(11, 12, 20)
     masteryBarBg.BorderSizePixel = 0
     masteryBarBg.Size = UDim2.new(1, -px(24), 0, px(10))
-    masteryBarBg.Position = UDim2.new(0, px(12), 0, px(58))
+    masteryBarBg.Position = UDim2.new(0, px(12), 0, px(56))
     Instance.new("UICorner", masteryBarBg).CornerRadius = UDim.new(0, px(5))
 
     local masteryBarFill = Instance.new("Frame", masteryBarBg)
@@ -1200,11 +1388,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryElims.BackgroundTransparency = 0.05
     masteryElims.Font = Enum.Font.GothamBold
     masteryElims.TextColor3 = WHITE
-    masteryElims.TextSize = px(13)
+    masteryElims.TextSize = px(12)
     masteryElims.TextXAlignment = Enum.TextXAlignment.Center
     masteryElims.TextYAlignment = Enum.TextYAlignment.Center
-    masteryElims.Size = UDim2.new(0.48, -px(3), 0, px(26))
-    masteryElims.Position = UDim2.new(0, px(12), 0, px(75))
+    masteryElims.Size = UDim2.new(0.48, -px(3), 0, px(30))
+    masteryElims.Position = UDim2.new(0, px(12), 0, px(74))
     masteryElims.Text = "ELIMS 0"
     Instance.new("UICorner", masteryElims).CornerRadius = UDim.new(0, px(6))
 
@@ -1214,27 +1402,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.BackgroundTransparency = 0.05
     masteryDamage.Font = Enum.Font.GothamBold
     masteryDamage.TextColor3 = WHITE
-    masteryDamage.TextSize = px(13)
+    masteryDamage.TextSize = px(12)
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
-    masteryDamage.Size = UDim2.new(0.48, -px(3), 0, px(26))
+    masteryDamage.Size = UDim2.new(0.48, -px(3), 0, px(30))
     masteryDamage.AnchorPoint = Vector2.new(1, 0)
-    masteryDamage.Position = UDim2.new(1, -px(12), 0, px(75))
-    masteryDamage.Text = "DAMAGE 0"
+    masteryDamage.Position = UDim2.new(1, -px(12), 0, px(74))
+    masteryDamage.Text = "BONUS +0.0 DMG"
     Instance.new("UICorner", masteryDamage).CornerRadius = UDim.new(0, px(6))
-
-    local masteryNext = Instance.new("TextLabel", masteryPanel)
-    masteryNext.Name = "NextReward"
-    masteryNext.BackgroundTransparency = 1
-    masteryNext.Font = Enum.Font.GothamBold
-    masteryNext.TextColor3 = WHITE
-    masteryNext.TextSize = px(13)
-    masteryNext.TextWrapped = true
-    masteryNext.TextXAlignment = Enum.TextXAlignment.Left
-    masteryNext.TextYAlignment = Enum.TextYAlignment.Top
-    masteryNext.Size = UDim2.new(1, -px(24), 0, px(24))
-    masteryNext.Position = UDim2.new(0, px(12), 0, px(105))
-    masteryNext.Text = "Next: Mastery 2"
 
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
@@ -1273,31 +1448,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     actionRow.Position = UDim2.new(0.5, 0, 1, -px(60))
 
     -- Salvage value preview label (shown above action row for salvageable items)
-    local SALVAGE_GREEN = Color3.fromRGB(35, 190, 75)
-    local salvageValueLabel = Instance.new("TextLabel", detailContent)
-    salvageValueLabel.Name = "SalvageValuePreview"
-    salvageValueLabel.BackgroundTransparency = 1
-    salvageValueLabel.Font = Enum.Font.GothamBold
-    salvageValueLabel.TextColor3 = SALVAGE_GREEN
-    salvageValueLabel.TextSize = px(18)
-    salvageValueLabel.TextXAlignment = Enum.TextXAlignment.Center
-    salvageValueLabel.Size = UDim2.new(0.88, 0, 0, px(24))
-    salvageValueLabel.AnchorPoint = Vector2.new(0.5, 1)
-    salvageValueLabel.Position = UDim2.new(0.5, 0, 1, -px(114))
-    salvageValueLabel.Text = ""
-    salvageValueLabel.Visible = false
-    local salvageValueStroke = Instance.new("UIStroke", salvageValueLabel)
-    salvageValueStroke.Color = Color3.fromRGB(0, 0, 0)
-    salvageValueStroke.Thickness = 1.5
-    salvageValueStroke.Transparency = 0.15
+    local shardWidgets = {}
+
+    shardWidgets.salvageValueRow, shardWidgets.salvageValueLabel = createShardRewardRow(
+        detailContent,
+        "SalvageValuePreview",
+        UDim2.new(0.88, 0, 0, px(24)),
+        Vector2.new(0.5, 1),
+        UDim2.new(0.5, 0, 1, -px(114)),
+        px(18),
+        getShardCurrencyImage(),
+        nil,
+        px
+    )
+    addBlackTextStroke(shardWidgets.salvageValueLabel)
 
     -- Feedback label (transient success/error message after salvage)
     local salvageFeedback = Instance.new("TextLabel", detailContent)
     salvageFeedback.Name = "SalvageFeedback"
-    salvageFeedback.BackgroundColor3 = Color3.fromRGB(20, 40, 26)
+    salvageFeedback.BackgroundColor3 = SHARD_UI_FEEDBACK_BG
     salvageFeedback.BackgroundTransparency = 0.15
     salvageFeedback.Font = Enum.Font.GothamBold
-    salvageFeedback.TextColor3 = SALVAGE_GREEN
+    salvageFeedback.TextColor3 = SHARD_UI_ACCENT
     salvageFeedback.TextSize = px(14)
     salvageFeedback.TextWrapped = true
     salvageFeedback.TextXAlignment = Enum.TextXAlignment.Center
@@ -1310,8 +1482,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local function showSalvageFeedback(text, color, duration)
         salvageFeedback.Text = text
-        salvageFeedback.TextColor3 = color or SALVAGE_GREEN
-        salvageFeedback.BackgroundColor3 = color == RED_TEXT and Color3.fromRGB(50, 20, 20) or Color3.fromRGB(20, 40, 26)
+        salvageFeedback.TextColor3 = color or SHARD_UI_ACCENT
+        salvageFeedback.BackgroundColor3 = color == RED_TEXT and Color3.fromRGB(50, 20, 20) or SHARD_UI_FEEDBACK_BG
         salvageFeedback.Visible = true
         task.delay(duration or 2.5, function()
             if salvageFeedback and salvageFeedback.Parent then
@@ -1340,29 +1512,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local favStroke = Instance.new("UIStroke", favBtn)
     favStroke.Color = FAV_DIM; favStroke.Thickness = 1.2; favStroke.Transparency = 0.3
 
-    -- Salvage button (green – replaces old Discard)
-    local SALVAGE_BG    = Color3.fromRGB(24, 56, 32)
-    local SALVAGE_DIM   = Color3.fromRGB(60, 100, 70)
+    -- Salvage button (orange – replaces old Discard)
 
     local discardBtn = Instance.new("TextButton", actionRow)
     discardBtn.Name = "SalvageBtn"
     discardBtn.AutoButtonColor = false
-    discardBtn.BackgroundColor3 = SALVAGE_BG
+    discardBtn.BackgroundColor3 = SHARD_UI_BG
     discardBtn.Font = Enum.Font.GothamBold
-    discardBtn.Text = "SALVAGE"
-    discardBtn.TextColor3 = SALVAGE_GREEN
+    discardBtn.Text = "DISMANTLE"
+    discardBtn.TextColor3 = SHARD_UI_ACCENT
     discardBtn.TextSize = px(17)
     discardBtn.Size = UDim2.new(0.48, 0, 1, 0)
     discardBtn.AnchorPoint = Vector2.new(1, 0)
     discardBtn.Position = UDim2.new(1, 0, 0, 0)
     Instance.new("UICorner", discardBtn).CornerRadius = UDim.new(0, px(8))
     local discardStroke = Instance.new("UIStroke", discardBtn)
-    discardStroke.Color = SALVAGE_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
+    discardStroke.Color = SHARD_UI_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
 
     -- Salvage confirmation overlay
     local confirmOverlay = Instance.new("Frame", detailsPanel)
     confirmOverlay.Name = "ConfirmOverlay"
-    confirmOverlay.BackgroundColor3 = Color3.fromRGB(10, 10, 26)
+    confirmOverlay.BackgroundColor3 = SHARD_UI_OVERLAY_BG
     confirmOverlay.BackgroundTransparency = 0.08
     confirmOverlay.Size = UDim2.new(1, 0, 1, 0)
     confirmOverlay.ZIndex = 50
@@ -1371,25 +1541,37 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     local confirmBox = Instance.new("Frame", confirmOverlay)
     confirmBox.Name = "ConfirmBox"
-    confirmBox.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
+    confirmBox.BackgroundColor3 = SHARD_UI_CONFIRM_BG
     confirmBox.Size = UDim2.new(0.88, 0, 0, px(160))
     confirmBox.AnchorPoint = Vector2.new(0.5, 0.5)
     confirmBox.Position = UDim2.new(0.5, 0, 0.5, 0)
     confirmBox.ZIndex = 51
     Instance.new("UICorner", confirmBox).CornerRadius = UDim.new(0, px(10))
     local cbStroke = Instance.new("UIStroke", confirmBox)
-    cbStroke.Color = SALVAGE_GREEN; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
+    cbStroke.Color = SHARD_UI_ACCENT; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
 
     local confirmTitle = Instance.new("TextLabel", confirmBox)
     confirmTitle.BackgroundTransparency = 1
     confirmTitle.Font = Enum.Font.GothamBold
-    confirmTitle.Text = "Salvage Weapon?"
-    confirmTitle.TextColor3 = SALVAGE_GREEN
+    confirmTitle.Text = "Dismantle Weapon?"
+    confirmTitle.TextColor3 = SHARD_UI_ACCENT
     confirmTitle.TextSize = px(18)
     confirmTitle.Size = UDim2.new(1, 0, 0, px(28))
     confirmTitle.Position = UDim2.new(0, 0, 0, px(16))
     confirmTitle.TextXAlignment = Enum.TextXAlignment.Center
     confirmTitle.ZIndex = 52
+
+    shardWidgets.confirmRewardRow, shardWidgets.confirmRewardLabel = createShardRewardRow(
+        confirmBox,
+        "RewardRow",
+        UDim2.new(0.88, 0, 0, px(24)),
+        Vector2.new(0.5, 0),
+        UDim2.new(0.5, 0, 0, px(48)),
+        px(16),
+        getShardCurrencyImage(),
+        52,
+        px
+    )
 
     local confirmDesc = Instance.new("TextLabel", confirmBox)
     confirmDesc.Name = "Desc"
@@ -1401,16 +1583,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmDesc.TextWrapped = true
     confirmDesc.Size = UDim2.new(0.85, 0, 0, px(36))
     confirmDesc.AnchorPoint = Vector2.new(0.5, 0)
-    confirmDesc.Position = UDim2.new(0.5, 0, 0, px(48))
+    confirmDesc.Position = UDim2.new(0.5, 0, 0, px(76))
     confirmDesc.TextXAlignment = Enum.TextXAlignment.Center
+    confirmDesc.TextYAlignment = Enum.TextYAlignment.Top
     confirmDesc.ZIndex = 52
 
     local confirmYes = Instance.new("TextButton", confirmBox)
     confirmYes.Name = "YesBtn"
     confirmYes.AutoButtonColor = false
-    confirmYes.BackgroundColor3 = SALVAGE_GREEN
+    confirmYes.BackgroundColor3 = SHARD_UI_ACCENT
     confirmYes.Font = Enum.Font.GothamBold
-    confirmYes.Text = "YES, SALVAGE"
+    confirmYes.Text = "DISMANTLE"
     confirmYes.TextColor3 = WHITE
     confirmYes.TextTransparency = 0
     confirmYes.TextSize = px(14)
@@ -1439,6 +1622,49 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local confirmNoStroke = Instance.new("UIStroke", confirmNo)
     confirmNoStroke.Color = Color3.fromRGB(0, 0, 0); confirmNoStroke.Thickness = 1.5; confirmNoStroke.Transparency = 0.15
 
+    local CONFIRM_BOX_BASE_HEIGHT = px(160)
+    local CONFIRM_DESC_WIDTH_SCALE = 0.85
+    local CONFIRM_DESC_MIN_HEIGHT = px(36)
+    local CONFIRM_REWARD_TOP = px(48)
+    local CONFIRM_REWARD_HEIGHT = px(24)
+    local CONFIRM_DESC_TOP = px(76)
+    local CONFIRM_DESC_TOP_NO_REWARD = px(52)
+    local CONFIRM_DESC_EXTRA_PADDING = px(6)
+    local CONFIRM_DESC_TO_BUTTON_GAP = px(12)
+    local CONFIRM_BUTTON_HEIGHT = px(36)
+    local CONFIRM_BUTTON_BOTTOM_MARGIN = px(14)
+
+    local function updateConfirmBoxLayout()
+        local descTop = shardWidgets.confirmRewardRow.Visible and CONFIRM_DESC_TOP or CONFIRM_DESC_TOP_NO_REWARD
+        shardWidgets.confirmRewardRow.Position = UDim2.new(0.5, 0, 0, CONFIRM_REWARD_TOP)
+        shardWidgets.confirmRewardRow.Size = UDim2.new(0.88, 0, 0, CONFIRM_REWARD_HEIGHT)
+        confirmDesc.Position = UDim2.new(0.5, 0, 0, descTop)
+
+        local descWidth = math.floor(confirmBox.AbsoluteSize.X * CONFIRM_DESC_WIDTH_SCALE)
+        if descWidth <= 0 then
+            descWidth = math.floor(detailsPanel.AbsoluteSize.X * 0.88 * CONFIRM_DESC_WIDTH_SCALE)
+        end
+        descWidth = math.max(descWidth, 1)
+
+        local measuredDesc = TextService:GetTextSize(
+            confirmDesc.Text or "",
+            confirmDesc.TextSize,
+            confirmDesc.Font,
+            Vector2.new(descWidth, 1000)
+        )
+        local descHeight = math.max(CONFIRM_DESC_MIN_HEIGHT, measuredDesc.Y + CONFIRM_DESC_EXTRA_PADDING)
+        confirmDesc.Size = UDim2.new(CONFIRM_DESC_WIDTH_SCALE, 0, 0, descHeight)
+
+        local requiredHeight = descTop
+            + descHeight
+            + CONFIRM_DESC_TO_BUTTON_GAP
+            + CONFIRM_BUTTON_HEIGHT
+            + CONFIRM_BUTTON_BOTTOM_MARGIN
+        confirmBox.Size = UDim2.new(0.88, 0, 0, math.max(CONFIRM_BOX_BASE_HEIGHT, requiredHeight))
+    end
+
+    task.defer(updateConfirmBoxLayout)
+
     -- ══════════════════════════════════════════════════════════════════════
     --  SELECTION & EQUIP STATE
     -- ══════════════════════════════════════════════════════════════════════
@@ -1452,7 +1678,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
         return {
             level = 1,
-            title = "Fresh",
+            title = "I",
+            romanNumeral = "I",
             xp = 0,
             progress = 0,
             nextLevel = 2,
@@ -1462,6 +1689,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             mobKills = 0,
             captures = 0,
             damage = 0,
+            damageBonus = 0,
             maxed = false,
         }
     end
@@ -1469,50 +1697,30 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function updateMasteryPanel(itemData)
         if not itemData or not itemData.isInstance then
             masteryPanel.Visible = false
-            masteryClaimBtn.Visible = false
             return
         end
 
         local mastery = getMasteryData(itemData)
         local level = math.max(1, math.floor(tonumber(mastery.level) or 1))
-        local title = mastery.title or "Fresh"
-        local xp = math.max(0, math.floor(tonumber(mastery.xp) or 0))
+        local romanNumeral = getMasteryRoman(level, mastery.romanNumeral or mastery.title)
+        local xp = math.max(0, tonumber(mastery.xp) or 0)
         local progress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
-        local nextLevelXP = math.max(0, math.floor(tonumber(mastery.nextLevelXP) or 25))
-        local nextLevel = tonumber(mastery.nextLevel)
-        local readyRewardLevel = tonumber(mastery.readyRewardLevel)
+        local nextLevelXP = math.max(0, tonumber(mastery.nextLevelXP) or 25)
+        local damageBonus = math.max(0, tonumber(mastery.damageBonus) or 0)
 
         masteryPanel.Visible = true
-        masteryTitle.Text = "MASTERY " .. tostring(level)
+        masteryTitle.Text = "MASTERY " .. romanNumeral
 
         if mastery.maxed == true then
-            masteryXP.Text = string.upper(tostring(title)) .. "  " .. tostring(xp) .. " XP  MAX"
+            masteryXP.Text = formatMasteryXP(xp) .. " XP TOTAL"
             masteryBarFill.Size = UDim2.new(1, 0, 1, 0)
         else
-            masteryXP.Text = string.upper(tostring(title)) .. "  " .. tostring(xp) .. " / " .. tostring(nextLevelXP) .. " XP"
+            masteryXP.Text = formatMasteryXP(xp) .. " / " .. formatMasteryXP(nextLevelXP) .. " XP"
             masteryBarFill.Size = UDim2.new(progress, 0, 1, 0)
         end
 
-        masteryElims.Text = "ELIMS " .. tostring(mastery.eliminations or 0)
-        masteryDamage.Text = "DAMAGE " .. tostring(mastery.damage or 0)
-
-        if readyRewardLevel then
-            masteryNext.Text = "CLAIM: " .. formatMasteryReward(getMasteryReward(readyRewardLevel))
-            masteryNext.TextColor3 = GREEN_GLOW
-            masteryClaimBtn.Visible = true
-            masteryClaimBtn:SetAttribute("RewardLevel", readyRewardLevel)
-        elseif nextLevel then
-            local rewardText = formatMasteryReward(getMasteryReward(nextLevel))
-            masteryNext.Text = "NEXT M" .. tostring(nextLevel) .. ": " .. rewardText
-            masteryNext.TextColor3 = WHITE
-            masteryClaimBtn.Visible = false
-            masteryClaimBtn:SetAttribute("RewardLevel", nil)
-        else
-            masteryNext.Text = "Fully mastered"
-            masteryNext.TextColor3 = GOLD
-            masteryClaimBtn.Visible = false
-            masteryClaimBtn:SetAttribute("RewardLevel", nil)
-        end
+        masteryElims.Text = "ELIMS " .. formatWholeNumber(mastery.eliminations or 0)
+        masteryDamage.Text = "BONUS " .. formatMasteryBonus(damageBonus)
     end
 
     ---------------------------------------------------------------------------
@@ -1550,27 +1758,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             elseif itemData.favorited == true then
                 discardBtn.Text = "FAVORITED"
             else
-                discardBtn.Text = "SALVAGE"
+                discardBtn.Text = "DISMANTLE"
             end
         elseif showActions then
-            discardBtn.BackgroundColor3 = SALVAGE_BG
-            discardBtn.TextColor3 = SALVAGE_GREEN
+            discardBtn.BackgroundColor3 = SHARD_UI_BG
+            discardBtn.TextColor3 = SHARD_UI_ACCENT
             discardStroke.Color = Color3.fromRGB(0, 0, 0)
             discardStroke.Transparency = 0.15
-            discardBtn.Text = "SALVAGE"
+            discardBtn.Text = "DISMANTLE"
         end
 
         -- Salvage value preview
         if canSalvage and SalvageConfig and itemData.rarity then
-            local val = SalvageConfig.GetValueForRarity(itemData.rarity)
+            local val = getSalvageValueForItem(itemData)
             if val and val > 0 then
-                salvageValueLabel.Text = "Salvage value: " .. tostring(val) .. " \u{2699}"
-                salvageValueLabel.Visible = true
+                shardWidgets.salvageValueLabel.Text = "Yield: " .. tostring(val)
+                shardWidgets.salvageValueRow.Visible = true
             else
-                salvageValueLabel.Visible = false
+                shardWidgets.salvageValueRow.Visible = false
             end
         else
-            salvageValueLabel.Visible = false
+            shardWidgets.salvageValueRow.Visible = false
         end
     end
 
@@ -1582,7 +1790,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             equipStroke.Color = Color3.fromRGB(0, 0, 0)
             equipStroke.Transparency = 0.15
             actionRow.Visible = false
-            salvageValueLabel.Visible = false
+            shardWidgets.salvageValueRow.Visible = false
             return
         end
         if isItemEquipped(itemData) then
@@ -1641,6 +1849,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if not itemData then
             detailPlaceholder.Visible = true
             detailContent.Visible = false
+            detailsPanel.BackgroundColor3 = CARD_BG
+            dpStroke.Color = CARD_STROKE
+            detailImageBg.BackgroundColor3 = RARITY_BG_COLORS.Common
+            imgBgStroke.Color = RARITY_COLORS.Common
             updateMasteryPanel(nil)
             selectedCard = nil
             return
@@ -1660,9 +1872,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Update panel
         local rarColor = getRarityColor(itemData.rarity)
         local rarBg    = getRarityBgColor(itemData.rarity)
+        local cardBg   = WEAPON_CARD_BG[itemData.rarity] or WEAPON_CARD_BG.Common
+        local borderC  = WEAPON_CARD_BORDER[itemData.rarity] or WEAPON_CARD_BORDER.Common
 
-        detailImageBg.BackgroundColor3 = rarBg
-        imgBgStroke.Color = rarColor
+        detailsPanel.BackgroundColor3 = accentPanelColor(cardBg, 0.18)
+        dpStroke.Color = borderC
+        detailImageBg.BackgroundColor3 = cardBg
+        imgBgStroke.Color = borderC
 
         detailImage.Image = ""
         pcall(function()
@@ -1806,11 +2022,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── SECTION 4: Size tier tag (bottom-left) + Size percent (bottom-right) ──
         local pct  = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
+        local isNormalTier = string.lower(tostring(tier)) == "normal"
+
+        local function applyInventoryNormalSizeStyle(label, strokeTransparency)
+            label.Font = Enum.Font.GothamBold
+            pcall(function()
+                label.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+            end)
+            label.TextColor3 = WHITE
+
+            local outline = label:FindFirstChildOfClass("UIStroke")
+            if not outline then
+                outline = Instance.new("UIStroke")
+                outline.Parent = label
+            end
+            outline.Color = Color3.fromRGB(0, 0, 0)
+            outline.Thickness = 1.6
+            outline.Transparency = strokeTransparency or 0.1
+        end
 
         -- Size tier pill tag — bottom-left corner (fixed size, text scales to fit)
         do
-            local tierW = math.floor(px(46))
-            local tierH = math.floor(px(20))
+            local tierW = math.floor(px(isNormalTier and 62 or 46))
+            local tierH = math.floor(px(isNormalTier and 22 or 20))
 
             local tierBg = Instance.new("Frame", card)
             tierBg.Name = "SizeTierBg"
@@ -1837,9 +2071,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.Text = tier
             tierLabel.ZIndex = 7
             local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
-            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = 18
+            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = isNormalTier and 20 or 18
             if EnchantTextStyler then
                 EnchantTextStyler.ApplySize(tierLabel, tier, tier)
+            end
+            if isNormalTier then
+                applyInventoryNormalSizeStyle(tierLabel, 0.08)
+                tierLabel.Text = "Normal"
             end
         end
 
@@ -1855,12 +2093,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
         local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
         pctConstraint.MinTextSize = 8
-        pctConstraint.MaxTextSize = 18
+        pctConstraint.MaxTextSize = isNormalTier and 20 or 18
         local sizePercentText = tostring(math.floor(pct)) .. "%"
         if EnchantTextStyler then
             EnchantTextStyler.ApplySize(sizeLabel, tier, sizePercentText)
         else
             sizeLabel.Text = sizePercentText
+        end
+        if isNormalTier then
+            applyInventoryNormalSizeStyle(sizeLabel, 0.08)
         end
 
         -- ── Equipped bar indicator (green bottom strip) ─────────────────
@@ -1889,50 +2130,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local favConstraint = Instance.new("UITextSizeConstraint", favStar)
             favConstraint.MinTextSize = 10
             favConstraint.MaxTextSize = 18
-        end
-
-        local mastery = getMasteryData(itemData)
-        local masteryLevel = math.max(1, math.floor(tonumber(mastery.level) or 1))
-        local hasReadyReward = tonumber(mastery.readyRewardLevel) ~= nil
-        if itemData.isInstance and (masteryLevel > 1 or hasReadyReward) then
-            local badge = Instance.new("Frame", card)
-            badge.Name = "MasteryBadge"
-            badge.BackgroundColor3 = hasReadyReward and GREEN_GLOW or Color3.fromRGB(28, 30, 44)
-            badge.BorderSizePixel = 0
-            badge.Size = UDim2.new(0.21, 0, 0.12, 0)
-            badge.Position = UDim2.new(0.03, 0, 0.21, 0)
-            badge.ZIndex = 8
-            Instance.new("UICorner", badge).CornerRadius = UDim.new(0, px(6))
-            local badgeLabel = Instance.new("TextLabel", badge)
-            badgeLabel.BackgroundTransparency = 1
-            badgeLabel.Font = Enum.Font.GothamBold
-            badgeLabel.TextColor3 = WHITE
-            badgeLabel.TextScaled = true
-            badgeLabel.Size = UDim2.new(1, -px(4), 1, 0)
-            badgeLabel.Position = UDim2.new(0, px(2), 0, 0)
-            badgeLabel.Text = "M" .. tostring(masteryLevel)
-            badgeLabel.ZIndex = 9
-            local badgeConstraint = Instance.new("UITextSizeConstraint", badgeLabel)
-            badgeConstraint.MinTextSize = 8
-            badgeConstraint.MaxTextSize = 14
-        end
-
-        local masteryProgress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
-        if itemData.isInstance and masteryProgress > 0 and mastery.maxed ~= true then
-            local masteryStripBg = Instance.new("Frame", card)
-            masteryStripBg.Name = "MasteryProgressBg"
-            masteryStripBg.BackgroundColor3 = Color3.fromRGB(10, 12, 18)
-            masteryStripBg.BorderSizePixel = 0
-            masteryStripBg.Size = UDim2.new(1, 0, 0, 3)
-            masteryStripBg.AnchorPoint = Vector2.new(0, 1)
-            masteryStripBg.Position = UDim2.new(0, 0, 1, -3)
-            masteryStripBg.ZIndex = 5
-            local masteryStripFill = Instance.new("Frame", masteryStripBg)
-            masteryStripFill.Name = "Fill"
-            masteryStripFill.BackgroundColor3 = GOLD
-            masteryStripFill.BorderSizePixel = 0
-            masteryStripFill.Size = UDim2.new(masteryProgress, 0, 1, 0)
-            masteryStripFill.ZIndex = 6
         end
 
         -- ── Store ref (bgColor/borderColor for selection/equip reset) ────
@@ -2121,51 +2318,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
     end)
 
-    masteryClaimBtn.MouseButton1Click:Connect(function()
-        if not selectedItem or not selectedItem.isInstance then return end
-        local instanceId = selectedItem.instanceId
-        if not instanceId then return end
-        local rewardLevel = masteryClaimBtn:GetAttribute("RewardLevel")
-        if not rewardLevel then return end
-
-        local claimRF = ReplicatedStorage:FindFirstChild("ClaimWeaponMasteryReward")
-        if not claimRF or not claimRF:IsA("RemoteFunction") then return end
-
-        local ok, success, result = pcall(function()
-            return claimRF:InvokeServer(instanceId, rewardLevel)
-        end)
-
-        if ok and success and type(result) == "table" then
-            if type(result.mastery) == "table" then
-                selectedItem.mastery = result.mastery
-                for _, item in ipairs(allWeaponItems) do
-                    if item.instanceId == instanceId then
-                        item.mastery = result.mastery
-                        break
-                    end
-                end
-            end
-            showSalvageFeedback("Claimed " .. formatMasteryReward(result.reward), GOLD, 2.5)
-            updateMasteryPanel(selectedItem)
-            renderCategory(currentWeaponCategory)
-        else
-            local reason = "Claim failed"
-            if type(result) == "table" and result.reason then
-                reason = result.reason
-            end
-            showSalvageFeedback(reason, RED_TEXT, 3)
-        end
-    end)
-
-    masteryClaimBtn.MouseEnter:Connect(function()
-        if masteryClaimBtn.Visible then
-            TweenService:Create(masteryClaimBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(48, 120, 66)}):Play()
-        end
-    end)
-    masteryClaimBtn.MouseLeave:Connect(function()
-        TweenService:Create(masteryClaimBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(38, 95, 54)}):Play()
-    end)
-
     ---------------------------------------------------------------------------
     -- Favorite button handler
     ---------------------------------------------------------------------------
@@ -2225,21 +2377,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Show salvage value preview from SalvageConfig (client-side read; server is authoritative)
         local salvageValue = 0
         if SalvageConfig and selectedItem.rarity then
-            salvageValue = SalvageConfig.GetValueForRarity(selectedItem.rarity) or 0
+            salvageValue = getSalvageValueForItem(selectedItem) or 0
         end
-        local valueStr = salvageValue > 0 and (" for " .. tostring(salvageValue) .. " \u{2699}") or ""
-        confirmTitle.Text = "Salvage " .. (selectedItem.name or "Weapon") .. "?"
-        confirmDesc.Text = "Salvage" .. valueStr .. "\nThis action cannot be undone."
+        confirmTitle.Text = "Dismantle " .. (selectedItem.name or "Weapon") .. "?"
+        shardWidgets.confirmRewardRow.Visible = salvageValue > 0
+        if salvageValue > 0 then
+            shardWidgets.confirmRewardLabel.Text = "Dismantle for " .. tostring(salvageValue)
+            confirmDesc.Text = "This action cannot be undone."
+        else
+            shardWidgets.confirmRewardLabel.Text = ""
+            confirmDesc.Text = "Dismantle this weapon\nThis action cannot be undone."
+        end
         confirmOverlay.Visible = true
+        updateConfirmBoxLayout()
+        task.defer(updateConfirmBoxLayout)
     end)
 
     discardBtn.MouseEnter:Connect(function()
         if selectedItem and not isItemEquipped(selectedItem) and selectedItem.source ~= "Starter" and selectedItem.favorited ~= true then
-            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(32, 76, 42)}):Play()
+            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(96, 56, 24)}):Play()
         end
     end)
     discardBtn.MouseLeave:Connect(function()
-        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = SALVAGE_BG}):Play()
+        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = SHARD_UI_BG}):Play()
     end)
 
     confirmNo.MouseButton1Click:Connect(function()
@@ -2267,9 +2427,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- Show success feedback with awarded amount
             local awarded = (type(result) == "table" and result.awarded) or 0
             if awarded > 0 then
-                showSalvageFeedback("Salvaged for +" .. tostring(awarded) .. " \u{2699}", SALVAGE_GREEN, 2.5)
+                showSalvageFeedback("Dismantled for +" .. tostring(awarded) .. " Shards", SHARD_UI_ACCENT, 2.5)
             else
-                showSalvageFeedback("Salvaged!", SALVAGE_GREEN, 2)
+                showSalvageFeedback("Dismantled!", SHARD_UI_ACCENT, 2)
             end
 
             -- Update header salvage display immediately
@@ -2292,7 +2452,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             renderCategory(currentWeaponCategory)
         else
             -- Salvage failed – show error feedback
-            local reason = "Salvage failed"
+            local reason = "Dismantle failed"
             if type(result) == "table" and result.reason then
                 reason = result.reason
             end
@@ -2326,27 +2486,35 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         local boostDefs = {}
-        local potionId = HealthPotionConfigGlobal and HealthPotionConfigGlobal.Id or nil
         local potionRemoteSet = ensurePotionRemotes()
         local potionState = {
             isLoaded = false,
-            count = 0,
-            equipped = false,
+            potions = {},
+            equippedPotionId = nil,
             cooldownEndsAt = 0,
             serverTime = 0,
         }
 
-        if HealthPotionConfigGlobal and potionRemoteSet then
-            table.insert(boostDefs, {
-                Id = HealthPotionConfigGlobal.Id,
-                Kind = "potion",
-                DisplayName = HealthPotionConfigGlobal.DisplayName,
-                Description = HealthPotionConfigGlobal.Description,
-                DetailText = HealthPotionConfigGlobal.DetailText,
-                IconGlyph = HealthPotionConfigGlobal.IconGlyph,
-                IconColor = HealthPotionConfigGlobal.IconColor,
-                SortOrder = -1000,
-            })
+        local function getPotionCount(potionId)
+            local potions = type(potionState.potions) == "table" and potionState.potions or {}
+            local entry = potions[potionId]
+            return math.max(0, math.floor(tonumber(type(entry) == "table" and entry.count or 0) or 0))
+        end
+
+        if PotionConfigGlobal and type(PotionConfigGlobal.GetOrderedPotions) == "function" and potionRemoteSet then
+            for _, potionDef in ipairs(PotionConfigGlobal.GetOrderedPotions()) do
+                table.insert(boostDefs, {
+                    Id = potionDef.Id,
+                    Kind = "potion",
+                    DisplayName = potionDef.DisplayName,
+                    Description = potionDef.Description,
+                    DetailText = potionDef.DetailText,
+                    IconGlyph = potionDef.IconGlyph,
+                    IconColor = potionDef.IconColor,
+                    BadgeText = potionDef.BadgeText,
+                    SortOrder = potionDef.SortOrder or -1000,
+                })
+            end
         end
 
         if BoostConfig and BoostConfig.Boosts then
@@ -2381,13 +2549,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if type(state) ~= "table" then return end
             potionState = {
                 isLoaded = state.isLoaded == true,
-                count = math.max(0, math.floor(tonumber(state.count) or 0)),
-                equipped = state.equipped == true,
+                potions = type(state.potions) == "table" and state.potions or {},
+                equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
                 cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
                 serverTime = tonumber(state.serverTime) or 0,
             }
-            if potionState.count <= 0 then
-                potionState.equipped = false
+            if potionState.equippedPotionId and getPotionCount(potionState.equippedPotionId) <= 0 then
+                potionState.equippedPotionId = nil
             end
         end
 
@@ -2424,6 +2592,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostGridPad.PaddingLeft   = UDim.new(0, px(8))
         boostGridPad.PaddingRight  = UDim.new(0, px(8))
         boostGridPad.PaddingBottom = UDim.new(0, px(8))
+        bindFixedColumnGrid(boostGridScroll, boostGridLayout, boostGridPad, 140, 178)
 
         -- Empty state (shown when no boosts owned)
         local boostEmptyState = Instance.new("Frame")
@@ -2674,9 +2843,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── Helpers ─────────────────────────────────────────────────────
 
         local function getBoostState(boostId)
-            if potionId and boostId == potionId then
-                local owned = math.max(0, math.floor(tonumber(potionState.count) or 0))
-                local equipped = potionState.equipped == true and owned > 0
+            local boostDef = entryById[boostId]
+            if boostDef and boostDef.Kind == "potion" then
+                local owned = getPotionCount(boostId)
+                local equipped = potionState.equippedPotionId == boostId and owned > 0
                 local remaining = math.max(0, (tonumber(potionState.cooldownEndsAt) or 0) - workspace:GetServerTimeNow())
                 return owned, equipped, remaining
             end
@@ -2781,8 +2951,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
                     boostActivateStroke.Transparency = 0.15
                 else
-                    boostDetailStatus.Text = "Ready to Equip"
-                    boostDetailStatus.TextColor3 = WHITE
+                    boostDetailStatus.Text = remaining > 0 and "Shared Cooldown Active" or "Ready to Equip"
+                    boostDetailStatus.TextColor3 = remaining > 0 and Color3.fromRGB(160, 215, 255) or WHITE
                     boostActivateBtn.Text = "EQUIP"
                     boostActivateBtn.Active = true
                     boostActivateBtn.BackgroundColor3 = BTN_BG
@@ -3007,7 +3177,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 durationBadge.AnchorPoint = Vector2.new(1, 0)
                 durationBadge.Position = UDim2.new(1, -px(5), 0, px(27))
                 if def.Kind == "potion" then
-                    durationBadge.Text = "HP"
+                    durationBadge.Text = def.BadgeText or def.IconGlyph or "P"
                 else
                     durationBadge.Text = ((def.DurationSeconds or 0) > 0) and (tostring(math.floor((def.DurationSeconds or 0) / 60)) .. "m") or "BOOST"
                 end
@@ -3130,12 +3300,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local _, isEquipped = getBoostState(def.Id)
                 local shouldEquip = not isEquipped
                 local ok, success, message, state = pcall(function()
-                    return potionRemoteSet.setEquipped:InvokeServer(shouldEquip)
+                    return potionRemoteSet.setEquipped:InvokeServer(shouldEquip, def.Id)
                 end)
                 if ok and type(state) == "table" then ingestPotionState(state) end
                 refreshBoostCards()
                 if ok and success then
-                    showToast(boostsPage, shouldEquip and "Potion equipped!" or "Potion unequipped!", Color3.fromRGB(103, 186, 255), 2.2)
+                    showToast(boostsPage, shouldEquip and ((def.DisplayName or "Potion") .. " equipped!") or "Potion unequipped!", Color3.fromRGB(103, 186, 255), 2.2)
                 else
                     showToast(boostsPage, tostring((ok and message) or "Equip failed"), RED_TEXT, 2.2)
                 end
@@ -3249,6 +3419,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinGridPad.PaddingLeft   = UDim.new(0, px(8))
         skinGridPad.PaddingRight  = UDim.new(0, px(8))
         skinGridPad.PaddingBottom = UDim.new(0, px(8))
+        bindFixedColumnGrid(skinGridScroll, skinGridLayout, skinGridPad, 140, 178)
 
         -- Empty state (shown when no owned skins)
         local skinEmptyState = Instance.new("Frame")
@@ -4024,6 +4195,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailGridPad.PaddingLeft   = UDim.new(0, px(8))
             trailGridPad.PaddingRight  = UDim.new(0, px(8))
             trailGridPad.PaddingBottom = UDim.new(0, px(8))
+            bindFixedColumnGrid(trailGridScroll, trailGridLayout, trailGridPad, 140, 178)
 
             -- Empty state (overlays the grid area)
             local effectsEmptyState = Instance.new("Frame")
@@ -4563,6 +4735,831 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     -- ══════════════════════════════════════════════════════════════════════
+    --  EMOTES PAGE  (ordered equip loadout with slot compaction)
+    -- ══════════════════════════════════════════════════════════════════════
+    local emotesPage = Instance.new("Frame")
+    emotesPage.Name = "EmotesPage"
+    emotesPage.BackgroundTransparency = 1
+    emotesPage.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
+    emotesPage.Position = UDim2.new(0, CONTENT_X, 0, 0)
+    emotesPage.Visible = false
+    emotesPage.Parent = root
+
+    do
+        local EmoteConfig = nil
+        pcall(function()
+            local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+            local mod = sideUI and sideUI:FindFirstChild("EmoteConfig")
+            if mod and mod:IsA("ModuleScript") then EmoteConfig = require(mod) end
+        end)
+
+        local emoteRemotes = nil
+        local function ensureEmoteRemotes()
+            if emoteRemotes then return emoteRemotes end
+            local rf = ReplicatedStorage:FindFirstChild("Remotes")
+            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
+            if not rf then return nil end
+            local ef = rf:FindFirstChild("Emotes") or rf:WaitForChild("Emotes", 5)
+            if not ef then return nil end
+            emoteRemotes = {
+                getOwned    = ef:FindFirstChild("GetOwnedEmotes"),
+                getEquipped = ef:FindFirstChild("GetEquippedEmotes"),
+                equip       = ef:FindFirstChild("EquipEmote"),
+                unequip     = ef:FindFirstChild("UnequipEmote"),
+                changed     = ef:FindFirstChild("EquippedEmotesChanged"),
+            }
+            return emoteRemotes
+        end
+
+        local EMOTE_SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 8
+        local EMOTE_GLYPHS = {
+            wave = "\u{1F44B}",
+            dance = "\u{1F57A}",
+            headless = "\u{1F480}",
+            rat_dance = "\u{1F400}",
+            floss = "\u{1F57A}",
+            dab = "DAB",
+            macarena = "\u{1F483}",
+            ride_the_pony = "\u{1F434}",
+            the_robot = "\u{1F916}",
+            i_want_money = "\u{1F4B0}",
+            take_the_l = "L",
+        }
+
+        local function getEmoteIconImage(def)
+            if type(def) ~= "table" then return nil end
+            if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then return def.IconAssetId end
+            local key = def.IconKey
+            if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
+                local image = AssetCodesGlobal.Get(key)
+                if type(image) == "string" and #image > 0 then return image end
+            end
+            return nil
+        end
+
+        local function getEmoteGlyph(emoteId)
+            return EMOTE_GLYPHS[emoteId] or "\u{1F3AD}"
+        end
+
+        local allEmoteDefs = EmoteConfig and EmoteConfig.GetAll() or {}
+
+        local emoteGridScroll = Instance.new("ScrollingFrame")
+        emoteGridScroll.Name = "EmoteGridScroll"
+        emoteGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
+        emoteGridScroll.BackgroundTransparency = 0.5
+        emoteGridScroll.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        emoteGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+        emoteGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+        emoteGridScroll.ScrollBarThickness = px(4)
+        emoteGridScroll.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
+        emoteGridScroll.BorderSizePixel = 0
+        emoteGridScroll.Parent = emotesPage
+        Instance.new("UICorner", emoteGridScroll).CornerRadius = UDim.new(0, px(10))
+
+        local emoteGridLayout = Instance.new("UIGridLayout", emoteGridScroll)
+        emoteGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
+        emoteGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
+        emoteGridLayout.FillDirection = Enum.FillDirection.Horizontal
+        emoteGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        emoteGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local emoteGridPad = Instance.new("UIPadding", emoteGridScroll)
+        emoteGridPad.PaddingTop = UDim.new(0, px(8))
+        emoteGridPad.PaddingLeft = UDim.new(0, px(8))
+        emoteGridPad.PaddingRight = UDim.new(0, px(8))
+        emoteGridPad.PaddingBottom = UDim.new(0, px(8))
+        bindFixedColumnGrid(emoteGridScroll, emoteGridLayout, emoteGridPad, 140, 178)
+
+        local emotesEmptyState = Instance.new("Frame")
+        emotesEmptyState.Name = "EmotesEmptyState"
+        emotesEmptyState.BackgroundTransparency = 1
+        emotesEmptyState.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        emotesEmptyState.Visible = false
+        emotesEmptyState.Parent = emotesPage
+
+        local eeCard = Instance.new("Frame", emotesEmptyState)
+        eeCard.BackgroundColor3 = accentPanelColor(GOLD, 0.22)
+        eeCard.Size = UDim2.new(0.7, 0, 0, px(130))
+        eeCard.AnchorPoint = Vector2.new(0.5, 0.5)
+        eeCard.Position = UDim2.new(0.5, 0, 0.45, 0)
+        Instance.new("UICorner", eeCard).CornerRadius = UDim.new(0, px(14))
+        local eeStroke = Instance.new("UIStroke", eeCard)
+        eeStroke.Color = GOLD
+        eeStroke.Thickness = 1.4
+        eeStroke.Transparency = 0.22
+        addCardSheen(eeCard, GOLD)
+
+        local eeLbl = Instance.new("TextLabel", eeCard)
+        eeLbl.BackgroundTransparency = 1
+        eeLbl.Font = Enum.Font.GothamMedium
+        eeLbl.Text = "You don't own any emotes yet.\nVisit the shop to unlock more."
+        eeLbl.TextColor3 = DIM_TEXT
+        eeLbl.TextSize = math.max(13, math.floor(px(14)))
+        eeLbl.TextWrapped = true
+        eeLbl.Size = UDim2.new(0.85, 0, 0, px(60))
+        eeLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+        eeLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
+        eeLbl.TextXAlignment = Enum.TextXAlignment.Center
+
+        local eeShopBtn = Instance.new("TextButton", emotesEmptyState)
+        eeShopBtn.Name = "ShopNavBtn"
+        eeShopBtn.AutoButtonColor = false
+        eeShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        eeShopBtn.Font = Enum.Font.GothamBold
+        eeShopBtn.Text = "\u{1F6D2}  Browse Emotes Shop"
+        eeShopBtn.TextColor3 = WHITE
+        eeShopBtn.TextTransparency = 0
+        eeShopBtn.TextSize = math.max(14, math.floor(px(15)))
+        eeShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        eeShopBtn.Size = UDim2.new(0, 0, 0, px(36))
+        eeShopBtn.AnchorPoint = Vector2.new(0.5, 0)
+        eeShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
+        Instance.new("UICorner", eeShopBtn).CornerRadius = UDim.new(0, px(8))
+        local eeShopPad = Instance.new("UIPadding", eeShopBtn)
+        eeShopPad.PaddingLeft = UDim.new(0, px(20))
+        eeShopPad.PaddingRight = UDim.new(0, px(20))
+        local eeShopStroke = Instance.new("UIStroke", eeShopBtn)
+        eeShopStroke.Color = Color3.fromRGB(0, 0, 0)
+        eeShopStroke.Thickness = 1.5
+        eeShopStroke.Transparency = 0.15
+        eeShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then
+                mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("emotes") end
+            end
+        end)
+
+        local emoteDetailsPanel = Instance.new("Frame")
+        emoteDetailsPanel.Name = "EmoteDetailsPanel"
+        emoteDetailsPanel.BackgroundColor3 = CARD_BG
+        emoteDetailsPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
+        emoteDetailsPanel.AnchorPoint = Vector2.new(1, 0)
+        emoteDetailsPanel.Position = UDim2.new(1, 0, 0, 0)
+        emoteDetailsPanel.Parent = emotesPage
+        Instance.new("UICorner", emoteDetailsPanel).CornerRadius = UDim.new(0, px(12))
+        local edpStroke = Instance.new("UIStroke", emoteDetailsPanel)
+        edpStroke.Color = CARD_STROKE
+        edpStroke.Thickness = 1.4
+        edpStroke.Transparency = 0.2
+
+        local emoteDetailPlaceholder = Instance.new("TextLabel", emoteDetailsPanel)
+        emoteDetailPlaceholder.Name = "Placeholder"
+        emoteDetailPlaceholder.BackgroundTransparency = 1
+        emoteDetailPlaceholder.Font = Enum.Font.GothamMedium
+        emoteDetailPlaceholder.Text = "Select an emote"
+        emoteDetailPlaceholder.TextColor3 = DIM_TEXT
+        emoteDetailPlaceholder.TextSize = px(22)
+        emoteDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
+        emoteDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
+        emoteDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
+
+        local emoteDetailContent = Instance.new("Frame", emoteDetailsPanel)
+        emoteDetailContent.Name = "DetailContent"
+        emoteDetailContent.BackgroundTransparency = 1
+        emoteDetailContent.Size = UDim2.new(1, 0, 1, 0)
+        emoteDetailContent.Visible = false
+
+        local edPad = Instance.new("UIPadding", emoteDetailContent)
+        edPad.PaddingTop = UDim.new(0, px(12))
+        edPad.PaddingBottom = UDim.new(0, px(12))
+        edPad.PaddingLeft = UDim.new(0, px(12))
+        edPad.PaddingRight = UDim.new(0, px(12))
+
+        local emoteHero = Instance.new("Frame", emoteDetailContent)
+        emoteHero.Name = "Hero"
+        emoteHero.BackgroundColor3 = accentPanelColor(GOLD, 0.24)
+        emoteHero.Size = UDim2.new(1, 0, 0, px(184))
+        emoteHero.ClipsDescendants = true
+        Instance.new("UICorner", emoteHero).CornerRadius = UDim.new(0, px(10))
+        local emoteHeroStroke = Instance.new("UIStroke", emoteHero)
+        emoteHeroStroke.Color = GOLD
+        emoteHeroStroke.Thickness = 1.5
+        emoteHeroStroke.Transparency = 0.2
+        addCardSheen(emoteHero, GOLD)
+
+        local emoteHeroGlyph = Instance.new("TextLabel", emoteHero)
+        emoteHeroGlyph.Name = "Glyph"
+        emoteHeroGlyph.BackgroundTransparency = 1
+        emoteHeroGlyph.Size = UDim2.new(0.7, 0, 0.7, 0)
+        emoteHeroGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+        emoteHeroGlyph.Position = UDim2.new(0.5, 0, 0.52, 0)
+        emoteHeroGlyph.Font = Enum.Font.GothamBlack
+        emoteHeroGlyph.TextScaled = true
+        emoteHeroGlyph.TextColor3 = GOLD
+        addTextOutline(emoteHeroGlyph, 0.24, 1.5)
+
+        local emoteHeroImage = Instance.new("ImageLabel", emoteHero)
+        emoteHeroImage.Name = "IconImage"
+        emoteHeroImage.BackgroundTransparency = 1
+        emoteHeroImage.Size = UDim2.new(0.54, 0, 0.54, 0)
+        emoteHeroImage.AnchorPoint = Vector2.new(0.5, 0.5)
+        emoteHeroImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+        emoteHeroImage.ScaleType = Enum.ScaleType.Fit
+        emoteHeroImage.Visible = false
+
+        local emoteDetailName = Instance.new("TextLabel", emoteDetailContent)
+        emoteDetailName.Name = "EmoteName"
+        emoteDetailName.BackgroundTransparency = 1
+        emoteDetailName.Font = Enum.Font.GothamBold
+        emoteDetailName.TextColor3 = WHITE
+        emoteDetailName.TextSize = px(26)
+        emoteDetailName.TextXAlignment = Enum.TextXAlignment.Center
+        emoteDetailName.Size = UDim2.new(1, 0, 0, px(34))
+        emoteDetailName.Position = UDim2.new(0, 0, 0, px(192))
+        emoteDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+
+        local emoteDetailDesc = Instance.new("TextLabel", emoteDetailContent)
+        emoteDetailDesc.Name = "Description"
+        emoteDetailDesc.BackgroundTransparency = 1
+        emoteDetailDesc.Font = Enum.Font.GothamBold
+        emoteDetailDesc.TextColor3 = DIM_TEXT
+        emoteDetailDesc.TextSize = px(16)
+        emoteDetailDesc.TextWrapped = true
+        emoteDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
+        emoteDetailDesc.Size = UDim2.new(1, 0, 0, px(48))
+        emoteDetailDesc.Position = UDim2.new(0, 0, 0, px(228))
+        local descStroke = Instance.new("UIStroke", emoteDetailDesc)
+        descStroke.Color = Color3.fromRGB(0, 0, 0)
+        descStroke.Thickness = 1.4
+        descStroke.Transparency = 0.15
+
+        local emoteStatusLabel = Instance.new("TextLabel", emoteDetailContent)
+        emoteStatusLabel.Name = "StatusLabel"
+        emoteStatusLabel.BackgroundTransparency = 1
+        emoteStatusLabel.Font = Enum.Font.GothamBold
+        emoteStatusLabel.TextColor3 = GOLD
+        emoteStatusLabel.TextSize = px(15)
+        emoteStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
+        emoteStatusLabel.Size = UDim2.new(1, 0, 0, px(22))
+        emoteStatusLabel.Position = UDim2.new(0, 0, 0, px(278))
+
+        local emoteSlotsPanel = Instance.new("Frame", emoteDetailContent)
+        emoteSlotsPanel.Name = "SlotsPanel"
+        emoteSlotsPanel.BackgroundColor3 = accentPanelColor(GOLD, 0.12)
+        emoteSlotsPanel.Size = UDim2.new(1, 0, 0, px(190))
+        emoteSlotsPanel.Position = UDim2.new(0, 0, 0, px(306))
+        Instance.new("UICorner", emoteSlotsPanel).CornerRadius = UDim.new(0, px(10))
+        local emoteSlotsStroke = Instance.new("UIStroke", emoteSlotsPanel)
+        emoteSlotsStroke.Color = GOLD
+        emoteSlotsStroke.Thickness = 1.2
+        emoteSlotsStroke.Transparency = 0.32
+
+        local slotsTitle = Instance.new("TextLabel", emoteSlotsPanel)
+        slotsTitle.BackgroundTransparency = 1
+        slotsTitle.Font = Enum.Font.GothamBold
+        slotsTitle.Text = "LOADOUT"
+        slotsTitle.TextColor3 = GOLD
+        slotsTitle.TextSize = px(16)
+        slotsTitle.TextXAlignment = Enum.TextXAlignment.Left
+        slotsTitle.Size = UDim2.new(1, -px(18), 0, px(20))
+        slotsTitle.Position = UDim2.new(0, px(10), 0, px(8))
+
+        local slotsRows = Instance.new("Frame", emoteSlotsPanel)
+        slotsRows.Name = "Rows"
+        slotsRows.BackgroundTransparency = 1
+        slotsRows.Size = UDim2.new(1, -px(18), 1, -px(34))
+        slotsRows.Position = UDim2.new(0, px(9), 0, px(28))
+
+        local slotsRowsLayout = Instance.new("UIListLayout", slotsRows)
+        slotsRowsLayout.FillDirection = Enum.FillDirection.Vertical
+        slotsRowsLayout.Padding = UDim.new(0, px(3))
+        slotsRowsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+        local slotRows = {}
+        for slotIndex = 1, EMOTE_SLOT_COUNT do
+            local row = Instance.new("Frame", slotsRows)
+            row.Name = "SlotRow_" .. slotIndex
+            row.BackgroundColor3 = Color3.fromRGB(18, 20, 34)
+            row.BackgroundTransparency = 0.08
+            row.Size = UDim2.new(1, 0, 0, px(18))
+            row.LayoutOrder = slotIndex
+            Instance.new("UICorner", row).CornerRadius = UDim.new(0, px(6))
+            local rowStroke = Instance.new("UIStroke", row)
+            rowStroke.Color = CARD_STROKE
+            rowStroke.Thickness = 1
+            rowStroke.Transparency = 0.45
+
+            local slotLabel = Instance.new("TextLabel", row)
+            slotLabel.BackgroundTransparency = 1
+            slotLabel.Font = Enum.Font.GothamBold
+            slotLabel.Text = string.format("%02d", slotIndex)
+            slotLabel.TextColor3 = GOLD
+            slotLabel.TextSize = px(12)
+            slotLabel.TextXAlignment = Enum.TextXAlignment.Left
+            slotLabel.Size = UDim2.new(0, px(24), 1, 0)
+            slotLabel.Position = UDim2.new(0, px(8), 0, 0)
+
+            local valueLabel = Instance.new("TextLabel", row)
+            valueLabel.BackgroundTransparency = 1
+            valueLabel.Font = Enum.Font.GothamMedium
+            valueLabel.Text = "Empty"
+            valueLabel.TextColor3 = DIM_TEXT
+            valueLabel.TextSize = px(12)
+            valueLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Left
+            valueLabel.Size = UDim2.new(1, -px(102), 1, 0)
+            valueLabel.Position = UDim2.new(0, px(36), 0, 0)
+
+            local removeBtn = Instance.new("TextButton", row)
+            removeBtn.Name = "RemoveBtn"
+            removeBtn.AutoButtonColor = false
+            removeBtn.BackgroundColor3 = Color3.fromRGB(58, 34, 28)
+            removeBtn.Text = "REMOVE"
+            removeBtn.TextColor3 = WHITE
+            removeBtn.TextSize = px(10)
+            removeBtn.Font = Enum.Font.GothamBold
+            removeBtn.Size = UDim2.new(0, px(58), 1, -px(2))
+            removeBtn.AnchorPoint = Vector2.new(1, 0.5)
+            removeBtn.Position = UDim2.new(1, -px(4), 0.5, 0)
+            removeBtn.Visible = false
+            Instance.new("UICorner", removeBtn).CornerRadius = UDim.new(0, px(5))
+            local removeStroke = Instance.new("UIStroke", removeBtn)
+            removeStroke.Color = Color3.fromRGB(0, 0, 0)
+            removeStroke.Thickness = 1
+            removeStroke.Transparency = 0.15
+
+            slotRows[slotIndex] = {
+                row = row,
+                rowStroke = rowStroke,
+                valueLabel = valueLabel,
+                removeBtn = removeBtn,
+            }
+        end
+
+        local emoteShopNavW = Instance.new("Frame", emoteDetailContent)
+        emoteShopNavW.Name = "ShopNavWrap"
+        emoteShopNavW.BackgroundTransparency = 1
+        emoteShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
+        emoteShopNavW.AnchorPoint = Vector2.new(0.5, 1)
+        emoteShopNavW.Position = UDim2.new(0.5, 0, 1, -px(58))
+
+        local emoteShopBtn = Instance.new("TextButton", emoteShopNavW)
+        emoteShopBtn.AutoButtonColor = false
+        emoteShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
+        emoteShopBtn.Font = Enum.Font.GothamBold
+        emoteShopBtn.Text = "\u{1F6D2}  Browse Emotes Shop"
+        emoteShopBtn.TextColor3 = WHITE
+        emoteShopBtn.TextTransparency = 0
+        emoteShopBtn.TextSize = math.max(13, math.floor(px(15)))
+        emoteShopBtn.AutomaticSize = Enum.AutomaticSize.X
+        emoteShopBtn.Size = UDim2.new(0, 0, 1, 0)
+        emoteShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+        emoteShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+        Instance.new("UICorner", emoteShopBtn).CornerRadius = UDim.new(0, px(8))
+        local esnPad = Instance.new("UIPadding", emoteShopBtn)
+        esnPad.PaddingLeft = UDim.new(0, px(14))
+        esnPad.PaddingRight = UDim.new(0, px(14))
+        local esnStroke = Instance.new("UIStroke", emoteShopBtn)
+        esnStroke.Color = Color3.fromRGB(0, 0, 0)
+        esnStroke.Thickness = 1.5
+        esnStroke.Transparency = 0.15
+        emoteShopBtn.MouseEnter:Connect(function() TweenService:Create(emoteShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
+        emoteShopBtn.MouseLeave:Connect(function() TweenService:Create(emoteShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
+        emoteShopBtn.MouseButton1Click:Connect(function()
+            local mc = _G.SideUI and _G.SideUI.MenuController
+            if mc then
+                mc.OpenMenu("Shop")
+                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("emotes") end
+            end
+        end)
+
+        local emoteActionBtn = Instance.new("TextButton", emoteDetailContent)
+        emoteActionBtn.Name = "EquipBtn"
+        emoteActionBtn.AutoButtonColor = false
+        emoteActionBtn.BackgroundColor3 = BTN_BG
+        emoteActionBtn.Font = Enum.Font.GothamBold
+        emoteActionBtn.Text = "EQUIP"
+        emoteActionBtn.TextColor3 = WHITE
+        emoteActionBtn.TextTransparency = 0
+        emoteActionBtn.TextSize = px(22)
+        emoteActionBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+        emoteActionBtn.AnchorPoint = Vector2.new(0.5, 1)
+        emoteActionBtn.Position = UDim2.new(0.5, 0, 1, 0)
+        Instance.new("UICorner", emoteActionBtn).CornerRadius = UDim.new(0, px(10))
+        local emoteActionStroke = Instance.new("UIStroke", emoteActionBtn)
+        emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+        emoteActionStroke.Thickness = 1.5
+        emoteActionStroke.Transparency = 0.15
+
+        local ownedEmoteSet = {}
+        local equippedSlots = {}
+        local selectedEmoteId = nil
+        local emoteCards = {}
+
+        local function getEquippedSlotForEmote(emoteId)
+            for slot = 1, EMOTE_SLOT_COUNT do
+                if equippedSlots[slot] == emoteId then
+                    return slot
+                end
+            end
+            return nil
+        end
+
+        local function countEquippedEmotes()
+            local count = 0
+            for slot = 1, EMOTE_SLOT_COUNT do
+                if equippedSlots[slot] then
+                    count += 1
+                end
+            end
+            return count
+        end
+
+        local function setEquippedFromList(list)
+            equippedSlots = {}
+            if type(list) ~= "table" then
+                return
+            end
+            for _, entry in ipairs(list) do
+                if type(entry) == "table" then
+                    local slot = tonumber(entry.Slot)
+                    local emoteId = entry.Id
+                    if slot and slot >= 1 and slot <= EMOTE_SLOT_COUNT and type(emoteId) == "string" and emoteId ~= "" then
+                        equippedSlots[slot] = emoteId
+                    end
+                end
+            end
+        end
+
+        local refreshEmoteCards
+        local refreshEmoteSlots
+
+        local function updateEmoteActionButton()
+            if not selectedEmoteId then return end
+            local equippedSlot = getEquippedSlotForEmote(selectedEmoteId)
+            if equippedSlot then
+                emoteActionBtn.Text = string.format("UNEQUIP SLOT %d", equippedSlot)
+                emoteActionBtn.BackgroundColor3 = DISABLED_BG
+                emoteActionBtn.TextColor3 = GOLD
+                emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+                emoteActionStroke.Transparency = 0.15
+                return
+            end
+
+            local nextSlot = countEquippedEmotes() + 1
+            if nextSlot > EMOTE_SLOT_COUNT then
+                emoteActionBtn.Text = "SLOTS FULL"
+                emoteActionBtn.BackgroundColor3 = DISABLED_BG
+                emoteActionBtn.TextColor3 = DIM_TEXT
+                emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+                emoteActionStroke.Transparency = 0.15
+            else
+                emoteActionBtn.Text = string.format("EQUIP TO SLOT %d", nextSlot)
+                emoteActionBtn.BackgroundColor3 = BTN_BG
+                emoteActionBtn.TextColor3 = WHITE
+                emoteActionStroke.Color = Color3.fromRGB(0, 0, 0)
+                emoteActionStroke.Transparency = 0.15
+            end
+        end
+
+        local function setSelectedEmote(emoteId)
+            selectedEmoteId = emoteId
+            if not emoteId then
+                emoteDetailPlaceholder.Visible = true
+                emoteDetailContent.Visible = false
+                if refreshEmoteCards then refreshEmoteCards() end
+                if refreshEmoteSlots then refreshEmoteSlots() end
+                return
+            end
+
+            local def = EmoteConfig and EmoteConfig.GetById(emoteId)
+            if not def then return end
+
+            emoteDetailPlaceholder.Visible = false
+            emoteDetailContent.Visible = true
+
+            emoteHeroGlyph.Text = getEmoteGlyph(emoteId)
+            local imageId = getEmoteIconImage(def)
+            emoteHeroImage.Visible = type(imageId) == "string" and #imageId > 0
+            if emoteHeroImage.Visible then
+                emoteHeroImage.Image = imageId
+            else
+                emoteHeroImage.Image = ""
+            end
+
+            emoteDetailName.Text = def.DisplayName or emoteId
+            emoteDetailDesc.Text = def.Description or ""
+
+            local equippedSlot = getEquippedSlotForEmote(emoteId)
+            if equippedSlot then
+                emoteStatusLabel.Text = string.format("Equipped in slot %d", equippedSlot)
+            else
+                local nextSlot = countEquippedEmotes() + 1
+                if nextSlot <= EMOTE_SLOT_COUNT then
+                    emoteStatusLabel.Text = string.format("Next equip fills slot %d", nextSlot)
+                else
+                    emoteStatusLabel.Text = "All slots are full"
+                end
+            end
+
+            updateEmoteActionButton()
+            if refreshEmoteCards then refreshEmoteCards() end
+            if refreshEmoteSlots then refreshEmoteSlots() end
+        end
+
+        refreshEmoteSlots = function()
+            local selectedSlot = selectedEmoteId and getEquippedSlotForEmote(selectedEmoteId) or nil
+            for slotIndex = 1, EMOTE_SLOT_COUNT do
+                local refs = slotRows[slotIndex]
+                local emoteId = equippedSlots[slotIndex]
+                local def = emoteId and EmoteConfig and EmoteConfig.GetById(emoteId) or nil
+                refs.valueLabel.Text = def and (def.DisplayName or emoteId) or "Empty"
+                refs.valueLabel.TextColor3 = def and WHITE or DIM_TEXT
+                refs.removeBtn.Visible = def ~= nil
+
+                local isSelectedSlot = (selectedSlot == slotIndex)
+                refs.row.BackgroundColor3 = isSelectedSlot and accentPanelColor(GOLD, 0.28) or Color3.fromRGB(18, 20, 34)
+                refs.rowStroke.Color = isSelectedSlot and GOLD or CARD_STROKE
+                refs.rowStroke.Transparency = isSelectedSlot and 0.18 or 0.45
+            end
+        end
+
+        refreshEmoteCards = function()
+            local visibleCount = 0
+            for emoteId, refs in pairs(emoteCards) do
+                local def = refs.def
+                local isOwned = ownedEmoteSet[emoteId] or (def and def.IsFree == true)
+                refs.card.Visible = isOwned
+                if isOwned then
+                    visibleCount += 1
+                end
+
+                local equippedSlot = getEquippedSlotForEmote(emoteId)
+                local isSelected = (selectedEmoteId == emoteId)
+                if isSelected then
+                    refs.card.BackgroundColor3 = refs.selectedBg
+                    setCardStroke(refs.cardStroke, GOLD, 2.2, 0)
+                elseif equippedSlot then
+                    refs.card.BackgroundColor3 = refs.equippedBg
+                    setCardStroke(refs.cardStroke, GREEN_GLOW, 1.9, 0.16)
+                else
+                    refs.card.BackgroundColor3 = refs.baseBg
+                    setCardStroke(refs.cardStroke, refs.baseStrokeColor, refs.baseStrokeThickness, refs.baseStrokeTransparency)
+                end
+
+                refs.slotBadge.Visible = (equippedSlot ~= nil)
+                refs.slotBadge.Text = equippedSlot and string.format("SLOT %d", equippedSlot) or ""
+                refs.eqBar.Visible = (equippedSlot ~= nil)
+            end
+
+            emotesEmptyState.Visible = (visibleCount == 0)
+            emoteGridScroll.Visible = (visibleCount > 0)
+        end
+
+        for slotIndex = 1, EMOTE_SLOT_COUNT do
+            local refs = slotRows[slotIndex]
+            refs.removeBtn.MouseButton1Click:Connect(function()
+                if not equippedSlots[slotIndex] then return end
+                local remotes = ensureEmoteRemotes()
+                if remotes and remotes.unequip and remotes.unequip:IsA("RemoteEvent") then
+                    pcall(function() remotes.unequip:FireServer(slotIndex) end)
+                end
+            end)
+        end
+
+        emoteActionBtn.MouseButton1Click:Connect(function()
+            if not selectedEmoteId then return end
+            local remotes = ensureEmoteRemotes()
+            if not remotes then return end
+
+            local equippedSlot = getEquippedSlotForEmote(selectedEmoteId)
+            if equippedSlot then
+                if remotes.unequip and remotes.unequip:IsA("RemoteEvent") then
+                    pcall(function() remotes.unequip:FireServer(equippedSlot) end)
+                end
+                return
+            end
+
+            if countEquippedEmotes() >= EMOTE_SLOT_COUNT then
+                showToast(emotesPage, "All emote slots are full. Unequip one first.", RED_TEXT, 2.2)
+                return
+            end
+
+            if remotes.equip and remotes.equip:IsA("RemoteEvent") then
+                pcall(function() remotes.equip:FireServer(selectedEmoteId) end)
+            end
+        end)
+
+        emoteActionBtn.MouseEnter:Connect(function()
+            local equippedSlot = selectedEmoteId and getEquippedSlotForEmote(selectedEmoteId) or nil
+            if not equippedSlot and countEquippedEmotes() < EMOTE_SLOT_COUNT then
+                TweenService:Create(emoteActionBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
+            end
+        end)
+        emoteActionBtn.MouseLeave:Connect(function()
+            updateEmoteActionButton()
+        end)
+
+        for i_emote, def in ipairs(allEmoteDefs) do
+            local emoteId = def.Id
+            local displayName = def.DisplayName or emoteId
+            local baseBg = accentPanelColor(GOLD, 0.18)
+            local selectedBg = brightenColor(baseBg, 0.05)
+            local equippedBg = mixColor(baseBg, GREEN_GLOW, 0.16)
+            local baseStrokeColor = Color3.fromRGB(145, 116, 74)
+            local baseStrokeThickness = 1.5
+            local baseStrokeTransparency = 0.28
+
+            local card = Instance.new("TextButton")
+            card.Name = "EmoteCard_" .. emoteId
+            card.BackgroundColor3 = baseBg
+            card.Size = UDim2.new(1, 0, 1, 0)
+            card.Text = ""
+            card.AutoButtonColor = false
+            card.BorderSizePixel = 0
+            card.LayoutOrder = i_emote
+            card.ClipsDescendants = true
+            card.Parent = emoteGridScroll
+            Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
+
+            local cardStroke = Instance.new("UIStroke", card)
+            cardStroke.Color = baseStrokeColor
+            cardStroke.Thickness = baseStrokeThickness
+            cardStroke.Transparency = baseStrokeTransparency
+            addCardSheen(card, GOLD)
+            local accentBar = addCardAccentBar(card, GOLD)
+
+            local cardName = Instance.new("TextLabel", card)
+            cardName.Name = "NameLabel"
+            cardName.BackgroundTransparency = 1
+            cardName.Font = Enum.Font.GothamBold
+            cardName.Text = displayName
+            cardName.TextColor3 = WHITE
+            cardName.TextSize = INV_CARD.NameTextSize
+            cardName.TextTruncate = Enum.TextTruncate.AtEnd
+            cardName.TextXAlignment = Enum.TextXAlignment.Center
+            cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
+            cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+            cardName.ZIndex = 3
+            addTextOutline(cardName, 0.18, 1.35)
+
+            local iconArea = Instance.new("Frame", card)
+            iconArea.Name = "IconArea"
+            iconArea.BackgroundColor3 = mixColor(CARD_BG, GOLD, 0.16)
+            iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
+            iconArea.AnchorPoint = Vector2.new(0.5, 0)
+            iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
+            iconArea.BorderSizePixel = 0
+            Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+            addIconWellHighlight(iconArea, GOLD)
+
+            local iconGlyph = Instance.new("TextLabel", iconArea)
+            iconGlyph.Name = "Glyph"
+            iconGlyph.BackgroundTransparency = 1
+            iconGlyph.Size = UDim2.new(0.72, 0, 0.72, 0)
+            iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconGlyph.Position = UDim2.new(0.5, 0, 0.54, 0)
+            iconGlyph.Font = Enum.Font.GothamBlack
+            iconGlyph.Text = getEmoteGlyph(emoteId)
+            iconGlyph.TextScaled = true
+            iconGlyph.TextColor3 = GOLD
+            iconGlyph.ZIndex = 4
+            addTextOutline(iconGlyph, 0.24, 1.4)
+
+            local iconImage = Instance.new("ImageLabel", iconArea)
+            iconImage.Name = "IconImage"
+            iconImage.BackgroundTransparency = 1
+            iconImage.Size = UDim2.new(0.62, 0, 0.62, 0)
+            iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+            iconImage.ScaleType = Enum.ScaleType.Fit
+            iconImage.ZIndex = 5
+            local iconImageId = getEmoteIconImage(def)
+            iconImage.Visible = type(iconImageId) == "string" and #iconImageId > 0
+            iconImage.Image = iconImage.Visible and iconImageId or ""
+
+            local cardType = Instance.new("TextLabel", card)
+            cardType.Name = "TypeLabel"
+            cardType.BackgroundTransparency = 1
+            cardType.Font = Enum.Font.GothamBold
+            cardType.Text = "Emote"
+            cardType.TextColor3 = GOLD
+            cardType.TextSize = INV_CARD.Line1TextSize
+            cardType.TextXAlignment = Enum.TextXAlignment.Center
+            cardType.Size = UDim2.new(1, -px(10), 0, INV_CARD.Line1Height)
+            cardType.Position = UDim2.new(0, px(5), 1, -INV_CARD.Line1OffBottom - INV_CARD.Line1Height)
+            cardType.ZIndex = 4
+
+            local slotBadge = Instance.new("TextLabel", card)
+            slotBadge.Name = "SlotBadge"
+            slotBadge.BackgroundColor3 = Color3.fromRGB(24, 28, 42)
+            slotBadge.BackgroundTransparency = 0.12
+            slotBadge.BorderSizePixel = 0
+            slotBadge.Visible = false
+            slotBadge.Font = Enum.Font.GothamBold
+            slotBadge.Text = ""
+            slotBadge.TextColor3 = GREEN_GLOW
+            slotBadge.TextSize = INV_CARD.Line1TextSize
+            slotBadge.Size = UDim2.new(0.68, 0, 0, INV_CARD.Line2Height + px(4))
+            slotBadge.AnchorPoint = Vector2.new(0.5, 1)
+            slotBadge.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+            slotBadge.ZIndex = 4
+            Instance.new("UICorner", slotBadge).CornerRadius = UDim.new(0, px(7))
+            local slotBadgeStroke = Instance.new("UIStroke", slotBadge)
+            slotBadgeStroke.Color = GREEN_GLOW
+            slotBadgeStroke.Thickness = 1
+            slotBadgeStroke.Transparency = 0.36
+
+            local eqBar = Instance.new("Frame", card)
+            eqBar.Name = "EquippedBar"
+            eqBar.BackgroundColor3 = GREEN_GLOW
+            eqBar.Size = UDim2.new(1, 0, 0, px(3))
+            eqBar.AnchorPoint = Vector2.new(0, 1)
+            eqBar.Position = UDim2.new(0, 0, 1, 0)
+            eqBar.BorderSizePixel = 0
+            eqBar.ZIndex = 5
+            eqBar.Visible = false
+
+            emoteCards[emoteId] = {
+                card = card,
+                def = def,
+                cardStroke = cardStroke,
+                accentBar = accentBar,
+                eqBar = eqBar,
+                slotBadge = slotBadge,
+                baseBg = baseBg,
+                hoverBg = brightenColor(baseBg, 0.07),
+                selectedBg = selectedBg,
+                equippedBg = equippedBg,
+                baseStrokeColor = baseStrokeColor,
+                baseStrokeThickness = baseStrokeThickness,
+                baseStrokeTransparency = baseStrokeTransparency,
+            }
+
+            card.MouseButton1Click:Connect(function()
+                setSelectedEmote(emoteId)
+            end)
+
+            if not game:GetService("UserInputService").TouchEnabled then
+                card.MouseEnter:Connect(function()
+                    if selectedEmoteId ~= emoteId then
+                        local refs = emoteCards[emoteId]
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = refs and refs.hoverBg or brightenColor(baseBg, 0.07)}):Play()
+                    end
+                end)
+                card.MouseLeave:Connect(function()
+                    if selectedEmoteId ~= emoteId then
+                        local refs = emoteCards[emoteId]
+                        local equippedSlot = getEquippedSlotForEmote(emoteId)
+                        local targetBg = refs and (equippedSlot and refs.equippedBg or refs.baseBg) or baseBg
+                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
+                    end
+                end)
+            end
+        end
+
+        task.spawn(function()
+            local remotes = ensureEmoteRemotes()
+            if not remotes then return end
+
+            if remotes.getOwned and remotes.getOwned:IsA("RemoteFunction") then
+                local ok, list = pcall(function() return remotes.getOwned:InvokeServer() end)
+                if ok and type(list) == "table" then
+                    for _, emoteId in ipairs(list) do
+                        if type(emoteId) == "string" and emoteId ~= "" then
+                            ownedEmoteSet[emoteId] = true
+                        end
+                    end
+                end
+            end
+
+            if remotes.getEquipped and remotes.getEquipped:IsA("RemoteFunction") then
+                local ok, equippedList = pcall(function() return remotes.getEquipped:InvokeServer() end)
+                if ok then
+                    setEquippedFromList(equippedList)
+                end
+            end
+
+            refreshEmoteCards()
+            refreshEmoteSlots()
+
+            if not selectedEmoteId then
+                for _, def in ipairs(allEmoteDefs) do
+                    if ownedEmoteSet[def.Id] or def.IsFree then
+                        setSelectedEmote(def.Id)
+                        break
+                    end
+                end
+            elseif selectedEmoteId then
+                setSelectedEmote(selectedEmoteId)
+            end
+
+            if remotes.changed and remotes.changed:IsA("RemoteEvent") then
+                trackConn(remotes.changed.OnClientEvent:Connect(function(newEquipped)
+                    setEquippedFromList(newEquipped)
+                    if selectedEmoteId then
+                        setSelectedEmote(selectedEmoteId)
+                    else
+                        refreshEmoteCards()
+                        refreshEmoteSlots()
+                    end
+                end))
+            end
+        end)
+    end
+
+    -- ══════════════════════════════════════════════════════════════════════
     --  TAB SWITCHING
     -- ══════════════════════════════════════════════════════════════════════
     local function setActiveTab(tabId)
@@ -4591,6 +5588,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostsPage.Visible  = (tabId == "boosts")
         skinsArea.Visible   = (tabId == "skins")
         effectsPage.Visible = (tabId == "effects")
+        emotesPage.Visible  = (tabId == "emotes")
 
         -- Stop trail preview animation when leaving effects tab
         if tabId ~= "effects" and _stopEffectsPreview then
@@ -4671,41 +5669,112 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 if type(instanceId) ~= "string" then return end
                 if type(meta) == "table" and meta.removed == true then return end
                 if type(mastery) ~= "table" then return end
+                local sharedWeaponName = mastery.weaponName or (type(meta) == "table" and meta.weaponName) or nil
 
                 local touched = false
                 for _, item in ipairs(allWeaponItems) do
-                    if item.instanceId == instanceId then
+                    if item.instanceId == instanceId or (sharedWeaponName and item.weaponName == sharedWeaponName) then
                         item.mastery = mastery
                         touched = true
-                        break
                     end
                 end
                 if not touched then return end
 
-                if selectedItem and selectedItem.instanceId == instanceId then
+                if selectedItem and (selectedItem.instanceId == instanceId or (sharedWeaponName and selectedItem.weaponName == sharedWeaponName)) then
                     selectedItem.mastery = mastery
                     updateMasteryPanel(selectedItem)
                 end
-                renderCategory(currentWeaponCategory)
             end))
         end
     end)
 
+    local function applyResponsivePanelLayout()
+        local rootWidth = root.AbsoluteSize.X
+        if rootWidth <= 0 then return end
+
+        local scaleObject = root:FindFirstChild("ResponsiveScale")
+        local rootScale = 1
+        if scaleObject and scaleObject:IsA("UIScale") then
+            rootScale = math.max(0.001, scaleObject.Scale)
+        end
+
+        local function offsetFromVisual(visualPixels)
+            return math.max(1, math.floor(visualPixels / rootScale))
+        end
+
+        local gapVisual = math.clamp(math.floor(rootWidth * 0.012), 6, 18)
+        local edgeVisual = math.clamp(math.floor(rootWidth * 0.008), 4, 10)
+        local verticalVisual = math.clamp(math.floor(rootWidth * 0.006), 3, 8)
+        local sidebarVisual = math.clamp(math.floor(rootWidth * 0.122), 50, 112)
+        local detailVisual = math.clamp(math.floor(rootWidth * 0.255), 96, 248)
+        local minGridVisual = math.max(160, math.floor(rootWidth * 0.37))
+        local availableForPanels = math.max(0, rootWidth - minGridVisual - (gapVisual * 2) - (edgeVisual * 2))
+
+        if availableForPanels > 0 and (sidebarVisual + detailVisual) > availableForPanels then
+            local scaleDown = availableForPanels / math.max(1, sidebarVisual + detailVisual)
+            sidebarVisual = math.max(40, math.floor(sidebarVisual * scaleDown))
+            detailVisual = math.max(78, math.floor(detailVisual * scaleDown))
+        end
+
+        local sidebarWidth = offsetFromVisual(sidebarVisual)
+        local detailWidth = offsetFromVisual(detailVisual)
+        local gapWidth = offsetFromVisual(gapVisual)
+        local edgeInset = offsetFromVisual(edgeVisual)
+        local verticalInset = offsetFromVisual(verticalVisual)
+        local contentX = edgeInset + sidebarWidth + gapWidth
+        local contentWOff = -(contentX + edgeInset)
+        local contentWidthOffset = detailWidth + gapWidth
+
+        sidebar.AutomaticSize = Enum.AutomaticSize.None
+        sidebar.Position = UDim2.new(0, edgeInset, 0, verticalInset)
+        sidebar.Size = UDim2.new(0, sidebarWidth, 1, -(verticalInset * 2))
+
+        local function resizePage(pageName, gridName, emptyName, detailName)
+            local page = root:FindFirstChild(pageName)
+            if not (page and page:IsA("GuiObject")) then return end
+
+            page.Position = UDim2.new(0, contentX, 0, verticalInset)
+            page.Size = UDim2.new(1, contentWOff, 1, -(verticalInset * 2))
+
+            local detailPanel = page:FindFirstChild(detailName)
+            if detailPanel and detailPanel:IsA("GuiObject") then
+                detailPanel.Size = UDim2.new(0, detailWidth, 1, 0)
+                detailPanel.Position = UDim2.new(1, 0, 0, 0)
+            end
+
+            local grid = page:FindFirstChild(gridName)
+            if grid and grid:IsA("GuiObject") then
+                grid.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+            end
+
+            local emptyState = page:FindFirstChild(emptyName)
+            if emptyState and emptyState:IsA("GuiObject") then
+                emptyState.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+            end
+        end
+
+        resizePage("WeaponArea", "GridScroll", "EmptyState", "DetailsPanel")
+        resizePage("BoostsPage", "BoostGridScroll", "BoostEmptyState", "BoostDetailsPanel")
+        resizePage("SkinsArea", "SkinGridScroll", "SkinEmptyState", "SkinDetailsPanel")
+        resizePage("EffectsPage", "TrailGridScroll", "EffectsEmptyState", "TrailDetailsPanel")
+        resizePage("EmotesPage", "EmoteGridScroll", "EmotesEmptyState", "EmoteDetailsPanel")
+    end
+
     -- Adapt root height to parent size
-    task.defer(function()
+    local function updateRootLayout()
         local pH = parent.AbsoluteSize.Y
         if pH > 50 then
             rootHeight = math.max(px(380), pH - px(8))
             root.Size = UDim2.new(1, 0, 0, rootHeight)
         end
-    end)
-    trackConn(parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-        local pH = parent.AbsoluteSize.Y
-        if pH > 50 then
-            rootHeight = math.max(px(380), pH - px(8))
-            root.Size = UDim2.new(1, 0, 0, rootHeight)
-        end
-    end))
+        updateResponsiveRootScale(root)
+        applyResponsivePanelLayout()
+    end
+
+    task.defer(updateRootLayout)
+    trackConn(parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootLayout))
+    trackConn(root:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootLayout))
+    bindViewportResize(trackConn, updateRootLayout)
 
     -- Cleanup on removal
     root.AncestryChanged:Connect(function(_, newParent)

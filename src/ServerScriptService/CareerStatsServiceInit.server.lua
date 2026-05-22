@@ -17,6 +17,11 @@ local CareerStatsService = require(ServerScriptService:WaitForChild("CareerStats
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local StatService        = require(ServerScriptService:WaitForChild("StatService", 10))
 
+local AchievementService
+pcall(function()
+    AchievementService = require(ServerScriptService:WaitForChild("AchievementService", 10))
+end)
+
 --------------------------------------------------------------------------------
 -- XPServiceModule (lazy: might not be ready instantly)
 --------------------------------------------------------------------------------
@@ -38,6 +43,23 @@ end
 local getCareerStatsRF = Instance.new("RemoteFunction")
 getCareerStatsRF.Name = "GetCareerStats"
 getCareerStatsRF.Parent = remotesFolder
+
+local function enrichCareerStats(player, stats)
+    if not player or not player:IsA("Player") or type(stats) ~= "table" then
+        return stats
+    end
+
+    if AchievementService and AchievementService.GetAchievementPoints then
+        local ok, achievementPoints = pcall(function()
+            return AchievementService:GetAchievementPoints(player)
+        end)
+        if ok then
+            stats.AchievementPoints = tonumber(achievementPoints) or 0
+        end
+    end
+
+    return stats
+end
 
 getCareerStatsRF.OnServerInvoke = function(player)
     if not player or not player:IsA("Player") then return nil end
@@ -62,7 +84,7 @@ getCareerStatsRF.OnServerInvoke = function(player)
         end
     end
 
-    return stats
+    return enrichCareerStats(player, stats)
 end
 
 --------------------------------------------------------------------------------
@@ -106,7 +128,7 @@ getPublicCareerStatsRF.OnServerInvoke = function(requestingPlayer, targetUserId)
     stats._Username    = targetPlayer.Name
     stats._UserId      = targetPlayer.UserId
 
-    return stats
+    return enrichCareerStats(targetPlayer, stats)
 end
 
 --------------------------------------------------------------------------------
@@ -209,6 +231,29 @@ currentStreaks = {}  -- [Player] -> number (declared before PlayerRemoving handl
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
+local function getMonsterCareerStatKey(metadata)
+    if type(metadata) ~= "table" then
+        return nil
+    end
+
+    local mobName = metadata.mobType or metadata.mobName
+    if type(mobName) ~= "string" or mobName == "" then
+        return nil
+    end
+
+    local lowered = string.lower(mobName)
+    if string.find(lowered, "goblin", 1, true) then
+        return "GoblinsEliminated"
+    end
+    if string.find(lowered, "orc", 1, true) then
+        return "OrcsEliminated"
+    end
+    if string.find(lowered, "ogre", 1, true) then
+        return "OgresEliminated"
+    end
+    return nil
+end
+
 StatService:OnStatEvent(function(payload)
     local player = payload.player
     local action = payload.action
@@ -223,6 +268,10 @@ StatService:OnStatEvent(function(payload)
 
     elseif action == Actions.MobKill then
         CareerStatsService:IncrementStat(player, "MonstersEliminated", 1)
+        local monsterStatKey = getMonsterCareerStatKey(payload.metadata)
+        if monsterStatKey then
+            CareerStatsService:IncrementStat(player, monsterStatKey, 1)
+        end
 
     elseif action == Actions.Death then
         CareerStatsService:IncrementStat(player, "Deaths", 1)
@@ -244,6 +293,12 @@ StatService:OnStatEvent(function(payload)
     elseif action == Actions.CoinsEarned then
         CareerStatsService:IncrementStat(player, "TotalCoinsEarned", amount)
 
+    elseif action == Actions.DamageDealt then
+        local damageAmount = math.max(0, math.round(tonumber(amount) or 0))
+        if damageAmount > 0 then
+            CareerStatsService:IncrementStat(player, "TotalDamageDone", damageAmount)
+        end
+
     elseif action == Actions.QuestClaimed then
         CareerStatsService:IncrementStat(player, "QuestsCompleted", 1)
 
@@ -263,7 +318,7 @@ if MatchEndedBE and MatchEndedBE:IsA("BindableEvent") then
         if type(winnerTeam) ~= "string" then return end
         for _, pl in ipairs(Players:GetPlayers()) do
             pcall(function()
-                if pl.Team and pl.Team.Name ~= winnerTeam then
+                if pl.Team and pl.Team.Name ~= "Neutral" and pl.Team.Name ~= winnerTeam then
                     CareerStatsService:IncrementStat(pl, "Losses", 1)
                 end
             end)

@@ -20,7 +20,7 @@ AdminUserDataConfig.ResetTypes = {
 
 -- Display order + labels used by the client UI.
 AdminUserDataConfig.ResetButtons = {
-    { id = "Currency",     label = "Reset Currency",     desc = "Coins, Keys, Salvage" },
+    { id = "Currency",     label = "Reset Currency",     desc = "Coins, Keys, Shards" },
     { id = "Progression",  label = "Reset Progression",  desc = "Level, XP, Upgrades" },
     { id = "Inventory",    label = "Reset Inventory",    desc = "Weapons, Skins, Effects, Emotes, Loadout" },
     { id = "Quests",       label = "Reset Quests",       desc = "Daily + Weekly quest progress" },

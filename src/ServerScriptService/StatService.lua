@@ -27,7 +27,10 @@
 --------------------------------------------------------------------------------
 
 local Players             = game:GetService("Players")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+
+local MobSettings = require(ReplicatedStorage:WaitForChild("MobSettings"))
 
 local StatService = {}
 
@@ -78,6 +81,20 @@ local MATCH_STAT_DEFAULTS = {
 --------------------------------------------------------------------------------
 local playerStats = {}  -- [Player] -> { Score = 0, Eliminations = 0, ... }
 
+local function getMobScoreReward(mobName)
+    if type(mobName) ~= "string" or mobName == "" then
+        return 3
+    end
+
+    local cfg = MobSettings.Get(mobName)
+    local spawnCfg = cfg and cfg.Spawn
+    if spawnCfg and type(spawnCfg.ScoreReward) == "number" then
+        return spawnCfg.ScoreReward
+    end
+
+    return 3
+end
+
 --------------------------------------------------------------------------------
 -- Central event pipeline  (BindableEvent)
 -- Payload passed to listeners:
@@ -104,6 +121,13 @@ StatService.StatChanged = StatChanged
 
 local function getStats(player)
     return playerStats[player]
+end
+
+local function isTrackedTeamPlayer(player)
+    if not player or not player:IsA("Player") then return false end
+    local team = player.Team
+    if not team then return false end
+    return team.Name ~= "Neutral"
 end
 
 --- Increment a stat and sync the attribute to the player instance.
@@ -188,6 +212,8 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterElimination(killer, victim)
     if not killer or not killer:IsA("Player") then return end
+    if not isTrackedTeamPlayer(killer) then return end
+    if victim and victim:IsA("Player") and not isTrackedTeamPlayer(victim) then return end
     incrementStat(killer, "Eliminations", 1)
     incrementStat(killer, "PlayerKills", 1)
     incrementStat(killer, "Score", 10)
@@ -202,7 +228,8 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterMobKill(killer, mobName)
     if not killer or not killer:IsA("Player") then return end
-    incrementStat(killer, "Score", 3)
+    if not isTrackedTeamPlayer(killer) then return end
+    incrementStat(killer, "Score", getMobScoreReward(mobName))
     fireEvent(killer, self.Actions.MobKill, 1, { mobName = mobName })
 end
 
@@ -211,6 +238,7 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterDeath(player)
     if not player or not player:IsA("Player") then return end
+    if not isTrackedTeamPlayer(player) then return end
     incrementStat(player, "Deaths", 1)
     fireEvent(player, self.Actions.Death, 1)
 end
@@ -220,6 +248,7 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterFlagCapture(player)
     if not player or not player:IsA("Player") then return end
+    if not isTrackedTeamPlayer(player) then return end
     incrementStat(player, "FlagCaptures", 1)
     incrementStat(player, "Score", 100)
     fireEvent(player, self.Actions.FlagCapture, 1)
@@ -230,6 +259,7 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterFlagReturn(player)
     if not player or not player:IsA("Player") then return end
+    if not isTrackedTeamPlayer(player) then return end
     incrementStat(player, "FlagReturns", 1)
     incrementStat(player, "Score", 20)
     fireEvent(player, self.Actions.FlagReturn, 1)
@@ -240,6 +270,7 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterFlagPickup(player)
     if not player or not player:IsA("Player") then return end
+    if not isTrackedTeamPlayer(player) then return end
     fireEvent(player, self.Actions.FlagPickup, 1)
 end
 
@@ -248,6 +279,7 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterMatchPlayed(player)
     if not player or not player:IsA("Player") then return end
+    if not isTrackedTeamPlayer(player) then return end
     fireEvent(player, self.Actions.MatchPlayed, 1)
 end
 
@@ -256,6 +288,7 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterMatchWon(player)
     if not player or not player:IsA("Player") then return end
+    if not isTrackedTeamPlayer(player) then return end
     fireEvent(player, self.Actions.MatchWon, 1)
 end
 
@@ -264,6 +297,7 @@ end
 --------------------------------------------------------------------------------
 function StatService:RegisterDamageDealt(player, amount)
     if not player or not player:IsA("Player") then return end
+    if not isTrackedTeamPlayer(player) then return end
     amount = tonumber(amount) or 0
     if amount <= 0 then return end
     fireEvent(player, self.Actions.DamageDealt, amount)

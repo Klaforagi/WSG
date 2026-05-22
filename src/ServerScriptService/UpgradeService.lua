@@ -1,9 +1,11 @@
 --------------------------------------------------------------------------------
--- UpgradeService.lua  –  Server-authoritative weapon upgrade management
+-- UpgradeService.lua  –  Server-authoritative upgrade management
 -- ModuleScript in ServerScriptService.
 --
--- NEW SYSTEM: Two infinite upgrade paths – melee_weapon & ranged_weapon.
--- Each level gives a small permanent damage multiplier increase.
+-- Upgrade paths:
+--   • melee_weapon  → infinite damage upgrade
+--   • ranged_weapon → infinite damage upgrade
+--   • max_health    → capped health upgrade with player-level gates
 --
 -- Public API:
 --   UpgradeService:Init()
@@ -15,6 +17,8 @@
 --   UpgradeService:GetAllLevels(player)  -> { [upgradeId] = level }
 --   UpgradeService:GetMeleeMultiplier(player)  -> number
 --   UpgradeService:GetRangedMultiplier(player)  -> number
+--   UpgradeService:GetHealthBonus(player)  -> number
+--   UpgradeService:ApplyHealthUpgrade(player, humanoid, options?)  -> number, number
 --   UpgradeService:ClearPlayer(player)
 --------------------------------------------------------------------------------
 
@@ -60,10 +64,11 @@ local function getCurrencyService()
 end
 
 --------------------------------------------------------------------------------
--- Per-player state: playerUpgrades[player] = { melee_weapon = N, ranged_weapon = N }
+-- Per-player state: playerUpgrades[player] = { melee_weapon = N, ranged_weapon = N, max_health = N }
 --------------------------------------------------------------------------------
 local playerUpgrades = {}
 local stateChangedEvent = Instance.new("BindableEvent")
+local BASE_MAX_HEALTH_ATTRIBUTE = "_upgradeBaseMaxHealth"
 
 local function copyUpgradeData(data)
 	return DataStoreOps.DeepCopy(data)
@@ -91,6 +96,17 @@ end
 --------------------------------------------------------------------------------
 local function clampUpgradeLevel(currentUpgradeLevel, playerLevel)
 	return math.min(currentUpgradeLevel, math.max(0, playerLevel))
+end
+
+local function getHumanoid(player)
+	if not player then return nil end
+	local character = player.Character
+	if not character then return nil end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid and humanoid.Parent then
+		return humanoid
+	end
+	return nil
 end
 
 --- Returns the player's current XP level (reads the "Level" attribute set by XPService).
@@ -167,10 +183,11 @@ function UpgradeService:LoadForPlayer(player)
 	-- resulting in getPlayerLevel returning 1 and destroying saved progress.
 
 	playerUpgrades[player] = validated
-	print(("[UpgradeService] Loaded for %s: melee=%d, ranged=%d"):format(
+	print(("[UpgradeService] Loaded for %s: melee=%d, ranged=%d, health=%d"):format(
 		player.Name,
 		validated.melee_weapon or 0,
-		validated.ranged_weapon or 0))
+		validated.ranged_weapon or 0,
+		validated.max_health or 0))
 	return {
 		status = success and (result == nil and "new" or "existing") or "failed",
 		data = copyUpgradeData(validated),
@@ -228,28 +245,36 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 	if not levels then return false, "Player data not loaded" end
 
 	local currentLevel = levels[upgradeId] or 0
-
-	-- Player-level gate (now disabled by default in UpgradeConfig).
-	if config.REQUIRE_PLAYER_LEVEL == true then
-		local pLevel = getPlayerLevel(player)
-		if currentLevel >= pLevel then
-			return false, "Upgrade capped by player level"
-		end
+	if config.IsCapped and config.IsCapped(currentLevel, upgradeId) then
+		return false, "Upgrade maxed"
 	end
 
-	local price = config.GetCost(currentLevel)
-	local currency = (config.GetCurrency and config.GetCurrency()) or "scrap"
+	local pLevel = getPlayerLevel(player)
+	if config.IsPlayerLevelLocked then
+		local isLocked, requiredLevel = config.IsPlayerLevelLocked(currentLevel, pLevel, upgradeId)
+		if isLocked then
+			if upgradeId == config.HEALTH and requiredLevel then
+				return false, string.format("Reach player level %d to buy this upgrade", requiredLevel)
+			end
+			return false, "Upgrade capped by player level"
+		end
+	elseif config.REQUIRE_PLAYER_LEVEL == true and currentLevel >= pLevel then
+		return false, "Upgrade capped by player level"
+	end
+
+	local price = config.GetCost(currentLevel, upgradeId)
+	local currency = (config.GetCurrency and config.GetCurrency(upgradeId)) or "scrap"
 
 	local cs = getCurrencyService()
 	if not cs then return false, "Currency system unavailable" end
 
 	if currency == "scrap" then
 		if not cs.GetSalvage or not cs.RemoveSalvage then
-			return false, "Scrap currency unavailable"
+			return false, "Shard currency unavailable"
 		end
 		local balance = cs:GetSalvage(player)
 		if balance < price then
-			return false, "Insufficient scrap"
+			return false, "Insufficient Shards"
 		end
 		cs:RemoveSalvage(player, price)
 	else
@@ -263,7 +288,12 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 
 	-- Increase level (no cap when REQUIRE_PLAYER_LEVEL=false)
 	local newLevel = currentLevel + 1
-	if config.REQUIRE_PLAYER_LEVEL == true then
+	if config.IsCapped and config.IsCapped(newLevel, upgradeId) then
+		local maxLevel = config.GetMaxLevel and config.GetMaxLevel(upgradeId)
+		if maxLevel then
+			newLevel = maxLevel
+		end
+	elseif config.REQUIRE_PLAYER_LEVEL == true then
 		newLevel = clampUpgradeLevel(newLevel, getPlayerLevel(player))
 	end
 	levels[upgradeId] = newLevel
@@ -275,6 +305,15 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 		sections = { "Upgrade" },
 		force = true,
 	})
+
+	if upgradeId == config.HEALTH then
+		local humanoid = getHumanoid(player)
+		if humanoid and humanoid.Health > 0 then
+			self:ApplyHealthUpgrade(player, humanoid, {
+				adjustCurrentHealth = true,
+			})
+		end
+	end
 
 	-- Push updated state to client
 	pushState(player)
@@ -327,6 +366,51 @@ function UpgradeService:GetRangedMultiplier(player)
 	if not config then return 1 end
 	local level = self:GetLevel(player, config.RANGED)
 	return config.GetPvEMultiplier(level, config.RANGED)
+end
+
+function UpgradeService:GetHealthBonus(player)
+	local config = getUpgradeConfig()
+	if not config or type(config.GetHealthBonus) ~= "function" then
+		return 0
+	end
+	local level = self:GetLevel(player, config.HEALTH)
+	return config.GetHealthBonus(level)
+end
+
+function UpgradeService:ApplyHealthUpgrade(player, humanoid, options)
+	if not player or not humanoid then
+		return 0, 0
+	end
+
+	local currentMax = humanoid.MaxHealth
+	if type(currentMax) ~= "number" or currentMax <= 0 then
+		currentMax = 100
+	end
+
+	local baseMax = humanoid:GetAttribute(BASE_MAX_HEALTH_ATTRIBUTE)
+	if type(baseMax) ~= "number" or baseMax <= 0 then
+		baseMax = currentMax
+		pcall(function()
+			humanoid:SetAttribute(BASE_MAX_HEALTH_ATTRIBUTE, baseMax)
+		end)
+	end
+
+	local targetMax = math.max(1, baseMax + self:GetHealthBonus(player))
+	local delta = targetMax - currentMax
+	if delta == 0 then
+		return targetMax, 0
+	end
+
+	humanoid.MaxHealth = targetMax
+	if not options or options.adjustCurrentHealth ~= false then
+		if delta > 0 then
+			humanoid.Health = math.min(targetMax, humanoid.Health + delta)
+		else
+			humanoid.Health = math.min(targetMax, humanoid.Health)
+		end
+	end
+
+	return targetMax, delta
 end
 
 --- PvP melee multiplier (capped).

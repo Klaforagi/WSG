@@ -32,6 +32,61 @@ local function mergeTables(base, override)
     return out
 end
 
+local SizeRollService
+pcall(function()
+    local module = script.Parent:FindFirstChild("SizeRollService")
+    if module and module:IsA("ModuleScript") then
+        SizeRollService = require(module)
+    end
+end)
+
+local defaultSwingAnimationConfig = {
+    swing_anim_id   = "131848181334604",
+    swing_anim_ids  = { "131848181334604", "86527473231278", "81535913836580" },
+}
+
+local giantAndKingSwingAnimationConfig = {
+    swing_anim_id   = "83160499580272",
+    swing_anim_ids  = { "83160499580272", "132121098575411", "99187479200316" },
+}
+
+local defaultSwingAnimationConfigsBySizeTier = {
+    Giant = giantAndKingSwingAnimationConfig,
+    King  = giantAndKingSwingAnimationConfig,
+}
+
+local function resolveSizeTier(sizePercentOrTier)
+    if type(sizePercentOrTier) == "number" then
+        if SizeRollService and SizeRollService.GetSizeTier then
+            return SizeRollService.GetSizeTier(sizePercentOrTier)
+        end
+        if sizePercentOrTier >= 190 then return "King" end
+        if sizePercentOrTier >= 150 then return "Giant" end
+        if sizePercentOrTier >= 111 then return "Large" end
+        if sizePercentOrTier >= 90 then return "Normal" end
+        return "Tiny"
+    end
+
+    if type(sizePercentOrTier) == "string" then
+        local normalized = string.lower(sizePercentOrTier)
+        if string.find(normalized, "king", 1, true) then return "King" end
+        if string.find(normalized, "giant", 1, true) then return "Giant" end
+        if string.find(normalized, "large", 1, true) then return "Large" end
+        if string.find(normalized, "normal", 1, true) then return "Normal" end
+        if string.find(normalized, "tiny", 1, true) then return "Tiny" end
+    end
+
+    return nil
+end
+
+local function buildPresets(overrides)
+    local out = {}
+    for weaponName, weaponOverride in pairs(overrides) do
+        out[weaponName] = mergeTables(defaultSwingAnimationConfig, weaponOverride)
+    end
+    return out
+end
+
 --------------------------------------------------------------------------------
 -- RARITY DEFAULTS  (combat / hitbox stats — all values are at 100% weapon size)
 --
@@ -48,6 +103,7 @@ local rarityDefaults = {
     Common = {
         damage       = 7,
         cd           = 0.6,
+        movement_speed_penalty = -3,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
@@ -59,6 +115,7 @@ local rarityDefaults = {
     Uncommon = {
         damage       = 10,
         cd           = 0.6,
+        movement_speed_penalty = -3,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
@@ -70,6 +127,7 @@ local rarityDefaults = {
     Rare = {
         damage       = 13,
         cd           = 0.6,
+        movement_speed_penalty = -3,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
@@ -81,6 +139,7 @@ local rarityDefaults = {
     Epic = {
         damage       = 17,
         cd           = 0.6,
+        movement_speed_penalty = -3,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
@@ -92,6 +151,7 @@ local rarityDefaults = {
     Legendary = {
         damage       = 21,
         cd           = 0.6,
+        movement_speed_penalty = -3,
         knockback    = 2,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
@@ -113,26 +173,20 @@ local rarityDefaults = {
 --   Legendary = best badass 2H weapons (punisher, kingsblade, doom sword)
 --------------------------------------------------------------------------------
 
-local presets = {
+local presetOverrides = {
     -- Legendary
     ["punisher"] = {
         rarity          = "Legendary",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["kingsblade"] = {
         rarity          = "Legendary",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["doom sword"] = {
         rarity          = "Legendary",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -140,15 +194,11 @@ local presets = {
     -- Epic
     ["spiked mace"] = {
         rarity          = "Epic",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["crusher"] = {
         rarity          = "Epic",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -156,29 +206,21 @@ local presets = {
     -- Rare
     ["flanged mace"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["axe"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["shortsword"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["spear"] = {
         rarity          = "Rare",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -186,15 +228,11 @@ local presets = {
     -- Uncommon
     ["stone hammer"] = {
         rarity          = "Uncommon",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["wooden spear"] = {
         rarity          = "Uncommon",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
@@ -203,26 +241,57 @@ local presets = {
     ["starter sword"] = {
         rarity          = "Common",
         damage          = 7, -- override: early game feels better
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["wooden sword"] = {
         rarity          = "Common",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
     ["branch"] = {
         rarity          = "Common",
-        swing_anim_id   = "82015832913253",
-        swing_anim_ids  = { "82015832913253", "123046034669489", "95518688900800" },
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
 }
+
+local presets = buildPresets(presetOverrides)
+
+local function collectAllSwingAnimationIds()
+    local ids = {}
+    local seen = {}
+
+    local function add(animId)
+        if animId == nil or animId == "" then return end
+        local normalized = tostring(animId)
+        if seen[normalized] then return end
+        seen[normalized] = true
+        table.insert(ids, normalized)
+    end
+
+    local function addConfig(cfg)
+        if not cfg then return end
+        add(cfg.swing_anim_id)
+        if type(cfg.swing_anim_ids) == "table" then
+            for _, animId in ipairs(cfg.swing_anim_ids) do
+                add(animId)
+            end
+        end
+    end
+
+    addConfig(defaultSwingAnimationConfig)
+    for _, sizeCfg in pairs(defaultSwingAnimationConfigsBySizeTier) do
+        addConfig(sizeCfg)
+    end
+    for _, weaponOverride in pairs(presetOverrides) do
+        addConfig(weaponOverride)
+    end
+
+    return ids
+end
+
+local allSwingAnimationIds = collectAllSwingAnimationIds()
 
 --------------------------------------------------------------------------------
 -- MODULE
@@ -230,10 +299,19 @@ local presets = {
 
 local module = {}
 
-function module.getPreset(toolType)
+function module.getPreset(toolType, sizePercentOrTier)
     if not toolType then return nil end
-    local weapon = presets[tostring(toolType):lower()]
-    if not weapon then return nil end
+    local weaponOverride = presetOverrides[tostring(toolType):lower()]
+    if not weaponOverride then return nil end
+
+    local weapon = copyTable(defaultSwingAnimationConfig)
+    local sizeTier = resolveSizeTier(sizePercentOrTier)
+    local sizeTierCfg = sizeTier and defaultSwingAnimationConfigsBySizeTier[sizeTier] or nil
+    if sizeTierCfg then
+        weapon = mergeTables(weapon, sizeTierCfg)
+    end
+    weapon = mergeTables(weapon, weaponOverride)
+
     local rarity = weapon.rarity
     local defaults = rarityDefaults[rarity] or rarityDefaults.Common
     return mergeTables(defaults, weapon)
@@ -241,6 +319,10 @@ end
 
 module.presets        = presets
 module.rarityDefaults = rarityDefaults
+module.defaultSwingAnimationConfig = defaultSwingAnimationConfig
+module.defaultSwingAnimationConfigsBySizeTier = defaultSwingAnimationConfigsBySizeTier
+module.allSwingAnimationIds = allSwingAnimationIds
+module.getAllSwingAnimationIds = collectAllSwingAnimationIds
 
 --------------------------------------------------------------------------------
 -- COMBO SYSTEM CONFIG  (shared between client & server)

@@ -35,6 +35,14 @@ pcall(function()
     end
 end)
 
+local WeaponEnchantService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("WeaponEnchantService")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponEnchantService = require(mod)
+    end
+end)
+
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
@@ -44,7 +52,10 @@ local TOOLCFG = {}
 
 -- Shared weapon switch lock (also used by ToolMeleeSetup)
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local RANGED_ATTACK_SPEED_MODIFIER_ID = "ranged_attack_slow"
 
 local WeaponTrailService = nil
 pcall(function()
@@ -198,80 +209,9 @@ end
 -- Server-side handling + validation (projectile-based)
 local lastFire = {} -- [player] = { [toolName] = tick() }
 
-local DEFAULT_WALKSPEED = 16
-local slowState = {} -- [player] = { token = number, baseSpeed = number, expireAt = number, humanoid = Humanoid }
-
-local function getHumanoid(player)
-    local char = player and player.Character
-    return char and char:FindFirstChildOfClass("Humanoid") or nil
-end
-
-local function restoreRangedSlow(player, token)
-    local state = slowState[player]
-    if not state then return end
-    if state.token ~= token then return end
-
-    local now = tick()
-    if now < state.expireAt then
-        task.delay((state.expireAt - now) + 0.05, function()
-            restoreRangedSlow(player, token)
-        end)
-        return
-    end
-
-    local hum = state.humanoid
-    if not hum or not hum.Parent then
-        hum = getHumanoid(player)
-    end
-
-    if hum and hum.Parent then
-        local baseSpeed = state.baseSpeed or DEFAULT_WALKSPEED
-        pcall(function()
-            hum.WalkSpeed = baseSpeed
-        end)
-    end
-
-    if slowState[player] and slowState[player].token == token then
-        slowState[player] = nil
-    end
-end
-
-local function applyRangedFireSlow(player, slowFactor, slowDuration)
-    local hum = getHumanoid(player)
-    if not hum or not hum.Parent then return end
-
-    local now = tick()
-    local state = slowState[player]
-
-    if not state or state.humanoid ~= hum then
-        state = {
-            token = 0,
-            baseSpeed = hum.WalkSpeed > 0 and hum.WalkSpeed or DEFAULT_WALKSPEED,
-            expireAt = 0,
-            humanoid = hum,
-        }
-        slowState[player] = state
-    end
-
-    -- Never let baseSpeed become the slowed speed.
-    local currentSlowSpeed = (state.baseSpeed or DEFAULT_WALKSPEED) * slowFactor
-    if hum.WalkSpeed > currentSlowSpeed + 0.1 then
-        state.baseSpeed = hum.WalkSpeed
-    end
-
-    state.token += 1
-    state.expireAt = now + slowDuration
-    state.humanoid = hum
-
-    local myToken = state.token
-    local baseSpeed = state.baseSpeed or DEFAULT_WALKSPEED
-
+local function clearRangedFireSlow(player)
     pcall(function()
-        hum.WalkSpeed = math.max(baseSpeed * slowFactor, 0.1)
-    end)
-
-    task.delay(slowDuration + 0.05, function()
-        restoreRangedSlow(player, myToken)
+        HumanoidStatService:RemoveModifier(player, MOVEMENT_SPEED_STAT, RANGED_ATTACK_SPEED_MODIFIER_ID)
     end)
 end
 
@@ -396,7 +336,7 @@ end
 
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
-local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos, weaponInstanceId, weaponName)
+local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos, weaponInstanceId, weaponName, enchantName)
     -- prevent friendly fire: if the victim is a player on the same Team, skip damage
     local victimPlayer = nil
     if victimModel and Players then
@@ -413,6 +353,15 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
             damage = damage * mult
         end
     end
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        local ok, masteryBonus = pcall(function()
+            return WeaponMasteryService:GetDamageBonus(player, weaponInstanceId)
+        end)
+        if ok and type(masteryBonus) == "number" and masteryBonus > 0 then
+            damage = damage + masteryBonus
+        end
+    end
+    damage = math.max(0, math.round(damage))
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
         humanoid:SetAttribute("lastDamagerName", player.Name)
@@ -429,6 +378,27 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
         end
     end)
     humanoid:TakeDamage(damage)
+
+    if WeaponEnchantService and type(enchantName) == "string" and enchantName ~= "" then
+        local attackerHumanoid = player and player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        local procSucceeded = false
+        pcall(function()
+            procSucceeded = WeaponEnchantService.TryProcEnchant(
+                player,
+                attackerHumanoid,
+                victimModel,
+                humanoid,
+                enchantName,
+                hitPos
+            ) == true
+        end)
+        if procSucceeded and hitPos then
+            pcall(function()
+                WeaponEnchantService.SpawnHitEffect(hitPos, enchantName, hitPart)
+            end)
+        end
+    end
+
     -- Track damage dealt for quest progress
     if StatService and StatService.RegisterDamageDealt then
         pcall(function() StatService:RegisterDamageDealt(player, damage) end)
@@ -691,7 +661,8 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         inst,
                         rayResult.Position,
                         projCfg and projCfg._weaponInstanceId,
-                        (projCfg and projCfg._weaponName) or toolName
+                        (projCfg and projCfg._weaponName) or toolName,
+                        projCfg and projCfg._enchantName
                     )
                     -- play sniper headshot sound at victim head when appropriate
                     if isHeadshot then
@@ -1121,6 +1092,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     scaledCfg._projVisualScale = projVisualScale
     scaledCfg._weaponInstanceId = equippedTool:GetAttribute("WeaponInstanceId")
     scaledCfg._weaponName = equippedTool:GetAttribute("WeaponName") or toolName
+    scaledCfg._enchantName = equippedTool:GetAttribute("EnchantName")
 
     -- basic proximity checks (allow some leeway for camera offsets)
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end
@@ -1187,12 +1159,13 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
 
     -- Apply a brief movement slow while firing ranged weapons.
     do
-        local slowFactor = 0.6
-        if tCfg.slow_factor and type(tCfg.slow_factor) == "number" then
-            slowFactor = math.clamp(tCfg.slow_factor, 0.1, 1)
-        end
+        local speedPenalty = tonumber(tCfg.movement_speed_penalty) or -4
         local slowDuration = math.max(scaledCooldown * 0.95, 0.01)
-        applyRangedFireSlow(player, slowFactor, slowDuration)
+        HumanoidStatService:SetModifier(player, MOVEMENT_SPEED_STAT, RANGED_ATTACK_SPEED_MODIFIER_ID, {
+            additive = speedPenalty,
+            duration = slowDuration,
+            source = toolName,
+        })
     end
 
     -- Lock weapon switching for the duration of this weapon's scaled cooldown.
@@ -1206,16 +1179,7 @@ end)
 
 -- Restore WalkSpeed and weapon lock on character removal (respawn clears old Humanoid/Backpack).
 local function onCharacterRemoving(player)
-    local st = slowState[player]
-    if st then
-        local hum = st.humanoid or getHumanoid(player)
-        if hum and hum.Parent and st.baseSpeed then
-            pcall(function()
-                hum.WalkSpeed = st.baseSpeed
-            end)
-        end
-        slowState[player] = nil
-    end
+    clearRangedFireSlow(player)
     -- Roblox resets the backpack on respawn; just destroy the holder so tools re-grant cleanly.
     WeaponLockService.cleanupCharacter(player)
 end
@@ -1238,15 +1202,6 @@ end)
 -- clean up rate-limit table when players leave
 Players.PlayerRemoving:Connect(function(player)
     lastFire[player] = nil
-    local st = slowState[player]
-    if st then
-        local hum = st.humanoid or getHumanoid(player)
-        if hum and hum.Parent and st.baseSpeed then
-            pcall(function()
-                hum.WalkSpeed = st.baseSpeed
-            end)
-        end
-        slowState[player] = nil
-    end
+    clearRangedFireSlow(player)
     WeaponLockService.cleanupPlayer(player)
 end)

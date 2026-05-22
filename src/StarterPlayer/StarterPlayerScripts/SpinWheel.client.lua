@@ -2,13 +2,17 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local StarterGui = game:GetService("StarterGui")
+local TextChatService = game:GetService("TextChatService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+local CrateConfig = require(ReplicatedStorage:WaitForChild("CrateConfig"))
 local SpinWheelConfig = require(ReplicatedStorage:WaitForChild("SpinWheelConfig"))
+local RobuxPurchaseUI = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("RobuxPurchaseUI"))
 local tickBoundaryAngles = SpinWheelConfig.GetTickBoundaryAngles()
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 15)
@@ -26,10 +30,21 @@ end
 local getStateRF = spinWheelFolder:WaitForChild("GetSpinWheelState", 15)
 local requestSpinRF = spinWheelFolder:WaitForChild("RequestSpinWheelSpin", 15)
 local buyPackRF = spinWheelFolder:WaitForChild("RequestBuyWheelSpinPack", 15)
+local chatAnnouncementRE = spinWheelFolder:FindFirstChild("SpinWheelChatAnnouncement")
+if not (chatAnnouncementRE and chatAnnouncementRE:IsA("RemoteEvent")) then
+    chatAnnouncementRE = spinWheelFolder:WaitForChild("SpinWheelChatAnnouncement", 15)
+    if not (chatAnnouncementRE and chatAnnouncementRE:IsA("RemoteEvent")) then
+        chatAnnouncementRE = nil
+    end
+end
 if not getStateRF or not requestSpinRF or not buyPackRF then
     warn("[SpinWheel] SpinWheel remote functions missing")
     return
 end
+
+local SPIN_CHAT_COLOR = Color3.fromRGB(255, 179, 71)
+local SPIN_CHAT_COLOR_HEX = "#FFB347"
+local spinChatChannel
 
 local function ensureChild(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -57,6 +72,155 @@ end
 
 local function getAdjustedServerTime(serverTimeOffset)
     return os.time() + (serverTimeOffset or 0)
+end
+
+local function escapeRichText(text)
+    text = tostring(text or "")
+    text = text:gsub("&", "&amp;")
+    text = text:gsub("<", "&lt;")
+    text = text:gsub(">", "&gt;")
+    text = text:gsub('"', "&quot;")
+    text = text:gsub("'", "&apos;")
+    return text
+end
+
+local function color3ToHex(color)
+    if typeof(color) ~= "Color3" then
+        return nil
+    end
+
+    local r = math.clamp(math.floor((color.R * 255) + 0.5), 0, 255)
+    local g = math.clamp(math.floor((color.G * 255) + 0.5), 0, 255)
+    local b = math.clamp(math.floor((color.B * 255) + 0.5), 0, 255)
+    return string.format("#%02X%02X%02X", r, g, b)
+end
+
+local function getRarityHex(rarityName)
+    if type(rarityName) ~= "string" or rarityName == "" then
+        return nil
+    end
+
+    local rarityDef = CrateConfig and CrateConfig.Rarities and CrateConfig.Rarities[rarityName]
+    if rarityDef and typeof(rarityDef.color) == "Color3" then
+        return color3ToHex(rarityDef.color)
+    end
+
+    return nil
+end
+
+local function buildAnnouncementParts(announcement)
+    if type(announcement) == "string" then
+        return announcement, nil, "", announcement, ""
+    end
+
+    if type(announcement) ~= "table" then
+        return "", nil, "", "", ""
+    end
+
+    local bodyText = tostring(announcement.bodyText or announcement.text or "")
+    local highlightText = tostring(announcement.highlightText or "")
+    local suffixText = tostring(announcement.suffixText or "")
+    local plainText = tostring(announcement.text or (bodyText .. highlightText .. suffixText))
+    return bodyText, announcement.highlightRarity, suffixText, plainText, highlightText
+end
+
+local function isCrateRewardSequenceActive()
+    local activeCheck = _G.IsCrateRewardSequenceActive
+    if type(activeCheck) ~= "function" then
+        return false
+    end
+
+    local ok, active = pcall(activeCheck)
+    return ok and active == true
+end
+
+local function getSpinChatChannel()
+    if spinChatChannel and spinChatChannel.Parent then
+        return spinChatChannel
+    end
+
+    local textChannels = TextChatService:FindFirstChild("TextChannels")
+    if not textChannels then
+        textChannels = TextChatService:WaitForChild("TextChannels", 5)
+    end
+    if not textChannels then
+        return nil
+    end
+
+    local channel = textChannels:FindFirstChild("RBXGeneral") or textChannels:FindFirstChild("RBXSystem")
+    if not channel then
+        for _, child in ipairs(textChannels:GetChildren()) do
+            if child:IsA("TextChannel") then
+                channel = child
+                break
+            end
+        end
+    end
+
+    if channel and channel:IsA("TextChannel") then
+        spinChatChannel = channel
+        return channel
+    end
+
+    return nil
+end
+
+local function displaySpinChatMessage(announcement)
+    local bodyText, highlightRarity, suffixText, plainText, highlightText = buildAnnouncementParts(announcement)
+    if plainText == "" then
+        return
+    end
+
+    local richTextParts = {
+        string.format('<font color="%s">[Server]</font>', SPIN_CHAT_COLOR_HEX),
+    }
+
+    local escapedBodyText = escapeRichText(bodyText)
+    local escapedHighlightText = escapeRichText(highlightText)
+    local escapedSuffixText = escapeRichText(suffixText)
+
+    if escapedBodyText ~= "" or escapedHighlightText ~= "" or escapedSuffixText ~= "" then
+        table.insert(richTextParts, " ")
+        table.insert(richTextParts, escapedBodyText)
+        if escapedHighlightText ~= "" then
+            local rarityHex = getRarityHex(highlightRarity)
+            if rarityHex then
+                table.insert(richTextParts, string.format('<font color="%s">%s</font>', rarityHex, escapedHighlightText))
+            else
+                table.insert(richTextParts, escapedHighlightText)
+            end
+        end
+        table.insert(richTextParts, escapedSuffixText)
+    end
+
+    local richTextMessage = table.concat(richTextParts)
+
+    local channel = getSpinChatChannel()
+    if channel then
+        local ok = pcall(function()
+            channel:DisplaySystemMessage(richTextMessage)
+        end)
+        if ok then
+            return
+        end
+    end
+
+    pcall(function()
+        StarterGui:SetCore("ChatMakeSystemMessage", {
+            Text = "[Server] " .. plainText,
+            Color = SPIN_CHAT_COLOR,
+            Font = Enum.Font.GothamBold,
+            TextSize = 18,
+        })
+    end)
+end
+
+local function displayLocalSpinAnnouncement(chatAnnouncement)
+    if not chatAnnouncement or chatAnnouncement.scope ~= "local" then
+        return
+    end
+
+    displaySpinChatMessage(chatAnnouncement)
 end
 
 local function playTickSound()
@@ -314,17 +478,26 @@ modalShade.Visible = false
 local modalCard = ensureChild(modalShade, "Frame", "PurchaseCard")
 modalCard.AnchorPoint = Vector2.new(0.5, 0.5)
 modalCard.Position = UDim2.fromScale(0.5, 0.5)
-modalCard.Size = UDim2.new(0, 430, 0, 330)
-modalCard.BackgroundColor3 = Color3.fromRGB(18, 20, 28)
+modalCard.Size = UDim2.new(0, 430, 0, 390)
+modalCard.BackgroundColor3 = RobuxPurchaseUI.Colors.ModalBackground
 modalCard.BorderSizePixel = 0
 
 local modalCorner = ensureChild(modalCard, "UICorner", "Corner")
 modalCorner.CornerRadius = UDim.new(0, 14)
 
 local modalStroke = ensureChild(modalCard, "UIStroke", "Stroke")
-modalStroke.Color = Color3.fromRGB(74, 85, 110)
+modalStroke.Color = Color3.fromRGB(0, 0, 0)
 modalStroke.Thickness = 2
-modalStroke.Transparency = 0.1
+modalStroke.Transparency = 0
+
+local modalAccent = ensureChild(modalCard, "Frame", "Accent")
+modalAccent.BackgroundColor3 = RobuxPurchaseUI.Colors.Gold
+modalAccent.BorderSizePixel = 0
+modalAccent.Position = UDim2.new(0, 15, 0, 12)
+modalAccent.Size = UDim2.new(1, -30, 0, 4)
+
+local modalAccentCorner = ensureChild(modalAccent, "UICorner", "Corner")
+modalAccentCorner.CornerRadius = UDim.new(0, 10)
 
 local modalHeader = ensureChild(modalCard, "TextLabel", "Header")
 modalHeader.BackgroundTransparency = 1
@@ -332,39 +505,37 @@ modalHeader.Size = UDim2.new(1, -30, 0, 56)
 modalHeader.Position = UDim2.new(0, 15, 0, 18)
 modalHeader.Font = Enum.Font.GothamBlack
 modalHeader.TextSize = 30
-modalHeader.TextColor3 = Color3.fromRGB(255, 208, 64)
 modalHeader.Text = SpinWheelConfig.Labels.PurchaseHeader
+RobuxPurchaseUI.ApplyOutlinedText(modalHeader, RobuxPurchaseUI.Colors.Gold)
 
 local modalBody = ensureChild(modalCard, "TextLabel", "Body")
 modalBody.BackgroundTransparency = 1
-modalBody.Size = UDim2.new(1, -30, 0, 56)
+modalBody.Size = UDim2.new(1, -30, 0, 64)
 modalBody.Position = UDim2.new(0, 15, 0, 68)
 modalBody.Font = Enum.Font.GothamMedium
 modalBody.TextSize = 20
-modalBody.TextColor3 = Color3.fromRGB(227, 232, 240)
 modalBody.TextWrapped = true
 modalBody.Text = SpinWheelConfig.Labels.PurchaseBody
+RobuxPurchaseUI.ApplyOutlinedText(modalBody, RobuxPurchaseUI.Colors.GoldSoft)
 
 local buttonList = ensureChild(modalCard, "Frame", "ButtonList")
 buttonList.BackgroundTransparency = 1
-buttonList.Size = UDim2.new(1, -30, 0, 150)
-buttonList.Position = UDim2.new(0, 15, 0, 128)
+buttonList.Size = UDim2.new(1, -30, 0, 188)
+buttonList.Position = UDim2.new(0, 15, 0, 138)
 
 local buttonLayout = ensureChild(buttonList, "UIListLayout", "Layout")
 buttonLayout.FillDirection = Enum.FillDirection.Vertical
 buttonLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 buttonLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-buttonLayout.Padding = UDim.new(0, 10)
+buttonLayout.Padding = UDim.new(0, 8)
 
 local cancelButton = ensureChild(modalCard, "TextButton", "CancelButton")
 cancelButton.Size = UDim2.new(1, -30, 0, 44)
 cancelButton.Position = UDim2.new(0, 15, 1, -58)
-cancelButton.BackgroundColor3 = Color3.fromRGB(42, 47, 60)
-cancelButton.BorderSizePixel = 0
 cancelButton.Font = Enum.Font.GothamBold
 cancelButton.TextSize = 18
-cancelButton.TextColor3 = Color3.fromRGB(235, 239, 244)
 cancelButton.Text = SpinWheelConfig.Labels.PurchaseCancel
+RobuxPurchaseUI.StyleCancelButton(cancelButton)
 
 local cancelCorner = ensureChild(cancelButton, "UICorner", "Corner")
 cancelCorner.CornerRadius = UDim.new(0, 10)
@@ -402,6 +573,10 @@ local currentSpinColors = {
     spinWhiteColor,
     rainbowCycleColors[1],
 }
+
+local function isSpinWheelRewardSequenceLocked()
+    return requestInFlight or isSpinning or spinSequenceLocked or isCrateRewardSequenceActive()
+end
 
 local function wrapLightPosition(position, count)
     if count <= 0 then
@@ -746,7 +921,7 @@ local function getRewardText(resultPayload)
         return string.format("%d Coins", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
     end
     if resultPayload.rewardType == "scrap" then
-        return string.format("%d Scrap", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
+        return string.format("%d Shards", math.max(0, math.floor(tonumber(resultPayload.reward) or 0)))
     end
     if resultPayload.rewardType == "keys" then
         local amount = math.max(0, math.floor(tonumber(resultPayload.reward) or 0))
@@ -778,8 +953,11 @@ local function showSpinReward(resultPayload)
     if resultPayload.rewardType == "crate" then
         local rewardData = type(resultPayload.rewardData) == "table" and resultPayload.rewardData or nil
         local crateType = type(resultPayload.crateType) == "string" and resultPayload.crateType or (rewardData and rewardData.crateType)
+        local chatAnnouncement = type(resultPayload.chatAnnouncement) == "table" and resultPayload.chatAnnouncement or nil
         if rewardData and crateType and type(_G.PlayCrateAnimation) == "function" then
-            _G.PlayCrateAnimation(crateType, rewardData)
+            _G.PlayCrateAnimation(crateType, rewardData, function()
+                displayLocalSpinAnnouncement(chatAnnouncement)
+            end)
             return
         end
     end
@@ -788,6 +966,17 @@ local function showSpinReward(resultPayload)
     if rewardText ~= "" then
         showToast(string.format("You got %s!", rewardText), getRewardToastColor(resultPayload))
     end
+    displayLocalSpinAnnouncement(type(resultPayload.chatAnnouncement) == "table" and resultPayload.chatAnnouncement or nil)
+end
+
+if chatAnnouncementRE then
+    chatAnnouncementRE.OnClientEvent:Connect(function(payload)
+        if type(payload) ~= "table" then
+            return
+        end
+
+        displaySpinChatMessage(payload)
+    end)
 end
 
 local function updateServerTimeOffset(state)
@@ -814,7 +1003,7 @@ end
 local function closePurchaseModal()
     purchaseModalOpen = false
     modalShade.Visible = false
-    prompt.Enabled = currentState.isLoaded == true and not requestInFlight and not isSpinning and not spinSequenceLocked
+    prompt.Enabled = currentState.isLoaded == true and not requestInFlight and not isSpinning and not spinSequenceLocked and not isCrateRewardSequenceActive()
 end
 
 local function updatePromptState()
@@ -826,7 +1015,7 @@ local function updatePromptState()
     end
 
     prompt.ObjectText = string.format("%s %d", SpinWheelConfig.Labels.PromptObjectPrefix, getWheelSpinsCount())
-    prompt.Enabled = not requestInFlight and not isSpinning and not spinSequenceLocked and not purchaseModalOpen
+    prompt.Enabled = not requestInFlight and not isSpinning and not spinSequenceLocked and not purchaseModalOpen and not isCrateRewardSequenceActive()
 end
 
 local function updateScreen()
@@ -996,23 +1185,19 @@ local function handlePurchaseResult(success, message, payload)
 end
 
 for index, pack in ipairs(SpinWheelConfig.SpinPacks) do
-    local button = ensureChild(buttonList, "TextButton", "PackButton" .. tostring(index))
-    button.Size = UDim2.new(1, 0, 0, 42)
-    button.BackgroundColor3 = Color3.fromRGB(34, 39, 52)
-    button.BorderSizePixel = 0
-    button.AutoButtonColor = true
-    button.Font = Enum.Font.GothamBold
-    button.TextSize = 19
-    button.TextColor3 = Color3.fromRGB(245, 247, 250)
-    button.Text = string.format("%d Wheel Spins  •  R$%d", pack.spins, pack.robuxPrice)
+    local existingButton = buttonList:FindFirstChild("PackButton" .. tostring(index))
+    if existingButton and existingButton:IsA("GuiButton") then
+        existingButton:Destroy()
+    end
 
-    local buttonCorner = ensureChild(button, "UICorner", "Corner")
-    buttonCorner.CornerRadius = UDim.new(0, 10)
-
-    local buttonStroke = ensureChild(button, "UIStroke", "Stroke")
-    buttonStroke.Color = Color3.fromRGB(255, 208, 64)
-    buttonStroke.Transparency = 0.35
-    buttonStroke.Thickness = 1
+    local spinTitle = string.format("%d WHEEL SPIN%s", pack.spins, pack.spins == 1 and "" or "S")
+    local button = RobuxPurchaseUI.CreatePackCard(buttonList, {
+        name = "PackButton" .. tostring(index),
+        title = spinTitle,
+        subtitle = pack.name or "Wheel Spin Pack",
+        price = pack.robuxPrice,
+        layoutOrder = index,
+    })
 
     button.MouseButton1Click:Connect(function()
         if requestInFlight then
@@ -1058,7 +1243,7 @@ cancelButton.MouseButton1Click:Connect(function()
 end)
 
 prompt.Triggered:Connect(function()
-    if requestInFlight or isSpinning or spinSequenceLocked or purchaseModalOpen then
+    if isSpinWheelRewardSequenceLocked() or purchaseModalOpen then
         return
     end
     if currentState.isLoaded ~= true then
@@ -1114,6 +1299,10 @@ setState(makeLoadingState())
 refreshState()
 syncAmbientWheelMode()
 
+_G.IsSpinWheelRewardSequenceLocked = function()
+    return isSpinWheelRewardSequenceLocked()
+end
+
 task.spawn(function()
     while true do
         if currentState.isLoaded ~= true and not stateFetchInFlight and not requestInFlight then
@@ -1132,12 +1321,19 @@ RunService.RenderStepped:Connect(function(deltaTime)
 
     if lightModeEndsAt and now >= lightModeEndsAt then
         if lightMode == "win" then
-            spinSequenceLocked = false
             setLightMode("idle", nil, winLightAnchorPosition)
+            if not isCrateRewardSequenceActive() then
+                spinSequenceLocked = false
+            end
             updatePromptState()
         else
             lightModeEndsAt = nil
         end
+    end
+
+    if spinSequenceLocked and not isSpinning and lightMode == "idle" and not isCrateRewardSequenceActive() then
+        spinSequenceLocked = false
+        updatePromptState()
     end
 
     if not isSpinning and currentState.isLoaded == true and lightMode == "idle" then

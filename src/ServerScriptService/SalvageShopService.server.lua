@@ -234,7 +234,7 @@ purchaseSalvageItemRF.OnServerInvoke = function(player, itemId)
     if not cs:HasEnoughSalvage(player, price) then
         local bal = cs:GetSalvage(player)
         print("[SalvageShopService] DENIED:", player.Name, "- insufficient salvage. Has:", bal, "Needs:", price)
-        return false, { reason = "Not enough Salvage" }
+        return false, { reason = "Not enough Shards" }
     end
 
     -- Deduct Salvage FIRST (before granting reward to prevent exploit)

@@ -15,7 +15,7 @@
 --      WeaponPreviewPublisher.server.lua from ServerStorage.Tools)
 --   4. Enchant visual effects (particles, beams, meshes)
 --   5. Sounds (ReplicatedStorage.Sounds)
---   6. SideUI modules (pre-require so first menu open is instant)
+--   6. UI modules (pre-require so first menu/stall open is instant)
 --   7. Quest data + remotes
 --   8. Finalize (best-effort sweep of any remaining client assets)
 
@@ -164,12 +164,18 @@ local function collectAnimationIds()
 		if module then return require(module) end
 	end)
 
-	if ok and meleeModule and meleeModule.presets then
-		for _, preset in pairs(meleeModule.presets) do
-			add(preset.swing_anim_id)
-			if type(preset.swing_anim_ids) == "table" then
-				for _, id in ipairs(preset.swing_anim_ids) do
-					add(id)
+	if ok and meleeModule then
+		if type(meleeModule.getAllSwingAnimationIds) == "function" then
+			for _, id in ipairs(meleeModule.getAllSwingAnimationIds()) do
+				add(id)
+			end
+		elseif meleeModule.presets then
+			for _, preset in pairs(meleeModule.presets) do
+				add(preset.swing_anim_id)
+				if type(preset.swing_anim_ids) == "table" then
+					for _, id in ipairs(preset.swing_anim_ids) do
+						add(id)
+					end
 				end
 			end
 		end
@@ -625,10 +631,10 @@ pcall(function()
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- STAGE 6: Menus (pre-require SideUI modules)
--- The DailyQuestsUI, ShopUI, etc. are lazy-loaded on first open. Requiring
--- them now compiles the Lua bytecode early so the first menu open is instant
--- instead of hitching for 0.5–1s.
+-- STAGE 6: Menus and stall UIs (pre-require lazy modules)
+-- The DailyQuestsUI, ShopUI, ForgeStallUI, and SkinsStallUI are lazy-loaded
+-- on first open. Requiring and warming them now compiles Lua bytecode early,
+-- preloads stall assets, and primes skin previews so first open is instant.
 -- ═══════════════════════════════════════════════════════════════════════════
 setProgress(statusLbl, barFill, "Preparing the War Table...", 0.65)
 pcall(function()
@@ -636,13 +642,86 @@ pcall(function()
 	if sideUIFolder then
 		local moduleNames = {
 			"DailyQuestsUI", "ShopUI", "InventoryUI", "OptionsUI",
-			"UpgradesUI", "BoostsUI", "DailyRewardsUI", "EmoteUI",
+			"BoostsUI", "DailyRewardsUI", "EmoteUI",
 		}
 		for _, name in ipairs(moduleNames) do
 			local mod = sideUIFolder:FindFirstChild(name)
 			if mod and mod:IsA("ModuleScript") then
 				pcall(require, mod)
 			end
+		end
+	end
+end)
+
+pcall(function()
+	local modulesFolder = ReplicatedStorage:FindFirstChild("Modules")
+	if modulesFolder then
+		local forgeModule = modulesFolder:FindFirstChild("ForgeStallUI")
+		if forgeModule and forgeModule:IsA("ModuleScript") then
+			pcall(require, forgeModule)
+		end
+
+		local skinsStallModule = modulesFolder:FindFirstChild("SkinsStallUI")
+		if skinsStallModule and skinsStallModule:IsA("ModuleScript") then
+			local ok, skinsStallUI = pcall(require, skinsStallModule)
+			if ok and skinsStallUI then
+				pcall(function()
+					local stallGui = playerGui:FindFirstChild("SkinsStallGui")
+					if not (stallGui and stallGui:IsA("ScreenGui")) then
+						stallGui = Instance.new("ScreenGui")
+						stallGui.Name = "SkinsStallGui"
+						stallGui.ResetOnSpawn = false
+						stallGui.IgnoreGuiInset = true
+						stallGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+						stallGui.DisplayOrder = 430
+						stallGui.Enabled = true
+						stallGui.Parent = playerGui
+					else
+						stallGui.ResetOnSpawn = false
+						stallGui.IgnoreGuiInset = true
+						stallGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+						stallGui.DisplayOrder = 430
+						stallGui.Enabled = true
+					end
+
+					local existingRoot = stallGui:FindFirstChild("SkinsStallRoot")
+					if existingRoot and existingRoot:IsA("GuiObject") then
+						existingRoot.Visible = false
+					elseif type(skinsStallUI.Create) == "function" then
+						local root = skinsStallUI.Create(stallGui, {
+							onClose = function()
+								local hiddenRoot = stallGui:FindFirstChild("SkinsStallRoot")
+								if hiddenRoot and hiddenRoot:IsA("GuiObject") then
+									hiddenRoot.Visible = false
+								end
+							end,
+						})
+						if root and root:IsA("GuiObject") then
+							root.Visible = false
+						end
+					end
+				end)
+			end
+		end
+
+		local previewModule = modulesFolder:FindFirstChild("StandaloneSkinPreview")
+		if previewModule and previewModule:IsA("ModuleScript") then
+			local ok, preview = pcall(require, previewModule)
+			if ok and preview and type(preview.WarmupAsync) == "function" then
+				pcall(function()
+					preview.WarmupAsync()
+				end)
+			end
+		end
+	end
+end)
+
+pcall(function()
+	local previewFolder = ReplicatedStorage:FindFirstChild("SkinPreviews")
+	if previewFolder then
+		local previewAssets = collectPreloadableAssets(previewFolder)
+		if #previewAssets > 0 then
+			ContentProvider:PreloadAsync(previewAssets)
 		end
 	end
 end)

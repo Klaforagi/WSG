@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -24,7 +25,7 @@ screenGui.Parent = playerGui
 
 local frame = Instance.new("Frame")
 frame.Name = "GameStateFrame"
-frame.Size = UDim2.new(0.14, 0, 0.13, 0)
+frame.Size = UDim2.new(0.14, 0, 0.18, 0)
 -- Right side, clear of top match HUD and bottom action HUD.
 frame.Position = UDim2.new(0.98, 0, 0.44, 0)
 frame.AnchorPoint = Vector2.new(1, 0)
@@ -64,8 +65,8 @@ titleStroke.Transparency = 0.3
 titleStroke.Parent = title
 
 local stateLabel = Instance.new("TextLabel")
-stateLabel.Size = UDim2.new(1, -16, 0.32, 0)
-stateLabel.Position = UDim2.new(0, 8, 0.28, 0)
+stateLabel.Size = UDim2.new(1, -16, 0.24, 0)
+stateLabel.Position = UDim2.new(0, 8, 0.26, 0)
 stateLabel.BackgroundTransparency = 1
 stateLabel.Font = Enum.Font.GothamBlack
 stateLabel.TextScaled = true
@@ -83,8 +84,8 @@ stateLblStroke.Transparency = 0.4
 stateLblStroke.Parent = stateLabel
 
 local playerStateLabel = Instance.new("TextLabel")
-playerStateLabel.Size = UDim2.new(1, -16, 0.32, 0)
-playerStateLabel.Position = UDim2.new(0, 8, 0.60, 0)
+playerStateLabel.Size = UDim2.new(1, -16, 0.20, 0)
+playerStateLabel.Position = UDim2.new(0, 8, 0.52, 0)
 playerStateLabel.BackgroundTransparency = 1
 playerStateLabel.Font = Enum.Font.GothamBold
 playerStateLabel.TextScaled = true
@@ -94,6 +95,19 @@ playerStateLabel.TextXAlignment = Enum.TextXAlignment.Left
 playerStateLabel.TextYAlignment = Enum.TextYAlignment.Center
 playerStateLabel.ClipsDescendants = true
 playerStateLabel.Parent = frame
+
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(1, -16, 0.16, 0)
+speedLabel.Position = UDim2.new(0, 8, 0.74, 0)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Font = Enum.Font.GothamBold
+speedLabel.TextScaled = true
+speedLabel.Text = ""
+speedLabel.TextColor3 = Color3.fromRGB(140, 255, 180)
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.TextYAlignment = Enum.TextYAlignment.Center
+speedLabel.ClipsDescendants = true
+speedLabel.Parent = frame
 
 local function setState(name)
     if not name then name = "Idle" end
@@ -116,6 +130,7 @@ end
 -- initial state
 setState("Idle")
 playerStateLabel.Text = ""
+speedLabel.Text = ""
 
 -- Update player movement state
 local function updatePlayerStateLabel()
@@ -126,6 +141,14 @@ local function updatePlayerStateLabel()
     local state = hum:GetState()
     local stateName = tostring(state):gsub("Enum.HumanoidStateType.", "")
     playerStateLabel.Text = "State: " .. stateName
+end
+
+local function updateSpeedLabel()
+    local char = player.Character
+    if not char then speedLabel.Text = "" return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum then speedLabel.Text = "" return end
+    speedLabel.Text = string.format("Speed: %.2f", hum.WalkSpeed)
 end
 
 -- Listen for state changes
@@ -140,11 +163,16 @@ local function hookHumanoidState()
     end)
     -- set initial
     updatePlayerStateLabel()
+    updateSpeedLabel()
 end
 
 if player.Character then hookHumanoidState() end
 player.CharacterAdded:Connect(function()
     hookHumanoidState()
+end)
+
+RunService.RenderStepped:Connect(function()
+    updateSpeedLabel()
 end)
 
 -- Wire events

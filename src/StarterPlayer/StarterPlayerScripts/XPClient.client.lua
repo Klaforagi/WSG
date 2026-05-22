@@ -4,6 +4,7 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -45,6 +46,52 @@ local COLOR_FILL_RIGHT  = Color3.fromRGB(124, 196, 255)
 local COLOR_LABEL       = Color3.fromRGB(255, 215, 80) -- gold labels
 local COLOR_POPUP       = Color3.fromRGB(255, 215, 80)
 local COLOR_LEVELUP     = Color3.fromRGB(255, 235, 120)
+local currentXP         = 0
+local currentXPToNext   = 100
+
+local levelUpSoundWarned = false
+local cachedLevelUpSoundTemplate = nil
+
+local function findLevelUpSoundTemplate()
+    if cachedLevelUpSoundTemplate and cachedLevelUpSoundTemplate.Parent then
+        return cachedLevelUpSoundTemplate
+    end
+
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    if not soundsFolder then
+        return nil
+    end
+
+    local template = soundsFolder:FindFirstChild("LevelUp")
+    if not template then
+        template = soundsFolder:FindFirstChild("LevelUp", true)
+    end
+    if template and template:IsA("Sound") then
+        cachedLevelUpSoundTemplate = template
+        return template
+    end
+    return nil
+end
+
+local function playLevelUpSound()
+    local template = findLevelUpSoundTemplate()
+    if not template then
+        if not levelUpSoundWarned then
+            levelUpSoundWarned = true
+            warn("[XPClient] ReplicatedStorage.Sounds.LevelUp not found - global level-up sound disabled")
+        end
+        return
+    end
+
+    local clone = template:Clone()
+    clone.Parent = SoundService
+    clone:Play()
+    task.delay(math.max(1, (clone.TimeLength or 1) + 0.25), function()
+        if clone and clone.Parent then
+            clone:Destroy()
+        end
+    end)
+end
 
 --------------------------------------------------------------------------------
 -- SCREEN GUI
@@ -497,8 +544,6 @@ end
 -- STATE
 --------------------------------------------------------------------------------
 local currentLevel    = 1
-local currentXP       = 0
-local currentXPToNext = 100
 local isLevelingUp    = false
 local pendingFraction = nil
 
@@ -704,6 +749,8 @@ local function onLevelUp(payload)
     if not payload then return end
     local newLevel = payload.newLevel
     local userId   = payload.playerUserId
+
+    playLevelUpSound()
 
     -- World effects: spawn for whoever leveled up, on every client
     if userId then

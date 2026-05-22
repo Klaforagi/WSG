@@ -17,6 +17,7 @@
 --   QuestService:IncrementQuest(player, questId, amount)
 --   QuestService:IncrementByType(player, trackType, amount)
 --   QuestService:ClaimReward(player, questId) -> bool success
+--   QuestService:ResetAllQuests(player) -> bool, string, updatedQuests
 --   QuestService:RerollQuest(player, questIndex) -> bool, string, updatedQuests
 --------------------------------------------------------------------------------
 
@@ -102,9 +103,55 @@ end
 -- Number of daily quests assigned per day (picks from different track types)
 local DAILY_QUEST_COUNT = 3
 
-local function assignQuestOrder()
+local function normalizeQuestIdSet(questIds)
+    local questIdSet = {}
+    if type(questIds) ~= "table" then
+        return questIdSet
+    end
+
+    for key, value in pairs(questIds) do
+        if type(key) == "string" then
+            if value then
+                questIdSet[key] = true
+            end
+        elseif type(value) == "string" then
+            questIdSet[value] = true
+        end
+    end
+
+    return questIdSet
+end
+
+local function pickQuestId(defs, usedQuestIds, excludedQuestIds, allowExcluded)
+    local candidates = {}
+    for _, def in ipairs(defs) do
+        if not usedQuestIds[def.id] and (allowExcluded or not excludedQuestIds[def.id]) then
+            table.insert(candidates, def.id)
+        end
+    end
+
+    if #candidates == 0 then
+        return nil
+    end
+
+    shuffleInPlace(candidates)
+    return candidates[1]
+end
+
+local function addQuestIdToOrder(order, usedQuestIds, questId)
+    if not questId or usedQuestIds[questId] then
+        return false
+    end
+
+    usedQuestIds[questId] = true
+    table.insert(order, questId)
+    return true
+end
+
+local function assignQuestOrder(excludedQuestIds)
     local order = {}
     local usedQuestIds = {}
+    local excludedQuestIdSet = normalizeQuestIdSet(excludedQuestIds)
 
     -- Shuffle track types so each day features a different mix
     local shuffledTracks = table.clone(DEFAULT_TRACK_ORDER)
@@ -114,16 +161,28 @@ local function assignQuestOrder()
         if #order >= DAILY_QUEST_COUNT then break end
         local pool = QUEST_DEFS_BY_TRACK[trackType]
         if pool and #pool > 0 then
-            local candidates = table.clone(pool)
-            shuffleInPlace(candidates)
-            for _, def in ipairs(candidates) do
-                if not usedQuestIds[def.id] then
-                    usedQuestIds[def.id] = true
-                    table.insert(order, def.id)
-                    break
-                end
+            local questId = pickQuestId(pool, usedQuestIds, excludedQuestIdSet, false)
+            if not questId then
+                questId = pickQuestId(pool, usedQuestIds, excludedQuestIdSet, true)
             end
+            addQuestIdToOrder(order, usedQuestIds, questId)
         end
+    end
+
+    while #order < DAILY_QUEST_COUNT do
+        local questId = pickQuestId(QUEST_DEFS, usedQuestIds, excludedQuestIdSet, false)
+        if not questId then
+            break
+        end
+        addQuestIdToOrder(order, usedQuestIds, questId)
+    end
+
+    while #order < DAILY_QUEST_COUNT do
+        local questId = pickQuestId(QUEST_DEFS, usedQuestIds, excludedQuestIdSet, true)
+        if not questId then
+            break
+        end
+        addQuestIdToOrder(order, usedQuestIds, questId)
     end
 
     return order
@@ -455,12 +514,36 @@ function QuestService:ClaimReward(player, questId)
 
     state.claimed = true
     markDirty(player)
-
-    -- Force immediate save after claim
     task.spawn(function()
         QuestService:SaveForPlayer(player)
     end)
     return true
+end
+
+function QuestService:ResetAllQuests(player)
+    local pd = ensurePlayerData(player)
+    if not pd then
+        return false, "Quest data unavailable", {}
+    end
+
+    local previousOrder = table.clone(pd.questOrder)
+    local newOrder = assignQuestOrder(previousOrder)
+    if #newOrder < DAILY_QUEST_COUNT then
+        return false, "No alternative quests available", self:GetQuestsForPlayer(player)
+    end
+
+    pd.questOrder = newOrder
+    pd.quests = buildQuestState(newOrder)
+    markDirty(player)
+
+    local coordinator = getSaveCoordinator()
+    if coordinator then
+        coordinator:RequestImmediateSave(player, "daily_quest_reset", {
+            force = true,
+        })
+    end
+
+    return true, "Daily quests reset", self:GetQuestsForPlayer(player)
 end
 
 function QuestService:RerollQuest(player, questIndex)

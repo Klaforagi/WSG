@@ -4,8 +4,8 @@
 	- Adds a polished overhead health bar to every mob (not players).
 	- Visual animations (smooth tween, damage lag bar, hit flash) are handled
 	  client-side in MobHealthBar.client.lua.
-	Mob detection: CollectionService tag "ZombieNPC", OR model name "Dummy",
-	               OR Humanoid + attribute IsMob = true.
+	Mob detection: CollectionService tag "ZombieNPC" or "PracticeDummy",
+	               OR model name "Dummy", OR Humanoid + attribute IsMob = true.
 --]]
 
 local Players           = game:GetService("Players")
@@ -16,6 +16,7 @@ local Workspace         = game:GetService("Workspace")
 -- Constants
 ------------------------------------------------------------------------
 local MOB_TAG        = "ZombieNPC"
+local PRACTICE_DUMMY_TAG = "PracticeDummy"
 local BILLBOARD_NAME = "MobOverheadHealth"
 local BILLBOARD_SIZE = UDim2.fromOffset(200, 50)
 local STUDS_OFFSET   = Vector3.new(0, 3.5, 0)
@@ -41,6 +42,7 @@ local function isMob(model)
 	end
 	-- Tag check
 	if CollectionService:HasTag(model, MOB_TAG) then return true end
+	if CollectionService:HasTag(model, PRACTICE_DUMMY_TAG) then return true end
 	-- Name check
 	if model.Name == "Dummy" then return true end
 	-- Attribute check
@@ -287,6 +289,9 @@ local function attachMobUI(model)
 		return
 	end
 
+	if model:GetAttribute("_mobOverheadAttached") then return end
+	model:SetAttribute("_mobOverheadAttached", true)
+
 	-- Reuse existing billboard if present
 	local billboard = attachPart:FindFirstChild(BILLBOARD_NAME)
 		or buildBillboard(attachPart, model.Name)
@@ -370,6 +375,14 @@ end
 -- Future tagged mobs
 CollectionService:GetInstanceAddedSignal(MOB_TAG):Connect(function(model)
 	-- Wait one frame so the model is fully parented/set up
+	task.defer(function()
+		if isMob(model) then
+			attachMobUI(model)
+		end
+	end)
+end)
+
+CollectionService:GetInstanceAddedSignal(PRACTICE_DUMMY_TAG):Connect(function(model)
 	task.defer(function()
 		if isMob(model) then
 			attachMobUI(model)

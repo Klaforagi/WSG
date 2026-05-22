@@ -37,13 +37,19 @@ local function collectAnimationIds()
 		end
 	end)
 
-	if ok and meleeModule and meleeModule.presets then
-		for _, preset in pairs(meleeModule.presets) do
-			add(preset.swing_anim_id)
+	if ok and meleeModule then
+		if type(meleeModule.getAllSwingAnimationIds) == "function" then
+			for _, id in ipairs(meleeModule.getAllSwingAnimationIds()) do
+				add(id)
+			end
+		elseif meleeModule.presets then
+			for _, preset in pairs(meleeModule.presets) do
+				add(preset.swing_anim_id)
 
-			if type(preset.swing_anim_ids) == "table" then
-				for _, id in ipairs(preset.swing_anim_ids) do
-					add(id)
+				if type(preset.swing_anim_ids) == "table" then
+					for _, id in ipairs(preset.swing_anim_ids) do
+						add(id)
+					end
 				end
 			end
 		end

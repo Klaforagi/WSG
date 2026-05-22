@@ -86,6 +86,28 @@ local function pxWidth(base)
     return math.max(1, math.round(base * screenX / 1920))
 end
 
+local function ensureTextSizeConstraint(label, minTextSize, maxTextSize)
+    local constraint = label:FindFirstChild("AutoFitTextConstraint")
+    if constraint and not constraint:IsA("UITextSizeConstraint") then
+        constraint:Destroy()
+        constraint = nil
+    end
+    if not constraint then
+        constraint = Instance.new("UITextSizeConstraint")
+        constraint.Name = "AutoFitTextConstraint"
+        constraint.Parent = label
+    end
+
+    constraint.MinTextSize = math.max(8, math.floor(tonumber(minTextSize) or 8))
+    constraint.MaxTextSize = math.max(constraint.MinTextSize, math.floor(tonumber(maxTextSize) or constraint.MinTextSize))
+    return constraint
+end
+
+local function configureAutoFitText(label, minTextSize, maxTextSize)
+    label.TextScaled = true
+    ensureTextSizeConstraint(label, minTextSize, maxTextSize)
+end
+
 -- Colors
 local GOLD      = Color3.fromRGB(255, 215, 80)
 local WHITE     = Color3.fromRGB(255, 255, 255)
@@ -93,9 +115,11 @@ local DIM_TEXT  = Color3.fromRGB(140, 140, 160)
 local CARD_BG   = Color3.fromRGB(26, 30, 48)
 local OVERLAY_C = Color3.fromRGB(10, 10, 26)
 
-local CARD_W = 160  -- base card width
-local CARD_H = 200  -- base card height
-local CARD_GAP = 10  -- gap between cards
+local CARD_SCALE = 1.5
+local CARD_W = 160 * CARD_SCALE  -- base card width
+local CARD_H = 200 * CARD_SCALE  -- base card height
+local CARD_GAP = 10 * CARD_SCALE  -- gap between cards
+local ROLLING_TEXT_SCALE = 3
 local STRIP_CARDS = 40  -- total cards in the roulette strip
 local WINNING_INDEX = 30 -- card index where the winner is placed (near end for nice decel)
 
@@ -182,10 +206,10 @@ local function rollVisualSizeForCrate(crateDef)
     return sizePercent, sizeTier
 end
 
-local function rollVisualEnchant()
+local function rollVisualEnchant(rarityName)
     if WeaponEnchantConfig and type(WeaponEnchantConfig.RollEnchant) == "function" then
         local ok, enchantName = pcall(function()
-            return WeaponEnchantConfig.RollEnchant()
+            return WeaponEnchantConfig.RollEnchant(rarityName)
         end)
         if ok then return enchantName or "" end
     end
@@ -270,7 +294,7 @@ local function buildStrip(crateDef, resultData)
             if ok then sizeTier = result end
         end
         if enchantName == nil then
-            enchantName = rollVisualEnchant()
+            enchantName = rollVisualEnchant(rarity)
         end
 
         return {
@@ -300,6 +324,10 @@ end
 function CrateOpeningUI.Init(playerGui)
     if not playerGui then return end
 
+    local closeOverlay
+    local resultShownCallback = nil
+    local decisionInFlight = false
+
     -- ScreenGui
     local screen = Instance.new("ScreenGui")
     screen.Name = "CrateOpenScreen"
@@ -308,6 +336,9 @@ function CrateOpeningUI.Init(playerGui)
     screen.IgnoreGuiInset = true
     screen.Enabled = false
     screen.Parent = playerGui
+    _G.IsCrateRewardSequenceActive = function()
+        return screen.Enabled == true or decisionInFlight == true
+    end
     -- Register with MenuController so the global menu-lock system knows
     -- when the crate opening screen is active.
     local CrateMC = nil
@@ -319,10 +350,10 @@ function CrateOpeningUI.Init(playerGui)
         CrateMC.RegisterMenu("CrateOpening", {
             open = function() end, -- opened by Play() directly
             close = function()
-                if screen.Enabled then screen.Enabled = false end
+                if screen.Enabled and closeOverlay then closeOverlay() end
             end,
             closeInstant = function()
-                if screen.Enabled then screen.Enabled = false end
+                if screen.Enabled and closeOverlay then closeOverlay() end
             end,
             isOpen = function()
                 return screen.Enabled
@@ -441,9 +472,11 @@ function CrateOpeningUI.Init(playerGui)
     resultName.TextColor3 = WHITE
     resultName.TextSize = math.max(24, math.floor(px(28)))
     resultName.TextWrapped = true
-    resultName.Size = UDim2.new(1, 0, 0, px(36))
-    resultName.Position = UDim2.new(0, 0, 0, px(150))
+    resultName.Size = UDim2.new(0.84, 0, 0, px(42))
+    resultName.AnchorPoint = Vector2.new(0.5, 0)
+    resultName.Position = UDim2.new(0.5, 0, 0, px(170))
     resultName.TextXAlignment = Enum.TextXAlignment.Center
+    resultName.TextYAlignment = Enum.TextYAlignment.Center
     resultName.ZIndex = 21
     resultName.Parent = resultFrame
 
@@ -454,9 +487,11 @@ function CrateOpeningUI.Init(playerGui)
     resultRarity.Text = "Common"
     resultRarity.TextColor3 = DIM_TEXT
     resultRarity.TextSize = math.max(14, math.floor(px(16)))
-    resultRarity.Size = UDim2.new(1, 0, 0, px(22))
-    resultRarity.Position = UDim2.new(0, 0, 0, px(192))
+    resultRarity.Size = UDim2.new(0.84, 0, 0, px(24))
+    resultRarity.AnchorPoint = Vector2.new(0.5, 0)
+    resultRarity.Position = UDim2.new(0.5, 0, 0, px(216))
     resultRarity.TextXAlignment = Enum.TextXAlignment.Center
+    resultRarity.TextYAlignment = Enum.TextYAlignment.Center
     resultRarity.ZIndex = 21
     resultRarity.Parent = resultFrame
 
@@ -468,9 +503,11 @@ function CrateOpeningUI.Init(playerGui)
     resultSizeLabel.Text = ""
     resultSizeLabel.TextColor3 = GOLD
     resultSizeLabel.TextSize = math.max(18, math.floor(px(22)))
-    resultSizeLabel.Size = UDim2.new(1, 0, 0, px(26))
-    resultSizeLabel.Position = UDim2.new(0, 0, 0, px(218))
+    resultSizeLabel.Size = UDim2.new(0.84, 0, 0, px(28))
+    resultSizeLabel.AnchorPoint = Vector2.new(0.5, 0)
+    resultSizeLabel.Position = UDim2.new(0.5, 0, 0, px(244))
     resultSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+    resultSizeLabel.TextYAlignment = Enum.TextYAlignment.Center
     resultSizeLabel.ZIndex = 21
     resultSizeLabel.Parent = resultFrame
 
@@ -482,9 +519,11 @@ function CrateOpeningUI.Init(playerGui)
     resultEnchantLabel.Text = ""
     resultEnchantLabel.TextColor3 = GOLD
     resultEnchantLabel.TextSize = math.max(16, math.floor(px(18)))
-    resultEnchantLabel.Size = UDim2.new(1, 0, 0, px(24))
-    resultEnchantLabel.Position = UDim2.new(0, 0, 0, px(244))
+    resultEnchantLabel.Size = UDim2.new(0.84, 0, 0, px(26))
+    resultEnchantLabel.AnchorPoint = Vector2.new(0.5, 0)
+    resultEnchantLabel.Position = UDim2.new(0.5, 0, 0, px(272))
     resultEnchantLabel.TextXAlignment = Enum.TextXAlignment.Center
+    resultEnchantLabel.TextYAlignment = Enum.TextYAlignment.Center
     resultEnchantLabel.ZIndex = 21
     resultEnchantLabel.Parent = resultFrame
 
@@ -617,7 +656,7 @@ function CrateOpeningUI.Init(playerGui)
             label.Text = displayText
         end
     end
-    setSalvageButtonText("SALVAGE +0")
+    setSalvageButtonText("DISMANTLE +0")
 
     ---------------------------------------------------------------------------
     -- SALVAGE CONFIRMATION OVERLAY (for Rare+ items)
@@ -647,7 +686,7 @@ function CrateOpeningUI.Init(playerGui)
     confirmMsg.Name = "Message"
     confirmMsg.BackgroundTransparency = 1
     confirmMsg.Font = Enum.Font.GothamBold
-    confirmMsg.Text = "Salvage this weapon?"
+    confirmMsg.Text = "Dismantle this weapon?"
     confirmMsg.TextColor3 = WHITE
     confirmMsg.TextSize = math.max(14, math.floor(px(16)))
     confirmMsg.TextWrapped = true
@@ -723,20 +762,20 @@ function CrateOpeningUI.Init(playerGui)
         resultImage.Position = UDim2.new(0.5, 0, 0, px(42))
 
         resultName.TextSize = math.max(24, math.floor(px(28)))
-        resultName.Size = UDim2.new(1, -pxWidth(16), 0, px(40))
-        resultName.Position = UDim2.new(0, pxWidth(8), 0, px(150))
+        resultName.Size = UDim2.new(0.84, 0, 0, px(44))
+        resultName.Position = UDim2.new(0.5, 0, 0, px(170))
 
         resultRarity.TextSize = math.max(14, math.floor(px(16)))
-        resultRarity.Size = UDim2.new(1, 0, 0, px(22))
-        resultRarity.Position = UDim2.new(0, 0, 0, px(194))
+        resultRarity.Size = UDim2.new(0.84, 0, 0, px(24))
+        resultRarity.Position = UDim2.new(0.5, 0, 0, px(216))
 
         resultSizeLabel.TextSize = math.max(18, math.floor(px(22)))
-        resultSizeLabel.Size = UDim2.new(1, 0, 0, px(26))
-        resultSizeLabel.Position = UDim2.new(0, 0, 0, px(222))
+        resultSizeLabel.Size = UDim2.new(0.84, 0, 0, px(28))
+        resultSizeLabel.Position = UDim2.new(0.5, 0, 0, px(244))
 
         resultEnchantLabel.TextSize = math.max(16, math.floor(px(18)))
-        resultEnchantLabel.Size = UDim2.new(1, 0, 0, px(24))
-        resultEnchantLabel.Position = UDim2.new(0, 0, 0, px(248))
+        resultEnchantLabel.Size = UDim2.new(0.84, 0, 0, px(26))
+        resultEnchantLabel.Position = UDim2.new(0.5, 0, 0, px(272))
 
         closeBtn.TextSize = math.max(14, math.floor(px(16)))
         closeBtn.Size = UDim2.new(0, math.max(px(140), pxWidth(160)), 0, px(40))
@@ -864,14 +903,18 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     -- Close handler
     ---------------------------------------------------------------------------
-    local function closeOverlay()
+    closeOverlay = function(preserveDecisionState)
         screen.Enabled = false
         resultFrame.Visible = false
         btnRow.Visible = false
         confirmFrame.Visible = false
         closeBtn.Visible = false
         currentResultData = nil
-        decisionDebounce = false
+        if not preserveDecisionState then
+            decisionDebounce = false
+            decisionInFlight = false
+        end
+        resultShownCallback = nil
         -- Clear strip children
         for _, c in ipairs(strip:GetChildren()) do
             pcall(function() c:Destroy() end)
@@ -904,26 +947,31 @@ function CrateOpeningUI.Init(playerGui)
     keepBtn.MouseButton1Click:Connect(function()
         if decisionDebounce then return end
         if not currentResultData then return end
-        decisionDebounce = true
 
         local rf = getKeepRemote()
         if not rf then
             warn("[CrateOpeningUI] KeepCrateReward remote not found")
-            decisionDebounce = false
             return
         end
 
-        local ok, success, result = pcall(function()
-            return rf:InvokeServer()
+        decisionDebounce = true
+        decisionInFlight = true
+        closeOverlay(true)
+
+        task.spawn(function()
+            local ok, success, result = pcall(function()
+                return rf:InvokeServer()
+            end)
+
+            if ok and success then
+                print("[CrateReward] Keep selected — weapon added to inventory")
+            else
+                warn("[CrateOpeningUI] Keep failed:", ok and result or "pcall error")
+            end
+
+            decisionInFlight = false
+            decisionDebounce = false
         end)
-
-        if ok and success then
-            print("[CrateReward] Keep selected — weapon added to inventory")
-        else
-            warn("[CrateOpeningUI] Keep failed:", ok and result or "pcall error")
-        end
-
-        closeOverlay()
     end)
 
     ---------------------------------------------------------------------------
@@ -931,30 +979,35 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     local function doSalvage()
         if decisionDebounce then return end
-        decisionDebounce = true
 
         local rf = getSalvageRemote()
         if not rf then
             warn("[CrateOpeningUI] SalvageCrateReward remote not found")
-            decisionDebounce = false
             return
         end
 
-        local ok, success, result = pcall(function()
-            return rf:InvokeServer()
-        end)
+        decisionDebounce = true
+        decisionInFlight = true
+        closeOverlay(true)
 
-        if ok and success and type(result) == "table" then
-            print("[CrateReward] Salvage selected — awarded " .. tostring(result.awarded))
-            -- Update salvage balance display if available
-            pcall(function()
-                if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+        task.spawn(function()
+            local ok, success, result = pcall(function()
+                return rf:InvokeServer()
             end)
-        else
-            warn("[CrateOpeningUI] Salvage failed:", ok and result or "pcall error")
-        end
 
-        closeOverlay()
+            if ok and success and type(result) == "table" then
+                print("[CrateReward] Salvage selected — awarded " .. tostring(result.awarded))
+                -- Update salvage balance display if available
+                pcall(function()
+                    if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
+                end)
+            else
+                warn("[CrateOpeningUI] Salvage failed:", ok and result or "pcall error")
+            end
+
+            decisionInFlight = false
+            decisionDebounce = false
+        end)
     end
 
     salvageBtn.MouseButton1Click:Connect(function()
@@ -966,8 +1019,8 @@ function CrateOpeningUI.Init(playerGui)
         if rarity ~= "Common" then
             local salvVal = currentResultData.salvageValue or 0
             confirmMsg.Text = string.format(
-                'Are you sure you want to salvage\nthis %s weapon for %d %s?',
-                rarity, salvVal, "\u{2699}"
+                "Are you sure you want to dismantle\nthis %s weapon for %d Shards?",
+                rarity, salvVal
             )
             print("[CrateReward] Salvage confirmation required for rarity: " .. rarity)
             confirmFrame.Visible = true
@@ -996,6 +1049,17 @@ function CrateOpeningUI.Init(playerGui)
         local cw = px(CARD_W)
         local ch = px(CARD_H)
         local gap = px(CARD_GAP)
+        local weaponNameTextSize = math.max(27, math.floor(px(11 * ROLLING_TEXT_SCALE)))
+        local weaponNameMinTextSize = math.max(10, math.floor(weaponNameTextSize * 0.38))
+        local modifierTextSize = math.max(30, math.floor(px(12 * ROLLING_TEXT_SCALE)))
+        local modifierMinTextSize = math.max(12, math.floor(modifierTextSize * 0.44))
+        local enchantTextSize = math.max(27, math.floor(px(11 * ROLLING_TEXT_SCALE)))
+        local enchantMinTextSize = math.max(10, math.floor(enchantTextSize * 0.44))
+        local resolvedSizeTier = tostring(data.sizeTier or "Normal")
+        local isNormalSizeTier = string.lower(resolvedSizeTier) == "normal"
+        local isTinySizeTier = string.lower(resolvedSizeTier) == "tiny"
+        local sizeLabelTextSize = isTinySizeTier and math.max(15, math.floor(modifierTextSize * 0.5)) or modifierTextSize
+        local sizeLabelMinTextSize = isTinySizeTier and math.max(8, math.floor(modifierMinTextSize * 0.5)) or modifierMinTextSize
 
         local card = Instance.new("Frame")
         card.Name = "Card_" .. index
@@ -1033,9 +1097,9 @@ function CrateOpeningUI.Init(playerGui)
         local thumb = Instance.new("ImageLabel")
         thumb.Name = "Thumb"
         thumb.BackgroundTransparency = 1
-        thumb.Size = UDim2.new(0.58, 0, 0.42, 0)
+        thumb.Size = UDim2.new(0.46, 0, 0.31, 0)
         thumb.AnchorPoint = Vector2.new(0.5, 0)
-        thumb.Position = UDim2.new(0.5, 0, 0, px(12))
+        thumb.Position = UDim2.new(0.5, 0, 0, px(14))
         thumb.ScaleType = Enum.ScaleType.Fit
         thumb.ZIndex = 8
         thumb.Parent = card
@@ -1052,28 +1116,32 @@ function CrateOpeningUI.Init(playerGui)
         wname.Font = Enum.Font.GothamBold
         wname.Text = data.weapon
         wname.TextColor3 = WHITE
-        wname.TextSize = math.max(11, math.floor(px(13)))
-        wname.TextWrapped = true
-        wname.Size = UDim2.new(0.9, 0, 0, px(30))
+        wname.TextSize = weaponNameTextSize
+        wname.TextScaled = true
+        wname.TextWrapped = false
+        wname.Size = UDim2.new(0.92, 0, 0, px(42))
         wname.AnchorPoint = Vector2.new(0.5, 0)
-        wname.Position = UDim2.new(0.5, 0, 0.54, 0)
+        wname.Position = UDim2.new(0.5, 0, 0, px(124))
         wname.TextXAlignment = Enum.TextXAlignment.Center
-        wname.TextYAlignment = Enum.TextYAlignment.Top
+        wname.TextYAlignment = Enum.TextYAlignment.Center
         wname.ZIndex = 8
         wname.Parent = card
+        configureAutoFitText(wname, weaponNameMinTextSize, weaponNameTextSize)
 
         local modifierBox = Instance.new("Frame")
         modifierBox.Name = "ModifierBox"
         modifierBox.BackgroundTransparency = 1
-        modifierBox.Size = UDim2.new(0.9, 0, 0, px(36))
+        modifierBox.Size = UDim2.new(0.92, 0, 0, px(36))
         modifierBox.AnchorPoint = Vector2.new(0.5, 0)
-        modifierBox.Position = UDim2.new(0.5, 0, 0.70, 0)
+        modifierBox.Position = UDim2.new(0.5, 0, 0, px(218))
         modifierBox.ZIndex = 8
         modifierBox.Parent = card
 
         local sizeText = ""
         if data.sizePercent then
-            if SizeRollService and type(SizeRollService.FormatSizeDisplay) == "function" then
+            if isNormalSizeTier then
+                sizeText = string.format("%d%%", math.floor(tonumber(data.sizePercent) or 0))
+            elseif SizeRollService and type(SizeRollService.FormatSizeDisplay) == "function" then
                 sizeText = SizeRollService.FormatSizeDisplay(data.sizePercent, data.sizeTier)
             else
                 sizeText = string.format("%s %d%%", data.sizeTier or "Normal", math.floor(data.sizePercent))
@@ -1085,15 +1153,21 @@ function CrateOpeningUI.Init(playerGui)
         sizeLabel.Font = Enum.Font.GothamBold
         sizeLabel.Text = sizeText
         sizeLabel.TextColor3 = WHITE
-        sizeLabel.TextSize = math.max(10, math.floor(px(12)))
-        sizeLabel.Size = UDim2.new(1, 0, 0, px(16))
+        sizeLabel.TextSize = sizeLabelTextSize
+        sizeLabel.TextScaled = true
+        sizeLabel.Size = UDim2.new(1, 0, 1, 0)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Center
         sizeLabel.TextYAlignment = Enum.TextYAlignment.Center
         sizeLabel.ZIndex = 9
         sizeLabel.Parent = modifierBox
+        configureAutoFitText(sizeLabel, sizeLabelMinTextSize, sizeLabelTextSize)
 
-        if EnchantTextStyler then
-            EnchantTextStyler.ApplySize(sizeLabel, data.sizeTier or "Normal", sizeText)
+        if isNormalSizeTier then
+            sizeLabel.RichText = false
+            sizeLabel.Font = wname.Font
+            sizeLabel.TextColor3 = wname.TextColor3
+        elseif EnchantTextStyler then
+            EnchantTextStyler.ApplySize(sizeLabel, resolvedSizeTier, sizeText)
         end
 
         local enchantName = (data.enchantName and data.enchantName ~= "") and tostring(data.enchantName) or ""
@@ -1103,13 +1177,16 @@ function CrateOpeningUI.Init(playerGui)
         enchantLabel.Font = Enum.Font.GothamBold
         enchantLabel.Text = enchantName
         enchantLabel.TextColor3 = enchantName ~= "" and WHITE or DIM_TEXT
-        enchantLabel.TextSize = math.max(9, math.floor(px(11)))
-        enchantLabel.Size = UDim2.new(1, 0, 0, px(15))
-        enchantLabel.Position = UDim2.new(0, 0, 0, px(16))
+        enchantLabel.TextSize = enchantTextSize
+        enchantLabel.TextScaled = true
+        enchantLabel.Size = UDim2.new(0.92, 0, 0, px(28))
+        enchantLabel.AnchorPoint = Vector2.new(0.5, 1)
+        enchantLabel.Position = UDim2.new(0.5, 0, 1, -px(8))
         enchantLabel.TextXAlignment = Enum.TextXAlignment.Center
         enchantLabel.TextYAlignment = Enum.TextYAlignment.Center
         enchantLabel.ZIndex = 9
-        enchantLabel.Parent = modifierBox
+        enchantLabel.Parent = card
+        configureAutoFitText(enchantLabel, enchantMinTextSize, enchantTextSize)
 
         if EnchantTextStyler then
             EnchantTextStyler.Apply(enchantLabel, enchantName)
@@ -1121,20 +1198,6 @@ function CrateOpeningUI.Init(playerGui)
             enchantStroke.Parent = enchantLabel
         end
 
-        -- Rarity label
-        local rlbl = Instance.new("TextLabel")
-        rlbl.BackgroundTransparency = 1
-        rlbl.Font = Enum.Font.GothamBold
-        rlbl.Text = data.rarity
-        rlbl.TextColor3 = rarityColor(data.rarity)
-        rlbl.TextSize = math.max(10, math.floor(px(11)))
-        rlbl.Size = UDim2.new(1, 0, 0, px(14))
-        rlbl.AnchorPoint = Vector2.new(0.5, 1)
-        rlbl.Position = UDim2.new(0.5, 0, 1, -px(4))
-        rlbl.TextXAlignment = Enum.TextXAlignment.Center
-        rlbl.ZIndex = 8
-        rlbl.Parent = card
-
         return card
     end
 
@@ -1142,9 +1205,10 @@ function CrateOpeningUI.Init(playerGui)
     -- PLAY ANIMATION
     -- Called with the server result after the server confirms the crate open.
     ---------------------------------------------------------------------------
-    function CrateOpeningUI.Play(crateId, resultData, coinApi)
+    function CrateOpeningUI.Play(crateId, resultData, coinApi, onResultShown)
         if isAnimating then return end
         isAnimating = true
+        resultShownCallback = onResultShown
 
         applyResponsiveLayout()
 
@@ -1159,6 +1223,7 @@ function CrateOpeningUI.Init(playerGui)
         local stripData = buildStrip(crateDef, resultData)
         if #stripData == 0 then
             isAnimating = false
+            resultShownCallback = nil
             return
         end
 
@@ -1242,13 +1307,6 @@ function CrateOpeningUI.Init(playerGui)
             end
         end)
 
-        -- Animate: ease-out quint for deceleration feel
-        local spinDuration = 3.5
-        local tweenInfo = TweenInfo.new(spinDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
-        activeTween = TweenService:Create(strip, tweenInfo, {
-            Position = UDim2.new(0, targetOffset, 0, 0)
-        })
-
         -- Per-frame tick: play sound each time a new card crosses the center marker
         local lastCardIndex = -1
         local tickConn = nil
@@ -1275,9 +1333,7 @@ function CrateOpeningUI.Init(playerGui)
             end
         end)
 
-        activeTween:Play()
-
-        completedConn = activeTween.Completed:Once(function()
+        local function finishSpin()
             -- Disconnect tick listener
             if tickConn then
                 tickConn:Disconnect()
@@ -1343,7 +1399,7 @@ function CrateOpeningUI.Init(playerGui)
             if resultData.isPending then
                 -- Pending reward: show Keep/Salvage decision
                 local salvVal = resultData.salvageValue or 0
-                setSalvageButtonText("SALVAGE +" .. tostring(salvVal))
+                setSalvageButtonText("DISMANTLE +" .. tostring(salvVal))
                 btnRow.Visible = true
                 confirmFrame.Visible = false
                 closeBtn.Visible = false
@@ -1363,11 +1419,34 @@ function CrateOpeningUI.Init(playerGui)
                 pcall(function() coinApi.SetKeys(resultData.newKeyBalance) end)
             end
             pcall(function()
-                if _G.UpdateShopHeaderCoins then _G.UpdateShopHeaderCoins() end
+                if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
             end)
 
+            local callback = resultShownCallback
+            resultShownCallback = nil
+            if type(callback) == "function" then
+                task.spawn(function()
+                    pcall(callback, resultData)
+                end)
+            end
+
             isAnimating = false
+        end
+
+        local spinDuration = 4.5 * 1.15
+        local tweenInfo = TweenInfo.new(spinDuration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+        activeTween = TweenService:Create(strip, tweenInfo, {
+            Position = UDim2.new(0, targetOffset, 0, 0)
+        })
+
+        completedConn = activeTween.Completed:Once(function(playbackState)
+            if playbackState ~= Enum.PlaybackState.Completed then
+                return
+            end
+            finishSpin()
         end)
+
+        activeTween:Play()
     end
 
     ---------------------------------------------------------------------------
@@ -1376,9 +1455,9 @@ function CrateOpeningUI.Init(playerGui)
 
     -- Direct animation trigger (no server call) for pre-rolled results
     -- Used by salvage crate purchases that already handled payment + rolling.
-    _G.PlayCrateAnimation = function(crateId, resultData)
+    _G.PlayCrateAnimation = function(crateId, resultData, onResultShown)
         if isAnimating then return end
-        CrateOpeningUI.Play(crateId, resultData, _G.CrateOpeningCoinApi)
+        CrateOpeningUI.Play(crateId, resultData, _G.CrateOpeningCoinApi, onResultShown)
     end
 
     _G.OpenCrateRequested = function(crateId)

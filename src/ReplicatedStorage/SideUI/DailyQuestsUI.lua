@@ -2791,6 +2791,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
     ---------------------------------------------------------------------------
     local headerBar = parent and parent.Parent and parent.Parent:FindFirstChild("HeaderBar")
     local apLabel  -- forward-declared for use in event handlers
+    local apSummaryValueLabel
+
+    local function updateAchievementPointLabels()
+        local apText = FormatInt(playerAchievementPoints) .. " AP"
+        if apLabel and apLabel.Parent then
+            apLabel.Text = apText
+        end
+        if apSummaryValueLabel and apSummaryValueLabel.Parent then
+            apSummaryValueLabel.Text = apText
+        end
+    end
 
     if headerBar then
         -- Clean up any previous AP display from a prior UI build
@@ -2843,6 +2854,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         apLabel.Position            = UDim2.new(1, -px(6), 0, 0)
         apLabel.ZIndex              = 276
         apLabel.Parent              = apDisplayFrame
+        updateAchievementPointLabels()
     end
 
     -- Showcase layout: left category cards + right content panel
@@ -3361,9 +3373,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     local apOk, apVal = pcall(function() return getAchievPointsRF:InvokeServer() end)
                     if apOk and apVal then
                         playerAchievementPoints = tonumber(apVal) or playerAchievementPoints
-                        if apLabel and apLabel.Parent then
-                            apLabel.Text = FormatInt(playerAchievementPoints) .. " AP"
-                        end
+                        updateAchievementPointLabels()
                     end
                 end
                 -- Update indicator dots after claim
@@ -3391,11 +3401,79 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                 pcall(function() c:Destroy() end)
             end
         end
+        apSummaryValueLabel = nil
         if not preserveScroll then
             -- Reset canvas position to top (default behavior for category
             -- switches / opening the menu).
             contentPanel.CanvasPosition = Vector2.new(0, 0)
         end
+    end
+
+    local function buildAchievementPointsCard(layoutOrder)
+        local summaryCard = Instance.new("Frame")
+        summaryCard.Name = "AchievementPointsSummary"
+        summaryCard.BackgroundColor3 = ROW_BG
+        summaryCard.Size = UDim2.new(1, 0, 0, px(82))
+        summaryCard.LayoutOrder = layoutOrder or 5
+        summaryCard.Parent = contentPanel
+
+        local summaryCorner = Instance.new("UICorner")
+        summaryCorner.CornerRadius = UDim.new(0, px(12))
+        summaryCorner.Parent = summaryCard
+
+        local summaryStroke = Instance.new("UIStroke")
+        summaryStroke.Color = CLAIM_GOLD_GLOW
+        summaryStroke.Thickness = 1.2
+        summaryStroke.Transparency = 0.35
+        summaryStroke.Parent = summaryCard
+
+        local summaryPad = Instance.new("UIPadding")
+        summaryPad.PaddingLeft = UDim.new(0, px(14))
+        summaryPad.PaddingRight = UDim.new(0, px(14))
+        summaryPad.PaddingTop = UDim.new(0, px(12))
+        summaryPad.PaddingBottom = UDim.new(0, px(12))
+        summaryPad.Parent = summaryCard
+
+        local title = Instance.new("TextLabel")
+        title.Name = "Title"
+        title.BackgroundTransparency = 1
+        title.Font = Enum.Font.GothamBold
+        title.Text = "Achievement Points"
+        title.TextColor3 = WHITE
+        title.TextSize = math.max(13, math.floor(px(14)))
+        title.TextXAlignment = Enum.TextXAlignment.Left
+        title.Size = UDim2.new(0.65, 0, 0, px(18))
+        title.Position = UDim2.new(0, 0, 0, 0)
+        title.Parent = summaryCard
+
+        local subtitle = Instance.new("TextLabel")
+        subtitle.Name = "Subtitle"
+        subtitle.BackgroundTransparency = 1
+        subtitle.Font = Enum.Font.GothamMedium
+        subtitle.Text = "Lifetime total from claimed achievements"
+        subtitle.TextColor3 = DIM_TEXT
+        subtitle.TextSize = math.max(10, math.floor(px(11)))
+        subtitle.TextXAlignment = Enum.TextXAlignment.Left
+        subtitle.Size = UDim2.new(0.75, 0, 0, px(14))
+        subtitle.Position = UDim2.new(0, 0, 0, px(26))
+        subtitle.Parent = summaryCard
+
+        local value = Instance.new("TextLabel")
+        value.Name = "Value"
+        value.BackgroundTransparency = 1
+        value.Font = Enum.Font.GothamBlack
+        value.TextColor3 = GOLD
+        value.TextSize = math.max(22, math.floor(px(24)))
+        value.TextXAlignment = Enum.TextXAlignment.Right
+        value.AnchorPoint = Vector2.new(1, 0.5)
+        value.Size = UDim2.new(0.34, 0, 0, px(28))
+        value.Position = UDim2.new(1, 0, 0.5, 0)
+        value.Parent = summaryCard
+
+        apSummaryValueLabel = value
+        updateAchievementPointLabels()
+
+        return summaryCard
     end
 
     ---------------------------------------------------------------------------
@@ -3407,6 +3485,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         clearContentPanel(preserveScroll)
 
         makeContentHeader("Recently Completed", false)
+        buildAchievementPointsCard(5)
 
         if #completedHistory == 0 then
             -- Empty state
@@ -3561,6 +3640,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
         clearContentPanel(preserveScroll)
 
         makeContentHeader(category, true)
+        buildAchievementPointsCard(5)
 
         -- Events placeholder
         if category == "Events" then
@@ -4063,9 +4143,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                             end
                         end
                         print(string.format("[AchievementUI] Full-refresh AP total: %d", playerAchievementPoints))
-                        if apLabel and apLabel.Parent then
-                            apLabel.Text = FormatInt(playerAchievementPoints) .. " AP"
-                        end
+                        updateAchievementPointLabels()
                     end
                 end
                 -- Also refresh history + category progress
@@ -4210,9 +4288,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
                     if ok and pts then
                         playerAchievementPoints = tonumber(pts) or playerAchievementPoints
                         print(string.format("[AchievementUI] AP total updated to: %d", playerAchievementPoints))
-                        if apLabel and apLabel.Parent then
-                            apLabel.Text = FormatInt(playerAchievementPoints) .. " AP"
-                        end
+                        updateAchievementPointLabels()
                     end
                 end
             end
@@ -4263,8 +4339,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             local fillBar = wkProgressBars[questIdx]
             if fillBar and fillBar.Parent then
-                TweenService:Create(fillBar, TWEEN_QUICK,
-                    {Size = UDim2.new(pctW2, 0, 1, 0)}):Play()
+                if newProgress >= goal then
+                    fillBar.Size = UDim2.new(1, 0, 1, 0)
+                else
+                    TweenService:Create(fillBar, TWEEN_QUICK,
+                        {Size = UDim2.new(pctW2, 0, 1, 0)}):Play()
+                end
             end
 
             local txt = wkProgressTexts[questIdx]
@@ -4336,8 +4416,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabId)
 
             local fillBar = progressBars[questId]
             if fillBar and fillBar.Parent then
-                TweenService:Create(fillBar, TWEEN_QUICK,
-                    {Size = UDim2.new(pct2, 0, 1, 0)}):Play()
+                if newProgress >= goal then
+                    fillBar.Size = UDim2.new(1, 0, 1, 0)
+                else
+                    TweenService:Create(fillBar, TWEEN_QUICK,
+                        {Size = UDim2.new(pct2, 0, 1, 0)}):Play()
+                end
             end
 
             local txt = progressTexts[questId]

@@ -12,6 +12,7 @@
 --   WeeklyQuestService:GetWeeklyQuests(player)
 --   WeeklyQuestService:IncrementByType(player, trackType, amount)
 --   WeeklyQuestService:ClaimReward(player, questIndex)
+--   WeeklyQuestService:ResetAllQuests(player)
 --   WeeklyQuestService:ClearPlayer(player)
 --------------------------------------------------------------------------------
 
@@ -111,29 +112,102 @@ end
 --------------------------------------------------------------------------------
 -- Quest assignment: pick 3 quests from different track types for variety
 --------------------------------------------------------------------------------
-local function assignNewQuests()
+local function shuffleInPlace(items)
+    for i = #items, 2, -1 do
+        local j = math.random(1, i)
+        items[i], items[j] = items[j], items[i]
+    end
+end
+
+local function normalizeQuestIdSet(questIds)
+    local questIdSet = {}
+    if type(questIds) ~= "table" then
+        return questIdSet
+    end
+
+    for key, value in pairs(questIds) do
+        if type(key) == "string" then
+            if value then
+                questIdSet[key] = true
+            end
+        elseif type(value) == "string" then
+            questIdSet[value] = true
+        elseif type(value) == "table" and type(value.defId) == "string" then
+            questIdSet[value.defId] = true
+        end
+    end
+
+    return questIdSet
+end
+
+local function pickQuestId(defs, usedQuestIds, excludedQuestIds, allowExcluded)
+    local candidates = {}
+    for _, def in ipairs(defs) do
+        if not usedQuestIds[def.id] and (allowExcluded or not excludedQuestIds[def.id]) then
+            table.insert(candidates, def.id)
+        end
+    end
+
+    if #candidates == 0 then
+        return nil
+    end
+
+    shuffleInPlace(candidates)
+    return candidates[1]
+end
+
+local function appendQuestEntry(quests, usedQuestIds, defId)
+    if not defId or usedQuestIds[defId] then
+        return false
+    end
+
+    usedQuestIds[defId] = true
+    table.insert(quests, {
+        defId = defId,
+        progress = 0,
+        claimed = false,
+    })
+    return true
+end
+
+local function assignNewQuests(excludedQuestIds)
+    local excludedQuestIdSet = normalizeQuestIdSet(excludedQuestIds)
     local trackTypes = {}
     for tt, _ in pairs(WeeklyQuestDefs.ByTrackType) do
         table.insert(trackTypes, tt)
     end
 
-    -- Shuffle track types
-    for i = #trackTypes, 2, -1 do
-        local j = math.random(1, i)
-        trackTypes[i], trackTypes[j] = trackTypes[j], trackTypes[i]
-    end
+    shuffleInPlace(trackTypes)
 
     local quests = {}
-    for i = 1, 3 do
-        local tt = trackTypes[((i - 1) % #trackTypes) + 1]
-        local pool = WeeklyQuestDefs.ByTrackType[tt]
-        local def = pool[math.random(#pool)]
-        table.insert(quests, {
-            defId    = def.id,
-            progress = 0,
-            claimed  = false,
-        })
+    local usedQuestIds = {}
+
+    for i = 1, math.min(3, #trackTypes) do
+        local trackType = trackTypes[i]
+        local pool = WeeklyQuestDefs.ByTrackType[trackType] or {}
+        local defId = pickQuestId(pool, usedQuestIds, excludedQuestIdSet, false)
+        if not defId then
+            defId = pickQuestId(pool, usedQuestIds, excludedQuestIdSet, true)
+        end
+        appendQuestEntry(quests, usedQuestIds, defId)
     end
+
+    while #quests < 3 do
+        local defId = pickQuestId(WeeklyQuestDefs.Pool, usedQuestIds, excludedQuestIdSet, false)
+        if not defId then
+            break
+        end
+        appendQuestEntry(quests, usedQuestIds, defId)
+    end
+
+    while #quests < 3 do
+        local defId = pickQuestId(WeeklyQuestDefs.Pool, usedQuestIds, excludedQuestIdSet, true)
+        if not defId then
+            break
+        end
+        appendQuestEntry(quests, usedQuestIds, defId)
+    end
+
     return quests
 end
 
@@ -327,11 +401,35 @@ function WeeklyQuestService:ClaimReward(player, questIndex)
 
     q.claimed = true
     markDirty(player)
-
-    -- Force immediate save after claim
-    DataSaveCoordinator:RequestImmediateSave(player, "weekly_quest_claim", { sections = { "WeeklyQuest" }, force = true })
-
+    task.spawn(function()
+        WeeklyQuestService:SavePlayer(player)
+    end)
     return true
+end
+
+function WeeklyQuestService:ResetAllQuests(player)
+    local data = playerWeekly[player]
+    if not data then
+        return false, "Weekly quests unavailable", {}
+    end
+
+    local previousQuestIds = {}
+    for _, quest in ipairs(data.quests) do
+        if type(quest.defId) == "string" then
+            table.insert(previousQuestIds, quest.defId)
+        end
+    end
+
+    local newQuests = assignNewQuests(previousQuestIds)
+    if #newQuests < 3 then
+        return false, "No alternative quests available", self:GetWeeklyQuests(player)
+    end
+
+    data.quests = newQuests
+    markDirty(player)
+    DataSaveCoordinator:RequestImmediateSave(player, "weekly_quest_reset", { sections = { "WeeklyQuest" }, force = true })
+
+    return true, "Weekly quests reset", self:GetWeeklyQuests(player)
 end
 
 --- Replace the weekly quest at the given index with a different valid quest.

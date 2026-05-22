@@ -150,7 +150,7 @@ local CURRENCY_DEFS = {
         saveMethod = "SaveKeysForPlayer",
     },
     Salvage = {
-        displayName = "Salvage",
+        displayName = "Shards",
         datastoreName = "Salvage_v1",
         getMethod = "GetSalvage",
         addMethod = "AddSalvage",

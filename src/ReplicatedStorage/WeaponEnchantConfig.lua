@@ -95,7 +95,7 @@ WeaponEnchantConfig.ProcConfig = {
         ProcChance    = 0.30,
         TickDamage    = 5,          -- damage per tick while slowed
         TickInterval  = 1,          -- tick once per second
-        SlowPercent   = 0.50,
+        SlowPercent   = 0.30,
         SlowDuration  = 4,          -- 4 ticks total = 2+2+2+2 = 8 damage
         SoundId       = "rbxassetid://REPLACE_ME",
     },
@@ -139,12 +139,59 @@ function WeaponEnchantConfig.GetEnchantData(enchantName)
     return WeaponEnchantConfig.EnchantsByName[enchantName]
 end
 
+local function resolveRarityName(context)
+    local rarityName = context
+    if type(context) == "table" then
+        rarityName = context.rarity or context.rarityName
+    end
+
+    if type(rarityName) ~= "string" then
+        return nil
+    end
+
+    local trimmed = rarityName:match("^%s*(.-)%s*$")
+    if not trimmed or trimmed == "" then
+        return nil
+    end
+
+    return trimmed
+end
+
+local function resolveEnchantChance(context)
+    local chance = WeaponEnchantConfig.ENCHANT_CHANCE
+    if type(context) ~= "table" then
+        return math.clamp(chance, 0, 1)
+    end
+
+    local multiplier = tonumber(context.enchantChanceMultiplier)
+    if multiplier and multiplier > 0 then
+        chance *= multiplier
+    end
+
+    local bonus = tonumber(context.enchantChanceBonus)
+    if bonus then
+        chance += bonus
+    end
+
+    local overrideChance = tonumber(context.enchantChance)
+    if overrideChance then
+        chance = overrideChance
+    end
+
+    return math.clamp(chance, 0, 1)
+end
+
 --------------------------------------------------------------------------------
 -- RollEnchant() -> enchantName (string) or nil
 -- 20% chance to receive an enchant; on success picks one uniformly at random.
 --------------------------------------------------------------------------------
-function WeaponEnchantConfig.RollEnchant()
-    if math.random() > WeaponEnchantConfig.ENCHANT_CHANCE then
+function WeaponEnchantConfig.RollEnchant(context)
+    local rarityName = resolveRarityName(context)
+    if rarityName and string.lower(rarityName) == "common" then
+        return nil
+    end
+
+    if math.random() > resolveEnchantChance(context) then
         return nil -- no enchant this roll
     end
     local list = WeaponEnchantConfig.Enchants

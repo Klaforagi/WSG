@@ -26,6 +26,38 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local EmoteUI = {}
 
+local panelState = setmetatable({}, { __mode = "k" })
+
+local function getPanelState(panel)
+    if not panel then
+        return nil
+    end
+
+    local state = panelState[panel]
+    if not state then
+        state = {
+            highlightedKind = nil,
+            highlightedId = nil,
+        }
+        panelState[panel] = state
+    end
+    return state
+end
+
+local function setHighlightedSelection(panel, kind, id)
+    local state = getPanelState(panel)
+    if not state then
+        return
+    end
+
+    state.highlightedKind = kind
+    state.highlightedId = id
+end
+
+local function clearHighlightedSelection(panel)
+    setHighlightedSelection(panel, nil, nil)
+end
+
 -- ── Callback: set by EmoteClient for close-after-selection ───────────────
 EmoteUI.OnSlotSelected = nil   -- function(emoteId) or nil
 EmoteUI.OnShopClicked  = nil   -- function() – called when Shop slot is clicked
@@ -76,7 +108,6 @@ local SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 8
 -- ── Wheel layout constants ───────────────────────────────────────────────
 local NUM_SLOTS       = SLOT_COUNT
 local SLICE_ANGLE     = (2 * math.pi) / NUM_SLOTS
-local SHOP_SLOT_INDEX = 5   -- bottom position reserved for "Shop" button
 
 -- ── AssetCodes for icon lookup ────────────────────────────────────────────
 local AssetCodes = nil
@@ -322,20 +353,6 @@ function EmoteUI.Build(screenGui)
     centerSubtext.ZIndex               = 319
     centerSubtext.Parent               = centerCircle
 
-    -- Keybind hint at bottom of center circle
-    local hintLabel = Instance.new("TextLabel")
-    hintLabel.Name                 = "HintLabel"
-    hintLabel.Size                 = UDim2.new(0.80, 0, 0.16, 0)
-    hintLabel.AnchorPoint          = Vector2.new(0.5, 1)
-    hintLabel.Position             = UDim2.new(0.5, 0, 0.92, 0)
-    hintLabel.BackgroundTransparency = 1
-    hintLabel.Font                 = Enum.Font.Gotham
-    hintLabel.Text                 = "[ E ] close"
-    hintLabel.TextColor3           = Color3.fromRGB(100, 105, 130)
-    hintLabel.TextScaled           = true
-    hintLabel.ZIndex               = 319
-    hintLabel.Parent               = centerCircle
-
     return panel
 end
 
@@ -345,6 +362,7 @@ end
 function EmoteUI.Show(panel)
     if not panel then return end
     print("[EmoteUI] emote wheel opened")
+    clearHighlightedSelection(panel)
     panel.Visible = true
 
     local wheel = panel:FindFirstChild("WheelFrame")
@@ -369,6 +387,7 @@ end
 function EmoteUI.Hide(panel)
     if not panel then return end
     print("[EmoteUI] emote wheel closed")
+    clearHighlightedSelection(panel)
 
     local wheel    = panel:FindFirstChild("WheelFrame")
     local backdrop = panel:FindFirstChild("Backdrop")
@@ -399,6 +418,7 @@ end
 function EmoteUI.HideInstant(panel)
     if not panel then return end
     print("[EmoteUI] emote wheel closed (instant)")
+    clearHighlightedSelection(panel)
     panel.Visible = false
     local wheel = panel:FindFirstChild("WheelFrame")
     if wheel then
@@ -414,115 +434,35 @@ function EmoteUI.IsVisible(panel)
     return panel ~= nil and panel.Visible
 end
 
---------------------------------------------------------------------------------
--- Configure the permanent Shop slot (called every render pass).
---------------------------------------------------------------------------------
-local function setupShopSlot(wheel, centerCircle)
-    local slot = wheel:FindFirstChild("Slot_" .. SHOP_SLOT_INDEX)
-    if not slot then return end
-
-    -- Remove any stale overlays
-    local oldBtn  = slot:FindFirstChild("PlayBtn")
-    if oldBtn then oldBtn:Destroy() end
-    local oldShop = slot:FindFirstChild("ShopBtn")
-    if oldShop then oldShop:Destroy() end
-
-    -- Visual style: stands out from empty slots but matches the wheel
-    local SHOP_BG = Color3.fromRGB(22, 28, 52)
-    slot.BackgroundColor3       = SHOP_BG
-    slot.BackgroundTransparency = 0.05
-
-    local slotStroke = slot:FindFirstChildOfClass("UIStroke")
-    if slotStroke then
-        slotStroke.Color        = GOLD
-        slotStroke.Transparency = 0.1
+function EmoteUI.TriggerHighlightedSelection(panel)
+    if not panel then
+        return false
     end
 
-    -- Hide emote icon image
-    local iconImg = slot:FindFirstChild("IconImg")
-    if iconImg then iconImg.Visible = false end
-
-    -- "+" icon (reuses LockLabel, repositioned to upper area)
-    local lockLabel = slot:FindFirstChild("LockLabel")
-    if lockLabel then
-        lockLabel.Visible       = true
-        lockLabel.Text          = "+"
-        lockLabel.TextColor3    = GOLD
-        lockLabel.Font          = Enum.Font.GothamBlack
-        lockLabel.Position      = UDim2.new(0.5, 0, 0.34, 0)
-        lockLabel.Size          = UDim2.new(0.50, 0, 0.40, 0)
+    local state = getPanelState(panel)
+    if not state or not state.highlightedKind then
+        return false
     end
 
-    -- "Shop" label in lower portion
-    local nameLabel = slot:FindFirstChild("NameLabel")
-    if nameLabel then
-        nameLabel.Text          = "Shop"
-        nameLabel.TextColor3    = WHITE
-        nameLabel.Font          = Enum.Font.GothamBold
-        nameLabel.Position      = UDim2.new(0.5, 0, 0.74, 0)
-        nameLabel.Size          = UDim2.new(0.82, 0, 0.24, 0)
-    end
-
-    -- Click overlay
-    local shopBtn = Instance.new("TextButton")
-    shopBtn.Name                 = "ShopBtn"
-    shopBtn.Size                 = UDim2.new(1, 0, 1, 0)
-    shopBtn.BackgroundTransparency = 1
-    shopBtn.Text                 = ""
-    shopBtn.ZIndex               = 317
-    shopBtn.Parent               = slot
-
-    local shopCorner = Instance.new("UICorner")
-    shopCorner.CornerRadius = UDim.new(1, 0)
-    shopCorner.Parent       = shopBtn
-
-    shopBtn.MouseButton1Click:Connect(function()
-        print("[EmoteUI] Shop slot clicked → opening emote shop")
+    if state.highlightedKind == "shop" then
+        print("[EmoteUI] highlighted shop released")
         if EmoteUI.OnShopClicked then
             EmoteUI.OnShopClicked()
+            return true
         end
-    end)
+        return false
+    end
 
-    -- Hover: bright gold highlight + center text update
-    local hoverInfo = TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    if state.highlightedKind == "emote" and state.highlightedId then
+        print("[EmoteUI] highlighted emote released:", state.highlightedId)
+        EmoteUI.RequestPlayEmote(state.highlightedId)
+        if EmoteUI.OnSlotSelected then
+            EmoteUI.OnSlotSelected(state.highlightedId)
+        end
+        return true
+    end
 
-    shopBtn.MouseEnter:Connect(function()
-        TweenService:Create(slot, hoverInfo, {
-            BackgroundColor3       = Color3.fromRGB(42, 48, 72),
-            BackgroundTransparency = 0,
-        }):Play()
-        if slotStroke then
-            TweenService:Create(slotStroke, hoverInfo, {
-                Color        = Color3.fromRGB(255, 225, 100),
-                Transparency = 0,
-            }):Play()
-        end
-        if centerCircle then
-            local ct = centerCircle:FindFirstChild("CenterTitle")
-            local cs = centerCircle:FindFirstChild("CenterSubtext")
-            if ct then ct.Text = "GET EMOTES" end
-            if cs then cs.Text = "Browse the shop" end
-        end
-    end)
-
-    shopBtn.MouseLeave:Connect(function()
-        TweenService:Create(slot, hoverInfo, {
-            BackgroundColor3       = SHOP_BG,
-            BackgroundTransparency = 0.05,
-        }):Play()
-        if slotStroke then
-            TweenService:Create(slotStroke, hoverInfo, {
-                Color        = GOLD,
-                Transparency = 0.1,
-            }):Play()
-        end
-        if centerCircle then
-            local ct = centerCircle:FindFirstChild("CenterTitle")
-            local cs = centerCircle:FindFirstChild("CenterSubtext")
-            if ct then ct.Text = "EMOTES" end
-            if cs then cs.Text = "Select an Emote" end
-        end
-    end)
+    return false
 end
 
 --------------------------------------------------------------------------------
@@ -546,10 +486,12 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
     local centerCircle = wheel:FindFirstChild("CenterCircle")
     if centerCircle then
         local sub = centerCircle:FindFirstChild("CenterSubtext")
-        if sub then sub.Text = "Select an Emote" end
+        if sub then sub.Text = "Release on an emote to play" end
         local ct = centerCircle:FindFirstChild("CenterTitle")
         if ct then ct.Text = "EMOTES" end
     end
+
+    clearHighlightedSelection(panel)
 
     -- Build a map: slot index → emote data
     local slotMap = {}
@@ -559,7 +501,6 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
     end
 
     for i = 1, NUM_SLOTS do
-        if i == SHOP_SLOT_INDEX then continue end   -- reserved for Shop
         local slot = wheel:FindFirstChild("Slot_" .. i)
         if not slot then continue end
         local emote     = slotMap[i]
@@ -571,14 +512,29 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
         -- Remove any previous click overlay to avoid stacking
         local oldBtn = slot:FindFirstChild("PlayBtn")
         if oldBtn then oldBtn:Destroy() end
+        local oldShopBtn = slot:FindFirstChild("ShopBtn")
+        if oldShopBtn then oldShopBtn:Destroy() end
 
         if emote then
             -- ── Populated slot ──────────────────────────────────────────
             slot.BackgroundColor3       = CARD_BG
             slot.BackgroundTransparency = 0.05
             if slotStroke then slotStroke.Color = GOLD_DIM; slotStroke.Transparency = 0.15 end
-            if nameLabel then nameLabel.Text = emote.DisplayName or "" end
-            if lockLabel then lockLabel.Visible = false end
+            if nameLabel then
+                nameLabel.Text = emote.DisplayName or ""
+                nameLabel.TextColor3 = WHITE
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+                nameLabel.Size = UDim2.new(0.82, 0, 0.34, 0)
+            end
+            if lockLabel then
+                lockLabel.Visible = false
+                lockLabel.Text = "—"
+                lockLabel.TextColor3 = Color3.fromRGB(65, 70, 92)
+                lockLabel.Font = Enum.Font.GothamBold
+                lockLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
+                lockLabel.Size = UDim2.new(0.50, 0, 0.50, 0)
+            end
 
             local iconSrc = resolveIcon(emote)
             if iconImg then
@@ -606,19 +562,11 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
             local emoteId   = emote.Id
             local emoteName = emote.DisplayName or emoteId
 
-            playBtn.MouseButton1Click:Connect(function()
-                print("[EmoteUI] clicked slot", i, "→ selected emote:", emoteId, emoteName)
-                EmoteUI.RequestPlayEmote(emoteId)
-                print("[EmoteUI] wheel closed after selection")
-                if EmoteUI.OnSlotSelected then
-                    EmoteUI.OnSlotSelected(emoteId)
-                end
-            end)
-
             -- Hover: highlight slot + update center text
             local hoverInfo = TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
             playBtn.MouseEnter:Connect(function()
                 print("[EmoteUI] hovered slot", i)
+                setHighlightedSelection(panel, "emote", emoteId)
                 TweenService:Create(slot, hoverInfo, {
                     BackgroundColor3       = Color3.fromRGB(42, 48, 72),
                     BackgroundTransparency = 0,
@@ -633,10 +581,11 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
                     local ct = centerCircle:FindFirstChild("CenterTitle")
                     local cs = centerCircle:FindFirstChild("CenterSubtext")
                     if ct then ct.Text = emoteName end
-                    if cs then cs.Text = "Click to play" end
+                    if cs then cs.Text = "Release to play" end
                 end
             end)
             playBtn.MouseLeave:Connect(function()
+                clearHighlightedSelection(panel)
                 TweenService:Create(slot, hoverInfo, {
                     BackgroundColor3       = CARD_BG,
                     BackgroundTransparency = 0.05,
@@ -651,7 +600,7 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
                     local ct = centerCircle:FindFirstChild("CenterTitle")
                     local cs = centerCircle:FindFirstChild("CenterSubtext")
                     if ct then ct.Text = "EMOTES" end
-                    if cs then cs.Text = "Select an Emote" end
+                    if cs then cs.Text = "Release on an emote to play" end
                 end
             end)
         else
@@ -659,14 +608,24 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
             slot.BackgroundColor3       = DISABLED_BG
             slot.BackgroundTransparency = 0.15
             if slotStroke then slotStroke.Color = CARD_STROKE; slotStroke.Transparency = 0.4 end
-            if nameLabel then nameLabel.Text = "" end
-            if lockLabel then lockLabel.Visible = true; lockLabel.Text = "—" end
+            if nameLabel then
+                nameLabel.Text = ""
+                nameLabel.TextColor3 = WHITE
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+                nameLabel.Size = UDim2.new(0.82, 0, 0.34, 0)
+            end
+            if lockLabel then
+                lockLabel.Visible = true
+                lockLabel.Text = "—"
+                lockLabel.TextColor3 = Color3.fromRGB(65, 70, 92)
+                lockLabel.Font = Enum.Font.GothamBold
+                lockLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
+                lockLabel.Size = UDim2.new(0.50, 0, 0.50, 0)
+            end
             if iconImg   then iconImg.Visible = false end
         end
     end
-
-    -- Always configure the permanent Shop slot
-    setupShopSlot(wheel, centerCircle)
 
     print("[EmoteUI] equipped emotes rendered on wheel, count:", #emoteList)
 end
@@ -688,9 +647,10 @@ function EmoteUI.ShowEmptyState(panel)
         if cs then cs.Text = "No Emotes equipped" end
     end
 
+    clearHighlightedSelection(panel)
+
     -- Reset all slots to empty state
     for i = 1, NUM_SLOTS do
-        if i == SHOP_SLOT_INDEX then continue end   -- reserved for Shop
         local slot = wheel:FindFirstChild("Slot_" .. i)
         if not slot then continue end
         slot.BackgroundColor3       = DISABLED_BG
@@ -698,17 +658,29 @@ function EmoteUI.ShowEmptyState(panel)
         local slotStroke = slot:FindFirstChildOfClass("UIStroke")
         if slotStroke then slotStroke.Color = CARD_STROKE; slotStroke.Transparency = 0.4 end
         local nameLabel = slot:FindFirstChild("NameLabel")
-        if nameLabel then nameLabel.Text = "" end
+        if nameLabel then
+            nameLabel.Text = ""
+            nameLabel.TextColor3 = WHITE
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
+            nameLabel.Size = UDim2.new(0.82, 0, 0.34, 0)
+        end
         local lockLabel = slot:FindFirstChild("LockLabel")
-        if lockLabel then lockLabel.Visible = true; lockLabel.Text = "—" end
+        if lockLabel then
+            lockLabel.Visible = true
+            lockLabel.Text = "—"
+            lockLabel.TextColor3 = Color3.fromRGB(65, 70, 92)
+            lockLabel.Font = Enum.Font.GothamBold
+            lockLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
+            lockLabel.Size = UDim2.new(0.50, 0, 0.50, 0)
+        end
         local iconImg = slot:FindFirstChild("IconImg")
         if iconImg then iconImg.Visible = false end
         local oldBtn = slot:FindFirstChild("PlayBtn")
         if oldBtn then oldBtn:Destroy() end
+        local oldShopBtn = slot:FindFirstChild("ShopBtn")
+        if oldShopBtn then oldShopBtn:Destroy() end
     end
-
-    -- Always configure the permanent Shop slot
-    setupShopSlot(wheel, centerCircle)
 
     print("[EmoteUI] empty state shown on wheel")
 end

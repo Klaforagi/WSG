@@ -374,6 +374,18 @@ local function getMobCoinReward(model, fallbackName)
     return MOB_COIN_REWARD
 end
 
+local function getMobScoreReward(model, fallbackName)
+    local mobName = getMobRewardName(model, fallbackName)
+    if MobSettings and MobSettings.Get then
+        local cfg = MobSettings.Get(mobName)
+        local spawnCfg = cfg and cfg.Spawn
+        if type(spawnCfg and spawnCfg.ScoreReward) == "number" then
+            return spawnCfg.ScoreReward
+        end
+    end
+    return 3
+end
+
 local function fireKillCard(victimPlayer, payload)
     if not victimPlayer or not victimPlayer.Parent then return end
     -- Sanitize Instance fields: a destroyed/unparented Instance will throw when
@@ -496,10 +508,12 @@ local function onHumanoidDied(humanoid, model)
     local isPlayerVictim  = victimPlayer ~= nil
     local isMonsterVictim = (not isPlayerVictim) and isMonsterModel(model)
     local shouldCountElimination = isMatchStatsActive()
+    local rewardMobName = isMonsterVictim and getMobRewardName(model, victimName) or nil
 
     -- Award team score
     if shouldCountElimination and killer.Team then
-        pcall(function() AddScore:Fire(killer.Team.Name, KILL_POINTS) end)
+        local scoreDelta = isPlayerVictim and KILL_POINTS or getMobScoreReward(model, victimName)
+        pcall(function() AddScore:Fire(killer.Team.Name, scoreDelta) end)
     end
 
     -- Centralized stat events (feeds quests + achievements + scoreboard)
@@ -507,7 +521,7 @@ local function onHumanoidDied(humanoid, model)
         if isPlayerVictim then
             StatService:RegisterElimination(killer, victimPlayer)
         elseif isMonsterVictim then
-            StatService:RegisterMobKill(killer, victimName)
+            StatService:RegisterMobKill(killer, rewardMobName)
         end
     end
 
@@ -516,7 +530,7 @@ local function onHumanoidDied(humanoid, model)
         if isPlayerVictim then
             pcall(function() WeaponMasteryService:RegisterElimination(killer, weaponInstanceId) end)
         elseif isMonsterVictim then
-            pcall(function() WeaponMasteryService:RegisterMobKill(killer, weaponInstanceId) end)
+            pcall(function() WeaponMasteryService:RegisterMobKill(killer, weaponInstanceId, rewardMobName) end)
         end
     end
 
@@ -542,7 +556,6 @@ local function onHumanoidDied(humanoid, model)
             pcall(function() XPModule.AwardXP(killer, "PlayerKill", nil, { coinAward = coinAward }) end)
         else
             local mobXP = 3
-            local rewardMobName = getMobRewardName(model, victimName)
             pcall(function()
                 if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(rewardMobName) end
             end)

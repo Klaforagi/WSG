@@ -23,7 +23,7 @@ SalvageShopConfig.Items = {
     {
         Id           = "salvage_trail_emerald",
         DisplayName  = "Emerald Trail",
-        Description  = "A vivid green dash trail forged from salvage.",
+        Description  = "A vivid green dash trail forged from Shards.",
         Category     = "Effect",
         SalvagePrice = 120,
         RewardType   = "Effect",
@@ -36,7 +36,7 @@ SalvageShopConfig.Items = {
     {
         Id           = "salvage_skin_iron",
         DisplayName  = "Iron Knight",
-        Description  = "Battered armor from countless salvaged weapons.",
+        Description  = "Battered armor from countless dismantled weapons.",
         Category     = "Skin",
         SalvagePrice = 300,
         RewardType   = "Skin",
@@ -44,12 +44,12 @@ SalvageShopConfig.Items = {
         Rarity       = "Epic",
         IconGlyph    = "\u{1F6E1}",
         Unique       = true,
-        Enabled      = true,
+        Enabled      = false,
     },
     {
         Id           = "salvage_crate_weapon",
-        DisplayName  = "Salvage Weapon Crate",
-        Description  = "A weapon crate, paid with salvage.",
+        DisplayName  = "Shard Weapon Crate",
+        Description  = "A weapon crate paid for with Shards.",
         Category     = "Crate",
         SalvagePrice = 60,
         RewardType   = "Crate",

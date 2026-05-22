@@ -4,6 +4,9 @@ local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerScriptService = game:GetService("ServerScriptService")
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
 
 local MobCombat = {}
 
@@ -185,15 +188,12 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local stuckMissesWhileStationary = 0
     local forcedRetreatUntil = 0
 
-    humanoid.WalkSpeed = WALK_SPEED
+    HumanoidStatService:EnsureHumanoidSubject(humanoid)
+    HumanoidStatService:SetBaseStat(humanoid, MOVEMENT_SPEED_STAT, WALK_SPEED)
     humanoid.AutoRotate = true
 
     local function setMobSpeed(speed)
-        local icySlow = humanoid:GetAttribute("IcySlowPercent")
-        if icySlow and type(icySlow) == "number" and icySlow > 0 then
-            speed = math.max(speed * (1 - icySlow), 1)
-        end
-        humanoid.WalkSpeed = speed
+        HumanoidStatService:SetBaseStat(humanoid, MOVEMENT_SPEED_STAT, speed)
     end
 
     local function updateSpeedByState()

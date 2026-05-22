@@ -733,7 +733,7 @@ local currencyTypeFrame = createInstance("Frame", {
 local currencyTypes = {
     { key = "Coins", label = "Coins" },
     { key = "Keys", label = "Keys" },
-    { key = "Salvage", label = "Salvage" },
+    { key = "Salvage", label = "Shards" },
 }
 local selectedCurrencyType = "Coins"
 local currencyTypeBtns = {}
@@ -789,7 +789,7 @@ local presetFrame = createInstance("Frame", {
 local currencyPresets = {
     { label = "+100 Coins", currencyType = "Coins", amount = 100 },
     { label = "+5 Keys", currencyType = "Keys", amount = 5 },
-    { label = "+50 Salvage", currencyType = "Salvage", amount = 50 },
+    { label = "+50 Shards", currencyType = "Salvage", amount = 50 },
 }
 local currencyPresetButtons = {}
 
@@ -2361,7 +2361,7 @@ if USER_DATA_AVAILABLE then
             local s = makeSection("Currency", nextOrder())
             addRow(s, "Coins",   safeNum(d.Coins),   1)
             addRow(s, "Keys",    safeNum(d.Keys),    2)
-            addRow(s, "Salvage", safeNum(d.Salvage), 3)
+            addRow(s, "Shards", safeNum(d.Salvage), 3)
         end
 
         -- Progression
@@ -3319,7 +3319,7 @@ if RESTORE_AVAILABLE then
             local s = rSection("Previous Currency", nextOrder())
             rRow(s, "Coins",   rSafe(prev.Coins),   1)
             rRow(s, "Keys",    rSafe(prev.Keys),    2)
-            rRow(s, "Salvage", rSafe(prev.Salvage), 3)
+            rRow(s, "Shards", rSafe(prev.Salvage), 3)
         end
 
         do

@@ -7,9 +7,11 @@ local BOARD_MODEL_NAME = "LeaderboardQuests"
 local TITLE_PART_NAME = "Leaderboardtitlescreen"
 local LIST_PART_NAME = "Leaderboardscreen"
 local TIMER_PART_NAME = "Leaderboardtimer"
+local RESET_PART_NAME = "ResetQuests"
 local TITLE_GUI_NAME = "DailyQuestBoardTitleSurfaceGui"
 local LIST_GUI_NAME = "DailyQuestBoardListSurfaceGui"
 local TIMER_GUI_NAME = "DailyQuestBoardTimerSurfaceGui"
+local RESET_OVERLAY_GUI_NAME = "DailyQuestResetOverlayGui"
 local BOARD_FACE = Enum.NormalId.Right
 local REFRESH_INTERVAL_SECONDS = 15
 
@@ -26,13 +28,27 @@ local MUTED = Color3.fromRGB(170, 176, 186)
 local BLUE_FILL = Color3.fromRGB(37, 135, 255)
 local BLUE_TRACK = Color3.fromRGB(45, 57, 72)
 local CLAIMED = Color3.fromRGB(82, 194, 112)
+local CLAIMABLE_BG = Color3.fromRGB(44, 138, 74)
+local ERROR_RED = Color3.fromRGB(255, 120, 120)
+
+local localPlayer = Players.LocalPlayer
+local playerGui = localPlayer:WaitForChild("PlayerGui")
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes")
 local questRemotesFolder = remotesFolder:WaitForChild("Quests")
 local getQuestsRF = questRemotesFolder:WaitForChild("GetQuests")
 local questProgressRE = questRemotesFolder:WaitForChild("QuestProgress")
 local questStateChangedRE = questRemotesFolder:WaitForChild("QuestStateChanged")
+local claimQuestRF = questRemotesFolder:WaitForChild("ClaimQuest")
+local resetDailyQuestsRF = questRemotesFolder:WaitForChild("RequestResetDailyQuests")
 local TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
+
+local claimSoundOk, ClaimSound = pcall(function()
+    return require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ClaimSound"))
+end)
+if not claimSoundOk then
+    ClaimSound = nil
+end
 
 local assetCodesOk, AssetCodes = pcall(function()
     return require(ReplicatedStorage:WaitForChild("AssetCodes"))
@@ -45,7 +61,14 @@ end
 local latestQuests = {}
 local questIndexById = {}
 local rowByQuestId = {}
+local pendingClaimsById = {}
 local titleGui = nil
+local fetchQuests
+local applyQuestList
+local activeResetPart = nil
+local resetTouchConnection = nil
+local resetModalLayer = nil
+local resetRequestInFlight = false
 
 local function ensureChild(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -91,6 +114,7 @@ end
 local function ensureSurfaceGui(part, guiName, pixelsPerStud)
     local surfaceGui = ensureChild(part, "SurfaceGui", guiName)
     surfaceGui.Adornee = part
+    surfaceGui.Active = true
     surfaceGui.Face = BOARD_FACE
     surfaceGui.ResetOnSpawn = false
     surfaceGui.SizingMode = Enum.SurfaceGuiSizingMode.PixelsPerStud
@@ -101,9 +125,26 @@ local function ensureSurfaceGui(part, guiName, pixelsPerStud)
     return surfaceGui
 end
 
-local function findBoardParts()
+local function ensureOverlayGui()
+    local overlayGui = ensureChild(playerGui, "ScreenGui", RESET_OVERLAY_GUI_NAME)
+    overlayGui.DisplayOrder = 80
+    overlayGui.IgnoreGuiInset = true
+    overlayGui.ResetOnSpawn = false
+    overlayGui.ZIndexBehavior = Enum.ZIndexBehavior.Global
+    return overlayGui
+end
+
+local function findBoardModel()
     local model = Workspace:FindFirstChild(BOARD_MODEL_NAME)
-    if not model or not model:IsA("Model") then
+    if model and model:IsA("Model") then
+        return model
+    end
+    return nil
+end
+
+local function findBoardParts()
+    local model = findBoardModel()
+    if not model then
         return nil, nil, nil
     end
 
@@ -121,6 +162,32 @@ local function findBoardParts()
     end
 
     return titlePart, listPart, timerPart
+end
+
+local function findResetPart()
+    local model = findBoardModel()
+    if not model then
+        return nil
+    end
+
+    local resetPart = model:FindFirstChild(RESET_PART_NAME)
+    if resetPart and resetPart:IsA("BasePart") then
+        return resetPart
+    end
+
+    return nil
+end
+
+local function clearResetPrompts(resetPart)
+    if not resetPart then
+        return
+    end
+
+    for _, child in ipairs(resetPart:GetChildren()) do
+        if child:IsA("ProximityPrompt") then
+            child:Destroy()
+        end
+    end
 end
 
 local function buildCoinIcon(parent)
@@ -156,6 +223,214 @@ local function buildCoinIcon(parent)
     stroke.Parent = coin
 
     return coin
+end
+
+local function closeResetPurchaseModal()
+    resetRequestInFlight = false
+    if resetModalLayer then
+        resetModalLayer:Destroy()
+        resetModalLayer = nil
+    end
+end
+
+local function disconnectResetTouchConnection()
+    if resetTouchConnection then
+        resetTouchConnection:Disconnect()
+        resetTouchConnection = nil
+    end
+    activeResetPart = nil
+end
+
+local function isLocalCharacterHit(hit)
+    local character = localPlayer.Character
+    return character ~= nil and hit ~= nil and hit:IsDescendantOf(character)
+end
+
+local function showResetPurchaseModal()
+    if resetModalLayer then
+        return
+    end
+
+    local overlayGui = ensureOverlayGui()
+    local layer = Instance.new("Frame")
+    layer.Name = "ResetPurchaseLayer"
+    layer.BackgroundTransparency = 1
+    layer.Size = UDim2.fromScale(1, 1)
+    layer.ZIndex = 900
+    layer.Parent = overlayGui
+    resetModalLayer = layer
+
+    local dimmer = Instance.new("TextButton")
+    dimmer.Name = "Dimmer"
+    dimmer.AutoButtonColor = false
+    dimmer.BackgroundColor3 = Color3.new(0, 0, 0)
+    dimmer.BackgroundTransparency = 0.35
+    dimmer.BorderSizePixel = 0
+    dimmer.Size = UDim2.fromScale(1, 1)
+    dimmer.Text = ""
+    dimmer.ZIndex = 901
+    dimmer.Parent = layer
+
+    local modal = Instance.new("Frame")
+    modal.Name = "Modal"
+    modal.AnchorPoint = Vector2.new(0.5, 0.5)
+    modal.BackgroundColor3 = Color3.fromRGB(19, 21, 24)
+    modal.BorderSizePixel = 0
+    modal.Position = UDim2.fromScale(0.5, 0.5)
+    modal.Size = UDim2.fromOffset(440, 270)
+    modal.ZIndex = 910
+    modal.Parent = layer
+    ensureStroke(modal, Color3.fromRGB(74, 146, 87), 2, 0.15)
+    ensurePadding(modal, UDim.new(0, 22), UDim.new(0, 22), UDim.new(0, 20), UDim.new(0, 20))
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.Font = Enum.Font.GothamBlack
+    title.Size = UDim2.new(1, 0, 0, 34)
+    title.Text = "BUY DAILY QUEST RESET?"
+    title.TextColor3 = GOLD
+    title.TextScaled = true
+    title.TextXAlignment = Enum.TextXAlignment.Center
+    title.ZIndex = 911
+    title.Parent = modal
+    ensureTextConstraint(title, 16, 30)
+
+    local body = Instance.new("TextLabel")
+    body.Name = "Body"
+    body.BackgroundTransparency = 1
+    body.Font = Enum.Font.GothamMedium
+    body.Position = UDim2.new(0, 0, 0, 48)
+    body.Size = UDim2.new(1, 0, 0, 94)
+    body.Text = "This will replace all 3 current daily quests with 3 new ones.\n\nPlaceholder purchase flow: confirming here will reset them immediately."
+    body.TextColor3 = WHITE
+    body.TextScaled = true
+    body.TextWrapped = true
+    body.TextXAlignment = Enum.TextXAlignment.Center
+    body.TextYAlignment = Enum.TextYAlignment.Top
+    body.ZIndex = 911
+    body.Parent = modal
+    ensureTextConstraint(body, 14, 22)
+
+    local status = Instance.new("TextLabel")
+    status.Name = "Status"
+    status.BackgroundTransparency = 1
+    status.Font = Enum.Font.GothamBold
+    status.Position = UDim2.new(0, 0, 0, 146)
+    status.Size = UDim2.new(1, 0, 0, 24)
+    status.Text = ""
+    status.TextColor3 = ERROR_RED
+    status.TextScaled = true
+    status.TextWrapped = true
+    status.ZIndex = 911
+    status.Parent = modal
+    ensureTextConstraint(status, 12, 18)
+
+    local cancelButton = Instance.new("TextButton")
+    cancelButton.Name = "CancelButton"
+    cancelButton.AutoButtonColor = false
+    cancelButton.BackgroundColor3 = Color3.fromRGB(82, 44, 44)
+    cancelButton.BorderSizePixel = 0
+    cancelButton.Position = UDim2.new(0, 0, 1, -48)
+    cancelButton.Size = UDim2.new(0.48, -6, 0, 48)
+    cancelButton.Text = "CANCEL"
+    cancelButton.Font = Enum.Font.GothamBold
+    cancelButton.TextColor3 = WHITE
+    cancelButton.TextScaled = true
+    cancelButton.ZIndex = 911
+    cancelButton.Parent = modal
+    ensureTextConstraint(cancelButton, 14, 22)
+    ensureStroke(cancelButton, Color3.fromRGB(170, 84, 84), 1, 0.2)
+
+    local confirmButton = Instance.new("TextButton")
+    confirmButton.Name = "ConfirmButton"
+    confirmButton.AutoButtonColor = false
+    confirmButton.BackgroundColor3 = CLAIMABLE_BG
+    confirmButton.BorderSizePixel = 0
+    confirmButton.Position = UDim2.new(0.52, 6, 1, -48)
+    confirmButton.Size = UDim2.new(0.48, -6, 0, 48)
+    confirmButton.Text = "CONFIRM"
+    confirmButton.Font = Enum.Font.GothamBold
+    confirmButton.TextColor3 = WHITE
+    confirmButton.TextScaled = true
+    confirmButton.ZIndex = 911
+    confirmButton.Parent = modal
+    ensureTextConstraint(confirmButton, 14, 22)
+    ensureStroke(confirmButton, CLAIMED, 1, 0.15)
+
+    dimmer.MouseButton1Click:Connect(function()
+        if resetRequestInFlight then
+            return
+        end
+        closeResetPurchaseModal()
+    end)
+
+    cancelButton.MouseButton1Click:Connect(function()
+        if resetRequestInFlight then
+            return
+        end
+        closeResetPurchaseModal()
+    end)
+
+    confirmButton.MouseButton1Click:Connect(function()
+        if resetRequestInFlight then
+            return
+        end
+
+        resetRequestInFlight = true
+        confirmButton.Active = false
+        cancelButton.Active = false
+        status.TextColor3 = WHITE
+        status.Text = "Resetting daily quests..."
+
+        local success, message, updatedQuests = false, "Request failed", nil
+        local ok = pcall(function()
+            success, message, updatedQuests = resetDailyQuestsRF:InvokeServer()
+        end)
+
+        resetRequestInFlight = false
+        confirmButton.Active = true
+        cancelButton.Active = true
+
+        if ok and success then
+            if type(updatedQuests) == "table" and applyQuestList then
+                applyQuestList(updatedQuests)
+            elseif fetchQuests then
+                fetchQuests()
+            end
+            closeResetPurchaseModal()
+            return
+        end
+
+        status.TextColor3 = ERROR_RED
+        status.Text = tostring(message or "Could not reset daily quests.")
+    end)
+end
+
+local function bindResetTouchTrigger()
+    local resetPart = findResetPart()
+    if resetPart == activeResetPart and resetTouchConnection then
+        return
+    end
+
+    disconnectResetTouchConnection()
+
+    if not resetPart then
+        closeResetPurchaseModal()
+        return
+    end
+
+    clearResetPrompts(resetPart)
+    activeResetPart = resetPart
+    resetTouchConnection = resetPart.Touched:Connect(function(hit)
+        if not isLocalCharacterHit(hit) then
+            return
+        end
+        if resetModalLayer or resetRequestInFlight then
+            return
+        end
+        showResetPurchaseModal()
+    end)
 end
 
 local function ensureTitleGui(titlePart)
@@ -254,12 +529,14 @@ local function setRowState(row, quest)
     local goal = math.max(1, tonumber(quest.goal) or 1)
     local complete = progress >= goal
     local claimed = quest.claimed == true
+    local claimable = complete and not claimed and not pendingClaimsById[quest.id]
 
     local titleLabel = row:FindFirstChild("QuestTitle", true)
     local progressLabel = row:FindFirstChild("ProgressText", true)
     local rewardText = row:FindFirstChild("RewardText", true)
     local fillBar = row:FindFirstChild("ProgressFill", true)
     local rewardPanel = row:FindFirstChild("RewardPanel", true)
+    local claimButton = row:FindFirstChild("ClaimButton", true)
 
     if titleLabel and titleLabel:IsA("TextLabel") then
         titleLabel.Text = tostring(quest.desc or quest.title or "Daily Quest")
@@ -276,14 +553,26 @@ local function setRowState(row, quest)
     end
     if rewardText and rewardText:IsA("TextLabel") then
         rewardText.Text = tostring(quest.reward or 0)
-        rewardText.TextColor3 = claimed and CLAIMED or GOLD
+        rewardText.TextColor3 = claimed and CLAIMED or (claimable and WHITE or GOLD)
     end
     if fillBar and fillBar:IsA("Frame") then
         fillBar.Size = UDim2.new(math.clamp(progress / goal, 0, 1), 0, 1, 0)
         fillBar.BackgroundColor3 = claimed and CLAIMED or BLUE_FILL
     end
     if rewardPanel and rewardPanel:IsA("Frame") then
-        rewardPanel.BackgroundTransparency = claimed and 0.35 or 0.12
+        rewardPanel.BackgroundColor3 = claimable and CLAIMABLE_BG or Color3.fromRGB(34, 35, 37)
+        rewardPanel.BackgroundTransparency = claimed and 0.35 or (claimable and 0.05 or 0.12)
+
+        local stroke = rewardPanel:FindFirstChild("Stroke")
+        if stroke and stroke:IsA("UIStroke") then
+            stroke.Color = claimable and CLAIMED or Color3.fromRGB(56, 57, 60)
+            stroke.Transparency = claimable and 0.05 or 0.3
+        end
+    end
+    if claimButton and claimButton:IsA("TextButton") then
+        claimButton.Active = claimable
+        claimButton.AutoButtonColor = claimable
+        claimButton.Selectable = claimable
     end
 end
 
@@ -324,6 +613,18 @@ local function createQuestRow(scroll, quest, layoutOrder)
     rewardText.TextXAlignment = Enum.TextXAlignment.Left
     rewardText.Parent = rewardPanel
     ensureTextConstraint(rewardText, 12, 34)
+
+    local claimButton = Instance.new("TextButton")
+    claimButton.Name = "ClaimButton"
+    claimButton.Active = false
+    claimButton.AutoButtonColor = false
+    claimButton.BackgroundTransparency = 1
+    claimButton.BorderSizePixel = 0
+    claimButton.Selectable = false
+    claimButton.Size = UDim2.fromScale(1, 1)
+    claimButton.Text = ""
+    claimButton.TextTransparency = 1
+    claimButton.Parent = rewardPanel
 
     local content = Instance.new("Frame")
     content.Name = "Content"
@@ -378,6 +679,42 @@ local function createQuestRow(scroll, quest, layoutOrder)
     progressFill.Size = UDim2.new(0, 0, 1, 0)
     progressFill.Parent = progressTrack
 
+    claimButton.MouseButton1Click:Connect(function()
+        local currentQuest = latestQuests[questIndexById[quest.id] or layoutOrder]
+        if not currentQuest or pendingClaimsById[quest.id] then
+            return
+        end
+
+        local currentGoal = math.max(1, tonumber(currentQuest.goal) or 1)
+        local currentProgress = math.clamp(tonumber(currentQuest.progress) or 0, 0, currentGoal)
+        if currentQuest.claimed == true or currentProgress < currentGoal then
+            setRowState(row, currentQuest)
+            return
+        end
+
+        pendingClaimsById[quest.id] = true
+        setRowState(row, currentQuest)
+
+        local success = false
+        local ok = pcall(function()
+            success = claimQuestRF:InvokeServer(quest.id)
+        end)
+
+        pendingClaimsById[quest.id] = nil
+
+        if ok and success then
+            currentQuest.claimed = true
+            currentQuest.progress = currentGoal
+            setRowState(row, currentQuest)
+            if ClaimSound then
+                pcall(ClaimSound.Play)
+            end
+            return
+        end
+
+        fetchQuests()
+    end)
+
     rowByQuestId[quest.id] = row
     setRowState(row, quest)
 end
@@ -430,16 +767,10 @@ local function renderResetTimer()
     return true
 end
 
-local function fetchQuests()
-    local ok, result = pcall(function()
-        return getQuestsRF:InvokeServer()
-    end)
-    if not ok or type(result) ~= "table" then
-        return false
-    end
-
+applyQuestList = function(result)
     latestQuests = {}
     questIndexById = {}
+    pendingClaimsById = {}
     for index, quest in ipairs(result) do
         if type(quest) == "table" and type(quest.id) == "string" then
             latestQuests[index] = {
@@ -457,6 +788,17 @@ local function fetchQuests()
 
     renderQuestBoard(latestQuests)
     return true
+end
+
+fetchQuests = function()
+    local ok, result = pcall(function()
+        return getQuestsRF:InvokeServer()
+    end)
+    if not ok or type(result) ~= "table" then
+        return false
+    end
+
+    return applyQuestList(result)
 end
 
 local function updateQuestProgress(questId, newProgress)
@@ -492,7 +834,7 @@ questStateChangedRE.OnClientEvent:Connect(function(questId, state)
     if type(questId) ~= "string" then
         return
     end
-    if state == "claimed" then
+    if state == "claimed" or state == "reset" then
         fetchQuests()
     end
 end)
@@ -501,6 +843,7 @@ task.spawn(function()
     while not fetchQuests() do
         task.wait(1)
     end
+    bindResetTouchTrigger()
 end)
 
 task.spawn(function()
@@ -515,6 +858,7 @@ Workspace.ChildAdded:Connect(function(child)
         task.defer(function()
             fetchQuests()
             renderResetTimer()
+            bindResetTouchTrigger()
         end)
     end
 end)
@@ -523,6 +867,7 @@ if RunService:IsStudio() then
     task.defer(function()
         fetchQuests()
         renderResetTimer()
+        bindResetTouchTrigger()
     end)
 end
 

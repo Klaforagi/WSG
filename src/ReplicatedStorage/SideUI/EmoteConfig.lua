@@ -28,6 +28,8 @@ EmoteConfig.SLOT_COUNT = 8
 --   AnimationId (string)  Roblox animation asset id (placeholder for now)
 --   CoinCost    (number)  purchase price in the Shop
 --   Cooldown    (number)  seconds before this emote can be played again
+--   Looped      (boolean) nil/true repeats until the server cancels it; false plays once
+--   UseRunning  (boolean) false/nil cancels on movement; true allows movement without canceling
 --   IsFree      (boolean) granted to all players automatically if true
 --
 -- To add a new emote: copy one of the entries below, give it a unique Id,
@@ -42,25 +44,111 @@ EmoteConfig.Emotes = {
         -- REPLACE the animation id below with a real uploaded Wave animation asset.
         -- This placeholder (507770239) is a generic Roblox wave animation.
         AnimationId = "rbxassetid://507770239",
+        CoinCost    = 0,
+        Cooldown    = 1,
+        Looped      = false,
+        IsFree      = true,
+    },
+    {
+        Id          = "dance",
+        DisplayName = "Dance",
+        Description = "Break into a dance.",
+        AnimationId = "rbxassetid://122221160021248",
         CoinCost    = 20,
-        Cooldown    = 3,
+        Cooldown    = 1,
+        Looped      = true,
         IsFree      = false,
     },
-    -- Future emotes go here:
-    -- {
-    --     Id          = "dance",
-    --     DisplayName = "Dance",
-    --     Description = "Break it down!",
-    --     IconKey     = "EmoteDance",
-    --     AnimationId = "rbxassetid://0",
-    --     CoinCost    = 150,
-    --     Cooldown    = 5,
-    --     IsFree      = false,
-    -- },
+    {
+        Id          = "i_want_money",
+        DisplayName = "I Want Money",
+        Description = "Make it rain.",
+        AnimationId = "rbxassetid://100054170665680",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        Looped      = true,
+        IsFree      = false,
+    },
+    {
+        Id          = "take_the_l",
+        DisplayName = "Take The L",
+        Description = "Rub in the win.",
+        AnimationId = "rbxassetid://78954441062079",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        Looped      = true,
+        IsFree      = false,
+    },
+    {
+        Id          = "headless",
+        DisplayName = "Headless",
+        Description = "Go full headless mode.",
+        AnimationId = "rbxassetid://76606692073439",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        IsFree      = false,
+    },
+    {
+        Id          = "rat_dance",
+        DisplayName = "Rat Dance",
+        Description = "Do the rat dance.",
+        AnimationId = "rbxassetid://119292485335481",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        IsFree      = false,
+    },
+    {
+        Id          = "floss",
+        DisplayName = "Floss",
+        Description = "Hit the floss.",
+        AnimationId = "rbxassetid://130811327314009",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        IsFree      = false,
+    },
+    {
+        Id          = "dab",
+        DisplayName = "Dab",
+        Description = "Throw a quick dab.",
+        AnimationId = "rbxassetid://75003807251572",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        Looped      = false,
+        IsFree      = false,
+    },
+    {
+        Id          = "macarena",
+        DisplayName = "Macarena",
+        Description = "Everybody do the Macarena.",
+        AnimationId = "rbxassetid://114789325138547",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        IsFree      = false,
+    },
+    {
+        Id          = "ride_the_pony",
+        DisplayName = "Ride The Pony",
+        Description = "Bring back the classic.",
+        AnimationId = "rbxassetid://94326793594112",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        UseRunning  = true,
+        IsFree      = false,
+    },
+    {
+        Id          = "the_robot",
+        DisplayName = "The Robot",
+        Description = "Lock into robot mode.",
+        AnimationId = "rbxassetid://140192311385186",
+        CoinCost    = 20,
+        Cooldown    = 1,
+        IsFree      = false,
+    },
+    -- Future emotes go here.
 }
 
 -- ── Cooldown defaults ─────────────────────────────────────────────────────
-EmoteConfig.DEFAULT_COOLDOWN = 3  -- seconds
+EmoteConfig.DEFAULT_COOLDOWN = 1  -- seconds
 
 -- ── Lookup helpers ────────────────────────────────────────────────────────
 

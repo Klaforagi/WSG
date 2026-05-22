@@ -710,6 +710,8 @@ local function collapseTeamPicker()
 	end
 end
 
+local rebuildAll
+
 changeTeamBtn.MouseButton1Click:Connect(toggleTeamPicker)
 
 -- Fire team change requests
@@ -1107,7 +1109,7 @@ local function addPlayerRow(plr)
 	sortTeamSection(section, teamName)
 end
 
-local function rebuildAll()
+rebuildAll = function()
 	-- Clear previous rows
 	for plr, _ in pairs(playerRows) do
 		cleanupPlayerRow(plr)
@@ -1627,7 +1629,6 @@ function populateCareerTab()
 
 	-- Win Rate placeholder
 	local wins    = profileData.Wins or 0
-	local losses  = profileData.Losses or 0
 	local matches = profileData.MatchesPlayed or 0
 	local winRate = (matches > 0) and math.floor((wins / matches) * 100 + 0.5) or 0
 
@@ -1833,7 +1834,11 @@ function populateCareerTab()
 	buildStatSection("Combat", {
 		{ key = "PlayersEliminated",       label = "Players Eliminated" },
 		{ key = "MonstersEliminated",      label = "Monsters Eliminated" },
+		{ key = "GoblinsEliminated",       label = "Goblins Eliminated" },
+		{ key = "OrcsEliminated",          label = "Orcs Eliminated" },
+		{ key = "OgresEliminated",         label = "Ogres Eliminated" },
 		{ key = "Deaths",                  label = "Deaths" },
+		{ key = "TotalDamageDone",         label = "Total Damage Done" },
 		{ key = "HighestEliminationStreak", label = "Highest Elimination Streak" },
 	})
 
@@ -1845,35 +1850,15 @@ function populateCareerTab()
 	buildStatSection("Progression", {
 		{ key = "MatchesPlayed",        label = "Matches Played" },
 		{ key = "Wins",                 label = "Wins" },
-		{ key = "Losses",               label = "Losses" },
 		{ key = "TotalXP",              label = "Total XP" },
 		{ key = "TotalCoinsEarned",     label = "Total Coins Earned" },
-		{ key = "AchievementsCompleted", label = "Achievements Completed" },
+		{ key = "AchievementPoints",    label = "Achievement Points" },
 		{ key = "QuestsCompleted",      label = "Quests Completed" },
 	})
 
 	buildStatSection("Time", {
 		{ key = "TotalPlaytimeSeconds", label = "Total Playtime", formatter = formatPlaytime },
 	})
-
-	-- Future placeholder: Title / Badge area
-	local futureFrame = Instance.new("Frame")
-	futureFrame.Name                 = "FuturePlaceholder"
-	futureFrame.Size                 = UDim2.new(1, 0, 0, px(60))
-	futureFrame.BackgroundColor3     = NAVY_LIGHT
-	futureFrame.BackgroundTransparency = 0.5
-	futureFrame.LayoutOrder          = nextOrder()
-	futureFrame.Parent               = careerContainer
-	Instance.new("UICorner", futureFrame).CornerRadius = UDim.new(0, px(10))
-
-	local futureLbl = Instance.new("TextLabel")
-	futureLbl.Size                 = UDim2.new(1, 0, 1, 0)
-	futureLbl.BackgroundTransparency = 1
-	futureLbl.Font                 = Enum.Font.Gotham
-	futureLbl.TextSize             = px(20)
-	futureLbl.TextColor3           = GRAY
-	futureLbl.Text                 = "Titles & Badges coming soon..."
-	futureLbl.Parent               = futureFrame
 
 	careerBuilt = true
 end

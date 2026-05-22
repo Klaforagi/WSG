@@ -40,6 +40,18 @@ local function px(base)
 	return math.max(1, math.round(base * screenY / 1080))
 end
 
+local function getViewportSize()
+    local cam = workspace.CurrentCamera
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
+    end
+    local fallbackCamera = workspace:FindFirstChildWhichIsA("Camera")
+    if fallbackCamera and fallbackCamera.ViewportSize.X > 0 and fallbackCamera.ViewportSize.Y > 0 then
+        return fallbackCamera.ViewportSize.X, fallbackCamera.ViewportSize.Y
+    end
+    return 1920, 1080
+end
+
 -- Load AssetCodes with WaitForChild so it is available in Team Test where
 -- ReplicatedStorage contents may not have replicated when this script starts.
 local AssetCodes = nil
@@ -55,6 +67,48 @@ do
     else
         warn("[SideUI] AssetCodes not found after 5s – button icons may be missing")
     end
+end
+
+local function getShardCurrencyImage()
+    if AssetCodes and type(AssetCodes.Get) == "function" then
+        local image = AssetCodes.Get("Shards") or AssetCodes.Get("Shard")
+        if type(image) == "string" and #image > 0 then
+            return image
+        end
+    end
+    return nil
+end
+
+local function getKeyCurrencyImage()
+    if AssetCodes and type(AssetCodes.Get) == "function" then
+        local image = AssetCodes.Get("Key") or AssetCodes.Get("Keys")
+        if type(image) == "string" and #image > 0 then
+            return image
+        end
+    end
+    return nil
+end
+
+local function formatCompactCurrency(value)
+    local amount = math.max(0, math.floor(tonumber(value) or 0))
+    if amount < 10000 then
+        return tostring(amount)
+    end
+
+    local suffixes = {
+        { value = 1000000000000, suffix = "t" },
+        { value = 1000000000, suffix = "b" },
+        { value = 1000000, suffix = "m" },
+        { value = 1000, suffix = "k" },
+    }
+
+    for _, entry in ipairs(suffixes) do
+        if amount >= entry.value then
+            return tostring(math.floor(amount / entry.value)) .. entry.suffix
+        end
+    end
+
+    return tostring(amount)
 end
 
 -- Config / constants
@@ -123,7 +177,6 @@ end
 
 local MENU_DEFS = {
     { id = "Missions", label = "QUESTS", iconKey = "Quests" },
-    { id = "Upgrade", label = "UPGRADE", iconKey = "Upgrade" },
     { id = "Team", label = "TEAM", iconKey = "Team" },
 }
 
@@ -1079,6 +1132,7 @@ titleLabel.ZIndex = 275
         constraint.MinTextSize = 9
         constraint.MaxTextSize = math.max(10, math.floor(px(maxSize)))
         constraint.Parent = label
+        return constraint
     end
 
     -- Coin display (right side, LayoutOrder 1 = appears first from the left)
@@ -1116,7 +1170,7 @@ titleLabel.ZIndex = 275
     headerCoinLabel.Text = "0"
     headerCoinLabel.ZIndex = 277
     headerCoinLabel.Parent = headerCoinFrame
-    addHeaderTextConstraint(headerCoinLabel, 15)
+    local headerCoinLabelConstraint = addHeaderTextConstraint(headerCoinLabel, 15)
 
     -- Keys display (right side, LayoutOrder 2 = appears after coins)
     local headerKeyFrame = Instance.new("Frame")
@@ -1126,18 +1180,34 @@ titleLabel.ZIndex = 275
     headerKeyFrame.Parent = currencyRow
     styleCurrencyChip(headerKeyFrame, Color3.fromRGB(170, 100, 255), 72)
 
-    local headerKeyIcon = Instance.new("TextLabel")
-    headerKeyIcon.Name = "KeyIcon"
-    headerKeyIcon.Size = UDim2.new(0, px(22), 0, px(22))
-    headerKeyIcon.Position = UDim2.new(0, px(8), 0.5, 0)
-    headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
-    headerKeyIcon.BackgroundTransparency = 1
-    headerKeyIcon.Font = Enum.Font.GothamBold
-    headerKeyIcon.Text = "\u{1F511}"
-    headerKeyIcon.TextColor3 = Color3.fromRGB(170, 100, 255)
-    headerKeyIcon.ZIndex = 277
-    headerKeyIcon.Parent = headerKeyFrame
-    addHeaderTextConstraint(headerKeyIcon, 18)
+    local headerKeyIcon = nil
+    local headerKeyIconConstraint = nil
+    local keyImage = getKeyCurrencyImage()
+    if keyImage then
+        headerKeyIcon = Instance.new("ImageLabel")
+        headerKeyIcon.Name = "KeyIcon"
+        headerKeyIcon.Size = UDim2.new(0, px(22), 0, px(22))
+        headerKeyIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
+        headerKeyIcon.BackgroundTransparency = 1
+        headerKeyIcon.Image = keyImage
+        headerKeyIcon.ScaleType = Enum.ScaleType.Fit
+        headerKeyIcon.ZIndex = 277
+        headerKeyIcon.Parent = headerKeyFrame
+    else
+        headerKeyIcon = Instance.new("TextLabel")
+        headerKeyIcon.Name = "KeyIcon"
+        headerKeyIcon.Size = UDim2.new(0, px(22), 0, px(22))
+        headerKeyIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
+        headerKeyIcon.BackgroundTransparency = 1
+        headerKeyIcon.Font = Enum.Font.GothamBold
+        headerKeyIcon.Text = "\u{1F511}"
+        headerKeyIcon.TextColor3 = Color3.fromRGB(170, 100, 255)
+        headerKeyIcon.ZIndex = 277
+        headerKeyIcon.Parent = headerKeyFrame
+        headerKeyIconConstraint = addHeaderTextConstraint(headerKeyIcon, 18)
+    end
 
     local headerKeyLabel = Instance.new("TextLabel")
     headerKeyLabel.Name = "KeyLabel"
@@ -1150,28 +1220,54 @@ titleLabel.ZIndex = 275
     headerKeyLabel.Text = "0"
     headerKeyLabel.ZIndex = 277
     headerKeyLabel.Parent = headerKeyFrame
-    addHeaderTextConstraint(headerKeyLabel, 15)
+    local headerKeyLabelConstraint = addHeaderTextConstraint(headerKeyLabel, 15)
 
     -- Salvage display (header currency row, LayoutOrder 3 = after keys)
+    local SHARD_ACCENT = Color3.fromRGB(255, 158, 74)
+
     local headerSalvageFrame = Instance.new("Frame")
     headerSalvageFrame.Name = "HeaderSalvage"
     headerSalvageFrame.ZIndex = 275
     headerSalvageFrame.LayoutOrder = 3
     headerSalvageFrame.Parent = currencyRow
-    styleCurrencyChip(headerSalvageFrame, Color3.fromRGB(35, 190, 75), 98)
+    styleCurrencyChip(headerSalvageFrame, SHARD_ACCENT, 98)
+    headerSalvageFrame.BackgroundColor3 = Color3.fromRGB(57, 33, 12)
+    local headerSalvageGradient = headerSalvageFrame:FindFirstChildOfClass("UIGradient")
+    if headerSalvageGradient then
+        headerSalvageGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(82, 48, 18)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(31, 18, 8)),
+        })
+    end
 
-    local headerSalvageIcon = Instance.new("TextLabel")
-    headerSalvageIcon.Name = "SalvageIcon"
-    headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
-    headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
-    headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
-    headerSalvageIcon.BackgroundTransparency = 1
-    headerSalvageIcon.Font = Enum.Font.GothamBold
-    headerSalvageIcon.Text = "\u{2699}"
-    headerSalvageIcon.TextColor3 = Color3.fromRGB(35, 190, 75)
-    headerSalvageIcon.ZIndex = 277
-    headerSalvageIcon.Parent = headerSalvageFrame
-    addHeaderTextConstraint(headerSalvageIcon, 18)
+    local shardImage = getShardCurrencyImage()
+    local headerSalvageIcon = nil
+    local headerSalvageIconConstraint = nil
+    if shardImage then
+        headerSalvageIcon = Instance.new("ImageLabel")
+        headerSalvageIcon.Name = "SalvageIcon"
+        headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
+        headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
+        headerSalvageIcon.BackgroundTransparency = 1
+        headerSalvageIcon.Image = shardImage
+        headerSalvageIcon.ScaleType = Enum.ScaleType.Fit
+        headerSalvageIcon.ZIndex = 277
+        headerSalvageIcon.Parent = headerSalvageFrame
+    else
+        headerSalvageIcon = Instance.new("TextLabel")
+        headerSalvageIcon.Name = "SalvageIcon"
+        headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
+        headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
+        headerSalvageIcon.BackgroundTransparency = 1
+        headerSalvageIcon.Font = Enum.Font.GothamBold
+        headerSalvageIcon.Text = "\u{25C6}"
+        headerSalvageIcon.TextColor3 = SHARD_ACCENT
+        headerSalvageIcon.ZIndex = 277
+        headerSalvageIcon.Parent = headerSalvageFrame
+        headerSalvageIconConstraint = addHeaderTextConstraint(headerSalvageIcon, 18)
+    end
 
     local headerSalvageLabel = Instance.new("TextLabel")
     headerSalvageLabel.Name = "SalvageLabel"
@@ -1179,12 +1275,12 @@ titleLabel.ZIndex = 275
     headerSalvageLabel.Position = UDim2.new(0, px(33), 0, px(2))
     headerSalvageLabel.BackgroundTransparency = 1
     headerSalvageLabel.Font = Enum.Font.GothamBold
-    headerSalvageLabel.TextColor3 = Color3.fromRGB(35, 190, 75)
+    headerSalvageLabel.TextColor3 = SHARD_ACCENT
     headerSalvageLabel.TextXAlignment = Enum.TextXAlignment.Left
     headerSalvageLabel.Text = "0"
     headerSalvageLabel.ZIndex = 277
     headerSalvageLabel.Parent = headerSalvageFrame
-    addHeaderTextConstraint(headerSalvageLabel, 15)
+    local headerSalvageLabelConstraint = addHeaderTextConstraint(headerSalvageLabel, 15)
 
 -- Close X (top-right corner of window) — dark + gold style
 local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
@@ -1217,6 +1313,133 @@ closeBtnStroke.Thickness = 1.2
 closeBtnStroke.Transparency = 0.4
 closeBtnStroke.Parent = closeBtn
 
+local contentFrame, modalStatusOverlay
+
+local function updateHeaderCurrencyLayout()
+    local windowWidth = window.AbsoluteSize.X
+    local headerHeight = headerBar.AbsoluteSize.Y
+    if windowWidth <= 0 or headerHeight <= 0 then return end
+
+    local chipHeight = math.max(22, math.floor(headerHeight * 0.62))
+    local chipGap = math.max(4, math.floor(chipHeight * 0.22))
+    local iconSize = math.max(14, math.floor(chipHeight * 0.7))
+    local iconInset = math.max(4, math.floor(chipHeight * 0.24))
+    local labelInset = iconInset + iconSize + math.max(4, math.floor(chipHeight * 0.18))
+    local labelTop = math.max(1, math.floor(chipHeight * 0.08))
+    local labelHeightInset = math.max(2, math.floor(chipHeight * 0.12))
+    local closeInset = closeBtn.AbsoluteSize.X > 0 and closeBtn.AbsoluteSize.X or math.floor(headerHeight * 0.85)
+    local rightInset = closeInset + math.max(10, math.floor(headerHeight * 0.24))
+
+    local maxRowWidth = math.max(162, math.floor(windowWidth * 0.255))
+    local chipWidth = math.max(50, math.floor((maxRowWidth - (chipGap * 2)) / 3))
+    local totalWidth = (chipWidth * 3) + (chipGap * 2)
+
+    currencyRow.Size = UDim2.new(0, totalWidth, 0, chipHeight)
+    currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
+    currencyLayout.Padding = UDim.new(0, chipGap)
+
+    local titleHeight = math.max(28, math.floor(headerHeight * 0.8))
+    local leftInset = math.max(12, math.floor(headerHeight * 0.28))
+    local rightReserved = rightInset + totalWidth + math.max(8, math.floor(headerHeight * 0.24))
+    local titleWidth = math.max(96, math.min(math.floor(windowWidth * 0.34), windowWidth - rightReserved - leftInset))
+    local titleCenter = math.max(leftInset + math.floor(titleWidth * 0.5), math.min(math.floor(windowWidth * 0.5), windowWidth - rightReserved - math.floor(titleWidth * 0.5)))
+
+    titlePill.Size = UDim2.new(0, titleWidth, 0, titleHeight)
+    titlePill.Position = UDim2.new(0, titleCenter, 0.5, 0)
+
+    local function sizeChip(frame, width)
+        frame.Size = UDim2.new(0, width, 0, chipHeight)
+    end
+
+    sizeChip(headerCoinFrame, chipWidth)
+    sizeChip(headerKeyFrame, chipWidth)
+    sizeChip(headerSalvageFrame, chipWidth)
+
+    local function positionIcon(icon, scale)
+        if not icon then return end
+        local actualScale = scale or 1
+        local actualIconSize = math.max(14, math.floor(iconSize * actualScale))
+        icon.Size = UDim2.new(0, actualIconSize, 0, actualIconSize)
+        icon.Position = UDim2.new(0, iconInset, 0.5, 0)
+    end
+
+    local function positionLabel(label)
+        if not label then return end
+        label.Size = UDim2.new(1, -(labelInset + iconInset), 1, -labelHeightInset)
+        label.Position = UDim2.new(0, labelInset, 0, labelTop)
+    end
+
+    positionIcon(headerCoinIcon)
+    positionIcon(headerKeyIcon)
+    positionIcon(headerSalvageIcon, 1.25)
+    positionLabel(headerCoinLabel)
+    positionLabel(headerKeyLabel)
+    positionLabel(headerSalvageLabel)
+
+    local maxLabelSize = math.max(11, math.floor(chipHeight * 0.5))
+    if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = maxLabelSize end
+    if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = maxLabelSize end
+    if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = maxLabelSize end
+    if headerKeyIconConstraint then headerKeyIconConstraint.MaxTextSize = math.max(12, math.floor(chipHeight * 0.62)) end
+    if headerSalvageIconConstraint then headerSalvageIconConstraint.MaxTextSize = math.max(12, math.floor(chipHeight * 0.62)) end
+end
+
+local function updateModalWindowLayout()
+    local viewportX, viewportY = getViewportSize()
+    if viewportX <= 0 or viewportY <= 0 then return end
+
+    local widthTarget = math.floor(viewportX * (viewportX < viewportY and 0.82 or 0.65))
+    local widthMin = math.min(math.floor(viewportX * 0.92), 540)
+    local widthMax = math.floor(viewportX * 0.86)
+    local windowWidth = math.clamp(widthTarget, math.max(420, widthMin), math.max(widthMin, widthMax))
+
+    local heightTarget = math.floor(viewportY * 0.72)
+    local heightLimit = viewportX < viewportY and math.floor(windowWidth * 1.1) or math.floor(viewportY * 0.8)
+    local windowHeight = math.clamp(math.min(heightTarget, heightLimit), math.max(360, math.floor(viewportY * 0.46)), math.floor(viewportY * 0.84))
+    local headerHeight = math.clamp(math.floor(windowHeight * 0.1), 44, 76)
+    local contentTop = headerHeight + math.max(6, math.floor(windowHeight * 0.015))
+    local closeSize = math.max(36, math.floor(headerHeight * 0.84))
+
+    window.Size = UDim2.new(0, windowWidth, 0, windowHeight)
+    headerBar.Size = UDim2.new(1, 0, 0, headerHeight)
+    closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeXY
+    closeBtn.Size = UDim2.new(0, closeSize, 0, closeSize)
+
+    if contentFrame then
+        contentFrame.Position = UDim2.new(0, 0, 0, contentTop)
+        contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+    end
+    if modalStatusOverlay and contentFrame then
+        modalStatusOverlay.Position = contentFrame.Position
+        modalStatusOverlay.Size = contentFrame.Size
+    end
+
+    updateHeaderCurrencyLayout()
+end
+
+task.defer(updateModalWindowLayout)
+window:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateHeaderCurrencyLayout)
+headerBar:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateHeaderCurrencyLayout)
+modalOverlay:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateModalWindowLayout)
+do
+    local cameraViewportConn = nil
+    local function bindModalCamera()
+        if cameraViewportConn then
+            pcall(function() cameraViewportConn:Disconnect() end)
+            cameraViewportConn = nil
+        end
+        local camera = workspace.CurrentCamera
+        if camera then
+            cameraViewportConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateModalWindowLayout)
+        end
+    end
+    bindModalCamera()
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        bindModalCamera()
+        updateModalWindowLayout()
+    end)
+end
+
 -- Hover / press feedback
 local closeFeedbackInfo = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 closeBtn.MouseEnter:Connect(function()
@@ -1235,7 +1458,7 @@ closeBtn.MouseButton1Up:Connect(function()
 end)
 
 -- ── Content area (below header) ───────────────────────────────────────────
-local contentFrame = Instance.new("ScrollingFrame")
+contentFrame = Instance.new("ScrollingFrame")
 contentFrame.Name = "ModalContent"
 contentFrame.BackgroundTransparency = 1
 contentFrame.Size = UDim2.new(1, 0, 1 - HEADER_H - 0.02, 0)
@@ -1262,7 +1485,7 @@ contentPadding.Parent = contentFrame
 -- ensure content sits above other UI but behind header elements
 contentFrame.ZIndex = 260
 
-local modalStatusOverlay = Instance.new("Frame")
+modalStatusOverlay = Instance.new("Frame")
 modalStatusOverlay.Name = "ModalStatusOverlay"
 modalStatusOverlay.BackgroundTransparency = 1
 modalStatusOverlay.Size = contentFrame.Size
@@ -1270,6 +1493,8 @@ modalStatusOverlay.Position = contentFrame.Position
 modalStatusOverlay.Visible = false
 modalStatusOverlay.ZIndex = 285
 modalStatusOverlay.Parent = window
+
+updateModalWindowLayout()
 
 local modalStatusCard = Instance.new("Frame")
 modalStatusCard.Name = "StatusCard"
@@ -1417,6 +1642,9 @@ local function tweenWindowOut(done)
     end
 end
 
+local MenuController = nil
+local salvageApi = nil
+
 closeBtn.MouseButton1Click:Connect(function()
     if MenuController then
         MenuController.CloseAllMenus()
@@ -1433,14 +1661,12 @@ local invModule = sideUIFolder and sideUIFolder:WaitForChild("InventoryUI", 5)
 local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
 local questsModule = sideUIFolder and sideUIFolder:WaitForChild("DailyQuestsUI", 5)
 local boostsModule = sideUIFolder and sideUIFolder:WaitForChild("BoostsUI", 5)
-local upgradesModule = sideUIFolder and sideUIFolder:WaitForChild("UpgradesUI", 5)
 local crateOpeningModule = sideUIFolder and sideUIFolder:WaitForChild("CrateOpeningUI", 5)
 if not sideUIFolder then
     warn("[SideUI] SideUI folder not found in ReplicatedStorage – modals unavailable")
 end
 
 -- MenuController: centralized menu management (shared by all menus including Team)
-local MenuController = nil
 do
     local mcMod = sideUIFolder and sideUIFolder:WaitForChild("MenuController", 5)
     if mcMod and mcMod:IsA("ModuleScript") then
@@ -1464,17 +1690,17 @@ local function updateHeaderCoins()
         if ok and type(val) == "number" then coins = val end
     end
     if coins > 0 then
-        headerCoinLabel.Text = tostring(math.floor(coins))
+        headerCoinLabel.Text = formatCompactCurrency(coins)
     else
         -- Defer server call to avoid yielding during menu transitions
-        headerCoinLabel.Text = "0"
+        headerCoinLabel.Text = formatCompactCurrency(0)
         task.spawn(function()
             pcall(function()
                 local getCoinsFn = ReplicatedStorage:FindFirstChild("GetCoins")
                 if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
                     local res = getCoinsFn:InvokeServer()
                     if type(res) == "number" then
-                        headerCoinLabel.Text = tostring(math.floor(res))
+                        headerCoinLabel.Text = formatCompactCurrency(res)
                     end
                 end
             end)
@@ -1491,16 +1717,16 @@ local function updateHeaderKeys()
         if ok and type(val) == "number" then keys = val end
     end
     if keys > 0 then
-        headerKeyLabel.Text = tostring(math.floor(keys))
+        headerKeyLabel.Text = formatCompactCurrency(keys)
     else
-        headerKeyLabel.Text = "0"
+        headerKeyLabel.Text = formatCompactCurrency(0)
         task.spawn(function()
             pcall(function()
                 local getKeysFn = ReplicatedStorage:FindFirstChild("GetKeys")
                 if getKeysFn and getKeysFn:IsA("RemoteFunction") then
                     local res = getKeysFn:InvokeServer()
                     if type(res) == "number" then
-                        headerKeyLabel.Text = tostring(math.floor(res))
+                        headerKeyLabel.Text = formatCompactCurrency(res)
                     end
                 end
             end)
@@ -1516,16 +1742,16 @@ local function updateHeaderSalvage()
         if ok and type(val) == "number" then salvage = val end
     end
     if salvage > 0 then
-        headerSalvageLabel.Text = tostring(math.floor(salvage))
+        headerSalvageLabel.Text = formatCompactCurrency(salvage)
     else
-        headerSalvageLabel.Text = "0"
+        headerSalvageLabel.Text = formatCompactCurrency(0)
         task.spawn(function()
             pcall(function()
                 local getSalvageFn = ReplicatedStorage:FindFirstChild("GetSalvage")
                 if getSalvageFn and getSalvageFn:IsA("RemoteFunction") then
                     local res = getSalvageFn:InvokeServer()
                     if type(res) == "number" then
-                        headerSalvageLabel.Text = tostring(math.floor(res))
+                        headerSalvageLabel.Text = formatCompactCurrency(res)
                     end
                 end
             end)
@@ -1544,7 +1770,7 @@ local function populateModalContent(mod, label)
     -- Currency row visibility rules:
     -- Shop: show Coins + Keys + Salvage
     -- Inventory: show Coins + Keys + Salvage
-    local isShop = (label == "SHOP" or label == "BOOSTS" or label == "UPGRADES")
+    local isShop = (label == "SHOP" or label == "BOOSTS")
     local isInventory = (label == "INVENTORY")
     local showCurrency = isShop or isInventory
     currencyRow.Visible = showCurrency
@@ -1665,8 +1891,6 @@ if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
 if questsModule then registerModalMenu("Quests", questsModule, "QUESTS") end
-if upgradesModule then registerModalMenu("Upgrades", upgradesModule, "UPGRADES") end
-
 -- Legacy helper kept for any external code that may still reference it
 local function requestShowModule(mod, label)
     if not mod then return end
@@ -1676,7 +1900,6 @@ local function requestShowModule(mod, label)
         [invModule]      = "Inventory",
         [optionsModule]  = "Options",
         [questsModule]   = "Quests",
-        [upgradesModule] = "Upgrades",
     }
     local menuName = nameMap[mod]
     if MenuController and menuName then
@@ -1727,7 +1950,6 @@ if KeyDisplayModule and KeyDisplayModule.Create then
 end
 
 -- SALVAGE SYSTEM  – Salvage API (no HUD row; displayed in Inventory/Shop only)
-local salvageApi
 if SalvageDisplayModule and SalvageDisplayModule.Create then
     local hiddenHost = Instance.new("Frame")
     hiddenHost.Name = "SalvageApiHost"
@@ -1757,7 +1979,7 @@ task.spawn(function()
     local coinsEvent = ReplicatedStorage:WaitForChild("CoinsUpdated", 10)
     if coinsEvent and coinsEvent:IsA("RemoteEvent") then
         coinsEvent.OnClientEvent:Connect(function(amount)
-            headerCoinLabel.Text = tostring(math.floor(tonumber(amount) or 0))
+            headerCoinLabel.Text = formatCompactCurrency(amount)
         end)
         pcall(updateHeaderCoins)
     else
@@ -1773,7 +1995,7 @@ task.spawn(function()
             if keyApi and keyApi.SetKeys then
                 pcall(function() keyApi.SetKeys(amount) end)
             end
-            headerKeyLabel.Text = tostring(math.floor(tonumber(amount) or 0))
+            headerKeyLabel.Text = formatCompactCurrency(amount)
         end)
     else
         warn("[SideUI] KeysUpdated remote not found – key display won't auto-update")
@@ -1785,7 +2007,7 @@ task.spawn(function()
     local salvageEvent = ReplicatedStorage:WaitForChild("SalvageUpdated", 10)
     if salvageEvent and salvageEvent:IsA("RemoteEvent") then
         salvageEvent.OnClientEvent:Connect(function(amount)
-            headerSalvageLabel.Text = tostring(math.floor(tonumber(amount) or 0))
+            headerSalvageLabel.Text = formatCompactCurrency(amount)
         end)
     else
         warn("[SideUI] SalvageUpdated remote not found – salvage header won't auto-update")
@@ -1838,7 +2060,6 @@ local function OpenPage(id)
         local idToMenu = {
             Options  = "Options",
             Missions = "Quests",
-            Upgrade  = "Upgrades",
             Team     = "Team",
         }
         local menuName = idToMenu[id]
@@ -1850,7 +2071,6 @@ local function OpenPage(id)
         -- Fallback if MenuController failed to load
         if id == "Options" then toggleOptionsMenu(); return end
         if id == "Missions" then requestShowModule(questsModule, "QUESTS"); return end
-        if id == "Upgrade" then requestShowModule(upgradesModule, "UPGRADES"); return end
         if id == "Team" then
             if type(_G.TeamStatsToggle) == "function" then pcall(_G.TeamStatsToggle) end
             return

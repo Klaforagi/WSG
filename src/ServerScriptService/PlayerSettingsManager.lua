@@ -25,7 +25,7 @@ local DEFAULTS = {
     SprintMode = "Hold",
     ShowTooltips = true,
     ShowGameState = true,
-    ShowHelm = true,
+    ShowHelm = false,
     ShowPlayerHighlights = false,
 }
 

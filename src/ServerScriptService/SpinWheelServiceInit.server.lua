@@ -32,6 +32,7 @@ local spinWheelFolder = ensureInstance(remotesFolder, "Folder", "SpinWheel")
 local getStateRF = ensureInstance(spinWheelFolder, "RemoteFunction", "GetSpinWheelState")
 local requestSpinRF = ensureInstance(spinWheelFolder, "RemoteFunction", "RequestSpinWheelSpin")
 local buyPackRF = ensureInstance(spinWheelFolder, "RemoteFunction", "RequestBuyWheelSpinPack")
+local chatAnnouncementRE = ensureInstance(spinWheelFolder, "RemoteEvent", "SpinWheelChatAnnouncement")
 
 local spinWheelSectionRegistered = false
 
@@ -86,7 +87,28 @@ requestSpinRF.OnServerInvoke = function(player)
     if not player then
         return false, "Invalid player", {}
     end
-    return SpinWheelService:RequestSpin(player)
+    local success, message, payload = SpinWheelService:RequestSpin(player)
+
+    local chatAnnouncement = type(payload) == "table" and payload.chatAnnouncement or nil
+    if success == true and type(chatAnnouncement) == "table" and chatAnnouncement.scope == "global" then
+        local messageText = type(chatAnnouncement.text) == "string" and chatAnnouncement.text or ""
+        local delaySeconds = math.max(0, tonumber(chatAnnouncement.delaySeconds) or 0)
+        if messageText ~= "" then
+            task.delay(delaySeconds, function()
+                if chatAnnouncementRE and chatAnnouncementRE.Parent then
+                    chatAnnouncementRE:FireAllClients({
+                        text = messageText,
+                        bodyText = chatAnnouncement.bodyText,
+                        highlightText = chatAnnouncement.highlightText,
+                        highlightRarity = chatAnnouncement.highlightRarity,
+                        suffixText = chatAnnouncement.suffixText,
+                    })
+                end
+            end)
+        end
+    end
+
+    return success, message, payload
 end
 
 buyPackRF.OnServerInvoke = function(player, packIndex)

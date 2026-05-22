@@ -5,7 +5,7 @@
 -- Responsibilities:
 --   • Build the Emote panel UI via EmoteUI module.
 --   • Register "Emote" with MenuController for unified menu management.
---   • Toggle the Emote menu with the E key (not while typing in a TextBox).
+--   • Open the Emote menu while holding F (not while typing in a TextBox).
 --   • Expose ToggleEmoteMenu / OpenEmoteMenu / CloseEmoteMenu globally so
 --     other scripts can open the menu programmatically.
 --   • Render owned/equipped emotes when data becomes available.
@@ -164,6 +164,74 @@ local function GetEquippedEmotes()
     return cachedEquipped
 end
 
+local locomotionSuppressToken = 0
+
+local function getLocalHumanoid()
+    local character = player.Character
+    if not character then return nil end
+    return character:FindFirstChildOfClass("Humanoid")
+end
+
+local function stopLocalLocomotionTracks()
+    local humanoid = getLocalHumanoid()
+    if not humanoid then return end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then return end
+
+    for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
+        local priority = track.Priority
+        if priority == Enum.AnimationPriority.Core
+            or priority == Enum.AnimationPriority.Idle
+            or priority == Enum.AnimationPriority.Movement then
+            pcall(function() track:Stop(0) end)
+        end
+    end
+end
+
+local function setAnimateSuppressed(suppressed)
+    local character = player.Character
+    if not character then return end
+
+    local animateScript = character:FindFirstChild("Animate")
+    if animateScript and (animateScript:IsA("LocalScript") or animateScript:IsA("Script")) then
+        animateScript.Disabled = suppressed
+    end
+
+    if suppressed then
+        stopLocalLocomotionTracks()
+    end
+end
+
+local function refreshLocalEmoteMovementState()
+    local useRunning = player:GetAttribute("ActiveEmoteUseRunning") == true
+    local emoteId = player:GetAttribute("ActiveEmoteId")
+    local shouldSuppress = useRunning and type(emoteId) == "string" and emoteId ~= ""
+
+    locomotionSuppressToken += 1
+    local token = locomotionSuppressToken
+
+    setAnimateSuppressed(shouldSuppress)
+
+    if shouldSuppress then
+        task.spawn(function()
+            while locomotionSuppressToken == token
+                and player:GetAttribute("ActiveEmoteUseRunning") == true
+                and type(player:GetAttribute("ActiveEmoteId")) == "string" do
+                stopLocalLocomotionTracks()
+                task.wait(0.1)
+            end
+        end)
+    end
+end
+
+player:GetAttributeChangedSignal("ActiveEmoteId"):Connect(refreshLocalEmoteMovementState)
+player:GetAttributeChangedSignal("ActiveEmoteUseRunning"):Connect(refreshLocalEmoteMovementState)
+player.CharacterAdded:Connect(function()
+    task.defer(refreshLocalEmoteMovementState)
+end)
+refreshLocalEmoteMovementState()
+
 -- ── Open / close helpers ──────────────────────────────────────────────────
 local function OpenEmoteMenu()
     print("[EmoteClient] >>> OpenEmoteMenu() called")
@@ -233,31 +301,40 @@ EmoteUI.OnShopClicked = function()
     OpenEmoteShop()
 end
 
-local function ToggleEmoteMenu()
-    local currentlyOpen = IsEmoteMenuOpen()
-    print("[EmoteClient] >>> ToggleEmoteMenu() | currently open:", currentlyOpen)
+local function OpenEmoteMenuHold()
+    if IsEmoteMenuOpen() then
+        return
+    end
 
-    if currentlyOpen then
-        -- Tell MenuController so other menus know the state; also call directly for safety.
-        if MenuController then MenuController.CloseMenu("Emote") end
-        CloseEmoteMenu()
+    print("[EmoteClient] >>> OpenEmoteMenuHold()")
+    if MenuController then
+        MenuController.CloseAllMenus("Emote")
+    end
+    OpenEmoteMenu()
+end
+
+local function ReleaseEmoteMenuHold()
+    if not IsEmoteMenuOpen() then
+        return
+    end
+
+    print("[EmoteClient] >>> ReleaseEmoteMenuHold()")
+    local activated = false
+    if type(EmoteUI.TriggerHighlightedSelection) == "function" then
+        local ok, result = pcall(function()
+            return EmoteUI.TriggerHighlightedSelection(emotePanel)
+        end)
+        activated = ok and result == true
+    end
+
+    if activated then
+        return
+    end
+
+    if MenuController then
+        MenuController.CloseMenu("Emote")
     else
-        -- Close any other open menus first via MenuController, then open directly.
-        -- We call OpenEmoteMenu() directly here rather than going through
-        -- MenuController.OpenMenu() to avoid MC issues masking the open.
-        if MenuController then
-            MenuController.CloseAllMenus("Emote")
-        end
-        OpenEmoteMenu()
-        -- Also notify MC so it tracks our state (without double-opening).
-        if MenuController then
-            local mcMenu = MenuController  -- reference so inner-pcall can use it
-            pcall(function()
-                -- Update MC's currentMenu tracking without re-triggering open callback
-                -- by using a direct field write (compatible with the current MC impl).
-                -- This keeps MC state in sync for other menus' isOpen queries.
-            end)
-        end
+        CloseEmoteMenu()
     end
 end
 
@@ -284,51 +361,47 @@ if MenuController then
     print("[EmoteClient] Emote menu registered with MenuController")
 end
 
--- ── Keybind: E to toggle emote menu (via ContextActionService) ───────────
+-- ── Keybind: hold F to keep the emote menu open (via ContextActionService) ──
 --
--- WHY CAS instead of InputBegan for the E key:
---   1. The swim/climb controller binds E via CAS and returns Sink, which
---      makes gameProcessedEvent=true in InputBegan even when NOT typing.
---   2. Roblox's modern TextChatService chat uses an internal TextBox that
+-- WHY CAS instead of InputBegan for the hotkey:
+--   1. Roblox's modern TextChatService chat uses an internal TextBox that
 --      GetFocusedTextBox() cannot see, so we can't detect chat focus from
 --      InputBegan.
---   3. CAS callbacks are AUTOMATICALLY SUPPRESSED by the engine when ANY
+--   2. CAS callbacks are AUTOMATICALLY SUPPRESSED by the engine when ANY
 --      TextBox is focused — including the chat's internal TextBox. This
 --      means our handler simply won't fire while the player is typing in
 --      chat, with zero extra detection code needed.
---   4. Binding at a higher stack position than the swim controller also
---      prevents E from being swallowed by the swim system.
+--   3. Keeping the emote toggle on CAS also makes the input handling
+--      consistent across keyboard focus changes and respawns.
 -- ─────────────────────────────────────────────────────────────────────────
 
 local function handleEmoteHotkey(_actionName, inputState, inputObject)
-    -- Only act on key-down, not key-up or other states
-    if inputState ~= Enum.UserInputState.Begin then
+    print("[EmoteClient] CAS EmoteToggle fired | inputState:", inputState.Name,
+          "| textEntryActive:", textEntryActive)
+
+    if inputState == Enum.UserInputState.Begin then
+        local focusedTextBox = UserInputService:GetFocusedTextBox()
+        if focusedTextBox then
+            print("[EmoteClient] F blocked — player is typing in:", focusedTextBox:GetFullName())
+            return Enum.ContextActionResult.Pass
+        end
+
+        OpenEmoteMenuHold()
         return Enum.ContextActionResult.Sink
     end
 
-    -- Extra safety: check GetFocusedTextBox for custom TextBoxes that CAS
-    -- might not suppress (belt-and-suspenders).
-    local focusedTextBox = UserInputService:GetFocusedTextBox()
-
-    print("[EmoteClient] CAS EmoteToggle fired | inputState:", inputState.Name,
-          "| focusedTextBox:", focusedTextBox and focusedTextBox:GetFullName() or "nil",
-          "| textEntryActive:", textEntryActive)
-
-    if focusedTextBox then
-        print("[EmoteClient] E blocked — player is typing in:", focusedTextBox:GetFullName())
-        return Enum.ContextActionResult.Pass  -- let the TextBox receive the keystroke
+    if inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+        ReleaseEmoteMenuHold()
+        return Enum.ContextActionResult.Sink
     end
 
-    print("[EmoteClient] E allowed -> toggling emote menu")
-    ToggleEmoteMenu()
     return Enum.ContextActionResult.Sink
 end
 
--- Bind now, and re-bind after every respawn so we stay above the swim
--- controller on the CAS stack (swim rebinds E on character load).
+-- Bind now, and re-bind after every respawn so the action stays active.
 local function bindEmoteHotkey()
-    ContextActionService:BindAction("EmoteToggle", handleEmoteHotkey, false, Enum.KeyCode.E)
-    print("[EmoteClient] EmoteToggle CAS action bound to E")
+    ContextActionService:BindAction("EmoteToggle", handleEmoteHotkey, false, Enum.KeyCode.F)
+    print("[EmoteClient] EmoteToggle CAS action bound to F")
 end
 
 player.CharacterAdded:Connect(function()
@@ -357,9 +430,15 @@ end)
 -- ── Global API ────────────────────────────────────────────────────────────
 -- Exposed so other scripts (Shop, Inventory, etc.) can open/refresh the menu.
 _G.EmoteMenu = _G.EmoteMenu or {}
-_G.EmoteMenu.Toggle    = ToggleEmoteMenu
+_G.EmoteMenu.Toggle    = function()
+    if IsEmoteMenuOpen() then
+        ReleaseEmoteMenuHold()
+    else
+        OpenEmoteMenuHold()
+    end
+end
 _G.EmoteMenu.Open      = function()
-    if MenuController then MenuController.OpenMenu("Emote") else OpenEmoteMenu() end
+    OpenEmoteMenuHold()
 end
 _G.EmoteMenu.Close     = function()
     if MenuController then MenuController.CloseMenu("Emote") else CloseEmoteMenu() end
@@ -408,7 +487,7 @@ task.spawn(function()
 end)
 
 -- ── [REMOVED] Debug button was here — now deleted ────────────────────────
--- The E keybind is the only intended way to open/close the emote wheel.
+-- Hold F to keep the emote wheel open, then release to select or close.
 -- Destroy any leftover EmoteDebugBtn ScreenGui from previous sessions.
 do
     local staleDebug = playerGui:FindFirstChild("EmoteDebugBtn")
@@ -417,6 +496,6 @@ do
         print("[EmoteClient] stale EmoteDebugBtn ScreenGui destroyed")
     end
 end
-print("[EmoteClient] debug button removed – E is the only emote toggle")
+print("[EmoteClient] debug button removed – hold F for emotes")
 
 print("[EmoteClient] fully initialized")

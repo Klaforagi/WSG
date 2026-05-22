@@ -8,8 +8,8 @@
 --   GetEquippedEmotes   (RF client→server)  fetch equipped emote loadout
 --   EquippedEmotesChanged (RE server→client) push after equip/unequip
 --   PurchaseEmote       (RF client→server)  buy an emote with coins
---   EquipEmote          (RE client→server)  equip an owned emote into a slot
---   UnequipEmote        (RE client→server)  clear an emote slot
+--   EquipEmote          (RE client→server)  equip an owned emote into the next open slot
+--   UnequipEmote        (RE client→server)  clear an emote slot and compact the loadout
 --   GetOwnedEmotes      (RF client→server)  fetch list of owned emote ids
 --------------------------------------------------------------------------------
 
@@ -36,6 +36,12 @@ if not EmoteConfig then
 end
 
 local SLOT_COUNT = EmoteConfig.SLOT_COUNT or 6
+local VALID_EMOTE_IDS = {}
+for _, def in ipairs(EmoteConfig.GetAll()) do
+    if type(def.Id) == "string" and def.Id ~= "" then
+        VALID_EMOTE_IDS[def.Id] = true
+    end
+end
 
 -- ── CurrencyService ────────────────────────────────────────────────────────
 local CurrencyService = nil
@@ -116,6 +122,69 @@ local function markDirty(player, reason, options)
     DataSaveCoordinator:MarkDirty(player, "Emote", reason or "emote", options)
 end
 
+local function isValidEmoteId(emoteId)
+    return type(emoteId) == "string" and VALID_EMOTE_IDS[emoteId] == true
+end
+
+local function sanitizeOwnedSet(owned)
+    local sanitized = {}
+    if type(owned) == "table" then
+        for emoteId, isOwnedValue in pairs(owned) do
+            if isOwnedValue and isValidEmoteId(emoteId) then
+                sanitized[emoteId] = true
+            end
+        end
+    end
+
+    for _, def in ipairs(EmoteConfig.GetAll()) do
+        if def.IsFree then
+            sanitized[def.Id] = true
+        end
+    end
+
+    return sanitized
+end
+
+local function compactEquippedSlots(equipped, owned)
+    local compacted = {}
+    if type(equipped) ~= "table" then
+        return compacted
+    end
+
+    local seen = {}
+    local nextSlot = 1
+    for slot = 1, SLOT_COUNT do
+        local emoteId = equipped[slot]
+        if type(emoteId) == "string"
+            and isValidEmoteId(emoteId)
+            and (owned == nil or owned[emoteId] == true)
+            and not seen[emoteId]
+        then
+            compacted[nextSlot] = emoteId
+            seen[emoteId] = true
+            nextSlot += 1
+        end
+    end
+
+    return compacted
+end
+
+local function sanitizeEmoteData(data)
+    data = type(data) == "table" and data or {}
+    data.owned = sanitizeOwnedSet(data.owned)
+    data.equipped = compactEquippedSlots(data.equipped, data.owned)
+    return data
+end
+
+local function getFirstEmptySlot(equipped)
+    for slot = 1, SLOT_COUNT do
+        if not equipped[slot] then
+            return slot
+        end
+    end
+    return nil
+end
+
 -- ── Persistence helpers ────────────────────────────────────────────────────
 local function dsKey(player)
     return "User_" .. tostring(player.UserId)
@@ -144,18 +213,14 @@ local function loadEmoteData(player)
                 if s and type(id) == "string" then equipped[s] = id end
             end
         end
-        -- Grant any free emotes
-        for _, def in ipairs(EmoteConfig.GetAll()) do
-            if def.IsFree then owned[def.Id] = true end
-        end
-        return { owned = owned, equipped = equipped }, "existing", nil
+        return sanitizeEmoteData({ owned = owned, equipped = equipped }), "existing", nil
     end
     -- Default: grant free emotes
     local owned = {}
     for _, def in ipairs(EmoteConfig.GetAll()) do
         if def.IsFree then owned[def.Id] = true end
     end
-    return { owned = owned, equipped = {} }, success and "new" or "failed", err
+    return sanitizeEmoteData({ owned = owned, equipped = {} }), success and "new" or "failed", err
 end
 
 local function getSaveData(player)
@@ -168,6 +233,8 @@ local function saveEmoteData(player, data, oldData)
     if not ds then return false, "missing datastore" end
     data = data or playerEmoteData[player]
     if not data then return false, "missing data" end
+    data = sanitizeEmoteData(data)
+    playerEmoteData[player] = data
     -- Convert owned set to array for compact storage
     local ownedArr = {}
     for id, v in pairs(data.owned) do
@@ -197,6 +264,7 @@ local function saveEmoteData(player, data, oldData)
                 end
             end
         end
+        previousState = sanitizeEmoteData(previousState)
         if countOwnedEmotes(previousState) > 0 and countOwnedEmotes(data) == 0 then
             warn("[EmoteService] suspected wipe blocked for", player.Name)
             return storedPayload
@@ -231,6 +299,7 @@ local function getOrCreateData(player)
               "owned:", playerEmoteData[player].owned,
               "equipped:", playerEmoteData[player].equipped)
     end
+    playerEmoteData[player] = sanitizeEmoteData(playerEmoteData[player])
     return playerEmoteData[player]
 end
 
@@ -275,6 +344,11 @@ local function pushEquippedToClient(player)
 end
 
 -- ── Emote animation state ──────────────────────────────────────────────────
+local function setActiveEmoteAttributes(player, emoteId, useRunning)
+    player:SetAttribute("ActiveEmoteId", emoteId)
+    player:SetAttribute("ActiveEmoteUseRunning", useRunning == true)
+end
+
 local function stopEmoteForPlayer(player, reason)
     local track = activeEmoteTracks[player]
     if track then
@@ -282,6 +356,7 @@ local function stopEmoteForPlayer(player, reason)
         activeEmoteTracks[player] = nil
         print("[EmoteService] emote stopped for", player.Name, "reason:", reason or "unknown")
     end
+    setActiveEmoteAttributes(player, nil, false)
     -- Disconnect cancel connections
     local conns = cancelConns[player]
     if conns then
@@ -302,6 +377,7 @@ local function playEmoteForPlayer(player, emoteId)
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid then return false, "no_humanoid" end
     if humanoid.Health <= 0 then return false, "dead" end
+    if player:GetAttribute("IsDashing") == true then return false, "dashing" end
 
     -- Cooldown check
     local now = os.clock()
@@ -333,9 +409,10 @@ local function playEmoteForPlayer(player, emoteId)
     end
 
     track.Priority = Enum.AnimationPriority.Action
-    track.Looped = false
+    track.Looped = (def.Looped ~= false)
     pcall(function() track:Play(0.25) end)
     activeEmoteTracks[player] = track
+    setActiveEmoteAttributes(player, emoteId, def.UseRunning)
     print("[EmoteService] animation started for", player.Name, "emote:", emoteId)
 
     -- Set cooldown
@@ -350,6 +427,7 @@ local function playEmoteForPlayer(player, emoteId)
     table.insert(conns, track.Stopped:Connect(function()
         if activeEmoteTracks[player] == track then
             activeEmoteTracks[player] = nil
+            setActiveEmoteAttributes(player, nil, false)
             print("[EmoteService] emote ended naturally for", player.Name)
         end
         -- Clean up connections
@@ -367,8 +445,15 @@ local function playEmoteForPlayer(player, emoteId)
 
     -- Cancel on significant movement (MoveDirection changes from zero)
     table.insert(conns, humanoid:GetPropertyChangedSignal("MoveDirection"):Connect(function()
-        if humanoid.MoveDirection.Magnitude > 0.1 then
+        if def.UseRunning ~= true and humanoid.MoveDirection.Magnitude > 0.1 then
             stopEmoteForPlayer(player, "moved")
+        end
+    end))
+
+    -- Cancel on dash start
+    table.insert(conns, player:GetAttributeChangedSignal("IsDashing"):Connect(function()
+        if player:GetAttribute("IsDashing") == true then
+            stopEmoteForPlayer(player, "dashed")
         end
     end))
 
@@ -486,16 +571,11 @@ purchaseEmoteRF.OnServerInvoke = function(player, emoteId)
     -- Mark as owned
     local data = getOrCreateData(player)
     data.owned[emoteId] = true
+    data.equipped = compactEquippedSlots(data.equipped, data.owned)
     print("[EmoteService] purchase accepted:", player.Name, emoteId)
 
     -- Auto-equip into the first empty slot if available
-    local autoSlot = nil
-    for s = 1, SLOT_COUNT do
-        if not data.equipped[s] then
-            autoSlot = s
-            break
-        end
-    end
+    local autoSlot = getFirstEmptySlot(data.equipped)
     if autoSlot then
         data.equipped[autoSlot] = emoteId
         print("[EmoteService] auto-equipped", emoteId, "into slot", autoSlot)
@@ -511,12 +591,9 @@ purchaseEmoteRF.OnServerInvoke = function(player, emoteId)
     return true, newBal, "ok"
 end
 
--- EQUIP EMOTE (client sends emoteId and desired slot number)
-equipEmoteRE.OnServerEvent:Connect(function(player, emoteId, slot)
+-- EQUIP EMOTE (client requests ordered equip into the next open slot)
+equipEmoteRE.OnServerEvent:Connect(function(player, emoteId)
     if type(emoteId) ~= "string" or #emoteId == 0 then return end
-    slot = tonumber(slot)
-    if not slot or slot < 1 or slot > SLOT_COUNT then return end
-    slot = math.floor(slot)
 
     if not isOwned(player, emoteId) then
         warn("[EmoteService] equip rejected: not owned", player.Name, emoteId)
@@ -524,16 +601,24 @@ equipEmoteRE.OnServerEvent:Connect(function(player, emoteId, slot)
     end
 
     local data = getOrCreateData(player)
+    data.equipped = compactEquippedSlots(data.equipped, data.owned)
 
-    -- Remove this emote from any other slot (no duplicates)
     for s = 1, SLOT_COUNT do
         if data.equipped[s] == emoteId then
-            data.equipped[s] = nil
+            print("[EmoteService] equip ignored: already equipped", player.Name, emoteId, "slot", s)
+            pushEquippedToClient(player)
+            return
         end
     end
 
-    data.equipped[slot] = emoteId
-    print("[EmoteService] equipped", emoteId, "in slot", slot, "for", player.Name)
+    local autoSlot = getFirstEmptySlot(data.equipped)
+    if not autoSlot then
+        warn("[EmoteService] equip rejected: no free slots", player.Name, emoteId)
+        return
+    end
+
+    data.equipped[autoSlot] = emoteId
+    print("[EmoteService] equipped", emoteId, "in slot", autoSlot, "for", player.Name)
 
     markDirty(player, "equip_emote")
     pushEquippedToClient(player)
@@ -548,6 +633,7 @@ unequipEmoteRE.OnServerEvent:Connect(function(player, slot)
     local data = getOrCreateData(player)
     local removed = data.equipped[slot]
     data.equipped[slot] = nil
+    data.equipped = compactEquippedSlots(data.equipped, data.owned)
     print("[EmoteService] unequipped slot", slot, "for", player.Name, "was:", removed)
 
     markDirty(player, "unequip_emote")
