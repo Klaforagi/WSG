@@ -103,6 +103,30 @@ local purchaseModalOpen = false
 local triggerDebounce = false
 local promptEntries = {}
 local warnedMissingOpenSounds = {}
+local openCrateRemote = nil
+local currencyCache = {
+    Coins = 0,
+    Keys = 0,
+}
+local currencyFetchAt = {
+    Coins = 0,
+    Keys = 0,
+}
+local CURRENCY_REFRESH_INTERVAL = 0.35
+
+local function getOpenCrateRemote()
+    if openCrateRemote and openCrateRemote.Parent then
+        return openCrateRemote
+    end
+
+    local remote = ReplicatedStorage:FindFirstChild("OpenCrate")
+    if remote and remote:IsA("RemoteFunction") then
+        openCrateRemote = remote
+        return openCrateRemote
+    end
+
+    return nil
+end
 
 local function ensureChild(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -131,7 +155,9 @@ local function isCrateRewardSequenceActive()
 end
 
 local function canUseChestPrompts()
-    return type(_G.OpenCrateRequested) == "function" and not purchaseModalOpen and not isCrateRewardSequenceActive()
+    return (type(_G.OpenCrateRequested) == "function" or getOpenCrateRemote() ~= nil)
+        and not purchaseModalOpen
+        and not isCrateRewardSequenceActive()
 end
 
 local function getCurrencyAmount(apiGetterName, remoteName, allowRemoteFallback)
@@ -141,25 +167,44 @@ local function getCurrencyAmount(apiGetterName, remoteName, allowRemoteFallback)
             return coinApi[apiGetterName]()
         end)
         if ok and type(amount) == "number" then
-            return math.max(0, math.floor(amount))
+            local normalized = math.max(0, math.floor(amount))
+            currencyCache[remoteName == "GetKeys" and "Keys" or "Coins"] = normalized
+            return normalized
         end
     end
 
+    -- Local fallback from player attributes (set by currency systems in most flows).
+    local attrName = (remoteName == "GetKeys") and "Keys" or "Coins"
+    local attrAmount = tonumber(player:GetAttribute(attrName))
+    if attrAmount then
+        local normalized = math.max(0, math.floor(attrAmount))
+        currencyCache[attrName] = normalized
+        return normalized
+    end
+
     if allowRemoteFallback == false then
-        return 0
+        return currencyCache[attrName] or 0
+    end
+
+    local now = os.clock()
+    if now - (currencyFetchAt[attrName] or 0) < CURRENCY_REFRESH_INTERVAL then
+        return currencyCache[attrName] or 0
     end
 
     local remote = ReplicatedStorage:FindFirstChild(remoteName)
     if remote and remote:IsA("RemoteFunction") then
+        currencyFetchAt[attrName] = now
         local ok, amount = pcall(function()
             return remote:InvokeServer()
         end)
         if ok and type(amount) == "number" then
-            return math.max(0, math.floor(amount))
+            local normalized = math.max(0, math.floor(amount))
+            currencyCache[attrName] = normalized
+            return normalized
         end
     end
 
-    return 0
+    return currencyCache[attrName] or 0
 end
 
 local function getCoins(allowRemoteFallback)
@@ -171,11 +216,15 @@ local function getKeys(allowRemoteFallback)
 end
 
 local function getPromptCurrencyText(currencyType)
+    local coinApi = _G.CrateOpeningCoinApi
+    local canReadApiKeys = coinApi and type(coinApi.GetKeys) == "function"
+    local canReadApiCoins = coinApi and type(coinApi.GetCoins) == "function"
+
     if currencyType == "Keys" then
-        return string.format("Keys: %d", getKeys(false))
+        return string.format("Keys: %d", getKeys(not canReadApiKeys))
     end
 
-    return string.format("Coins: %d", getCoins(false))
+    return string.format("Coins: %d", getCoins(not canReadApiCoins))
 end
 
 local function closePurchaseModal()
@@ -238,15 +287,66 @@ local function playOpenSound(soundName)
 end
 
 local function requestOpenCrate(crateId)
-    if type(_G.OpenCrateRequested) ~= "function" then
+    if type(_G.OpenCrateRequested) == "function" then
+        pcall(function()
+            _G.OpenCrateRequested(crateId)
+        end)
         return
     end
-    pcall(function()
-        _G.OpenCrateRequested(crateId)
+
+    local remote = getOpenCrateRemote()
+    if not remote then
+        warn("[WeaponCratePrompts] OpenCrate remote unavailable")
+        return
+    end
+
+    task.spawn(function()
+        local ok, success, result = pcall(function()
+            return remote:InvokeServer(crateId)
+        end)
+
+        if not ok then
+            warn("[WeaponCratePrompts] OpenCrate invoke failed:", tostring(success))
+            return
+        end
+
+        if not success then
+            warn("[WeaponCratePrompts] OpenCrate rejected:", tostring(result))
+            return
+        end
+
+        if type(result) ~= "table" then
+            return
+        end
+
+        -- If SideUI globals are not initialized yet, drive the same roulette
+        -- animation directly so chest opens still feel responsive on mobile.
+        if type(_G.PlayCrateAnimation) == "function" then
+            pcall(function()
+                _G.PlayCrateAnimation(result.crateType or crateId, result)
+            end)
+            return
+        end
+
+        local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+        local mod = sideUI and sideUI:FindFirstChild("CrateOpeningUI")
+        if mod and mod:IsA("ModuleScript") then
+            local requireOk, crateUi = pcall(require, mod)
+            if requireOk and type(crateUi) == "table" then
+                pcall(function()
+                    if type(crateUi.Init) == "function" then
+                        crateUi.Init(playerGui)
+                    end
+                    if type(crateUi.Play) == "function" then
+                        crateUi.Play(result.crateType or crateId, result, _G.CrateOpeningCoinApi)
+                    end
+                end)
+            end
+        end
     end)
 end
 
-cancelButton.MouseButton1Click:Connect(function()
+cancelButton.Activated:Connect(function()
     closePurchaseModal()
 end)
 
@@ -260,7 +360,7 @@ for index, pack in ipairs(KeyProducts.Packs or {}) do
         layoutOrder = index,
     })
 
-    button.MouseButton1Click:Connect(function()
+    button.Activated:Connect(function()
         local productId = pack.ProductId
         if not productId or productId <= 0 then
             warn("[WeaponCratePrompts] Product ID not set for", tostring(pack.Name))

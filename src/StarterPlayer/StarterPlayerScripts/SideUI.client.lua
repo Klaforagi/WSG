@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 
 local player = Players.LocalPlayer
@@ -38,6 +39,15 @@ local function px(base)
 		screenY = cam.ViewportSize.Y
 	end
 	return math.max(1, math.round(base * screenY / 1080))
+end
+
+local function safeClamp(value, minValue, maxValue)
+    local minv = tonumber(minValue) or 0
+    local maxv = tonumber(maxValue) or minv
+    if maxv < minv then
+        minv, maxv = maxv, minv
+    end
+    return math.clamp(value, minv, maxv)
 end
 
 local function getViewportSize()
@@ -177,6 +187,7 @@ end
 
 local MENU_DEFS = {
     { id = "Missions", label = "Achieves", iconKey = "Quests" },
+    { id = "Options", label = "Settings", iconKey = "Options" },
     { id = "Team", label = "TEAM", iconKey = "Team" },
 }
 
@@ -384,7 +395,7 @@ local function CreateShopAndInventoryRow(parent)
     shopBtn.Size = UDim2.new(0.5, -px(2), 0, shopH)
     shopBtn.Parent = row
 
-    shopBtn.MouseButton1Click:Connect(function()
+    shopBtn.Activated:Connect(function()
         tweenInstance(shopBtn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
         local s = shopBtn:FindFirstChildOfClass("UIStroke")
         if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.06)) end
@@ -406,7 +417,7 @@ local function CreateShopAndInventoryRow(parent)
     invBtn.Size = UDim2.new(0.5, -px(2), 0, invH)
     invBtn.Parent = row
 
-    invBtn.MouseButton1Click:Connect(function()
+    invBtn.Activated:Connect(function()
         tweenInstance(invBtn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
         local s = invBtn:FindFirstChildOfClass("UIStroke")
         if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.06)) end
@@ -748,7 +759,7 @@ local function CreateMenuButton(def)
             tweenInstance(nameLabel, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12))
         end)
     end)
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.04))
         local s = btn:FindFirstChildOfClass("UIStroke")
         if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.04)) end
@@ -779,7 +790,7 @@ local function CreateHudOptionsButton(onActivated)
     hudGui.Name = "OptionsHudGui"
     hudGui.ResetOnSpawn = false
     hudGui.IgnoreGuiInset = true
-    hudGui.DisplayOrder = 305
+    hudGui.DisplayOrder = 1000
     hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     hudGui.Parent = playerGui
 
@@ -800,7 +811,7 @@ local function CreateHudOptionsButton(onActivated)
     button.Active = true
     button.BorderSizePixel = 0
     button.Image = ""
-    button.ZIndex = 305
+    button.ZIndex = 505
     button.Parent = container
 
     local buttonCorner = Instance.new("UICorner")
@@ -825,8 +836,27 @@ local function CreateHudOptionsButton(onActivated)
     icon.Image = (AssetCodes and type(AssetCodes.Get) == "function" and AssetCodes.Get("Options")) or ""
     icon.ImageColor3 = Color3.fromRGB(242, 245, 250)
     icon.ScaleType = Enum.ScaleType.Fit
-    icon.ZIndex = 306
+    icon.ZIndex = 506
     icon.Parent = button
+
+    local iconFallback = Instance.new("TextLabel")
+    iconFallback.Name = "Fallback"
+    iconFallback.AnchorPoint = Vector2.new(0.5, 0.5)
+    iconFallback.Position = UDim2.fromScale(0.5, 0.5)
+    iconFallback.Size = UDim2.fromScale(0.72, 0.72)
+    iconFallback.BackgroundTransparency = 1
+    iconFallback.Font = Enum.Font.GothamBold
+    iconFallback.Text = "SET"
+    iconFallback.TextScaled = true
+    iconFallback.TextColor3 = Color3.fromRGB(242, 245, 250)
+    iconFallback.ZIndex = 507
+    iconFallback.Visible = false
+    iconFallback.Parent = button
+
+    local fallbackConstraint = Instance.new("UITextSizeConstraint")
+    fallbackConstraint.MinTextSize = 8
+    fallbackConstraint.MaxTextSize = 16
+    fallbackConstraint.Parent = iconFallback
 
     local idleBgTransparency = 0.3
     local hoverBgTransparency = 0.18
@@ -843,12 +873,15 @@ local function CreateHudOptionsButton(onActivated)
 
     local function updateLayout()
         local buttonSize = UserInputService.TouchEnabled
-            and math.clamp(px(40), 38, 46)
-            or math.clamp(px(34), 32, 38)
+            and safeClamp(px(44), 42, 56)
+            or safeClamp(px(34), 32, 40)
+
+        local _, topInset = GuiService:GetGuiInset()
 
         container.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-        container.Position = UDim2.new(1, -px(12), 0, px(10))
+        container.Position = UDim2.new(1, -px(14), 0, topInset + px(10))
         buttonCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
+        fallbackConstraint.MaxTextSize = math.max(12, math.floor(buttonSize * 0.35))
     end
 
     local cameraViewportConn
@@ -911,6 +944,7 @@ local function CreateHudOptionsButton(onActivated)
     end)
 
     bindViewportListener()
+    iconFallback.Visible = (icon.Image == nil or icon.Image == "")
     tweenButtonVisuals(idleBgTransparency, idleIconColor, 1)
     task.defer(updateLayout)
 
@@ -1391,12 +1425,18 @@ local function updateModalWindowLayout()
     local widthTarget = math.floor(viewportX * (viewportX < viewportY and 0.82 or 0.65))
     local widthMin = math.min(math.floor(viewportX * 0.92), 540)
     local widthMax = math.floor(viewportX * 0.86)
-    local windowWidth = math.clamp(widthTarget, math.max(420, widthMin), math.max(widthMin, widthMax))
+
+    local lowerBound = math.max(320, widthMin)
+    local upperBound = math.max(widthMax, lowerBound)
+    local windowWidth = safeClamp(widthTarget, lowerBound, upperBound)
 
     local heightTarget = math.floor(viewportY * 0.72)
     local heightLimit = viewportX < viewportY and math.floor(windowWidth * 1.1) or math.floor(viewportY * 0.8)
-    local windowHeight = math.clamp(math.min(heightTarget, heightLimit), math.max(360, math.floor(viewportY * 0.46)), math.floor(viewportY * 0.84))
-    local headerHeight = math.clamp(math.floor(windowHeight * 0.1), 44, 76)
+    local desiredHeight = math.min(heightTarget, heightLimit)
+    local minHeight = math.max(220, math.floor(viewportY * 0.46))
+    local maxHeight = math.max(math.floor(viewportY * 0.84), minHeight)
+    local windowHeight = safeClamp(desiredHeight, minHeight, maxHeight)
+    local headerHeight = safeClamp(math.floor(windowHeight * 0.1), 44, 76)
     local contentTop = headerHeight + math.max(6, math.floor(windowHeight * 0.015))
     local closeSize = math.max(36, math.floor(headerHeight * 0.84))
 
@@ -1645,7 +1685,7 @@ end
 local MenuController = nil
 local salvageApi = nil
 
-closeBtn.MouseButton1Click:Connect(function()
+closeBtn.Activated:Connect(function()
     if MenuController then
         MenuController.CloseAllMenus()
     elseif modalOverlay.Visible then
@@ -1907,11 +1947,11 @@ local function requestShowModule(mod, label)
     end
 end
 
-shopBtn.MouseButton1Click:Connect(function()
+shopBtn.Activated:Connect(function()
     if MenuController then MenuController.ToggleMenu("Shop") else requestShowModule(shopModule, "SHOP") end
 end)
 
-invBtn.MouseButton1Click:Connect(function()
+invBtn.Activated:Connect(function()
     if MenuController then MenuController.ToggleMenu("Inventory") else requestShowModule(invModule, "INVENTORY") end
 end)
 
@@ -1921,6 +1961,20 @@ local function toggleOptionsMenu()
 end
 
 local optionsHudGui, optionsHudButton = CreateHudOptionsButton(toggleOptionsMenu)
+
+local function ensureOptionsHudButton()
+    if not optionsHudGui or not optionsHudGui.Parent or not optionsHudButton or not optionsHudButton.Parent then
+        optionsHudGui, optionsHudButton = CreateHudOptionsButton(toggleOptionsMenu)
+    end
+end
+
+task.delay(1, ensureOptionsHudButton)
+task.delay(3, ensureOptionsHudButton)
+playerGui.ChildRemoved:Connect(function(child)
+    if child and child.Name == "OptionsHudGui" then
+        task.defer(ensureOptionsHudButton)
+    end
+end)
 
 -- Coin row from CoinDisplay module (auto-wires to server remotes)
 local coinRow

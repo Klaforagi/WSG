@@ -8,6 +8,7 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService = game:GetService("SoundService")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
@@ -23,6 +24,36 @@ end
 local function px(base)
 	local screenY = getViewportSize().Y
 	return math.max(1, math.round(base * screenY / 1080))
+end
+
+local TEXT_SCALE = UserInputService.TouchEnabled and 0.8 or 1
+
+local function tpx(base, minSize)
+	local scaled = math.floor(px(base) * TEXT_SCALE)
+	if minSize then
+		return math.max(minSize, scaled)
+	end
+	return math.max(8, scaled)
+end
+
+local function ensureTextConstraint(label, minTextSize, maxTextSize)
+	local constraint = label:FindFirstChild("AutoFitTextConstraint")
+	if constraint and not constraint:IsA("UITextSizeConstraint") then
+		constraint:Destroy()
+		constraint = nil
+	end
+	if not constraint then
+		constraint = Instance.new("UITextSizeConstraint")
+		constraint.Name = "AutoFitTextConstraint"
+		constraint.Parent = label
+	end
+	constraint.MinTextSize = math.max(8, math.floor(minTextSize or 8))
+	constraint.MaxTextSize = math.max(constraint.MinTextSize, math.floor(maxTextSize or constraint.MinTextSize))
+end
+
+local function configureAutoText(label, minTextSize, maxTextSize)
+	label.TextScaled = true
+	ensureTextConstraint(label, minTextSize, maxTextSize)
 end
 
 local function safeRequire(parent, moduleName, timeout)
@@ -500,16 +531,17 @@ function ForgeStallUI.Create(parent, options)
 	stage.Name = "ForgeStage"
 	stage.AnchorPoint = Vector2.new(0.5, 0.5)
 	stage.Position = UDim2.fromScale(0.5, 0.53)
-	stage.Size = UDim2.new(0.58, 0, 0, stageHeight)
+	local isPortrait = viewportSize.X < viewportSize.Y
+	stage.Size = isPortrait and UDim2.new(0.94, 0, 0, stageHeight) or UDim2.new(0.58, 0, 0, stageHeight)
 	stage.BackgroundTransparency = 1
 	stage.BorderSizePixel = 0
 	stage.Parent = root
 	local stageConstraint = Instance.new("UISizeConstraint")
 	stageConstraint.MaxSize = Vector2.new(
-		math.max(660, math.floor(viewportSize.X * 0.92)),
-		math.max(px(900), math.floor(viewportSize.Y * 0.96))
+		math.max(320, math.floor(viewportSize.X * 0.96)),
+		math.max(260, math.floor(viewportSize.Y * 0.94))
 	)
-	stageConstraint.MinSize = Vector2.new(660, px(700))
+	stageConstraint.MinSize = Vector2.new(320, math.max(260, math.floor(viewportSize.Y * 0.5)))
 	stageConstraint.Parent = stage
 
 	local panelPosition = UDim2.new(1, 0, 0, stageTopPadding)
@@ -561,9 +593,10 @@ function ForgeStallUI.Create(parent, options)
 	titleText.Font = Enum.Font.GothamBlack
 	titleText.Text = "FORGE"
 	titleText.TextColor3 = WHITE
-	titleText.TextSize = math.max(42, px(42))
+	titleText.TextSize = tpx(36, 24)
 	titleText.TextXAlignment = Enum.TextXAlignment.Left
 	titleText.Parent = titleBadge
+	configureAutoText(titleText, 18, tpx(36, 24))
 
 	local closeButton = Instance.new("TextButton")
 	closeButton.Name = "CloseButton"
@@ -586,7 +619,7 @@ function ForgeStallUI.Create(parent, options)
 	trackConn(closeButton.MouseLeave:Connect(function()
 		TweenService:Create(closeButton, QUICK_TWEEN, { BackgroundColor3 = ORANGE }):Play()
 	end))
-	trackConn(closeButton.MouseButton1Click:Connect(function()
+	trackConn(closeButton.Activated:Connect(function()
 		if type(options.onClose) == "function" then
 			options.onClose()
 		elseif parent:IsA("ScreenGui") then
@@ -672,9 +705,10 @@ function ForgeStallUI.Create(parent, options)
 		amountLabel.Font = Enum.Font.GothamBlack
 		amountLabel.Text = formatNumber(pack.Shards)
 		amountLabel.TextColor3 = WHITE
-		amountLabel.TextSize = math.max(26, px(26))
+		amountLabel.TextSize = tpx(22, 14)
 		amountLabel.TextXAlignment = Enum.TextXAlignment.Left
 		amountLabel.Parent = card
+		configureAutoText(amountLabel, 12, tpx(22, 14))
 
 		local priceRow = Instance.new("Frame")
 		priceRow.BackgroundTransparency = 1
@@ -694,9 +728,10 @@ function ForgeStallUI.Create(parent, options)
 		priceLabel.Font = Enum.Font.GothamBlack
 		priceLabel.Text = tostring(pack.Price or 0)
 		priceLabel.TextColor3 = ORANGE_BRIGHT
-		priceLabel.TextSize = math.max(19, px(19))
+		priceLabel.TextSize = tpx(16, 11)
 		priceLabel.TextXAlignment = Enum.TextXAlignment.Left
 		priceLabel.Parent = priceRow
+		configureAutoText(priceLabel, 10, tpx(16, 11))
 
 		if isBest then
 			local bestLabel = Instance.new("TextLabel")
@@ -707,9 +742,10 @@ function ForgeStallUI.Create(parent, options)
 			bestLabel.Font = Enum.Font.GothamBlack
 			bestLabel.Text = "BEST VALUE"
 			bestLabel.TextColor3 = ORANGE_BRIGHT
-			bestLabel.TextSize = math.max(12, px(12))
+			bestLabel.TextSize = tpx(10, 9)
 			bestLabel.TextXAlignment = Enum.TextXAlignment.Right
 			bestLabel.Parent = card
+			configureAutoText(bestLabel, 8, tpx(10, 9))
 		end
 
 		trackConn(card.MouseEnter:Connect(function()
@@ -720,7 +756,7 @@ function ForgeStallUI.Create(parent, options)
 			TweenService:Create(card, QUICK_TWEEN, { BackgroundColor3 = CARD_BG }):Play()
 			cardStroke.Color = ORANGE
 		end))
-		trackConn(card.MouseButton1Click:Connect(function()
+		trackConn(card.Activated:Connect(function()
 			if promptDebounce then
 				return
 			end
@@ -764,9 +800,10 @@ function ForgeStallUI.Create(parent, options)
 	balanceTitle.Font = Enum.Font.GothamBlack
 	balanceTitle.Text = "YOUR SHARDS"
 	balanceTitle.TextColor3 = ORANGE_BRIGHT
-	balanceTitle.TextSize = math.max(10, px(10))
+	balanceTitle.TextSize = tpx(9, 8)
 	balanceTitle.TextXAlignment = Enum.TextXAlignment.Left
 	balanceTitle.Parent = balanceCard
+	configureAutoText(balanceTitle, 8, tpx(9, 8))
 
 	local balanceIconWrap = Instance.new("Frame")
 	balanceIconWrap.BackgroundTransparency = 1
@@ -781,9 +818,10 @@ function ForgeStallUI.Create(parent, options)
 	balanceValue.Size = UDim2.new(1, -px(56), 0, px(26))
 	balanceValue.Font = Enum.Font.GothamBlack
 	balanceValue.TextColor3 = WHITE
-	balanceValue.TextSize = math.max(18, px(18))
+	balanceValue.TextSize = tpx(15, 12)
 	balanceValue.TextXAlignment = Enum.TextXAlignment.Left
 	balanceValue.Parent = balanceCard
+	configureAutoText(balanceValue, 10, tpx(15, 12))
 
 	local rowsHost = Instance.new("Frame")
 	rowsHost.BackgroundTransparency = 1
@@ -861,9 +899,10 @@ function ForgeStallUI.Create(parent, options)
 		title.Font = Enum.Font.GothamBlack
 		title.Text = string.upper(def.Title or tostring(upgradeId))
 		title.TextColor3 = WHITE
-		title.TextSize = math.max(27, px(27))
+		title.TextSize = tpx(22, 14)
 		title.TextXAlignment = Enum.TextXAlignment.Left
 		title.Parent = details
+		configureAutoText(title, 11, tpx(22, 14))
 
 		local subtitle = Instance.new("TextLabel")
 		subtitle.BackgroundTransparency = 1
@@ -871,20 +910,22 @@ function ForgeStallUI.Create(parent, options)
 		subtitle.Size = UDim2.new(1, 0, 0, px(20))
 		subtitle.Font = Enum.Font.GothamBlack
 		subtitle.TextColor3 = ORANGE_BRIGHT
-		subtitle.TextSize = math.max(14, px(14))
+		subtitle.TextSize = tpx(12, 10)
 		subtitle.TextXAlignment = Enum.TextXAlignment.Left
 		subtitle.Parent = details
+		configureAutoText(subtitle, 9, tpx(12, 10))
 
 		local description = Instance.new("TextLabel")
 		description.BackgroundTransparency = 1
 		description.Size = UDim2.new(1, 0, 0, px(38))
 		description.Font = Enum.Font.GothamBold
 		description.TextColor3 = GRAY
-		description.TextSize = math.max(14, px(14))
+		description.TextSize = tpx(12, 10)
 		description.TextXAlignment = Enum.TextXAlignment.Left
 		description.TextWrapped = true
 		description.TextYAlignment = Enum.TextYAlignment.Top
 		description.Parent = details
+		configureAutoText(description, 9, tpx(12, 10))
 
 		local progressTrack = Instance.new("Frame")
 		progressTrack.BackgroundColor3 = TRACK_GRAY
@@ -936,9 +977,10 @@ function ForgeStallUI.Create(parent, options)
 		levelLabel.Size = UDim2.new(1, 0, 0, px(22))
 		levelLabel.Font = Enum.Font.GothamBlack
 		levelLabel.TextColor3 = GREEN
-		levelLabel.TextSize = math.max(16, px(16))
+		levelLabel.TextSize = tpx(14, 11)
 		levelLabel.TextXAlignment = Enum.TextXAlignment.Left
 		levelLabel.Parent = details
+		configureAutoText(levelLabel, 10, tpx(14, 11))
 
 		local purchaseBox = Instance.new("Frame")
 		purchaseBox.BackgroundColor3 = CARD_BG_ALT
@@ -972,10 +1014,11 @@ function ForgeStallUI.Create(parent, options)
 		costValue.Size = UDim2.new(1, -px(62), 1, 0)
 		costValue.Font = Enum.Font.GothamBlack
 		costValue.TextColor3 = WHITE
-		costValue.TextSize = math.max(24, px(24))
+		costValue.TextSize = tpx(20, 13)
 		costValue.TextXAlignment = Enum.TextXAlignment.Center
 		costValue.TextYAlignment = Enum.TextYAlignment.Center
 		costValue.Parent = costPill
+		configureAutoText(costValue, 10, tpx(20, 13))
 
 		local actionButton = Instance.new("TextButton")
 		actionButton.AutoButtonColor = false
@@ -986,10 +1029,11 @@ function ForgeStallUI.Create(parent, options)
 		actionButton.Font = Enum.Font.GothamBlack
 		actionButton.Text = "UPGRADE"
 		actionButton.TextColor3 = WHITE
-		actionButton.TextSize = math.max(18, px(18))
+		actionButton.TextSize = tpx(15, 12)
 		actionButton.Parent = purchaseBox
 		applyCorners(actionButton, px(10))
 		applyStroke(actionButton, ORANGE, 1.05, 0.08)
+		configureAutoText(actionButton, 10, tpx(15, 12))
 
 		local refs = {
 			upgradeId = upgradeId,
@@ -1182,7 +1226,7 @@ function ForgeStallUI.Create(parent, options)
 	end
 
 	for upgradeId, refs in pairs(rowRefs) do
-		trackConn(refs.actionButton.MouseButton1Click:Connect(function()
+		trackConn(refs.actionButton.Activated:Connect(function()
 			if refs.isPending then
 				return
 			end

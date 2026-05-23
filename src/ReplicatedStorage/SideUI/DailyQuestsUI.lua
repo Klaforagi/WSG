@@ -11,6 +11,7 @@ local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService       = game:GetService("TextService")
+local UserInputService  = game:GetService("UserInputService")
 
 local UITheme = require(script.Parent.UITheme)
 local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
@@ -35,6 +36,16 @@ local function px(base)
         screenY = cam.ViewportSize.Y
     end
     return math.max(1, math.round(base * screenY / 1080))
+end
+
+local ACH_MOBILE_TEXT_SCALE = UserInputService.TouchEnabled and 0.84 or 1
+
+local function achTextPx(base, minText)
+    local scaled = math.floor(px(base) * ACH_MOBILE_TEXT_SCALE)
+    if minText then
+        return math.max(minText, scaled)
+    end
+    return math.max(8, scaled)
 end
 
 --------------------------------------------------------------------------------
@@ -2976,7 +2987,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         label.Font                = Enum.Font.GothamBold
         label.Text                = text
         label.TextColor3          = GOLD
-        label.TextSize            = math.max(16, math.floor(px(18)))
+        label.TextSize            = achTextPx(18, 13)
         label.TextXAlignment      = Enum.TextXAlignment.Left
         label.Size                = UDim2.new(1, 0, 1, 0)
         label.Parent              = hdr
@@ -3022,7 +3033,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             bbLabel.Font                = Enum.Font.GothamBold
             bbLabel.Text                = "\u{2190} Back"
             bbLabel.TextColor3          = DIM_TEXT
-            bbLabel.TextSize            = math.max(11, math.floor(px(12)))
+            bbLabel.TextSize            = achTextPx(12, 9)
             bbLabel.Size                = UDim2.new(1, 0, 1, 0)
             bbLabel.TextXAlignment      = Enum.TextXAlignment.Center
             bbLabel.ZIndex              = 6
@@ -3098,7 +3109,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         iconLabel.BackgroundTransparency = 1
         iconLabel.Font                = Enum.Font.GothamBold
         iconLabel.Text                = ach.icon or "\u{2605}"
-        iconLabel.TextSize            = math.max(20, math.floor(px(24)))
+        iconLabel.TextSize            = achTextPx(22, 15)
         iconLabel.TextColor3          = GOLD
         iconLabel.Size                = UDim2.new(0, px(32), 0, px(32))
         iconLabel.Position            = UDim2.new(0, 0, 0, 0)
@@ -3111,7 +3122,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         titleLbl.Font               = Enum.Font.GothamBold
         titleLbl.Text               = ach.title
         titleLbl.TextColor3         = WHITE
-        titleLbl.TextSize           = math.max(15, math.floor(px(17)))
+        titleLbl.TextSize           = achTextPx(16, 12)
         titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
         titleLbl.Size               = UDim2.new(0.50, 0, 0, px(22))
         titleLbl.Position           = UDim2.new(0, px(38), 0, 0)
@@ -3149,7 +3160,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         amtLbl.Font                = Enum.Font.GothamBold
         amtLbl.Text                = "+" .. FormatInt(ach.reward)
         amtLbl.TextColor3          = GOLD
-        amtLbl.TextSize            = math.max(11, math.floor(px(12)))
+        amtLbl.TextSize            = achTextPx(12, 9)
         amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
         amtLbl.Size                = UDim2.new(1, -px(28), 0, px(22))
         amtLbl.AnchorPoint         = Vector2.new(1, 0)
@@ -3165,7 +3176,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             apIconSmall.Font                = Enum.Font.GothamBold
             apIconSmall.Text                = "\u{2B50}"
             apIconSmall.TextColor3          = GOLD
-            apIconSmall.TextSize            = math.max(10, math.floor(px(11)))
+            apIconSmall.TextSize            = achTextPx(11, 8)
             apIconSmall.Size                = UDim2.new(0, px(16), 0, px(22))
             apIconSmall.Position            = UDim2.new(0, px(8), 0, px(22))
             apIconSmall.Parent              = rewardBadge
@@ -3176,7 +3187,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             apAmtLbl.Font                = Enum.Font.GothamBold
             apAmtLbl.Text                = "+" .. FormatInt(achAP) .. " AP"
             apAmtLbl.TextColor3          = Color3.fromRGB(220, 200, 100)
-            apAmtLbl.TextSize            = math.max(10, math.floor(px(11)))
+            apAmtLbl.TextSize            = achTextPx(11, 8)
             apAmtLbl.TextXAlignment      = Enum.TextXAlignment.Right
             apAmtLbl.Size                = UDim2.new(1, -px(28), 0, px(22))
             apAmtLbl.AnchorPoint         = Vector2.new(1, 0)
@@ -3191,7 +3202,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         descLbl.Font               = Enum.Font.GothamMedium
         descLbl.Text               = ach.desc
         descLbl.TextColor3         = DIM_TEXT
-        descLbl.TextSize           = math.max(11, math.floor(px(12)))
+        descLbl.TextSize           = achTextPx(11, 9)
         descLbl.TextXAlignment     = Enum.TextXAlignment.Left
         descLbl.TextWrapped        = true
         descLbl.Size               = UDim2.new(0.7, 0, 0, px(18))
@@ -3253,7 +3264,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         progText.Font               = Enum.Font.GothamBold
         progText.Text               = FormatProgress(ach.progress, ach.target)
         progText.TextColor3         = WHITE
-        progText.TextSize           = math.max(12, math.floor(px(13)))
+        progText.TextSize           = achTextPx(13, 10)
         progText.Size               = UDim2.new(1, 0, 1, 0)
         progText.Parent             = track
 
@@ -3273,7 +3284,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         achievedOnLbl.Font                = Enum.Font.Gotham
         achievedOnLbl.Text                = ""
         achievedOnLbl.TextColor3          = DIM_TEXT
-        achievedOnLbl.TextSize            = math.max(10, math.floor(px(11)))
+        achievedOnLbl.TextSize            = achTextPx(11, 8)
         achievedOnLbl.TextXAlignment      = Enum.TextXAlignment.Left
         achievedOnLbl.TextTransparency    = 0.1
         achievedOnLbl.Visible             = false
@@ -3300,7 +3311,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         btn.Name            = "StatusBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
-        btn.TextSize        = math.max(13, math.floor(px(14)))
+        btn.TextSize        = achTextPx(14, 10)
         btn.Size            = UDim2.new(0, btnW2, 0, btnH2)
         btn.AnchorPoint     = Vector2.new(1, 0)
         btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
@@ -3463,7 +3474,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         title.Font = Enum.Font.GothamBold
         title.Text = "Achievement Points"
         title.TextColor3 = WHITE
-        title.TextSize = math.max(13, math.floor(px(14)))
+        title.TextSize = achTextPx(14, 10)
         title.TextXAlignment = Enum.TextXAlignment.Left
         title.Size = UDim2.new(0.65, 0, 0, px(18))
         title.Position = UDim2.new(0, 0, 0, 0)
@@ -3475,7 +3486,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         subtitle.Font = Enum.Font.GothamMedium
         subtitle.Text = "Lifetime total from claimed achievements"
         subtitle.TextColor3 = DIM_TEXT
-        subtitle.TextSize = math.max(10, math.floor(px(11)))
+        subtitle.TextSize = achTextPx(11, 8)
         subtitle.TextXAlignment = Enum.TextXAlignment.Left
         subtitle.Size = UDim2.new(0.75, 0, 0, px(14))
         subtitle.Position = UDim2.new(0, 0, 0, px(26))
@@ -3486,7 +3497,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         value.BackgroundTransparency = 1
         value.Font = Enum.Font.GothamBlack
         value.TextColor3 = GOLD
-        value.TextSize = math.max(22, math.floor(px(24)))
+        value.TextSize = achTextPx(24, 14)
         value.TextXAlignment = Enum.TextXAlignment.Right
         value.AnchorPoint = Vector2.new(1, 0.5)
         value.Size = UDim2.new(0.34, 0, 0, px(28))
@@ -3532,7 +3543,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             msgMain.Font            = Enum.Font.GothamBold
             msgMain.Text            = "No achievements completed yet."
             msgMain.TextColor3      = DIM_TEXT
-            msgMain.TextSize        = math.max(14, math.floor(px(15)))
+            msgMain.TextSize        = achTextPx(15, 11)
             msgMain.Size            = UDim2.new(1, 0, 0.5, 0)
             msgMain.Position        = UDim2.new(0, 0, 0, px(8))
             msgMain.TextXAlignment  = Enum.TextXAlignment.Center
@@ -3543,7 +3554,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             msgSub.Font             = Enum.Font.GothamMedium
             msgSub.Text             = "Complete achievements to see them here."
             msgSub.TextColor3       = DIM_TEXT
-            msgSub.TextSize         = math.max(11, math.floor(px(12)))
+            msgSub.TextSize         = achTextPx(12, 9)
             msgSub.Size             = UDim2.new(1, 0, 0.4, 0)
             msgSub.Position         = UDim2.new(0, 0, 0.5, 0)
             msgSub.TextXAlignment   = Enum.TextXAlignment.Center
@@ -3582,7 +3593,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             check.Font      = Enum.Font.GothamBold
             check.Text      = "\u{2714}"
             check.TextColor3 = GREEN_GLOW
-            check.TextSize  = math.max(16, math.floor(px(18)))
+            check.TextSize  = achTextPx(18, 12)
             check.Size      = UDim2.new(0, px(24), 0, px(24))
             check.Position  = UDim2.new(0, 0, 0, 0)
             check.Parent    = histCard
@@ -3594,7 +3605,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hTitle.Font      = Enum.Font.GothamBold
             hTitle.Text      = entry.displayName or entry.id
             hTitle.TextColor3 = WHITE
-            hTitle.TextSize  = math.max(13, math.floor(px(14)))
+            hTitle.TextSize  = achTextPx(14, 10)
             hTitle.TextXAlignment = Enum.TextXAlignment.Left
             hTitle.Size      = UDim2.new(0.6, 0, 0, px(18))
             hTitle.Position  = UDim2.new(0, px(30), 0, 0)
@@ -3608,7 +3619,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hMeta.Font      = Enum.Font.Gotham
             hMeta.Text      = dateStr
             hMeta.TextColor3 = DIM_TEXT
-            hMeta.TextSize  = math.max(10, math.floor(px(11)))
+            hMeta.TextSize  = achTextPx(11, 8)
             hMeta.TextXAlignment = Enum.TextXAlignment.Left
             hMeta.Size      = UDim2.new(0.7, 0, 0, px(14))
             hMeta.Position  = UDim2.new(0, px(30), 0, px(20))
@@ -3621,7 +3632,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hDesc.Font      = Enum.Font.GothamMedium
             hDesc.Text      = entry.desc or ""
             hDesc.TextColor3 = DIM_TEXT
-            hDesc.TextSize  = math.max(10, math.floor(px(11)))
+            hDesc.TextSize  = achTextPx(11, 8)
             hDesc.TextXAlignment = Enum.TextXAlignment.Left
             hDesc.TextWrapped = true
             hDesc.Size      = UDim2.new(0.85, 0, 0, px(14))
@@ -3644,7 +3655,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hReward.Font      = Enum.Font.GothamBold
             hReward.Text      = table.concat(rewardLines, "\n")
             hReward.TextColor3 = GOLD
-            hReward.TextSize  = math.max(11, math.floor(px(12)))
+            hReward.TextSize  = achTextPx(12, 9)
             hReward.TextXAlignment = Enum.TextXAlignment.Right
             hReward.TextYAlignment = Enum.TextYAlignment.Top
             hReward.AnchorPoint = Vector2.new(1, 0)
@@ -3925,7 +3936,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         label.Font                = Enum.Font.GothamBold
         label.Text                = def.label
         label.TextColor3          = DIM_TEXT
-        label.TextSize            = math.max(14, math.floor(px(16)))
+        label.TextSize            = achTextPx(14, 10)
         label.TextXAlignment      = Enum.TextXAlignment.Center
         label.Size                = UDim2.new(1, 0, 0, px(18))
         label.AnchorPoint         = Vector2.new(0.5, 0)
@@ -3942,7 +3953,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         progLbl.Font                = Enum.Font.GothamBold
         progLbl.Text                = tostring(pctVal) .. "%"
         progLbl.TextColor3          = Color3.fromRGB(120, 125, 150)
-        progLbl.TextSize            = math.max(13, math.floor(px(15)))
+        progLbl.TextSize            = achTextPx(13, 10)
         progLbl.TextXAlignment      = Enum.TextXAlignment.Center
         progLbl.Size                = UDim2.new(1, 0, 0, px(16))
         progLbl.AnchorPoint         = Vector2.new(0.5, 0)

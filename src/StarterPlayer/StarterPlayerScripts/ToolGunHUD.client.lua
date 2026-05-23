@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPack = game:GetService("StarterPack")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -274,22 +275,42 @@ local function tryFire(tool)
     if _G.IsBandaging then return end
 
     shotInFlight = true
+    local activeCamera = workspace.CurrentCamera or camera
+    if not activeCamera then
+        shotInFlight = false
+        return
+    end
+
     local origin
     if tool:FindFirstChild("Handle") and tool.Handle:IsA("BasePart") then
         origin = tool.Handle.Position
     else
-        origin = camera.CFrame.Position
+        origin = activeCamera.CFrame.Position
     end
-    local mouse = player:GetMouse()
     local mx, my
-    if mouse and mouse.X and mouse.Y then
-        mx = mouse.X ; my = mouse.Y
+    local rayOrigin
+    local rayDirection
+    if UserInputService.TouchEnabled then
+        mx = activeCamera.ViewportSize.X * 0.5
+        my = activeCamera.ViewportSize.Y * 0.5
+        local touchRay = activeCamera:ScreenPointToRay(mx, my)
+        rayOrigin = touchRay.Origin
+        rayDirection = touchRay.Direction.Unit
     else
-        local mpos = game:GetService("UserInputService"):GetMouseLocation()
-        mx = mpos.X ; my = mpos.Y
+        local mouse = player:GetMouse()
+        if mouse and mouse.X and mouse.Y then
+            mx = mouse.X
+            my = mouse.Y
+        else
+            local mpos = UserInputService:GetMouseLocation()
+            mx = mpos.X
+            my = mpos.Y
+        end
+        local mouseRay = activeCamera:ScreenPointToRay(mx, my)
+        rayOrigin = mouseRay.Origin
+        rayDirection = mouseRay.Direction.Unit
     end
-    local ray = camera:ScreenPointToRay(mx, my)
-    fireEvent:FireServer(ray.Origin, ray.Direction.Unit, origin, tool.Name)
+    fireEvent:FireServer(rayOrigin, rayDirection, origin, tool.Name)
     -- Failsafe: if no ACK within 0.35s, clear the in-flight flag so the gun does not get stuck
     local myToken = fireToken
     task.delay(0.35, function()
