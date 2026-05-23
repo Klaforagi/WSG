@@ -75,9 +75,11 @@ local DEFAULT_SETTINGS = {
 	ShowGameState     = true,
 	ShowHelm          = true,
 	ShowPlayerHighlights = false,
-	ShowPlayerHealthBars = true,
+	ShowTeammateHealthBars = false,
+	ShowEnemyHealthBars = true,
 	ShowNPCHealthBars = true,
 	ShowPlayerRings = true,
+	ShowPlayerMarkers = true,
 	-- UIScale removed from options
 }
 
@@ -90,6 +92,7 @@ local function ensureSettings()
 	-- If the startup loader or another script already populated _G.PlayerSettings,
 	-- merge it with defaults instead of overwriting so saved values persist.
 	local existing = (_G.PlayerSettings and type(_G.PlayerSettings) == "table") and _G.PlayerSettings or nil
+	local legacyPlayerBars = existing and existing.ShowPlayerHealthBars
 	PlayerSettings = {}
 	for k, v in pairs(DEFAULT_SETTINGS) do
 		if existing and existing[k] ~= nil then
@@ -97,6 +100,12 @@ local function ensureSettings()
 		else
 			PlayerSettings[k] = v
 		end
+	end
+	if existing and existing.ShowTeammateHealthBars == nil and type(legacyPlayerBars) == "boolean" then
+		PlayerSettings.ShowTeammateHealthBars = legacyPlayerBars
+	end
+	if existing and existing.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
+		PlayerSettings.ShowEnemyHealthBars = legacyPlayerBars
 	end
 	-- Expose globally so other scripts (camera, sprint, etc.) can read them
 	_G.PlayerSettings = PlayerSettings
@@ -187,20 +196,37 @@ local function ApplySettings(settings)
 	-- Player Highlights toggle – expose globally for TeamHighlight script
 	_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
 
-	-- Overhead health bars toggle; names are intentionally unaffected.
-	local playerHealthBarsVisible = (settings.ShowPlayerHealthBars ~= false)
+	-- Overhead health bars toggles; names are intentionally unaffected.
+	local teammateHealthBarsVisible = (settings.ShowTeammateHealthBars == true)
+	local enemyHealthBarsVisible = (settings.ShowEnemyHealthBars ~= false)
 	local npcHealthBarsVisible = (settings.ShowNPCHealthBars ~= false)
-	if _G.ShowPlayerHealthBars ~= playerHealthBarsVisible then
-		print(string.format("[OverheadUI] Player health bars visible = %s", tostring(playerHealthBarsVisible)))
+	if _G.ShowTeammateHealthBars ~= teammateHealthBarsVisible then
+		print(string.format("[OverheadUI] Teammate health bars visible = %s", tostring(teammateHealthBarsVisible)))
+	end
+	if _G.ShowEnemyHealthBars ~= enemyHealthBarsVisible then
+		print(string.format("[OverheadUI] Enemy health bars visible = %s", tostring(enemyHealthBarsVisible)))
 	end
 	if _G.ShowNPCHealthBars ~= npcHealthBarsVisible then
 		print(string.format("[OverheadUI] NPC health bars visible = %s", tostring(npcHealthBarsVisible)))
 	end
-	_G.ShowPlayerHealthBars = playerHealthBarsVisible
+	_G.ShowTeammateHealthBars = teammateHealthBarsVisible
+	_G.ShowEnemyHealthBars = enemyHealthBarsVisible
+	_G.ShowPlayerHealthBars = (teammateHealthBarsVisible or enemyHealthBarsVisible)
 	_G.ShowNPCHealthBars = npcHealthBarsVisible
 	pcall(function()
 		if type(_G.RefreshOverheadUISettings) == "function" then
 			_G.RefreshOverheadUISettings()
+		end
+	end)
+
+	local playerMarkersVisible = (settings.ShowPlayerMarkers ~= false)
+	if _G.ShowPlayerMarkers ~= playerMarkersVisible then
+		print(string.format("[PlayerMarkers] Player markers visible = %s", tostring(playerMarkersVisible)))
+	end
+	_G.ShowPlayerMarkers = playerMarkersVisible
+	pcall(function()
+		if type(_G.RefreshPlayerMarkers) == "function" then
+			_G.RefreshPlayerMarkers()
 		end
 	end)
 
@@ -914,9 +940,10 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	-- UI section
 	---------------------------------------------------------------------------
 	createSectionHeader(root, "UI", nextOrder())
-	createToggle(root, "Show Scoreboard", "ShowGameState", nextOrder())
 	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
-	createToggle(root, "Show Player Health Bars", "ShowPlayerHealthBars", nextOrder())
+	createToggle(root, "Show Teammate Health Bars", "ShowTeammateHealthBars", nextOrder())
+	createToggle(root, "Show Enemy Health Bars", "ShowEnemyHealthBars", nextOrder())
+	createToggle(root, "Show Player Markers", "ShowPlayerMarkers", nextOrder())
 	createToggle(root, "Show Player Rings", "ShowPlayerRings", nextOrder())
 	createToggle(root, "Show NPC Health Bars", "ShowNPCHealthBars", nextOrder())
 	-- UI Scale removed per request

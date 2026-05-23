@@ -15,6 +15,7 @@ local DEFAULT_NAME_POSITION = UDim2.new(0, 0, 0, 1)
 local DEFAULT_NAME_SIZE = UDim2.new(1, 0, 0, 16)
 local LOCAL_NAME_ONLY_POSITION = UDim2.new(0, 0, 0, 22)
 local LOCAL_NAME_ONLY_SIZE = UDim2.new(1, 0, 0, 18)
+local MARKER_SWAP_DISTANCE = 70
 
 -- Distance band: health bars are barely visible at FADE_START and fully opaque
 -- at FADE_FULL. Names do not fade.
@@ -58,14 +59,62 @@ local function isLocalPlayerBillboard(billboard)
 		or (billboard.Parent and billboard.Parent:IsDescendantOf(character))
 end
 
+local function getBillboardPlayer(billboard)
+	local character = billboard and billboard.Parent and billboard.Parent.Parent
+	if not character or not character:IsA("Model") then
+		return nil
+	end
+	return Players:GetPlayerFromCharacter(character)
+end
+
+local function isTeammateBillboard(billboard)
+	local billboardPlayer = getBillboardPlayer(billboard)
+	if not billboardPlayer then
+		return false
+	end
+	if billboardPlayer == localPlayer then
+		return false
+	end
+	local myTeam = localPlayer and localPlayer.Team
+	local theirTeam = billboardPlayer.Team
+	return myTeam and theirTeam and myTeam == theirTeam
+end
+
 local function healthBarsEnabled(billboard)
 	if getOwnerType(billboard) == "Player" and isLocalPlayerBillboard(billboard) then
 		return false
 	end
 	if getOwnerType(billboard) == "Player" then
-		return _G.ShowPlayerHealthBars ~= false
+		if isTeammateBillboard(billboard) then
+			return _G.ShowTeammateHealthBars == true
+		end
+		return _G.ShowEnemyHealthBars ~= false
 	end
 	return _G.ShowNPCHealthBars ~= false
+end
+
+local function shouldUseMarkerForPlayerBillboard(billboard, dist)
+	if getOwnerType(billboard) ~= "Player" then
+		return false
+	end
+	if isLocalPlayerBillboard(billboard) then
+		return false
+	end
+	if _G.ShowPlayerMarkers == false then
+		return false
+	end
+	if dist <= MARKER_SWAP_DISTANCE then
+		return false
+	end
+	local targetPlayer = getBillboardPlayer(billboard)
+	if not targetPlayer then
+		return false
+	end
+	local carryingFlag = targetPlayer:GetAttribute("CarryingFlag")
+	if type(carryingFlag) == "string" and carryingFlag ~= "" then
+		return false
+	end
+	return true
 end
 
 local function getElements(billboard)
@@ -92,7 +141,15 @@ end
 
 local function applyNameVisibility(elements, billboard)
 	if elements.nameLabel then
+		local nameOnlyMode = false
 		if billboard and isLocalPlayerBillboard(billboard) then
+			nameOnlyMode = true
+		elseif billboard and getOwnerType(billboard) == "Player" and isTeammateBillboard(billboard)
+			and _G.ShowTeammateHealthBars ~= true then
+			nameOnlyMode = true
+		end
+
+		if nameOnlyMode then
 			elements.nameLabel.Position = LOCAL_NAME_ONLY_POSITION
 			elements.nameLabel.Size = LOCAL_NAME_ONLY_SIZE
 		else
@@ -198,10 +255,15 @@ RunService.Heartbeat:Connect(function()
 
 	-- Walk all BillboardGuis in Workspace named MobOverheadHealth
 	for _, billboard in ipairs(Workspace:GetDescendants()) do
-		if billboard:IsA("BillboardGui") and billboard.Name == BILLBOARD_NAME and billboard.Enabled then
+		if billboard:IsA("BillboardGui") and billboard.Name == BILLBOARD_NAME then
 			local part = billboard.Parent
 			if part and part:IsA("BasePart") then
 				local dist = (part.Position - playerPos).Magnitude
+				local markerMode = shouldUseMarkerForPlayerBillboard(billboard, dist)
+				billboard.Enabled = not markerMode
+				if markerMode then
+					continue
+				end
 				local t = 1 - math.clamp((dist - FADE_FULL) / (FADE_START - FADE_FULL), 0, 1)
 				-- Remap so the far edge is 0.01 (barely visible) not 0 (invisible pop-in)
 				local alpha = 0.01 + t * 0.99

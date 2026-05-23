@@ -490,9 +490,11 @@ pcall(function()
 			ShowGameState = true,
 			ShowHelm = true,
 			ShowPlayerHighlights = false,
-			ShowPlayerHealthBars = true,
+			ShowTeammateHealthBars = false,
+			ShowEnemyHealthBars = true,
 			ShowNPCHealthBars = true,
 			ShowPlayerRings = true,
+			ShowPlayerMarkers = true,
 		}
 		local settings = {}
 		for k, v in pairs(defaults) do settings[k] = v end
@@ -503,9 +505,12 @@ pcall(function()
 		end
 		_G.PlayerSettings = settings
 		_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
-		_G.ShowPlayerHealthBars = (settings.ShowPlayerHealthBars ~= false)
+		_G.ShowTeammateHealthBars = (settings.ShowTeammateHealthBars == true)
+		_G.ShowEnemyHealthBars = (settings.ShowEnemyHealthBars ~= false)
+		_G.ShowPlayerHealthBars = (_G.ShowTeammateHealthBars or _G.ShowEnemyHealthBars)
 		_G.ShowNPCHealthBars = (settings.ShowNPCHealthBars ~= false)
 		_G.ShowPlayerRings = (settings.ShowPlayerRings ~= false)
+		_G.ShowPlayerMarkers = (settings.ShowPlayerMarkers ~= false)
 
 		pcall(function()
 			local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")
