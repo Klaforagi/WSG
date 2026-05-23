@@ -3710,7 +3710,7 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                     -- Equip it
                     local eRemotes = ensureEffectRemotes()
                     if eRemotes and eRemotes.equip and eRemotes.equip:IsA("RemoteEvent") then
-                        pcall(function() eRemotes.equip:FireServer(selectedEffectId) end)
+                        pcall(function() eRemotes.equip:FireServer(selectedEffectId, def.SubType or "DashTrail") end)
                     end
                     equippedEffectId = selectedEffectId
                     updateEffectActionButton()
@@ -3964,13 +3964,23 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 -- Equipped effect
                 if eRemotes.getEquipped and eRemotes.getEquipped:IsA("RemoteFunction") then
                     local ok, equipped = pcall(function() return eRemotes.getEquipped:InvokeServer() end)
-                    if ok and type(equipped) == "string" then equippedEffectId = equipped end
+                    if ok then
+                        if type(equipped) == "table" then
+                            equippedEffectId = equipped.DashTrail
+                        elseif type(equipped) == "string" then
+                            equippedEffectId = equipped
+                        end
+                    end
                 end
                 refreshEffectCards()
                 -- Listen for equip changes
                 if eRemotes.changed and eRemotes.changed:IsA("RemoteEvent") then
                     eRemotes.changed.OnClientEvent:Connect(function(newEquipped)
-                        if type(newEquipped) == "string" then
+                        if type(newEquipped) == "table" then
+                            equippedEffectId = newEquipped.DashTrail
+                            updateEffectActionButton()
+                            refreshEffectCards()
+                        elseif type(newEquipped) == "string" then
                             equippedEffectId = newEquipped
                             updateEffectActionButton()
                             refreshEffectCards()

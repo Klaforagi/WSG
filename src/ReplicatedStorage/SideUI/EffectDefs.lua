@@ -97,7 +97,7 @@ EffectDefs.Effects = {
     },
 
     ---------------------------------------------------------------------------
-    -- SALVAGE SHOP TRAILS  (purchased with Salvage currency)
+    -- PREMIUM COIN TRAILS
     ---------------------------------------------------------------------------
     {
         Id          = "EmeraldTrail",
@@ -106,9 +106,9 @@ EffectDefs.Effects = {
         Category    = "Effects",
         SubType     = "DashTrail",
         Color       = Color3.fromRGB(35, 190, 75),
-        CoinCost    = 0,       -- not sold for coins
+        CoinCost    = 120,
         IsFree      = false,
-        ShopVisible = false,   -- Salvage Shop exclusive
+        ShopVisible = true,
         Rarity      = "Rare",
         SortOrder   = 10,
         IconGlyph   = "\u{2550}",
@@ -120,9 +120,9 @@ EffectDefs.Effects = {
         Category    = "Effects",
         SubType     = "DashTrail",
         Color       = Color3.fromRGB(255, 200, 50),
-        CoinCost    = 0,       -- not sold for coins
+        CoinCost    = 200,
         IsFree      = false,
-        ShopVisible = false,   -- Salvage Shop exclusive
+        ShopVisible = true,
         Rarity      = "Epic",
         SortOrder   = 11,
         IconGlyph   = "\u{2550}",

@@ -352,12 +352,17 @@ purchaseEffectRF.OnServerInvoke = function(player, effectId)
     local def = EffectDefs.GetById(effectId)
     if not def then return false, 0, "unknown_effect" end
 
+    local price = tonumber(def.CoinCost) or 0
+    if def.IsFree == true or def.ShopVisible == false or price <= 0 then
+        local bal = CurrencyService and CurrencyService:GetCoins(player) or 0
+        return false, bal, "not_purchasable"
+    end
+
     if isOwned(player, effectId) then
         local bal = CurrencyService and CurrencyService:GetCoins(player) or 0
         return false, bal, "already_owned"
     end
 
-    local price = def.CoinCost or 0
     if price > 0 then
         if not CurrencyService then return false, 0, "no_currency" end
         local balance = CurrencyService:GetCoins(player)

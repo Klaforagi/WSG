@@ -23,7 +23,7 @@ SalvageShopConfig.Items = {
     {
         Id           = "salvage_trail_emerald",
         DisplayName  = "Emerald Trail",
-        Description  = "A vivid green dash trail forged from Shards.",
+        Description  = "A vivid green dash trail now sold for coins in Cosmetics.",
         Category     = "Effect",
         SalvagePrice = 120,
         RewardType   = "Effect",
@@ -31,7 +31,7 @@ SalvageShopConfig.Items = {
         Rarity       = "Rare",
         IconGlyph    = "\u{2550}",
         Unique       = true,
-        Enabled      = true,
+        Enabled      = false,
     },
     {
         Id           = "salvage_skin_iron",
@@ -62,7 +62,7 @@ SalvageShopConfig.Items = {
     {
         Id           = "salvage_trail_gold",
         DisplayName  = "Golden Trail",
-        Description  = "A shimmering gold dash trail.",
+        Description  = "A shimmering gold dash trail now sold for coins in Cosmetics.",
         Category     = "Effect",
         SalvagePrice = 200,
         RewardType   = "Effect",
@@ -70,7 +70,7 @@ SalvageShopConfig.Items = {
         Rarity       = "Epic",
         IconGlyph    = "\u{2550}",
         Unique       = true,
-        Enabled      = true,
+        Enabled      = false,
     },
 }
 
