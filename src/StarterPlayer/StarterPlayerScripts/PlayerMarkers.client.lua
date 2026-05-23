@@ -14,9 +14,10 @@ local RunService = game:GetService("RunService")
 local localPlayer = Players.LocalPlayer
 
 local MARKER_NAME = "PlayerMarkerGui"
-local CLOSE_RANGE = 70
+local OVERHEAD_NAME = "MobOverheadHealth"
+local TEAMMATE_FADE_DISTANCE = 55
 local ENEMY_MAX_DISTANCE = 85
-local TEAMMATE_FAR_ALPHA = 0.75
+local TEAMMATE_FAR_ALPHA = 0.50
 local TEAMMATE_MAX_DISTANCE = 100000
 
 local PLAYER_NAMEPLATE_OFFSET_Y = 3.2
@@ -64,6 +65,30 @@ local function getTeamColor(player)
 		return TEAM_COLORS[player.Team.Name] or player.Team.TeamColor.Color
 	end
 	return Color3.fromRGB(255, 226, 120)
+end
+
+local function isOverheadNameVisible(player)
+	local attachPart = getAttachPart(player and player.Character)
+	if not attachPart then
+		return false
+	end
+
+	local overhead = attachPart:FindFirstChild(OVERHEAD_NAME)
+	if not overhead or not overhead:IsA("BillboardGui") or overhead.Enabled ~= true then
+		return false
+	end
+
+	local bg = overhead:FindFirstChild("Background")
+	local nameLabel = bg and bg:FindFirstChild("NameLabel")
+	if not nameLabel or not nameLabel:IsA("TextLabel") then
+		return false
+	end
+
+	if nameLabel.Visible == false then
+		return false
+	end
+
+	return (nameLabel.TextTransparency <= 0.001)
 end
 
 local function ensureMarkerForPlayer(player)
@@ -171,6 +196,11 @@ local function refreshMarker(player)
 		return
 	end
 
+	if isOverheadNameVisible(player) then
+		gui.Enabled = false
+		return
+	end
+
 	local myCharacter = localPlayer.Character
 	local myRoot = getCharacterRoot(myCharacter)
 	local theirRoot = getCharacterRoot(player.Character)
@@ -182,13 +212,13 @@ local function refreshMarker(player)
 
 	local dist = (theirRoot.Position - myRoot.Position).Magnitude
 	local hasFlag = (type(carryingFlag) == "string" and carryingFlag ~= "")
-	local useMarkerMode = (dist > CLOSE_RANGE) and (not hasFlag)
+	local useMarkerMode = (not isOverheadNameVisible(player)) and (not hasFlag)
 
 	if teammate then
 		gui.Enabled = useMarkerMode
 		gui.AlwaysOnTop = true
 		gui.MaxDistance = TEAMMATE_MAX_DISTANCE
-		marker.BackgroundTransparency = (dist > CLOSE_RANGE) and (1 - TEAMMATE_FAR_ALPHA) or 0
+		marker.BackgroundTransparency = (dist > TEAMMATE_FADE_DISTANCE) and (1 - TEAMMATE_FAR_ALPHA) or 0
 		return
 	end
 

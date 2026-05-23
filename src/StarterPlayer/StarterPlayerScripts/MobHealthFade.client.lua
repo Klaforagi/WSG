@@ -1,6 +1,6 @@
 --[[
 	MobHealthFade.client.lua
-	Fades overhead health bars in/out based on distance from the local player.
+	Shows overhead health bars instantly (no fade tween) based on visibility rules.
 	Names stay visible; Options toggles hide only the health-bar pieces.
 	Pairs with MobOverheadHealth.server.lua.
 --]]
@@ -15,12 +15,7 @@ local DEFAULT_NAME_POSITION = UDim2.new(0, 0, 0, 1)
 local DEFAULT_NAME_SIZE = UDim2.new(1, 0, 0, 16)
 local LOCAL_NAME_ONLY_POSITION = UDim2.new(0, 0, 0, 22)
 local LOCAL_NAME_ONLY_SIZE = UDim2.new(1, 0, 0, 18)
-local MARKER_SWAP_DISTANCE = 70
-
--- Distance band: health bars are barely visible at FADE_START and fully opaque
--- at FADE_FULL. Names do not fade.
-local FADE_START = 55   -- studs — health bars are barely visible here
-local FADE_FULL  = 22   -- studs — fully opaque
+local MARKER_SWAP_DISTANCE = 55
 
 -- Base (fully-visible) transparencies for each element.
 -- Must stay in sync with buildBillboard in MobOverheadHealth.server.lua.
@@ -264,10 +259,7 @@ RunService.Heartbeat:Connect(function()
 				if markerMode then
 					continue
 				end
-				local t = 1 - math.clamp((dist - FADE_FULL) / (FADE_START - FADE_FULL), 0, 1)
-				-- Remap so the far edge is 0.01 (barely visible) not 0 (invisible pop-in)
-				local alpha = 0.01 + t * 0.99
-				applyAlpha(billboard, alpha)
+				applyAlpha(billboard, 1)
 			end
 		end
 	end

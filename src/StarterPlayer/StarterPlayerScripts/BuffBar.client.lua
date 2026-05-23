@@ -1038,15 +1038,18 @@ local function syncDefeat()
     end
 
     local endTime = tonumber(player:GetAttribute("DefeatEndTime"))
-    if not endTime or endTime <= workspace:GetServerTimeNow() then
-        removeEntry("defeat")
+    if endTime and endTime > workspace:GetServerTimeNow() then
+        upsertEntry("defeat", getStaticDef("defeat"), {
+            kind = "debuff",
+            expiresAt = endTime,
+            timeKind = "server",
+        })
         return
     end
 
     upsertEntry("defeat", getStaticDef("defeat"), {
         kind = "debuff",
-        expiresAt = endTime,
-        timeKind = "server",
+        showTimer = false,
     })
 end
 
