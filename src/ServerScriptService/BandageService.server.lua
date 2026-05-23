@@ -12,6 +12,7 @@ local Debris            = game:GetService("Debris")
 local VFXFolder = ReplicatedStorage:FindFirstChild("VFX")
 local PlusHealsTemplate = VFXFolder and VFXFolder:FindFirstChild("PlusHeals")
 local BANDAGE_END_TIME_ATTR = "BandageEndTime"
+local DEFEAT_LOCK_ATTR = "DefeatLockActive"
 
 --------------------------------------------------------------------------------
 -- LOAD CONFIG
@@ -52,7 +53,7 @@ local cancelBandage   = getOrCreateRemote("RemoteEvent", "CancelBandage")
 local bandageStarted  = getOrCreateRemote("RemoteEvent", "BandageStarted")
 -- Server -> Client: heal tick applied { newHealth }
 local bandageHealTick = getOrCreateRemote("RemoteEvent", "BandageHealTick")
--- Server -> Client: bandage ended { reason: "complete"|"interrupted"|"died"|"full_hp" }
+-- Server -> Client: bandage ended { reason: "complete"|"interrupted"|"died" }
 local bandageEnded    = getOrCreateRemote("RemoteEvent", "BandageEnded")
 -- Server -> Client: cooldown started { duration }
 local bandageCooldown = getOrCreateRemote("RemoteEvent", "BandageCooldown")
@@ -169,11 +170,17 @@ end
 --------------------------------------------------------------------------------
 local function healLoop(player)
     local state = getState(player)
-    local tickCount = 0
-    local maxTicks = math.floor(BandageConfig.MaxTotalHeal / BandageConfig.HealPerTick)
+    local tickInterval = tonumber(BandageConfig.TickInterval) or 1
+    local healPerTick = tonumber(BandageConfig.HealPerTick) or 0
+    local maxTotalHeal = tonumber(BandageConfig.MaxTotalHeal) or math.huge
 
-    for i = 1, maxTicks do
-        task.wait(BandageConfig.TickInterval)
+    while state.active do
+        local remainingDuration = state.bandageEndTime - workspace:GetServerTimeNow()
+        if remainingDuration <= 0 then
+            break
+        end
+
+        task.wait(math.min(tickInterval, remainingDuration))
 
         -- Validate still active
         if not state.active then return end
@@ -194,28 +201,15 @@ local function healLoop(player)
             end
         end
 
-        -- Apply heal tick
-        local healAmount = math.min(BandageConfig.HealPerTick, hum.MaxHealth - hum.Health)
+        -- Apply heal tick without shortening the cast if the player reaches full health.
+        local remainingHealBudget = math.max(0, maxTotalHeal - state.totalHealed)
+        local healAmount = math.min(healPerTick, remainingHealBudget, hum.MaxHealth - hum.Health)
         if healAmount > 0 then
             hum.Health = math.min(hum.Health + healAmount, hum.MaxHealth)
             state.totalHealed = state.totalHealed + healAmount
             pcall(function()
                 bandageHealTick:FireClient(player, hum.Health, healAmount)
             end)
-        end
-
-        tickCount = tickCount + 1
-
-        -- Check if full HP
-        if hum.Health >= hum.MaxHealth then
-            stopBandage(player, "full_hp")
-            return
-        end
-
-        -- Check if max heal reached
-        if state.totalHealed >= BandageConfig.MaxTotalHeal then
-            stopBandage(player, "complete")
-            return
         end
     end
 
@@ -231,6 +225,10 @@ end
 local function startBandage(player)
     local state = getState(player)
 
+    if player:GetAttribute(DEFEAT_LOCK_ATTR) == true then
+        return
+    end
+
     -- Already bandaging
     if state.active then return end
 
@@ -240,14 +238,6 @@ local function startBandage(player)
     -- Validate character
     local hum = getHumanoid(player)
     if not hum or hum.Health <= 0 then return end
-
-    -- Already at full HP
-    if hum.Health >= hum.MaxHealth then
-        pcall(function()
-            bandageEnded:FireClient(player, "full_hp")
-        end)
-        return
-    end
 
     -- Get start position for movement check
     local hrp = getRootPart(player)

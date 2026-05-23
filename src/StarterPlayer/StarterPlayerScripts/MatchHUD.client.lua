@@ -484,39 +484,25 @@ local function buildFlagIcon(parent, flagColor, glowColor)
     container.Visible = false
     container.Parent = parent
 
-    -- Pole (vertical bar on the left side of the icon)
+    -- Pole (matches the BuffBar flag icon style)
     local pole = Instance.new("Frame")
     pole.Name = "Pole"
-    pole.AnchorPoint = Vector2.new(0, 0)
-    pole.Position = UDim2.new(0.08, 0, 0.05, 0)
-    pole.Size = UDim2.new(0.1, 0, 0.9, 0)
-    pole.BackgroundColor3 = Color3.fromRGB(180, 175, 160)
+    pole.AnchorPoint = Vector2.new(0.5, 0.5)
+    pole.Position = UDim2.new(0.26, 0, 0.52, 0)
+    pole.Size = UDim2.new(0.09, 0, 0.84, 0)
+    pole.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
     pole.BackgroundTransparency = 0
     pole.BorderSizePixel = 0
     pole.ZIndex = 6
     pole.Parent = container
-    Instance.new("UICorner", pole).CornerRadius = UDim.new(0.5, 0)
-
-    -- Pole finial (small circle at the top)
-    local finial = Instance.new("Frame")
-    finial.Name = "Finial"
-    finial.AnchorPoint = Vector2.new(0.5, 1)
-    finial.Position = UDim2.new(0.5, 0, 0.08, 0)
-    finial.Size = UDim2.new(2.2, 0, 0, 0)
-    finial.BackgroundColor3 = GOLD_DIM
-    finial.BackgroundTransparency = 0
-    finial.BorderSizePixel = 0
-    finial.ZIndex = 7
-    finial.Parent = pole
-    Instance.new("UICorner", finial).CornerRadius = UDim.new(1, 0)
-    Instance.new("UIAspectRatioConstraint", finial).AspectRatio = 1
+    Instance.new("UICorner", pole).CornerRadius = UDim.new(1, 0)
 
     -- Banner (the flag cloth, attached to the right of the pole)
     local banner = Instance.new("Frame")
     banner.Name = "Banner"
     banner.AnchorPoint = Vector2.new(0, 0)
-    banner.Position = UDim2.new(0.18, 0, 0.08, 0)
-    banner.Size = UDim2.new(0.72, 0, 0.55, 0)
+    banner.Position = UDim2.new(0.32, 0, 0.16, 0)
+    banner.Size = UDim2.new(0.56, 0, 0.34, 0)
     banner.BackgroundColor3 = flagColor
     banner.BackgroundTransparency = 0
     banner.BorderSizePixel = 0
@@ -532,14 +518,16 @@ local function buildFlagIcon(parent, flagColor, glowColor)
     bannerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     bannerStroke.Parent = banner
 
-    -- Banner depth gradient (top lighter, bottom slightly darker)
-    local bannerGrad = Instance.new("UIGradient")
-    bannerGrad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 255, 255)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(180, 180, 190)),
-    })
-    bannerGrad.Rotation = 90
-    bannerGrad.Parent = banner
+    local lowerFold = Instance.new("Frame")
+    lowerFold.Name = "LowerFold"
+    lowerFold.AnchorPoint = Vector2.new(0, 0)
+    lowerFold.Position = UDim2.new(0.32, 0, 0.45, 0)
+    lowerFold.Size = UDim2.new(0.42, 0, 0.22, 0)
+    lowerFold.BackgroundColor3 = flagColor:Lerp(Color3.new(0, 0, 0), 0.18)
+    lowerFold.BorderSizePixel = 0
+    lowerFold.ZIndex = 5
+    lowerFold.Parent = container
+    Instance.new("UICorner", lowerFold).CornerRadius = UDim.new(0, 3)
 
     return container
 end

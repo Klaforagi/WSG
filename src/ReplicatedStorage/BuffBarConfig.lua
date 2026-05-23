@@ -50,10 +50,24 @@ BuffBarConfig.StaticEntries = {
         ShowTimer = true,
         SortOrder = 35,
     },
+    defeat = {
+        Id = "defeat",
+        Kind = "debuff",
+        DisplayName = "Defeat",
+        Description = "-10 Movement Speed.",
+        IconShape = "flag",
+        IconGlyph = "\u{2691}",
+        IconColor = {255, 255, 255},
+        AccentColor = {255, 255, 255},
+        IconTextMaxSize = 52,
+        ShowTimer = true,
+        SortOrder = 38,
+        TintImage = false,
+    },
     flag_blue = {
         Id = "flag_blue",
         DisplayName = "Blue Flag",
-        Description = "You are carrying the enemy flag.",
+        Description = "You are carrying the enemy flag. -1 Movement Speed.",
         IconShape = "flag",
         IconGlyph = "\u{2691}",
         IconColor = {85, 150, 255},
@@ -65,7 +79,7 @@ BuffBarConfig.StaticEntries = {
     flag_red = {
         Id = "flag_red",
         DisplayName = "Red Flag",
-        Description = "You are carrying the enemy flag.",
+        Description = "You are carrying the enemy flag. -1 Movement Speed.",
         IconShape = "flag",
         IconGlyph = "\u{2691}",
         IconColor = {255, 95, 95},
@@ -98,6 +112,8 @@ BuffBarConfig.StaticAliases = {
     revenge_curse = "revenge_curse",
     MarkedByRevenge = "revenge_curse",
     markedbyrevenge = "revenge_curse",
+    defeat = "defeat",
+    Defeat = "defeat",
 }
 
 local function normalizeStaticId(id)

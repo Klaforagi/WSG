@@ -8,7 +8,6 @@
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService  = game:GetService("UserInputService")
 local TweenService      = game:GetService("TweenService")
 local RunService        = game:GetService("RunService")
 
@@ -409,11 +408,6 @@ local function setupInterruptListeners()
             cancelBandaging("interrupted")
             return
         end
-        -- Check MoveDirection (WASD)
-        if hum.MoveDirection.Magnitude > 0.1 then
-            cancelBandaging("interrupted")
-            return
-        end
     end))
 
     -- Jump detection
@@ -426,8 +420,7 @@ local function setupInterruptListeners()
     -- Also detect FloorMaterial going to Air (jump/fall)
     table.insert(interruptConns, hum.StateChanged:Connect(function(_, newState)
         if not isBandaging then return end
-        if newState == Enum.HumanoidStateType.Jumping
-            or newState == Enum.HumanoidStateType.Freefall then
+        if newState == Enum.HumanoidStateType.Jumping then
             cancelBandaging("interrupted")
         end
     end))
@@ -446,36 +439,6 @@ local function setupInterruptListeners()
     -- Death
     table.insert(interruptConns, hum.Died:Connect(function()
         cancelBandaging("died")
-    end))
-
-    -- Tool equipping (weapon switch)
-    table.insert(interruptConns, char.ChildAdded:Connect(function(child)
-        if not isBandaging then return end
-        if child:IsA("Tool") then
-            cancelBandaging("interrupted")
-        end
-    end))
-
-    -- Input detection for attacks / dash / weapon switch
-    table.insert(interruptConns, UserInputService.InputBegan:Connect(function(input, processed)
-        if not isBandaging then return end
-        if processed then return end
-        local kc = input.KeyCode
-        -- Keys 1, 2 = weapon switch
-        if kc == Enum.KeyCode.One or kc == Enum.KeyCode.Two then
-            cancelBandaging("interrupted")
-            return
-        end
-        -- LeftShift = dash
-        if kc == Enum.KeyCode.LeftShift then
-            cancelBandaging("interrupted")
-            return
-        end
-        -- Mouse click = attack attempt
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            cancelBandaging("interrupted")
-            return
-        end
     end))
 end
 
@@ -515,13 +478,6 @@ local function activateBandage()
     if not char then print("[BandageAnim] no character, returning") return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum or hum.Health <= 0 then print("[BandageAnim] no humanoid or dead, returning") return end
-
-    -- Full health check
-    if hum.Health >= hum.MaxHealth then
-        print("[BandageAnim] health full, returning")
-        showStatusMessage("Health Full", GREEN)
-        return
-    end
 
     print("[BandageAnim] requesting bandage from server")
     -- Unequip any held weapon first

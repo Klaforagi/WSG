@@ -701,6 +701,9 @@ forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
     if isPlayerMenuLocked(player) then
         return
     end
+    if player:GetAttribute("ToolsLocked") == true or player:GetAttribute("DefeatLockActive") == true then
+        return
+    end
 
     local bp = player:FindFirstChildOfClass("Backpack")
     local char = player.Character

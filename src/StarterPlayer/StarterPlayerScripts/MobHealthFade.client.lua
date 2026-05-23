@@ -11,6 +11,10 @@ local Workspace   = game:GetService("Workspace")
 
 local BILLBOARD_NAME = "MobOverheadHealth"
 local OWNER_TYPE_ATTRIBUTE = "OverheadOwnerType"
+local DEFAULT_NAME_POSITION = UDim2.new(0, 0, 0, 1)
+local DEFAULT_NAME_SIZE = UDim2.new(1, 0, 0, 16)
+local LOCAL_NAME_ONLY_POSITION = UDim2.new(0, 0, 0, 22)
+local LOCAL_NAME_ONLY_SIZE = UDim2.new(1, 0, 0, 18)
 
 -- Distance band: health bars are barely visible at FADE_START and fully opaque
 -- at FADE_FULL. Names do not fade.
@@ -45,7 +49,19 @@ local function getOwnerType(billboard)
 	return "NPC"
 end
 
+local function isLocalPlayerBillboard(billboard)
+	local character = localPlayer and localPlayer.Character
+	if not character then
+		return false
+	end
+	return billboard:IsDescendantOf(character)
+		or (billboard.Parent and billboard.Parent:IsDescendantOf(character))
+end
+
 local function healthBarsEnabled(billboard)
+	if getOwnerType(billboard) == "Player" and isLocalPlayerBillboard(billboard) then
+		return false
+	end
 	if getOwnerType(billboard) == "Player" then
 		return _G.ShowPlayerHealthBars ~= false
 	end
@@ -74,8 +90,15 @@ local function getElements(billboard)
 	}
 end
 
-local function applyNameVisibility(elements)
+local function applyNameVisibility(elements, billboard)
 	if elements.nameLabel then
+		if billboard and isLocalPlayerBillboard(billboard) then
+			elements.nameLabel.Position = LOCAL_NAME_ONLY_POSITION
+			elements.nameLabel.Size = LOCAL_NAME_ONLY_SIZE
+		else
+			elements.nameLabel.Position = DEFAULT_NAME_POSITION
+			elements.nameLabel.Size = DEFAULT_NAME_SIZE
+		end
 		elements.nameLabel.TextTransparency = BASE.nameText
 		elements.nameLabel.TextStrokeTransparency = 1
 	end
@@ -96,7 +119,7 @@ end
 local function applyBillboardSettings(billboard)
 	local elements = getElements(billboard)
 	if not elements then return end
-	applyNameVisibility(elements)
+	applyNameVisibility(elements, billboard)
 	applyHealthBarVisibility(elements, healthBarsEnabled(billboard))
 end
 
@@ -115,7 +138,7 @@ local function applyAlpha(billboard, alpha)
 	local elements = getElements(billboard)
 	if not elements then return end
 
-	applyNameVisibility(elements)
+	applyNameVisibility(elements, billboard)
 
 	local showHealthBar = healthBarsEnabled(billboard)
 	applyHealthBarVisibility(elements, showHealthBar)

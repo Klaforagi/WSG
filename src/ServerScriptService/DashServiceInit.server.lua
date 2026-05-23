@@ -10,6 +10,7 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local DEBUG = true
+local DEFEAT_LOCK_ATTR = "DefeatLockActive"
 local function dprint(...)
     if DEBUG then
         print("[DashServiceInit]", ...)
@@ -95,6 +96,11 @@ local lastRequestTime = {}
 -- Handle dash requests
 --------------------------------------------------------------------------------
 requestDash.OnServerEvent:Connect(function(player)
+    if player:GetAttribute(DEFEAT_LOCK_ATTR) == true then
+        dashRejected:FireClient(player, "locked")
+        return
+    end
+
     -- Burst guard against duplicate frame fires; respond so client never hangs.
     local now = tick()
     if lastRequestTime[player] and (now - lastRequestTime[player]) < REQUEST_BURST_GUARD then

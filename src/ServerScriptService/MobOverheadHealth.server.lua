@@ -22,9 +22,7 @@ local OWNER_TYPE_ATTRIBUTE = "OverheadOwnerType"
 local ATTACHED_ATTRIBUTE   = "_overheadUIAttached"
 local BILLBOARD_SIZE       = UDim2.fromOffset(200, 50)
 local NPC_NAMEPLATE_OFFSET = Vector3.new(0, 3.5, 0)
--- Player nameplates are intentionally lower because avatars already have visible head height;
--- the NPC offset floated too far above player characters.
-local PLAYER_NAMEPLATE_OFFSET = Vector3.new(0, 1.35, 0)
+local PLAYER_NAMEPLATE_OFFSET = Vector3.new(0, 3.2, 0)
 local PLAYER_NAMEPLATE_MAX_DISTANCE = 45
 local NPC_NAMEPLATE_MAX_DISTANCE    = 35
 
@@ -97,6 +95,13 @@ local function getFillColor(ownerType, pct, ownerPlayer)
 	return healthColor(pct)
 end
 
+local function getNameTextColor(ownerType, ownerPlayer)
+	if ownerType == "Player" then
+		return Color3.fromRGB(255, 255, 255):Lerp(getPlayerTeamColor(ownerPlayer), 0.34)
+	end
+	return Color3.fromRGB(255, 255, 255)
+end
+
 local function getPlayerDisplayName(player)
 	local displayName = player.DisplayName
 	if displayName and displayName ~= "" then
@@ -132,16 +137,18 @@ end
 ------------------------------------------------------------------------
 -- Build BillboardGui
 ------------------------------------------------------------------------
-local function buildBillboard(attachPart, displayName, ownerType)
+local function buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
 	local existing = attachPart:FindFirstChild(BILLBOARD_NAME)
 	if existing and existing:IsA("BillboardGui") then
 		existing:SetAttribute(OWNER_TYPE_ATTRIBUTE, ownerType)
 		existing.StudsOffset = getNameplateOffset(ownerType)
 		existing.MaxDistance = getNameplateMaxDistance(ownerType)
+		existing.AlwaysOnTop = false
 		local bg = existing:FindFirstChild("Background")
 		local nameLabel = bg and bg:FindFirstChild("NameLabel")
 		if nameLabel and nameLabel:IsA("TextLabel") then
 			nameLabel.Text = displayName
+			nameLabel.TextColor3 = getNameTextColor(ownerType, ownerPlayer)
 		end
 		return existing
 	end
@@ -150,7 +157,7 @@ local function buildBillboard(attachPart, displayName, ownerType)
 	billboard.Name         = BILLBOARD_NAME
 	billboard.Size         = BILLBOARD_SIZE
 	billboard.StudsOffset  = getNameplateOffset(ownerType)
-	billboard.AlwaysOnTop  = true
+	billboard.AlwaysOnTop  = false
 	billboard.MaxDistance  = getNameplateMaxDistance(ownerType)
 	billboard.ResetOnSpawn = false
 	billboard.Enabled      = true
@@ -170,7 +177,7 @@ local function buildBillboard(attachPart, displayName, ownerType)
 	nameLabel.Position               = UDim2.new(0, 0, 0, 1)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text                   = displayName
-	nameLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
+	nameLabel.TextColor3             = getNameTextColor(ownerType, ownerPlayer)
 	nameLabel.TextSize               = 14
 	nameLabel.Font                   = Enum.Font.GothamBlack
 	nameLabel.TextXAlignment         = Enum.TextXAlignment.Center
@@ -190,7 +197,7 @@ local function buildBillboard(attachPart, displayName, ownerType)
 	local barShadow = Instance.new("Frame")
 	barShadow.Name                   = "BarShadow"
 	barShadow.Size                   = UDim2.new(0.76, 6, 0, 20)
-	barShadow.Position               = UDim2.new(0.12, -3, 0, 16)
+	barShadow.Position               = UDim2.new(0.12, -3, 0, 20)
 	barShadow.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
 	barShadow.BackgroundTransparency = 0.60
 	barShadow.BorderSizePixel        = 0
@@ -204,7 +211,7 @@ local function buildBillboard(attachPart, displayName, ownerType)
 	local barOuter = Instance.new("Frame")
 	barOuter.Name                   = "BarOuter"
 	barOuter.Size                   = UDim2.new(0.76, 0, 0, 16)
-	barOuter.Position               = UDim2.new(0.12, 0, 0, 18)
+	barOuter.Position               = UDim2.new(0.12, 0, 0, 22)
 	barOuter.BackgroundColor3       = Color3.fromRGB(18, 18, 18)
 	barOuter.BackgroundTransparency = 0.50
 	barOuter.BorderSizePixel        = 0
@@ -351,12 +358,12 @@ local function attachOverheadUI(model, ownerType, displayName, ownerPlayer)
 
 	local existingBillboard = attachPart:FindFirstChild(BILLBOARD_NAME)
 	if model:GetAttribute(ATTACHED_ATTRIBUTE) and existingBillboard then
-		buildBillboard(attachPart, displayName, ownerType)
+		buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
 		return
 	end
 	model:SetAttribute(ATTACHED_ATTRIBUTE, true)
 
-	local billboard = buildBillboard(attachPart, displayName, ownerType)
+	local billboard = buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
 	local ownerLabel = (ownerType == "NPC") and "NPC" or "player"
 	print(string.format("[OverheadUI] Attached %s nameplate for %s", ownerLabel, displayName))
 
@@ -387,6 +394,7 @@ local function attachOverheadUI(model, ownerType, displayName, ownerPlayer)
 	if ownerType == "Player" and ownerPlayer then
 		connections[#connections + 1] = ownerPlayer:GetPropertyChangedSignal("Team"):Connect(function()
 			if billboard and billboard.Parent then
+				buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
 				updateBarState(billboard, hum.Health, hum.MaxHealth, ownerPlayer)
 			end
 		end)
