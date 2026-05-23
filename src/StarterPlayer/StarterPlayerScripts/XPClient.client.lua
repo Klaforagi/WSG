@@ -31,6 +31,14 @@ local function formatInt(v)
     if not n then return tostring(v) end
     return tostring(math.floor(n + 0.5))
 end
+
+local function getViewportSize()
+    local cam = workspace.CurrentCamera
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
+    end
+    return 1920, 1080
+end
 local BAR_WIDTH_SCALE   = 0.34          -- % of screen width (slightly narrower)
 local TRACK_HEIGHT      = 16            -- inner XP track height
 local LABEL_SIZE        = 22            -- level numbers at each side of the track
@@ -107,11 +115,7 @@ screen.Parent = playerGui
 -- CONTAINER  – sits at absolute bottom-center
 --------------------------------------------------------------------------------
 -- compute device-aware bar height (smaller on mobile)
-local cam = workspace.CurrentCamera
-local vpY = 1080
-if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
-    vpY = cam.ViewportSize.Y
-end
+local _, vpY = getViewportSize()
 local trackH = UserInputService.TouchEnabled and math.max(11, math.floor(vpY * 0.014)) or TRACK_HEIGHT
 local shellH = UserInputService.TouchEnabled and math.max(30, math.floor(vpY * 0.031)) or math.max(36, math.floor(vpY * 0.034))
 
@@ -124,6 +128,51 @@ container.BackgroundColor3 = COLOR_SHELL_BG
 container.BackgroundTransparency = 0.06
 container.BorderSizePixel = 0
 container.Parent = screen
+
+local levelLabel = nil
+local nextLabel = nil
+local barBG = nil
+
+local function applyXPBarLayout()
+    local viewportX, viewportY = getViewportSize()
+    local responsiveTrackH = UserInputService.TouchEnabled and math.max(11, math.floor(viewportY * 0.014)) or TRACK_HEIGHT
+    local responsiveShellH = UserInputService.TouchEnabled and math.max(30, math.floor(viewportY * 0.031)) or math.max(36, math.floor(viewportY * 0.034))
+    local responsiveLabelSize = UserInputService.TouchEnabled
+        and math.max(16, math.floor(viewportY * 0.022))
+        or math.max(20, math.floor(viewportY * 0.02))
+    local widthOffset = responsiveLabelSize * 2 + 24
+
+    container.Size = UDim2.new(BAR_WIDTH_SCALE, widthOffset, 0, responsiveShellH)
+    container.Position = UDim2.new(0.5, 0, 1, -2)
+
+    levelLabel.Size = UDim2.new(0, responsiveLabelSize, 0, responsiveLabelSize)
+    nextLabel.Size = UDim2.new(0, responsiveLabelSize, 0, responsiveLabelSize)
+    levelLabel.TextSize = math.max(12, math.floor(responsiveLabelSize * 0.62))
+    nextLabel.TextSize = levelLabel.TextSize
+
+    barBG.Size = UDim2.new(1, -(responsiveLabelSize * 2 + 12), 0, responsiveTrackH)
+end
+
+do
+    local viewportConn = nil
+    local function bindCamera()
+        if viewportConn then
+            viewportConn:Disconnect()
+            viewportConn = nil
+        end
+        local cam = workspace.CurrentCamera
+        if cam then
+            viewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyXPBarLayout)
+        end
+    end
+    bindCamera()
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        bindCamera()
+        applyXPBarLayout()
+    end)
+end
+
+task.defer(applyXPBarLayout)
 
 local shellCorner = Instance.new("UICorner")
 shellCorner.CornerRadius = SHELL_CORNER
@@ -150,7 +199,7 @@ Instance.new("UICorner", shellShadow).CornerRadius = UDim.new(0, 14)
 --------------------------------------------------------------------------------
 -- LEVEL LABELS  (outside bar, left = current, right = next)
 --------------------------------------------------------------------------------
-local levelLabel = Instance.new("TextLabel")
+levelLabel = Instance.new("TextLabel")
 levelLabel.Name = "LevelLabel"
 levelLabel.Size = UDim2.new(0, LABEL_SIZE, 0, LABEL_SIZE)
 levelLabel.Position = UDim2.new(0, 0, 0.5, 0)
@@ -165,7 +214,7 @@ levelLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 levelLabel.TextStrokeTransparency = 0.45
 levelLabel.Parent = container
 
-local nextLabel = Instance.new("TextLabel")
+nextLabel = Instance.new("TextLabel")
 nextLabel.Name = "NextLevelLabel"
 nextLabel.Size = UDim2.new(0, LABEL_SIZE, 0, LABEL_SIZE)
 nextLabel.Position = UDim2.new(1, 0, 0.5, 0)
@@ -183,7 +232,7 @@ nextLabel.Parent = container
 --------------------------------------------------------------------------------
 -- BAR BACKGROUND  (between the two level labels)
 --------------------------------------------------------------------------------
-local barBG = Instance.new("Frame")
+barBG = Instance.new("Frame")
 barBG.Name = "BarBG"
 barBG.AnchorPoint = Vector2.new(0.5, 0.5)
 barBG.Position = UDim2.new(0.5, 0, 0.5, 0)

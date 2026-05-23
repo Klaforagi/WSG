@@ -1,159 +1,199 @@
---------------------------------------------------------------------------------
--- LosingTeamLockout.server.lua  –  Server-authoritative tool lockout for the
--- losing team between match end and the next match start.
+-- LosingTeamLockout.server.lua
 --
--- Mechanism:
---   * On MatchEnded BindableEvent (winnerTeam): every player whose Team is
---     NOT the winner is flagged with an attribute "ToolsLocked"=true and has
---     all their currently-equipped tools force-unequipped. The Backpack is
---     also temporarily emptied (tools archived in a stash folder) so they
---     cannot be re-equipped via hotkeys, click, mobile button, or any other
---     equip path.
---   * On MatchStarted BindableEvent: the flag clears for everyone and the
---     stashed tools are restored.
---
--- This script is ENTIRELY server-authoritative. Client toolbar scripts may
--- additionally honor the attribute for snappier feedback, but the server
--- guarantee is sufficient.
---------------------------------------------------------------------------------
+-- Reworked behavior:
+-- 1) Losers receive a "Defeat" movement debuff: -10 speed.
+-- 2) Debuff persists until lobby/intermission clears it.
+-- 3) During EndGame, losers also get a temporary lock flag that blocks
+--    reset/team-change actions (handled by other systems).
+-- 4) On Intermission (lobby return) and on next MatchStart, all defeat states
+--    are fully cleared.
 
-local Players             = game:GetService("Players")
+local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 
-local STASH_NAME = "_LockedToolsStash"
-local LOCK_ATTR  = "ToolsLocked"
+local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 
-local function getStash(player)
-    local stash = player:FindFirstChild(STASH_NAME)
-    if not stash then
-        stash = Instance.new("Folder")
-        stash.Name = STASH_NAME
-        stash.Parent = player
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local DEFEAT_MODIFIER_ID = "defeat_debuff"
+local DEFEAT_SPEED_PENALTY = -10
+
+local TOOLS_LOCKED_ATTR = "ToolsLocked" -- kept for compatibility with weapon validation checks
+local DEFEAT_ACTIVE_ATTR = "DefeatActive"
+local DEFEAT_END_TIME_ATTR = "DefeatEndTime"
+local DEFEAT_LOCK_ATTR = "DefeatLockActive"
+
+local charAddedConnections = {}
+local charChildAddedConnections = {}
+
+local function disconnectConnectionTableEntry(connectionTable, player)
+    local conn = connectionTable[player]
+    if conn then
+        pcall(function()
+            conn:Disconnect()
+        end)
+        connectionTable[player] = nil
     end
-    return stash
 end
 
-local function unequipAndStash(player)
-    local char = player.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then pcall(function() hum:UnequipTools() end) end
+local function enforceUnequipped(player)
+    if not player or not player.Parent then
+        return
     end
-    local backpack = player:FindFirstChildOfClass("Backpack")
-    if not backpack then return end
-    local stash = getStash(player)
-    for _, tool in ipairs(backpack:GetChildren()) do
-        if tool:IsA("Tool") then
-            tool.Parent = stash
+    local character = player.Character
+    if not character then
+        return
+    end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        pcall(function()
+            humanoid:UnequipTools()
+        end)
+    end
+end
+
+local function disconnectToolLockWatcher(player)
+    disconnectConnectionTableEntry(charChildAddedConnections, player)
+end
+
+local function connectToolLockWatcher(player)
+    disconnectToolLockWatcher(player)
+
+    local character = player.Character
+    if not character then
+        return
+    end
+
+    charChildAddedConnections[player] = character.ChildAdded:Connect(function(child)
+        if not child or not child:IsA("Tool") then
+            return
         end
-    end
-end
-
-local function restoreFromStash(player)
-    local stash = player:FindFirstChild(STASH_NAME)
-    if not stash then return end
-    local backpack = player:FindFirstChildOfClass("Backpack")
-    if not backpack then return end
-    for _, tool in ipairs(stash:GetChildren()) do
-        if tool:IsA("Tool") then
-            tool.Parent = backpack
-        end
-    end
-    stash:Destroy()
-end
-
-local function lockPlayer(player)
-    if not player or not player.Parent then return end
-    player:SetAttribute(LOCK_ATTR, true)
-    unequipAndStash(player)
-end
-
-local function unlockPlayer(player)
-    if not player or not player.Parent then return end
-    player:SetAttribute(LOCK_ATTR, false)
-    restoreFromStash(player)
-end
-
--- Continuous enforcement: while ToolsLocked, immediately move any tool that
--- ends up in the backpack OR the character (re-equip path) into the stash.
-local function watchPlayer(player)
-    local function onChildAdded(parent, child)
-        if not child:IsA("Tool") then return end
-        if player:GetAttribute(LOCK_ATTR) ~= true then return end
-        if parent == player.Character then
-            -- Tool just got equipped — yank it back.
-            local hum = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
-            if hum then pcall(function() hum:UnequipTools() end) end
-        end
-        local stash = getStash(player)
-        if child.Parent ~= stash then
-            child.Parent = stash
-        end
-    end
-
-    local function bindBackpack()
-        local bp = player:FindFirstChildOfClass("Backpack")
-        if not bp then return end
-        bp.ChildAdded:Connect(function(c) onChildAdded(bp, c) end)
-    end
-
-    bindBackpack()
-    player.CharacterAdded:Connect(function(char)
-        bindBackpack() -- new Backpack on respawn
-        char.ChildAdded:Connect(function(c) onChildAdded(char, c) end)
-        -- If the player respawns mid-lock, scrub any starter tools.
-        if player:GetAttribute(LOCK_ATTR) == true then
+        if player:GetAttribute(DEFEAT_LOCK_ATTR) == true or player:GetAttribute(TOOLS_LOCKED_ATTR) == true then
             task.defer(function()
-                if player:GetAttribute(LOCK_ATTR) == true then
-                    unequipAndStash(player)
-                end
+                enforceUnequipped(player)
             end)
         end
     end)
 end
 
-Players.PlayerAdded:Connect(watchPlayer)
-for _, p in ipairs(Players:GetPlayers()) do watchPlayer(p) end
+local function clearDefeatDebuff(player)
+    if not player or not player.Parent then
+        return
+    end
 
--- Also clean up stash on player leave so it doesn't stick around.
-Players.PlayerRemoving:Connect(function(p)
-    local stash = p:FindFirstChild(STASH_NAME)
-    if stash then stash:Destroy() end
+    pcall(function()
+        HumanoidStatService:RemoveModifier(player, MOVEMENT_SPEED_STAT, DEFEAT_MODIFIER_ID)
+    end)
+
+    player:SetAttribute(DEFEAT_ACTIVE_ATTR, false)
+    player:SetAttribute(DEFEAT_END_TIME_ATTR, 0)
+end
+
+local function clearDefeatState(player, clearLock)
+    clearDefeatDebuff(player)
+    disconnectToolLockWatcher(player)
+    player:SetAttribute(TOOLS_LOCKED_ATTR, false)
+    if clearLock == true then
+        player:SetAttribute(DEFEAT_LOCK_ATTR, false)
+    end
+end
+
+local function applyDefeatToPlayer(player)
+    if not player or not player.Parent then
+        return
+    end
+
+    clearDefeatDebuff(player)
+
+    player:SetAttribute(DEFEAT_ACTIVE_ATTR, true)
+    player:SetAttribute(DEFEAT_END_TIME_ATTR, 0)
+    player:SetAttribute(DEFEAT_LOCK_ATTR, true)
+    player:SetAttribute(TOOLS_LOCKED_ATTR, true)
+
+    pcall(function()
+        HumanoidStatService:SetModifier(player, MOVEMENT_SPEED_STAT, DEFEAT_MODIFIER_ID, {
+            additive = DEFEAT_SPEED_PENALTY,
+            source = "Defeat",
+        })
+    end)
+
+    enforceUnequipped(player)
+    connectToolLockWatcher(player)
+end
+
+local function clearAllDefeatStates(clearLock)
+    for _, player in ipairs(Players:GetPlayers()) do
+        clearDefeatState(player, clearLock)
+    end
+end
+
+local function initializePlayer(player)
+    player:SetAttribute(TOOLS_LOCKED_ATTR, false)
+    player:SetAttribute(DEFEAT_ACTIVE_ATTR, false)
+    player:SetAttribute(DEFEAT_END_TIME_ATTR, 0)
+    player:SetAttribute(DEFEAT_LOCK_ATTR, false)
+
+    disconnectConnectionTableEntry(charAddedConnections, player)
+    charAddedConnections[player] = player.CharacterAdded:Connect(function()
+        if player:GetAttribute(DEFEAT_LOCK_ATTR) == true or player:GetAttribute(TOOLS_LOCKED_ATTR) == true then
+            task.defer(function()
+                enforceUnequipped(player)
+                connectToolLockWatcher(player)
+            end)
+        end
+    end)
+end
+
+Players.PlayerAdded:Connect(initializePlayer)
+for _, player in ipairs(Players:GetPlayers()) do
+    initializePlayer(player)
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    disconnectToolLockWatcher(player)
+    disconnectConnectionTableEntry(charAddedConnections, player)
 end)
 
---------------------------------------------------------------------------------
--- Hook into GameManager BindableEvents (MatchStarted / MatchEnded).
---------------------------------------------------------------------------------
 local function getBindable(name)
-    local b = ServerScriptService:WaitForChild(name, 30)
-    return b
+    local bindable = ServerScriptService:WaitForChild(name, 30)
+    return bindable
 end
 
 task.spawn(function()
     local matchEnded = getBindable("MatchEnded")
     if matchEnded then
         matchEnded.Event:Connect(function(winnerTeam)
-            for _, pl in ipairs(Players:GetPlayers()) do
-                local plTeam = pl.Team and pl.Team.Name or nil
-                if winnerTeam and plTeam and plTeam ~= winnerTeam then
-                    lockPlayer(pl)
-                elseif not winnerTeam then
-                    -- No declared winner (sudden-death edge / draw) — leave tools alone.
+            if type(winnerTeam) ~= "string" then
+                return
+            end
+
+            for _, player in ipairs(Players:GetPlayers()) do
+                local teamName = player.Team and player.Team.Name or nil
+                if teamName == "Blue" or teamName == "Red" then
+                    if teamName ~= winnerTeam then
+                        applyDefeatToPlayer(player)
+                    else
+                        clearDefeatState(player, true)
+                    end
+                else
+                    clearDefeatState(player, true)
                 end
             end
-            print("[LosingTeamLockout] Locked losing team. Winner =", tostring(winnerTeam))
+            print("[LosingTeamLockout] Applied Defeat debuff to losing team.")
         end)
     end
 
     local matchStarted = getBindable("MatchStarted")
     if matchStarted then
         matchStarted.Event:Connect(function()
-            for _, pl in ipairs(Players:GetPlayers()) do
-                if pl:GetAttribute(LOCK_ATTR) == true then
-                    unlockPlayer(pl)
-                end
-            end
-            print("[LosingTeamLockout] All locks cleared on match start.")
+            clearAllDefeatStates(true)
+            print("[LosingTeamLockout] Cleared Defeat states on match start.")
         end)
+    end
+end)
+
+ServerScriptService:GetAttributeChangedSignal("MatchState"):Connect(function()
+    local state = ServerScriptService:GetAttribute("MatchState")
+    if state == "Intermission" then
+        clearAllDefeatStates(true)
     end
 end)

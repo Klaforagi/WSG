@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Teams = game:GetService("Teams")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
 local Map = workspace:WaitForChild("WSG")
@@ -33,6 +34,18 @@ returnToLobbyResponse.Parent = ReplicatedStorage
 ---------------------------------------------------------------------------
 local lastChangeTime = {}
 local COOLDOWN = 5
+local DEFEAT_LOCK_ATTR = "DefeatLockActive"
+
+local function isTeamChangeBlocked(player)
+	local matchState = ServerScriptService:GetAttribute("MatchState")
+	if matchState == "EndGame" then
+		return true, "You cannot change teams during the end-of-round phase"
+	end
+	if player:GetAttribute(DEFEAT_LOCK_ATTR) == true then
+		return true, "You cannot change teams during Defeat"
+	end
+	return false, nil
+end
 
 ---------------------------------------------------------------------------
 -- Spawn helper (mirrors TeamSpawn logic)
@@ -48,6 +61,12 @@ end
 -- Handler
 ---------------------------------------------------------------------------
 changeRequest.OnServerEvent:Connect(function(plr, teamName)
+	local blocked, reason = isTeamChangeBlocked(plr)
+	if blocked then
+		changeResponse:FireClient(plr, false, reason)
+		return
+	end
+
 	-- Validate input
 	if type(teamName) ~= "string" then return end
 	if teamName ~= "Blue" and teamName ~= "Red" then return end
@@ -130,6 +149,12 @@ end)
 -- character at LobbySpawn automatically.
 ---------------------------------------------------------------------------
 returnToLobbyRequest.OnServerEvent:Connect(function(plr)
+	local blocked, reason = isTeamChangeBlocked(plr)
+	if blocked then
+		returnToLobbyResponse:FireClient(plr, false, reason)
+		return
+	end
+
 	-- Cooldown (shared with team-change cooldown)
 	local now = tick()
 	if lastChangeTime[plr] and (now - lastChangeTime[plr]) < COOLDOWN then

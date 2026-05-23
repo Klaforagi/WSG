@@ -27,9 +27,11 @@ local DEFAULTS = {
     ShowGameState = true,
     ShowHelm = false,
     ShowPlayerHighlights = false,
-    ShowPlayerHealthBars = true,
+    ShowTeammateHealthBars = false,
+    ShowEnemyHealthBars = true,
     ShowNPCHealthBars = true,
     ShowPlayerRings = true,
+    ShowPlayerMarkers = true,
 }
 
 local cache = {}
@@ -50,12 +52,19 @@ end
 local function ensureDefaults(tbl)
     if type(tbl) ~= "table" then tbl = {} end
     local clean = {}
+    local legacyPlayerBars = tbl.ShowPlayerHealthBars
     for key, defaultValue in pairs(DEFAULTS) do
         if tbl[key] == nil then
             clean[key] = defaultValue
         else
             clean[key] = tbl[key]
         end
+    end
+    if tbl.ShowTeammateHealthBars == nil and type(legacyPlayerBars) == "boolean" then
+        clean.ShowTeammateHealthBars = legacyPlayerBars
+    end
+    if tbl.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
+        clean.ShowEnemyHealthBars = legacyPlayerBars
     end
     return clean
 end

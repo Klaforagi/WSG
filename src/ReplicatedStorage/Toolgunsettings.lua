@@ -35,13 +35,13 @@ end
 
 local rarityDefaults = {
     Common = {
-        damage = 3,
+        damage = 6,
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 150,
         range = 450,
         projectile_lifetime = 4,
-        LeaveProjectile = true,
+        LeaveProjectile = false,
         projectile_wooden_sword_lifetime = 0.3,
         projectile_size = {0.3, 0.3, 0.3},
         bulletdrop = 55,
@@ -50,13 +50,13 @@ local rarityDefaults = {
     },
 
     Uncommon = {
-        damage = 3.8,
+        damage = 8.5,
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 175,
         range = 650,
         projectile_lifetime = 4,
-        LeaveProjectile = true,
+        LeaveProjectile = false,
         projectile_wooden_sword_lifetime = 0.5,
         projectile_size = {0.25, 0.25, 0.8},
         bulletdrop = 50,
@@ -65,13 +65,13 @@ local rarityDefaults = {
     },
 
     Rare = {
-        damage = 4.8,
+        damage = 11,
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 225,
         range = 1000,
         projectile_lifetime = 4,
-        LeaveProjectile = true,
+        LeaveProjectile = false,
         projectile_wooden_sword_lifetime = 1,
         projectile_size = {0.2, 0.2, 2.0},
         bulletdrop = 45,
@@ -80,13 +80,13 @@ local rarityDefaults = {
     },
 
     Epic = {
-        damage = 5.6,
+        damage = 14,
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 275,
         range = 1500,
         projectile_lifetime = 4,
-        LeaveProjectile = true,
+        LeaveProjectile = false,
         projectile_wooden_sword_lifetime = 1,
         projectile_size = {0.2, 0.2, 2.0},
         bulletdrop = 35,
@@ -95,13 +95,13 @@ local rarityDefaults = {
     },
 
     Legendary = {
-        damage = 6.4,
+        damage = 18,
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 325,
         range = 2000,
         projectile_lifetime = 4,
-        LeaveProjectile = true,
+        LeaveProjectile = false,
         projectile_wooden_sword_lifetime = 1,
         projectile_size = {0.2, 0.2, 2.0},
         bulletdrop = 25,
@@ -116,7 +116,7 @@ local rarityDefaults = {
 
 local presets = {
     ["starter slingshot"] = {
-        rarity = "Uncommon",
+        rarity = "Common",
         projectile_name = "Pebble",
         shoot_sound = "Slingshot_Shoot",
         hit_sound = "Slingshot_Hit",

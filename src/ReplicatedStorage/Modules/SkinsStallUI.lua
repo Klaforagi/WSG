@@ -461,9 +461,47 @@ function SkinsStallUI.Create(parent, options)
 	applyCorners(panel, px(28))
 	applyStroke(panel, PANEL_EDGE, 2, 0.1)
 	local panelConstraint = Instance.new("UISizeConstraint")
-	panelConstraint.MinSize = Vector2.new(820, px(560))
-	panelConstraint.MaxSize = Vector2.new(math.max(980, math.floor(viewportSize.X * 0.76)), math.max(px(760), math.floor(viewportSize.Y * 0.84)))
+	panelConstraint.MinSize = Vector2.new(320, 260)
+	panelConstraint.MaxSize = Vector2.new(math.max(360, math.floor(viewportSize.X * 0.96)), math.max(320, math.floor(viewportSize.Y * 0.92)))
 	panelConstraint.Parent = panel
+
+	local function applyResponsivePanelLayout()
+		local vp = getViewportSize()
+		if vp.X < vp.Y then
+			panel.Size = UDim2.fromScale(0.94, 0.9)
+			panel.Position = UDim2.fromScale(0.5, 0.52)
+		else
+			panel.Size = UDim2.fromScale(0.68, 0.8)
+			panel.Position = UDim2.fromScale(0.5, 0.52)
+		end
+		panelConstraint.MaxSize = Vector2.new(
+			math.max(360, math.floor(vp.X * 0.96)),
+			math.max(320, math.floor(vp.Y * 0.92))
+		)
+	end
+
+	local cameraViewportConn = nil
+	local function bindViewportListener()
+		if cameraViewportConn then
+			pcall(function()
+				cameraViewportConn:Disconnect()
+			end)
+			cameraViewportConn = nil
+		end
+
+		local camera = Workspace.CurrentCamera
+		if camera then
+			cameraViewportConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsivePanelLayout)
+			trackConn(cameraViewportConn)
+		end
+	end
+
+	trackConn(Workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		bindViewportListener()
+		applyResponsivePanelLayout()
+	end))
+	bindViewportListener()
+	task.defer(applyResponsivePanelLayout)
 
 	local panelGradient = Instance.new("UIGradient")
 	panelGradient.Rotation = 90

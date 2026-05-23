@@ -1,6 +1,6 @@
 --[[
 	MobHealthFade.client.lua
-	Fades overhead health bars in/out based on distance from the local player.
+	Shows overhead health bars instantly (no fade tween) based on visibility rules.
 	Names stay visible; Options toggles hide only the health-bar pieces.
 	Pairs with MobOverheadHealth.server.lua.
 --]]
@@ -11,11 +11,11 @@ local Workspace   = game:GetService("Workspace")
 
 local BILLBOARD_NAME = "MobOverheadHealth"
 local OWNER_TYPE_ATTRIBUTE = "OverheadOwnerType"
-
--- Distance band: health bars are barely visible at FADE_START and fully opaque
--- at FADE_FULL. Names do not fade.
-local FADE_START = 55   -- studs — health bars are barely visible here
-local FADE_FULL  = 22   -- studs — fully opaque
+local DEFAULT_NAME_POSITION = UDim2.new(0, 0, 0, 1)
+local DEFAULT_NAME_SIZE = UDim2.new(1, 0, 0, 16)
+local LOCAL_NAME_ONLY_POSITION = UDim2.new(0, 0, 0, 22)
+local LOCAL_NAME_ONLY_SIZE = UDim2.new(1, 0, 0, 18)
+local MARKER_SWAP_DISTANCE = 55
 
 -- Base (fully-visible) transparencies for each element.
 -- Must stay in sync with buildBillboard in MobOverheadHealth.server.lua.
@@ -45,11 +45,71 @@ local function getOwnerType(billboard)
 	return "NPC"
 end
 
+local function isLocalPlayerBillboard(billboard)
+	local character = localPlayer and localPlayer.Character
+	if not character then
+		return false
+	end
+	return billboard:IsDescendantOf(character)
+		or (billboard.Parent and billboard.Parent:IsDescendantOf(character))
+end
+
+local function getBillboardPlayer(billboard)
+	local character = billboard and billboard.Parent and billboard.Parent.Parent
+	if not character or not character:IsA("Model") then
+		return nil
+	end
+	return Players:GetPlayerFromCharacter(character)
+end
+
+local function isTeammateBillboard(billboard)
+	local billboardPlayer = getBillboardPlayer(billboard)
+	if not billboardPlayer then
+		return false
+	end
+	if billboardPlayer == localPlayer then
+		return false
+	end
+	local myTeam = localPlayer and localPlayer.Team
+	local theirTeam = billboardPlayer.Team
+	return myTeam and theirTeam and myTeam == theirTeam
+end
+
 local function healthBarsEnabled(billboard)
+	if getOwnerType(billboard) == "Player" and isLocalPlayerBillboard(billboard) then
+		return false
+	end
 	if getOwnerType(billboard) == "Player" then
-		return _G.ShowPlayerHealthBars ~= false
+		if isTeammateBillboard(billboard) then
+			return _G.ShowTeammateHealthBars == true
+		end
+		return _G.ShowEnemyHealthBars ~= false
 	end
 	return _G.ShowNPCHealthBars ~= false
+end
+
+local function shouldUseMarkerForPlayerBillboard(billboard, dist)
+	if getOwnerType(billboard) ~= "Player" then
+		return false
+	end
+	if isLocalPlayerBillboard(billboard) then
+		return false
+	end
+	if _G.ShowPlayerMarkers == false then
+		return false
+	end
+	if dist <= MARKER_SWAP_DISTANCE then
+		return false
+	end
+	local targetPlayer = getBillboardPlayer(billboard)
+	if not targetPlayer then
+		return false
+	end
+	local carryingFlag = targetPlayer:GetAttribute("CarryingFlag")
+	if type(carryingFlag) == "string" and carryingFlag ~= "" then
+		return false
+	end
+	return true
 end
 
 local function getElements(billboard)
@@ -74,8 +134,23 @@ local function getElements(billboard)
 	}
 end
 
-local function applyNameVisibility(elements)
+local function applyNameVisibility(elements, billboard)
 	if elements.nameLabel then
+		local nameOnlyMode = false
+		if billboard and isLocalPlayerBillboard(billboard) then
+			nameOnlyMode = true
+		elseif billboard and getOwnerType(billboard) == "Player" and isTeammateBillboard(billboard)
+			and _G.ShowTeammateHealthBars ~= true then
+			nameOnlyMode = true
+		end
+
+		if nameOnlyMode then
+			elements.nameLabel.Position = LOCAL_NAME_ONLY_POSITION
+			elements.nameLabel.Size = LOCAL_NAME_ONLY_SIZE
+		else
+			elements.nameLabel.Position = DEFAULT_NAME_POSITION
+			elements.nameLabel.Size = DEFAULT_NAME_SIZE
+		end
 		elements.nameLabel.TextTransparency = BASE.nameText
 		elements.nameLabel.TextStrokeTransparency = 1
 	end
@@ -96,7 +171,7 @@ end
 local function applyBillboardSettings(billboard)
 	local elements = getElements(billboard)
 	if not elements then return end
-	applyNameVisibility(elements)
+	applyNameVisibility(elements, billboard)
 	applyHealthBarVisibility(elements, healthBarsEnabled(billboard))
 end
 
@@ -115,7 +190,7 @@ local function applyAlpha(billboard, alpha)
 	local elements = getElements(billboard)
 	if not elements then return end
 
-	applyNameVisibility(elements)
+	applyNameVisibility(elements, billboard)
 
 	local showHealthBar = healthBarsEnabled(billboard)
 	applyHealthBarVisibility(elements, showHealthBar)
@@ -175,14 +250,16 @@ RunService.Heartbeat:Connect(function()
 
 	-- Walk all BillboardGuis in Workspace named MobOverheadHealth
 	for _, billboard in ipairs(Workspace:GetDescendants()) do
-		if billboard:IsA("BillboardGui") and billboard.Name == BILLBOARD_NAME and billboard.Enabled then
+		if billboard:IsA("BillboardGui") and billboard.Name == BILLBOARD_NAME then
 			local part = billboard.Parent
 			if part and part:IsA("BasePart") then
 				local dist = (part.Position - playerPos).Magnitude
-				local t = 1 - math.clamp((dist - FADE_FULL) / (FADE_START - FADE_FULL), 0, 1)
-				-- Remap so the far edge is 0.01 (barely visible) not 0 (invisible pop-in)
-				local alpha = 0.01 + t * 0.99
-				applyAlpha(billboard, alpha)
+				local markerMode = shouldUseMarkerForPlayerBillboard(billboard, dist)
+				billboard.Enabled = not markerMode
+				if markerMode then
+					continue
+				end
+				applyAlpha(billboard, 1)
 			end
 		end
 	end

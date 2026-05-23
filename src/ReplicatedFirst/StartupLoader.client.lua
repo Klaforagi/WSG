@@ -24,11 +24,19 @@ local Players          = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ContentProvider  = game:GetService("ContentProvider")
 local TweenService     = game:GetService("TweenService")
+local StarterGui       = game:GetService("StarterGui")
+local UserInputService = game:GetService("UserInputService")
 
 ReplicatedFirst:RemoveDefaultLoadingScreen()
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+if UserInputService.TouchEnabled then
+	pcall(function()
+		StarterGui.ScreenOrientation = Enum.ScreenOrientation.LandscapeSensor
+	end)
+end
 
 -- Set true when the user clicks Skip. The preload stages keep running in the
 -- background; only the UI visibility / input blocker are short-circuited.
@@ -99,7 +107,9 @@ end
 local function uiPx(base)
 	local cam = workspace.CurrentCamera
 	local screenY = 1080
-	if cam and cam.ViewportSize and cam.ViewportSize.Y >= 600 then
+	-- Camera viewport can report very small values while the client is still
+	-- booting. Treat those as not-ready so the loader does not collapse.
+	if cam and cam.ViewportSize and cam.ViewportSize.Y >= 300 then
 		screenY = cam.ViewportSize.Y
 	end
 	return math.max(1, math.floor(base * screenY / 1080 + 0.5))
@@ -236,9 +246,12 @@ local function createGui()
 
 	local title = Instance.new("ImageLabel")
 	title.Name = "Title"
-	title.Size = UDim2.new(0, uiPx(820), 0, uiPx(460))
+	local titleBaseW = UserInputService.TouchEnabled and 590 or 820
+	local titleBaseH = UserInputService.TouchEnabled and 330 or 460
+	local titleYScale = UserInputService.TouchEnabled and 0.595 or 0.60
+	title.Size = UDim2.new(0, uiPx(titleBaseW), 0, uiPx(titleBaseH))
 	title.AnchorPoint = Vector2.new(0.5, 1)
-	title.Position = UDim2.new(0.5, 0, 0.60, uiPx(34))
+	title.Position = UDim2.new(0.5, 0, titleYScale, uiPx(38))
 	title.BackgroundTransparency = 1
 	title.ZIndex = 7
 	title.Parent = bg
@@ -361,7 +374,7 @@ local function createGui()
 	task.spawn(function()
 		while gui.Parent do
 			local riseTween = TweenService:Create(title, TweenInfo.new(2.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), {
-				Position = UDim2.new(baseTitlePos.X.Scale, baseTitlePos.X.Offset, baseTitlePos.Y.Scale, baseTitlePos.Y.Offset - uiPx(8))
+				Position = UDim2.new(baseTitlePos.X.Scale, baseTitlePos.X.Offset, baseTitlePos.Y.Scale, baseTitlePos.Y.Offset - uiPx(4))
 			})
 			local glowInGold = TweenService:Create(logoGoldGlow, TweenInfo.new(2.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { ImageTransparency = 0.89 })
 			local glowInBlue = TweenService:Create(logoBlueGlow, TweenInfo.new(2.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut), { ImageTransparency = 0.92 })
@@ -490,9 +503,11 @@ pcall(function()
 			ShowGameState = true,
 			ShowHelm = true,
 			ShowPlayerHighlights = false,
-			ShowPlayerHealthBars = true,
+			ShowTeammateHealthBars = false,
+			ShowEnemyHealthBars = true,
 			ShowNPCHealthBars = true,
 			ShowPlayerRings = true,
+			ShowPlayerMarkers = true,
 		}
 		local settings = {}
 		for k, v in pairs(defaults) do settings[k] = v end
@@ -503,9 +518,12 @@ pcall(function()
 		end
 		_G.PlayerSettings = settings
 		_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
-		_G.ShowPlayerHealthBars = (settings.ShowPlayerHealthBars ~= false)
+		_G.ShowTeammateHealthBars = (settings.ShowTeammateHealthBars == true)
+		_G.ShowEnemyHealthBars = (settings.ShowEnemyHealthBars ~= false)
+		_G.ShowPlayerHealthBars = (_G.ShowTeammateHealthBars or _G.ShowEnemyHealthBars)
 		_G.ShowNPCHealthBars = (settings.ShowNPCHealthBars ~= false)
 		_G.ShowPlayerRings = (settings.ShowPlayerRings ~= false)
+		_G.ShowPlayerMarkers = (settings.ShowPlayerMarkers ~= false)
 
 		pcall(function()
 			local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")

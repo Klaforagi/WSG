@@ -199,9 +199,8 @@ local container = Instance.new("Frame")
 container.Name                    = "HotbarContainer"
 container.BackgroundTransparency  = 1
 container.AnchorPoint             = Vector2.new(0.5, 1)
--- anchor to the bottom-center, above the XP bar
 container.Position                = UDim2.new(0.5, 0, 1 - (MARGIN_SCALE + 0.058), 0)
-container.Size                    = UDim2.fromScale(1, SLOT_SCALE) -- full width, height = slot height
+container.Size                    = UDim2.fromScale(1, SLOT_SCALE) -- initial size; refined by responsive layout
 container.Parent                  = screenGui
 
 local layout = Instance.new("UIListLayout")
@@ -211,6 +210,61 @@ layout.VerticalAlignment   = Enum.VerticalAlignment.Center
 layout.SortOrder           = Enum.SortOrder.LayoutOrder
 layout.Padding             = UDim.new(GAP_SCALE, 0)
 layout.Parent              = container
+
+local function getViewportSize()
+    local cam = workspace.CurrentCamera
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
+    end
+    return 1920, 1080
+end
+
+local function getXPBarTopPixel(viewportY)
+    local shellHeight = UserInputService.TouchEnabled
+        and math.max(30, math.floor(viewportY * 0.031))
+        or math.max(36, math.floor(viewportY * 0.034))
+    return viewportY - 2 - shellHeight
+end
+
+local function applyHotbarLayout()
+    local _, viewportY = getViewportSize()
+    local uiScale = math.clamp(viewportY / 1080, 0.65, 1.15)
+    local slotPixels = UserInputService.TouchEnabled
+        and math.floor(84 * uiScale)
+        or math.floor(96 * uiScale)
+    local gapPixels = UserInputService.TouchEnabled
+        and math.max(4, math.floor(6 * uiScale))
+        or math.max(4, math.floor(8 * uiScale))
+    local gapAboveXP = UserInputService.TouchEnabled
+        and math.max(4, math.floor(viewportY * 0.006))
+        or math.max(6, math.floor(viewportY * 0.007))
+    local hotbarBottom = getXPBarTopPixel(viewportY) - gapAboveXP
+
+    container.Size = UDim2.new(1, 0, 0, slotPixels)
+    container.Position = UDim2.new(0.5, 0, 0, hotbarBottom)
+    layout.Padding = UDim.new(0, gapPixels)
+end
+
+do
+    local viewportConn = nil
+    local function bindCamera()
+        if viewportConn then
+            viewportConn:Disconnect()
+            viewportConn = nil
+        end
+        local cam = workspace.CurrentCamera
+        if cam then
+            viewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyHotbarLayout)
+        end
+    end
+    bindCamera()
+    workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+        bindCamera()
+        applyHotbarLayout()
+    end)
+end
+
+task.defer(applyHotbarLayout)
 
 --------------------------------------------------------------------------------
 -- FORWARD DECLARE
@@ -543,7 +597,7 @@ local function buildSlot(def)
         cooldownCountdown = cdCountdown,
     }
 
-    btn.MouseButton1Click:Connect(function()
+    btn.Activated:Connect(function()
         equipSlot(idx)
     end)
 end

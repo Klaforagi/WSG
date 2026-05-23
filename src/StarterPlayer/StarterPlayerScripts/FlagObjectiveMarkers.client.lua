@@ -1,5 +1,6 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 
 local localPlayer = Players.LocalPlayer
@@ -13,6 +14,13 @@ local TEAM_DARK_COLORS = {
     Blue = Color3.fromRGB(8, 28, 72),
     Red = Color3.fromRGB(82, 14, 16),
 }
+local NEUTRAL_MARKER_COLOR = Color3.fromRGB(132, 138, 148)
+local NEUTRAL_MARKER_DARK_COLOR = Color3.fromRGB(70, 74, 80)
+local CAPTURE_MARKER_COLOR = Color3.fromRGB(255, 196, 64)
+local CAPTURE_MARKER_PULSE_COLOR = Color3.fromRGB(255, 244, 184)
+local CAPTURE_MARKER_DARK_COLOR = Color3.fromRGB(120, 74, 8)
+local HOLD_MARKER_TEXT_COLOR = Color3.fromRGB(225, 228, 232)
+local TIMER_BADGE_BACKGROUND = Color3.fromRGB(18, 20, 26)
 local FLAG_MODEL_NAMES = {
     Blue = {"BlueFlag", "Blue Flag"},
     Red = {"RedFlag", "Red Flag"},
@@ -25,7 +33,9 @@ local FLAG_STAND_NAMES = {
     Blue = {"BlueFlagStand", "Blue Flag Stand", "BlueStand", "KnightsFlagStand", "KnightFlagStand"},
     Red = {"RedFlagStand", "Red Flag Stand", "RedStand", "BerserkerFlagStand", "BerserkersFlagStand"},
 }
-local STATE_ATTRIBUTES = {"Team", "AtBase", "CarrierUserId", "CarrierTeam", "CarrierName", "IsCarried", "IsDropped"}
+local FLAG_ACTION_PROMPT_NAME = "FlagActionPrompt"
+local RETURN_DEADLINE_ATTRIBUTE = "ReturnDeadline"
+local STATE_ATTRIBUTES = {"Team", "AtBase", "CarrierUserId", "CarrierTeam", "CarrierName", "IsCarried", "IsDropped", RETURN_DEADLINE_ATTRIBUTE}
 
 local markers = {}
 local warnedKeys = {}
@@ -34,8 +44,8 @@ local flagStatesFolder = nil
 local updateScheduled = false
 local updateMarkers = nil
 
-for _, flagTeam in ipairs(FLAG_TEAMS) do
-    markers[flagTeam] = {
+local function createMarkerState()
+    return {
         gui = nil,
         attachment = nil,
         adorneePart = nil,
@@ -43,8 +53,21 @@ for _, flagTeam in ipairs(FLAG_TEAMS) do
         badge = nil,
         pointer = nil,
         stroke = nil,
+        timerBadge = nil,
+        timerLabel = nil,
+        timerStroke = nil,
+        iconRoot = nil,
+        iconBanner = nil,
+        iconFold = nil,
+        styleName = nil,
+        returnDeadline = 0,
     }
 end
+
+for _, flagTeam in ipairs(FLAG_TEAMS) do
+    markers[flagTeam] = createMarkerState()
+end
+markers.Hold = createMarkerState()
 
 local function warnOnce(key, message)
     if warnedKeys[key] then return end
@@ -124,6 +147,81 @@ local function getAdorneePart(instance)
     return nil
 end
 
+local function findNamedBasePart(container, targetName)
+    if not container then
+        return nil
+    end
+    if container:IsA("BasePart") and container.Name == targetName then
+        return container
+    end
+
+    local namedPart = container:FindFirstChild(targetName, true)
+    if namedPart and namedPart:IsA("BasePart") then
+        return namedPart
+    end
+
+    return nil
+end
+
+local function getFlagAnchorPart(instance)
+    local planePart = findNamedBasePart(instance, "Plane")
+    if planePart then
+        return planePart
+    end
+
+    local parent = instance and instance.Parent
+    if parent and parent:IsA("Model") then
+        planePart = findNamedBasePart(parent, "Plane")
+        if planePart then
+            return planePart
+        end
+    end
+
+    return getAdorneePart(instance)
+end
+
+local function getStandAnchorPart(standInstance)
+    if not standInstance then
+        return nil
+    end
+
+    if standInstance:IsA("Model") then
+        local stonePart = standInstance:FindFirstChild("Stone", true)
+        if stonePart and stonePart:IsA("BasePart") then
+            return stonePart
+        end
+        if standInstance.PrimaryPart and standInstance.PrimaryPart:IsA("BasePart") then
+            return standInstance.PrimaryPart
+        end
+        return standInstance:FindFirstChildWhichIsA("BasePart", true)
+    end
+
+    if standInstance:IsA("BasePart") then
+        if standInstance.Name == "Stone" then
+            return standInstance
+        end
+        local parent = standInstance.Parent
+        if parent and parent:IsA("Model") then
+            local stonePart = parent:FindFirstChild("Stone", true)
+            if stonePart and stonePart:IsA("BasePart") then
+                return stonePart
+            end
+        end
+        return standInstance
+    end
+
+    return nil
+end
+
+local function isAwaitingRespawn(stateObject)
+    if not stateObject then
+        return false
+    end
+    return stateObject:GetAttribute("AtBase") ~= true
+        and stateObject:GetAttribute("IsCarried") ~= true
+        and stateObject:GetAttribute("IsDropped") ~= true
+end
+
 local function matchesDroppedPreference(instance, preferredDropped)
     if preferredDropped == nil then
         return true
@@ -179,13 +277,22 @@ end
 local function findStandPart(flagTeam)
     for _, root in ipairs(getSearchRoots()) do
         for _, standName in ipairs(FLAG_STAND_NAMES[flagTeam]) do
-            local standPart = root:FindFirstChild(standName, true)
-            if standPart and standPart:IsA("BasePart") then
-                return standPart
+            local standInstance = root:FindFirstChild(standName, true)
+            if standInstance and (standInstance:IsA("BasePart") or standInstance:IsA("Model")) then
+                return standInstance
             end
         end
     end
     return nil
+end
+
+local function findStandMarkerPart(flagTeam)
+    local standInstance = findStandPart(flagTeam)
+    if standInstance then
+        return getStandAnchorPart(standInstance), 5.5
+    end
+
+    return nil, 0
 end
 
 local function getCarrierPlayer(stateObject)
@@ -212,9 +319,19 @@ local function findCarriedFlagPart(flagTeam, carrierPlayer)
         return nil
     end
 
+    local head = character:FindFirstChild("Head")
+    if head and head:IsA("BasePart") then
+        return head
+    end
+
+    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
+    if humanoidRootPart and humanoidRootPart:IsA("BasePart") then
+        return humanoidRootPart
+    end
+
     for _, carriedName in ipairs(CARRIED_FLAG_MODEL_NAMES[flagTeam]) do
         local carriedFlag = character:FindFirstChild(carriedName)
-        local carriedPart = getAdorneePart(carriedFlag)
+        local carriedPart = getFlagAnchorPart(carriedFlag)
         if carriedPart then
             return carriedPart
         end
@@ -222,16 +339,11 @@ local function findCarriedFlagPart(flagTeam, carrierPlayer)
 
     for _, descendant in ipairs(character:GetDescendants()) do
         if isFlagInstance(descendant, flagTeam) and descendant:GetAttribute("IsCarried") == true then
-            local carriedPart = getAdorneePart(descendant)
+            local carriedPart = getFlagAnchorPart(descendant)
             if carriedPart then
                 return carriedPart
             end
         end
-    end
-
-    local humanoidRootPart = character:FindFirstChild("HumanoidRootPart")
-    if humanoidRootPart and humanoidRootPart:IsA("BasePart") then
-        return humanoidRootPart
     end
 
     return nil
@@ -241,34 +353,35 @@ local function findMarkerPart(flagTeam, stateObject)
     if stateObject and stateObject:GetAttribute("IsCarried") == true then
         local carriedPart = findCarriedFlagPart(flagTeam, getCarrierPlayer(stateObject))
         if carriedPart then
-            return carriedPart, 3.2
+            return carriedPart, 6.0
         end
+        return nil, 0
     end
 
     if stateObject and stateObject:GetAttribute("IsDropped") == true then
         local droppedFlag = findFlagInstance(flagTeam, true)
-        local droppedPart = getAdorneePart(droppedFlag)
+        local droppedPart = getFlagAnchorPart(droppedFlag)
         if droppedPart then
             return droppedPart, 4.0
         end
+        return nil, 0
     end
 
-    local baseFlag = findFlagInstance(flagTeam, false) or findFlagInstance(flagTeam, nil)
-    local basePart = getAdorneePart(baseFlag)
-    if basePart then
-        return basePart, 4.5
-    end
+    if stateObject and stateObject:GetAttribute("AtBase") == true then
+        local baseFlag = findFlagInstance(flagTeam, false) or findFlagInstance(flagTeam, nil)
+        local basePart = getFlagAnchorPart(baseFlag)
+        if basePart then
+            return basePart, 4.5
+        end
 
-    local standPart = findStandPart(flagTeam)
-    if standPart then
-        return standPart, 5.5
+        return findStandMarkerPart(flagTeam)
     end
 
     return nil, 0
 end
 
-local function destroyMarker(flagTeam)
-    local marker = markers[flagTeam]
+local function destroyMarker(markerKey)
+    local marker = markers[markerKey]
     if marker.gui then
         marker.gui:Destroy()
     end
@@ -282,20 +395,28 @@ local function destroyMarker(flagTeam)
     marker.badge = nil
     marker.pointer = nil
     marker.stroke = nil
+    marker.timerBadge = nil
+    marker.timerLabel = nil
+    marker.timerStroke = nil
+    marker.iconRoot = nil
+    marker.iconBanner = nil
+    marker.iconFold = nil
+    marker.styleName = nil
+    marker.returnDeadline = 0
 end
 
-local function setMarkerEnabled(flagTeam, enabled)
-    local marker = markers[flagTeam]
+local function setMarkerEnabled(markerKey, enabled)
+    local marker = markers[markerKey]
     if marker.gui then
         marker.gui.Enabled = enabled
     end
 end
 
-local function createMarker(flagTeam, adorneePart, verticalOffset)
-    destroyMarker(flagTeam)
+local function createMarker(markerKey, adorneePart, verticalOffset, themeTeam)
+    destroyMarker(markerKey)
 
     local attachment = Instance.new("Attachment")
-    attachment.Name = "FlagObjectiveMarker_" .. flagTeam
+    attachment.Name = "FlagObjectiveMarker_" .. markerKey
     attachment.Position = Vector3.new(0, math.max(2.5, (adorneePart.Size.Y * 0.5) + verticalOffset), 0)
     attachment.Parent = adorneePart
 
@@ -305,7 +426,7 @@ local function createMarker(flagTeam, adorneePart, verticalOffset)
     gui.AlwaysOnTop = true
     gui.MaxDistance = 1000
     gui.LightInfluence = 0
-    gui.Size = UDim2.fromOffset(80, 42)
+    gui.Size = UDim2.fromOffset(86, 72)
     gui.Enabled = false
     gui.Parent = attachment
 
@@ -316,13 +437,13 @@ local function createMarker(flagTeam, adorneePart, verticalOffset)
     root.Size = UDim2.fromScale(1, 1)
     root.Parent = gui
 
-    local color = TEAM_COLORS[flagTeam]
-    local darkColor = TEAM_DARK_COLORS[flagTeam]
+    local color = TEAM_COLORS[themeTeam] or NEUTRAL_MARKER_COLOR
+    local darkColor = TEAM_DARK_COLORS[themeTeam] or NEUTRAL_MARKER_DARK_COLOR
 
     local pointer = Instance.new("Frame")
     pointer.Name = "Pointer"
     pointer.AnchorPoint = Vector2.new(0.5, 0)
-    pointer.Position = UDim2.new(0.5, 0, 0, 17)
+    pointer.Position = UDim2.new(0.5, 0, 0, 50)
     pointer.Size = UDim2.fromOffset(12, 12)
     pointer.Rotation = 45
     pointer.BackgroundColor3 = color
@@ -334,7 +455,7 @@ local function createMarker(flagTeam, adorneePart, verticalOffset)
     local badge = Instance.new("Frame")
     badge.Name = "Badge"
     badge.AnchorPoint = Vector2.new(0.5, 0)
-    badge.Position = UDim2.new(0.5, 0, 0, 2)
+    badge.Position = UDim2.new(0.5, 0, 0, 34)
     badge.Size = UDim2.fromOffset(74, 20)
     badge.BackgroundColor3 = color
     badge.BackgroundTransparency = 0.08
@@ -372,7 +493,95 @@ local function createMarker(flagTeam, adorneePart, verticalOffset)
     textConstraint.MaxTextSize = 12
     textConstraint.Parent = label
 
-    local marker = markers[flagTeam]
+    local icon = Instance.new("Frame")
+    icon.Name = "FlagIcon"
+    icon.AnchorPoint = Vector2.new(0.5, 0)
+    icon.Position = UDim2.new(0.5, 0, 0, 18)
+    icon.Size = UDim2.fromOffset(18, 14)
+    icon.BackgroundTransparency = 1
+    icon.BorderSizePixel = 0
+    icon.ZIndex = 3
+    icon.Parent = root
+
+    local pole = Instance.new("Frame")
+    pole.Name = "Pole"
+    pole.AnchorPoint = Vector2.new(0.5, 0.5)
+    pole.Position = UDim2.new(0.22, 0, 0.54, 0)
+    pole.Size = UDim2.new(0.12, 0, 0.86, 0)
+    pole.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    pole.BorderSizePixel = 0
+    pole.ZIndex = 4
+    pole.Parent = icon
+    local poleCorner = Instance.new("UICorner")
+    poleCorner.CornerRadius = UDim.new(1, 0)
+    poleCorner.Parent = pole
+
+    local iconBanner = Instance.new("Frame")
+    iconBanner.Name = "Banner"
+    iconBanner.AnchorPoint = Vector2.new(0, 0)
+    iconBanner.Position = UDim2.new(0.3, 0, 0.12, 0)
+    iconBanner.Size = UDim2.new(0.62, 0, 0.42, 0)
+    iconBanner.BorderSizePixel = 0
+    iconBanner.ZIndex = 5
+    iconBanner.Parent = icon
+    local iconBannerCorner = Instance.new("UICorner")
+    iconBannerCorner.CornerRadius = UDim.new(0, 3)
+    iconBannerCorner.Parent = iconBanner
+
+    local iconFold = Instance.new("Frame")
+    iconFold.Name = "LowerFold"
+    iconFold.AnchorPoint = Vector2.new(0, 0)
+    iconFold.Position = UDim2.new(0.3, 0, 0.48, 0)
+    iconFold.Size = UDim2.new(0.46, 0, 0.3, 0)
+    iconFold.BorderSizePixel = 0
+    iconFold.ZIndex = 4
+    iconFold.Parent = icon
+    local iconFoldCorner = Instance.new("UICorner")
+    iconFoldCorner.CornerRadius = UDim.new(0, 3)
+    iconFoldCorner.Parent = iconFold
+
+    local timerBadge = Instance.new("Frame")
+    timerBadge.Name = "TimerBadge"
+    timerBadge.AnchorPoint = Vector2.new(0.5, 1)
+    timerBadge.Position = UDim2.new(0.5, 0, 0, 15)
+    timerBadge.Size = UDim2.fromOffset(52, 16)
+    timerBadge.BackgroundColor3 = TIMER_BADGE_BACKGROUND
+    timerBadge.BackgroundTransparency = 0.12
+    timerBadge.BorderSizePixel = 0
+    timerBadge.Visible = false
+    timerBadge.ZIndex = 4
+    timerBadge.Parent = root
+
+    local timerCorner = Instance.new("UICorner")
+    timerCorner.CornerRadius = UDim.new(0, 4)
+    timerCorner.Parent = timerBadge
+
+    local timerStroke = Instance.new("UIStroke")
+    timerStroke.Thickness = 1.2
+    timerStroke.Transparency = 0.15
+    timerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    timerStroke.Parent = timerBadge
+
+    local timerLabel = Instance.new("TextLabel")
+    timerLabel.Name = "Text"
+    timerLabel.BackgroundTransparency = 1
+    timerLabel.Position = UDim2.fromOffset(4, 0)
+    timerLabel.Size = UDim2.new(1, -8, 1, 0)
+    timerLabel.Font = Enum.Font.GothamBold
+    timerLabel.Text = ""
+    timerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    timerLabel.TextScaled = true
+    timerLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    timerLabel.TextStrokeTransparency = 0.25
+    timerLabel.ZIndex = 5
+    timerLabel.Parent = timerBadge
+
+    local timerConstraint = Instance.new("UITextSizeConstraint")
+    timerConstraint.MinTextSize = 8
+    timerConstraint.MaxTextSize = 12
+    timerConstraint.Parent = timerLabel
+
+    local marker = markers[markerKey]
     marker.gui = gui
     marker.attachment = attachment
     marker.adorneePart = adorneePart
@@ -380,36 +589,195 @@ local function createMarker(flagTeam, adorneePart, verticalOffset)
     marker.badge = badge
     marker.pointer = pointer
     marker.stroke = stroke
+    marker.timerBadge = timerBadge
+    marker.timerLabel = timerLabel
+    marker.timerStroke = timerStroke
+    marker.iconRoot = icon
+    marker.iconBanner = iconBanner
+    marker.iconFold = iconFold
+    marker.returnDeadline = 0
 
     return marker
 end
 
-local function ensureMarker(flagTeam, adorneePart, verticalOffset)
-    local marker = markers[flagTeam]
+local function ensureMarker(markerKey, adorneePart, verticalOffset, themeTeam)
+    local marker = markers[markerKey]
     if marker.adorneePart ~= adorneePart or not marker.gui or not marker.gui.Parent then
-        marker = createMarker(flagTeam, adorneePart, verticalOffset)
+        marker = createMarker(markerKey, adorneePart, verticalOffset, themeTeam)
     elseif marker.attachment then
         marker.attachment.Position = Vector3.new(0, math.max(2.5, (adorneePart.Size.Y * 0.5) + verticalOffset), 0)
     end
     return marker
 end
 
-local function getMarkerText(localTeam, flagTeam, stateObject)
+local function getOpposingTeam(teamName)
+    for _, flagTeam in ipairs(FLAG_TEAMS) do
+        if flagTeam ~= teamName then
+            return flagTeam
+        end
+    end
+    return nil
+end
+
+local function isCarriedByLocalPlayer(stateObject)
+    return stateObject and (tonumber(stateObject:GetAttribute("CarrierUserId")) or 0) == localPlayer.UserId
+end
+
+local function isCarriedByTeam(stateObject, teamName)
+    if not stateObject or stateObject:GetAttribute("IsCarried") ~= true then
+        return false
+    end
+    return canonicalTeamName(stateObject:GetAttribute("CarrierTeam")) == teamName
+end
+
+local function getMarkerPresentation(localTeam, flagTeam, stateObject, localPlayerHasEnemyFlag)
+    if isAwaitingRespawn(stateObject) then
+        return false, nil, nil
+    end
+
     if flagTeam == localTeam then
         local atBase = stateObject:GetAttribute("AtBase") == true
         local isCarried = stateObject:GetAttribute("IsCarried") == true
         local isDropped = stateObject:GetAttribute("IsDropped") == true
         if atBase and not isCarried and not isDropped then
-            return "DEFEND"
+            if localPlayerHasEnemyFlag then
+                return true, "CAPTURE", "capture"
+            end
+            return true, "DEFEND", "team"
         end
-        return "RETURN"
+        if isCarried then
+            return true, "ELIMINATE", "eliminate"
+        end
+        if isDropped then
+            return true, "RETURN", "team"
+        end
+        return false, nil, nil
+    end
+
+    if isCarriedByLocalPlayer(stateObject) then
+        return false, nil, nil
     end
 
     local carrierTeam = canonicalTeamName(stateObject:GetAttribute("CarrierTeam"))
     if stateObject:GetAttribute("IsCarried") == true and carrierTeam == localTeam then
-        return "ESCORT"
+        return true, "PROTECT", "local"
     end
-    return "CAPTURE"
+    return true, "STEAL", "team"
+end
+
+local function applyMarkerStyle(marker, styleName, themeTeam, localTeam)
+    if not marker.badge or not marker.pointer or not marker.stroke or not marker.label then
+        return
+    end
+
+    local displayTeam = themeTeam
+    local iconTeam = themeTeam
+    local showFlagIcon = true
+
+    if styleName == "local" then
+        displayTeam = localTeam or themeTeam
+        iconTeam = getOpposingTeam(localTeam) or displayTeam
+    elseif styleName == "eliminate" then
+        displayTeam = getOpposingTeam(localTeam) or themeTeam
+        iconTeam = localTeam or themeTeam
+    elseif styleName == "capture" or styleName == "hold" then
+        showFlagIcon = false
+    end
+
+    local backgroundColor = TEAM_COLORS[displayTeam] or NEUTRAL_MARKER_COLOR
+    local strokeColor = TEAM_DARK_COLORS[displayTeam] or NEUTRAL_MARKER_DARK_COLOR
+    local iconColor = TEAM_COLORS[iconTeam] or backgroundColor
+    local textColor = Color3.fromRGB(255, 255, 255)
+    local badgeTransparency = 0.08
+    local pointerTransparency = 0.08
+    local strokeTransparency = 0.05
+    local textStrokeTransparency = 0.35
+
+    if styleName == "capture" then
+        backgroundColor = CAPTURE_MARKER_COLOR
+        strokeColor = CAPTURE_MARKER_DARK_COLOR
+        textColor = CAPTURE_MARKER_PULSE_COLOR
+        textStrokeTransparency = 0.18
+    elseif styleName == "hold" then
+        backgroundColor = NEUTRAL_MARKER_COLOR
+        strokeColor = NEUTRAL_MARKER_DARK_COLOR
+        textColor = HOLD_MARKER_TEXT_COLOR
+        badgeTransparency = 0.28
+        pointerTransparency = 0.42
+        strokeTransparency = 0.22
+        textStrokeTransparency = 0.5
+    elseif styleName == "local" then
+        backgroundColor = TEAM_COLORS[localTeam] or backgroundColor
+        strokeColor = TEAM_DARK_COLORS[localTeam] or strokeColor
+    end
+
+    marker.badge.BackgroundColor3 = backgroundColor
+    marker.badge.BackgroundTransparency = badgeTransparency
+    marker.pointer.BackgroundColor3 = backgroundColor
+    marker.pointer.BackgroundTransparency = pointerTransparency
+    marker.stroke.Color = strokeColor
+    marker.stroke.Transparency = strokeTransparency
+    marker.label.TextColor3 = textColor
+    marker.label.TextStrokeTransparency = textStrokeTransparency
+    if marker.iconRoot then
+        marker.iconRoot.Visible = showFlagIcon
+    end
+    if marker.iconBanner then
+        marker.iconBanner.BackgroundColor3 = iconColor
+    end
+    if marker.iconFold then
+        marker.iconFold.BackgroundColor3 = iconColor:Lerp(Color3.new(0, 0, 0), 0.18)
+    end
+    if marker.timerBadge then
+        marker.timerBadge.BackgroundColor3 = TIMER_BADGE_BACKGROUND
+        marker.timerBadge.BackgroundTransparency = 0.12
+    end
+    if marker.timerStroke then
+        marker.timerStroke.Color = backgroundColor:Lerp(Color3.fromRGB(255, 255, 255), 0.25)
+        marker.timerStroke.Transparency = 0.15
+    end
+    if marker.timerLabel then
+        marker.timerLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+        marker.timerLabel.TextStrokeTransparency = 0.25
+    end
+    marker.styleName = styleName
+end
+
+local function updateFlagActionPrompt(localTeam, flagTeam, stateObject)
+    local targetModel = nil
+    if stateObject:GetAttribute("IsDropped") == true then
+        targetModel = findFlagInstance(flagTeam, true)
+    elseif stateObject:GetAttribute("AtBase") == true then
+        targetModel = findFlagInstance(flagTeam, false) or findFlagInstance(flagTeam, nil)
+    end
+
+    local prompt = targetModel and targetModel:FindFirstChild(FLAG_ACTION_PROMPT_NAME, true)
+    if not (prompt and prompt:IsA("ProximityPrompt")) then
+        return
+    end
+
+    if not localTeam then
+        prompt.Enabled = false
+        return
+    end
+
+    local enabled = false
+    local actionText = "Steal"
+    if not isAwaitingRespawn(stateObject) and stateObject:GetAttribute("IsCarried") ~= true then
+        if flagTeam == localTeam then
+            enabled = stateObject:GetAttribute("IsDropped") == true
+            actionText = "Return"
+        else
+            enabled = true
+            if stateObject:GetAttribute("IsDropped") == true then
+                actionText = "Pick Up"
+            end
+        end
+    end
+
+    prompt.Enabled = enabled
+    prompt.ActionText = actionText
+    prompt.ObjectText = flagTeam .. " Flag"
 end
 
 local function scheduleUpdate()
@@ -450,7 +818,12 @@ function updateMarkers()
     if not localTeam then
         for _, flagTeam in ipairs(FLAG_TEAMS) do
             setMarkerEnabled(flagTeam, false)
+            local stateObject = getStateObject(flagTeam)
+            if stateObject then
+                updateFlagActionPrompt(nil, flagTeam, stateObject)
+            end
         end
+        setMarkerEnabled("Hold", false)
         return
     end
 
@@ -458,26 +831,66 @@ function updateMarkers()
         warnOnce("FlagStatesMissing", "[FlagObjectiveMarkers] ReplicatedStorage.FlagStates was not found; flag objective markers are hidden.")
         for _, flagTeam in ipairs(FLAG_TEAMS) do
             setMarkerEnabled(flagTeam, false)
+            local stateObject = getStateObject(flagTeam)
+            if stateObject then
+                updateFlagActionPrompt(localTeam, flagTeam, stateObject)
+            end
         end
+        setMarkerEnabled("Hold", false)
         return
     end
 
+    local stateObjects = {}
     for _, flagTeam in ipairs(FLAG_TEAMS) do
-        local stateObject = getStateObject(flagTeam)
+        stateObjects[flagTeam] = getStateObject(flagTeam)
+    end
+
+    local enemyTeam = getOpposingTeam(localTeam)
+    local enemyState = enemyTeam and stateObjects[enemyTeam] or nil
+    local localPlayerHasEnemyFlag = isCarriedByLocalPlayer(enemyState)
+
+    for _, flagTeam in ipairs(FLAG_TEAMS) do
+        local stateObject = stateObjects[flagTeam]
         if not stateObject then
             warnOnce("FlagStateMissing_" .. flagTeam, "[FlagObjectiveMarkers] Missing replicated state for " .. flagTeam .. " flag.")
             setMarkerEnabled(flagTeam, false)
         else
-            local adorneePart, verticalOffset = findMarkerPart(flagTeam, stateObject)
-            if not adorneePart then
-                warnOnce("FlagAnchorMissing_" .. flagTeam, "[FlagObjectiveMarkers] Could not find an anchor for the " .. flagTeam .. " flag marker.")
+            updateFlagActionPrompt(localTeam, flagTeam, stateObject)
+            local shouldShowMarker, markerText, markerStyle = getMarkerPresentation(localTeam, flagTeam, stateObject, localPlayerHasEnemyFlag)
+            if not shouldShowMarker then
                 setMarkerEnabled(flagTeam, false)
             else
-                local marker = ensureMarker(flagTeam, adorneePart, verticalOffset)
-                marker.label.Text = getMarkerText(localTeam, flagTeam, stateObject)
-                marker.gui.Enabled = true
+                local adorneePart, verticalOffset = findMarkerPart(flagTeam, stateObject)
+                if not adorneePart then
+                    warnOnce("FlagAnchorMissing_" .. flagTeam, "[FlagObjectiveMarkers] Could not find an anchor for the " .. flagTeam .. " flag marker.")
+                    setMarkerEnabled(flagTeam, false)
+                else
+                    local marker = ensureMarker(flagTeam, adorneePart, verticalOffset, flagTeam)
+                    marker.label.Text = markerText
+                    applyMarkerStyle(marker, markerStyle, flagTeam, localTeam)
+                    marker.returnDeadline = stateObject:GetAttribute("IsDropped") == true and (tonumber(stateObject:GetAttribute(RETURN_DEADLINE_ATTRIBUTE)) or 0) or 0
+                    marker.gui.Enabled = true
+                end
             end
         end
+    end
+
+    local localFlagState = stateObjects[localTeam]
+    local shouldShowHoldMarker = localPlayerHasEnemyFlag and localFlagState and localFlagState:GetAttribute("AtBase") ~= true
+    if shouldShowHoldMarker then
+        local holdPart, holdOffset = findStandMarkerPart(localTeam)
+        if not holdPart then
+            warnOnce("FlagHoldAnchorMissing_" .. localTeam, "[FlagObjectiveMarkers] Could not find an anchor for the RETURN stand marker.")
+            setMarkerEnabled("Hold", false)
+        else
+            local holdMarker = ensureMarker("Hold", holdPart, holdOffset, localTeam)
+            holdMarker.label.Text = "RETURN"
+            applyMarkerStyle(holdMarker, "hold", localTeam, localTeam)
+            holdMarker.returnDeadline = 0
+            holdMarker.gui.Enabled = true
+        end
+    else
+        setMarkerEnabled("Hold", false)
     end
 end
 
@@ -519,12 +932,14 @@ end)
 Players.PlayerRemoving:Connect(scheduleUpdate)
 
 Workspace.DescendantAdded:Connect(function(descendant)
-    if string.find(string.lower(descendant.Name), "flag") or descendant.Name == "HumanoidRootPart" then
+    local descendantName = string.lower(descendant.Name)
+    if string.find(descendantName, "flag") or descendant.Name == "HumanoidRootPart" or descendantName == "plane" or descendantName == "stone" or descendant.Name == FLAG_ACTION_PROMPT_NAME then
         scheduleUpdate()
     end
 end)
 Workspace.DescendantRemoving:Connect(function(descendant)
-    if string.find(string.lower(descendant.Name), "flag") or descendant.Name == "HumanoidRootPart" then
+    local descendantName = string.lower(descendant.Name)
+    if string.find(descendantName, "flag") or descendant.Name == "HumanoidRootPart" or descendantName == "plane" or descendantName == "stone" or descendant.Name == FLAG_ACTION_PROMPT_NAME then
         scheduleUpdate()
     end
 end)
@@ -538,5 +953,34 @@ if flagStatus and flagStatus:IsA("RemoteEvent") then
         end
     end)
 end
+
+local pulseClock = 0
+RunService.RenderStepped:Connect(function(deltaTime)
+    pulseClock += deltaTime
+    local pulseAlpha = (math.sin(pulseClock * 6) + 1) * 0.5
+    local now = Workspace:GetServerTimeNow()
+
+    for _, marker in pairs(markers) do
+        if marker.gui and marker.gui.Enabled then
+            if marker.styleName == "capture" and marker.label and marker.badge and marker.pointer then
+                marker.label.TextColor3 = CAPTURE_MARKER_COLOR:Lerp(CAPTURE_MARKER_PULSE_COLOR, pulseAlpha)
+                local accentColor = CAPTURE_MARKER_COLOR:Lerp(CAPTURE_MARKER_PULSE_COLOR, pulseAlpha * 0.3)
+                marker.badge.BackgroundColor3 = accentColor
+                marker.pointer.BackgroundColor3 = accentColor
+            end
+
+            if marker.timerBadge and marker.timerLabel then
+                local remaining = (tonumber(marker.returnDeadline) or 0) - now
+                local showTimer = remaining > 0.05
+                marker.timerBadge.Visible = showTimer
+                if showTimer then
+                    marker.timerLabel.Text = tostring(math.ceil(remaining))
+                end
+            end
+        elseif marker.timerBadge then
+            marker.timerBadge.Visible = false
+        end
+    end
+end)
 
 scheduleUpdate()

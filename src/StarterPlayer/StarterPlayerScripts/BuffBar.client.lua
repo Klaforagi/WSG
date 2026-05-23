@@ -1031,6 +1031,32 @@ end
 player:GetAttributeChangedSignal("CarryingFlag"):Connect(syncFlag)
 task.defer(syncFlag)
 
+local function syncDefeat()
+    if player:GetAttribute("DefeatActive") ~= true then
+        removeEntry("defeat")
+        return
+    end
+
+    local endTime = tonumber(player:GetAttribute("DefeatEndTime"))
+    if endTime and endTime > workspace:GetServerTimeNow() then
+        upsertEntry("defeat", getStaticDef("defeat"), {
+            kind = "debuff",
+            expiresAt = endTime,
+            timeKind = "server",
+        })
+        return
+    end
+
+    upsertEntry("defeat", getStaticDef("defeat"), {
+        kind = "debuff",
+        showTimer = false,
+    })
+end
+
+player:GetAttributeChangedSignal("DefeatActive"):Connect(syncDefeat)
+player:GetAttributeChangedSignal("DefeatEndTime"):Connect(syncDefeat)
+task.defer(syncDefeat)
+
 local function syncRevengeCurse()
     if player:GetAttribute("RevengeCurseActive") ~= true then
         removeEntry("revenge_curse")

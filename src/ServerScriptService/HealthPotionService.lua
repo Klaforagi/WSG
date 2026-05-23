@@ -16,6 +16,7 @@ local HealthPotionService = {}
 
 local playerData = {}
 local loadedPlayers = {}
+local DEFEAT_LOCK_ATTR = "DefeatLockActive"
 local _saveCoordinator
 local stateChangedEvent = Instance.new("BindableEvent")
 
@@ -444,6 +445,10 @@ end
 function HealthPotionService:UseEquippedPotion(player)
     if not player then
         return false, "missing player", { state = nil }
+    end
+
+    if player:GetAttribute(DEFEAT_LOCK_ATTR) == true then
+        return false, "You cannot use that right now", { state = self:GetState(player) }
     end
 
     if loadedPlayers[player] ~= true then

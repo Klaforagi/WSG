@@ -61,6 +61,7 @@ local GREEN_FILL  = Color3.fromRGB(75, 200, 80) -- fallback when no team
 local YELLOW_FILL = Color3.fromRGB(230, 195, 50)
 local RED_FILL    = Color3.fromRGB(220, 50, 50)
 local WHITE       = Color3.fromRGB(245, 245, 245)
+local fill = nil
 
 -- Team-aware fill color (replaces GREEN_FILL for >50% HP)
 local teamFillColor = GREEN_FILL
@@ -137,6 +138,14 @@ end
 local BAR_WIDTH  = px(340)
 local BAR_HEIGHT = px(52)
 local EDGE_PAD   = px(24)
+
+local function getViewportSize()
+	local cam = workspace.CurrentCamera
+	if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+		return cam.ViewportSize.X, cam.ViewportSize.Y
+	end
+	return 1920, 1080
+end
 
 local container = Instance.new("Frame")
 container.Name = "HealthContainer"
@@ -218,7 +227,7 @@ barStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 barStroke.Parent = barBg
 
 -- Fill bar (coloured portion that shrinks / grows via tween)
-local fill = Instance.new("Frame")
+fill = Instance.new("Frame")
 fill.Name = "Fill"
 fill.Size = UDim2.new(1, 0, 1, 0)
 fill.BackgroundColor3 = GREEN_FILL
@@ -254,6 +263,52 @@ healthLabel.Parent = barBg
 local textConstraint = Instance.new("UITextSizeConstraint")
 textConstraint.MaxTextSize = px(26)
 textConstraint.Parent = healthLabel
+
+local function applyHealthBarLayout()
+	local viewportX, viewportY = getViewportSize()
+	local barWidth = UserInputService.TouchEnabled
+		and math.clamp(math.floor(viewportX * 0.18), 130, 230)
+		or math.clamp(math.floor(viewportX * 0.135), 170, 270)
+	local barHeight = UserInputService.TouchEnabled
+		and math.clamp(math.floor(viewportY * 0.028), 18, 30)
+		or math.clamp(math.floor(viewportY * 0.027), 22, 36)
+	local edgePad = UserInputService.TouchEnabled
+		and math.max(12, math.floor(viewportY * 0.012))
+		or math.max(16, math.floor(viewportY * 0.018))
+	local iconSize = math.max(20, math.floor(barHeight * 0.64))
+	local barOffset = iconSize + math.max(6, math.floor(barHeight * 0.15))
+
+	container.Size = UDim2.new(0, barWidth, 0, barHeight)
+	container.Position = UDim2.new(0, edgePad, 1, -edgePad)
+
+	heartIcon.Size = UDim2.new(0, iconSize, 0, iconSize)
+	barBg.Position = UDim2.new(0, barOffset, 0.5, 0)
+	barBg.Size = UDim2.new(1, -barOffset, 1, 0)
+
+	containerCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(barHeight * 0.23)))
+	textConstraint.MaxTextSize = math.max(14, math.floor(barHeight * 0.5))
+end
+
+do
+	local viewportConn = nil
+	local function bindCamera()
+		if viewportConn then
+			viewportConn:Disconnect()
+			viewportConn = nil
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			viewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyHealthBarLayout)
+		end
+	end
+	bindCamera()
+	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		bindCamera()
+		applyHealthBarLayout()
+	end)
+end
+
+task.defer(applyHealthBarLayout)
 
 --------------------------------------------------------------------------------
 -- TWEEN / UPDATE LOGIC

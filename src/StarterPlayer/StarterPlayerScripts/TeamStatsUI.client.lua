@@ -148,6 +148,8 @@ panel.ClipsDescendants     = true
 panel.ZIndex               = 1
 panel.Parent               = screenGui
 
+local panelSizeConstraint = nil
+
 do
 	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, px(12))
 
@@ -166,10 +168,10 @@ do
 	g.Rotation = 90
 	g.Parent   = panel
 
-	local sc = Instance.new("UISizeConstraint")
-	sc.MinSize = Vector2.new(740, 480)
-	sc.MaxSize = Vector2.new(1600, 1050)
-	sc.Parent  = panel
+	panelSizeConstraint = Instance.new("UISizeConstraint")
+	panelSizeConstraint.MinSize = Vector2.new(300, 260)
+	panelSizeConstraint.MaxSize = Vector2.new(1600, 1050)
+	panelSizeConstraint.Parent  = panel
 end
 
 local panelPad = Instance.new("UIPadding")
@@ -178,6 +180,50 @@ panelPad.PaddingBottom = UDim.new(0, px(16))
 panelPad.PaddingLeft   = UDim.new(0, px(28))
 panelPad.PaddingRight  = UDim.new(0, px(28))
 panelPad.Parent        = panel
+
+local function applyResponsivePanelLayout()
+	local cam = workspace.CurrentCamera
+	local viewportX, viewportY = 1920, 1080
+	if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+		viewportX, viewportY = cam.ViewportSize.X, cam.ViewportSize.Y
+	end
+
+	if viewportX < viewportY then
+		panel.Size = UDim2.new(0.94, 0, 0.9, 0)
+		panel.Position = UDim2.new(0.5, 0, 0.52, 0)
+	else
+		panel.Size = UDim2.new(0.72, 0, 0.82, 0)
+		panel.Position = UDim2.new(0.5, 0, 0.5, 0)
+	end
+
+	if panelSizeConstraint then
+		panelSizeConstraint.MaxSize = Vector2.new(
+			math.max(320, math.floor(viewportX * 0.96)),
+			math.max(280, math.floor(viewportY * 0.92))
+		)
+	end
+end
+
+do
+	local viewportConn = nil
+	local function bindCamera()
+		if viewportConn then
+			viewportConn:Disconnect()
+			viewportConn = nil
+		end
+		local cam = workspace.CurrentCamera
+		if cam then
+			viewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(applyResponsivePanelLayout)
+		end
+	end
+	bindCamera()
+	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		bindCamera()
+		applyResponsivePanelLayout()
+	end)
+end
+
+task.defer(applyResponsivePanelLayout)
 
 ---------------------------------------------------------------------------
 -- Header

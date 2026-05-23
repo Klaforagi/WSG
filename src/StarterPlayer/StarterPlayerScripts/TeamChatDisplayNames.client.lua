@@ -19,25 +19,14 @@ local function rewriteTeamNotice(text)
     end))
 end
 
-local previousOnIncomingMessage = TextChatService.OnIncomingMessage
-
 TextChatService.OnIncomingMessage = function(message)
-    local properties
-
-    if previousOnIncomingMessage then
-        local ok, result = pcall(previousOnIncomingMessage, message)
-        if ok and result then
-            properties = result
-        end
-    end
-
-    local sourceText = (properties and properties.Text) or message.Text
+    local sourceText = message.Text
     local rewrittenText = rewriteTeamNotice(sourceText)
     if rewrittenText == sourceText then
-        return properties
+        return nil
     end
 
-    properties = properties or Instance.new("TextChatMessageProperties")
+    local properties = Instance.new("TextChatMessageProperties")
     properties.Text = rewrittenText
     return properties
 end

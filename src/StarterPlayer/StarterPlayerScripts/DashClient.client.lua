@@ -17,7 +17,7 @@ local player   = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local DEBUG = false
-local DEBUG_LAYOUT = true -- temporary diagnostics for button positioning
+local DEBUG_LAYOUT = false
 local function log(...) if DEBUG then print("[DashClient]", ...) end end
 local function logLayout(...)
     if DEBUG_LAYOUT then
@@ -181,13 +181,40 @@ btnFrame.BackgroundTransparency = 1
 btnFrame.Parent = screenGui
 
 local applyingLayout = false
+local function getViewportSize()
+    local cam = workspace.CurrentCamera
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
+    end
+    return 1920, 1080
+end
+
+local function getXPBarTopPixel(viewportY)
+    local shellHeight = UserInputService.TouchEnabled
+        and math.max(30, math.floor(viewportY * 0.031))
+        or math.max(36, math.floor(viewportY * 0.034))
+    return viewportY - 2 - shellHeight
+end
+
 local function applyButtonLayout()
     applyingLayout = true
-    btnFrame.Position = UDim2.new(
-        0.5 + (XP_BAR_WIDTH_SCALE / 2), XP_BAR_EXTRA_WIDTH / 2,
-        1 - HOTBAR_BOTTOM_OFFSET, 0
-    )
-    btnFrame.Size = UDim2.fromOffset(px(BUTTON_SIZE), px(BUTTON_SIZE))
+    local viewportX, viewportY = getViewportSize()
+    local uiScale = math.clamp(viewportY / 1080, 0.65, 1.15)
+    local hotbarSlotSize = UserInputService.TouchEnabled
+        and math.floor(84 * uiScale)
+        or math.floor(96 * uiScale)
+    local buttonSize = math.max(52, math.floor(hotbarSlotSize * 0.98))
+    local gapAboveXP = UserInputService.TouchEnabled
+        and math.max(4, math.floor(viewportY * 0.006))
+        or math.max(6, math.floor(viewportY * 0.007))
+    local bottomPixel = getXPBarTopPixel(viewportY) - gapAboveXP
+    local rightPush = UserInputService.TouchEnabled
+        and math.max(36, math.floor(viewportX * 0.05))
+        or math.max(16, math.floor(viewportX * 0.018))
+    local rightEdgePixel = math.floor((viewportX * 0.5) + (viewportX * XP_BAR_WIDTH_SCALE * 0.5) + (XP_BAR_EXTRA_WIDTH * 0.5) + rightPush)
+
+    btnFrame.Position = UDim2.fromOffset(rightEdgePixel, bottomPixel)
+    btnFrame.Size = UDim2.fromOffset(buttonSize, buttonSize)
     applyingLayout = false
 end
 
@@ -765,12 +792,7 @@ end)
 --------------------------------------------------------------------------------
 -- INPUT: BUTTON CLICK
 --------------------------------------------------------------------------------
-btn.MouseButton1Click:Connect(function()
-    requestDashAction()
-end)
-
--- Also support touch
-btn.TouchTap:Connect(function()
+btn.Activated:Connect(function()
     requestDashAction()
 end)
 

@@ -12,6 +12,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local RunService        = game:GetService("RunService")
 local Players           = game:GetService("Players")
+local UserInputService  = game:GetService("UserInputService")
 
 local DEBUG_CRATE = false -- set true to print layout diagnostics
 
@@ -122,6 +123,15 @@ local CARD_GAP = 10 * CARD_SCALE  -- gap between cards
 local ROLLING_TEXT_SCALE = 3
 local STRIP_CARDS = 40  -- total cards in the roulette strip
 local WINNING_INDEX = 30 -- card index where the winner is placed (near end for nice decel)
+local RESULT_TEXT_SCALE = UserInputService.TouchEnabled and 0.82 or 1
+
+local function resultTextPx(base, minText)
+    local scaled = math.floor(px(base) * RESULT_TEXT_SCALE)
+    if minText then
+        return math.max(minText, scaled)
+    end
+    return math.max(8, scaled)
+end
 
 --------------------------------------------------------------------------------
 -- Get rarity color
@@ -447,12 +457,13 @@ function CrateOpeningUI.Init(playerGui)
     resultTitle.Font = Enum.Font.GothamBold
     resultTitle.Text = "YOU GOT"
     resultTitle.TextColor3 = DIM_TEXT
-    resultTitle.TextSize = math.max(14, math.floor(px(16)))
+    resultTitle.TextSize = resultTextPx(15, 12)
     resultTitle.Size = UDim2.new(1, 0, 0, px(24))
     resultTitle.Position = UDim2.new(0, 0, 0, px(14))
     resultTitle.TextXAlignment = Enum.TextXAlignment.Center
     resultTitle.ZIndex = 21
     resultTitle.Parent = resultFrame
+    configureAutoFitText(resultTitle, 10, resultTextPx(15, 12))
 
     local resultImage = Instance.new("ImageLabel")
     resultImage.Name = "WeaponImage"
@@ -470,15 +481,16 @@ function CrateOpeningUI.Init(playerGui)
     resultName.Font = Enum.Font.GothamBold
     resultName.Text = "?"
     resultName.TextColor3 = WHITE
-    resultName.TextSize = math.max(24, math.floor(px(28)))
+    resultName.TextSize = resultTextPx(22, 16)
     resultName.TextWrapped = true
-    resultName.Size = UDim2.new(0.84, 0, 0, px(42))
+    resultName.Size = UDim2.new(0.84, 0, 0, px(50))
     resultName.AnchorPoint = Vector2.new(0.5, 0)
     resultName.Position = UDim2.new(0.5, 0, 0, px(170))
     resultName.TextXAlignment = Enum.TextXAlignment.Center
     resultName.TextYAlignment = Enum.TextYAlignment.Center
     resultName.ZIndex = 21
     resultName.Parent = resultFrame
+    configureAutoFitText(resultName, 10, resultTextPx(22, 16))
 
     local resultRarity = Instance.new("TextLabel")
     resultRarity.Name = "Rarity"
@@ -486,7 +498,7 @@ function CrateOpeningUI.Init(playerGui)
     resultRarity.Font = Enum.Font.GothamBold
     resultRarity.Text = "Common"
     resultRarity.TextColor3 = DIM_TEXT
-    resultRarity.TextSize = math.max(14, math.floor(px(16)))
+    resultRarity.TextSize = resultTextPx(15, 12)
     resultRarity.Size = UDim2.new(0.84, 0, 0, px(24))
     resultRarity.AnchorPoint = Vector2.new(0.5, 0)
     resultRarity.Position = UDim2.new(0.5, 0, 0, px(216))
@@ -494,6 +506,7 @@ function CrateOpeningUI.Init(playerGui)
     resultRarity.TextYAlignment = Enum.TextYAlignment.Center
     resultRarity.ZIndex = 21
     resultRarity.Parent = resultFrame
+    configureAutoFitText(resultRarity, 10, resultTextPx(15, 12))
 
     -- SIZE ROLL SYSTEM — shows the exact rolled size percentage below rarity
     local resultSizeLabel = Instance.new("TextLabel")
@@ -502,7 +515,7 @@ function CrateOpeningUI.Init(playerGui)
     resultSizeLabel.Font = Enum.Font.GothamBold
     resultSizeLabel.Text = ""
     resultSizeLabel.TextColor3 = GOLD
-    resultSizeLabel.TextSize = math.max(18, math.floor(px(22)))
+    resultSizeLabel.TextSize = resultTextPx(18, 13)
     resultSizeLabel.Size = UDim2.new(0.84, 0, 0, px(28))
     resultSizeLabel.AnchorPoint = Vector2.new(0.5, 0)
     resultSizeLabel.Position = UDim2.new(0.5, 0, 0, px(244))
@@ -510,6 +523,7 @@ function CrateOpeningUI.Init(playerGui)
     resultSizeLabel.TextYAlignment = Enum.TextYAlignment.Center
     resultSizeLabel.ZIndex = 21
     resultSizeLabel.Parent = resultFrame
+    configureAutoFitText(resultSizeLabel, 10, resultTextPx(18, 13))
 
     -- ENCHANT SYSTEM — shows the enchant name below the size label, styled like a tag
     local resultEnchantLabel = Instance.new("TextLabel")
@@ -518,7 +532,7 @@ function CrateOpeningUI.Init(playerGui)
     resultEnchantLabel.Font = Enum.Font.GothamBold
     resultEnchantLabel.Text = ""
     resultEnchantLabel.TextColor3 = GOLD
-    resultEnchantLabel.TextSize = math.max(16, math.floor(px(18)))
+    resultEnchantLabel.TextSize = resultTextPx(16, 12)
     resultEnchantLabel.Size = UDim2.new(0.84, 0, 0, px(26))
     resultEnchantLabel.AnchorPoint = Vector2.new(0.5, 0)
     resultEnchantLabel.Position = UDim2.new(0.5, 0, 0, px(272))
@@ -526,6 +540,7 @@ function CrateOpeningUI.Init(playerGui)
     resultEnchantLabel.TextYAlignment = Enum.TextYAlignment.Center
     resultEnchantLabel.ZIndex = 21
     resultEnchantLabel.Parent = resultFrame
+    configureAutoFitText(resultEnchantLabel, 10, resultTextPx(16, 12))
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "CloseBtn"
@@ -549,7 +564,7 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     -- KEEP / SALVAGE DECISION BUTTONS
     ---------------------------------------------------------------------------
-    local SALVAGE_GREEN = Color3.fromRGB(35, 190, 75)
+    local SALVAGE_ORANGE = Color3.fromRGB(255, 170, 64)
     local KEEP_BLUE     = Color3.fromRGB(50, 100, 200)
 
     -- Container for both buttons side by side
@@ -593,7 +608,7 @@ function CrateOpeningUI.Init(playerGui)
     salvageBtn.BackgroundColor3 = Color3.fromRGB(27, 31, 43)
     salvageBtn.Font = Enum.Font.GothamBold
     salvageBtn.Text = ""
-    salvageBtn.TextColor3 = SALVAGE_GREEN
+    salvageBtn.TextColor3 = SALVAGE_ORANGE
     salvageBtn.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     salvageBtn.TextStrokeTransparency = 0.1
     salvageBtn.TextSize = math.max(13, math.floor(px(15)))
@@ -608,7 +623,7 @@ function CrateOpeningUI.Init(playerGui)
     salvageCorner.Parent = salvageBtn
 
     local salvageStroke = Instance.new("UIStroke")
-    salvageStroke.Color = SALVAGE_GREEN
+    salvageStroke.Color = SALVAGE_ORANGE
     salvageStroke.Thickness = 1.4
     salvageStroke.Transparency = 0.28
     salvageStroke.Parent = salvageBtn
@@ -627,12 +642,14 @@ function CrateOpeningUI.Init(playerGui)
         outline.Text = ""
         outline.TextColor3 = Color3.fromRGB(0, 0, 0)
         outline.TextSize = salvageBtn.TextSize
+        outline.TextScaled = true
         outline.TextXAlignment = Enum.TextXAlignment.Center
         outline.TextYAlignment = Enum.TextYAlignment.Center
         outline.Size = UDim2.new(1, 0, 1, 0)
         outline.Position = UDim2.new(0, px(offset.X), 0, px(offset.Y))
         outline.ZIndex = salvageBtn.ZIndex + 1
         outline.Parent = salvageBtn
+        ensureTextSizeConstraint(outline, 8, salvageBtn.TextSize)
         table.insert(salvageTextLabels, outline)
     end
 
@@ -641,13 +658,15 @@ function CrateOpeningUI.Init(playerGui)
     salvageTextFront.BackgroundTransparency = 1
     salvageTextFront.Font = Enum.Font.GothamBlack
     salvageTextFront.Text = ""
-    salvageTextFront.TextColor3 = SALVAGE_GREEN
+    salvageTextFront.TextColor3 = SALVAGE_ORANGE
     salvageTextFront.TextSize = salvageBtn.TextSize
+    salvageTextFront.TextScaled = true
     salvageTextFront.TextXAlignment = Enum.TextXAlignment.Center
     salvageTextFront.TextYAlignment = Enum.TextYAlignment.Center
     salvageTextFront.Size = UDim2.new(1, 0, 1, 0)
     salvageTextFront.ZIndex = salvageBtn.ZIndex + 2
     salvageTextFront.Parent = salvageBtn
+    ensureTextSizeConstraint(salvageTextFront, 8, salvageBtn.TextSize)
     table.insert(salvageTextLabels, salvageTextFront)
 
     local function setSalvageButtonText(text)
@@ -753,7 +772,7 @@ function CrateOpeningUI.Init(playerGui)
         resultFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
         rfCorner.CornerRadius = UDim.new(0, math.max(px(16), pxWidth(16)))
 
-        resultTitle.TextSize = math.max(14, math.floor(px(16)))
+        resultTitle.TextSize = resultTextPx(15, 12)
         resultTitle.Size = UDim2.new(1, 0, 0, px(24))
         resultTitle.Position = UDim2.new(0, 0, 0, px(14))
 
@@ -761,19 +780,19 @@ function CrateOpeningUI.Init(playerGui)
         resultImage.Size = UDim2.new(0, imageSize, 0, imageSize)
         resultImage.Position = UDim2.new(0.5, 0, 0, px(42))
 
-        resultName.TextSize = math.max(24, math.floor(px(28)))
-        resultName.Size = UDim2.new(0.84, 0, 0, px(44))
+        resultName.TextSize = resultTextPx(22, 16)
+        resultName.Size = UDim2.new(0.84, 0, 0, px(50))
         resultName.Position = UDim2.new(0.5, 0, 0, px(170))
 
-        resultRarity.TextSize = math.max(14, math.floor(px(16)))
+        resultRarity.TextSize = resultTextPx(15, 12)
         resultRarity.Size = UDim2.new(0.84, 0, 0, px(24))
         resultRarity.Position = UDim2.new(0.5, 0, 0, px(216))
 
-        resultSizeLabel.TextSize = math.max(18, math.floor(px(22)))
+        resultSizeLabel.TextSize = resultTextPx(18, 13)
         resultSizeLabel.Size = UDim2.new(0.84, 0, 0, px(28))
         resultSizeLabel.Position = UDim2.new(0.5, 0, 0, px(244))
 
-        resultEnchantLabel.TextSize = math.max(16, math.floor(px(18)))
+        resultEnchantLabel.TextSize = resultTextPx(16, 12)
         resultEnchantLabel.Size = UDim2.new(0.84, 0, 0, px(26))
         resultEnchantLabel.Position = UDim2.new(0.5, 0, 0, px(272))
 
@@ -795,6 +814,7 @@ function CrateOpeningUI.Init(playerGui)
         salvageCorner.CornerRadius = UDim.new(0, px(10))
         for _, label in ipairs(salvageTextLabels) do
             label.TextSize = salvageBtn.TextSize
+            ensureTextSizeConstraint(label, 8, salvageBtn.TextSize)
         end
 
         confirmFrame.Size = UDim2.new(0, math.max(px(320), pxWidth(360)), 0, math.max(px(180), pxWidth(200)))

@@ -169,19 +169,73 @@ local function getCarrierForFlag(team)
     return nil
 end
 
-local function findFlagStandPart(team)
+local function getStandRoot(instance)
+    local current = instance
+    while current and current ~= Workspace do
+        if getFlagTeamFromStandName(current.Name) then
+            return current
+        end
+        current = current.Parent
+    end
+    return nil
+end
+
+local function getStandTeamFromInstance(instance)
+    local standRoot = getStandRoot(instance)
+    if standRoot then
+        return getFlagTeamFromStandName(standRoot.Name)
+    end
+    return nil
+end
+
+local function getStandPromptPart(instance)
+    local standRoot = getStandRoot(instance) or instance
+    if not standRoot then
+        return nil
+    end
+
+    if standRoot:IsA("Model") then
+        local stonePart = standRoot:FindFirstChild("Stone", true)
+        if stonePart and stonePart:IsA("BasePart") then
+            return stonePart
+        end
+        if standRoot.PrimaryPart and standRoot.PrimaryPart:IsA("BasePart") then
+            return standRoot.PrimaryPart
+        end
+        return standRoot:FindFirstChildWhichIsA("BasePart", true)
+    end
+
+    if standRoot:IsA("BasePart") then
+        local parent = standRoot.Parent
+        if parent and parent:IsA("Model") then
+            local stonePart = parent:FindFirstChild("Stone", true)
+            if stonePart and stonePart:IsA("BasePart") then
+                return stonePart
+            end
+        end
+        return standRoot
+    end
+
+    return nil
+end
+
+local function findStandInstance(team)
     for standName, standTeam in pairs(FLAG_STAND_TEAMS_BY_NAME) do
         if standTeam == team then
-            local standPart = Map:FindFirstChild(standName, true) or Workspace:FindFirstChild(standName, true)
-            if standPart and standPart:IsA("BasePart") then
-                return standPart
+            local standInstance = Map:FindFirstChild(standName, true) or Workspace:FindFirstChild(standName, true)
+            if standInstance and (standInstance:IsA("BasePart") or standInstance:IsA("Model")) then
+                return standInstance
             end
         end
     end
     return nil
 end
 
-local function setFlagInstanceAttributes(instance, team, atBase, isCarried, isDropped, carrierPlayer)
+local function findFlagStandPart(team)
+    return getStandPromptPart(findStandInstance(team))
+end
+
+local function setFlagInstanceAttributes(instance, team, atBase, isCarried, isDropped, carrierPlayer, returnDeadline)
     if not instance then return end
     local carrierTeamName = ""
     if carrierPlayer and carrierPlayer.Team then
@@ -195,6 +249,7 @@ local function setFlagInstanceAttributes(instance, team, atBase, isCarried, isDr
     instance:SetAttribute("CarrierName", carrierPlayer and carrierPlayer.Name or "")
     instance:SetAttribute("IsCarried", isCarried == true)
     instance:SetAttribute("IsDropped", isDropped == true)
+    instance:SetAttribute("ReturnDeadline", tonumber(returnDeadline) or 0)
 end
 
 local function syncFlagState(team)
@@ -203,6 +258,7 @@ local function syncFlagState(team)
     local isCarried = carrierPlayer ~= nil
     local isDropped = flagInfo and flagInfo.dropped == true
     local activeModel = flagInfo and (flagInfo.dropModel or flagInfo.model) or nil
+    local returnDeadline = (isDropped and flagInfo and tonumber(flagInfo.returnDeadline)) or 0
     local atBase = false
 
     if flagInfo and flagInfo.model and flagInfo.model.Parent == Map and not isCarried and not isDropped then
@@ -210,15 +266,15 @@ local function syncFlagState(team)
     end
 
     local stateObject = getFlagStateObject(team)
-    setFlagInstanceAttributes(stateObject, team, atBase, isCarried, isDropped, carrierPlayer)
+    setFlagInstanceAttributes(stateObject, team, atBase, isCarried, isDropped, carrierPlayer, returnDeadline)
 
     if activeModel then
-        setFlagInstanceAttributes(activeModel, team, atBase, isCarried, isDropped, carrierPlayer)
+        setFlagInstanceAttributes(activeModel, team, atBase, isCarried, isDropped, carrierPlayer, returnDeadline)
     end
 
     local standPart = findFlagStandPart(team)
     if standPart then
-        setFlagInstanceAttributes(standPart, team, atBase, isCarried, isDropped, carrierPlayer)
+        setFlagInstanceAttributes(standPart, team, atBase, isCarried, isDropped, carrierPlayer, returnDeadline)
     end
 end
 
@@ -242,6 +298,11 @@ end)
 
 -- Global: seconds before a dropped flag auto-returns to base (all drop reasons)
 local FLAG_RETURN_TIME = 15
+local FLAG_ACTION_PROMPT_NAME = "FlagActionPrompt"
+local FLAG_RETURN_DEADLINE_ATTRIBUTE = "ReturnDeadline"
+local startDroppedFlagReturnTimer
+local setupFlagModel
+local wiredStandPromptParts = {}
 
 local function removeScriptsFromModel(model)
     if not model then return end
@@ -410,6 +471,7 @@ local function respawnFlag(team)
     setupFlagModel(spawnModel)
     info.model = spawnModel
     info.dropped = false
+    info.returnDeadline = 0
     syncFlagState(team)
 end
 
@@ -426,316 +488,358 @@ local function findPickupPart(model)
     return nil
 end
 
-function setupFlagModel(model)
-    if not model or not model:IsA("Model") then return end
-    local team = getFlagTeamFromModelName(model.Name)
-    if not team then return end
-    local pickupPart = findPickupPart(model)
-    if not pickupPart then return end
-    pickupPart.CanQuery = false
-    flags[team] = flags[team] or {}
-    flags[team].model = model
-    flags[team].pickupPart = pickupPart
-    -- attach a team-colored particle trail to the flag's Plane part (follows the model)
-    do
-        local plane = model:FindFirstChild("Plane", true)
-        if plane and plane:IsA("BasePart") then
-            -- choose team color to match HUD colors
-            local teamColor = Color3.new(1,1,1)
-            if team == "Blue" then
-                teamColor = Color3.fromRGB(100,160,255)
-            elseif team == "Red" then
-                teamColor = Color3.fromRGB(220,80,80)
-            end
-            if not plane:FindFirstChild("FlagTrail") then
-                -- create two attachments and a Trail to produce a continuous ribbon that fades
-                local att0 = Instance.new("Attachment")
-                att0.Name = "FlagTrail_Att0"
-                
-                att0.Position = Vector3.new(-1.4, -0.5, 0.1)
-                att0.Parent = plane
+local function awardFlagReturnRewards(player)
+    if not player then
+        return
+    end
 
-                local att1 = Instance.new("Attachment")
-                att1.Name = "FlagTrail_Att1"
-                
-                att1.Position = Vector3.new(-1.4, 0.5, 0.1)
-                att1.Parent = plane
+    if XPModule and XPModule.AwardXP then
+        pcall(function() XPModule.AwardXP(player, "FlagReturn") end)
+    end
 
-                local trail = Instance.new("Trail")
-                trail.Name = "FlagTrail"
-                trail.Attachment0 = att0
-                trail.Attachment1 = att1
-                trail.Enabled = true
-                -- longer lasting trail
-                trail.Lifetime = 2
-                trail.FaceCamera = false
-                trail.LightInfluence = 0.4
-                trail.MinLength = 0
-                -- color and transparency: fade to transparent over the lifetime
-                trail.Color = ColorSequence.new(teamColor)
-                trail.Transparency = NumberSequence.new({
-                    NumberSequenceKeypoint.new(0, 0),
-                    NumberSequenceKeypoint.new(0.6, 0.25),
-                    NumberSequenceKeypoint.new(1, 1),
-                })
-                -- slightly thicker and tapered
-                trail.WidthScale = NumberSequence.new({NumberSequenceKeypoint.new(0, 1.6), NumberSequenceKeypoint.new(1, 0.2)})
-                trail.Parent = plane
-                -- Trail is off by default; only enabled when a carrier is moving
-                trail.Enabled = false
+    if CurrencyService and CurrencyService.AddCoins then
+        pcall(function() CurrencyService:AddCoins(player, 5, "objective") end)
+    end
+
+    if StatService then
+        StatService:RegisterFlagReturn(player)
+    end
+end
+
+local function returnDroppedFlag(team, player, allowDirectRespawn)
+    local flagInfo = flags[team]
+    if not flagInfo then
+        return false
+    end
+    if flagInfo.dropped ~= true and allowDirectRespawn ~= true then
+        return false
+    end
+
+    local dropModel = flagInfo.dropModel
+    if dropModel and dropModel.Parent then
+        pcall(function() dropModel:Destroy() end)
+    end
+
+    flagInfo.dropped = false
+    flagInfo.dropModel = nil
+    flagInfo.returnDeadline = 0
+    respawnFlag(team)
+
+    local playerName = player and player.Name or nil
+    local playerTeamName = player and player.Team and player.Team.Name or nil
+    FlagStatus:FireAllClients("returned", playerName, playerTeamName, team)
+    FlagStatus:FireAllClients("playSound", "Flag_return")
+
+    if player then
+        awardFlagReturnRewards(player)
+    end
+
+    return true
+end
+
+local function pickUpFlag(team, model, player)
+    if not player or not model then
+        return false
+    end
+
+    local character = player.Character
+    if not character then
+        return false
+    end
+
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then
+        return false
+    end
+
+    if carrying[player] then
+        return false
+    end
+
+    local playerTeamName = player.Team and player.Team.Name or nil
+
+    if model.Parent then
+        for _, obj in ipairs(model:GetDescendants()) do
+            if obj and obj:IsA("ProximityPrompt") and obj.Name == FLAG_ACTION_PROMPT_NAME then
+                pcall(function() obj:Destroy() end)
             end
         end
-    end
-    -- store original in ServerStorage for cloning on respawn
-    if not flags[team].original then
-        flags[team].original = model:Clone()
-        flags[team].spawnCFrame = (model.PrimaryPart and model:GetPrimaryPartCFrame()) or model:GetModelCFrame()
-        flags[team].original.Parent = ServerStorage
-        -- create a pickup template with scripts removed so carried clones don't include stand-only scripts
-        local pickupTemplate = flags[team].original:Clone()
-        for _, d in ipairs(pickupTemplate:GetDescendants()) do
-            if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
+
+        model.Parent = ServerStorage
+        if flags[team] then
+            flags[team].dropped = false
+            flags[team].dropModel = nil
+            flags[team].model = nil
+            flags[team].returnDeadline = 0
+        end
+
+        for _, d in ipairs(model:GetDescendants()) do
+            if d and (d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript")) then
                 pcall(function() d:Destroy() end)
             end
         end
-        pickupTemplate.Parent = ServerStorage
-        flags[team].pickupTemplate = pickupTemplate
-    end
 
-    syncFlagState(team)
-
-    local conn
-    conn = pickupPart.Touched:Connect(function(part)
-        local char = part and part:FindFirstAncestorOfClass("Model")
-        if not char then return end
-        local pl = Players:GetPlayerFromCharacter(char)
-        if not pl then return end
-        -- ensure character has humanoid
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if not humanoid or humanoid.Health <= 0 then return end
-        local playerTeamName = pl.Team and pl.Team.Name or nil
-        if not isPlayableTeamName(playerTeamName) then return end
-        if not areFlagsInteractive() then return end
-
-        -- Same team: return the flag to its stand if it's been dropped
-        if playerTeamName == team then
-            if flags[team] and flags[team].dropped then
-                flags[team].dropped = false
-                -- destroy dropped model (cancels auto-return countdown)
-                if model and model.Parent then
-                    model:Destroy()
-                end
-                -- respawn at stand
-                respawnFlag(team)
-                -- announce with player name
-                FlagStatus:FireAllClients("returned", pl.Name, playerTeamName, team)
-                FlagStatus:FireAllClients("playSound", "Flag_return")
-
-                -- award XP for returning the flag
-                if XPModule and XPModule.AwardXP then
-                    pcall(function() XPModule.AwardXP(pl, "FlagReturn") end)
-                end
-
-                -- award coins for returning the flag (objective reward)
-                if CurrencyService and CurrencyService.AddCoins then
-                    pcall(function() CurrencyService:AddCoins(pl, 5, "objective") end)
-                end
-
-                -- Centralized stat tracking (updates attributes, fires events for quests/achievements)
-                if StatService then
-                    StatService:RegisterFlagReturn(pl)
-                end
-            end
-            return
-        end
-
-        -- cannot pick up if already carrying
-        if carrying[pl] then return end
-
-        -- pickup: move original to ServerStorage (remove from workspace)
-        if model.Parent then
-            -- remove any visible return countdown GUI so it doesn't remain on the player
-            for _, obj in ipairs(model:GetDescendants()) do
-                if obj and obj:IsA("BillboardGui") and obj.Name == "ReturnCountdown" then
-                    pcall(function() obj:Destroy() end)
-                end
-            end
-            model.Parent = ServerStorage
-            -- clear dropped state if this was a previously dropped model
-            if flags[team] then
-                flags[team].dropped = false
-                flags[team].dropModel = nil
-                flags[team].model = nil
-            end
-            -- strip any embedded scripts from the stored original so they don't run later
-            for _, d in ipairs(model:GetDescendants()) do
+        if not flags[team].pickupTemplate then
+            local pickupTemplate = (flags[team].original and flags[team].original:Clone()) or model:Clone()
+            for _, d in ipairs(pickupTemplate:GetDescendants()) do
                 if d and (d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript")) then
                     pcall(function() d:Destroy() end)
                 end
             end
-            -- ensure a pickup template exists (scriptless) for carried clones
-            if not flags[team].pickupTemplate then
-                local pickupTemplate = (flags[team].original and flags[team].original:Clone()) or model:Clone()
-                for _, d in ipairs(pickupTemplate:GetDescendants()) do
-                    if d and (d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript")) then
-                        pcall(function() d:Destroy() end)
-                    end
-                end
-                pickupTemplate.Parent = ServerStorage
-                flags[team].pickupTemplate = pickupTemplate
-            end
+            pickupTemplate.Parent = ServerStorage
+            flags[team].pickupTemplate = pickupTemplate
+        end
+    end
+
+    local template = (flags[team].pickupTemplate or flags[team].original)
+    local carried = makeCarryClone(template, character)
+    if not carried then
+        return false
+    end
+
+    carrying[player] = {team = team, model = carried}
+    player:SetAttribute("CarryingFlag", team)
+    setFlagInstanceAttributes(carried, team, false, true, false, player, 0)
+    syncFlagState(team)
+    applyFlagCarrySlow(player)
+    FlagStatus:FireAllClients("pickup", player.Name, playerTeamName, team)
+    FlagStatus:FireAllClients("playSound", "Flag_taken")
+
+    local function onDied()
+        if not carrying[player] or carrying[player].team ~= team then
+            return
         end
 
-        -- attach clone to character
-        local template = (flags[team].pickupTemplate or flags[team].original)
-        local carried = makeCarryClone(template, char)
-        if carried then
-            carrying[pl] = {team = team, model = carried}
-            pl:SetAttribute("CarryingFlag", team)
-            setFlagInstanceAttributes(carried, team, false, true, false, pl)
+        local dropModel = nil
+        local hrp = character:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            dropModel = flags[team].original:Clone()
+            dropModel.Parent = Map
+        end
+
+        if carrying[player] and carrying[player].model then
+            pcall(function() carrying[player].model:Destroy() end)
+        end
+        if carrying[player] and carrying[player].deathConn then
+            pcall(function() carrying[player].deathConn:Disconnect() end)
+        end
+        carrying[player] = nil
+        pcall(function() player:SetAttribute("CarryingFlag", nil) end)
+        clearFlagCarrySlow(player)
+        if not areFlagsInteractive() then
+            return
+        end
+
+        if hrp and dropModel then
+            if dropModel.PrimaryPart then
+                local carryRot = CFrame.Angles(math.rad(180), math.rad(180), math.rad(90))
+                carryRot = carryRot * CFrame.Angles(math.rad(180), 0, 0)
+                dropModel:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 0.5, 0) * carryRot)
+            end
+            setupFlagModel(dropModel)
+            flags[team].dropped = true
+            flags[team].dropModel = dropModel
             syncFlagState(team)
-            applyFlagCarrySlow(pl)
-            -- announce pickup to all clients (send player team and flag team)
-            FlagStatus:FireAllClients("pickup", pl.Name, playerTeamName, team)
-            -- notify clients to play pickup sound locally
-            FlagStatus:FireAllClients("playSound", "Flag_taken")
-            -- connect death handler to drop flag
-            local function onDied()
-                -- only proceed if this player is still recorded as carrying this flag
-                if not carrying[pl] or carrying[pl].team ~= team then
-                    return
-                end
-                -- drop at HRP position
-                local dropModel = nil
-                local hrp = char:FindFirstChild("HumanoidRootPart")
-                if hrp then
-                    dropModel = flags[team].original:Clone()
-                    dropModel.Parent = Map
-                end
-                -- cleanup carried model and state
-                if carrying[pl] and carrying[pl].model then
-                    pcall(function() carrying[pl].model:Destroy() end)
-                end
-                -- disconnect any death connection stored on the carrying record
-                if carrying[pl] and carrying[pl].deathConn then
-                    pcall(function() carrying[pl].deathConn:Disconnect() end)
-                end
-                carrying[pl] = nil
-                pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
-                clearFlagCarrySlow(pl)
+            startDroppedFlagReturnTimer(team, dropModel)
+        else
+            task.delay(FLAG_RETURN_TIME, function()
                 if not areFlagsInteractive() then
                     return
                 end
-                -- if we created a dropped model, apply rotation and schedule return to base after 8s
-                if hrp and dropModel then
-                    if dropModel.PrimaryPart then
-                        local carryRot = CFrame.Angles(math.rad(180), math.rad(180), math.rad(90))
-                        carryRot = carryRot * CFrame.Angles(math.rad(180), 0, 0)
-                        dropModel:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 0.5, 0) * carryRot)
-                    end
-                    setupFlagModel(dropModel)
-                    flags[team].dropped = true
-                    flags[team].dropModel = dropModel
-                    syncFlagState(team)
+                returnDroppedFlag(team, nil, true)
+            end)
+        end
+    end
 
-                    -- create a visible countdown above the dropped flag and return it to the stand
-                    -- only if nobody picks it up within FLAG_RETURN_TIME seconds
-                    -- ensure a PrimaryPart exists for GUI attachment
-                    if not dropModel.PrimaryPart then
-                        for _, d in ipairs(dropModel:GetDescendants()) do
-                            if d:IsA("BasePart") then
-                                dropModel.PrimaryPart = d
-                                break
-                            end
-                        end
-                    end
+    local deathConn = humanoid.Died:Connect(onDied)
+    if carrying[player] then
+        carrying[player].deathConn = deathConn
+    end
 
-                    local gui
-                    local label
-                    if dropModel.PrimaryPart then
-                        gui = Instance.new("BillboardGui")
-                        gui.Name = "ReturnCountdown"
-                        gui.Adornee = dropModel.PrimaryPart
-                        gui.AlwaysOnTop = false
-                        gui.Size = UDim2.new(6, 0, 3, 0)
-                        gui.StudsOffset = Vector3.new(0, 10, 0)
-                        gui.MaxDistance = 200
-                        -- choose color by team
-                        local teamColor = Color3.new(1, 1, 1)
-                        if team == "Blue" then
-                            teamColor = Color3.fromRGB(0, 162, 255)
-                        elseif team == "Red" then
-                            teamColor = Color3.fromRGB(255, 75, 75)
-                        end
-                        label = Instance.new("TextLabel")
-                        label.Size = UDim2.new(1, 0, 1, 0)
-                        label.BackgroundTransparency = 1
-                        label.TextColor3 = teamColor
-                        label.TextStrokeTransparency = 0
-                        label.TextStrokeColor3 = Color3.new(0, 0, 0)
-                        label.Font = Enum.Font.SourceSansBold
-                        label.TextScaled = true
-                        label.Parent = gui
-                        gui.Parent = dropModel.PrimaryPart
-                    end
+    return true
+end
 
-                    task.spawn(function()
-                        for i = FLAG_RETURN_TIME, 1, -1 do
-                            -- if flag is no longer marked as dropped, abort countdown
-                            if not flags[team] or not flags[team].dropped then
-                                if gui then pcall(function() gui:Destroy() end) end
-                                return
-                            end
-                            if not areFlagsInteractive() then
-                                if gui then pcall(function() gui:Destroy() end) end
-                                return
-                            end
-                            if label then
-                                label.Text = tostring(i)
-                            end
-                            task.wait(1)
-                        end
+local function setupFlagActionPrompt(team, model)
+    local pickupPart = findPickupPart(model)
+    if not pickupPart then
+        return
+    end
 
-                        -- if flag was picked up in the meantime, abort
-                        if not flags[team] or not flags[team].dropped then
-                            if gui then pcall(function() gui:Destroy() end) end
-                            return
-                        end
-                        if not areFlagsInteractive() then
-                            if gui then pcall(function() gui:Destroy() end) end
-                            return
-                        end
+    local prompt = pickupPart:FindFirstChild(FLAG_ACTION_PROMPT_NAME)
+    if prompt and not prompt:IsA("ProximityPrompt") then
+        prompt:Destroy()
+        prompt = nil
+    end
 
-                        -- destroy dropped model and respawn at authoritative base position
-                        if flags[team].dropModel then
-                            pcall(function() flags[team].dropModel:Destroy() end)
-                        end
-                        flags[team].dropped = false
-                        flags[team].dropModel = nil
-                        respawnFlag(team)
-                        print("[FlagPickup] flag returned to exact base transform:", team)
-                        FlagStatus:FireAllClients("playSound", "Flag_return")
-                        FlagStatus:FireAllClients("returned", nil, nil, team)
+    if not prompt then
+        prompt = Instance.new("ProximityPrompt")
+        prompt.Parent = pickupPart
+    end
 
-                        if gui then pcall(function() gui:Destroy() end) end
-                    end)
-                    else
-                    -- ensure original eventually respawns if something went wrong
-                    task.delay(FLAG_RETURN_TIME, function()
-                        if not areFlagsInteractive() then
-                            return
-                        end
-                        respawnFlag(team)
-                        FlagStatus:FireAllClients("playSound", "Flag_return")
-                        FlagStatus:FireAllClients("returned", nil, nil, team)
-                    end)
-                end
+    prompt.Name = FLAG_ACTION_PROMPT_NAME
+    prompt.ActionText = "Steal"
+    prompt.ObjectText = team .. " Flag"
+    prompt.HoldDuration = 0
+    prompt.MaxActivationDistance = 12
+    prompt.RequiresLineOfSight = false
+    prompt.KeyboardKeyCode = Enum.KeyCode.E
+    prompt.Enabled = true
+    prompt.Style = Enum.ProximityPromptStyle.Default
+    prompt:SetAttribute("FlagTeam", team)
+
+    prompt.Triggered:Connect(function(player)
+        if not player or not areFlagsInteractive() then
+            return
+        end
+
+        local playerTeamName = player.Team and player.Team.Name or nil
+        if not isPlayableTeamName(playerTeamName) then
+            return
+        end
+
+        local character = player.Character
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        if not humanoid or humanoid.Health <= 0 then
+            return
+        end
+
+        if not flags[team] then
+            return
+        end
+
+        local isDroppedFlag = flags[team].dropped == true and flags[team].dropModel == model
+        local isBaseFlag = flags[team].dropped ~= true and flags[team].model == model
+        if not isDroppedFlag and not isBaseFlag then
+            return
+        end
+
+        if playerTeamName == team then
+            if isDroppedFlag then
+                returnDroppedFlag(team, player)
             end
-            local deathConn = humanoid.Died:Connect(onDied)
-            -- store death connection so it can be cleaned up if flag is captured
-            if carrying[pl] then carrying[pl].deathConn = deathConn end
+            return
+        end
+
+        pickUpFlag(team, model, player)
+    end)
+end
+
+startDroppedFlagReturnTimer = function(team, dropModel)
+    if not dropModel then
+        return
+    end
+
+    setupFlagActionPrompt(team, dropModel)
+    if flags[team] then
+        flags[team].returnDeadline = workspace:GetServerTimeNow() + FLAG_RETURN_TIME
+    end
+    syncFlagState(team)
+
+    local dropVersion = (flags[team]._dropVersion or 0) + 1
+    flags[team]._dropVersion = dropVersion
+
+    print("[FlagPickup] auto-return timer started for", team, "flag (" .. FLAG_RETURN_TIME .. "s)")
+    task.spawn(function()
+        while true do
+            if not flags[team] or not flags[team].dropped or flags[team]._dropVersion ~= dropVersion or flags[team].dropModel ~= dropModel then
+                print("[FlagPickup] auto-return timer aborted (flag picked up or returned)")
+                return
+            end
+            if not areFlagsInteractive() then
+                return
+            end
+            local remaining = (flags[team].returnDeadline or 0) - workspace:GetServerTimeNow()
+            if remaining <= 0 then
+                break
+            end
+            task.wait(math.min(1, remaining))
+        end
+
+        if not flags[team] or not flags[team].dropped or flags[team]._dropVersion ~= dropVersion or flags[team].dropModel ~= dropModel then
+            return
+        end
+        if not areFlagsInteractive() then
+            return
+        end
+
+        if returnDroppedFlag(team, nil) then
+            print("[FlagPickup] auto-return timer completed –", team, "flag returned to base")
         end
     end)
+end
+
+    setupFlagModel = function(model)
+        if not model or not model:IsA("Model") then return end
+        local team = getFlagTeamFromModelName(model.Name)
+        if not team then return end
+        local pickupPart = findPickupPart(model)
+        if not pickupPart then return end
+        pickupPart.CanQuery = false
+        flags[team] = flags[team] or {}
+        flags[team].model = model
+        flags[team].pickupPart = pickupPart
+        -- attach a team-colored particle trail to the flag's Plane part (follows the model)
+        do
+            local plane = model:FindFirstChild("Plane", true)
+            if plane and plane:IsA("BasePart") then
+                local teamColor = Color3.new(1, 1, 1)
+                if team == "Blue" then
+                    teamColor = Color3.fromRGB(100, 160, 255)
+                elseif team == "Red" then
+                    teamColor = Color3.fromRGB(220, 80, 80)
+                end
+                if not plane:FindFirstChild("FlagTrail") then
+                    local att0 = Instance.new("Attachment")
+                    att0.Name = "FlagTrail_Att0"
+                    att0.Position = Vector3.new(-1.4, -0.5, 0.1)
+                    att0.Parent = plane
+
+                    local att1 = Instance.new("Attachment")
+                    att1.Name = "FlagTrail_Att1"
+                    att1.Position = Vector3.new(-1.4, 0.5, 0.1)
+                    att1.Parent = plane
+
+                    local trail = Instance.new("Trail")
+                    trail.Name = "FlagTrail"
+                    trail.Attachment0 = att0
+                    trail.Attachment1 = att1
+                    trail.Enabled = true
+                    trail.Lifetime = 2
+                    trail.FaceCamera = false
+                    trail.LightInfluence = 0.4
+                    trail.MinLength = 0
+                    trail.Color = ColorSequence.new(teamColor)
+                    trail.Transparency = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 0),
+                        NumberSequenceKeypoint.new(0.6, 0.25),
+                        NumberSequenceKeypoint.new(1, 1),
+                    })
+                    trail.WidthScale = NumberSequence.new({
+                        NumberSequenceKeypoint.new(0, 1.6),
+                        NumberSequenceKeypoint.new(1, 0.2),
+                    })
+                    trail.Parent = plane
+                    trail.Enabled = false
+                end
+            end
+        end
+
+        if not flags[team].original then
+            flags[team].original = model:Clone()
+            flags[team].spawnCFrame = (model.PrimaryPart and model:GetPrimaryPartCFrame()) or model:GetModelCFrame()
+            flags[team].original.Parent = ServerStorage
+            local pickupTemplate = flags[team].original:Clone()
+            for _, d in ipairs(pickupTemplate:GetDescendants()) do
+                if d:IsA("Script") or d:IsA("LocalScript") or d:IsA("ModuleScript") then
+                    pcall(function() d:Destroy() end)
+                end
+            end
+            pickupTemplate.Parent = ServerStorage
+            flags[team].pickupTemplate = pickupTemplate
+        end
+
+        syncFlagState(team)
+        setupFlagActionPrompt(team, model)
 end
 
 -- initial scan for flags in Workspace.WSG
@@ -795,98 +899,109 @@ local function awardPoints(teamName, points)
     pcall(function() AddScore:Fire(teamName, points) end)
 end
 
--- Stand capture detection: when a player carrying an enemy flag touches their own stand
-local function setupStand(standPart)
-    if not standPart or not standPart:IsA("BasePart") then return end
-    local standTeam = getFlagTeamFromStandName(standPart.Name)
-    if not standTeam then return end
+local function captureFlagAtStand(pl, standTeam)
+    if not pl or not areFlagsInteractive() then
+        return false
+    end
+
+    local char = pl.Character
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then
+        return false
+    end
+
+    local playerTeamName = pl.Team and pl.Team.Name or nil
+    if not isPlayableTeamName(playerTeamName) or playerTeamName ~= standTeam then
+        return false
+    end
+
+    local carry = carrying[pl]
+    if not carry then return false end
+    local flagTeam = carry.team
+    if flagTeam == standTeam then return false end
+
+    local ownFlagInfo = flags[standTeam]
+    local ownFlagPresent = ownFlagInfo and ownFlagInfo.model and (ownFlagInfo.dropped ~= true)
+    if not ownFlagPresent then
+        return false
+    end
+
+    if captureDebounce[pl] then return false end
+    captureDebounce[pl] = true
+    task.delay(5, function() captureDebounce[pl] = nil end)
+
+    if carry.model then
+        pcall(function() carry.model:Destroy() end)
+    end
+    if carry.deathConn then
+        pcall(function() carry.deathConn:Disconnect() end)
+    end
+    carrying[pl] = nil
+    pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
+    clearFlagCarrySlow(pl)
+    syncFlagState(flagTeam)
+
+    awardPoints(playerTeamName, 100)
+
+    if XPModule and XPModule.AwardXP then
+        pcall(function() XPModule.AwardXP(pl, "FlagCapture") end)
+    end
+
+    if CurrencyService and CurrencyService.AddCoins then
+        pcall(function() CurrencyService:AddCoins(pl, 10, "objective") end)
+    end
+
+    if StatService then
+        StatService:RegisterFlagCapture(pl)
+    end
+
+    FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)
+    FlagStatus:FireAllClients("playSound", "Flag_capture")
+
+    task.delay(5, function()
+        respawnFlag(flagTeam)
+        FlagStatus:FireAllClients("returned", nil, nil, flagTeam)
+        FlagStatus:FireAllClients("playSound", "Flag_return")
+    end)
+
+    return true
+end
+
+local function setupStand(standInstance)
+    local standPart = getStandPromptPart(standInstance)
+    local standTeam = getStandTeamFromInstance(standInstance)
+    if not standPart or not standTeam then return end
+    if wiredStandPromptParts[standPart] then return end
+    wiredStandPromptParts[standPart] = true
+
+    local prompt = standPart:FindFirstChild("FlagCapturePrompt")
+    if prompt and prompt:IsA("ProximityPrompt") then
+        prompt:Destroy()
+    end
 
     standPart.Touched:Connect(function(hit)
-        local char = hit and hit:FindFirstAncestorOfClass("Model")
-        if not char then return end
-        local pl = Players:GetPlayerFromCharacter(char)
-        if not pl then return end
-        -- must have a humanoid and be alive
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if not hum or hum.Health <= 0 then return end
-        if not areFlagsInteractive() then return end
-        -- player must belong to the stand's team
-        local playerTeamName = pl.Team and pl.Team.Name or nil
-        if not isPlayableTeamName(playerTeamName) then return end
-        if playerTeamName ~= standTeam then return end
-        -- player must be carrying a flag, and it must be the enemy flag (not their own)
-        local carry = carrying[pl]
-        if not carry then return end
-        local flagTeam = carry.team
-        if flagTeam == standTeam then return end
-
-        -- Require the player's own flag to be at the stand to allow capture.
-        -- If the team's flag is missing (taken or dropped), disallow capture.
-        local ownFlagInfo = flags[standTeam]
-        local ownFlagPresent = ownFlagInfo and ownFlagInfo.model and (ownFlagInfo.dropped ~= true)
-        if not ownFlagPresent then
+        local character = hit and hit:FindFirstAncestorOfClass("Model")
+        if not character then
             return
         end
 
-        -- debounce per player to avoid multiple triggers
-        if captureDebounce[pl] then return end
-        captureDebounce[pl] = true
-        task.delay(5, function() captureDebounce[pl] = nil end)
-
-        -- immediately clear carrying state FIRST to prevent re-triggers
-        local carry = carrying[pl]
-        if carry and carry.model then
-            pcall(function() carry.model:Destroy() end)
-        end
-        if carry and carry.deathConn then
-            pcall(function() carry.deathConn:Disconnect() end)
-        end
-        carrying[pl] = nil
-        pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
-        clearFlagCarrySlow(pl)
-        syncFlagState(flagTeam)
-
-        -- award points to the player's team
-        local capturingTeamName = playerTeamName
-        awardPoints(capturingTeamName, 100)
-
-        -- award XP for flag capture
-        if XPModule and XPModule.AwardXP then
-            pcall(function() XPModule.AwardXP(pl, "FlagCapture") end)
+        local player = Players:GetPlayerFromCharacter(character)
+        if not player then
+            return
         end
 
-        -- award coins for flag capture (objective reward)
-        if CurrencyService and CurrencyService.AddCoins then
-            pcall(function() CurrencyService:AddCoins(pl, 10, "objective") end)
-        end
-
-        -- Centralized stat tracking (updates attributes, fires events for quests/achievements)
-        if StatService then
-            StatService:RegisterFlagCapture(pl)
-        end
-
-        -- announce capture to clients
-        local playerTeamName = capturingTeamName
-        FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)
-        FlagStatus:FireAllClients("playSound", "Flag_capture")
-
-        -- respawn the captured flag back to its stand after a short delay
-        task.delay(5, function()
-            respawnFlag(flagTeam)
-            FlagStatus:FireAllClients("returned", nil, nil, flagTeam)
-            FlagStatus:FireAllClients("playSound", "Flag_return")
-        end)
+        captureFlagAtStand(player, standTeam)
     end)
 end
 
 -- wire up existing stands and future additions
 for _, obj in ipairs(Workspace:GetDescendants()) do
-    if obj:IsA("BasePart") and (obj.Name == "BlueFlagStand" or obj.Name == "RedFlagStand") then
+    if (obj:IsA("BasePart") or obj:IsA("Model")) and (obj.Name == "BlueFlagStand" or obj.Name == "RedFlagStand") then
         setupStand(obj)
     end
 end
 Workspace.DescendantAdded:Connect(function(desc)
-    if desc:IsA("BasePart") and (desc.Name == "BlueFlagStand" or desc.Name == "RedFlagStand") then
+    if (desc:IsA("BasePart") or desc:IsA("Model")) and (desc.Name == "BlueFlagStand" or desc.Name == "RedFlagStand") then
         setupStand(desc)
     end
 end)
@@ -1033,94 +1148,11 @@ local function forceDropFlag(pl, lastPos)
         flags[team].dropped = true
         flags[team].dropModel = dropModel
         syncFlagState(team)
-
-        -- Announce that the flag was dropped (show as auto-returned message)
-        FlagStatus:FireAllClients("returned", nil, nil, team)
-        FlagStatus:FireAllClients("playSound", "Flag_return")
-
-        -- bump a version token so stale timers are harmless
-        local dropVersion = (flags[team]._dropVersion or 0) + 1
-        flags[team]._dropVersion = dropVersion
-
-        -- Start auto-return timer (uses global FLAG_RETURN_TIME)
-        print("[FlagPickup] auto-return timer started for", team, "flag (" .. FLAG_RETURN_TIME .. "s)")
-        task.spawn(function()
-            -- countdown BillboardGui
-            local gui, label
-            if dropModel.PrimaryPart then
-                gui = Instance.new("BillboardGui")
-                gui.Name = "ReturnCountdown"
-                gui.Adornee = dropModel.PrimaryPart
-                gui.AlwaysOnTop = false
-                gui.Size = UDim2.new(6, 0, 3, 0)
-                gui.StudsOffset = Vector3.new(0, 10, 0)
-                gui.MaxDistance = 200
-                local teamColor = Color3.new(1, 1, 1)
-                if team == "Blue" then teamColor = Color3.fromRGB(0, 162, 255)
-                elseif team == "Red" then teamColor = Color3.fromRGB(255, 75, 75) end
-                label = Instance.new("TextLabel")
-                label.Size = UDim2.new(1, 0, 1, 0)
-                label.BackgroundTransparency = 1
-                label.TextColor3 = teamColor
-                label.TextStrokeTransparency = 0
-                label.TextStrokeColor3 = Color3.new(0, 0, 0)
-                label.Font = Enum.Font.SourceSansBold
-                label.TextScaled = true
-                label.Parent = gui
-                gui.Parent = dropModel.PrimaryPart
-            end
-
-            for i = FLAG_RETURN_TIME, 1, -1 do
-                -- stale check: if flag state changed, abort
-                if not flags[team] or not flags[team].dropped
-                    or flags[team]._dropVersion ~= dropVersion then
-                    if gui then pcall(function() gui:Destroy() end) end
-                    print("[FlagPickup] auto-return timer aborted (flag picked up)")
-                    return
-                end
-                if not areFlagsInteractive() then
-                    if gui then pcall(function() gui:Destroy() end) end
-                    return
-                end
-                if label then label.Text = tostring(i) end
-                task.wait(1)
-            end
-
-            -- Final stale check before returning
-            if not flags[team] or not flags[team].dropped
-                or flags[team]._dropVersion ~= dropVersion then
-                if gui then pcall(function() gui:Destroy() end) end
-                return
-            end
-            if not areFlagsInteractive() then
-                if gui then pcall(function() gui:Destroy() end) end
-                return
-            end
-
-            -- Return flag to base using authoritative respawnFlag
-            if gui then pcall(function() gui:Destroy() end) end
-
-            if flags[team].dropModel then
-                pcall(function() flags[team].dropModel:Destroy() end)
-            end
-            flags[team].dropped = false
-            flags[team].dropModel = nil
-            respawnFlag(team)
-            print("[FlagPickup] flag returned to exact base transform:", team)
-            FlagStatus:FireAllClients("playSound", "Flag_return")
-            FlagStatus:FireAllClients("returned", nil, nil, team)
-            print("[FlagPickup] auto-return timer completed –", team, "flag returned to base")
-        end)
+        startDroppedFlagReturnTimer(team, dropModel)
     else
         -- No valid position: return directly to base
         print("[FlagPickup] no valid drop position for", team, "flag – returning to base")
-        respawnFlag(team)
-        if flags[team] then
-            flags[team].dropped = false
-            flags[team].dropModel = nil
-        end
-        FlagStatus:FireAllClients("returned", nil, nil, team)
-        FlagStatus:FireAllClients("playSound", "Flag_return")
+        returnDroppedFlag(team, nil, true)
     end
 end
 
