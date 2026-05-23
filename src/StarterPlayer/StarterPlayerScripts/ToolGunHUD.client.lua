@@ -291,11 +291,16 @@ local function tryFire(tool)
     local rayOrigin
     local rayDirection
     if UserInputService.TouchEnabled then
-        mx = activeCamera.ViewportSize.X * 0.5
-        my = activeCamera.ViewportSize.Y * 0.5
-        local touchRay = activeCamera:ScreenPointToRay(mx, my)
-        rayOrigin = touchRay.Origin
-        rayDirection = touchRay.Direction.Unit
+        -- Mobile has no mouse cursor; in locked-facing gameplay the effective
+        -- crosshair is camera center, so use the camera look vector directly.
+        rayOrigin = activeCamera.CFrame.Position
+        rayDirection = activeCamera.CFrame.LookVector.Unit
+
+        -- Guard against near-ground shots when mobile camera pitch is slightly
+        -- lower than expected (common on some device aspect ratios).
+        if rayDirection.Y < -0.12 then
+            rayDirection = Vector3.new(rayDirection.X, -0.04, rayDirection.Z).Unit
+        end
     else
         local mouse = player:GetMouse()
         if mouse and mouse.X and mouse.Y then

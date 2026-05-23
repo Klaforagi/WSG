@@ -240,7 +240,6 @@ local presetOverrides = {
     -- Common
     ["starter sword"] = {
         rarity          = "Common",
-        damage          = 7, -- override: early game feels better
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
