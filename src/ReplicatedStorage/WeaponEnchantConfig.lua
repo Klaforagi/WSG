@@ -76,8 +76,33 @@ WeaponEnchantConfig.Enchants = {
 
 -- Fast lookup table: EnchantsByName["Fiery"] = { name, color, ... }
 WeaponEnchantConfig.EnchantsByName = {}
+local EnchantsByLowerName = {}
 for _, enchant in ipairs(WeaponEnchantConfig.Enchants) do
     WeaponEnchantConfig.EnchantsByName[enchant.name] = enchant
+    EnchantsByLowerName[string.lower(enchant.name)] = enchant
+end
+
+local function resolveVisualEnchantData(enchantName)
+    if type(enchantName) ~= "string" then return nil end
+
+    local trimmed = enchantName:match("^%s*(.-)%s*$")
+    if not trimmed or trimmed == "" then return nil end
+
+    local lowerName = string.lower(trimmed)
+    if lowerName == "none" or lowerName == "no enchant" then return nil end
+
+    return WeaponEnchantConfig.EnchantsByName[trimmed] or EnchantsByLowerName[lowerName]
+end
+
+local function buildTrailColorSequence(trailBaseColor)
+    local h, s, v = Color3.toHSV(trailBaseColor)
+    local brightColor = Color3.fromHSV(h, math.clamp(s * 0.6, 0, 1), math.clamp(v * 1.3, 0, 1))
+
+    return ColorSequence.new({
+        ColorSequenceKeypoint.new(0, brightColor),
+        ColorSequenceKeypoint.new(0.4, trailBaseColor),
+        ColorSequenceKeypoint.new(1, trailBaseColor),
+    })
 end
 
 --------------------------------------------------------------------------------
@@ -212,9 +237,20 @@ end
 -- Returns trail_color if defined, otherwise falls back to color.
 --------------------------------------------------------------------------------
 function WeaponEnchantConfig.GetTrailColorForEnchant(enchantName)
-    local data = WeaponEnchantConfig.GetEnchantData(enchantName)
+    local data = resolveVisualEnchantData(enchantName)
     if not data then return nil end
     return data.trail_color or data.color
+end
+
+--------------------------------------------------------------------------------
+-- GetTrailColorSequenceForEnchant(enchantName) -> ColorSequence or nil
+-- Shared melee/projectile trail style. Returns nil for no/unknown enchant.
+--------------------------------------------------------------------------------
+function WeaponEnchantConfig.GetTrailColorSequenceForEnchant(enchantName)
+    local trailBaseColor = WeaponEnchantConfig.GetTrailColorForEnchant(enchantName)
+    if not trailBaseColor then return nil end
+
+    return buildTrailColorSequence(trailBaseColor)
 end
 
 return WeaponEnchantConfig

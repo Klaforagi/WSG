@@ -5,7 +5,11 @@
 -- the held weapon model.
 --------------------------------------------------------------------------------
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 local WeaponTrailService = {}
+
+local WeaponEnchantConfig = require(ReplicatedStorage:WaitForChild("WeaponEnchantConfig"))
 
 local TRAIL_NAME = "SwordTrail"
 local PROJECTILE_TRAIL_NAME = "AmmoTrail"
@@ -156,6 +160,65 @@ local function getLongestAxisOffset(part)
     return Vector3.new(0, 0, halfLength)
 end
 
+local function getUpperHalfAxisOffsets(part)
+    return getLongestAxisOffset(part), Vector3.new()
+end
+
+local function isManagedAutoPair(attachment0, attachment1, attachment0Name, attachment1Name)
+    return attachment0
+        and attachment1
+        and attachment0.Name == attachment0Name
+        and attachment1.Name == attachment1Name
+        and attachment0.Parent == attachment1.Parent
+        and attachment0.Parent
+        and attachment0.Parent:IsA("BasePart")
+end
+
+local function getProjectileEnchantName(options)
+    if type(options) ~= "table" then return nil end
+
+    return options.EnchantName
+        or options.enchantName
+        or options.Enchant
+        or options.enchant
+        or options._enchantName
+end
+
+local function getEnchantTrailColorSequence(enchantName)
+    if not WeaponEnchantConfig or type(WeaponEnchantConfig.GetTrailColorSequenceForEnchant) ~= "function" then
+        return nil
+    end
+
+    local colorSequence = WeaponEnchantConfig.GetTrailColorSequenceForEnchant(enchantName)
+    if typeof(colorSequence) == "ColorSequence" then
+        return colorSequence
+    end
+    if typeof(colorSequence) == "Color3" then
+        return ColorSequence.new(colorSequence)
+    end
+
+    return nil
+end
+
+local function applyTrailColorSequence(root, colorSequence)
+    if not root or typeof(colorSequence) ~= "ColorSequence" then return 0 end
+
+    local appliedCount = 0
+    if root:IsA("Trail") then
+        root.Color = colorSequence
+        appliedCount += 1
+    end
+
+    for _, descendant in ipairs(root:GetDescendants()) do
+        if descendant:IsA("Trail") then
+            descendant.Color = colorSequence
+            appliedCount += 1
+        end
+    end
+
+    return appliedCount
+end
+
 local function getPartScore(part)
     local name = string.lower(part.Name)
     local size = part.Size
@@ -209,13 +272,17 @@ local function ensureAutoAttachments(tool)
     local attachment0 = findTrailAttachment(tool, ATTACHMENT0_NAMES, true)
     local attachment1 = findTrailAttachment(tool, ATTACHMENT1_NAMES, false)
     if attachment0 and attachment1 then
-        return attachment0, attachment1
+        if not isManagedAutoPair(attachment0, attachment1, AUTO_ATTACHMENT0_NAME, AUTO_ATTACHMENT1_NAME) then
+            return attachment0, attachment1
+        end
     end
 
-    local hostPart = chooseTrailPart(tool)
+    local hostPart = isManagedAutoPair(attachment0, attachment1, AUTO_ATTACHMENT0_NAME, AUTO_ATTACHMENT1_NAME)
+        and attachment0.Parent
+        or chooseTrailPart(tool)
     if not hostPart then return nil, nil end
 
-    local offset = getLongestAxisOffset(hostPart)
+    local topOffset, middleOffset = getUpperHalfAxisOffsets(hostPart)
 
     attachment0 = hostPart:FindFirstChild(AUTO_ATTACHMENT0_NAME)
     if not attachment0 or not attachment0:IsA("Attachment") then
@@ -223,7 +290,7 @@ local function ensureAutoAttachments(tool)
         attachment0.Name = AUTO_ATTACHMENT0_NAME
         attachment0.Parent = hostPart
     end
-    attachment0.Position = offset * -1
+    attachment0.Position = topOffset
 
     attachment1 = hostPart:FindFirstChild(AUTO_ATTACHMENT1_NAME)
     if not attachment1 or not attachment1:IsA("Attachment") then
@@ -231,7 +298,7 @@ local function ensureAutoAttachments(tool)
         attachment1.Name = AUTO_ATTACHMENT1_NAME
         attachment1.Parent = hostPart
     end
-    attachment1.Position = offset
+    attachment1.Position = middleOffset
 
     return attachment0, attachment1
 end
@@ -252,10 +319,16 @@ local function ensureProjectileAttachments(projectile)
         ATTACHMENT1_NAMES
     )
     if namedAttachment0 and namedAttachment1 then
-        return namedAttachment0, namedAttachment1
+        if not isManagedAutoPair(namedAttachment0, namedAttachment1, AUTO_PROJECTILE_ATTACHMENT0_NAME, AUTO_PROJECTILE_ATTACHMENT1_NAME) then
+            return namedAttachment0, namedAttachment1
+        end
     end
 
-    local offset = getLongestAxisOffset(hostPart)
+    if isManagedAutoPair(namedAttachment0, namedAttachment1, AUTO_PROJECTILE_ATTACHMENT0_NAME, AUTO_PROJECTILE_ATTACHMENT1_NAME) then
+        hostPart = namedAttachment0.Parent
+    end
+
+    local topOffset, middleOffset = getUpperHalfAxisOffsets(hostPart)
 
     local attachment0 = hostPart:FindFirstChild(AUTO_PROJECTILE_ATTACHMENT0_NAME)
     if not attachment0 or not attachment0:IsA("Attachment") then
@@ -263,7 +336,7 @@ local function ensureProjectileAttachments(projectile)
         attachment0.Name = AUTO_PROJECTILE_ATTACHMENT0_NAME
         attachment0.Parent = hostPart
     end
-    attachment0.Position = offset * -1
+    attachment0.Position = topOffset
 
     local attachment1 = hostPart:FindFirstChild(AUTO_PROJECTILE_ATTACHMENT1_NAME)
     if not attachment1 or not attachment1:IsA("Attachment") then
@@ -271,7 +344,7 @@ local function ensureProjectileAttachments(projectile)
         attachment1.Name = AUTO_PROJECTILE_ATTACHMENT1_NAME
         attachment1.Parent = hostPart
     end
-    attachment1.Position = offset
+    attachment1.Position = middleOffset
 
     return attachment0, attachment1
 end
@@ -352,6 +425,13 @@ function WeaponTrailService.ApplyToTool(tool)
     return trail
 end
 
+function WeaponTrailService.ApplyProjectileEnchantTrail(projectile, enchantName)
+    local colorSequence = getEnchantTrailColorSequence(enchantName)
+    if not colorSequence then return false end
+
+    return applyTrailColorSequence(projectile, colorSequence) > 0
+end
+
 function WeaponTrailService.ApplyToProjectile(projectile, options)
     if not projectile then return nil end
 
@@ -371,6 +451,7 @@ function WeaponTrailService.ApplyToProjectile(projectile, options)
     trail.Attachment0 = attachment0
     trail.Attachment1 = attachment1
     configureProjectileTrailDefaults(trail, options)
+    WeaponTrailService.ApplyProjectileEnchantTrail(projectile, getProjectileEnchantName(options))
     return trail
 end
 

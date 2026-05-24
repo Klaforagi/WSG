@@ -256,6 +256,13 @@ local SKIN_CONFIGS = {
         undersuit = Color3.fromRGB(30, 30, 35),
         headUnder = Color3.fromRGB(30, 30, 35),
     },
+    Goblin = {
+        colors    = {},
+        helm      = {},
+        body      = {},
+        undersuit = Color3.fromRGB(86, 130, 60),
+        headUnder = Color3.fromRGB(106, 150, 70),
+    },
 }
 
 --------------------------------------------------------------------------------
@@ -844,7 +851,8 @@ function SkinPreview.Update(viewportFrame, skinId, showHelm)
             return true
         end
 
-        return false
+        dprint("ReplacementModel preview unavailable for", skinId, "- falling back to cosmetic rig")
+        -- Fall through to cosmetic SKIN_CONFIGS path
     end
 
     local rig = buildRig()
@@ -899,14 +907,19 @@ function SkinPreview.Update(viewportFrame, skinId, showHelm)
         applyPieces(rig, config.body, effectiveColors)
 
         -- Helmet (conditional on showHelm)
-        if showHelm then
+        local hasHelmPieces = config.helm and #config.helm > 0
+        if showHelm and hasHelmPieces then
             applyPieces(rig, config.helm, effectiveColors)
             dprint("ShowHelm in preview: true")
-        else
+        elseif hasHelmPieces then
             -- ShowHelm OFF: restore head color and head accessories
             restoreHeadColor(rig)
             restoreHeadAccessories(rig)
             dprint("ShowHelm in preview: false")
+        else
+            -- No helm pieces defined; keep undersuit tint on head
+            restoreHeadAccessories(rig)
+            dprint("ShowHelm in preview: n/a (no helm pieces)")
         end
 
         dprint("Applied skin to preview rig:", skinId)

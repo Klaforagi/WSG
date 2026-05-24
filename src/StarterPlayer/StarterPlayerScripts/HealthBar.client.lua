@@ -63,6 +63,30 @@ local RED_FILL    = Color3.fromRGB(220, 50, 50)
 local WHITE       = Color3.fromRGB(245, 245, 245)
 local fill = nil
 
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
+local VALID_MY_HEALTH_DISPLAY_MODES = {
+	BottomLeft = true,
+	AboveCharacter = true,
+	Both = true,
+}
+
+local function getLocalHealthDisplayMode()
+	local settings = _G.PlayerSettings
+	local mode = _G.MyHealthDisplayMode
+	if type(settings) == "table" and settings.MyHealthDisplayMode ~= nil then
+		mode = settings.MyHealthDisplayMode
+	end
+	if VALID_MY_HEALTH_DISPLAY_MODES[mode] then
+		return mode
+	end
+	return DEFAULT_MY_HEALTH_DISPLAY_MODE
+end
+
+local function shouldShowBottomLeftHealth()
+	local mode = getLocalHealthDisplayMode()
+	return mode == "BottomLeft" or mode == "Both"
+end
+
 -- Team-aware fill color (replaces GREEN_FILL for >50% HP)
 local teamFillColor = GREEN_FILL
 
@@ -156,6 +180,13 @@ container.BackgroundColor3 = NAVY
 container.BackgroundTransparency = 0.06
 container.BorderSizePixel = 0
 container.Parent = screenGui
+
+local function refreshLocalHealthDisplaySettings()
+	container.Visible = shouldShowBottomLeftHealth()
+end
+
+_G.RefreshLocalHealthDisplaySettings = refreshLocalHealthDisplaySettings
+refreshLocalHealthDisplaySettings()
 
 local containerCorner = Instance.new("UICorner")
 containerCorner.CornerRadius = UDim.new(0, px(12))
@@ -364,6 +395,7 @@ local function connectToCharacter(character)
 
 	-- Initial update
 	updateBar(humanoid.Health, humanoid.MaxHealth)
+	refreshLocalHealthDisplaySettings()
 	local lastHealth = humanoid.Health
 
 	-- Listen for health changes and flash on damage

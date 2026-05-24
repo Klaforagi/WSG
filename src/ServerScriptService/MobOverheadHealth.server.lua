@@ -22,7 +22,7 @@ local OWNER_TYPE_ATTRIBUTE = "OverheadOwnerType"
 local ATTACHED_ATTRIBUTE   = "_overheadUIAttached"
 local BILLBOARD_SIZE       = UDim2.fromOffset(200, 50)
 local NPC_NAMEPLATE_OFFSET = Vector3.new(0, 3.5, 0)
-local PLAYER_NAMEPLATE_OFFSET = Vector3.new(0, 3.2, 0)
+local PLAYER_NAMEPLATE_OFFSET = Vector3.new(0, 1.25, 0)
 local PLAYER_NAMEPLATE_MAX_DISTANCE = 45
 local NPC_NAMEPLATE_MAX_DISTANCE    = 35
 

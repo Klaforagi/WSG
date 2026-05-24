@@ -244,6 +244,9 @@ local IRON_BODY = {
     {"IronSabaton_L",      "LeftFoot",         {1.15,0.5,1.25},  {0,0.05,-0.05},  "darker", "Metal"},
 }
 
+local GOBLIN_BODY_COLOR = Color3.fromRGB(86, 130, 60)
+local GOBLIN_HEAD_COLOR = Color3.fromRGB(106, 150, 70)
+
 local SKIN_CONFIGS = {
     Knight = {
         colors = KNIGHT_COLORS,
@@ -258,6 +261,13 @@ local SKIN_CONFIGS = {
         body = IRON_BODY,
         undersuit = Color3.fromRGB(30, 30, 35),
         headUnder = Color3.fromRGB(30, 30, 35),
+    },
+    Goblin = {
+        colors = {},
+        helm = {},
+        body = {},
+        undersuit = GOBLIN_BODY_COLOR,
+        headUnder = GOBLIN_HEAD_COLOR,
     },
 }
 
@@ -921,7 +931,8 @@ function SkinPreview.Update(viewportFrame, skinId, showHelm)
             viewportFrame:SetAttribute("PreviewShowHelm", expectedShowHelm)
             return true
         end
-        return false
+        dprint("ReplacementModel preview unavailable for", skinId, "- falling back to cosmetic rig")
+        -- Fall through to cosmetic SKIN_CONFIGS path
     end
 
     local rig = buildRig()
@@ -966,14 +977,19 @@ function SkinPreview.Update(viewportFrame, skinId, showHelm)
         hideAccessories(rig)
         applyPieces(rig, config.body, effectiveColors)
 
-        if showHelm then
+        local hasHelmPieces = config.helm and #config.helm > 0
+        if showHelm and hasHelmPieces then
             applyPieces(rig, config.helm, effectiveColors)
             dprint("ShowHelm in preview: true")
-        else
+        elseif hasHelmPieces then
             restoreHeadColor(rig)
             restoreHeadFaceDetails(rig)
             restoreHeadAccessories(rig)
             dprint("ShowHelm in preview: false")
+        else
+            restoreHeadFaceDetails(rig)
+            restoreHeadAccessories(rig)
+            dprint("ShowHelm in preview: n/a (no helm pieces)")
         end
 
         dprint("Applied skin to preview rig:", skinId)

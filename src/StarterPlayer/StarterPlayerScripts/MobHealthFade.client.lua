@@ -33,6 +33,30 @@ local BASE = {
 
 local localPlayer = Players.LocalPlayer
 
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
+local VALID_MY_HEALTH_DISPLAY_MODES = {
+	BottomLeft = true,
+	AboveCharacter = true,
+	Both = true,
+}
+
+local function getLocalHealthDisplayMode()
+	local settings = _G.PlayerSettings
+	local mode = _G.MyHealthDisplayMode
+	if type(settings) == "table" and settings.MyHealthDisplayMode ~= nil then
+		mode = settings.MyHealthDisplayMode
+	end
+	if VALID_MY_HEALTH_DISPLAY_MODES[mode] then
+		return mode
+	end
+	return DEFAULT_MY_HEALTH_DISPLAY_MODE
+end
+
+local function shouldShowLocalOverheadHealth()
+	local mode = getLocalHealthDisplayMode()
+	return mode == "AboveCharacter" or mode == "Both"
+end
+
 local function lerp(a, b, t)
 	return a + (b - a) * t
 end
@@ -77,7 +101,7 @@ end
 
 local function healthBarsEnabled(billboard)
 	if getOwnerType(billboard) == "Player" and isLocalPlayerBillboard(billboard) then
-		return false
+		return shouldShowLocalOverheadHealth()
 	end
 	if getOwnerType(billboard) == "Player" then
 		if isTeammateBillboard(billboard) then
@@ -138,7 +162,7 @@ local function applyNameVisibility(elements, billboard)
 	if elements.nameLabel then
 		local nameOnlyMode = false
 		if billboard and isLocalPlayerBillboard(billboard) then
-			nameOnlyMode = true
+			nameOnlyMode = not shouldShowLocalOverheadHealth()
 		elseif billboard and getOwnerType(billboard) == "Player" and isTeammateBillboard(billboard)
 			and _G.ShowTeammateHealthBars ~= true then
 			nameOnlyMode = true

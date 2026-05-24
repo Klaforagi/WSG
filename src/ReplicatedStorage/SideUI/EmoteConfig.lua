@@ -24,6 +24,7 @@ EmoteConfig.SLOT_COUNT = 8
 --   DisplayName (string)  shown in the emote slot label
 --   Description (string)  shown in Shop / tooltip
 --   IconKey     (string)  key for AssetCodes.Get() lookup (optional)
+--   Icon/IconImage/Image/Thumbnail (string) direct image asset id (optional)
 --   IconAssetId (string)  fallback direct asset id (optional)
 --   AnimationId (string)  Roblox animation asset id (placeholder for now)
 --   CoinCost    (number)  purchase price in the Shop
@@ -40,7 +41,7 @@ EmoteConfig.Emotes = {
         Id          = "wave",
         DisplayName = "Wave",
         Description = "Give a friendly wave.",
-        IconKey     = "EmoteWave",      -- looked up via AssetCodes.Get("EmoteWave")
+        IconKey     = "EmoteWave",
         -- REPLACE the animation id below with a real uploaded Wave animation asset.
         -- This placeholder (507770239) is a generic Roblox wave animation.
         AnimationId = "rbxassetid://507770239",
@@ -53,6 +54,7 @@ EmoteConfig.Emotes = {
         Id          = "dance",
         DisplayName = "Dance",
         Description = "Break into a dance.",
+        IconKey     = "EmoteDance",
         AnimationId = "rbxassetid://122221160021248",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -63,6 +65,7 @@ EmoteConfig.Emotes = {
         Id          = "i_want_money",
         DisplayName = "I Want Money",
         Description = "Make it rain.",
+        IconKey     = "EmoteMoney",
         AnimationId = "rbxassetid://100054170665680",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -73,6 +76,7 @@ EmoteConfig.Emotes = {
         Id          = "take_the_l",
         DisplayName = "Take The L",
         Description = "Rub in the win.",
+        IconKey     = "EmoteTakeTheL",
         AnimationId = "rbxassetid://78954441062079",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -83,6 +87,7 @@ EmoteConfig.Emotes = {
         Id          = "headless",
         DisplayName = "Headless",
         Description = "Go full headless mode.",
+        IconKey     = "EmoteHeadless",
         AnimationId = "rbxassetid://76606692073439",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -92,6 +97,7 @@ EmoteConfig.Emotes = {
         Id          = "rat_dance",
         DisplayName = "Rat Dance",
         Description = "Do the rat dance.",
+        IconKey     = "EmoteRatDance",
         AnimationId = "rbxassetid://119292485335481",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -101,6 +107,7 @@ EmoteConfig.Emotes = {
         Id          = "floss",
         DisplayName = "Floss",
         Description = "Hit the floss.",
+        IconKey     = "EmoteFloss",
         AnimationId = "rbxassetid://130811327314009",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -110,6 +117,7 @@ EmoteConfig.Emotes = {
         Id          = "dab",
         DisplayName = "Dab",
         Description = "Throw a quick dab.",
+        IconKey     = "EmoteDab",
         AnimationId = "rbxassetid://75003807251572",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -120,6 +128,7 @@ EmoteConfig.Emotes = {
         Id          = "macarena",
         DisplayName = "Macarena",
         Description = "Everybody do the Macarena.",
+        IconKey     = "EmoteMacarena",
         AnimationId = "rbxassetid://114789325138547",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -129,6 +138,7 @@ EmoteConfig.Emotes = {
         Id          = "ride_the_pony",
         DisplayName = "Ride The Pony",
         Description = "Bring back the classic.",
+        IconKey     = "EmoteRideThePony",
         AnimationId = "rbxassetid://94326793594112",
         CoinCost    = 20,
         Cooldown    = 1,
@@ -139,6 +149,7 @@ EmoteConfig.Emotes = {
         Id          = "the_robot",
         DisplayName = "The Robot",
         Description = "Lock into robot mode.",
+        IconKey     = "EmoteRobot",
         AnimationId = "rbxassetid://140192311385186",
         CoinCost    = 20,
         Cooldown    = 1,

@@ -76,12 +76,8 @@ local SLOT_COUNT = #SLOT_DEFS
 --------------------------------------------------------------------------------
 -- STYLE  (all sizing is screen-relative)
 --------------------------------------------------------------------------------
--- Slot height as a fraction of viewport height  (~9% of screen)
-local SLOT_SCALE     = 0.10
--- Gap between slots as a fraction of viewport width
+-- Initial slot gap is replaced by BottomCombatHudLayout after viewport metrics resolve.
 local GAP_SCALE      = 0.005
--- Bottom margin as a fraction of viewport height
-local MARGIN_SCALE   = 0.012
 
 -- Fantasy PvP theme palette
 local NAVY        = Color3.fromRGB(12, 14, 28)
@@ -167,6 +163,8 @@ end
 -- SCREEN GUI
 --------------------------------------------------------------------------------
 local playerGui = player:WaitForChild("PlayerGui")
+local BottomCombatHudLayout = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("BottomCombatHudLayout"))
+local bottomHud = BottomCombatHudLayout.Get(playerGui)
 
 -- Cleanup leftover strokes from previous runs (remove long gold borders)
 local function cleanupHotbarStrokes()
@@ -185,23 +183,18 @@ local function cleanupHotbarStrokes()
     end
 end
 task.defer(cleanupHotbarStrokes)
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name            = "Hotbar"
-screenGui.ResetOnSpawn    = false
-screenGui.IgnoreGuiInset  = true
-screenGui.DisplayOrder    = 10
-screenGui.Parent          = playerGui
 
--- Container — scale-based, anchored bottom-center
--- Width: enough for N square slots + gaps  (each slot = SLOT_SCALE of viewportY,
--- expressed as a fraction of viewportX for width).
-local container = Instance.new("Frame")
-container.Name                    = "HotbarContainer"
+local oldHotbarGui = playerGui:FindFirstChild("Hotbar")
+if oldHotbarGui and oldHotbarGui:IsA("ScreenGui") then
+    oldHotbarGui:Destroy()
+end
+
+local container = bottomHud.HotbarButtonsContainer
+for _, child in ipairs(container:GetChildren()) do
+    child:Destroy()
+end
+container.Name                    = "HotbarButtonsContainer"
 container.BackgroundTransparency  = 1
-container.AnchorPoint             = Vector2.new(0.5, 1)
-container.Position                = UDim2.new(0.5, 0, 1 - (MARGIN_SCALE + 0.058), 0)
-container.Size                    = UDim2.fromScale(1, SLOT_SCALE) -- initial size; refined by responsive layout
-container.Parent                  = screenGui
 
 local layout = Instance.new("UIListLayout")
 layout.FillDirection       = Enum.FillDirection.Horizontal
@@ -211,38 +204,9 @@ layout.SortOrder           = Enum.SortOrder.LayoutOrder
 layout.Padding             = UDim.new(GAP_SCALE, 0)
 layout.Parent              = container
 
-local function getViewportSize()
-    local cam = workspace.CurrentCamera
-    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
-        return cam.ViewportSize.X, cam.ViewportSize.Y
-    end
-    return 1920, 1080
-end
-
-local function getXPBarTopPixel(viewportY)
-    local shellHeight = UserInputService.TouchEnabled
-        and math.max(30, math.floor(viewportY * 0.031))
-        or math.max(36, math.floor(viewportY * 0.034))
-    return viewportY - 2 - shellHeight
-end
-
 local function applyHotbarLayout()
-    local _, viewportY = getViewportSize()
-    local uiScale = math.clamp(viewportY / 1080, 0.65, 1.15)
-    local slotPixels = UserInputService.TouchEnabled
-        and math.floor(84 * uiScale)
-        or math.floor(96 * uiScale)
-    local gapPixels = UserInputService.TouchEnabled
-        and math.max(4, math.floor(6 * uiScale))
-        or math.max(4, math.floor(8 * uiScale))
-    local gapAboveXP = UserInputService.TouchEnabled
-        and math.max(4, math.floor(viewportY * 0.006))
-        or math.max(6, math.floor(viewportY * 0.007))
-    local hotbarBottom = getXPBarTopPixel(viewportY) - gapAboveXP
-
-    container.Size = UDim2.new(1, 0, 0, slotPixels)
-    container.Position = UDim2.new(0.5, 0, 0, hotbarBottom)
-    layout.Padding = UDim.new(0, gapPixels)
+    local metrics = BottomCombatHudLayout.Apply(playerGui)
+    layout.Padding = UDim.new(0, metrics.HotbarGap)
 end
 
 do

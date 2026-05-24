@@ -9,6 +9,7 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local UserInputService = game:GetService("UserInputService")
+local BottomCombatHudLayout = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("BottomCombatHudLayout"))
 
 --------------------------------------------------------------------------------
 -- REMOTES
@@ -32,15 +33,6 @@ local function formatInt(v)
     return tostring(math.floor(n + 0.5))
 end
 
-local function getViewportSize()
-    local cam = workspace.CurrentCamera
-    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
-        return cam.ViewportSize.X, cam.ViewportSize.Y
-    end
-    return 1920, 1080
-end
-local BAR_WIDTH_SCALE   = 0.34          -- % of screen width (slightly narrower)
-local TRACK_HEIGHT      = 16            -- inner XP track height
 local LABEL_SIZE        = 22            -- level numbers at each side of the track
 local CORNER_RADIUS     = UDim.new(0, 7)
 local SHELL_CORNER      = UDim.new(0, 11)
@@ -111,39 +103,43 @@ screen.IgnoreGuiInset = true
 screen.DisplayOrder = 5
 screen.Parent = playerGui
 
+local bottomHud = BottomCombatHudLayout.Get(playerGui)
+local xpBarFrame = bottomHud.XPBarFrame
+for _, child in ipairs(xpBarFrame:GetChildren()) do
+    child:Destroy()
+end
+
 --------------------------------------------------------------------------------
--- CONTAINER  – sits at absolute bottom-center
+-- CONTAINER - fills the shared bottom HUD XP slot
 --------------------------------------------------------------------------------
--- compute device-aware bar height (smaller on mobile)
-local _, vpY = getViewportSize()
-local trackH = UserInputService.TouchEnabled and math.max(11, math.floor(vpY * 0.014)) or TRACK_HEIGHT
-local shellH = UserInputService.TouchEnabled and math.max(30, math.floor(vpY * 0.031)) or math.max(36, math.floor(vpY * 0.034))
+local initialMetrics = BottomCombatHudLayout.Apply(playerGui)
+local trackH = initialMetrics.XPTrackHeight
 
 local container = Instance.new("Frame")
 container.Name = "XPContainer"
-container.AnchorPoint = Vector2.new(0.5, 1)
-container.Position = UDim2.new(0.5, 0, 1, -2)        -- keep near bottom while opening gap above
-container.Size = UDim2.new(BAR_WIDTH_SCALE, LABEL_SIZE * 2 + 24, 0, shellH)
+container.AnchorPoint = Vector2.new(0.5, 0.5)
+container.Position = UDim2.new(0.5, 0, 0.5, 0)
+container.Size = UDim2.fromScale(1, 1)
 container.BackgroundColor3 = COLOR_SHELL_BG
 container.BackgroundTransparency = 0.06
 container.BorderSizePixel = 0
-container.Parent = screen
+container.Parent = xpBarFrame
 
 local levelLabel = nil
 local nextLabel = nil
 local barBG = nil
 
 local function applyXPBarLayout()
-    local viewportX, viewportY = getViewportSize()
-    local responsiveTrackH = UserInputService.TouchEnabled and math.max(11, math.floor(viewportY * 0.014)) or TRACK_HEIGHT
-    local responsiveShellH = UserInputService.TouchEnabled and math.max(30, math.floor(viewportY * 0.031)) or math.max(36, math.floor(viewportY * 0.034))
-    local responsiveLabelSize = UserInputService.TouchEnabled
-        and math.max(16, math.floor(viewportY * 0.022))
-        or math.max(20, math.floor(viewportY * 0.02))
-    local widthOffset = responsiveLabelSize * 2 + 24
+    local metrics = BottomCombatHudLayout.Apply(playerGui)
+    local responsiveTrackH = metrics.XPTrackHeight
+    local responsiveLabelSize = metrics.XPLabelSize
 
-    container.Size = UDim2.new(BAR_WIDTH_SCALE, widthOffset, 0, responsiveShellH)
-    container.Position = UDim2.new(0.5, 0, 1, -2)
+    container.Size = UDim2.fromScale(1, 1)
+    container.Position = UDim2.new(0.5, 0, 0.5, 0)
+
+    if not levelLabel or not nextLabel or not barBG then
+        return
+    end
 
     levelLabel.Size = UDim2.new(0, responsiveLabelSize, 0, responsiveLabelSize)
     nextLabel.Size = UDim2.new(0, responsiveLabelSize, 0, responsiveLabelSize)

@@ -326,26 +326,19 @@ local function configureSwingTrailAppearance(trail, tool, activeDuration)
 
     local hasEnchant = tool and tool:GetAttribute("HasEnchant") == true
     local enchantName = tool and tool:GetAttribute("EnchantName")
-    local startColor = Color3.fromRGB(240, 240, 240)
-    local endColor = Color3.fromRGB(190, 190, 190)
+    local trailColorSequence = nil
 
     if hasEnchant and WeaponEnchantConfig and type(enchantName) == "string" and enchantName ~= "" then
-        local enchantColor = WeaponEnchantConfig.GetTrailColorForEnchant(enchantName)
-        if enchantColor then
-            local h, s, v = Color3.toHSV(enchantColor)
-            startColor = Color3.fromHSV(h, math.clamp(s * 0.6, 0, 1), math.clamp(v * 1.3, 0, 1))
-            endColor = enchantColor
-        else
-            hasEnchant = false
-        end
+        trailColorSequence = WeaponEnchantConfig.GetTrailColorSequenceForEnchant(enchantName)
+        hasEnchant = trailColorSequence ~= nil
     else
         hasEnchant = false
     end
 
-    trail.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, startColor),
-        ColorSequenceKeypoint.new(0.4, endColor),
-        ColorSequenceKeypoint.new(1, endColor),
+    trail.Color = trailColorSequence or ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(240, 240, 240)),
+        ColorSequenceKeypoint.new(0.4, Color3.fromRGB(190, 190, 190)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(190, 190, 190)),
     })
     trail.Lifetime = math.max(0.14, activeDuration or 0.14)
     trail.MinLength = 0

@@ -506,6 +506,7 @@ pcall(function()
 			ShowTeammateHealthBars = false,
 			ShowEnemyHealthBars = true,
 			ShowNPCHealthBars = true,
+			MyHealthDisplayMode = "BottomLeft",
 			ShowPlayerRings = true,
 			ShowPlayerMarkers = true,
 		}
@@ -516,14 +517,26 @@ pcall(function()
 				if data[k] ~= nil then settings[k] = data[k] end
 			end
 		end
+		if settings.MyHealthDisplayMode ~= "AboveCharacter" and settings.MyHealthDisplayMode ~= "Both" then
+			settings.MyHealthDisplayMode = "BottomLeft"
+		end
 		_G.PlayerSettings = settings
 		_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
 		_G.ShowTeammateHealthBars = (settings.ShowTeammateHealthBars == true)
 		_G.ShowEnemyHealthBars = (settings.ShowEnemyHealthBars ~= false)
 		_G.ShowPlayerHealthBars = (_G.ShowTeammateHealthBars or _G.ShowEnemyHealthBars)
 		_G.ShowNPCHealthBars = (settings.ShowNPCHealthBars ~= false)
+		_G.MyHealthDisplayMode = settings.MyHealthDisplayMode
 		_G.ShowPlayerRings = (settings.ShowPlayerRings ~= false)
 		_G.ShowPlayerMarkers = (settings.ShowPlayerMarkers ~= false)
+		pcall(function()
+			if type(_G.RefreshLocalHealthDisplaySettings) == "function" then
+				_G.RefreshLocalHealthDisplaySettings()
+			end
+			if type(_G.RefreshOverheadUISettings) == "function" then
+				_G.RefreshOverheadUISettings()
+			end
+		end)
 
 		pcall(function()
 			local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")
@@ -533,7 +546,7 @@ pcall(function()
 					for _, obj in ipairs(musicFolder:GetDescendants()) do
 						if obj:IsA("Sound") then obj.Playing = false end
 					end
-					local mapped = math.clamp(tonumber(settings.MusicVolume) or 1.0, 0, 1) * 0.5
+					local mapped = math.clamp(tonumber(settings.MusicVolume) or 1.0, 0, 1) * 0.2
 					for _, obj in ipairs(musicFolder:GetDescendants()) do
 						if obj:IsA("Sound") then pcall(function() obj.Volume = mapped end) end
 					end

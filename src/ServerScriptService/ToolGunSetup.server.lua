@@ -559,15 +559,23 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
 
     if WeaponTrailService and visual then
         local trailColor = getTracerColor(player)
+        local enchantName = projCfg and projCfg._enchantName
         if visual:IsA("BasePart") then
             trailColor = visual.Color
         elseif visual:IsA("Model") and visual.PrimaryPart then
             trailColor = visual.PrimaryPart.Color
         end
+        if type(enchantName) == "string" and enchantName ~= "" then
+            pcall(function()
+                visual:SetAttribute("HasEnchant", true)
+                visual:SetAttribute("EnchantName", enchantName)
+            end)
+        end
         pcall(function()
             WeaponTrailService.ApplyToProjectile(visual, {
                 Color = trailColor,
                 Lifetime = math.clamp(pLifetime * 0.08, 0.18, 0.35),
+                EnchantName = enchantName,
             })
         end)
     end

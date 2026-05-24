@@ -703,10 +703,16 @@ function DailyRewardsUI.Refresh(state)
     local alreadyClaimed = currentState.alreadyClaimed
     local rewards = currentState.rewards or {}
 
-    -- Update streak label
+    -- Update cycle-day label.
+    -- currentState.currentDay is already the 1-7 cycle position sent by the server.
+    -- Using it (with a safe modulo fallback) instead of the raw cumulative streak
+    -- prevents the label from ever showing "Current Streak: 8 Days" while Day 1 is active.
     if streakLabel then
-        if streak > 0 then
-            streakLabel.Text = "Current Streak: " .. tostring(streak) .. " Day" .. (streak == 1 and "" or "s")
+        local cycleDayCount = (currentState and currentState.cycleDays) or 7
+        local cycleDay = (currentState and currentState.currentDay) or 0
+        if cycleDay > 0 then
+            local safeCycleDay = ((cycleDay - 1) % cycleDayCount) + 1
+            streakLabel.Text = "Reward Cycle: Day " .. tostring(safeCycleDay) .. " of " .. tostring(cycleDayCount)
         else
             streakLabel.Text = "Start your streak today!"
         end

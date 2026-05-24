@@ -15,6 +15,7 @@ local Debris            = game:GetService("Debris")
 
 local player   = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local BottomCombatHudLayout = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("BottomCombatHudLayout"))
 
 local DEBUG = false
 local DEBUG_LAYOUT = false
@@ -156,64 +157,37 @@ if oldDashGui then
     oldDashGui:Destroy()
 end
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "DashGui"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 7
-screenGui.Parent = playerGui
+local bottomHud = BottomCombatHudLayout.Get(playerGui)
+local screenGui = bottomHud.Gui
+local hotbarDashRow = bottomHud.HotbarDashRow
+local oldDashButtonFrame = hotbarDashRow:FindFirstChild("DashButtonFrame")
+if oldDashButtonFrame then
+    oldDashButtonFrame:Destroy()
+end
 
 --------------------------------------------------------------------------------
 -- DASH BUTTON - sits on the same baseline as the 1-4 hotbar slots.
 -- Its right edge lines up with the XP bar's right edge.
 --------------------------------------------------------------------------------
-local BUTTON_SIZE          = 108   -- base px at 1080p; matches Hotbar SLOT_SCALE
-local HOTBAR_BOTTOM_OFFSET = 0.012 + 0.058
-local XP_BAR_WIDTH_SCALE   = 0.34
-local XP_LEVEL_LABEL_SIZE  = 22
-local XP_BAR_EXTRA_WIDTH   = XP_LEVEL_LABEL_SIZE * 2 + 24
+local BUTTON_SIZE          = 108   -- fallback px at 1080p; shared layout supplies the live size
+local initialMetrics = BottomCombatHudLayout.Apply(playerGui)
 
 local btnFrame = Instance.new("Frame")
 btnFrame.Name = "DashButtonFrame"
-btnFrame.AnchorPoint = Vector2.new(1, 1)
-btnFrame.Size = UDim2.fromOffset(px(BUTTON_SIZE), px(BUTTON_SIZE))
+btnFrame.AnchorPoint = Vector2.new(1, 0.5)
+btnFrame.Position = UDim2.new(1, 0, 0.5, 0)
+btnFrame.Size = UDim2.fromOffset(initialMetrics.DashButtonSize or px(BUTTON_SIZE), initialMetrics.DashButtonSize or px(BUTTON_SIZE))
 btnFrame.BackgroundTransparency = 1
-btnFrame.Parent = screenGui
+btnFrame.Parent = hotbarDashRow
 
 local applyingLayout = false
-local function getViewportSize()
-    local cam = workspace.CurrentCamera
-    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
-        return cam.ViewportSize.X, cam.ViewportSize.Y
-    end
-    return 1920, 1080
-end
-
-local function getXPBarTopPixel(viewportY)
-    local shellHeight = UserInputService.TouchEnabled
-        and math.max(30, math.floor(viewportY * 0.031))
-        or math.max(36, math.floor(viewportY * 0.034))
-    return viewportY - 2 - shellHeight
-end
-
 local function applyButtonLayout()
     applyingLayout = true
-    local viewportX, viewportY = getViewportSize()
-    local uiScale = math.clamp(viewportY / 1080, 0.65, 1.15)
-    local hotbarSlotSize = UserInputService.TouchEnabled
-        and math.floor(84 * uiScale)
-        or math.floor(96 * uiScale)
-    local buttonSize = math.max(52, math.floor(hotbarSlotSize * 0.98))
-    local gapAboveXP = UserInputService.TouchEnabled
-        and math.max(4, math.floor(viewportY * 0.006))
-        or math.max(6, math.floor(viewportY * 0.007))
-    local bottomPixel = getXPBarTopPixel(viewportY) - gapAboveXP
-    local rightPush = UserInputService.TouchEnabled
-        and math.max(36, math.floor(viewportX * 0.05))
-        or math.max(16, math.floor(viewportX * 0.018))
-    local rightEdgePixel = math.floor((viewportX * 0.5) + (viewportX * XP_BAR_WIDTH_SCALE * 0.5) + (XP_BAR_EXTRA_WIDTH * 0.5) + rightPush)
+    local metrics = BottomCombatHudLayout.Apply(playerGui)
+    local buttonSize = metrics.DashButtonSize or px(BUTTON_SIZE)
 
-    btnFrame.Position = UDim2.fromOffset(rightEdgePixel, bottomPixel)
+    btnFrame.AnchorPoint = Vector2.new(1, 0.5)
+    btnFrame.Position = UDim2.new(1, 0, 0.5, 0)
     btnFrame.Size = UDim2.fromOffset(buttonSize, buttonSize)
     applyingLayout = false
 end

@@ -5,7 +5,6 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
-local GuiService = game:GetService("GuiService")
 
 
 local player = Players.LocalPlayer
@@ -187,7 +186,6 @@ end
 
 local MENU_DEFS = {
     { id = "Missions", label = "Achieves", iconKey = "Quests" },
-    { id = "Options", label = "Settings", iconKey = "Options" },
     { id = "Team", label = "TEAM", iconKey = "Team" },
 }
 
@@ -780,6 +778,7 @@ local function CreateMenuButton(def)
 end
 
 -- Create a compact, top-right utility button for opening Options.
+-- DailyRewardsClient positions its button immediately to the left of this slot.
 local function CreateHudOptionsButton(onActivated)
     local existingHudGui = playerGui:FindFirstChild("OptionsHudGui")
     if existingHudGui then
@@ -876,10 +875,8 @@ local function CreateHudOptionsButton(onActivated)
             and safeClamp(px(44), 42, 56)
             or safeClamp(px(34), 32, 40)
 
-        local _, topInset = GuiService:GetGuiInset()
-
         container.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-        container.Position = UDim2.new(1, -px(14), 0, topInset + px(10))
+        container.Position = UDim2.new(1, -px(12), 0, px(10))
         buttonCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
         fallbackConstraint.MaxTextSize = math.max(12, math.floor(buttonSize * 0.35))
     end

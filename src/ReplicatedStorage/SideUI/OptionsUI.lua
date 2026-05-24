@@ -61,6 +61,20 @@ local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirect
 --------------------------------------------------------------------------------
 -- Default settings
 --------------------------------------------------------------------------------
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
+local VALID_MY_HEALTH_DISPLAY_MODES = {
+	BottomLeft = true,
+	AboveCharacter = true,
+	Both = true,
+}
+
+local function normalizeMyHealthDisplayMode(value)
+	if VALID_MY_HEALTH_DISPLAY_MODES[value] then
+		return value
+	end
+	return DEFAULT_MY_HEALTH_DISPLAY_MODE
+end
+
 local DEFAULT_SETTINGS = {
 	-- Audio (renamed to Sound in UI)
 	MusicVolume       = 1.0,
@@ -78,6 +92,7 @@ local DEFAULT_SETTINGS = {
 	ShowTeammateHealthBars = false,
 	ShowEnemyHealthBars = true,
 	ShowNPCHealthBars = true,
+	MyHealthDisplayMode = DEFAULT_MY_HEALTH_DISPLAY_MODE,
 	ShowPlayerRings = true,
 	ShowPlayerMarkers = true,
 	-- UIScale removed from options
@@ -107,6 +122,7 @@ local function ensureSettings()
 	if existing and existing.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
 		PlayerSettings.ShowEnemyHealthBars = legacyPlayerBars
 	end
+	PlayerSettings.MyHealthDisplayMode = normalizeMyHealthDisplayMode(PlayerSettings.MyHealthDisplayMode)
 	-- Expose globally so other scripts (camera, sprint, etc.) can read them
 	_G.PlayerSettings = PlayerSettings
 end
@@ -195,6 +211,18 @@ local function ApplySettings(settings)
 
 	-- Player Highlights toggle – expose globally for TeamHighlight script
 	_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
+
+	local myHealthDisplayMode = normalizeMyHealthDisplayMode(settings.MyHealthDisplayMode)
+	settings.MyHealthDisplayMode = myHealthDisplayMode
+	if _G.MyHealthDisplayMode ~= myHealthDisplayMode then
+		print(string.format("[HealthDisplay] My health display = %s", tostring(myHealthDisplayMode)))
+	end
+	_G.MyHealthDisplayMode = myHealthDisplayMode
+	pcall(function()
+		if type(_G.RefreshLocalHealthDisplaySettings) == "function" then
+			_G.RefreshLocalHealthDisplaySettings()
+		end
+	end)
 
 	-- Overhead health bars toggles; names are intentionally unaffected.
 	local teammateHealthBarsVisible = (settings.ShowTeammateHealthBars == true)
@@ -637,6 +665,20 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 
 		local buttons = {}
 
+		local function getChoiceValue(choice)
+			if type(choice) == "table" then
+				return choice.value or choice.Value or choice[1]
+			end
+			return choice
+		end
+
+		local function getChoiceLabel(choice)
+			if type(choice) == "table" then
+				return choice.label or choice.Label or tostring(getChoiceValue(choice))
+			end
+			return tostring(choice)
+		end
+
 		local function refreshHighlights()
 			local current = PlayerSettings[settingKey]
 			for _, info in ipairs(buttons) do
@@ -651,14 +693,17 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		end
 
 		for i, choice in ipairs(choices) do
+			local choiceValue = getChoiceValue(choice)
+			local choiceLabel = getChoiceLabel(choice)
 			local btn = Instance.new("TextButton")
-			btn.Name = "Choice_" .. tostring(choice)
+			btn.Name = "Choice_" .. tostring(choiceValue)
 			btn.AutoButtonColor = false
 			btn.BackgroundColor3 = CHOICE_INACTIVE
 			btn.Font = Enum.Font.GothamBold
-			btn.Text = tostring(choice)
+			btn.Text = choiceLabel
 			btn.TextColor3 = WHITE
 			btn.TextSize = math.max(11, math.floor(px(12)))
+			btn.TextWrapped = true
 			btn.Size = UDim2.new(1 / #choices, -px(3), 1, 0)
 			btn.LayoutOrder = i
 			btn.Parent = btnArea
@@ -673,10 +718,10 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 			btnStroke.Transparency = 0.5
 			btnStroke.Parent = btn
 
-			table.insert(buttons, { btn = btn, value = choice })
+			table.insert(buttons, { btn = btn, value = choiceValue })
 
 			btn.MouseButton1Click:Connect(function()
-				PlayerSettings[settingKey] = choice
+				PlayerSettings[settingKey] = choiceValue
 				refreshHighlights()
 				ApplySettings(PlayerSettings)
 			end)
@@ -941,6 +986,11 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	---------------------------------------------------------------------------
 	createSectionHeader(root, "UI", nextOrder())
 	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
+	createChoiceButtons(root, "My Health Display", "MyHealthDisplayMode", {
+		{ value = "BottomLeft", label = "Bottom Left" },
+		{ value = "AboveCharacter", label = "Above Character" },
+		{ value = "Both", label = "Both" },
+	}, nextOrder())
 	createToggle(root, "Show Teammate Health Bars", "ShowTeammateHealthBars", nextOrder())
 	createToggle(root, "Show Enemy Health Bars", "ShowEnemyHealthBars", nextOrder())
 	createToggle(root, "Show Player Markers", "ShowPlayerMarkers", nextOrder())

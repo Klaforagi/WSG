@@ -61,8 +61,18 @@ AssetCodes.images = {
     Longbow = "rbxassetid://13303448470",
     Xbow = "rbxassetid://87445004842826",
 
-    -- Emote icons
-    EmoteWave = "rbxassetid://4720094407",  -- waving hand icon
+    -- Emote icons. Fill these with uploaded image IDs; empty values use UI fallback visuals.
+    EmoteWave = "",
+    EmoteDance = "",
+    EmoteMoney = "",
+    EmoteTakeTheL = "",
+    EmoteHeadless = "",
+    EmoteRatDance = "",
+    EmoteFloss = "",
+    EmoteDab = "",
+    EmoteMacarena = "",
+    EmoteRideThePony = "",
+    EmoteRobot = "",
 }
 
 -- Returns the asset string for a named key, or nil

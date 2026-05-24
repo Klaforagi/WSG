@@ -30,8 +30,15 @@ local DEFAULTS = {
     ShowTeammateHealthBars = false,
     ShowEnemyHealthBars = true,
     ShowNPCHealthBars = true,
+    MyHealthDisplayMode = "BottomLeft",
     ShowPlayerRings = true,
     ShowPlayerMarkers = true,
+}
+
+local VALID_MY_HEALTH_DISPLAY_MODES = {
+    BottomLeft = true,
+    AboveCharacter = true,
+    Both = true,
 }
 
 local cache = {}
@@ -47,6 +54,13 @@ local function deepCopy(orig)
         copy[key] = deepCopy(value)
     end
     return copy
+end
+
+local function normalizeMyHealthDisplayMode(value)
+    if VALID_MY_HEALTH_DISPLAY_MODES[value] then
+        return value
+    end
+    return DEFAULTS.MyHealthDisplayMode
 end
 
 local function ensureDefaults(tbl)
@@ -66,6 +80,7 @@ local function ensureDefaults(tbl)
     if tbl.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
         clean.ShowEnemyHealthBars = legacyPlayerBars
     end
+    clean.MyHealthDisplayMode = normalizeMyHealthDisplayMode(clean.MyHealthDisplayMode)
     return clean
 end
 
@@ -194,6 +209,9 @@ function PlayerSettingsManager.UpdateSetting(player, key, value)
     if DEFAULTS[key] == nil then
         warn("[PlayerSettingsManager] Attempt to set unknown key", key)
         return false
+    end
+    if key == "MyHealthDisplayMode" then
+        value = normalizeMyHealthDisplayMode(value)
     end
 
     cache[userId][key] = value
