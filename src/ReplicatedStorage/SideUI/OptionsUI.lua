@@ -95,6 +95,7 @@ local DEFAULT_SETTINGS = {
 	MyHealthDisplayMode = DEFAULT_MY_HEALTH_DISPLAY_MODE,
 	ShowPlayerRings = true,
 	ShowPlayerMarkers = true,
+	AlwaysShowXPText = false,
 	-- UIScale removed from options
 }
 
@@ -211,6 +212,13 @@ local function ApplySettings(settings)
 
 	-- Player Highlights toggle – expose globally for TeamHighlight script
 	_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
+
+	_G.AlwaysShowXPText = (settings.AlwaysShowXPText == true)
+	pcall(function()
+		if type(_G.RefreshXPTextVisibility) == "function" then
+			_G.RefreshXPTextVisibility()
+		end
+	end)
 
 	local myHealthDisplayMode = normalizeMyHealthDisplayMode(settings.MyHealthDisplayMode)
 	settings.MyHealthDisplayMode = myHealthDisplayMode
@@ -737,6 +745,151 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	end
 
 	---------------------------------------------------------------------------
+	-- HELPER: Health bars multi-select group
+	---------------------------------------------------------------------------
+	local function createHealthBarsGroup(parentFrame, layoutOrder)
+		local row = createRow(parentFrame, layoutOrder)
+		row.Name = "HealthBars_Group"
+		row.Size = UDim2.new(1, 0, 0, px(56))
+
+		local labelArea = Instance.new("Frame")
+		labelArea.Name = "LabelArea"
+		labelArea.BackgroundTransparency = 1
+		labelArea.Size = UDim2.new(0.34, -px(4), 1, 0)
+		labelArea.Parent = row
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Name = "Label"
+		lbl.BackgroundTransparency = 1
+		lbl.Font = Enum.Font.GothamMedium
+		lbl.Text = "Health Bars"
+		lbl.TextColor3 = WHITE
+		lbl.TextSize = math.max(13, math.floor(px(14)))
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.Size = UDim2.new(1, 0, 0, px(22))
+		lbl.Position = UDim2.new(0, 0, 0, px(7))
+		lbl.Parent = labelArea
+
+		local helper = Instance.new("TextLabel")
+		helper.Name = "Helper"
+		helper.BackgroundTransparency = 1
+		helper.Font = Enum.Font.Gotham
+		helper.Text = "Choose which health bars are visible."
+		helper.TextColor3 = DIM_TEXT
+		helper.TextSize = math.max(10, math.floor(px(11)))
+		helper.TextWrapped = true
+		helper.TextXAlignment = Enum.TextXAlignment.Left
+		helper.TextYAlignment = Enum.TextYAlignment.Top
+		helper.Size = UDim2.new(1, 0, 0, px(24))
+		helper.Position = UDim2.new(0, 0, 0, px(29))
+		helper.Parent = labelArea
+
+		local btnArea = Instance.new("Frame")
+		btnArea.Name = "ButtonArea"
+		btnArea.BackgroundTransparency = 1
+		btnArea.Size = UDim2.new(0.63, 0, 0, px(30))
+		btnArea.AnchorPoint = Vector2.new(1, 0.5)
+		btnArea.Position = UDim2.new(1, 0, 0.5, 0)
+		btnArea.Parent = row
+
+		local btnLayout = Instance.new("UIListLayout")
+		btnLayout.FillDirection = Enum.FillDirection.Horizontal
+		btnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+		btnLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+		btnLayout.SortOrder = Enum.SortOrder.LayoutOrder
+		btnLayout.Padding = UDim.new(0, px(4))
+		btnLayout.Parent = btnArea
+
+		local options = {
+			{ id = "teammates", label = "Teammates", key = "ShowTeammateHealthBars" },
+			{ id = "enemies", label = "Enemies", key = "ShowEnemyHealthBars" },
+			{ id = "npcs", label = "NPCs", key = "ShowNPCHealthBars" },
+			{ id = "off", label = "Off" },
+		}
+		local buttons = {}
+
+		local function isHealthBarVisible(settingKey)
+			if settingKey == "ShowTeammateHealthBars" then
+				return PlayerSettings[settingKey] == true
+			end
+			return PlayerSettings[settingKey] ~= false
+		end
+
+		local function areAllHealthBarsOff()
+			return not isHealthBarVisible("ShowTeammateHealthBars")
+				and not isHealthBarVisible("ShowEnemyHealthBars")
+				and not isHealthBarVisible("ShowNPCHealthBars")
+		end
+
+		local function refreshHighlights()
+			local allOff = areAllHealthBarsOff()
+			for _, info in ipairs(buttons) do
+				local isActive = false
+				if info.id == "off" then
+					isActive = allOff
+				else
+					isActive = isHealthBarVisible(info.key)
+				end
+
+				local goalBg = isActive and CHOICE_ACTIVE or CHOICE_INACTIVE
+				local goalTxt = isActive and Color3.fromRGB(20, 20, 24) or WHITE
+				local goalStroke = isActive and GOLD or CARD_STROKE
+				pcall(function()
+					TweenService:Create(info.btn, TWEEN_QUICK, {BackgroundColor3 = goalBg}):Play()
+					TweenService:Create(info.stroke, TWEEN_QUICK, {Color = goalStroke, Transparency = isActive and 0.25 or 0.5}):Play()
+				end)
+				info.btn.TextColor3 = goalTxt
+			end
+		end
+
+		for i, option in ipairs(options) do
+			local btn = Instance.new("TextButton")
+			btn.Name = "HealthBars_" .. option.id
+			btn.AutoButtonColor = false
+			btn.BackgroundColor3 = CHOICE_INACTIVE
+			btn.Font = Enum.Font.GothamBold
+			btn.Text = option.label
+			btn.TextColor3 = WHITE
+			btn.TextSize = math.max(10, math.floor(px(11)))
+			btn.TextXAlignment = Enum.TextXAlignment.Center
+			btn.TextYAlignment = Enum.TextYAlignment.Center
+			btn.Size = UDim2.new(1 / #options, -px(3), 1, 0)
+			btn.LayoutOrder = i
+			btn.Parent = btnArea
+
+			local c = Instance.new("UICorner")
+			c.CornerRadius = UDim.new(1, 0)
+			c.Parent = btn
+
+			local btnStroke = Instance.new("UIStroke")
+			btnStroke.Color = CARD_STROKE
+			btnStroke.Thickness = 1
+			btnStroke.Transparency = 0.5
+			btnStroke.Parent = btn
+
+			table.insert(buttons, { btn = btn, stroke = btnStroke, id = option.id, key = option.key })
+
+			btn.MouseButton1Click:Connect(function()
+				if option.id == "off" then
+					PlayerSettings.ShowTeammateHealthBars = false
+					PlayerSettings.ShowEnemyHealthBars = false
+					PlayerSettings.ShowNPCHealthBars = false
+				else
+					PlayerSettings[option.key] = not isHealthBarVisible(option.key)
+				end
+				refreshHighlights()
+				ApplySettings(PlayerSettings)
+			end)
+		end
+
+		refreshHighlights()
+		uiUpdaters.ShowTeammateHealthBars = refreshHighlights
+		uiUpdaters.ShowEnemyHealthBars = refreshHighlights
+		uiUpdaters.ShowNPCHealthBars = refreshHighlights
+		return row
+	end
+
+	---------------------------------------------------------------------------
 	-- HELPER: Action button
 	---------------------------------------------------------------------------
 	local function createActionButton(parentFrame, label, color, callback, layoutOrder)
@@ -986,16 +1139,15 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	---------------------------------------------------------------------------
 	createSectionHeader(root, "UI", nextOrder())
 	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
+	createToggle(root, "Always Show XP Text", "AlwaysShowXPText", nextOrder())
 	createChoiceButtons(root, "My Health Display", "MyHealthDisplayMode", {
 		{ value = "BottomLeft", label = "Bottom Left" },
 		{ value = "AboveCharacter", label = "Above Character" },
 		{ value = "Both", label = "Both" },
 	}, nextOrder())
-	createToggle(root, "Show Teammate Health Bars", "ShowTeammateHealthBars", nextOrder())
-	createToggle(root, "Show Enemy Health Bars", "ShowEnemyHealthBars", nextOrder())
+	createHealthBarsGroup(root, nextOrder())
 	createToggle(root, "Show Player Markers", "ShowPlayerMarkers", nextOrder())
 	createToggle(root, "Show Player Rings", "ShowPlayerRings", nextOrder())
-	createToggle(root, "Show NPC Health Bars", "ShowNPCHealthBars", nextOrder())
 	-- UI Scale removed per request
 
 	---------------------------------------------------------------------------

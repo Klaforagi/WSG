@@ -383,7 +383,9 @@ xpCountLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 xpCountLabel.TextStrokeTransparency = 0
 xpCountLabel.Text = ""
 xpCountLabel.TextTransparency = 1
+xpCountLabel.TextStrokeTransparency = 1
 xpCountLabel.ZIndex = 11
+xpCountLabel.Visible = false
 xpCountLabel.Parent = barBG
 local baseFill = Instance.new("Frame")
 baseFill.Name = "BaseFill"
@@ -418,6 +420,9 @@ levelUpLabel.ZIndex = 10
 levelUpLabel.Parent = barBG
 
 -- Helpers to update and show/hide XP counter
+local xpCountInteractionVisible = false
+local xpCountFadeTween = nil
+
 local function updateXPCountText()
     local cx = currentXP
     local mx = currentXPToNext
@@ -433,20 +438,83 @@ local function updateXPCountText()
     xpCountLabel.Text = formatInt(cx) .. " / " .. formatInt(mx)
 end
 
+local function isAlwaysShowXPTextEnabled()
+    local settings = _G.PlayerSettings
+    if type(settings) == "table" and settings.AlwaysShowXPText ~= nil then
+        return settings.AlwaysShowXPText == true
+    end
+    return _G.AlwaysShowXPText == true
+end
+
+local function setXPCountVisible(visible, animate)
+    if xpCountFadeTween then
+        xpCountFadeTween:Cancel()
+        xpCountFadeTween = nil
+    end
+
+    if visible then
+        updateXPCountText()
+        xpCountLabel.Visible = true
+
+        if animate then
+            xpCountLabel.TextTransparency = 1
+            xpCountLabel.TextStrokeTransparency = 1
+            local tween = TweenService:Create(xpCountLabel, TweenInfo.new(0.12), {
+                TextTransparency = 0,
+                TextStrokeTransparency = 0,
+            })
+            xpCountFadeTween = tween
+            tween.Completed:Connect(function()
+                if xpCountFadeTween == tween then
+                    xpCountFadeTween = nil
+                end
+            end)
+            tween:Play()
+        else
+            xpCountLabel.TextTransparency = 0
+            xpCountLabel.TextStrokeTransparency = 0
+        end
+        return
+    end
+
+    if animate then
+        local tween = TweenService:Create(xpCountLabel, TweenInfo.new(0.12), {
+            TextTransparency = 1,
+            TextStrokeTransparency = 1,
+        })
+        xpCountFadeTween = tween
+        tween.Completed:Connect(function()
+            if xpCountFadeTween == tween then
+                xpCountFadeTween = nil
+                if not isAlwaysShowXPTextEnabled() and not xpCountInteractionVisible then
+                    xpCountLabel.Visible = false
+                end
+            end
+        end)
+        tween:Play()
+    else
+        xpCountLabel.TextTransparency = 1
+        xpCountLabel.TextStrokeTransparency = 1
+        xpCountLabel.Visible = false
+    end
+end
+
+local function refreshXPTextVisibility()
+    setXPCountVisible(isAlwaysShowXPTextEnabled() or xpCountInteractionVisible, false)
+end
+
 local function showXPCount()
-    updateXPCountText()
-    xpCountLabel.TextTransparency = 1
-    xpCountLabel.Visible = true
-    TweenService:Create(xpCountLabel, TweenInfo.new(0.12), { TextTransparency = 0 }):Play()
+    xpCountInteractionVisible = true
+    setXPCountVisible(true, not isAlwaysShowXPTextEnabled())
 end
 
 local function hideXPCount()
-    local t = TweenService:Create(xpCountLabel, TweenInfo.new(0.12), { TextTransparency = 1 })
-    t:Play()
-    t.Completed:Connect(function()
-        xpCountLabel.Visible = false
-    end)
+    xpCountInteractionVisible = false
+    setXPCountVisible(isAlwaysShowXPTextEnabled(), not isAlwaysShowXPTextEnabled())
 end
+
+_G.RefreshXPTextVisibility = refreshXPTextVisibility
+refreshXPTextVisibility()
 
 -- Desktop: hover to show; Mobile: press-and-hold
 local holdThreshold = 0.22

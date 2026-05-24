@@ -33,6 +33,7 @@ local DEFAULTS = {
     MyHealthDisplayMode = "BottomLeft",
     ShowPlayerRings = true,
     ShowPlayerMarkers = true,
+    AlwaysShowXPText = false,
 }
 
 local VALID_MY_HEALTH_DISPLAY_MODES = {

@@ -42,18 +42,31 @@ local strengthPotionIcon = {
     Motif = "strength",
 }
 
+-- Elixir bottles: same procedurally-drawn style as Battle potions, but with
+-- `Shape = "elixir"` so the body renders as a rounded bulb (fantasy flask)
+-- instead of the squarish Battle-potion bottle.
 local doubleCoinsIcon = {
     Key = "DoubleCoins",
-    AssetKey = "Coin",
+    Kind = "PotionBottle",
+    Shape = "elixir",
     IconColor = { 255, 200, 40 },
-    Glyph = "$",
+    GlassColor = { 255, 244, 200 },
+    LiquidColor = { 255, 196, 48 },
+    StrokeColor = { 120, 80, 24 },
+    CapColor = { 132, 88, 32 },
+    Motif = "coins_elixir",
 }
 
 local doubleXPIcon = {
     Key = "DoubleXP",
-    AssetKey = "XP",
+    Kind = "PotionBottle",
+    Shape = "elixir",
     IconColor = { 180, 120, 255 },
-    Glyph = "XP",
+    GlassColor = { 232, 220, 255 },
+    LiquidColor = { 168, 110, 240 },
+    StrokeColor = { 70, 40, 130 },
+    CapColor = { 82, 52, 138 },
+    Motif = "xp_elixir",
 }
 
 register("HealthPotion", healthPotionIcon)

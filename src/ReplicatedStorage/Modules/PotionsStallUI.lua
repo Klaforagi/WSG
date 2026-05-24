@@ -266,6 +266,12 @@ local function getIconImage(def, iconData)
 		if type(iconData.IconAssetId) == "string" and #iconData.IconAssetId > 0 then
 			return iconData.IconAssetId
 		end
+		-- Procedurally-drawn potion/elixir bottles must not fall back to an
+		-- AssetCodes image (e.g. IconKey = "Coin" on the 2x Coins elixir would
+		-- otherwise resolve to a flat coin image and hide the generated bottle).
+		if iconData.Kind == "PotionBottle" then
+			return nil
+		end
 		if type(iconData.AssetKey) == "string" then
 			local asset = getAsset(iconData.AssetKey)
 			if asset then
@@ -302,16 +308,25 @@ local function buildPotionBottleIcon(parent, iconData, fallbackColor)
 	root.ZIndex = zBase
 	root.Parent = parent
 
+	local isElixir = iconData.Shape == "elixir"
+
 	local body = Instance.new("Frame")
 	body.Name = "Body"
 	body.AnchorPoint = Vector2.new(0.5, 1)
-	body.Position = UDim2.fromScale(0.5, 0.96)
-	body.Size = UDim2.fromScale(0.56, 0.62)
+	body.Position = UDim2.fromScale(0.5, isElixir and 0.97 or 0.96)
+	body.Size = isElixir and UDim2.fromScale(0.68, 0.56) or UDim2.fromScale(0.56, 0.62)
 	body.BackgroundColor3 = glassColor
 	body.BorderSizePixel = 0
 	body.ZIndex = zBase + 1
 	body.Parent = root
 	applyCorners(body, px(9))
+	if isElixir then
+		for _, child in ipairs(body:GetChildren()) do
+			if child:IsA("UICorner") then
+				child.CornerRadius = UDim.new(1, 0)
+			end
+		end
+	end
 	applyStroke(body, strokeColor, 1.2, 0.08)
 
 	local neck = Instance.new("Frame")

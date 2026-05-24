@@ -40,6 +40,20 @@ pcall(function()
     if mod and mod:IsA("ModuleScript") then DailyRewardConfig = require(mod) end
 end)
 
+local ItemIconRegistry
+pcall(function()
+    local mod = ReplicatedStorage:WaitForChild("ItemIconRegistry", 5)
+    if mod and mod:IsA("ModuleScript") then ItemIconRegistry = require(mod) end
+end)
+
+-- Map daily-reward types to the ItemIconRegistry key used by the matching
+-- BoostConfig entry, so elixir rewards render the same procedural bottle icon
+-- used in the Potion Stall / Inventory / Buff Bar.
+local REWARD_ICON_KEYS = {
+    CoinBoost = "coins_2x",
+    XPBoost   = "xp_2x",
+}
+
 --------------------------------------------------------------------------------
 -- Fallback theme colors
 --------------------------------------------------------------------------------
@@ -144,6 +158,173 @@ local isAnimating    = false
 local claimCooldown  = false
 
 --------------------------------------------------------------------------------
+-- Procedural potion/elixir bottle icon
+-- Mirrors the renderer used by PotionsStallUI / InventoryUI / BuffBar so the
+-- 2x Coins and 2x XP elixir rewards look identical across UI.
+--------------------------------------------------------------------------------
+local WHITE3 = Color3.new(1, 1, 1)
+local BLACK3 = Color3.new(0, 0, 0)
+
+local function colorFromRGBArray(value, fallback)
+    if typeof(value) == "Color3" then return value end
+    if type(value) == "table" then
+        return Color3.fromRGB(
+            tonumber(value[1]) or 255,
+            tonumber(value[2]) or 255,
+            tonumber(value[3]) or 255
+        )
+    end
+    return fallback
+end
+
+local function buildPotionBottleIcon(parent, iconData)
+    iconData = type(iconData) == "table" and iconData or {}
+
+    local liquidColor = colorFromRGBArray(iconData.LiquidColor, T.GOLD)
+    local glassColor = colorFromRGBArray(iconData.GlassColor, liquidColor:Lerp(WHITE3, 0.58))
+    local strokeColor = colorFromRGBArray(iconData.StrokeColor, liquidColor:Lerp(BLACK3, 0.48))
+    local capColor = colorFromRGBArray(iconData.CapColor, strokeColor)
+    local isElixir = iconData.Shape == "elixir"
+    local zBase = (parent and parent.ZIndex or 1) + 1
+
+    local root = Instance.new("Frame")
+    root.Name = "GeneratedPotionIcon"
+    root.AnchorPoint = Vector2.new(0.5, 0.5)
+    root.Position = UDim2.fromScale(0.5, 0.5)
+    root.Size = UDim2.fromScale(0.9, 0.9)
+    root.BackgroundTransparency = 1
+    root.ZIndex = zBase
+    root.Parent = parent
+
+    local body = Instance.new("Frame")
+    body.Name = "Body"
+    body.AnchorPoint = Vector2.new(0.5, 1)
+    body.Position = UDim2.fromScale(0.5, isElixir and 0.97 or 0.96)
+    body.Size = isElixir and UDim2.fromScale(0.68, 0.56) or UDim2.fromScale(0.56, 0.62)
+    body.BackgroundColor3 = glassColor
+    body.BorderSizePixel = 0
+    body.ZIndex = zBase + 1
+    body.Parent = root
+    local bodyCorner = Instance.new("UICorner", body)
+    bodyCorner.CornerRadius = isElixir and UDim.new(1, 0) or UDim.new(0, px(8))
+    local bodyStroke = Instance.new("UIStroke", body)
+    bodyStroke.Color = strokeColor; bodyStroke.Thickness = 1.2; bodyStroke.Transparency = 0.08
+
+    local neck = Instance.new("Frame")
+    neck.Name = "Neck"
+    neck.AnchorPoint = Vector2.new(0.5, 1)
+    neck.Position = UDim2.fromScale(0.5, 0.39)
+    neck.Size = UDim2.fromScale(0.22, 0.24)
+    neck.BackgroundColor3 = glassColor
+    neck.BorderSizePixel = 0
+    neck.ZIndex = zBase + 2
+    neck.Parent = root
+    Instance.new("UICorner", neck).CornerRadius = UDim.new(0, px(5))
+    local neckStroke = Instance.new("UIStroke", neck)
+    neckStroke.Color = strokeColor; neckStroke.Thickness = 1; neckStroke.Transparency = 0.12
+
+    local cap = Instance.new("Frame")
+    cap.Name = "Cap"
+    cap.AnchorPoint = Vector2.new(0.5, 0)
+    cap.Position = UDim2.fromScale(0.5, 0.08)
+    cap.Size = UDim2.fromScale(0.34, 0.11)
+    cap.BackgroundColor3 = capColor
+    cap.BorderSizePixel = 0
+    cap.ZIndex = zBase + 4
+    cap.Parent = root
+    Instance.new("UICorner", cap).CornerRadius = UDim.new(0, px(5))
+
+    local liquid = Instance.new("Frame")
+    liquid.Name = "Liquid"
+    liquid.AnchorPoint = Vector2.new(0.5, 1)
+    liquid.Position = UDim2.fromScale(0.5, 0.9)
+    liquid.Size = UDim2.fromScale(0.44, 0.34)
+    liquid.BackgroundColor3 = liquidColor
+    liquid.BorderSizePixel = 0
+    liquid.ZIndex = zBase + 3
+    liquid.Parent = root
+    Instance.new("UICorner", liquid).CornerRadius = UDim.new(0, px(7))
+
+    local shine = Instance.new("Frame")
+    shine.Name = "Highlight"
+    shine.AnchorPoint = Vector2.new(0, 0)
+    shine.Position = UDim2.fromScale(0.36, 0.38)
+    shine.Size = UDim2.fromScale(0.09, 0.34)
+    shine.BackgroundColor3 = WHITE3
+    shine.BackgroundTransparency = 0.32
+    shine.BorderSizePixel = 0
+    shine.Rotation = 14
+    shine.ZIndex = zBase + 5
+    shine.Parent = root
+    Instance.new("UICorner", shine).CornerRadius = UDim.new(0, px(5))
+
+    if iconData.Motif == "coins_elixir" then
+        local coin = Instance.new("Frame")
+        coin.Name = "CoinMark"
+        coin.AnchorPoint = Vector2.new(0.5, 0.5)
+        coin.Position = UDim2.fromScale(0.5, 0.68)
+        coin.Size = UDim2.fromScale(0.22, 0.22)
+        coin.BackgroundColor3 = Color3.fromRGB(255, 232, 120)
+        coin.BorderSizePixel = 0
+        coin.ZIndex = zBase + 6
+        coin.Parent = root
+        Instance.new("UICorner", coin).CornerRadius = UDim.new(1, 0)
+        local coinStroke = Instance.new("UIStroke", coin)
+        coinStroke.Color = WHITE3; coinStroke.Thickness = 1.2; coinStroke.Transparency = 0.1
+
+        local coinShine = Instance.new("Frame")
+        coinShine.Name = "CoinShine"
+        coinShine.AnchorPoint = Vector2.new(0.5, 0.5)
+        coinShine.Position = UDim2.fromScale(0.44, 0.62)
+        coinShine.Size = UDim2.fromScale(0.05, 0.08)
+        coinShine.BackgroundColor3 = WHITE3
+        coinShine.BackgroundTransparency = 0.15
+        coinShine.BorderSizePixel = 0
+        coinShine.ZIndex = zBase + 7
+        coinShine.Parent = root
+        Instance.new("UICorner", coinShine).CornerRadius = UDim.new(0, px(4))
+    elseif iconData.Motif == "xp_elixir" then
+        local sparkleA = Instance.new("Frame")
+        sparkleA.Name = "SparkleA"
+        sparkleA.AnchorPoint = Vector2.new(0.5, 0.5)
+        sparkleA.Position = UDim2.fromScale(0.5, 0.66)
+        sparkleA.Size = UDim2.fromScale(0.32, 0.06)
+        sparkleA.Rotation = 45
+        sparkleA.BackgroundColor3 = WHITE3
+        sparkleA.BorderSizePixel = 0
+        sparkleA.ZIndex = zBase + 6
+        sparkleA.Parent = root
+        Instance.new("UICorner", sparkleA).CornerRadius = UDim.new(0, px(5))
+
+        local sparkleB = Instance.new("Frame")
+        sparkleB.Name = "SparkleB"
+        sparkleB.AnchorPoint = Vector2.new(0.5, 0.5)
+        sparkleB.Position = UDim2.fromScale(0.5, 0.66)
+        sparkleB.Size = UDim2.fromScale(0.32, 0.06)
+        sparkleB.Rotation = -45
+        sparkleB.BackgroundColor3 = WHITE3
+        sparkleB.BorderSizePixel = 0
+        sparkleB.ZIndex = zBase + 6
+        sparkleB.Parent = root
+        Instance.new("UICorner", sparkleB).CornerRadius = UDim.new(0, px(5))
+
+        local sparkleDot = Instance.new("Frame")
+        sparkleDot.Name = "SparkleDot"
+        sparkleDot.AnchorPoint = Vector2.new(0.5, 0.5)
+        sparkleDot.Position = UDim2.fromScale(0.36, 0.78)
+        sparkleDot.Size = UDim2.fromScale(0.07, 0.07)
+        sparkleDot.BackgroundColor3 = WHITE3
+        sparkleDot.BackgroundTransparency = 0.15
+        sparkleDot.BorderSizePixel = 0
+        sparkleDot.ZIndex = zBase + 6
+        sparkleDot.Parent = root
+        Instance.new("UICorner", sparkleDot).CornerRadius = UDim.new(1, 0)
+    end
+
+    return root
+end
+
+--------------------------------------------------------------------------------
 -- Build a single day card
 --------------------------------------------------------------------------------
 local pulseConns = {} -- cleanup table for pulse tweens
@@ -201,8 +382,25 @@ local function buildDayCard(dayNum, reward, parent)
     Instance.new("UICorner", iconWell).CornerRadius = UDim.new(0, px(10))
 
     -- Icon image or glyph
-    local assetId = getRewardAssetId(rewardType)
-    if assetId then
+    local potionIconData = nil
+    do
+        local registryKey = REWARD_ICON_KEYS[rewardType]
+        if registryKey and ItemIconRegistry and type(ItemIconRegistry.Get) == "function" then
+            local data = ItemIconRegistry.Get(registryKey)
+            if type(data) == "table" and data.Kind == "PotionBottle" then
+                potionIconData = data
+            end
+        end
+    end
+
+    local assetId = nil
+    if not potionIconData then
+        assetId = getRewardAssetId(rewardType)
+    end
+
+    if potionIconData then
+        buildPotionBottleIcon(iconWell, potionIconData)
+    elseif assetId then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
         icon.Size = UDim2.new(0.7, 0, 0.7, 0)

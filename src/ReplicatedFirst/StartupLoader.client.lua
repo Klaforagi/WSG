@@ -509,6 +509,7 @@ pcall(function()
 			MyHealthDisplayMode = "BottomLeft",
 			ShowPlayerRings = true,
 			ShowPlayerMarkers = true,
+			AlwaysShowXPText = false,
 		}
 		local settings = {}
 		for k, v in pairs(defaults) do settings[k] = v end
@@ -529,12 +530,16 @@ pcall(function()
 		_G.MyHealthDisplayMode = settings.MyHealthDisplayMode
 		_G.ShowPlayerRings = (settings.ShowPlayerRings ~= false)
 		_G.ShowPlayerMarkers = (settings.ShowPlayerMarkers ~= false)
+		_G.AlwaysShowXPText = (settings.AlwaysShowXPText == true)
 		pcall(function()
 			if type(_G.RefreshLocalHealthDisplaySettings) == "function" then
 				_G.RefreshLocalHealthDisplaySettings()
 			end
 			if type(_G.RefreshOverheadUISettings) == "function" then
 				_G.RefreshOverheadUISettings()
+			end
+			if type(_G.RefreshXPTextVisibility) == "function" then
+				_G.RefreshXPTextVisibility()
 			end
 		end)
 

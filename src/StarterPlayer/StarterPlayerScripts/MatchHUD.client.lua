@@ -501,8 +501,8 @@ local function buildFlagIcon(parent, flagColor, glowColor)
     local banner = Instance.new("Frame")
     banner.Name = "Banner"
     banner.AnchorPoint = Vector2.new(0, 0)
-    banner.Position = UDim2.new(0.32, 0, 0.16, 0)
-    banner.Size = UDim2.new(0.56, 0, 0.34, 0)
+    banner.Position = UDim2.new(0.32, 0, 0.18, 0)
+    banner.Size = UDim2.new(0.58, 0, 0.42, 0)
     banner.BackgroundColor3 = flagColor
     banner.BackgroundTransparency = 0
     banner.BorderSizePixel = 0
@@ -517,17 +517,6 @@ local function buildFlagIcon(parent, flagColor, glowColor)
     bannerStroke.Transparency = 0.25
     bannerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     bannerStroke.Parent = banner
-
-    local lowerFold = Instance.new("Frame")
-    lowerFold.Name = "LowerFold"
-    lowerFold.AnchorPoint = Vector2.new(0, 0)
-    lowerFold.Position = UDim2.new(0.32, 0, 0.45, 0)
-    lowerFold.Size = UDim2.new(0.42, 0, 0.22, 0)
-    lowerFold.BackgroundColor3 = flagColor:Lerp(Color3.new(0, 0, 0), 0.18)
-    lowerFold.BorderSizePixel = 0
-    lowerFold.ZIndex = 5
-    lowerFold.Parent = container
-    Instance.new("UICorner", lowerFold).CornerRadius = UDim.new(0, 3)
 
     return container
 end

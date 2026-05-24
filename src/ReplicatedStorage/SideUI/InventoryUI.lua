@@ -708,16 +708,19 @@ local function createPotionBottleIcon(parent, iconData, accent, scale)
     root.ZIndex = zBase
     root.Parent = parent
 
+    local isElixir = iconData.Shape == "elixir"
+
     local body = Instance.new("Frame")
     body.Name = "Body"
     body.AnchorPoint = Vector2.new(0.5, 1)
-    body.Position = UDim2.fromScale(0.5, 0.96)
-    body.Size = UDim2.fromScale(0.56, 0.62)
+    body.Position = UDim2.fromScale(0.5, isElixir and 0.97 or 0.96)
+    body.Size = isElixir and UDim2.fromScale(0.68, 0.56) or UDim2.fromScale(0.56, 0.62)
     body.BackgroundColor3 = glassColor
     body.BorderSizePixel = 0
     body.ZIndex = zBase + 1
     body.Parent = root
-    Instance.new("UICorner", body).CornerRadius = UDim.new(0, px(8))
+    local bodyCorner = Instance.new("UICorner", body)
+    bodyCorner.CornerRadius = isElixir and UDim.new(1, 0) or UDim.new(0, px(8))
     local bodyStroke = Instance.new("UIStroke", body)
     bodyStroke.Color = strokeColor; bodyStroke.Thickness = 1.2; bodyStroke.Transparency = 0.08
 
@@ -784,6 +787,67 @@ local function createPotionBottleIcon(parent, iconData, accent, scale)
             streak.Parent = root
             Instance.new("UICorner", streak).CornerRadius = UDim.new(0, px(5))
         end
+    elseif iconData.Motif == "coins_elixir" then
+        local coin = Instance.new("Frame")
+        coin.Name = "CoinMark"
+        coin.AnchorPoint = Vector2.new(0.5, 0.5)
+        coin.Position = UDim2.fromScale(0.5, 0.68)
+        coin.Size = UDim2.fromScale(0.22, 0.22)
+        coin.BackgroundColor3 = Color3.fromRGB(255, 232, 120)
+        coin.BorderSizePixel = 0
+        coin.ZIndex = zBase + 6
+        coin.Parent = root
+        Instance.new("UICorner", coin).CornerRadius = UDim.new(1, 0)
+        local coinStroke = Instance.new("UIStroke", coin)
+        coinStroke.Color = WHITE; coinStroke.Thickness = 1.2; coinStroke.Transparency = 0.1
+
+        local coinShine = Instance.new("Frame")
+        coinShine.Name = "CoinShine"
+        coinShine.AnchorPoint = Vector2.new(0.5, 0.5)
+        coinShine.Position = UDim2.fromScale(0.44, 0.62)
+        coinShine.Size = UDim2.fromScale(0.05, 0.08)
+        coinShine.BackgroundColor3 = WHITE
+        coinShine.BackgroundTransparency = 0.15
+        coinShine.BorderSizePixel = 0
+        coinShine.ZIndex = zBase + 7
+        coinShine.Parent = root
+        Instance.new("UICorner", coinShine).CornerRadius = UDim.new(0, px(4))
+    elseif iconData.Motif == "xp_elixir" then
+        local sparkleA = Instance.new("Frame")
+        sparkleA.Name = "SparkleA"
+        sparkleA.AnchorPoint = Vector2.new(0.5, 0.5)
+        sparkleA.Position = UDim2.fromScale(0.5, 0.66)
+        sparkleA.Size = UDim2.fromScale(0.32, 0.06)
+        sparkleA.Rotation = 45
+        sparkleA.BackgroundColor3 = WHITE
+        sparkleA.BorderSizePixel = 0
+        sparkleA.ZIndex = zBase + 6
+        sparkleA.Parent = root
+        Instance.new("UICorner", sparkleA).CornerRadius = UDim.new(0, px(5))
+
+        local sparkleB = Instance.new("Frame")
+        sparkleB.Name = "SparkleB"
+        sparkleB.AnchorPoint = Vector2.new(0.5, 0.5)
+        sparkleB.Position = UDim2.fromScale(0.5, 0.66)
+        sparkleB.Size = UDim2.fromScale(0.32, 0.06)
+        sparkleB.Rotation = -45
+        sparkleB.BackgroundColor3 = WHITE
+        sparkleB.BorderSizePixel = 0
+        sparkleB.ZIndex = zBase + 6
+        sparkleB.Parent = root
+        Instance.new("UICorner", sparkleB).CornerRadius = UDim.new(0, px(5))
+
+        local sparkleDot = Instance.new("Frame")
+        sparkleDot.Name = "SparkleDot"
+        sparkleDot.AnchorPoint = Vector2.new(0.5, 0.5)
+        sparkleDot.Position = UDim2.fromScale(0.36, 0.78)
+        sparkleDot.Size = UDim2.fromScale(0.07, 0.07)
+        sparkleDot.BackgroundColor3 = WHITE
+        sparkleDot.BackgroundTransparency = 0.15
+        sparkleDot.BorderSizePixel = 0
+        sparkleDot.ZIndex = zBase + 6
+        sparkleDot.Parent = root
+        Instance.new("UICorner", sparkleDot).CornerRadius = UDim.new(1, 0)
     end
 
     return root
