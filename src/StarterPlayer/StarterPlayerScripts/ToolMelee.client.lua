@@ -74,6 +74,14 @@ local function getCfg(tool, sizePercent)
     return cfg
 end
 
+local function usesComboAttacks(cfg)
+    if MeleeCfgModule and type(MeleeCfgModule.usesComboAttacks) == "function" then
+        return MeleeCfgModule.usesComboAttacks(cfg)
+    end
+    if type(cfg) ~= "table" or cfg.usesCombo == false then return false end
+    return type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids >= 3
+end
+
 --------------------------------------------------------------------------------
 -- Size scaling helpers (mirrors server-side ToolMeleeSetup logic)
 -- sizePercent / 100:  100% = 1.0x baseline,  200% = 2.0x (slower, stronger)
@@ -627,9 +635,8 @@ local function attachMelee(tool)
     local comboCfg       = MeleeCfgModule and MeleeCfgModule.comboConfig or {}
     local COMBO_WINDOW   = comboCfg.COMBO_WINDOW or 0.2
     local ATTACK3_EXTRA  = comboCfg.ATTACK3_EXTRA_CD or 0.4
-    -- Weapons with 3+ swing_anim_ids use the combo chain; others keep flat cd.
-    local hasCombo = cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table"
-        and #cfg.swing_anim_ids >= 3
+    -- Combo behavior is explicit in ToolMeleeSettings so tagged weapons can opt out.
+    local hasCombo = usesComboAttacks(cfg)
 
     --------------------------------------------------------------------------
     -- COMBO STATE

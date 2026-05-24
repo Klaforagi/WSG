@@ -129,6 +129,14 @@ local function getServerMeleeCfg(toolName, sizePercent)
     return MeleeCfg.getPreset(key, sizePercent) or {}
 end
 
+local function usesComboAttacks(cfg)
+    if MeleeCfg and type(MeleeCfg.usesComboAttacks) == "function" then
+        return MeleeCfg.usesComboAttacks(cfg)
+    end
+    if type(cfg) ~= "table" or cfg.usesCombo == false then return false end
+    return type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids >= 3
+end
+
 ---------------------------------------------------------------------------
 -- SIZE + COMBO SCALING HELPERS
 --
@@ -738,8 +746,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local baseKnockback = cfg.knockback or 2
 
     -- ── COMBO VALIDATION ──────────────────────────────────────────────
-    local hasCombo = cfg.swing_anim_ids and type(cfg.swing_anim_ids) == "table"
-        and #cfg.swing_anim_ids >= 3
+    local hasCombo = usesComboAttacks(cfg)
 
     local now = tick()
     if not comboState[player] then
@@ -931,7 +938,7 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
 
     -- Scale hitbox with weapon size: up to +50% at 200% size, never shrink below base
     local hitboxScale = 1
-    if sizePercent > 100 then
+    if cfg.ignoreSizeHitboxScale ~= true and sizePercent > 100 then
         hitboxScale = 1 + math.clamp((sizePercent - 100) / 100, 0, 1) * 0.5
     end
 
