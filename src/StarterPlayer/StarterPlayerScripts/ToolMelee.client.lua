@@ -380,7 +380,7 @@ local function playObservedSwing(targetPlayer, animId, scaledCd, baseCd)
     pcall(function() track:Stop(0) end)
     track.Priority = Enum.AnimationPriority.Action4
 
-    local cd = scaledCd or baseCd or 0.5
+    local cd = scaledCd or baseCd or 0.8
     local baseStepCd = baseCd or cd
     local fallbackSpeed = math.clamp(baseStepCd / cd, 0.25, 4.0)
     local playId = (observerSwingPlayIds[track] or 0) + 1
@@ -469,8 +469,8 @@ local function playLocalCfgAnimation(cfg, toolName, scaledCd, baseCdOverride)
     -- Animations are authored at the base cooldown (~0.5s). For bigger weapons
     -- scaledCd is longer, so we slow the animation proportionally.
     -- baseCd/scaledCd gives the correct ratio immediately without needing track.Length.
-    local cd = scaledCd or cfg.cd or 0.5
-    local baseCd = baseCdOverride or cfg.cd or 0.5
+    local cd = scaledCd or cfg.cd or 0.8
+    local baseCd = baseCdOverride or cfg.cd or 0.8
     local fallbackSpeed = math.clamp(baseCd / cd, 0.25, 4.0)
 
     -- Pass speed as 3rd arg to Play() so Roblox doesn't default it to 1.0.
