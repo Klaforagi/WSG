@@ -1,7 +1,7 @@
 --[[
     EventIndicator.client.lua  (StarterPlayerScripts)
-    Keeps event reward popups alive while the unified BuffBar owns the event
-    timer HUD. The old left-side button and right-side tracker are retired.
+    Keeps event reward popups alive while the unified BuffBar owns the compact
+    event timer HUD.
 
         Features:
             - Meteor Shower / Gold Rush collection popups
@@ -10,9 +10,7 @@
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
-local UserInputService  = game:GetService("UserInputService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -86,13 +84,9 @@ local pulseThread       = nil   -- coroutine running the pulse loop
 local pulseTweens       = {}    -- current active tweens (for cleanup)
 local eventPopup        = nil   -- the popup ScreenGui (overlay + window)
 local eventEndTime      = nil   -- server timestamp when event ends
-local timerConnection   = nil   -- Heartbeat connection for live timer
 local timerLabel        = nil   -- separate timer TextLabel below the Event card
 local popupTimerLabel   = nil   -- timer TextLabel inside the popup
 local popupVisible      = false -- whether the popup is shown
-local objectiveTracker  = nil   -- legacy right-side objective tracker ScreenGui
-local trackerObjLabel   = nil   -- legacy objective tracker label
-local trackerTimerLabel = nil   -- legacy objective tracker timer label
 local shardProgressConn = nil   -- connection for EventShardProgress remote
 local currentEventId    = EventConfig and EventConfig.ActiveEventId or "MeteorShower"
 
@@ -151,10 +145,6 @@ local function destroyIndicator()
         pcall(function() shardProgressConn:Disconnect() end)
         shardProgressConn = nil
     end
-    if timerConnection then
-        pcall(function() timerConnection:Disconnect() end)
-        timerConnection = nil
-    end
     if pulseThread then
         pcall(task.cancel, pulseThread)
         pulseThread = nil
@@ -167,12 +157,6 @@ local function destroyIndicator()
         pcall(function() eventPopup:Destroy() end)
         eventPopup = nil
     end
-    if objectiveTracker then
-        pcall(function() objectiveTracker:Destroy() end)
-        objectiveTracker = nil
-    end
-    trackerObjLabel = nil
-    trackerTimerLabel = nil
     popupVisible = false
     popupTimerLabel = nil
     eventEndTime = nil
@@ -681,9 +665,10 @@ end
 ---------------------------------------------------------------------
 -- Event coin collection: floating "+N coins" popup + Collect sound
 ---------------------------------------------------------------------
-local function showCoinPopup(worldPosition, amount, popupKind, eventKind)
+local function showCoinPopup(worldPosition, amount, popupKind, eventKind, xpAmount)
     local isEventReward = popupKind == "EventReward"
     local isGoldRush = eventKind == "GoldRush"
+    local isGoblinRaid = eventKind == "GoblinRaid"
 
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     local collectSound = soundsFolder and soundsFolder:FindFirstChild("Collect")
@@ -704,7 +689,7 @@ local function showCoinPopup(worldPosition, amount, popupKind, eventKind)
     anchor.Parent = workspace
 
     local gui = Instance.new("BillboardGui")
-    gui.Size = isEventReward and UDim2.new(0, 160, 0, 52) or UDim2.new(0, 120, 0, 44)
+    gui.Size = isGoblinRaid and UDim2.new(0, 220, 0, 64) or (isEventReward and UDim2.new(0, 160, 0, 52) or UDim2.new(0, 120, 0, 44))
     gui.StudsOffset = isEventReward and Vector3.new(0, 4.1, 0) or Vector3.new(0, 3, 0)
     gui.AlwaysOnTop = true
     gui.Adornee = anchor
@@ -713,10 +698,22 @@ local function showCoinPopup(worldPosition, amount, popupKind, eventKind)
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
-    label.Text = "+" .. tostring(amount) .. " coins"
+    if isGoblinRaid then
+        label.Text = "Goblin defeated! +" .. tostring(amount) .. " coins"
+        local xp = tonumber(xpAmount) or 0
+        if xp > 0 then
+            label.Text = label.Text .. "\n+" .. tostring(xp) .. " XP"
+        end
+    else
+        label.Text = "+" .. tostring(amount) .. " coins"
+    end
     label.Font = Enum.Font.GothamBold
-    label.TextSize = isEventReward and 28 or 22
-    if isGoldRush then
+    label.TextSize = isGoblinRaid and 20 or (isEventReward and 28 or 22)
+    label.TextWrapped = true
+    if isGoblinRaid then
+        label.TextColor3 = Color3.fromRGB(180, 255, 140)
+        label.TextStrokeColor3 = Color3.fromRGB(18, 62, 18)
+    elseif isGoldRush then
         label.TextColor3 = isEventReward and Color3.fromRGB(255, 235, 130) or Color3.fromRGB(255, 215, 80)
         label.TextStrokeColor3 = Color3.fromRGB(96, 54, 0)
     else
@@ -758,6 +755,14 @@ do
     if goldCollectedRemote then
         goldCollectedRemote.OnClientEvent:Connect(function(coinPos, amount, popupKind)
             showCoinPopup(coinPos, amount, popupKind, "GoldRush")
+        end)
+    end
+
+    local goblinRewardRemote = ReplicatedStorage:FindFirstChild("GoblinRaidReward")
+        or ReplicatedStorage:WaitForChild("GoblinRaidReward", 15)
+    if goblinRewardRemote then
+        goblinRewardRemote.OnClientEvent:Connect(function(worldPos, coins, xp)
+            showCoinPopup(worldPos, coins, "EventReward", "GoblinRaid", xp)
         end)
     end
 end

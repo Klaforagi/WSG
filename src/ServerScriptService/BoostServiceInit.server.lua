@@ -209,6 +209,7 @@ if CurrencyService then
         GoldRushObjective = true,
         MeteorShard = true,
         MeteorShowerObjective = true,
+        GoblinRaidBonus = true,
     }
 
     --- Wrapped AddCoins: applies coin boost multiplier to positive gameplay/event amounts.

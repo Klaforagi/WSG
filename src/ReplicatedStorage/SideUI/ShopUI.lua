@@ -4034,6 +4034,30 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
 
         local allEmotes = EmoteConfig and EmoteConfig.GetAll() or {}
 
+        local function getShopEmoteIconText(def)
+            if EmoteConfig and type(EmoteConfig.GetIconText) == "function" then
+                local ok, text = pcall(function()
+                    return EmoteConfig.GetIconText(def, true)
+                end)
+                if ok and type(text) == "string" and text ~= "" then
+                    return text
+                end
+            end
+            return "\u{1F3AD}"
+        end
+
+        local function getShopEmoteIconImage(def)
+            if EmoteConfig and type(EmoteConfig.GetIconImage) == "function" then
+                local ok, image = pcall(function()
+                    return EmoteConfig.GetIconImage(def, AssetCodes)
+                end)
+                if ok and type(image) == "string" and image ~= "" then
+                    return image
+                end
+            end
+            return nil
+        end
+
         if #allEmotes > 0 then
             -- ── State ───────────────────────────────────────────────
             local ownedEmoteSet    = {}
@@ -4550,27 +4574,8 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 iconAreaStroke.Thickness = 1
                 iconAreaStroke.Transparency = 0.55
 
-                -- PRIMARY: TextLabel emoji icon (always visible, matches Skins card pattern)
-                local EMOTE_GLYPHS = {
-                    wave   = "\u{1F44B}",  -- 👋
-                    dance  = "\u{1F57A}",  -- 🕺
-                    headless = "\u{1F480}",  -- 💀
-                    rat_dance = "\u{1F400}",  -- 🐀
-                    floss  = "\u{1F57A}",  -- 🕺
-                    dab = "DAB",
-                    macarena = "\u{1F483}",  -- 💃
-                    ride_the_pony = "\u{1F434}",  -- 🐴
-                    the_robot = "\u{1F916}",  -- 🤖
-                    i_want_money = "\u{1F4B0}",  -- 💰
-                    take_the_l = "L",
-                    cheer  = "\u{1F389}",  -- 🎉
-                    salute = "\u{270B}",   -- ✋
-                    laugh  = "\u{1F602}",  -- 😂
-                    cry    = "\u{1F622}",  -- 😢
-                    flex   = "\u{1F4AA}",  -- 💪
-                    point  = "\u{1F449}",  -- 👉
-                }
-                local glyphText = EMOTE_GLYPHS[emoteId] or "\u{1F3AD}" -- 🎭 generic
+                -- Shared text icon fallback stays underneath image assets, matching prior behavior.
+                local glyphText = getShopEmoteIconText(def)
                 local glyphColor = GOLD
 
                 local cardGlyph = Instance.new("TextLabel", iconArea)
@@ -4586,29 +4591,20 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 cardGlyph.ZIndex = 2
                 print("[ShopEmotes] Building card for emote:", emoteId, "glyph:", glyphText, "visible:", cardGlyph.Visible, "ZIndex:", cardGlyph.ZIndex)
 
-                -- OPTIONAL OVERLAY: if a real image asset loads, show it on top of the glyph
-                pcall(function()
-                    local imgId = nil
-                    if AssetCodes and iconKey then
-                        local img = AssetCodes.Get(iconKey)
-                        if img and #img > 0 then imgId = img end
-                    end
-                    if not imgId and def.IconAssetId and type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then
-                        imgId = def.IconAssetId
-                    end
-                    if imgId then
-                        local cardImg = Instance.new("ImageLabel", iconArea)
-                        cardImg.Name = "IconImage"
-                        cardImg.BackgroundTransparency = 1
-                        cardImg.ScaleType = Enum.ScaleType.Fit
-                        cardImg.Size = UDim2.new(0.65, 0, 0.65, 0)
-                        cardImg.AnchorPoint = Vector2.new(0.5, 0.5)
-                        cardImg.Position = UDim2.new(0.5, 0, 0.5, 0)
-                        cardImg.ZIndex = 3
-                        cardImg.Image = imgId
-                        print("[ShopEmotes] Image overlay assigned for emote:", emoteId, "asset:", imgId)
-                    end
-                end)
+                -- OPTIONAL OVERLAY: if a real image asset loads, show it on top of the glyph.
+                local imgId = getShopEmoteIconImage(def)
+                if imgId then
+                    local cardImg = Instance.new("ImageLabel", iconArea)
+                    cardImg.Name = "IconImage"
+                    cardImg.BackgroundTransparency = 1
+                    cardImg.ScaleType = Enum.ScaleType.Fit
+                    cardImg.Size = UDim2.new(0.65, 0, 0.65, 0)
+                    cardImg.AnchorPoint = Vector2.new(0.5, 0.5)
+                    cardImg.Position = UDim2.new(0.5, 0, 0.5, 0)
+                    cardImg.ZIndex = 3
+                    cardImg.Image = imgId
+                    print("[ShopEmotes] Image overlay assigned for emote:", emoteId, "asset:", imgId)
+                end
 
                 -- Name label
                 local cardName = Instance.new("TextLabel", card)

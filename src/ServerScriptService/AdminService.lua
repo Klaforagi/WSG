@@ -615,6 +615,9 @@ function AdminService:ControlEvent(adminPlayer, action, eventId)
 
     local controlOk, controlErr
     if action == "Start" then
+        if eventId == "GoblinRaid" then
+            print("[AdminPanel] Admin requested Goblin Raid")
+        end
         controlOk, controlErr = scheduler:StartEvent(eventId)
     elseif action == "Stop" then
         controlOk, controlErr = scheduler:StopEvent(eventId)

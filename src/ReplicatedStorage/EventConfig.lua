@@ -77,13 +77,46 @@ EventConfig.EventDefs = {
         MaxPickupsPerWave = 40,
         PickupLifetime = 24,
     },
+    GoblinRaid = {
+        Name       = "Goblin Raid",
+        Objective  = "Defeat Goblins",
+        Reward     = "Bonus Coins and XP",
+        Description = "Goblin Raid active - defeat invading goblins for bonus rewards.",
+        Announcement = "Goblin Raid!\nDefeat invading goblins for bonus rewards!",
+        AnnouncementColor = Color3.fromRGB(110, 210, 95),
+        DurationSeconds = 60,
+
+        InitialWaveMin = 4,
+        InitialWaveMax = 6,
+        ReinforcementMin = 1,
+        ReinforcementMax = 2,
+        ReinforcementIntervalMin = 6,
+        ReinforcementIntervalMax = 10,
+        MaxActiveGoblins = 9,
+        TotalSpawnCap = 18,
+
+        GoblinHealth = 70,
+        GoblinWalkSpeed = 10,
+        GoblinChaseSpeed = 16,
+        GoblinEnragedSpeed = 18,
+        GoblinDetectionRadius = 48,
+        GoblinAggroDuration = 10,
+        GoblinDamage = 3,
+        GoblinAttackCooldown = 0.65,
+        GoblinAttackRange = 7,
+        GoblinAttackWindup = 0.35,
+
+        BonusCoinsMin = 10,
+        BonusCoinsMax = 20,
+        BonusXP = 3,
+    },
 }
 
 -- Fallback/default event id. Kept for compatibility with older event code and
 -- for quick Studio testing.
 EventConfig.ActiveEventId = "MeteorShower"
 
--- Optional Studio/testing override. Set to "MeteorShower" or "GoldRush" to
+-- Optional Studio/testing override. Set to "MeteorShower", "GoldRush", or "GoblinRaid" to
 -- force that event; leave nil to choose from EnabledEvents by weight.
 EventConfig.ForcedEventId = nil
 
@@ -92,6 +125,7 @@ EventConfig.ForcedEventId = nil
 EventConfig.EnabledEvents = {
     { Id = "MeteorShower", Weight = 1.0 },
     { Id = "GoldRush",     Weight = 1.0 },
+    { Id = "GoblinRaid",   Weight = 1.0 },
 }
 
 return EventConfig

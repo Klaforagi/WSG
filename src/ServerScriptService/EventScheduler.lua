@@ -179,11 +179,12 @@ local function startActiveEvent(eventId, durationSeconds, source)
         endActiveEvent("replaced by " .. tostring(eventId))
     end
 
-    local duration = math.max(1, tonumber(durationSeconds) or tonumber(EventConfig.EVENT_DURATION) or 60)
+    local duration = math.max(1, tonumber(durationSeconds) or tonumber(def.DurationSeconds) or tonumber(EventConfig.EVENT_DURATION) or 60)
     EventConfig.ActiveEventId = eventId
     _activeIdx = eventId
     _eventEndTime = workspace:GetServerTimeNow() + duration
 
+    print(('[EventManager] Starting %s'):format(tostring(def.Name or eventId)))
     print(('[EventScheduler] Event \'%s\' ACTIVE for %ds (%s)'):format(tostring(eventId), duration, tostring(source or "scheduler")))
     broadcast(true, eventId)
     announceEventStart(eventId)
@@ -278,7 +279,7 @@ function EventScheduler:StartMatch(_matchStartTick)
                 if math.random() < chance then
                 -- ---- EVENT START ----
                 local eventId = chooseEventId()
-                local started, startErr = startActiveEvent(eventId, EventConfig.EVENT_DURATION, ("triggered at %.0f%% chance"):format(chance * 100))
+                local started, startErr = startActiveEvent(eventId, nil, ("triggered at %.0f%% chance"):format(chance * 100))
                 if not started then
                     warn("[EventScheduler] Failed to start event: " .. tostring(startErr))
                     chance = math.min(chance + EventConfig.CHANCE_STEP, EventConfig.CHANCE_CAP)
@@ -344,7 +345,7 @@ end
 function EventScheduler:StartEvent(eventId, durationSeconds)
     cancelManualThread()
 
-    local started, err = startActiveEvent(eventId, durationSeconds or EventConfig.EVENT_DURATION, "admin")
+    local started, err = startActiveEvent(eventId, durationSeconds, "admin")
     if not started then
         return false, err
     end

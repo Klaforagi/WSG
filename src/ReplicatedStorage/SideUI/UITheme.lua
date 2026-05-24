@@ -78,6 +78,8 @@ UITheme.KNOB_COLOR    = Color3.fromRGB(255, 255, 255)
 -- ═══════════════════════════════════════════════════════════════════════════
 UITheme.BAR_BG       = Color3.fromRGB(35, 38, 58)
 UITheme.BAR_FILL     = UITheme.GOLD
+UITheme.HEALTH_BAR_LOBBY_FILL = Color3.fromRGB(230, 195, 50)
+UITheme.NEUTRAL_XP_FILL = UITheme.HEALTH_BAR_LOBBY_FILL
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Popup / overlay

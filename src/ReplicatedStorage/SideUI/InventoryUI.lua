@@ -15,7 +15,9 @@ local RunService         = game:GetService("RunService")
 local TweenService       = game:GetService("TweenService")
 
 local UITheme = require(script.Parent.UITheme)
-local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
+local ModulesFolder = ReplicatedStorage:WaitForChild("Modules")
+local LeftPanelStyle = require(ModulesFolder:WaitForChild("LeftPanelStyle"))
+local RarityStyles = require(ModulesFolder:WaitForChild("RarityStyles"))
 
 local INVENTORY_GRID_COLUMNS = 5
 
@@ -164,35 +166,11 @@ end)
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Rarity colour palette
 -- ═══════════════════════════════════════════════════════════════════════════
-local RARITY_COLORS = {
-    Common    = Color3.fromRGB(150, 150, 155),
-    Uncommon  = Color3.fromRGB(120, 200, 120),
-    Rare      = Color3.fromRGB(60, 140, 255),
-    Epic      = Color3.fromRGB(180, 60, 255),
-    Legendary = Color3.fromRGB(255, 180, 30),
-}
-local RARITY_BG_COLORS = {
-    Common    = Color3.fromRGB(42, 44, 55),
-    Uncommon  = Color3.fromRGB(22, 48, 36),
-    Rare      = Color3.fromRGB(22, 38, 68),
-    Epic      = Color3.fromRGB(46, 22, 65),
-    Legendary = Color3.fromRGB(58, 46, 18),
-}
+local RARITY_COLORS = RarityStyles.Colors
+local RARITY_BG_COLORS = RarityStyles.BgColors
 -- Vivid full-card backgrounds for weapon inventory cards (reference style)
-local WEAPON_CARD_BG = {
-    Common    = Color3.fromRGB(105, 110, 120),
-    Uncommon  = Color3.fromRGB(56, 131, 49),
-    Rare      = Color3.fromRGB(45, 90, 175),
-    Epic      = Color3.fromRGB(114, 38, 176),
-    Legendary = Color3.fromRGB(195, 150, 25),
-}
-local WEAPON_CARD_BORDER = {
-    Common    = Color3.fromRGB(70, 75, 82),
-    Uncommon  = Color3.fromRGB(60, 110, 80),
-    Rare      = Color3.fromRGB(30, 62, 125),
-    Epic      = Color3.fromRGB(70, 30, 90),
-    Legendary = Color3.fromRGB(140, 108, 16),
-}
+local WEAPON_CARD_BG = RarityStyles.WeaponCardBg
+local WEAPON_CARD_BORDER = RarityStyles.WeaponCardBorder
 
 local TextService = game:GetService("TextService")
 
@@ -3551,26 +3529,24 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardIconGlyph.ZIndex = 3
                 addTextOutline(cardIconGlyph, 0.2, 1.4)
 
-                local durationBadge = Instance.new("TextLabel", card)
-                durationBadge.Name = "DurationBadge"
-                durationBadge.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.36)
-                durationBadge.Font = Enum.Font.GothamBold
-                durationBadge.TextColor3 = WHITE
-                durationBadge.TextSize = math.max(10, math.floor(px(11)))
-                durationBadge.TextXAlignment = Enum.TextXAlignment.Center
-                durationBadge.Size = UDim2.new(0, px(42), 0, px(18))
-                durationBadge.AnchorPoint = Vector2.new(1, 0)
-                durationBadge.Position = UDim2.new(1, -px(5), 0, px(27))
-                if def.Kind == "potion" then
-                    local badgeText = def.BadgeText or def.IconGlyph
-                    durationBadge.Text = (type(badgeText) == "string" and badgeText ~= "" and badgeText) or "POTION"
-                else
+                -- Duration/type badge: only shown for boost cards (not potions)
+                if def.Kind ~= "potion" then
+                    local durationBadge = Instance.new("TextLabel", card)
+                    durationBadge.Name = "DurationBadge"
+                    durationBadge.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.36)
+                    durationBadge.Font = Enum.Font.GothamBold
+                    durationBadge.TextColor3 = WHITE
+                    durationBadge.TextSize = math.max(10, math.floor(px(11)))
+                    durationBadge.TextXAlignment = Enum.TextXAlignment.Center
+                    durationBadge.Size = UDim2.new(0, px(42), 0, px(18))
+                    durationBadge.AnchorPoint = Vector2.new(1, 0)
+                    durationBadge.Position = UDim2.new(1, -px(5), 0, px(27))
                     durationBadge.Text = ((def.DurationSeconds or 0) > 0) and (tostring(math.floor((def.DurationSeconds or 0) / 60)) .. "m") or "BOOST"
+                    durationBadge.ZIndex = 4
+                    Instance.new("UICorner", durationBadge).CornerRadius = UDim.new(0, px(6))
+                    local durationStroke = Instance.new("UIStroke", durationBadge)
+                    durationStroke.Color = iconColor; durationStroke.Thickness = 1; durationStroke.Transparency = 0.45
                 end
-                durationBadge.ZIndex = 4
-                Instance.new("UICorner", durationBadge).CornerRadius = UDim.new(0, px(6))
-                local durationStroke = Instance.new("UIStroke", durationBadge)
-                durationStroke.Color = iconColor; durationStroke.Thickness = 1; durationStroke.Transparency = 0.45
 
                 -- Status / owned count label (bottom of card)
                 local statusPill = Instance.new("Frame", card)
@@ -4317,16 +4293,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
 
             do
+                -- Skin cards use a large preview area spanning most of the card body
+                -- (from just below the name to just above the rarity pill).
+                local iconTopY  = INV_CARD.NameY + INV_CARD.NameHeight + px(4)
+                local iconBotPad = INV_CARD.Line2OffBottom + INV_CARD.Line2Height + px(4)
+
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
                 iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, skinColor, isDefault and 0.06 or 0.26)
-                iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
                 iconArea.AnchorPoint = Vector2.new(0.5, 0)
-                iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
+                iconArea.Position = UDim2.new(0.5, 0, 0, iconTopY)
+                iconArea.Size = UDim2.new(0.86, 0, 1, -(iconTopY + iconBotPad))
                 iconArea.BorderSizePixel = 0
                 Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
                 addIconWellHighlight(iconArea, accentColor)
 
+                -- Fallback emoji (shown only when no preview is available)
                 local cardIcon = Instance.new("TextLabel", iconArea)
                 cardIcon.Name = "Icon"
                 cardIcon.BackgroundTransparency = 1
@@ -4334,27 +4316,57 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardIcon.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
                 cardIcon.TextScaled = true
                 cardIcon.TextColor3 = isDefault and DIM_TEXT or skinColor
-                cardIcon.Size = UDim2.new(0.72, 0, 0.72, 0)
+                cardIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
                 cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-                cardIcon.Position = UDim2.new(0.5, 0, 0.46, 0)
+                cardIcon.Position = UDim2.fromScale(0.5, 0.5)
                 cardIcon.ZIndex = 3
                 addTextOutline(cardIcon, 0.22, 1.4)
 
+                -- 2D image (used only when an uploaded preview AssetId is configured)
                 local cardIconImage = Instance.new("ImageLabel", iconArea)
                 cardIconImage.Name = "IconImage"
                 cardIconImage.BackgroundTransparency = 1
-                cardIconImage.Size = UDim2.new(0.76, 0, 0.76, 0)
+                cardIconImage.Size = UDim2.fromScale(1, 1)
                 cardIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
-                cardIconImage.Position = UDim2.new(0.5, 0, 0.46, 0)
+                cardIconImage.Position = UDim2.fromScale(0.5, 0.5)
                 cardIconImage.ScaleType = Enum.ScaleType.Fit
                 cardIconImage.ZIndex = 4
                 cardIconImage.Visible = false
 
                 local skinImage = getSkinIconImage(def)
                 if skinImage then
+                    -- A real uploaded 2D preview image exists — use it.
                     cardIconImage.Image = skinImage
                     cardIconImage.Visible = true
                     cardIcon.Visible = false
+                elseif not isDefault and SkinPreview then
+                    -- No 2D image — render a live viewport preview (same as Cosmetics stall).
+                    local cardVP = Instance.new("ViewportFrame", iconArea)
+                    cardVP.Name = "SkinCardViewport"
+                    cardVP.BackgroundColor3 = iconArea.BackgroundColor3
+                    cardVP.BackgroundTransparency = 0
+                    cardVP.Size = UDim2.fromScale(1, 1)
+                    cardVP.Position = UDim2.fromScale(0, 0)
+                    cardVP.Ambient = Color3.fromRGB(190, 190, 200)
+                    cardVP.LightColor = Color3.new(1, 1, 1)
+                    cardVP.LightDirection = Vector3.new(0, -1, -1)
+                    cardVP.ZIndex = 4
+                    cardVP.BorderSizePixel = 0
+                    Instance.new("UICorner", cardVP).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+                    local vpOk, vpRendered = pcall(function()
+                        if type(SkinPreview.RenderSkinPreview) == "function" then
+                            return SkinPreview.RenderSkinPreview(cardVP, skinId, {
+                                mode = "Card",
+                                showHelm = true,
+                            })
+                        end
+                        return SkinPreview.Update(cardVP, skinId, true)
+                    end)
+                    if vpOk and vpRendered ~= false then
+                        cardIcon.Visible = false
+                    else
+                        cardVP:Destroy()
+                    end
                 end
 
                 local swatchWrap = Instance.new("Frame", iconArea)
@@ -4363,7 +4375,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 swatchWrap.BorderSizePixel = 0
                 swatchWrap.Size = UDim2.new(0.62, 0, 0, px(8))
                 swatchWrap.AnchorPoint = Vector2.new(0.5, 1)
-                swatchWrap.Position = UDim2.new(0.5, 0, 0.92, 0)
+                swatchWrap.Position = UDim2.new(0.5, 0, 1, -px(2))
                 swatchWrap.ZIndex = 4
                 Instance.new("UICorner", swatchWrap).CornerRadius = UDim.new(0.5, 0)
                 Instance.new("UIGradient", swatchWrap).Color = ColorSequence.new(skinColor, accentColor)
@@ -5159,33 +5171,29 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         local EMOTE_SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 8
-        local EMOTE_GLYPHS = {
-            wave = "\u{1F44B}",
-            dance = "\u{1F57A}",
-            headless = "\u{1F480}",
-            rat_dance = "\u{1F400}",
-            floss = "\u{1F57A}",
-            dab = "DAB",
-            macarena = "\u{1F483}",
-            ride_the_pony = "\u{1F434}",
-            the_robot = "\u{1F916}",
-            i_want_money = "\u{1F4B0}",
-            take_the_l = "L",
-        }
 
         local function getEmoteIconImage(def)
-            if type(def) ~= "table" then return nil end
-            if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then return def.IconAssetId end
-            local key = def.IconKey
-            if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
-                local image = AssetCodesGlobal.Get(key)
-                if type(image) == "string" and #image > 0 then return image end
+            if EmoteConfig and type(EmoteConfig.GetIconImage) == "function" then
+                local ok, image = pcall(function()
+                    return EmoteConfig.GetIconImage(def, AssetCodesGlobal)
+                end)
+                if ok and type(image) == "string" and image ~= "" then
+                    return image
+                end
             end
             return nil
         end
 
-        local function getEmoteGlyph(emoteId)
-            return EMOTE_GLYPHS[emoteId] or "\u{1F3AD}"
+        local function getEmoteGlyph(def)
+            if EmoteConfig and type(EmoteConfig.GetIconText) == "function" then
+                local ok, text = pcall(function()
+                    return EmoteConfig.GetIconText(def, true)
+                end)
+                if ok and type(text) == "string" and text ~= "" then
+                    return text
+                end
+            end
+            return "\u{1F3AD}"
         end
 
         local allEmoteDefs = EmoteConfig and EmoteConfig.GetAll() or {}

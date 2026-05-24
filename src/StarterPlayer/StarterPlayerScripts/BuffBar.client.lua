@@ -1015,9 +1015,6 @@ local function syncEvent(active, eventId, endTime)
         else
             def.Description = eventDef.Description or def.Description
         end
-        def.IconKey = eventDef.IconKey or def.IconKey
-        def.IconAssetId = eventDef.IconAssetId or def.IconAssetId
-        def.IconColor = eventDef.IconColor or def.IconColor
     end
     upsertEntry("event", def, { expiresAt = expiresAt, timeKind = "server" })
 end

@@ -85,6 +85,8 @@ SkinDefinitions.Skins = {
         IsDefault       = false,
         ApplicationType = "ReplacementModel", -- uses ServerStorage.Skins.Goblin
         TemplateName    = "Goblin",
+        IconKey         = "GoblinPreview",
+        PreviewImageKey = "GoblinPreview",
     },
 
     ---------------------------------------------------------------------------

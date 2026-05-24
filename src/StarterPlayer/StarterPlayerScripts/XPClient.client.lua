@@ -22,6 +22,15 @@ local XP_LevelUp = remotes:WaitForChild("XP_LevelUp")
 local AssetCodes = nil
 pcall(function() AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes", 5)) end)
 
+local UITheme = nil
+pcall(function()
+    local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI", 5)
+    local themeModule = sideUIFolder and sideUIFolder:WaitForChild("UITheme", 5)
+    if themeModule and themeModule:IsA("ModuleScript") then
+        UITheme = require(themeModule)
+    end
+end)
+
 --------------------------------------------------------------------------------
 -- STYLE CONSTANTS
 --------------------------------------------------------------------------------
@@ -43,6 +52,8 @@ local COLOR_TRACK_BASE  = Color3.fromRGB(9, 12, 24)    -- deepest background beh
 local COLOR_BAR_STROKE  = Color3.fromRGB(255, 215, 80) -- GOLD stroke
 local COLOR_FILL_LEFT   = Color3.fromRGB(54, 144, 255) -- blue XP fill
 local COLOR_FILL_RIGHT  = Color3.fromRGB(124, 196, 255)
+local COLOR_RED_TEAM_FALLBACK = Color3.fromRGB(182, 34, 34)
+local COLOR_NEUTRAL_XP = (UITheme and (UITheme.NEUTRAL_XP_FILL or UITheme.HEALTH_BAR_LOBBY_FILL or UITheme.BAR_FILL or UITheme.GOLD)) or Color3.fromRGB(230, 195, 50)
 local COLOR_LABEL       = Color3.fromRGB(255, 215, 80) -- gold labels
 local COLOR_POPUP       = Color3.fromRGB(255, 215, 80)
 local COLOR_LEVELUP     = Color3.fromRGB(255, 235, 120)
@@ -300,7 +311,7 @@ end
 local lagFill -- forward declaration; assigned in UI setup below
 
 local function setBarTint(color)
-    if not color then color = COLOR_FILL_LEFT end
+    if not color then color = COLOR_NEUTRAL_XP end
     local activeFillColor = color:Lerp(Color3.new(0,0,0), 0.12)
     local light = lighterColor(color, 0.27)
     fill.BackgroundColor3 = activeFillColor
@@ -314,28 +325,34 @@ local function setBarTint(color)
 end
 
 -- react when local player's team changes (and set initial tint)
-local function teamColorOrNil(team)
+local function canonicalXPTeamName(team)
     if not team then return nil end
     local name = tostring(team.Name):lower()
-    if string.find(name, "neutral") then return nil end
-    if team.TeamColor then return team.TeamColor.Color end
+    if name == "" or name == "neutral" or name == "lobby" or name == "spectator" then return nil end
+    if name == "blue" or name == "knight" or name == "knights" then return "Blue" end
+    if name == "red" or name == "berserker" or name == "berserkers" or name == "barbarian" or name == "barbarians" then return "Red" end
     return nil
 end
 
-local initial = teamColorOrNil(player.Team)
-if initial then
-    setBarTint(initial)
-else
-    setBarTint(COLOR_FILL_LEFT)
+local function getXPTeamTint(team)
+    local canonicalName = canonicalXPTeamName(team)
+    if canonicalName == "Blue" then
+        return (team and team.TeamColor and team.TeamColor.Color) or COLOR_FILL_LEFT
+    elseif canonicalName == "Red" then
+        return (team and team.TeamColor and team.TeamColor.Color) or COLOR_RED_TEAM_FALLBACK
+    end
+    return COLOR_NEUTRAL_XP
 end
 
-player:GetPropertyChangedSignal("Team"):Connect(function()
-    local tc = teamColorOrNil(player.Team)
-    if tc then
-        setBarTint(tc)
-    else
-        setBarTint(COLOR_FILL_LEFT)
-    end
+local function refreshXPBarTint()
+    setBarTint(getXPTeamTint(player.Team))
+end
+
+refreshXPBarTint()
+
+player:GetPropertyChangedSignal("Team"):Connect(refreshXPBarTint)
+player.CharacterAdded:Connect(function()
+    task.defer(refreshXPBarTint)
 end)
 
 --------------------------------------------------------------------------------
@@ -388,11 +405,12 @@ lagFill.Name = "LagFill"
 lagFill.AnchorPoint = Vector2.new(0, 0.5)
 lagFill.Position = UDim2.new(0, 0, 0.5, 0)
 lagFill.Size = UDim2.new(0, 0, 1, 0)
-lagFill.BackgroundColor3 = lighterColor(COLOR_FILL_LEFT, 0.27)
+lagFill.BackgroundColor3 = lighterColor(COLOR_NEUTRAL_XP, 0.27)
 lagFill.BorderSizePixel = 0
 lagFill.ZIndex = 2
 lagFill.Parent = fillInset
 Instance.new("UICorner", lagFill).CornerRadius = UDim.new(0, 5)
+refreshXPBarTint()
 
 levelUpLabel.Text = ""
 levelUpLabel.TextTransparency = 1
@@ -597,6 +615,7 @@ local pendingFraction = nil
 --------------------------------------------------------------------------------
 local function onXPUpdate(payload)
     if not payload then return end
+    refreshXPBarTint()
 
     local newLevel = payload.newLevel or currentLevel
     local xp       = payload.xp or 0

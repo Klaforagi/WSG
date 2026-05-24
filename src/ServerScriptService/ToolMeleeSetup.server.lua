@@ -72,14 +72,6 @@ pcall(function()
     end
 end)
 
-local PotionService
-pcall(function()
-    local mod = ServerScriptService:FindFirstChild("HealthPotionService")
-    if mod and mod:IsA("ModuleScript") then
-        PotionService = require(mod)
-    end
-end)
-
 -- Shared weapon switch lock
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
 local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
@@ -450,18 +442,6 @@ local function getMeleeDamageUpgradeMultiplier(player)
     return 1.0
 end
 
-local function applyOutgoingDamageModifiers(player, damage, context)
-    if PotionService and type(PotionService.ApplyOutgoingDamageModifiers) == "function" then
-        local ok, modifiedDamage = pcall(function()
-            return PotionService:ApplyOutgoingDamageModifiers(player, damage, context)
-        end)
-        if ok and type(modifiedDamage) == "number" then
-            return modifiedDamage
-        end
-    end
-    return damage
-end
-
 local function rollUniformIntegerDamage(baseDamage, minRoll, maxRoll)
     local minDamage = math.ceil(baseDamage * minRoll)
     local maxDamage = math.ceil(baseDamage * maxRoll)
@@ -513,12 +493,6 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
             damage = damage + masteryBonus
         end
     end
-    damage = applyOutgoingDamageModifiers(player, damage, {
-        source = "melee",
-        weaponName = weaponName,
-        weaponInstanceId = weaponInstanceId,
-        victimModel = victimModel,
-    })
     damage = math.max(0, math.round(damage))
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)

@@ -108,8 +108,10 @@ local sideUIFolder = ReplicatedStorage:WaitForChild("SideUI", 10)
 local CosmeticsCatalog = safeRequire(ReplicatedStorage, "CosmeticsCatalog", 10)
 local SkinDefs = safeRequire(ReplicatedStorage, "SkinDefinitions", 10)
 local AssetCodes = safeRequire(ReplicatedStorage, "AssetCodes", 5)
+local EmoteConfig = safeRequire(sideUIFolder, "EmoteConfig", 10)
 local SkinThumbnailPreview = modulesFolder and safeRequire(modulesFolder, "StandaloneSkinPreview", 10)
 local CosmeticPreviewController = safeRequire(sideUIFolder, "CosmeticPreviewController", 10)
+local RarityStyles = modulesFolder and safeRequire(modulesFolder, "RarityStyles", 5)
 
 local STYLE = {
 	MainPanelPadding = 18,
@@ -119,28 +121,31 @@ local STYLE = {
 	RightPreviewMinWidth = 246,
 	RightPreviewMaxWidth = 340,
 	PreviewViewportHeight = 280,
-	SkinCardWidth = 148,
-	SkinCardHeight = 178,
-	CompactCosmeticCardWidth = 200,
-	CompactCosmeticCardHeight = 120,
+	SkinCardWidth = 156,
+	SkinCardHeight = 188,
+	CompactCosmeticCardWidth = 218,
+	CompactCosmeticCardHeight = 132,
+	CompactIconSize = 72,
+	CompactHeaderHeight = 82,
+	SkinHeaderHeight = 66,
 	HeaderTextSize = 30,
 	CardTitleTextSize = 19,
 	SkinCardTitleTextSize = 18,
 	CardSubtitleTextSize = 15,
 	CardButtonTextSize = 17,
-	SectionHeaderTextSize = 24,
+	SectionHeaderTextSize = 25,
 	DetailTitleTextSize = 26,
 	DetailDescriptionTextSize = 17,
 	ButtonTextSize = 19,
-	CompactCardPadding = 10,
-	CompactButtonHeight = 32,
+	CompactCardPadding = 12,
+	CompactButtonHeight = 38,
 	CornerRadius = 14,
 	PanelCornerRadius = 22,
 	StrokeTransparency = 0.22,
 	HeaderHeight = 60,
-	BottomDetailHeight = 128,
+	BottomDetailHeight = 136,
 	BodyGap = 14,
-	CardGap = 10,
+	CardGap = 12,
 }
 
 local COLORS = {
@@ -150,10 +155,16 @@ local COLORS = {
 	Surface = Color3.fromRGB(12, 16, 27),
 	SurfaceSoft = Color3.fromRGB(20, 26, 42),
 	Card = Color3.fromRGB(27, 34, 51),
+	CardOwned = Color3.fromRGB(31, 42, 62),
+	CardPurchasable = Color3.fromRGB(48, 40, 27),
 	CardHover = Color3.fromRGB(34, 43, 64),
 	CardSelected = Color3.fromRGB(38, 61, 73),
 	CardEquipped = Color3.fromRGB(28, 61, 49),
 	CardLocked = Color3.fromRGB(46, 50, 66),
+	PillOwned = Color3.fromRGB(45, 67, 91),
+	PillEquipped = Color3.fromRGB(36, 104, 67),
+	PillBuy = Color3.fromRGB(126, 88, 35),
+	PillLocked = Color3.fromRGB(57, 61, 75),
 	Stroke = Color3.fromRGB(115, 139, 199),
 	DimStroke = Color3.fromRGB(72, 88, 128),
 	Text = Color3.fromRGB(246, 248, 255),
@@ -170,12 +181,12 @@ local COLORS = {
 	Black = Color3.fromRGB(0, 0, 0),
 }
 
-local RARITY_COLORS = {
-	Common = Color3.fromRGB(190, 198, 214),
-	Uncommon = Color3.fromRGB(111, 220, 139),
-	Rare = Color3.fromRGB(95, 169, 255),
-	Epic = Color3.fromRGB(191, 125, 255),
-	Legendary = Color3.fromRGB(255, 193, 83),
+local RARITY_COLORS = (RarityStyles and RarityStyles.Colors) or {
+	Common = Color3.fromRGB(150, 150, 155),
+	Uncommon = Color3.fromRGB(120, 200, 120),
+	Rare = Color3.fromRGB(60, 140, 255),
+	Epic = Color3.fromRGB(180, 60, 255),
+	Legendary = Color3.fromRGB(255, 180, 30),
 }
 
 local SECTION_META = {
@@ -228,7 +239,11 @@ local function getAsset(key)
 end
 
 local function getRarityColor(item)
-	return RARITY_COLORS[item and item.Rarity or "Common"] or RARITY_COLORS.Common
+	local rarity = type(item) == "table" and item.Rarity or item
+	if RarityStyles and type(RarityStyles.GetColor) == "function" then
+		return RarityStyles.GetColor(rarity or "Common")
+	end
+	return RARITY_COLORS[rarity or "Common"] or RARITY_COLORS.Common
 end
 
 local function mixColor(a, b, alpha)
@@ -267,24 +282,45 @@ local function normalizeImageAsset(asset)
 	return nil
 end
 
-local function resolveEmoteIconAsset(item)
+local function resolveEmoteIconData(item)
+    if EmoteConfig and type(EmoteConfig.GetIconData) == "function" then
+        local ok, iconData = pcall(function()
+            return EmoteConfig.GetIconData(item, AssetCodes)
+        end)
+        if ok and type(iconData) == "table" and type(iconData.Value) == "string" and iconData.Value ~= "" then
+            return iconData
+        end
+    end
+
 	local source = item and item.Source
 	local directCandidates = {
 		item and item.Icon,
 		item and item.IconImage,
+		item and item.IconAsset,
 		item and item.Image,
+		item and item.ImageId,
+		item and item.AssetId,
 		item and item.Thumbnail,
 		item and item.IconAssetId,
 		source and source.Icon,
 		source and source.IconImage,
+		source and source.IconAsset,
 		source and source.Image,
+		source and source.ImageId,
+		source and source.AssetId,
 		source and source.Thumbnail,
 		source and source.IconAssetId,
 	}
 	for _, candidate in ipairs(directCandidates) do
 		local asset = normalizeImageAsset(candidate)
 		if asset then
-			return asset
+			return { Kind = "Image", Value = asset, IsFallback = false }
+		end
+		if type(candidate) == "string" then
+			local keyedAsset = normalizeImageAsset(getAsset(candidate))
+			if keyedAsset then
+				return { Kind = "Image", Value = keyedAsset, IsFallback = false }
+			end
 		end
 	end
 
@@ -293,18 +329,48 @@ local function resolveEmoteIconAsset(item)
 		item and item.IconImageKey,
 		item and item.ImageKey,
 		item and item.ThumbnailKey,
+		item and item.DisplayIconKey,
 		source and source.IconKey,
 		source and source.IconImageKey,
 		source and source.ImageKey,
 		source and source.ThumbnailKey,
+		source and source.DisplayIconKey,
 	}
 	for _, key in ipairs(keyCandidates) do
 		local asset = normalizeImageAsset(getAsset(key))
 		if asset then
-			return asset
+			return { Kind = "Image", Value = asset, IsFallback = false }
 		end
 	end
-	return nil
+
+	local textCandidates = {
+		item and item.Emoji,
+		item and item.DisplayIcon,
+		item and item.IconGlyph,
+		item and item.IconText,
+		item and item.Icon,
+		item and item.IconImage,
+		item and item.Image,
+		item and item.Thumbnail,
+		source and source.Emoji,
+		source and source.DisplayIcon,
+		source and source.IconGlyph,
+		source and source.IconText,
+		source and source.Icon,
+		source and source.IconImage,
+		source and source.Image,
+		source and source.Thumbnail,
+	}
+	for _, candidate in ipairs(textCandidates) do
+		if type(candidate) == "string" then
+			local text = candidate:match("^%s*(.-)%s*$")
+			if text and text ~= "" and not normalizeImageAsset(text) then
+				return { Kind = "Text", Value = text, IsFallback = false }
+			end
+		end
+	end
+
+	return { Kind = "Text", Value = "\u{1F3AD}", IsFallback = true }
 end
 
 local function createGlyphPart(parent, name, size, position, color, radius, rotation, anchorPoint)
@@ -341,23 +407,23 @@ local function createFallbackEmoteGlyph(parent, item, accentColor)
 	root.Size = UDim2.fromScale(1, 1)
 	root.Parent = parent
 
-	local glow = createGlyphPart(root, "Glow", UDim2.fromOffset(px(40), px(40)), UDim2.fromScale(0.5, 0.52), mixColor(COLORS.Surface, color, 0.14), px(15), 0)
+	local glow = createGlyphPart(root, "Glow", UDim2.fromOffset(px(48), px(48)), UDim2.fromScale(0.5, 0.52), mixColor(COLORS.Surface, color, 0.14), px(16), 0)
 	glow.BackgroundTransparency = 0.1
 
 	if pose.hideHead then
-		local collar = createGlyphPart(root, "HeadlessCollar", UDim2.fromOffset(px(15), px(4)), UDim2.new(0.5, 0, 0, px(19)), color, px(4), 0)
+		local collar = createGlyphPart(root, "HeadlessCollar", UDim2.fromOffset(px(18), px(5)), UDim2.new(0.5, 0, 0, px(21)), color, px(4), 0)
 		collar.BackgroundTransparency = 0.08
 	else
-		createGlyphPart(root, "Head", UDim2.fromOffset(px(11), px(11)), UDim2.new(0.5, px(pose.headX or 0), 0, px(15)), COLORS.Text, px(8), 0)
+		createGlyphPart(root, "Head", UDim2.fromOffset(px(13), px(13)), UDim2.new(0.5, px(pose.headX or 0), 0, px(17)), COLORS.Text, px(8), 0)
 	end
 
-	createGlyphPart(root, "Torso", UDim2.fromOffset(px(7), px(16)), UDim2.new(0.5, 0, 0, px(29)), softColor, px(4), pose.torsoRotation or 0)
-	createGlyphPart(root, "LeftArm", UDim2.fromOffset(px(4), px(22)), UDim2.new(0, px(pose.leftArmX or 21), 0, px(pose.leftArmY or 28)), color, px(3), pose.leftArmRotation or -36)
-	createGlyphPart(root, "RightArm", UDim2.fromOffset(px(4), px(22)), UDim2.new(0, px(pose.rightArmX or 35), 0, px(pose.rightArmY or 28)), color, px(3), pose.rightArmRotation or 36)
-	createGlyphPart(root, "LeftLeg", UDim2.fromOffset(px(4), px(17)), UDim2.new(0, px(25), 0, px(42)), COLORS.Muted, px(3), pose.leftLegRotation or -18)
-	createGlyphPart(root, "RightLeg", UDim2.fromOffset(px(4), px(17)), UDim2.new(0, px(32), 0, px(42)), COLORS.Muted, px(3), pose.rightLegRotation or 18)
+	createGlyphPart(root, "Torso", UDim2.fromOffset(px(9), px(19)), UDim2.new(0.5, 0, 0, px(33)), softColor, px(4), pose.torsoRotation or 0)
+	createGlyphPart(root, "LeftArm", UDim2.fromOffset(px(5), px(26)), UDim2.new(0, px(pose.leftArmX or 24), 0, px((pose.leftArmY or 28) + 3)), color, px(3), pose.leftArmRotation or -36)
+	createGlyphPart(root, "RightArm", UDim2.fromOffset(px(5), px(26)), UDim2.new(0, px(pose.rightArmX or 40), 0, px((pose.rightArmY or 28) + 3)), color, px(3), pose.rightArmRotation or 36)
+	createGlyphPart(root, "LeftLeg", UDim2.fromOffset(px(5), px(20)), UDim2.new(0, px(28), 0, px(50)), COLORS.Muted, px(3), pose.leftLegRotation or -18)
+	createGlyphPart(root, "RightLeg", UDim2.fromOffset(px(5), px(20)), UDim2.new(0, px(36), 0, px(50)), COLORS.Muted, px(3), pose.rightLegRotation or 18)
 
-	local motion = createGlyphPart(root, "MotionLine", UDim2.fromOffset(px(24), px(3)), UDim2.new(0.5, 0, 1, -px(8)), color, px(3), -8)
+	local motion = createGlyphPart(root, "MotionLine", UDim2.fromOffset(px(30), px(4)), UDim2.new(0.5, 0, 1, -px(9)), color, px(3), -8)
 	motion.BackgroundTransparency = 0.18
 end
 
@@ -368,6 +434,127 @@ local function getCategoryLabel(category)
 		return "Emote"
 	end
 	return "Skin"
+end
+
+local function getNormalizedRarity(itemOrRarity)
+	local rarity = type(itemOrRarity) == "table" and itemOrRarity.Rarity or itemOrRarity
+	if RarityStyles and type(RarityStyles.Normalize) == "function" then
+		return RarityStyles.Normalize(rarity or "Common")
+	end
+	return type(rarity) == "string" and rarity ~= "" and rarity or "Common"
+end
+
+local function addCosmeticTextOutline(label, transparency, thickness)
+	if RarityStyles and type(RarityStyles.AddTextOutline) == "function" then
+		return RarityStyles.AddTextOutline(label, transparency, thickness)
+	end
+	local outline = Instance.new("UIStroke")
+	outline.Name = "RarityTextOutline"
+	outline.Color = COLORS.Black
+	outline.Thickness = thickness or 1
+	outline.Transparency = transparency or 0.55
+	outline.Parent = label
+	return outline
+end
+
+local function applyCardTitleStyle(label, textSize)
+	label.Font = Enum.Font.GothamBold
+	pcall(function()
+		label.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+	end)
+	label.RichText = false
+	label.TextColor3 = COLORS.Text
+	label.TextScaled = false
+	label.TextSize = px(textSize)
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	addCosmeticTextOutline(label, 0.64, 1)
+end
+
+local function applyRarityLabelStyle(label, rarity)
+	local normalized = getNormalizedRarity(rarity)
+	label.Font = Enum.Font.GothamBold
+	pcall(function()
+		label.FontFace = Font.fromEnum(Enum.Font.GothamBold)
+	end)
+	label.RichText = false
+	label.Text = normalized
+	label.TextScaled = false
+	label.TextColor3 = getRarityColor(normalized)
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	if RarityStyles and type(RarityStyles.ApplyToText) == "function" then
+		RarityStyles.ApplyToText(label, normalized, {
+			font = Enum.Font.GothamBold,
+			outlineTransparency = 0.3,
+			outlineThickness = 1,
+		})
+	else
+		addCosmeticTextOutline(label, 0.3, 1)
+	end
+end
+
+local function getMetadataTypeWidth(category)
+	if category == "Emote" then
+		return px(62)
+	elseif category == "Trail" then
+		return px(52)
+	end
+	return px(44)
+end
+
+local function createMetadataRow(parent, category, rarity, position, size)
+	local row = Instance.new("Frame")
+	row.Name = "MetadataRow"
+	row.BackgroundTransparency = 1
+	row.ClipsDescendants = true
+	row.Position = position
+	row.Size = size
+	row.Parent = parent
+
+	local typeWidth = getMetadataTypeWidth(category)
+	local typeLabel = Instance.new("TextLabel")
+	typeLabel.Name = "TypeLabel"
+	typeLabel.BackgroundTransparency = 1
+	typeLabel.Position = UDim2.fromOffset(0, 0)
+	typeLabel.Size = UDim2.new(0, typeWidth, 1, 0)
+	typeLabel.Font = Enum.Font.GothamBold
+	typeLabel.RichText = false
+	typeLabel.Text = getCategoryLabel(category) .. " ·"
+	typeLabel.TextColor3 = COLORS.Muted
+	typeLabel.TextSize = px(STYLE.CardSubtitleTextSize)
+	typeLabel.TextScaled = false
+	typeLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	typeLabel.TextXAlignment = Enum.TextXAlignment.Left
+	typeLabel.TextYAlignment = Enum.TextYAlignment.Center
+	typeLabel.Parent = row
+
+	local rarityLabel = Instance.new("TextLabel")
+	rarityLabel.Name = "RarityLabel"
+	rarityLabel.BackgroundTransparency = 1
+	rarityLabel.Position = UDim2.new(0, typeWidth + px(4), 0, 0)
+	rarityLabel.Size = UDim2.new(1, -(typeWidth + px(4)), 1, 0)
+	rarityLabel.TextSize = px(STYLE.CardSubtitleTextSize)
+	rarityLabel.Parent = row
+	applyRarityLabelStyle(rarityLabel, rarity)
+
+	return row, typeLabel, rarityLabel
+end
+
+local function syncMetadataRow(record, item)
+	if record.typeLabel then
+		record.typeLabel.Text = getCategoryLabel(item.Category) .. " ·"
+		record.typeLabel.Size = UDim2.new(0, getMetadataTypeWidth(item.Category), 1, 0)
+	end
+	if record.rarityLabel then
+		local typeWidth = getMetadataTypeWidth(item.Category)
+		record.rarityLabel.Position = UDim2.new(0, typeWidth + px(4), 0, 0)
+		record.rarityLabel.Size = UDim2.new(1, -(typeWidth + px(4)), 1, 0)
+		record.rarityLabel.TextSize = px(STYLE.CardSubtitleTextSize)
+		applyRarityLabelStyle(record.rarityLabel, item.Rarity or "Common")
+	end
 end
 
 local function ensureRemotes()
@@ -490,7 +677,7 @@ local function createPriceButtonContent(button, iconAsset)
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "Icon"
 	icon.BackgroundTransparency = 1
-	icon.Size = UDim2.fromOffset(px(19), px(19))
+	icon.Size = UDim2.fromOffset(px(21), px(21))
 	icon.Image = iconAsset or ""
 	icon.ScaleType = Enum.ScaleType.Fit
 	icon.ZIndex = 7
@@ -504,11 +691,11 @@ local function createPriceButtonContent(button, iconAsset)
 	label.Font = Enum.Font.GothamBlack
 	label.Text = ""
 	label.TextColor3 = COLORS.Text
-	label.TextSize = px(16)
+	label.TextSize = px(17)
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.ZIndex = 7
 	label.Parent = content
-	addTextLimit(label, px(10), px(16))
+	addTextLimit(label, px(11), px(17))
 
 	local fallback = Instance.new("TextLabel")
 	fallback.Name = "Fallback"
@@ -523,7 +710,7 @@ local function createPriceButtonContent(button, iconAsset)
 	fallback.Visible = false
 	fallback.ZIndex = 7
 	fallback.Parent = button
-	addTextLimit(fallback, px(10), px(15))
+	addTextLimit(fallback, px(11), px(16))
 
 	return { content = content, icon = icon, label = label, fallback = fallback }
 end
@@ -874,7 +1061,7 @@ function SkinsStallUI.Create(parent, options)
 	previewHeader.Font = Enum.Font.GothamBlack
 	previewHeader.Text = "PREVIEW"
 	previewHeader.TextColor3 = COLORS.Muted
-	previewHeader.TextSize = px(14)
+	previewHeader.TextSize = px(15)
 	previewHeader.TextXAlignment = Enum.TextXAlignment.Left
 	previewHeader.Parent = previewPanel
 
@@ -886,12 +1073,12 @@ function SkinsStallUI.Create(parent, options)
 	previewName.Font = Enum.Font.FredokaOne
 	previewName.Text = "Select a cosmetic"
 	previewName.TextColor3 = COLORS.Text
-	previewName.TextSize = px(21)
-	previewName.TextScaled = true
+	previewName.TextSize = px(22)
+	previewName.TextScaled = false
 	previewName.TextTruncate = Enum.TextTruncate.AtEnd
 	previewName.TextXAlignment = Enum.TextXAlignment.Left
+	previewName.TextYAlignment = Enum.TextYAlignment.Center
 	previewName.Parent = previewPanel
-	addTextLimit(previewName, px(12), px(21))
 
 	local previewViewport = Instance.new("ViewportFrame")
 	previewViewport.Name = "PreviewViewport"
@@ -936,11 +1123,11 @@ function SkinsStallUI.Create(parent, options)
 	selectedName.Text = ""
 	selectedName.TextColor3 = COLORS.Text
 	selectedName.TextSize = px(STYLE.DetailTitleTextSize)
-	selectedName.TextScaled = true
+	selectedName.TextScaled = false
 	selectedName.TextTruncate = Enum.TextTruncate.AtEnd
 	selectedName.TextXAlignment = Enum.TextXAlignment.Left
+	selectedName.TextYAlignment = Enum.TextYAlignment.Center
 	selectedName.Parent = detailInfo
-	addTextLimit(selectedName, px(13), px(STYLE.DetailTitleTextSize))
 
 	local categoryPill = Instance.new("TextLabel")
 	categoryPill.Name = "CategoryPill"
@@ -971,16 +1158,20 @@ function SkinsStallUI.Create(parent, options)
 
 	local statusLabel = Instance.new("TextLabel")
 	statusLabel.Name = "StatusLabel"
-	statusLabel.BackgroundTransparency = 1
-	statusLabel.Position = UDim2.new(0, 0, 1, -px(22))
-	statusLabel.Size = UDim2.new(1, -px(18), 0, px(22))
-	statusLabel.Font = Enum.Font.GothamBold
+	statusLabel.BackgroundColor3 = COLORS.SurfaceSoft
+	statusLabel.BackgroundTransparency = 0.04
+	statusLabel.BorderSizePixel = 0
+	statusLabel.Position = UDim2.new(0, 0, 1, -px(30))
+	statusLabel.Size = UDim2.new(0, px(276), 0, px(30))
+	statusLabel.Font = Enum.Font.GothamBlack
 	statusLabel.Text = ""
 	statusLabel.TextColor3 = COLORS.Gold
-	statusLabel.TextSize = px(14)
-	statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+	statusLabel.TextSize = px(15)
+	statusLabel.TextXAlignment = Enum.TextXAlignment.Center
 	statusLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	statusLabel.Parent = detailInfo
+	applyCorners(statusLabel, px(10))
+	local statusLabelStroke = applyStroke(statusLabel, COLORS.DimStroke, 1, 0.32)
 
 	local keepHeadRow = Instance.new("Frame")
 	keepHeadRow.Name = "KeepHeadRow"
@@ -1193,27 +1384,98 @@ function SkinsStallUI.Create(parent, options)
 		return false
 	end
 
-	local function getStatusText(item)
-		if not item then
-			return ""
+	local function getItemVisualState(item)
+		local rarityColor = getRarityColor(item)
+		local price = tonumber(item and item.CoinPrice) or 0
+		local owned = isOwned(item)
+		local equipped = isEquipped(item)
+		local emoteSlot = item and item.Category == "Emote" and getEmoteSlot(item.Id) or nil
+		local robuxProductId = tonumber(item and item.RobuxProductId) or 0
+
+		local state = {
+			owned = owned,
+			equipped = equipped,
+			emoteSlot = emoteSlot,
+			showCoin = false,
+			statusText = "LOCKED",
+			detailText = "Locked",
+			textColor = COLORS.Muted,
+			cardColor = COLORS.CardLocked,
+			accentColor = COLORS.DimStroke,
+			strokeColor = COLORS.DimStroke,
+			pillColor = COLORS.PillLocked,
+			pillStrokeColor = COLORS.DimStroke,
+			pillStrokeTransparency = 0.34,
+			cardTransparency = 0,
+		}
+
+		if equipped then
+			state.statusText = emoteSlot and ("EQUIPPED - SLOT " .. tostring(emoteSlot)) or "EQUIPPED"
+			state.detailText = emoteSlot and ("Equipped in emote slot " .. tostring(emoteSlot)) or "Equipped"
+			state.textColor = COLORS.Text
+			state.cardColor = COLORS.CardEquipped
+			state.accentColor = COLORS.Green
+			state.strokeColor = COLORS.Green
+			state.pillColor = COLORS.PillEquipped
+			state.pillStrokeColor = COLORS.Green
+			state.pillStrokeTransparency = 0.12
+			return state
 		end
-		if isEquipped(item) then
-			if item.Category == "Emote" then
-				return "Equipped: Slot " .. tostring(getEmoteSlot(item.Id) or "")
-			end
-			return "Equipped"
+
+		if owned then
+			local slotsFull = item and item.Category == "Emote" and countEquippedEmotes() >= emoteSlotCount
+			state.statusText = slotsFull and "SLOTS FULL" or "EQUIP"
+			state.detailText = slotsFull and "Owned - all emote slots are full" or "Owned - ready to equip"
+			state.textColor = COLORS.Text
+			state.cardColor = COLORS.CardOwned
+			state.accentColor = COLORS.Blue
+			state.strokeColor = mixColor(COLORS.Blue, rarityColor, 0.35)
+			state.pillColor = COLORS.PillOwned
+			state.pillStrokeColor = COLORS.Blue
+			state.pillStrokeTransparency = slotsFull and 0.42 or 0.24
+			return state
 		end
-		if isOwned(item) then
-			return item.Category == "Trail" and "Owned" or "Owned - ready to equip"
-		end
-		local price = tonumber(item.CoinPrice) or 0
+
 		if price > 0 then
-			return "Price: " .. formatNumber(price) .. " coins"
+			state.statusText = "BUY " .. formatCompactPrice(price)
+			state.detailText = "Costs " .. formatNumber(price) .. " coins"
+			state.textColor = COLORS.Text
+			state.cardColor = COLORS.CardPurchasable
+			state.accentColor = COLORS.Gold
+			state.strokeColor = COLORS.Gold
+			state.pillColor = COLORS.PillBuy
+			state.pillStrokeColor = COLORS.Gold
+			state.pillStrokeTransparency = 0.12
+			state.showCoin = true
+			return state
 		end
-		if item.IsFree then
-			return "Free"
+
+		if item and item.IsFree then
+			state.statusText = "FREE"
+			state.detailText = "Free unlock"
+			state.textColor = COLORS.Text
+			state.cardColor = COLORS.CardPurchasable
+			state.accentColor = COLORS.Gold
+			state.strokeColor = COLORS.Gold
+			state.pillColor = COLORS.PillBuy
+			state.pillStrokeColor = COLORS.Gold
+			state.pillStrokeTransparency = 0.18
+			return state
 		end
-		return "Locked"
+
+		if robuxProductId > 0 then
+			state.statusText = "ROBUX"
+			state.detailText = "Robux purchase available"
+			state.textColor = COLORS.Text
+			state.cardColor = COLORS.CardPurchasable
+			state.accentColor = COLORS.Blue
+			state.strokeColor = COLORS.Blue
+			state.pillColor = COLORS.PillOwned
+			state.pillStrokeColor = COLORS.Blue
+			state.pillStrokeTransparency = 0.2
+		end
+
+		return state
 	end
 
 	local function syncBalance()
@@ -1369,40 +1631,46 @@ function SkinsStallUI.Create(parent, options)
 
 	local function syncCard(record)
 		local item = record.item
-		local owned = isOwned(item)
-		local equipped = isEquipped(item)
 		local selected = selectedCategory == item.Category and selectedId == item.Id
-		local rarityColor = getRarityColor(item)
+		local visualState = getItemVisualState(item)
 
 		record.nameLabel.Text = item.DisplayName or item.Id
-		record.stroke.Color = selected and COLORS.Gold or (equipped and COLORS.Green or rarityColor)
-		record.stroke.Thickness = selected and 2.2 or (equipped and 1.8 or 1.2)
-		record.stroke.Transparency = selected and 0 or (equipped and 0.14 or 0.34)
-		record.card.BackgroundColor3 = selected and COLORS.CardSelected or (equipped and COLORS.CardEquipped or (owned and COLORS.Card or COLORS.CardLocked))
+		syncMetadataRow(record, item)
+		record.stroke.Color = visualState.strokeColor
+		record.stroke.Thickness = visualState.equipped and 1.8 or 1.2
+		record.stroke.Transparency = visualState.equipped and 0.14 or 0.32
+		if record.selectedStroke then
+			record.selectedStroke.Transparency = selected and 0.04 or 1
+		end
+		local cardColor = visualState.cardColor
+		if selected then
+			cardColor = mixColor(cardColor, COLORS.Gold, 0.12)
+		end
+		record.card.BackgroundColor3 = cardColor
+		record.card.BackgroundTransparency = visualState.cardTransparency or 0
 		if record.accentBar then
-			record.accentBar.BackgroundColor3 = equipped and COLORS.Green or rarityColor
+			record.accentBar.BackgroundColor3 = visualState.accentColor
 			record.accentBar.BackgroundTransparency = selected and 0 or 0.12
 		end
 
-		if equipped then
-			record.statusLabel.Text = item.Category == "Emote" and ("Slot " .. tostring(getEmoteSlot(item.Id) or "")) or "EQUIPPED"
-			record.statusLabel.TextColor3 = COLORS.Green
-		elseif owned then
-			record.statusLabel.Text = item.Category == "Trail" and "OWNED" or "EQUIP"
-			record.statusLabel.TextColor3 = COLORS.Text
-		else
-			local price = tonumber(item.CoinPrice) or 0
-			record.statusLabel.Text = price > 0 and formatCompactPrice(price) or (item.IsFree and "FREE" or "LOCKED")
-			record.statusLabel.TextColor3 = price > 0 and COLORS.Gold or COLORS.Muted
+		record.statusLabel.Text = visualState.statusText
+		record.statusLabel.TextColor3 = visualState.textColor
+		if record.statusPill then
+			record.statusPill.BackgroundColor3 = visualState.pillColor
+		end
+		if record.statusStroke then
+			record.statusStroke.Color = visualState.pillStrokeColor
+			record.statusStroke.Transparency = visualState.pillStrokeTransparency
 		end
 
 		if record.priceIcon then
-			local showIcon = not owned and not equipped and (tonumber(item.CoinPrice) or 0) > 0 and record.statusLabel.Text ~= "LOCKED"
+			local showIcon = visualState.showCoin == true
 			record.priceIcon.Visible = showIcon
 			if showIcon then
+				record.priceIcon.ImageTransparency = 0
 				record.statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-				record.statusLabel.Position = UDim2.new(0.5, px(10), 0.5, 0)
-				record.statusLabel.Size = UDim2.new(1, -px(36), 1, -px(4))
+				record.statusLabel.Position = UDim2.new(0.5, px(13), 0.5, 0)
+				record.statusLabel.Size = UDim2.new(1, -px(48), 1, -px(4))
 			else
 				record.statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 				record.statusLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -1434,8 +1702,12 @@ function SkinsStallUI.Create(parent, options)
 		categoryPill.Text = string.upper(getCategoryLabel(item.Category))
 		categoryPill.TextColor3 = rarityColor
 		categoryPillStroke.Color = rarityColor
-		statusLabel.Text = getStatusText(item)
-		statusLabel.TextColor3 = isEquipped(item) and COLORS.Green or ((tonumber(item.CoinPrice) or 0) > 0 and not isOwned(item) and COLORS.Gold or COLORS.Muted)
+		local visualState = getItemVisualState(item)
+		statusLabel.Text = visualState.statusText
+		statusLabel.TextColor3 = visualState.textColor
+		statusLabel.BackgroundColor3 = visualState.pillColor
+		statusLabelStroke.Color = visualState.pillStrokeColor
+		statusLabelStroke.Transparency = visualState.pillStrokeTransparency
 		keepHeadRow.Visible = item.Category == "Skin"
 		syncKeepHeadToggle()
 
@@ -1609,8 +1881,8 @@ function SkinsStallUI.Create(parent, options)
 			count = #(section.Items or {}),
 			cardWidth = isSkin and STYLE.SkinCardWidth or STYLE.CompactCosmeticCardWidth,
 			cardHeight = isSkin and STYLE.SkinCardHeight or STYLE.CompactCosmeticCardHeight,
-			minWidth = isSkin and 132 or 180,
-			minHeight = isSkin and 164 or 114,
+			minWidth = isSkin and 144 or 196,
+			minHeight = isSkin and 176 or 126,
 			maxColumns = isSkin and 5 or 4,
 		}
 		table.insert(sectionRecords, record)
@@ -1622,12 +1894,13 @@ function SkinsStallUI.Create(parent, options)
 		visual.Name = "TrailVisual"
 		visual.BackgroundColor3 = Color3.fromRGB(10, 14, 24)
 		visual.BorderSizePixel = 0
-		visual.Size = compact and UDim2.fromOffset(px(56), px(56)) or UDim2.new(1, -px(14), 0, px(66))
-		visual.AnchorPoint = compact and Vector2.new(0, 0) or Vector2.new(0, 0)
-		visual.Position = compact and UDim2.new(0, px(STYLE.CompactCardPadding), 0, px(STYLE.CompactCardPadding)) or UDim2.new(0, px(7), 0, px(36))
+		local iconSize = px(STYLE.CompactIconSize)
+		visual.Size = compact and UDim2.fromOffset(iconSize, iconSize) or UDim2.new(1, -px(14), 0, px(66))
+		visual.AnchorPoint = compact and Vector2.new(0, 0.5) or Vector2.new(0, 0)
+		visual.Position = compact and UDim2.new(0, px(STYLE.CompactCardPadding), 0, px(STYLE.CompactHeaderHeight) / 2) or UDim2.new(0, px(7), 0, px(36))
 		visual.Parent = parent
-		applyCorners(visual, px(10))
-		applyStroke(visual, item.Color or COLORS.Blue, 1, 0.28)
+		applyCorners(visual, px(12))
+		applyStroke(visual, item.Color or COLORS.Blue, 1.4, 0.22)
 
 		for i = 1, 3 do
 			local bar = Instance.new("Frame")
@@ -1635,7 +1908,7 @@ function SkinsStallUI.Create(parent, options)
 			bar.BorderSizePixel = 0
 			bar.AnchorPoint = Vector2.new(0.5, 0.5)
 			bar.Position = UDim2.new(0.5, 0, 0.3 + i * 0.14, 0)
-			bar.Size = UDim2.new(0.72 - i * 0.07, 0, 0, px(compact and 5 or 7))
+			bar.Size = UDim2.new(0.78 - i * 0.06, 0, 0, px(compact and 8 or 7))
 			bar.Rotation = -12
 			bar.Parent = visual
 			applyCorners(bar, px(5))
@@ -1649,30 +1922,51 @@ function SkinsStallUI.Create(parent, options)
 	end
 
 	local function createEmoteVisual(parent, item)
-		local iconAsset = resolveEmoteIconAsset(item)
+		local iconData = resolveEmoteIconData(item)
 		local accentColor = COLORS.Gold
 		local iconBox = Instance.new("Frame")
 		iconBox.Name = "EmoteVisual"
 		iconBox.BackgroundColor3 = mixColor(COLORS.SurfaceSoft, accentColor, 0.13)
 		iconBox.BorderSizePixel = 0
-		iconBox.Position = UDim2.new(0, px(STYLE.CompactCardPadding), 0, px(STYLE.CompactCardPadding))
-		iconBox.Size = UDim2.fromOffset(px(56), px(56))
+		iconBox.AnchorPoint = Vector2.new(0, 0.5)
+		iconBox.Position = UDim2.new(0, px(STYLE.CompactCardPadding), 0, px(STYLE.CompactHeaderHeight) / 2)
+		iconBox.Size = UDim2.fromOffset(px(STYLE.CompactIconSize), px(STYLE.CompactIconSize))
 		iconBox.ClipsDescendants = true
 		iconBox.Parent = parent
 		applyCorners(iconBox, px(12))
-		applyStroke(iconBox, accentColor, 1, 0.34)
+		applyStroke(iconBox, accentColor, 1.4, 0.28)
 
-		if iconAsset then
+		if iconData and iconData.Kind == "Image" then
 			local image = Instance.new("ImageLabel")
 			image.Name = "IconImage"
 			image.BackgroundTransparency = 1
 			image.AnchorPoint = Vector2.new(0.5, 0.5)
 			image.Position = UDim2.fromScale(0.5, 0.5)
-			image.Size = UDim2.fromScale(0.72, 0.72)
-			image.Image = iconAsset
+			image.Size = UDim2.fromScale(0.84, 0.84)
+			image.Image = iconData.Value
 			image.ScaleType = Enum.ScaleType.Fit
 			image.Parent = iconBox
+		elseif iconData and iconData.Kind == "Text" and type(iconData.Value) == "string" and iconData.Value ~= "" then
+			if iconData.IsFallback then
+				warnMissingOnce(item, "emote icon")
+			end
+			local label = Instance.new("TextLabel")
+			label.Name = "IconText"
+			label.BackgroundTransparency = 1
+			label.AnchorPoint = Vector2.new(0.5, 0.5)
+			label.Position = UDim2.fromScale(0.5, 0.5)
+			label.Size = UDim2.fromScale(0.84, 0.84)
+			label.Font = Enum.Font.GothamBold
+			label.Text = iconData.Value
+			label.TextColor3 = accentColor
+			label.TextScaled = true
+			label.TextWrapped = true
+			label.TextXAlignment = Enum.TextXAlignment.Center
+			label.TextYAlignment = Enum.TextYAlignment.Center
+			label.Parent = iconBox
+			addTextLimit(label, px(16), px(38))
 		else
+			warnMissingOnce(item, "emote icon")
 			createFallbackEmoteGlyph(iconBox, item, accentColor)
 		end
 		return iconBox
@@ -1685,17 +1979,17 @@ function SkinsStallUI.Create(parent, options)
 		pill.BorderSizePixel = 0
 		pill.AnchorPoint = Vector2.new(0.5, 1)
 		pill.Position = UDim2.new(xScale or 0.5, 0, 1, -px(8))
-		pill.Size = UDim2.new(1, -px(16), 0, px(26))
+		pill.Size = UDim2.new(1, -px(18), 0, px(34))
 		pill.Parent = parent
-		applyCorners(pill, px(8))
-		applyStroke(pill, COLORS.DimStroke, 1, 0.42)
+		applyCorners(pill, px(10))
+		local pillStroke = applyStroke(pill, COLORS.DimStroke, 1, 0.42)
 
 		local icon = Instance.new("ImageLabel")
 		icon.Name = "PriceIcon"
 		icon.BackgroundTransparency = 1
 		icon.AnchorPoint = Vector2.new(0, 0.5)
-		icon.Position = UDim2.new(0, px(10), 0.5, 0)
-		icon.Size = UDim2.fromOffset(px(16), px(16))
+		icon.Position = UDim2.new(0, px(12), 0.5, 0)
+		icon.Size = UDim2.fromOffset(px(20), px(20))
 		icon.Image = getAsset("Coin") or ""
 		icon.ScaleType = Enum.ScaleType.Fit
 		icon.Visible = false
@@ -1708,17 +2002,18 @@ function SkinsStallUI.Create(parent, options)
 		label.Position = UDim2.new(0.5, 0, 0.5, 0)
 		label.Size = UDim2.new(1, -px(16), 1, -px(4))
 		label.Font = Enum.Font.GothamBlack
+		label.RichText = false
 		label.Text = ""
 		label.TextColor3 = COLORS.Text
 		label.TextSize = px(STYLE.CardButtonTextSize)
-		label.TextScaled = true
+		label.TextScaled = false
 		label.TextTruncate = Enum.TextTruncate.AtEnd
 		label.TextXAlignment = Enum.TextXAlignment.Center
 		label.TextYAlignment = Enum.TextYAlignment.Center
 		label.Parent = pill
-		addTextLimit(label, px(11), px(STYLE.CardButtonTextSize))
+		addCosmeticTextOutline(label, 0.55, 1)
 
-		return pill, label, icon
+		return pill, label, icon, pillStroke
 	end
 
 	local function createSkinCard(parentFrame, item, index)
@@ -1735,9 +2030,14 @@ function SkinsStallUI.Create(parent, options)
 		card.BackgroundColor3 = COLORS.Card
 		card.BorderSizePixel = 0
 		card.Size = UDim2.fromScale(1, 1)
+		card.ClipsDescendants = true
 		card.Parent = button
 		applyCorners(card, px(12))
 		local stroke = applyStroke(card, rarityColor, 1.2, 0.34)
+		local selectedStroke = applyStroke(card, COLORS.Gold, 2.6, 1)
+		if RarityStyles and type(RarityStyles.AddCardSheen) == "function" then
+			RarityStyles.AddCardSheen(card, rarityColor, px, STYLE.SkinHeaderHeight / STYLE.SkinCardHeight)
+		end
 
 		local accentBar = Instance.new("Frame")
 		accentBar.BackgroundColor3 = rarityColor
@@ -1749,23 +2049,25 @@ function SkinsStallUI.Create(parent, options)
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.BackgroundTransparency = 1
 		nameLabel.Position = UDim2.new(0, px(10), 0, px(8))
-		nameLabel.Size = UDim2.new(1, -px(20), 0, px(24))
-		nameLabel.Font = Enum.Font.GothamBlack
+		nameLabel.Size = UDim2.new(1, -px(20), 0, px(30))
 		nameLabel.Text = item.DisplayName or item.Id
-		nameLabel.TextColor3 = COLORS.Text
-		nameLabel.TextSize = px(STYLE.SkinCardTitleTextSize)
-		nameLabel.TextScaled = true
-		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 		nameLabel.Parent = card
-		addTextLimit(nameLabel, px(13), px(STYLE.SkinCardTitleTextSize))
+		applyCardTitleStyle(nameLabel, STYLE.SkinCardTitleTextSize)
+
+		local _, typeLabel, rarityLabel = createMetadataRow(
+			card,
+			item.Category,
+			item.Rarity or "Common",
+			UDim2.new(0, px(10), 0, px(40)),
+			UDim2.new(1, -px(20), 0, px(22))
+		)
 
 		local viewport = Instance.new("ViewportFrame")
 		viewport.Name = "Preview"
 		viewport.BackgroundColor3 = mixColor(COLORS.Surface, rarityColor, 0.10)
 		viewport.BorderSizePixel = 0
-		viewport.Position = UDim2.new(0, px(9), 0, px(34))
-		viewport.Size = UDim2.new(1, -px(18), 1, -px(70))
+		viewport.Position = UDim2.new(0, px(9), 0, px(66))
+		viewport.Size = UDim2.new(1, -px(18), 1, -px(112))
 		viewport.Ambient = Color3.fromRGB(190, 190, 200)
 		viewport.LightColor = COLORS.White
 		viewport.LightDirection = Vector3.new(0, -1, -1)
@@ -1782,8 +2084,9 @@ function SkinsStallUI.Create(parent, options)
 			end
 		end)
 
-		local _, statusLabelRef, priceIcon = createStatusPill(card, 0.5)
-		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, accentBar = accentBar, nameLabel = nameLabel, statusLabel = statusLabelRef, priceIcon = priceIcon, viewport = viewport }
+		local statusPill, statusLabelRef, priceIcon, statusStroke = createStatusPill(card, 0.5)
+		statusPill.Position = UDim2.new(0.5, 0, 1, -px(9))
+		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, selectedStroke = selectedStroke, accentBar = accentBar, nameLabel = nameLabel, typeLabel = typeLabel, rarityLabel = rarityLabel, statusPill = statusPill, statusLabel = statusLabelRef, priceIcon = priceIcon, statusStroke = statusStroke, viewport = viewport }
 		cardRecords[record.key] = record
 
 		trackConn(button.MouseButton1Click:Connect(function()
@@ -1791,7 +2094,8 @@ function SkinsStallUI.Create(parent, options)
 		end))
 		trackConn(button.MouseEnter:Connect(function()
 			if not (selectedCategory == item.Category and selectedId == item.Id) then
-				TweenService:Create(card, QUICK_TWEEN, { BackgroundColor3 = COLORS.CardHover }):Play()
+				local visualState = getItemVisualState(item)
+				TweenService:Create(card, QUICK_TWEEN, { BackgroundColor3 = mixColor(visualState.cardColor, COLORS.White, 0.08) }):Play()
 			end
 		end))
 		trackConn(button.MouseLeave:Connect(function()
@@ -1814,9 +2118,14 @@ function SkinsStallUI.Create(parent, options)
 		card.BackgroundColor3 = COLORS.Card
 		card.BorderSizePixel = 0
 		card.Size = UDim2.fromScale(1, 1)
+		card.ClipsDescendants = true
 		card.Parent = button
 		applyCorners(card, px(12))
 		local stroke = applyStroke(card, rarityColor, 1.2, 0.38)
+		local selectedStroke = applyStroke(card, COLORS.Gold, 2.6, 1)
+		if RarityStyles and type(RarityStyles.AddCardSheen) == "function" then
+			RarityStyles.AddCardSheen(card, rarityColor, px, STYLE.CompactHeaderHeight / STYLE.CompactCosmeticCardHeight)
+		end
 
 		local accentBar = Instance.new("Frame")
 		accentBar.BackgroundColor3 = rarityColor
@@ -1833,43 +2142,39 @@ function SkinsStallUI.Create(parent, options)
 		end
 
 		local pad = px(STYLE.CompactCardPadding)
-		local visualSize = px(56)
-		local textLeft = pad + visualSize + px(10)
+		local visualSize = px(STYLE.CompactIconSize)
+		local textLeft = pad + visualSize + px(12)
 		local buttonHeight = px(STYLE.CompactButtonHeight)
+		local headerHeight = px(STYLE.CompactHeaderHeight)
+		local titleHeight = px(30)
+		local metaHeight = px(22)
+		local textGap = px(4)
+		local textGroupHeight = titleHeight + textGap + metaHeight
+		local textGroupTop = (headerHeight - textGroupHeight) / 2
 
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.BackgroundTransparency = 1
-		nameLabel.Position = UDim2.new(0, textLeft, 0, pad)
-		nameLabel.Size = UDim2.new(1, -(textLeft + pad), 0, px(24))
-		nameLabel.Font = Enum.Font.GothamBlack
+		nameLabel.Position = UDim2.new(0, textLeft, 0, textGroupTop)
+		nameLabel.Size = UDim2.new(1, -(textLeft + pad), 0, titleHeight)
 		nameLabel.Text = item.DisplayName or item.Id
-		nameLabel.TextColor3 = COLORS.Text
-		nameLabel.TextSize = px(STYLE.CardTitleTextSize)
-		nameLabel.TextScaled = true
-		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 		nameLabel.Parent = card
-		addTextLimit(nameLabel, px(13), px(STYLE.CardTitleTextSize))
+		applyCardTitleStyle(nameLabel, STYLE.CardTitleTextSize)
 
-		local subLabel = Instance.new("TextLabel")
-		subLabel.BackgroundTransparency = 1
-		subLabel.Position = UDim2.new(0, textLeft, 0, pad + px(26))
-		subLabel.Size = UDim2.new(1, -(textLeft + pad), 0, px(18))
-		subLabel.Font = Enum.Font.GothamMedium
-		subLabel.Text = item.Category == "Trail" and (item.Rarity or "Effect") or "Emote"
-		subLabel.TextColor3 = COLORS.Muted
-		subLabel.TextSize = px(STYLE.CardSubtitleTextSize)
-		subLabel.TextXAlignment = Enum.TextXAlignment.Left
-		subLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		subLabel.Parent = card
-		addTextLimit(subLabel, px(10), px(STYLE.CardSubtitleTextSize))
+		local metaTop = textGroupTop + titleHeight + textGap
+		local _, typeLabel, rarityLabel = createMetadataRow(
+			card,
+			item.Category,
+			item.Rarity or "Common",
+			UDim2.new(0, textLeft, 0, metaTop),
+			UDim2.new(1, -(textLeft + pad), 0, metaHeight)
+		)
 
-		local pill, statusLabelRef, priceIcon = createStatusPill(card, 0.5)
+		local pill, statusLabelRef, priceIcon, statusStroke = createStatusPill(card, 0.5)
 		pill.AnchorPoint = Vector2.new(0.5, 1)
 		pill.Position = UDim2.new(0.5, 0, 1, -pad)
 		pill.Size = UDim2.new(1, -pad * 2, 0, buttonHeight)
 
-		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, accentBar = accentBar, nameLabel = nameLabel, statusLabel = statusLabelRef, priceIcon = priceIcon }
+		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, selectedStroke = selectedStroke, accentBar = accentBar, nameLabel = nameLabel, typeLabel = typeLabel, rarityLabel = rarityLabel, statusPill = pill, statusLabel = statusLabelRef, priceIcon = priceIcon, statusStroke = statusStroke }
 		cardRecords[record.key] = record
 
 		trackConn(button.MouseButton1Click:Connect(function()
@@ -1877,7 +2182,8 @@ function SkinsStallUI.Create(parent, options)
 		end))
 		trackConn(button.MouseEnter:Connect(function()
 			if not (selectedCategory == item.Category and selectedId == item.Id) then
-				TweenService:Create(card, QUICK_TWEEN, { BackgroundColor3 = COLORS.CardHover }):Play()
+				local visualState = getItemVisualState(item)
+				TweenService:Create(card, QUICK_TWEEN, { BackgroundColor3 = mixColor(visualState.cardColor, COLORS.White, 0.08) }):Play()
 			end
 		end))
 		trackConn(button.MouseLeave:Connect(function()
@@ -1922,8 +2228,13 @@ function SkinsStallUI.Create(parent, options)
 		else
 			panel.Size = UDim2.fromScale(0.84, 0.86)
 		end
+		panelConstraint.MinSize = Vector2.new(math.min(760, math.floor(vp.X * 0.92)), math.min(520, math.floor(vp.Y * 0.86)))
 		panelConstraint.MaxSize = Vector2.new(math.max(820, math.floor(vp.X * 0.92)), math.max(560, math.floor(vp.Y * 0.92)))
 		local previewWidth = math.clamp(px(STYLE.RightPreviewPanelWidth), STYLE.RightPreviewMinWidth, STYLE.RightPreviewMaxWidth)
+		local panelWidth = panel.AbsoluteSize.X > 0 and panel.AbsoluteSize.X or math.floor(vp.X * 0.84)
+		if panelWidth < 920 then
+			previewWidth = math.clamp(math.floor(panelWidth * 0.31), 210, previewWidth)
+		end
 		previewPanel.Size = UDim2.new(0, previewWidth, 1, 0)
 		listPanel.Size = UDim2.new(1, -(previewWidth + px(STYLE.BodyGap)), 1, 0)
 		for _, record in ipairs(sectionRecords) do

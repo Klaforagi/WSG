@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local ContentProvider = game:GetService("ContentProvider")
 
 
 local player = Players.LocalPlayer
@@ -612,34 +613,19 @@ local function CreateSideLauncher(screenGui)
     toggle.Name = "CollapseToggleButton"
     toggle.AnchorPoint = Vector2.new(0, 0.5)
     toggle.AutoButtonColor = false
-    toggle.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
-    toggle.BackgroundTransparency = 0.06
+    toggle.BackgroundTransparency = 1
     toggle.BorderSizePixel = 0
     toggle.Font = Enum.Font.GothamBlack
     toggle.Text = "<"
-    toggle.TextColor3 = COLORS.white
+    toggle.TextColor3 = COLORS.gold
     toggle.TextScaled = true
     toggle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-    toggle.TextStrokeTransparency = 0.15
+    toggle.TextStrokeTransparency = 0.32
     toggle.ZIndex = 258
     toggle.Parent = launcher
-    local toggleCorner = Instance.new("UICorner")
-    toggleCorner.CornerRadius = UDim.new(0, px(7))
-    toggleCorner.Parent = toggle
-    local toggleStroke = Instance.new("UIStroke")
-    toggleStroke.Color = COLORS.gold
-    toggleStroke.Thickness = px(1.5)
-    toggleStroke.Transparency = 0.05
-    toggleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    toggleStroke.LineJoinMode = Enum.LineJoinMode.Round
-    toggleStroke.Parent = toggle
-    local toggleGradient = Instance.new("UIGradient")
-    toggleGradient.Rotation = 90
-    toggleGradient.Color = ColorSequence.new(Color3.fromRGB(34, 36, 58), Color3.fromRGB(8, 9, 18))
-    toggleGradient.Parent = toggle
     local toggleConstraint = Instance.new("UITextSizeConstraint")
     toggleConstraint.MinTextSize = 10
-    toggleConstraint.MaxTextSize = 18
+    toggleConstraint.MaxTextSize = 22
     toggleConstraint.Parent = toggle
     local toggleScale = Instance.new("UIScale")
     toggleScale.Scale = 1
@@ -655,11 +641,11 @@ local function CreateSideLauncher(screenGui)
         local spacing = safeClamp(cardSize * 0.18, 10, 18)
         local leftPad = safeClamp(viewportX * (UserInputService.TouchEnabled and 0.012 or 0.010), 6, px(22))
         local collapsedX = -cardSize - safeClamp(cardSize * 0.28, 18, 32)
-        local toggleW = safeClamp(cardSize * 0.24, 22, 28)
-        local toggleH = safeClamp(cardSize * 0.34, 26, 36)
-        local toggleGap = safeClamp(cardSize * 0.06, 4, 8)
-        local stackExpandedX = leftPad + toggleW + toggleGap
-        local toggleExpandedX = leftPad
+        local toggleW = safeClamp(cardSize * 0.30, 28, 36)
+        local toggleH = safeClamp(cardSize * 0.34, 28, 36)
+        local handleGap = safeClamp(cardSize * 0.018, 1, 3)
+        local stackExpandedX = leftPad + safeClamp(cardSize * 0.31, 26, 36)
+        local toggleExpandedX = stackExpandedX - toggleW - handleGap
         local toggleCollapsedX = safeClamp(viewportX * 0.004, 2, px(8))
         local totalHeight = (cardSize * #MENU_DEFS) + (spacing * math.max(0, #MENU_DEFS - 1))
         return {
@@ -688,7 +674,7 @@ local function CreateSideLauncher(screenGui)
         end
 
         toggle.Size = UDim2.new(0, layoutMetrics.toggleW, 0, layoutMetrics.toggleH)
-        toggleConstraint.MaxTextSize = math.max(12, math.floor(layoutMetrics.toggleH * 0.48))
+    toggleConstraint.MaxTextSize = safeClamp(math.floor(layoutMetrics.toggleH * 0.72), 18, 24)
         local stackPos = UDim2.new(0, isCollapsed and layoutMetrics.collapsedX or layoutMetrics.stackExpandedX, 0.5, 0)
         local togglePos = UDim2.new(0, isCollapsed and layoutMetrics.toggleCollapsedX or layoutMetrics.toggleExpandedX, 0.5, 0)
 
@@ -703,12 +689,12 @@ local function CreateSideLauncher(screenGui)
     end
 
     toggle.MouseEnter:Connect(function()
-        tweenInstance(toggleScale, { Scale = 1.08 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
-        tweenInstance(toggleStroke, { Transparency = 0, Thickness = px(2) }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(toggleScale, { Scale = 1.12 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(toggle, { TextColor3 = COLORS.white, TextStrokeTransparency = 0.12 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
     end)
     toggle.MouseLeave:Connect(function()
         tweenInstance(toggleScale, { Scale = 1 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
-        tweenInstance(toggleStroke, { Transparency = 0.05, Thickness = px(1.5) }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(toggle, { TextColor3 = COLORS.gold, TextStrokeTransparency = 0.32 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
     end)
     toggle.MouseButton1Down:Connect(function()
         tweenInstance(toggleScale, { Scale = 0.94 }, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
@@ -1666,7 +1652,7 @@ closeBtnStroke.Thickness = 1.2
 closeBtnStroke.Transparency = 0.4
 closeBtnStroke.Parent = closeBtn
 
-local contentFrame, modalStatusOverlay
+local contentFrame, modalStatusOverlay, prewarmContainer
 
 local function updateHeaderCurrencyLayout()
     local windowWidth = window.AbsoluteSize.X
@@ -1771,6 +1757,10 @@ local function updateModalWindowLayout()
     if modalStatusOverlay and contentFrame then
         modalStatusOverlay.Position = contentFrame.Position
         modalStatusOverlay.Size = contentFrame.Size
+    end
+    if prewarmContainer and contentFrame then
+        prewarmContainer.Position = contentFrame.Position
+        prewarmContainer.Size = contentFrame.Size
     end
 
     updateHeaderCurrencyLayout()
@@ -1915,28 +1905,62 @@ end
 local coinApi = nil
 -- PREMIUM CRATE / KEY SYSTEM  – forward-declare keyApi
 local keyApi = nil
+local activePreloadedMenuName = nil
+
+local function ensurePrewarmContainer()
+    if prewarmContainer and prewarmContainer.Parent then
+        return prewarmContainer
+    end
+
+    prewarmContainer = Instance.new("Frame")
+    prewarmContainer.Name = "MenuPrewarmContainer"
+    prewarmContainer.BackgroundTransparency = 1
+    prewarmContainer.Size = contentFrame and contentFrame.Size or UDim2.new(1, 0, 1, 0)
+    prewarmContainer.Position = contentFrame and contentFrame.Position or UDim2.new(0, 0, 0, 0)
+    prewarmContainer.Visible = false
+    prewarmContainer.ZIndex = 259
+    prewarmContainer.ClipsDescendants = true
+    prewarmContainer.Parent = window
+    updateModalWindowLayout()
+    return prewarmContainer
+end
+
+local function detachPreloadedHost(host)
+    if not host or not host:GetAttribute("MenuPreloadedHost") then
+        return false
+    end
+    host.Visible = false
+    host.Parent = ensurePrewarmContainer()
+    return true
+end
 
 local function clearContent()
     for _, c in ipairs(contentFrame:GetChildren()) do
         if not c:IsA("UIListLayout") and not c:IsA("UIGridLayout") and not c:IsA("UIPadding") then
-            pcall(function() c:Destroy() end)
+            if not detachPreloadedHost(c) then
+                pcall(function() c:Destroy() end)
+            end
         end
     end
+    activePreloadedMenuName = nil
     -- Clean up AP display (parented to headerBar, outside contentFrame)
     local apDisp = headerBar:FindFirstChild("APDisplay")
     if apDisp then apDisp:Destroy() end
 end
 
-local function createContentHost()
+local function createContentHost(parentOverride, menuName)
     -- Fill the visible content area so child menus that read parent.AbsoluteSize.Y
     -- (e.g. InventoryUI's adaptive root height) get a non-zero height.
     local host = Instance.new("Frame")
-    host.Name = "ModalContentHost"
+    host.Name = menuName and (menuName .. "ContentHost") or "ModalContentHost"
     host.BackgroundTransparency = 1
     host.Size = UDim2.new(1, 0, 1, 0)
     host.LayoutOrder = 1
     host.ZIndex = 260
-    host.Parent = contentFrame
+    if menuName then
+        host:SetAttribute("MenuPreloadedHost", menuName)
+    end
+    host.Parent = parentOverride or contentFrame
 
     local hostLayout = Instance.new("UIListLayout")
     hostLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -2002,6 +2026,8 @@ local function tweenWindowOut(done)
 end
 
 local MenuController = nil
+local MenuPreloader = nil
+local DEBUG_MENU_PRELOAD = false
 local salvageApi = nil
 
 closeBtn.Activated:Connect(function()
@@ -2038,6 +2064,23 @@ do
         end
     else
         warn("[SideUI] MenuController not found – falling back to standalone menu logic")
+    end
+end
+
+do
+    local preloaderMod = sideUIFolder and sideUIFolder:WaitForChild("MenuPreloader", 5)
+    if preloaderMod and preloaderMod:IsA("ModuleScript") then
+        local ok, result = pcall(require, preloaderMod)
+        if ok then
+            MenuPreloader = result
+            if MenuPreloader and MenuPreloader.SetDebug then
+                MenuPreloader.SetDebug(DEBUG_MENU_PRELOAD)
+            end
+        else
+            warn("[SideUI] MenuPreloader failed to load:", tostring(result))
+        end
+    else
+        warn("[SideUI] MenuPreloader not found – menu warmup disabled")
     end
 end
 
@@ -2123,12 +2166,9 @@ local function updateHeaderSalvage()
 end
 _G.UpdateShopHeaderSalvage = updateHeaderSalvage
 
--- Populate modal content without animation (used by MenuController open callbacks)
-local function populateModalContent(mod, label, createOptions)
-    if not mod then return end
-    modalBuildToken += 1
-    local token = modalBuildToken
-    clearContent()
+local MENU_OPEN_WAIT_TIMEOUT = 0.75
+
+local function configureModalHeader(label)
     titleLabel.Text = label or "SHOP"
     -- Currency row visibility rules:
     -- Shop: show Coins + Keys + Salvage
@@ -2145,6 +2185,91 @@ local function populateModalContent(mod, label, createOptions)
         updateHeaderKeys()
         updateHeaderSalvage()
     end
+end
+
+local function contentHostHasGuiContent(contentHost)
+    for _, child in ipairs(contentHost:GetChildren()) do
+        if child:IsA("GuiObject") then
+            return true
+        end
+    end
+    return false
+end
+
+local function destroyPreloadedRecord(record)
+    if type(record) == "table" and record.host then
+        pcall(function() record.host:Destroy() end)
+    end
+end
+
+local function buildPreloadedMenu(menuName, mod, label, createOptions)
+    if not mod then
+        error("Missing menu module")
+    end
+
+    local contentHost = createContentHost(ensurePrewarmContainer(), menuName)
+    contentHost.Visible = false
+
+    local ok, result = xpcall(function()
+        local requireOk, loaded = pcall(require, mod)
+        if not requireOk then
+            error("Require failed: " .. tostring(loaded))
+        end
+        if type(loaded) ~= "table" or type(loaded.Create) ~= "function" then
+            error("Menu module has no Create(parent, coinApi, inventoryApi) function")
+        end
+
+        loaded.Create(contentHost, coinApi, Inventory, createOptions)
+        if not contentHostHasGuiContent(contentHost) then
+            error("Menu did not create any visible content")
+        end
+
+        return {
+            name = menuName,
+            label = label,
+            moduleScript = mod,
+            module = loaded,
+            host = contentHost,
+            createOptions = createOptions,
+        }
+    end, function(buildErr)
+        return tostring(buildErr)
+    end)
+
+    if ok then
+        return result
+    end
+
+    pcall(function() contentHost:Destroy() end)
+    error(result)
+end
+
+local function activatePreloadedMenu(menuName, mod, label)
+    if not MenuPreloader then return false end
+    local record = MenuPreloader.GetResult(menuName)
+    if type(record) ~= "table" or not record.host or not record.host.Parent then
+        return false
+    end
+
+    modalBuildToken += 1
+    configureModalHeader(label)
+    clearContent()
+    hideModalStatus()
+
+    currentModule = mod
+    activePreloadedMenuName = menuName
+    record.host.LayoutOrder = 1
+    record.host.Visible = true
+    record.host.Parent = contentFrame
+    return true
+end
+
+local function populateModalContentDirect(mod, label, createOptions)
+    if not mod then return end
+    modalBuildToken += 1
+    local token = modalBuildToken
+    configureModalHeader(label)
+    clearContent()
 
     local contentHost = createContentHost()
     currentModule = mod
@@ -2191,6 +2316,58 @@ local function populateModalContent(mod, label, createOptions)
             setModalStatus("Could not load " .. string.lower(label or "menu"), "Close this menu and try opening it again.", Color3.fromRGB(255, 105, 105))
         end
     end)
+end
+
+-- Populate modal content without animation (used by MenuController open callbacks)
+local function populateModalContent(menuName, mod, label, createOptions)
+    if not mod then return end
+
+    if MenuPreloader and type(menuName) == "string" then
+        local state = MenuPreloader.GetState(menuName)
+        if state == MenuPreloader.State.Failed then
+            MenuPreloader.ResetMenu(menuName)
+            state = MenuPreloader.GetState(menuName)
+        end
+
+        if state ~= MenuPreloader.State.Ready then
+            MenuPreloader.StartPreload(menuName)
+            local record = MenuPreloader.WaitForMenu(menuName, MENU_OPEN_WAIT_TIMEOUT)
+            if record and activatePreloadedMenu(menuName, mod, label) then
+                return
+            end
+
+            modalBuildToken += 1
+            local token = modalBuildToken
+            configureModalHeader(label)
+            clearContent()
+            currentModule = mod
+            setModalStatus("Loading " .. string.lower(label or "menu") .. "...", "Getting the menu ready.", COLORS.gold)
+
+            task.spawn(function()
+                local loadedRecord, err = MenuPreloader.PreloadMenu(menuName)
+                if token ~= modalBuildToken then
+                    return
+                end
+                if loadedRecord and activatePreloadedMenu(menuName, mod, label) then
+                    return
+                end
+
+                warn("[SideUI] Failed to preload " .. tostring(label or "menu") .. ": " .. tostring(err))
+                clearContent()
+                currentModule = mod
+                setModalStatus("Could not load " .. string.lower(label or "menu"), "Close this menu and try opening it again.", Color3.fromRGB(255, 105, 105))
+            end)
+            return
+        end
+
+        if activatePreloadedMenu(menuName, mod, label) then
+            return
+        end
+
+        MenuPreloader.ResetMenu(menuName)
+    end
+
+    populateModalContentDirect(mod, label, createOptions)
 end
 -- Instant-close the modal (no animation). Used when switching menus.
 -- sameGroup: when true, keeps overlay visible for seamless same-group transition.
@@ -2249,11 +2426,203 @@ local function registerModalMenu(name, mod, label, createOptions)
     end
 end
 
+local HIGH_PRIORITY_MENU_PRELOAD_ORDER = { "Shop", "Inventory", "Quests", "Options" }
+local MENU_ASSET_PRELOAD_KEYS = {
+    "Shop", "Inventory", "Quests", "Options", "Team",
+    "Coin", "Key", "Keys", "Shards", "Shard", "Robux",
+    "Boosts", "Upgrade", "DailyReward", "Bandage",
+    "Melee", "Ranged",
+}
+local REPLICATED_MENU_ASSET_MODULES = {
+    "BoostConfig",
+    "PotionConfig",
+    "HealthPotionConfig",
+    "BandageConfig",
+    "ItemIconRegistry",
+    "SkinDefinitions",
+    "CrateConfig",
+    "SalvageShopConfig",
+    "CosmeticsCatalog",
+}
+local SIDE_UI_MENU_ASSET_MODULES = {
+    "EffectDefs",
+    "EmoteConfig",
+}
+local menuAssetPreloadStarted = false
+
+local function addAssetId(assetIds, assetId)
+    if type(assetId) ~= "string" or assetId == "" then
+        return
+    end
+    if assetId:match("^%d+$") then
+        assetId = "rbxassetid://" .. assetId
+    end
+    if not (assetId:match("^rbxassetid://") or assetId:match("^rbxthumb://") or assetId:match("^https?://")) then
+        return
+    end
+    assetIds[assetId] = true
+end
+
+local function shouldCollectAssetField(key)
+    local keyText = tostring(key or ""):lower()
+    return keyText:find("icon", 1, true)
+        or keyText:find("image", 1, true)
+        or keyText:find("asset", 1, true)
+        or keyText:find("thumbnail", 1, true)
+        or keyText:find("preview", 1, true)
+        or keyText:find("glow", 1, true)
+end
+
+local function collectAssetIdsFromTable(value, assetIds, seen, depth)
+    if type(value) ~= "table" or depth > 5 or seen[value] then
+        return
+    end
+    seen[value] = true
+
+    for key, child in pairs(value) do
+        if type(child) == "string" then
+            if shouldCollectAssetField(key) or child:match("^rbxassetid://") or child:match("^rbxthumb://") then
+                addAssetId(assetIds, child)
+            end
+        elseif type(child) == "number" then
+            if shouldCollectAssetField(key) then
+                addAssetId(assetIds, tostring(child))
+            end
+        elseif type(child) == "table" then
+            collectAssetIdsFromTable(child, assetIds, seen, depth + 1)
+        end
+    end
+end
+
+local function safeRequireAssetModule(parent, moduleName)
+    local module = parent and parent:FindFirstChild(moduleName)
+    if not (module and module:IsA("ModuleScript")) then
+        return nil
+    end
+    local ok, result = pcall(require, module)
+    if ok then
+        return result
+    end
+    warn("[MenuPreloader] Asset config failed to load: " .. tostring(moduleName) .. " - " .. tostring(result))
+    return nil
+end
+
+local function preloadMenuAssets()
+    if menuAssetPreloadStarted then return end
+    menuAssetPreloadStarted = true
+
+    local assetIds = {}
+    if AssetCodes and type(AssetCodes.Get) == "function" then
+        for _, key in ipairs(MENU_ASSET_PRELOAD_KEYS) do
+            local ok, assetId = pcall(function() return AssetCodes.Get(key) end)
+            if ok then addAssetId(assetIds, assetId) end
+        end
+    end
+    if AssetCodes and type(AssetCodes.List) == "function" then
+        local ok, images = pcall(function() return AssetCodes.List() end)
+        if ok and type(images) == "table" then
+            for _, assetId in pairs(images) do
+                addAssetId(assetIds, assetId)
+            end
+        end
+    end
+
+    for _, moduleName in ipairs(REPLICATED_MENU_ASSET_MODULES) do
+        local config = safeRequireAssetModule(ReplicatedStorage, moduleName)
+        if config then
+            collectAssetIdsFromTable(config, assetIds, {}, 0)
+        end
+    end
+    for _, moduleName in ipairs(SIDE_UI_MENU_ASSET_MODULES) do
+        local config = safeRequireAssetModule(sideUIFolder, moduleName)
+        if config then
+            collectAssetIdsFromTable(config, assetIds, {}, 0)
+        end
+    end
+
+    local preloadList = {}
+    for assetId in pairs(assetIds) do
+        table.insert(preloadList, assetId)
+    end
+    if #preloadList == 0 then
+        return
+    end
+
+    if MenuPreloader and MenuPreloader.DEBUG_MENU_PRELOAD then
+        print("[MenuPreloader] Starting asset preload:", #preloadList)
+    end
+
+    local batchSize = 24
+    for index = 1, #preloadList, batchSize do
+        local batch = {}
+        for batchIndex = index, math.min(index + batchSize - 1, #preloadList) do
+            table.insert(batch, preloadList[batchIndex])
+        end
+        local ok, err = pcall(function()
+            ContentProvider:PreloadAsync(batch)
+        end)
+        if not ok then
+            warn("[MenuPreloader] Asset preload failed: " .. tostring(err))
+        end
+        task.wait(0.05)
+    end
+end
+
+local function startMenuWarmup()
+    if not MenuPreloader then return end
+    if MenuPreloader.GetEntry and not MenuPreloader.GetEntry("Shop") then return end
+    task.defer(function()
+        task.wait()
+        MenuPreloader.PreloadMenus(HIGH_PRIORITY_MENU_PRELOAD_ORDER, 0.08)
+        task.defer(preloadMenuAssets)
+    end)
+end
+
+local function registerPrewarmedModalMenu(name, mod, label, createOptions)
+    if not MenuController then return end
+    if MenuPreloader then
+        MenuPreloader.RegisterMenu(name, {
+            preload = function(menuName)
+                return buildPreloadedMenu(menuName, mod, label, createOptions)
+            end,
+            onReset = destroyPreloadedRecord,
+        })
+    end
+
+    MenuController.RegisterMenu(name, {
+        group = "modal",
+        open = function(sameGroup)
+            populateModalContent(name, mod, label, createOptions)
+            isAnimating = false
+            if sameGroup then
+                modalOverlay.Visible = true
+                window.Position = UDim2.new(0.5, 0, 0.5, 0)
+            else
+                tweenWindowIn()
+            end
+        end,
+        close = function()
+            tweenWindowOut()
+        end,
+        closeInstant = function(sameGroup)
+            modalCloseInstant(sameGroup)
+        end,
+        isOpen = function()
+            return modalOverlay.Visible and currentModule == mod
+        end,
+    })
+end
+
 -- Register every modal page
 if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
 if questsModule then registerModalMenu("Quests", questsModule, "Achievements", { achievementsOnly = true, initialTabId = "achiev" }) end
+if shopModule then registerPrewarmedModalMenu("Shop", shopModule, "SHOP") end
+if invModule then registerPrewarmedModalMenu("Inventory", invModule, "INVENTORY") end
+if optionsModule then registerPrewarmedModalMenu("Options", optionsModule, "OPTIONS") end
+if questsModule then registerPrewarmedModalMenu("Quests", questsModule, "Achievements", { achievementsOnly = true, initialTabId = "achiev" }) end
+startMenuWarmup()
 -- Legacy helper kept for any external code that may still reference it
 local function requestShowModule(mod, label)
     if not mod then return end
