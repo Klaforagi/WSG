@@ -46,19 +46,8 @@ SalvageShopConfig.Items = {
         Unique       = true,
         Enabled      = false,
     },
-    {
-        Id           = "salvage_crate_weapon",
-        DisplayName  = "Shard Weapon Crate",
-        Description  = "A weapon crate paid for with Shards.",
-        Category     = "Crate",
-        SalvagePrice = 60,
-        RewardType   = "Crate",
-        RewardId     = "WeaponCrate",
-        Rarity       = "Common",
-        IconGlyph    = "\u{1F4E6}",
-        Unique       = false,
-        Enabled      = true,
-    },
+    -- [REMOVED] "Shard Weapon Crate" – obsolete; weapon crates are purchased
+    -- elsewhere and the old Shop side menu no longer lists shop crates.
     {
         Id           = "salvage_trail_gold",
         DisplayName  = "Golden Trail",
