@@ -60,6 +60,8 @@ CrateConfig.WeaponsByRarity = {
     Common    = {
         { weapon = "Wooden Sword", category = "Melee"  },
         { weapon = "Branch",       category = "Melee"  },
+        { weapon = "Bat",          category = "Melee"  },
+        { weapon = "Plunger",      category = "Melee"  },
         { weapon = "Slingshot",    category = "Ranged" },
     },
     Uncommon = {
@@ -71,11 +73,13 @@ CrateConfig.WeaponsByRarity = {
         { weapon = "Flanged Mace", category = "Melee" },
         { weapon = "Shortsword",   category = "Melee" },
         { weapon = "Spear",        category = "Melee" },
+        { weapon = "Lil Crusher",  category = "Melee" },
         { weapon = "Shortbow", category = "Ranged" },
     },
     Epic      = {
         { weapon = "Spiked Mace", category = "Melee" },
         { weapon = "Crusher",     category = "Melee" },
+        { weapon = "Ethereal Sword", category = "Melee" },
         { weapon = "Longbow", category = "Ranged" },
     },
     Legendary = {
@@ -119,11 +123,11 @@ CrateConfig.Crates = {
 
         -- >>> EDIT PERCENTAGES HERE to rebalance weapon crate odds <<<
         rarities = {
-            Legendary = 1,
-            Epic      = 4,
-            Rare      = 15,
+            Legendary = 0.5,
+            Epic      = 4.5,
+            Rare      = 10,
             Uncommon  = 40,
-            Common    = 40,
+            Common    = 45,
         },
 
         pool = {},  -- auto-built below
@@ -147,7 +151,8 @@ CrateConfig.Crates = {
         -- >>> EDIT PERCENTAGES HERE to rebalance premium weapon odds <<<
         -- No Common entry = Commons can never drop from this crate
         rarities = {
-            Rare      = 80,
+            Uncommon = 15,
+            Rare      = 65,
             Epic      = 15,
             Legendary = 5,
         },

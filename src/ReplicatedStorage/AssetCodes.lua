@@ -33,7 +33,9 @@ AssetCodes.images = {
     --Common
     ["Wooden Sword"] = "rbxassetid://137149577851414",
     ["Starter Sword"] = "rbxassetid://137149577851414",
-    Branch = "rbxassetid://96451256229936",
+    Branch = "rbxassetid://77658206141783",
+    Bat = "rbxassetid://70714531979735",
+    Plunger = "rbxassetid://106479991943542",
    --Uncommon
    ["Stone Hammer"] = "rbxassetid://139192177366165",
    ["Wooden Spear"] = "rbxassetid://86988825914270",
@@ -42,12 +44,15 @@ AssetCodes.images = {
     ["Flanged Mace"] = "rbxassetid://80288535043725",
     Spear = "rbxassetid://92401070096107",
     Shortsword = "rbxassetid://87749478192733",
+    ["Lil Crusher"] = "rbxassetid://123803527576267",
     --Epic
     ["Spiked Mace"] = "rbxassetid://140429696847728",
     Crusher = "rbxassetid://70478795441387",
+    ["Ethereal Sword"] = "rbxassetid://111494866162478",
     --Legendary
     Punisher = "rbxassetid://120062027388705",
     Kingsblade = "rbxassetid://77109527769141",
+    ["Doom Sword"] = "rbxassetid://131537900374777",
     --UTILITY
     -- ↓ PLACEHOLDER: replace with a final uploaded bandage icon asset ID later
     Bandage = "rbxassetid://14029553034",

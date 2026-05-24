@@ -177,8 +177,8 @@ local presetOverrides = {
     -- Legendary
     ["punisher"] = {
         rarity          = "Legendary",
-        swing_sound     = "SwordSwing",
-        hit_sound       = "SwordHit",
+        swing_sound     = "BluntSwing",
+        hit_sound       = "BluntHit",
     },
     ["kingsblade"] = {
         rarity          = "Legendary",
@@ -194,10 +194,15 @@ local presetOverrides = {
     -- Epic
     ["spiked mace"] = {
         rarity          = "Epic",
-        swing_sound     = "SwordSwing",
-        hit_sound       = "SwordHit",
+        swing_sound     = "BluntSwing",
+        hit_sound       = "BluntHit",
     },
     ["crusher"] = {
+        rarity          = "Epic",
+        swing_sound     = "BluntSwing",
+        hit_sound       = "BluntHit",
+    },
+    ["ethereal sword"] = {
         rarity          = "Epic",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
@@ -207,12 +212,7 @@ local presetOverrides = {
     ["flanged mace"] = {
         rarity          = "Rare",
         swing_sound     = "SwordSwing",
-        hit_sound       = "SwordHit",
-    },
-    ["axe"] = {
-        rarity          = "Rare",
-        swing_sound     = "SwordSwing",
-        hit_sound       = "SwordHit",
+        hit_sound       = "BluntHit",
     },
     ["shortsword"] = {
         rarity          = "Rare",
@@ -224,14 +224,24 @@ local presetOverrides = {
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
+    ["lil crusher"] = {
+        rarity          = "Rare",
+        swing_sound     = "BluntSwing",
+        hit_sound       = "BluntHit",
+    },
 
     -- Uncommon
     ["stone hammer"] = {
         rarity          = "Uncommon",
+        swing_sound     = "BluntSwing",
+        hit_sound       = "BluntHit",
+    },
+    ["wooden spear"] = {
+        rarity          = "Uncommon",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
-    ["wooden spear"] = {
+    ["axe"] = {
         rarity          = "Uncommon",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
@@ -252,6 +262,16 @@ local presetOverrides = {
         rarity          = "Common",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
+    },
+    ["bat"] = {
+        rarity          = "Common",
+        swing_sound     = "BluntSwing",
+        hit_sound       = "BluntHit",
+    },
+    ["plunger"] = {
+        rarity          = "Common",
+        swing_sound     = "SwordSwing",
+        hit_sound       = "PlungerHit",
     },
 }
 
