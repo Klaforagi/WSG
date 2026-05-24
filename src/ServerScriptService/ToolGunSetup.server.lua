@@ -43,6 +43,14 @@ pcall(function()
     end
 end)
 
+local PotionService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("HealthPotionService")
+    if mod and mod:IsA("ModuleScript") then
+        PotionService = require(mod)
+    end
+end)
+
 -- Toolgun settings module (defaults + optional Studio overrides)
 local ToolgunModule
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
@@ -287,6 +295,18 @@ local function scaleProjectileModel(model, factor)
     end
 end
 
+local function applyOutgoingDamageModifiers(player, damage, context)
+    if PotionService and type(PotionService.ApplyOutgoingDamageModifiers) == "function" then
+        local ok, modifiedDamage = pcall(function()
+            return PotionService:ApplyOutgoingDamageModifiers(player, damage, context)
+        end)
+        if ok and type(modifiedDamage) == "number" then
+            return modifiedDamage
+        end
+    end
+    return damage
+end
+
 -- Raycast helper that skips Accessory parts so bullets pass through hats/attachments.
 local function raycastSkippingAccessories(origin, direction, rayParams)
     local maxIter = 10
@@ -361,6 +381,13 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
             damage = damage + masteryBonus
         end
     end
+    damage = applyOutgoingDamageModifiers(player, damage, {
+        source = "ranged",
+        weaponName = weaponName,
+        weaponInstanceId = weaponInstanceId,
+        victimModel = victimModel,
+        isHeadshot = isHeadshot == true,
+    })
     damage = math.max(0, math.round(damage))
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)

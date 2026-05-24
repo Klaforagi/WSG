@@ -346,7 +346,21 @@ if uiRoot then
 	bindCloseHandler()
 end
 
-local function ensureUiBuilt()
+local function destroyBuiltUi()
+	if uiRoot and uiRoot.Parent then
+		pcall(function()
+			uiRoot:Destroy()
+		end)
+	end
+	uiRoot = nil
+	built = false
+end
+
+local function ensureUiBuilt(forceRebuild)
+	if forceRebuild and not buildInProgress then
+		destroyBuiltUi()
+	end
+
 	if built or buildInProgress then
 		return bindCloseHandler()
 	end
@@ -376,7 +390,7 @@ local function openStall()
 	local now = os.clock()
 	if now - lastOpenAt < 0.5 then return end
 
-	local root = ensureUiBuilt()
+	local root = ensureUiBuilt(true)
 	if not (root and root.Parent and root:IsA("GuiObject")) then
 		if not openFunctionWarned then
 			openFunctionWarned = true
@@ -530,7 +544,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 _G.OpenPotionsStallMenu = function()
-	local root = ensureUiBuilt()
+	local root = ensureUiBuilt(true)
 	if not (root and root.Parent and root:IsA("GuiObject")) then
 		return false
 	end

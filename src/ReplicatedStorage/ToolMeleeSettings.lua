@@ -50,6 +50,9 @@ local giantAndKingSwingAnimationConfig = {
     swing_anim_ids  = { "83160499580272", "132121098575411", "99187479200316" },
 }
 
+local SPEAR_WEAPON_TAG = "Spear"
+local SPEAR_SWING_ANIMATION_ID = "74251114610007"
+
 local defaultSwingAnimationConfigsBySizeTier = {
     Giant = giantAndKingSwingAnimationConfig,
     King  = giantAndKingSwingAnimationConfig,
@@ -86,6 +89,44 @@ local function buildPresets(overrides)
     end
     return out
 end
+
+local function hasWeaponTag(cfg, tagName)
+    if type(cfg) ~= "table" or tagName == nil then return false end
+    local tags = cfg.weaponTags
+    if type(tags) ~= "table" then return false end
+
+    local normalizedTag = string.lower(tostring(tagName))
+    for key, value in pairs(tags) do
+        if value == true and string.lower(tostring(key)) == normalizedTag then
+            return true
+        end
+        if type(value) == "string" and string.lower(value) == normalizedTag then
+            return true
+        end
+    end
+    return false
+end
+
+local function usesComboAttacks(cfg)
+    if type(cfg) ~= "table" then return false end
+    if cfg.usesCombo == false then return false end
+    if hasWeaponTag(cfg, SPEAR_WEAPON_TAG) then return false end
+    return type(cfg.swing_anim_ids) == "table" and #cfg.swing_anim_ids >= 3
+end
+
+local spearAttackConfig = {
+    weaponTags            = { [SPEAR_WEAPON_TAG] = true },
+    usesCombo             = false,
+    useSizeTierAnimations = false,
+    ignoreSizeHitboxScale = true,
+    cd                    = 0.8,
+    hitboxDelay           = 0.35,
+    hitboxActive          = 0.2,
+    hitboxSize            = Vector3.new(5, 10, 6),
+    hitboxOffset          = Vector3.new(0, 0, 4.8),
+    swing_anim_id         = SPEAR_SWING_ANIMATION_ID,
+    swing_anim_ids        = { SPEAR_SWING_ANIMATION_ID },
+}
 
 --------------------------------------------------------------------------------
 -- RARITY DEFAULTS  (combat / hitbox stats — all values are at 100% weapon size)
@@ -219,11 +260,11 @@ local presetOverrides = {
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
     },
-    ["spear"] = {
+    ["spear"] = mergeTables(spearAttackConfig, {
         rarity          = "Rare",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
-    },
+    }),
     ["lil crusher"] = {
         rarity          = "Rare",
         swing_sound     = "BluntSwing",
@@ -236,11 +277,11 @@ local presetOverrides = {
         swing_sound     = "BluntSwing",
         hit_sound       = "BluntHit",
     },
-    ["wooden spear"] = {
+    ["wooden spear"] = mergeTables(spearAttackConfig, {
         rarity          = "Uncommon",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
-    },
+    }),
     ["axe"] = {
         rarity          = "Uncommon",
         swing_sound     = "SwordSwing",
@@ -326,7 +367,11 @@ function module.getPreset(toolType, sizePercentOrTier)
     local weapon = copyTable(defaultSwingAnimationConfig)
     local sizeTier = resolveSizeTier(sizePercentOrTier)
     local sizeTierCfg = sizeTier and defaultSwingAnimationConfigsBySizeTier[sizeTier] or nil
-    if sizeTierCfg then
+    local useSizeTierAnimations = weaponOverride.useSizeTierAnimations ~= false
+    if hasWeaponTag(weaponOverride, SPEAR_WEAPON_TAG) then
+        useSizeTierAnimations = false
+    end
+    if useSizeTierAnimations and sizeTierCfg then
         weapon = mergeTables(weapon, sizeTierCfg)
     end
     weapon = mergeTables(weapon, weaponOverride)
@@ -340,6 +385,11 @@ module.presets        = presets
 module.rarityDefaults = rarityDefaults
 module.defaultSwingAnimationConfig = defaultSwingAnimationConfig
 module.defaultSwingAnimationConfigsBySizeTier = defaultSwingAnimationConfigsBySizeTier
+module.weaponTags = {
+    Spear = SPEAR_WEAPON_TAG,
+}
+module.hasWeaponTag = hasWeaponTag
+module.usesComboAttacks = usesComboAttacks
 module.allSwingAnimationIds = allSwingAnimationIds
 module.getAllSwingAnimationIds = collectAllSwingAnimationIds
 

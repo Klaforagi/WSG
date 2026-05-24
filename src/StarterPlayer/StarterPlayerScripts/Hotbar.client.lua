@@ -39,6 +39,14 @@ pcall(function()
     end
 end)
 
+local ItemIconRegistry = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("ItemIconRegistry")
+    if mod and mod:IsA("ModuleScript") then
+        ItemIconRegistry = require(mod)
+    end
+end)
+
 --------------------------------------------------------------------------------
 -- MENU LOCK CHECK
 -- MenuLockEnforcer.client.lua sets player:SetAttribute("MenuOpen", bool)
@@ -138,6 +146,28 @@ local function getPotionAccentColor(potionDef)
         end
     end
     return Color3.fromRGB(103, 186, 255)
+end
+
+local function colorFromIconValue(value, fallback)
+    if typeof(value) == "Color3" then
+        return value
+    end
+    if type(value) == "table" then
+        local red = tonumber(value[1])
+        local green = tonumber(value[2])
+        local blue = tonumber(value[3])
+        if red and green and blue then
+            return Color3.fromRGB(red, green, blue)
+        end
+    end
+    return fallback
+end
+
+local function getPotionIconData(potionDef)
+    if not ItemIconRegistry or type(ItemIconRegistry.Get) ~= "function" or type(potionDef) ~= "table" then
+        return nil
+    end
+    return ItemIconRegistry.Get(potionDef.IconKey) or ItemIconRegistry.Get(potionDef.Id)
 end
 
 -- Weapon cooldown lock state (driven by player attributes set by WeaponLockService)
@@ -320,6 +350,55 @@ local function buildPotionIcon(parent)
     Instance.new("UICorner", plusV).CornerRadius = UDim.new(1, 0)
 
     return iconFrame
+end
+
+local function updatePotionIcon(iconFrame, potionDef)
+    if not iconFrame then
+        return
+    end
+
+    local accent = getPotionAccentColor(potionDef)
+    local iconData = getPotionIconData(potionDef) or {}
+    local liquidColor = colorFromIconValue(iconData.LiquidColor, accent)
+    local glassColor = colorFromIconValue(iconData.GlassColor, liquidColor:Lerp(Color3.new(1, 1, 1), 0.58))
+    local strokeColor = colorFromIconValue(iconData.StrokeColor, liquidColor:Lerp(Color3.new(0, 0, 0), 0.48))
+    local capColor = colorFromIconValue(iconData.CapColor, strokeColor)
+
+    local body = iconFrame:FindFirstChild("Body")
+    local neck = iconFrame:FindFirstChild("Neck")
+    local cap = iconFrame:FindFirstChild("Cap")
+    local liquid = iconFrame:FindFirstChild("Liquid")
+    local plusH = iconFrame:FindFirstChild("PlusH")
+    local plusV = iconFrame:FindFirstChild("PlusV")
+
+    if body then
+        body.BackgroundColor3 = glassColor
+        local stroke = body:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            stroke.Color = strokeColor
+        end
+    end
+    if neck then
+        neck.BackgroundColor3 = glassColor
+        local stroke = neck:FindFirstChildOfClass("UIStroke")
+        if stroke then
+            stroke.Color = strokeColor
+        end
+    end
+    if cap then
+        cap.BackgroundColor3 = capColor
+    end
+    if liquid then
+        liquid.BackgroundColor3 = liquidColor
+    end
+
+    local showHealthMotif = type(iconData) == "table" and iconData.Motif == "health"
+    if plusH then
+        plusH.Visible = showHealthMotif
+    end
+    if plusV then
+        plusV.Visible = showHealthMotif
+    end
 end
 
 --------------------------------------------------------------------------------
@@ -706,6 +785,9 @@ local function refreshSlots()
             end
             if ui.potionIcon then
                 ui.potionIcon.Visible = hasEquippedPotion
+                if hasEquippedPotion then
+                    updatePotionIcon(ui.potionIcon, getPotionDefinition(potionState.equippedPotionId))
+                end
             end
             if ui.countBadge and ui.countLabel then
                 ui.countLabel.Text = tostring(math.max(0, math.floor(tonumber(potionState.count) or 0)))

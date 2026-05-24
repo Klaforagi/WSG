@@ -8,6 +8,7 @@ local HealthPotionService = require(ServerScriptService:WaitForChild("HealthPoti
 local HEALTH_POTION_ID = "health_potion"
 
 local sectionRegistered = false
+local playerEffectConnections = {}
 
 local function ensureInstance(parent, className, name)
     local existing = parent:FindFirstChild(name)
@@ -42,6 +43,8 @@ end
 local getPotionStateRF = ensureInstance(potionFolder, "RemoteFunction", "GetPotionState")
 local setPotionEquippedRF = ensureInstance(potionFolder, "RemoteFunction", "SetPotionEquipped")
 local useEquippedPotionRF = ensureInstance(potionFolder, "RemoteFunction", "UseEquippedPotion")
+local purchasePotionRF = ensureInstance(potionFolder, "RemoteFunction", "PurchasePotion")
+local potionEffectStartedRE = ensureInstance(potionFolder, "RemoteEvent", "PotionEffectStarted")
 local potionStateUpdatedRE = ensureInstance(remotesFolder, "RemoteEvent", "PotionStateUpdated")
 
 local function getHealthPotionCount(data)
@@ -128,7 +131,49 @@ local function onPlayerAdded(player)
     pcall(function()
         potionStateUpdatedRE:FireClient(player, HealthPotionService:GetState(player))
     end)
+
+    if not playerEffectConnections[player] then
+        playerEffectConnections[player] = {
+            player.CharacterRemoving:Connect(function()
+                HealthPotionService:ClearTemporaryPotionEffects(player)
+            end),
+            player.CharacterAdded:Connect(function(character)
+                task.defer(function()
+                    local humanoid = character and (character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 10))
+                    if humanoid then
+                        humanoid.Died:Connect(function()
+                            HealthPotionService:ClearTemporaryPotionEffects(player)
+                        end)
+                    end
+                end)
+            end),
+        }
+        if player.Character then
+            task.defer(function()
+                local character = player.Character
+                local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.Died:Connect(function()
+                        HealthPotionService:ClearTemporaryPotionEffects(player)
+                    end)
+                end
+            end)
+        end
+    end
 end
+
+Players.PlayerRemoving:Connect(function(player)
+    local connections = playerEffectConnections[player]
+    if connections then
+        for _, connection in ipairs(connections) do
+            pcall(function()
+                connection:Disconnect()
+            end)
+        end
+        playerEffectConnections[player] = nil
+    end
+    HealthPotionService:ClearTemporaryPotionEffects(player)
+end)
 
 HealthPotionService:GetStateChangedEvent():Connect(function(player, state)
     if not player then
@@ -136,6 +181,15 @@ HealthPotionService:GetStateChangedEvent():Connect(function(player, state)
     end
     pcall(function()
         potionStateUpdatedRE:FireClient(player, state or HealthPotionService:GetState(player))
+    end)
+end)
+
+HealthPotionService:GetEffectStartedEvent():Connect(function(player, payload)
+    if not player then
+        return
+    end
+    pcall(function()
+        potionEffectStartedRE:FireClient(player, payload)
     end)
 end)
 
@@ -151,6 +205,13 @@ useEquippedPotionRF.OnServerInvoke = function(player)
     return HealthPotionService:UseEquippedPotion(player)
 end
 
+purchasePotionRF.OnServerInvoke = function(player, potionId)
+    if type(potionId) ~= "string" then
+        return false, "Invalid", HealthPotionService:GetState(player)
+    end
+    return HealthPotionService:PurchasePotion(player, potionId)
+end
+
 registerSection()
 Players.PlayerAdded:Connect(onPlayerAdded)
 
@@ -162,5 +223,8 @@ end
 
 _G.HealthPotionService = HealthPotionService
 _G.PotionService = HealthPotionService
+_G.GetPotionOutgoingDamageMultiplier = function(player)
+    return HealthPotionService:GetOutgoingDamageMultiplier(player)
+end
 
 print("[HealthPotionServiceInit] Potion system initialized")

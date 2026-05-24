@@ -17,6 +17,7 @@ BoostConfig.Boosts = {
     {
         Id            = "coins_2x",
         DisplayName   = "2x Coins",
+        Category      = "Elixir",
         Description   = "Doubles gameplay and event coin rewards for 30 minutes.",
         PriceCoins    = 40,
         DurationSeconds = 1800,  -- 30 minutes
@@ -35,6 +36,7 @@ BoostConfig.Boosts = {
     {
         Id            = "xp_2x",
         DisplayName   = "2x XP",
+        Category      = "Elixir",
         Description   = "Doubles all XP rewards for 30 minutes.",
         PriceCoins    = 45,
         DurationSeconds = 1800,  -- 30 minutes

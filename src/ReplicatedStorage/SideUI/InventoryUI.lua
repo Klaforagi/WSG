@@ -506,6 +506,7 @@ pcall(function() ShopUIModule = require(script.Parent.ShopUI) end)
 local BoostConfig = nil
 local PotionConfigGlobal = nil
 local AssetCodesGlobal = nil
+local ItemIconRegistryGlobal = nil
 local boostRemotes = nil
 local potionRemotes = nil
 
@@ -534,6 +535,23 @@ local function safeRequireAssetCodes()
         if ok and type(result) == "table" then return result end
     end
     return nil
+end
+
+local function safeRequireItemIconRegistry()
+    local mod = ReplicatedStorage:FindFirstChild("ItemIconRegistry")
+    if mod and mod:IsA("ModuleScript") then
+        local ok, result = pcall(function() return require(mod) end)
+        if ok and type(result) == "table" then return result end
+    end
+    return nil
+end
+
+local function getItemIconData(def)
+    ItemIconRegistryGlobal = ItemIconRegistryGlobal or safeRequireItemIconRegistry()
+    if not ItemIconRegistryGlobal or type(ItemIconRegistryGlobal.Get) ~= "function" or type(def) ~= "table" then
+        return nil
+    end
+    return ItemIconRegistryGlobal.Get(def.IconKey) or ItemIconRegistryGlobal.Get(def.Id)
 end
 
 local function getShardCurrencyImage()
@@ -637,15 +655,160 @@ local BOOST_ACCENT_COLORS = {
     quest_2x = Color3.fromRGB(80, 165, 255),
 }
 
+local POTION_CATEGORY_BATTLE = "Battle"
+local POTION_CATEGORY_ELIXIR = "Elixir"
+local POTION_CATEGORY_SECTIONS = {
+    {
+        Id = "Battle",
+        Category = POTION_CATEGORY_BATTLE,
+        Header = "BATTLE",
+        Subtitle = "Equip these to slot 4 and use them during battle.",
+        EmptyText = "No battle potions owned yet.",
+        Accent = Color3.fromRGB(239, 111, 91),
+    },
+    {
+        Id = "Elixir",
+        Category = POTION_CATEGORY_ELIXIR,
+        Header = "ELIXIR",
+        Subtitle = "Activate these for longer-lasting buffs.",
+        EmptyText = "No elixirs owned yet.",
+        Accent = Color3.fromRGB(190, 139, 255),
+    },
+}
+
+local function normalizePotionItemCategory(category, fallback)
+    if category == POTION_CATEGORY_ELIXIR then
+        return POTION_CATEGORY_ELIXIR
+    end
+    if category == POTION_CATEGORY_BATTLE then
+        return POTION_CATEGORY_BATTLE
+    end
+    return fallback or POTION_CATEGORY_BATTLE
+end
+
 local function getBoostIconImage(def)
     if type(def) ~= "table" then return nil end
     if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then return def.IconAssetId end
+    local iconData = getItemIconData(def)
+    if type(iconData) == "table" and type(iconData.IconAssetId) == "string" and #iconData.IconAssetId > 0 then return iconData.IconAssetId end
     local key = def.IconKey
+    if type(iconData) == "table" and type(iconData.AssetKey) == "string" then
+        key = iconData.AssetKey
+    end
     if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
         local image = AssetCodesGlobal.Get(key)
         if type(image) == "string" and #image > 0 then return image end
     end
     return nil
+end
+
+local function createPotionBottleIcon(parent, iconData, accent, scale)
+    iconData = type(iconData) == "table" and iconData or {}
+    accent = accent or GREEN_GLOW
+    scale = tonumber(scale) or 0.86
+
+    local function colorFromIcon(value, fallback)
+        if typeof(value) == "Color3" then return value end
+        if type(value) == "table" then
+            return Color3.fromRGB(tonumber(value[1]) or 255, tonumber(value[2]) or 255, tonumber(value[3]) or 255)
+        end
+        return fallback
+    end
+
+    local liquidColor = colorFromIcon(iconData.LiquidColor, accent)
+    local glassColor = colorFromIcon(iconData.GlassColor, liquidColor:Lerp(Color3.new(1, 1, 1), 0.58))
+    local strokeColor = colorFromIcon(iconData.StrokeColor, liquidColor:Lerp(Color3.new(0, 0, 0), 0.48))
+    local capColor = colorFromIcon(iconData.CapColor, strokeColor)
+    local zBase = (parent and parent.ZIndex or 1) + 1
+
+    local root = Instance.new("Frame")
+    root.Name = "GeneratedPotionIcon"
+    root.AnchorPoint = Vector2.new(0.5, 0.5)
+    root.Position = UDim2.fromScale(0.5, 0.5)
+    root.Size = UDim2.fromScale(scale, scale)
+    root.BackgroundTransparency = 1
+    root.ZIndex = zBase
+    root.Parent = parent
+
+    local body = Instance.new("Frame")
+    body.Name = "Body"
+    body.AnchorPoint = Vector2.new(0.5, 1)
+    body.Position = UDim2.fromScale(0.5, 0.96)
+    body.Size = UDim2.fromScale(0.56, 0.62)
+    body.BackgroundColor3 = glassColor
+    body.BorderSizePixel = 0
+    body.ZIndex = zBase + 1
+    body.Parent = root
+    Instance.new("UICorner", body).CornerRadius = UDim.new(0, px(8))
+    local bodyStroke = Instance.new("UIStroke", body)
+    bodyStroke.Color = strokeColor; bodyStroke.Thickness = 1.2; bodyStroke.Transparency = 0.08
+
+    local neck = Instance.new("Frame")
+    neck.Name = "Neck"
+    neck.AnchorPoint = Vector2.new(0.5, 1)
+    neck.Position = UDim2.fromScale(0.5, 0.39)
+    neck.Size = UDim2.fromScale(0.22, 0.24)
+    neck.BackgroundColor3 = glassColor
+    neck.BorderSizePixel = 0
+    neck.ZIndex = zBase + 2
+    neck.Parent = root
+    Instance.new("UICorner", neck).CornerRadius = UDim.new(0, px(5))
+    local neckStroke = Instance.new("UIStroke", neck)
+    neckStroke.Color = strokeColor; neckStroke.Thickness = 1; neckStroke.Transparency = 0.12
+
+    local cap = Instance.new("Frame")
+    cap.Name = "Cap"
+    cap.AnchorPoint = Vector2.new(0.5, 0)
+    cap.Position = UDim2.fromScale(0.5, 0.08)
+    cap.Size = UDim2.fromScale(0.34, 0.11)
+    cap.BackgroundColor3 = capColor
+    cap.BorderSizePixel = 0
+    cap.ZIndex = zBase + 4
+    cap.Parent = root
+    Instance.new("UICorner", cap).CornerRadius = UDim.new(0, px(5))
+
+    local liquid = Instance.new("Frame")
+    liquid.Name = "Liquid"
+    liquid.AnchorPoint = Vector2.new(0.5, 1)
+    liquid.Position = UDim2.fromScale(0.5, 0.9)
+    liquid.Size = UDim2.fromScale(0.44, 0.34)
+    liquid.BackgroundColor3 = liquidColor
+    liquid.BorderSizePixel = 0
+    liquid.ZIndex = zBase + 3
+    liquid.Parent = root
+    Instance.new("UICorner", liquid).CornerRadius = UDim.new(0, px(7))
+
+    local shine = Instance.new("Frame")
+    shine.Name = "Highlight"
+    shine.AnchorPoint = Vector2.new(0, 0)
+    shine.Position = UDim2.fromScale(0.36, 0.38)
+    shine.Size = UDim2.fromScale(0.09, 0.34)
+    shine.BackgroundColor3 = WHITE
+    shine.BackgroundTransparency = 0.32
+    shine.BorderSizePixel = 0
+    shine.Rotation = 14
+    shine.ZIndex = zBase + 5
+    shine.Parent = root
+    Instance.new("UICorner", shine).CornerRadius = UDim.new(0, px(5))
+
+    if iconData.Motif == "speed" then
+        for index = 1, 3 do
+            local streak = Instance.new("Frame")
+            streak.Name = "SpeedStreak" .. tostring(index)
+            streak.AnchorPoint = Vector2.new(0.5, 0.5)
+            streak.Position = UDim2.fromScale(0.34 + (index * 0.11), 0.55 + ((index - 2) * 0.08))
+            streak.Size = UDim2.fromScale(0.24 - (index * 0.025), 0.045)
+            streak.BackgroundColor3 = WHITE
+            streak.BackgroundTransparency = 0.08
+            streak.BorderSizePixel = 0
+            streak.Rotation = -16
+            streak.ZIndex = zBase + 6
+            streak.Parent = root
+            Instance.new("UICorner", streak).CornerRadius = UDim.new(0, px(5))
+        end
+    end
+
+    return root
 end
 
 local function getSkinIconImage(def)
@@ -2526,8 +2689,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                         Id = potionDef.Id,
                         Kind = "potion",
                         DisplayName = potionDef.DisplayName,
+                        Category = normalizePotionItemCategory(potionDef.Category, POTION_CATEGORY_BATTLE),
                         Description = potionDef.Description,
                         DetailText = potionDef.DetailText,
+                        IconKey = potionDef.IconKey,
+                        IconShape = "potion_bottle",
                         IconGlyph = potionDef.IconGlyph,
                         IconColor = potionDef.IconColor,
                         BadgeText = potionDef.BadgeText,
@@ -2542,6 +2708,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 if shouldShowBoostInPotionsInventory(def) then
                     local copied = shallowCopy(def)
                     copied.Kind = "boost"
+                    copied.Category = normalizePotionItemCategory(copied.Category, POTION_CATEGORY_ELIXIR)
                     table.insert(boostDefs, copied)
                 end
             end
@@ -2586,7 +2753,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             pcall(function() ingestPotionState(potionRemoteSet.getState:InvokeServer()) end)
         end
 
-        -- ── Grid scroll (left side) ─────────────────────────────────────
+        -- ── Grouped potion inventory scroll (left side) ────────────────
         local boostGridScroll = Instance.new("ScrollingFrame")
         boostGridScroll.Name = "BoostGridScroll"
         boostGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
@@ -2600,19 +2767,156 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostGridScroll.Parent = boostsPage
         Instance.new("UICorner", boostGridScroll).CornerRadius = UDim.new(0, px(10))
 
-        local boostGridLayout = Instance.new("UIGridLayout", boostGridScroll)
-        boostGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
-        boostGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
-        boostGridLayout.FillDirection = Enum.FillDirection.Horizontal
-        boostGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-        boostGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        local boostScrollLayout = Instance.new("UIListLayout", boostGridScroll)
+        boostScrollLayout.FillDirection = Enum.FillDirection.Vertical
+        boostScrollLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        boostScrollLayout.Padding = UDim.new(0, px(14))
 
         local boostGridPad = Instance.new("UIPadding", boostGridScroll)
         boostGridPad.PaddingTop    = UDim.new(0, px(8))
         boostGridPad.PaddingLeft   = UDim.new(0, px(8))
         boostGridPad.PaddingRight  = UDim.new(0, px(8))
         boostGridPad.PaddingBottom = UDim.new(0, px(8))
-        bindFixedColumnGrid(boostGridScroll, boostGridLayout, boostGridPad, 140, 178)
+
+        local boostSectionRecords = {}
+        local boostSectionByCategory = {}
+
+        local function createPotionInventorySection(sectionDef, layoutOrder)
+            local accent = sectionDef.Accent or GOLD
+
+            local sectionFrame = Instance.new("Frame")
+            sectionFrame.Name = tostring(sectionDef.Id or sectionDef.Category) .. "Section"
+            sectionFrame.BackgroundTransparency = 1
+            sectionFrame.AutomaticSize = Enum.AutomaticSize.Y
+            sectionFrame.Size = UDim2.new(1, 0, 0, 0)
+            sectionFrame.LayoutOrder = layoutOrder
+            sectionFrame.Parent = boostGridScroll
+
+            local sectionLayout = Instance.new("UIListLayout", sectionFrame)
+            sectionLayout.FillDirection = Enum.FillDirection.Vertical
+            sectionLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            sectionLayout.Padding = UDim.new(0, px(8))
+
+            local header = Instance.new("Frame")
+            header.Name = "SectionHeader"
+            header.BackgroundColor3 = accentPanelColor(accent, 0.34)
+            header.BorderSizePixel = 0
+            header.Size = UDim2.new(1, 0, 0, px(54))
+            header.LayoutOrder = 1
+            header.Parent = sectionFrame
+            Instance.new("UICorner", header).CornerRadius = UDim.new(0, px(10))
+            local headerStroke = Instance.new("UIStroke", header)
+            headerStroke.Color = mixColor(accent, WHITE, 0.08)
+            headerStroke.Thickness = 1.2
+            headerStroke.Transparency = 0.3
+
+            local accentBar = Instance.new("Frame", header)
+            accentBar.Name = "AccentBar"
+            accentBar.BackgroundColor3 = accent
+            accentBar.BorderSizePixel = 0
+            accentBar.Size = UDim2.new(0, px(5), 1, 0)
+            accentBar.Position = UDim2.new(0, 0, 0, 0)
+            Instance.new("UICorner", accentBar).CornerRadius = UDim.new(0, px(9))
+
+            local headerTitle = Instance.new("TextLabel", header)
+            headerTitle.Name = "Title"
+            headerTitle.BackgroundTransparency = 1
+            headerTitle.Font = Enum.Font.GothamBold
+            headerTitle.Text = tostring(sectionDef.Header or sectionDef.Category or "POTIONS")
+            headerTitle.TextColor3 = WHITE
+            headerTitle.TextSize = math.max(16, math.floor(px(19)))
+            headerTitle.TextXAlignment = Enum.TextXAlignment.Left
+            headerTitle.TextTruncate = Enum.TextTruncate.AtEnd
+            headerTitle.Position = UDim2.new(0, px(16), 0, px(7))
+            headerTitle.Size = UDim2.new(1, -px(28), 0, px(22))
+            addTextOutline(headerTitle, 0.22, 1.2)
+
+            local subtitle = Instance.new("TextLabel", header)
+            subtitle.Name = "Subtitle"
+            subtitle.BackgroundTransparency = 1
+            subtitle.Font = Enum.Font.GothamMedium
+            subtitle.Text = tostring(sectionDef.Subtitle or "")
+            subtitle.TextColor3 = DIM_TEXT
+            subtitle.TextSize = math.max(10, math.floor(px(12)))
+            subtitle.TextXAlignment = Enum.TextXAlignment.Left
+            subtitle.TextTruncate = Enum.TextTruncate.AtEnd
+            subtitle.Position = UDim2.new(0, px(16), 0, px(30))
+            subtitle.Size = UDim2.new(1, -px(28), 0, px(18))
+
+            local grid = Instance.new("Frame")
+            grid.Name = tostring(sectionDef.Id or sectionDef.Category) .. "Grid"
+            grid.BackgroundTransparency = 1
+            grid.Size = UDim2.new(1, 0, 0, px(1))
+            grid.LayoutOrder = 2
+            grid.Visible = false
+            grid.Parent = sectionFrame
+
+            local gridLayout = Instance.new("UIGridLayout", grid)
+            gridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
+            gridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
+            gridLayout.FillDirection = Enum.FillDirection.Horizontal
+            gridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+            gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+
+            local emptyLabel = Instance.new("TextLabel")
+            emptyLabel.Name = "EmptyMessage"
+            emptyLabel.BackgroundColor3 = accentPanelColor(accent, 0.18)
+            emptyLabel.BorderSizePixel = 0
+            emptyLabel.Font = Enum.Font.GothamMedium
+            emptyLabel.Text = tostring(sectionDef.EmptyText or "No potions owned yet.")
+            emptyLabel.TextColor3 = DIM_TEXT
+            emptyLabel.TextSize = math.max(12, math.floor(px(13)))
+            emptyLabel.TextWrapped = true
+            emptyLabel.Size = UDim2.new(1, 0, 0, px(52))
+            emptyLabel.LayoutOrder = 3
+            emptyLabel.Visible = true
+            emptyLabel.Parent = sectionFrame
+            Instance.new("UICorner", emptyLabel).CornerRadius = UDim.new(0, px(9))
+            local emptyStroke = Instance.new("UIStroke", emptyLabel)
+            emptyStroke.Color = CARD_STROKE
+            emptyStroke.Thickness = 1
+            emptyStroke.Transparency = 0.5
+
+            local record = {
+                category = sectionDef.Category,
+                grid = grid,
+                layout = gridLayout,
+                empty = emptyLabel,
+                visibleCount = 0,
+            }
+            table.insert(boostSectionRecords, record)
+            boostSectionByCategory[sectionDef.Category] = record
+            return record
+        end
+
+        for index, sectionDef in ipairs(POTION_CATEGORY_SECTIONS) do
+            createPotionInventorySection(sectionDef, index)
+        end
+
+        local function updateBoostSectionLayouts()
+            local availableWidth = boostGridScroll.AbsoluteSize.X
+                - (boostGridPad.PaddingLeft.Offset or 0)
+                - (boostGridPad.PaddingRight.Offset or 0)
+                - math.max(0, boostGridScroll.ScrollBarThickness or 0)
+            local gap = px(10)
+            local columns = INVENTORY_GRID_COLUMNS
+            local cellWidth = math.max(1, math.floor((availableWidth - (gap * math.max(0, columns - 1))) / columns))
+            local cellHeight = math.max(1, math.floor(cellWidth * (178 / 140)))
+
+            for _, record in ipairs(boostSectionRecords) do
+                local count = math.max(0, tonumber(record.visibleCount) or 0)
+                record.layout.CellPadding = UDim2.new(0, gap, 0, gap)
+                record.layout.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+                record.grid.Visible = count > 0
+                record.empty.Visible = count <= 0
+                local rows = count > 0 and math.ceil(count / columns) or 0
+                local gridHeight = rows > 0 and ((rows * cellHeight) + (math.max(0, rows - 1) * gap)) or px(1)
+                record.grid.Size = UDim2.new(1, 0, 0, gridHeight)
+            end
+        end
+
+        trackConn(boostGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateBoostSectionLayouts))
+        task.defer(updateBoostSectionLayouts)
 
         -- Empty state (shown when no boosts owned)
         local boostEmptyState = Instance.new("Frame")
@@ -2884,6 +3188,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if not selectedBoostId then
                 boostDetailPlaceholder.Visible = true
                 boostDetailContent.Visible = false
+                boostDetailPlaceholder.Text = "Select a potion or boost"
                 return
             end
             boostDetailPlaceholder.Visible = false
@@ -2892,7 +3197,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local def = entryById[selectedBoostId]
             if not def then return end
 
-            local iconColor = colorFromRGBArray(def.IconColor) or BOOST_ACCENT_COLORS[def.Id] or GOLD
+            local iconData = getItemIconData(def)
+            local iconColor = colorFromRGBArray((type(iconData) == "table" and (iconData.IconColor or iconData.LiquidColor)) or def.IconColor) or BOOST_ACCENT_COLORS[def.Id] or GOLD
 
             -- Icon background tint
             boostDetailIconBg.BackgroundColor3 = Color3.new(
@@ -2907,14 +3213,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             boostDetailIconSheen.BackgroundColor3 = brightenColor(iconColor, 0.08)
 
             -- Icon image or glyph
+            local generatedDetailIcon = boostDetailIconBg:FindFirstChild("GeneratedPotionIcon")
+            if generatedDetailIcon then
+                generatedDetailIcon:Destroy()
+            end
             local img = getBoostIconImage(def)
-            if img and #img > 0 then
+            if type(iconData) == "table" and iconData.Kind == "PotionBottle" then
+                boostDetailIconImage.Visible = false
+                boostDetailIconGlyph.Visible = false
+                createPotionBottleIcon(boostDetailIconBg, iconData, iconColor, 0.62)
+            elseif img and #img > 0 then
                 boostDetailIconImage.Image = img
                 boostDetailIconImage.Visible = true
                 boostDetailIconGlyph.Visible = false
             else
                 boostDetailIconImage.Visible = false
-                boostDetailIconGlyph.Text = def.IconGlyph or "\u{26A1}"
+                boostDetailIconGlyph.Text = (type(iconData) == "table" and iconData.Glyph) or def.IconGlyph or "\u{26A1}"
                 boostDetailIconGlyph.TextColor3 = iconColor
                 boostDetailIconGlyph.Visible = true
             end
@@ -2992,10 +3306,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
                 boostActivateStroke.Transparency = 0.15
             elseif owned > 0 then
-                boostDetailStatus.Text = "Ready to Activate"
+                boostDetailStatus.Text = "Ready to Use"
                 boostDetailStatus.TextColor3 = WHITE
                 boostDetailTimer.Visible = false
-                boostActivateBtn.Text = "ACTIVATE"
+                boostActivateBtn.Text = "USE"
                 boostActivateBtn.Active = true
                 boostActivateBtn.BackgroundColor3 = BTN_BG
                 boostActivateBtn.TextColor3 = WHITE
@@ -3005,7 +3319,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 boostDetailStatus.Text = "Not Owned"
                 boostDetailStatus.TextColor3 = DIM_TEXT
                 boostDetailTimer.Visible = false
-                boostActivateBtn.Text = "ACTIVATE"
+                boostActivateBtn.Text = "USE"
                 boostActivateBtn.Active = false
                 boostActivateBtn.BackgroundColor3 = DISABLED_BG
                 boostActivateBtn.TextColor3 = DIM_TEXT
@@ -3016,10 +3330,35 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- ── Refresh all boost card visuals ──────────────────────────────
         local function refreshBoostCards()
+            for _, record in ipairs(boostSectionRecords) do
+                record.visibleCount = 0
+            end
+
+            local firstVisibleId = nil
+            local selectedStillVisible = false
+
             for _, def in ipairs(boostDefs) do
                 local refs = boostCards[def.Id]
                 if not refs then continue end
                 local owned, active, remaining = getBoostState(def.Id)
+                local shouldShow = owned > 0 or active
+
+                refs.card.Visible = shouldShow
+                refs.card.LayoutOrder = refs.layoutOrder or refs.card.LayoutOrder
+                if shouldShow then
+                    if refs.sectionRecord and refs.sectionRecord.grid then
+                        refs.card.Parent = refs.sectionRecord.grid
+                        refs.sectionRecord.visibleCount = (refs.sectionRecord.visibleCount or 0) + 1
+                    else
+                        refs.card.Parent = boostGridScroll
+                    end
+                    firstVisibleId = firstVisibleId or def.Id
+                    if selectedBoostId == def.Id then
+                        selectedStillVisible = true
+                    end
+                else
+                    refs.card.Parent = nil
+                end
 
                 local isSelected = (selectedBoostId == def.Id)
 
@@ -3086,6 +3425,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end
             end
 
+            if selectedBoostId and not selectedStillVisible then
+                selectedBoostId = firstVisibleId
+            elseif not selectedBoostId then
+                selectedBoostId = firstVisibleId
+            end
+
+            updateBoostSectionLayouts()
+
             -- Update details panel timer if it's visible
             updateBoostDetailsPanel()
         end
@@ -3104,8 +3451,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             unavailable.TextColor3 = DIM_TEXT; unavailable.TextSize = math.max(14, math.floor(px(15)))
             unavailable.Size = UDim2.new(1, 0, 0, px(50)); unavailable.LayoutOrder = 1
         else
-            for i_b, def in ipairs(boostDefs) do
-                local iconColor = colorFromRGBArray(def.IconColor) or BOOST_ACCENT_COLORS[def.Id] or GOLD
+            local function createBoostCard(def, layoutOrder)
+                local iconData = getItemIconData(def)
+                local iconColor = colorFromRGBArray((type(iconData) == "table" and (iconData.IconColor or iconData.LiquidColor)) or def.IconColor) or BOOST_ACCENT_COLORS[def.Id] or GOLD
+                local fallbackCategory = def.Kind == "boost" and POTION_CATEGORY_ELIXIR or POTION_CATEGORY_BATTLE
+                local category = normalizePotionItemCategory(def.Category, fallbackCategory)
+                local sectionRecord = boostSectionByCategory[category] or boostSectionByCategory[POTION_CATEGORY_BATTLE]
                 local baseBg = accentPanelColor(iconColor, 0.48)
                 local selectedBg = brightenColor(baseBg, 0.05)
                 local activeBg = mixColor(baseBg, GREEN_GLOW, 0.2)
@@ -3118,9 +3469,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 card.Text = ""
                 card.AutoButtonColor = false
                 card.BorderSizePixel = 0
-                card.LayoutOrder = i_b
+                card.LayoutOrder = layoutOrder
                 card.ClipsDescendants = true
-                card.Parent = boostGridScroll
+                card.Parent = nil
                 Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
                 local cStroke = Instance.new("UIStroke", card)
@@ -3165,7 +3516,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardIconImage.ZIndex = 3
 
                 local img = getBoostIconImage(def)
-                if img and #img > 0 then
+                local generatedCardIcon = nil
+                if type(iconData) == "table" and iconData.Kind == "PotionBottle" then
+                    cardIconImage.Visible = false
+                    generatedCardIcon = createPotionBottleIcon(iconArea, iconData, iconColor, 0.86)
+                elseif img and #img > 0 then
                     cardIconImage.Image = img
                     cardIconImage.Visible = true
                 else
@@ -3179,10 +3534,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardIconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
                 cardIconGlyph.Position = UDim2.new(0.5, 0, 0.5, 0)
                 cardIconGlyph.Font = Enum.Font.GothamBold
-                cardIconGlyph.Text = def.IconGlyph or "\u{26A1}"
+                cardIconGlyph.Text = (type(iconData) == "table" and iconData.Glyph) or def.IconGlyph or "\u{26A1}"
                 cardIconGlyph.TextScaled = true
                 cardIconGlyph.TextColor3 = iconColor
-                cardIconGlyph.Visible = not cardIconImage.Visible
+                cardIconGlyph.Visible = not cardIconImage.Visible and generatedCardIcon == nil
                 cardIconGlyph.ZIndex = 3
                 addTextOutline(cardIconGlyph, 0.2, 1.4)
 
@@ -3197,7 +3552,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 durationBadge.AnchorPoint = Vector2.new(1, 0)
                 durationBadge.Position = UDim2.new(1, -px(5), 0, px(27))
                 if def.Kind == "potion" then
-                    durationBadge.Text = def.BadgeText or def.IconGlyph or "P"
+                    local badgeText = def.BadgeText or def.IconGlyph
+                    durationBadge.Text = (type(badgeText) == "string" and badgeText ~= "" and badgeText) or "POTION"
                 else
                     durationBadge.Text = ((def.DurationSeconds or 0) > 0) and (tostring(math.floor((def.DurationSeconds or 0) / 60)) .. "m") or "BOOST"
                 end
@@ -3255,6 +3611,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     selectedBg = selectedBg,
                     activeBg = activeBg,
                     borderColor = borderColor,
+                    sectionRecord = sectionRecord,
+                    layoutOrder = layoutOrder,
                 }
 
                 -- Click to select
@@ -3279,13 +3637,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end)
             end
 
+            for i_b, def in ipairs(boostDefs) do
+                createBoostCard(def, i_b)
+            end
+
             -- Initial card refresh
             refreshBoostCards()
-
-            -- Auto-select first boost
-            if boostDefs[1] then
-                setSelectedBoost(boostDefs[1].Id)
-            end
 
             -- Listen for server state updates
             if remotes and remotes.stateUpdated then

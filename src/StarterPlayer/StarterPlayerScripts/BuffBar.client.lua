@@ -46,6 +46,8 @@ end
 local AssetCodes = safeRequire("AssetCodes", 5)
 local BoostConfig = safeRequire("BoostConfig", 5)
 local BuffBarConfig = safeRequire("BuffBarConfig", 5)
+local PotionConfig = safeRequire("PotionConfig", 5)
+local ItemIconRegistry = safeRequire("ItemIconRegistry", 5)
 local BandageConfig = safeRequire("BandageConfig", 5) or { CastDuration = 6 }
 local EventConfig = safeRequire("EventConfig", 5)
 
@@ -77,6 +79,128 @@ local function colorFrom(value, fallback)
         return Color3.fromRGB(tonumber(value[1]) or 255, tonumber(value[2]) or 255, tonumber(value[3]) or 255)
     end
     return fallback or COLORS.gold
+end
+
+local function getItemIconData(def)
+    if not ItemIconRegistry or type(ItemIconRegistry.Get) ~= "function" or type(def) ~= "table" then
+        return nil
+    end
+    return ItemIconRegistry.Get(def.IconKey) or ItemIconRegistry.Get(def.SourceId) or ItemIconRegistry.Get(def.Id)
+end
+
+local function applyCorner(frame, radius)
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, radius)
+    corner.Parent = frame
+    return corner
+end
+
+local function applyStroke(frame, color, thickness, transparency)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = color
+    stroke.Thickness = thickness or 1
+    stroke.Transparency = transparency or 0
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Parent = frame
+    return stroke
+end
+
+local function createPotionBottleIcon(parent, iconData, accent)
+    iconData = type(iconData) == "table" and iconData or {}
+    accent = accent or COLORS.green
+
+    local liquidColor = colorFrom(iconData.LiquidColor, accent)
+    local glassColor = colorFrom(iconData.GlassColor, liquidColor:Lerp(Color3.new(1, 1, 1), 0.58))
+    local strokeColor = colorFrom(iconData.StrokeColor, liquidColor:Lerp(Color3.new(0, 0, 0), 0.48))
+    local capColor = colorFrom(iconData.CapColor, strokeColor)
+    local zBase = (parent and parent.ZIndex or 1) + 1
+
+    local root = Instance.new("Frame")
+    root.Name = "GeneratedPotionIcon"
+    root.AnchorPoint = Vector2.new(0.5, 0.5)
+    root.Position = UDim2.fromScale(0.5, 0.5)
+    root.Size = UDim2.fromScale(0.86, 0.86)
+    root.BackgroundTransparency = 1
+    root.ZIndex = zBase
+    root.Parent = parent
+
+    local body = Instance.new("Frame")
+    body.Name = "Body"
+    body.AnchorPoint = Vector2.new(0.5, 1)
+    body.Position = UDim2.fromScale(0.5, 0.96)
+    body.Size = UDim2.fromScale(0.56, 0.62)
+    body.BackgroundColor3 = glassColor
+    body.BorderSizePixel = 0
+    body.ZIndex = zBase + 1
+    body.Parent = root
+    applyCorner(body, px(8))
+    applyStroke(body, strokeColor, 1.2, 0.08)
+
+    local neck = Instance.new("Frame")
+    neck.Name = "Neck"
+    neck.AnchorPoint = Vector2.new(0.5, 1)
+    neck.Position = UDim2.fromScale(0.5, 0.39)
+    neck.Size = UDim2.fromScale(0.22, 0.24)
+    neck.BackgroundColor3 = glassColor
+    neck.BorderSizePixel = 0
+    neck.ZIndex = zBase + 2
+    neck.Parent = root
+    applyCorner(neck, px(5))
+    applyStroke(neck, strokeColor, 1, 0.12)
+
+    local cap = Instance.new("Frame")
+    cap.Name = "Cap"
+    cap.AnchorPoint = Vector2.new(0.5, 0)
+    cap.Position = UDim2.fromScale(0.5, 0.08)
+    cap.Size = UDim2.fromScale(0.34, 0.11)
+    cap.BackgroundColor3 = capColor
+    cap.BorderSizePixel = 0
+    cap.ZIndex = zBase + 4
+    cap.Parent = root
+    applyCorner(cap, px(5))
+
+    local liquid = Instance.new("Frame")
+    liquid.Name = "Liquid"
+    liquid.AnchorPoint = Vector2.new(0.5, 1)
+    liquid.Position = UDim2.fromScale(0.5, 0.9)
+    liquid.Size = UDim2.fromScale(0.44, 0.34)
+    liquid.BackgroundColor3 = liquidColor
+    liquid.BorderSizePixel = 0
+    liquid.ZIndex = zBase + 3
+    liquid.Parent = root
+    applyCorner(liquid, px(7))
+
+    local shine = Instance.new("Frame")
+    shine.Name = "Highlight"
+    shine.AnchorPoint = Vector2.new(0, 0)
+    shine.Position = UDim2.fromScale(0.36, 0.38)
+    shine.Size = UDim2.fromScale(0.09, 0.34)
+    shine.BackgroundColor3 = COLORS.white
+    shine.BackgroundTransparency = 0.32
+    shine.BorderSizePixel = 0
+    shine.Rotation = 14
+    shine.ZIndex = zBase + 5
+    shine.Parent = root
+    applyCorner(shine, px(5))
+
+    if iconData.Motif == "speed" then
+        for index = 1, 3 do
+            local streak = Instance.new("Frame")
+            streak.Name = "SpeedStreak" .. tostring(index)
+            streak.AnchorPoint = Vector2.new(0.5, 0.5)
+            streak.Position = UDim2.fromScale(0.34 + (index * 0.11), 0.55 + ((index - 2) * 0.08))
+            streak.Size = UDim2.fromScale(0.24 - (index * 0.025), 0.045)
+            streak.BackgroundColor3 = COLORS.white
+            streak.BackgroundTransparency = 0.08
+            streak.BorderSizePixel = 0
+            streak.Rotation = -16
+            streak.ZIndex = zBase + 6
+            streak.Parent = root
+            applyCorner(streak, px(5))
+        end
+    end
+
+    return root
 end
 
 local function cloneDefinition(def)
@@ -693,8 +817,14 @@ local function createTile(entry)
 
     local glyphConstraint = nil
     local glyphMaxTextSize = tonumber(def.IconTextMaxSize) or 82
-    local assetId = resolveAsset(def)
-    if def.IconShape == "plus" then
+    local itemIconData = getItemIconData(def)
+    local assetId = nil
+    if def.IconShape ~= "potion_bottle" and not (type(itemIconData) == "table" and itemIconData.Kind == "PotionBottle") then
+        assetId = resolveAsset(def)
+    end
+    if def.IconShape == "potion_bottle" or (type(itemIconData) == "table" and itemIconData.Kind == "PotionBottle") then
+        createPotionBottleIcon(iconFrame, itemIconData, accent)
+    elseif def.IconShape == "plus" then
         createPlusIcon(iconFrame, accent)
     elseif def.IconShape == "flag" then
         createFlagIcon(iconFrame, accent)
@@ -1079,6 +1209,81 @@ end
 player:GetAttributeChangedSignal("RevengeCurseActive"):Connect(syncRevengeCurse)
 player:GetAttributeChangedSignal("RevengeCurseExpiresAt"):Connect(syncRevengeCurse)
 task.defer(syncRevengeCurse)
+
+local function getPotionEffectDef(potionId)
+    local def = getStaticDef(potionId)
+    if def then
+        return def
+    end
+
+    if PotionConfig and type(PotionConfig.GetById) == "function" then
+        local potionDef = PotionConfig.GetById(potionId)
+        if type(potionDef) == "table" then
+            return {
+                Id = potionDef.Id,
+                Kind = "buff",
+                DisplayName = potionDef.DisplayName or potionDef.Id,
+                Description = potionDef.DetailText or potionDef.Description or "Potion effect active.",
+                IconKey = potionDef.IconKey,
+                IconGlyph = potionDef.IconGlyph,
+                IconColor = potionDef.IconColor,
+                AccentColor = potionDef.IconColor,
+                IconShape = "potion_bottle",
+                ShowTimer = true,
+                SortOrder = 32,
+            }
+        end
+    end
+
+    return nil
+end
+
+local function applyPotionEffect(payload)
+    if type(payload) ~= "table" or type(payload.potionId) ~= "string" then
+        return
+    end
+
+    local expiresAt = tonumber(payload.expiresAt)
+    local duration = tonumber(payload.duration)
+    if (not expiresAt or expiresAt <= 0) and duration and duration > 0 then
+        expiresAt = workspace:GetServerTimeNow() + duration
+    end
+    if not expiresAt or expiresAt <= workspace:GetServerTimeNow() then
+        removeEntry("potion_" .. payload.potionId)
+        return
+    end
+
+    local def = getPotionEffectDef(payload.potionId)
+    if not def then
+        return
+    end
+    if type(payload.displayName) == "string" and payload.displayName ~= "" then
+        def.DisplayName = payload.displayName
+    end
+    if type(payload.description) == "string" and payload.description ~= "" then
+        def.Description = payload.description
+    end
+
+    upsertEntry("potion_" .. payload.potionId, def, {
+        kind = "potion",
+        expiresAt = expiresAt,
+        timeKind = "server",
+        sortOrder = def.SortOrder or 32,
+    })
+end
+
+task.spawn(function()
+    local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+    if not remotes then
+        return
+    end
+
+    local potionsFolder = remotes:WaitForChild("Potions", 10)
+    local effectStarted = potionsFolder and potionsFolder:WaitForChild("PotionEffectStarted", 10)
+    if effectStarted and effectStarted:IsA("RemoteEvent") then
+        effectStarted.OnClientEvent:Connect(applyPotionEffect)
+    end
+end)
 
 local function applyBoostStates(states)
     if type(states) ~= "table" or not BoostConfig or not BuffBarConfig then

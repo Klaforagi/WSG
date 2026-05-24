@@ -806,6 +806,15 @@ local function attachMelee(tool)
         task.delay(scaledStepCd, function()
             isSwinging = false
 
+            if not hasCombo then
+                local shouldProcessBuffer = bufferedClick
+                resetCombo()
+                if shouldProcessBuffer then
+                    task.defer(executeAttack)
+                end
+                return
+            end
+
             if step >= 3 then
                 -- Attack3 finished: hard reset, no combo chain allowed
                 resetCombo()

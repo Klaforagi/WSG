@@ -9,6 +9,7 @@ local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidSt
 local DATASTORE_NAME = "HealthPotions_v1"
 local DEFAULT_POTION_ID = "health_potion"
 local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local OUTGOING_DAMAGE_EFFECT = "OutgoingDamageMultiplier"
 
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 
@@ -19,6 +20,8 @@ local loadedPlayers = {}
 local DEFEAT_LOCK_ATTR = "DefeatLockActive"
 local _saveCoordinator
 local stateChangedEvent = Instance.new("BindableEvent")
+local effectStartedEvent = Instance.new("BindableEvent")
+local activeOutgoingDamageModifiers = {}
 
 local function getServerTime()
     local ok, result = pcall(function()
@@ -46,6 +49,22 @@ local function getSaveCoordinator()
         return nil
     end
     return _saveCoordinator
+end
+
+local CurrencyService
+local function getCurrencyService()
+    if CurrencyService then
+        return CurrencyService
+    end
+
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("CurrencyService")
+        if mod and mod:IsA("ModuleScript") then
+            CurrencyService = require(mod)
+        end
+    end)
+
+    return CurrencyService
 end
 
 local function markDirty(player, reason, options)
@@ -215,6 +234,41 @@ local function fireStateChanged(player)
     stateChangedEvent:Fire(player, getStateSnapshot(player))
 end
 
+local function removeOutgoingDamageModifier(player, modifierId)
+    local modifiers = activeOutgoingDamageModifiers[player]
+    if not modifiers then
+        return false
+    end
+
+    if modifierId then
+        if not modifiers[modifierId] then
+            return false
+        end
+        modifiers[modifierId] = nil
+    else
+        table.clear(modifiers)
+    end
+
+    if next(modifiers) == nil then
+        activeOutgoingDamageModifiers[player] = nil
+    end
+    return true
+end
+
+local function scheduleOutgoingDamageExpiry(player, modifierId, token, durationSeconds)
+    task.delay(durationSeconds, function()
+        local modifiers = activeOutgoingDamageModifiers[player]
+        local modifier = modifiers and modifiers[modifierId]
+        if not modifier or modifier.token ~= token then
+            return
+        end
+        if modifier.expiresAt > getServerTime() + 0.05 then
+            return
+        end
+        removeOutgoingDamageModifier(player, modifierId)
+    end)
+end
+
 local function applyPotionEffect(player, potionDef, humanoid)
     if potionDef.EffectType == "Heal" then
         local missingHealth = math.max(0, humanoid.MaxHealth - humanoid.Health)
@@ -243,6 +297,40 @@ local function applyPotionEffect(player, potionDef, humanoid)
         return true, nil, {
             additive = additiveBonus,
             duration = durationSeconds,
+        }
+    end
+
+    if potionDef.EffectType == OUTGOING_DAMAGE_EFFECT then
+        local durationSeconds = math.max(0, tonumber(potionDef.DurationSeconds) or 0)
+        local damageMultiplier = tonumber(potionDef.DamageMultiplier) or 1
+        if durationSeconds <= 0 or damageMultiplier <= 0 then
+            return false, "Potion effect unavailable", nil
+        end
+
+        local modifierId = potionDef.ModifierId or potionDef.Id
+        local modifiers = activeOutgoingDamageModifiers[player]
+        if not modifiers then
+            modifiers = {}
+            activeOutgoingDamageModifiers[player] = modifiers
+        end
+
+        local existing = modifiers[modifierId]
+        local token = (existing and existing.token or 0) + 1
+        local expiresAt = getServerTime() + durationSeconds
+        modifiers[modifierId] = {
+            multiplier = damageMultiplier,
+            expiresAt = expiresAt,
+            token = token,
+            source = potionDef.DisplayName,
+        }
+        scheduleOutgoingDamageExpiry(player, modifierId, token, durationSeconds)
+
+        return true, nil, {
+            duration = durationSeconds,
+            multiplier = damageMultiplier,
+            damageMultiplier = damageMultiplier,
+            modifierId = modifierId,
+            description = string.format("%s: +%d%% damage", potionDef.DisplayName or "Strength", math.floor(((damageMultiplier - 1) * 100) + 0.5)),
         }
     end
 
@@ -337,8 +425,72 @@ function HealthPotionService:SaveForPlayer(player)
 end
 
 function HealthPotionService:ClearPlayer(player)
+    activeOutgoingDamageModifiers[player] = nil
     playerData[player] = nil
     loadedPlayers[player] = nil
+end
+
+function HealthPotionService:ClearTemporaryPotionEffects(player)
+    if not player then
+        return false
+    end
+
+    local modifiers = activeOutgoingDamageModifiers[player]
+    if not modifiers then
+        return false
+    end
+
+    local clearedPotionIds = {}
+    for modifierId in pairs(modifiers) do
+        clearedPotionIds[modifierId] = true
+    end
+    activeOutgoingDamageModifiers[player] = nil
+
+    local serverTime = getServerTime()
+    for potionId in pairs(clearedPotionIds) do
+        effectStartedEvent:Fire(player, {
+            potionId = potionId,
+            duration = 0,
+            expiresAt = serverTime,
+        })
+    end
+    return true
+end
+
+function HealthPotionService:GetOutgoingDamageMultiplier(player)
+    local modifiers = activeOutgoingDamageModifiers[player]
+    if not modifiers then
+        return 1
+    end
+
+    local serverTime = getServerTime()
+    local totalMultiplier = 1
+    local hadExpired = false
+    for modifierId, modifier in pairs(modifiers) do
+        local expiresAt = tonumber(modifier.expiresAt) or 0
+        if expiresAt <= serverTime then
+            modifiers[modifierId] = nil
+            hadExpired = true
+        else
+            local multiplier = tonumber(modifier.multiplier) or 1
+            if multiplier > 0 then
+                totalMultiplier *= multiplier
+            end
+        end
+    end
+    if hadExpired and next(modifiers) == nil then
+        activeOutgoingDamageModifiers[player] = nil
+    end
+    return totalMultiplier
+end
+
+function HealthPotionService:ApplyOutgoingDamageModifiers(player, baseDamage, _damageContext)
+    local damage = tonumber(baseDamage) or 0
+    local multiplier = self:GetOutgoingDamageMultiplier(player)
+    if multiplier <= 0 then
+        return damage
+    end
+    return damage * multiplier
 end
 
 function HealthPotionService:GetPotionCount(player, potionId)
@@ -395,8 +547,65 @@ function HealthPotionService:GrantPotion(player, potionId, amount)
     return self:GrantPotions(player, amount, potionId)
 end
 
+function HealthPotionService:PurchasePotion(player, potionId)
+    if not player or type(potionId) ~= "string" then
+        return false, "Invalid request", player and self:GetState(player) or nil
+    end
+
+    local resolvedPotionId = resolvePotionId(potionId)
+    local potionDef = resolvedPotionId and getPotionDefinition(resolvedPotionId) or nil
+    if not potionDef then
+        return false, "Unknown potion", self:GetState(player)
+    end
+
+    if potionDef.Purchasable ~= true or potionDef.RemovedFromShop == true or potionDef.Hidden == true then
+        return false, "Potion unavailable", self:GetState(player)
+    end
+
+    local price = math.floor(tonumber(potionDef.PriceCoins) or 0)
+    if price <= 0 then
+        return false, "Potion unavailable", self:GetState(player)
+    end
+
+    if loadedPlayers[player] ~= true then
+        self:LoadProfileForPlayer(player)
+    end
+
+    local currencyService = getCurrencyService()
+    if not currencyService or type(currencyService.GetCoins) ~= "function" then
+        return false, "Currency system unavailable", self:GetState(player)
+    end
+
+    local balance = math.max(0, math.floor(tonumber(currencyService:GetCoins(player)) or 0))
+    if balance < price then
+        return false, "Insufficient coins", self:GetState(player)
+    end
+
+    if type(currencyService.AddCoins) == "function" then
+        currencyService:AddCoins(player, -price, "potion_purchase")
+    elseif type(currencyService.SetCoins) == "function" then
+        currencyService:SetCoins(player, balance - price)
+    else
+        return false, "Currency system unavailable", self:GetState(player)
+    end
+
+    local pd = ensurePlayerData(player)
+    local entry = ensurePotionEntry(pd, resolvedPotionId)
+    entry.count += 1
+    entry.totalGranted += 1
+
+    markDirty(player, resolvedPotionId .. "_purchase", { force = true })
+    fireStateChanged(player)
+
+    return true, "Purchased", self:GetState(player)
+end
+
 function HealthPotionService:GetStateChangedEvent()
     return stateChangedEvent.Event
+end
+
+function HealthPotionService:GetEffectStartedEvent()
+    return effectStartedEvent.Event
 end
 
 function HealthPotionService:SetEquipped(player, shouldEquip, potionId)
@@ -508,6 +717,15 @@ function HealthPotionService:UseEquippedPotion(player)
     payload.cooldown = cooldownSeconds
     payload.potionId = equippedPotionId
     payload.state = self:GetState(player)
+
+    local effectDuration = math.max(0, tonumber(payload.duration or potionDef.DurationSeconds) or 0)
+    if effectDuration > 0 then
+        payload.duration = effectDuration
+        payload.expiresAt = getServerTime() + effectDuration
+        payload.displayName = potionDef.DisplayName
+        payload.description = payload.description or potionDef.DetailText or potionDef.Description
+        effectStartedEvent:Fire(player, payload)
+    end
 
     return true, "Potion used", payload
 end
