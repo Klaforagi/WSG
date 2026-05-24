@@ -123,15 +123,18 @@ local STYLE = {
 	PreviewViewportHeight = 280,
 	SkinCardWidth = 156,
 	SkinCardHeight = 188,
-	CompactCosmeticCardWidth = 218,
-	CompactCosmeticCardHeight = 132,
-	CompactIconSize = 72,
-	CompactHeaderHeight = 82,
+	CompactCosmeticCardWidth = 242,
+	CompactCosmeticCardHeight = 150,
+	CompactIconSize = 88,
+	CompactHeaderHeight = 98,
+	CompactTitleHeight = 34,
+	CompactMetadataHeight = 25,
 	SkinHeaderHeight = 66,
 	HeaderTextSize = 30,
-	CardTitleTextSize = 19,
+	CardTitleTextSize = 23,
 	SkinCardTitleTextSize = 18,
 	CardSubtitleTextSize = 15,
+	CompactMetadataTextSize = 18,
 	CardButtonTextSize = 17,
 	SectionHeaderTextSize = 25,
 	DetailTitleTextSize = 26,
@@ -400,6 +403,10 @@ local function createFallbackEmoteGlyph(parent, item, accentColor)
 	local pose = EMOTE_GLYPH_POSES[id] or EMOTE_GLYPH_POSES.dance
 	local color = accentColor or COLORS.Gold
 	local softColor = mixColor(COLORS.SurfaceSoft, color, 0.32)
+	local glyphScale = math.max(1, (STYLE.CompactIconSize or 72) / 72)
+	local function gpx(base)
+		return px(base * glyphScale)
+	end
 
 	local root = Instance.new("Frame")
 	root.Name = "FallbackGlyph"
@@ -407,23 +414,23 @@ local function createFallbackEmoteGlyph(parent, item, accentColor)
 	root.Size = UDim2.fromScale(1, 1)
 	root.Parent = parent
 
-	local glow = createGlyphPart(root, "Glow", UDim2.fromOffset(px(48), px(48)), UDim2.fromScale(0.5, 0.52), mixColor(COLORS.Surface, color, 0.14), px(16), 0)
+	local glow = createGlyphPart(root, "Glow", UDim2.fromOffset(gpx(48), gpx(48)), UDim2.fromScale(0.5, 0.52), mixColor(COLORS.Surface, color, 0.14), gpx(16), 0)
 	glow.BackgroundTransparency = 0.1
 
 	if pose.hideHead then
-		local collar = createGlyphPart(root, "HeadlessCollar", UDim2.fromOffset(px(18), px(5)), UDim2.new(0.5, 0, 0, px(21)), color, px(4), 0)
+		local collar = createGlyphPart(root, "HeadlessCollar", UDim2.fromOffset(gpx(18), gpx(5)), UDim2.new(0.5, 0, 0, gpx(21)), color, gpx(4), 0)
 		collar.BackgroundTransparency = 0.08
 	else
-		createGlyphPart(root, "Head", UDim2.fromOffset(px(13), px(13)), UDim2.new(0.5, px(pose.headX or 0), 0, px(17)), COLORS.Text, px(8), 0)
+		createGlyphPart(root, "Head", UDim2.fromOffset(gpx(13), gpx(13)), UDim2.new(0.5, gpx(pose.headX or 0), 0, gpx(17)), COLORS.Text, gpx(8), 0)
 	end
 
-	createGlyphPart(root, "Torso", UDim2.fromOffset(px(9), px(19)), UDim2.new(0.5, 0, 0, px(33)), softColor, px(4), pose.torsoRotation or 0)
-	createGlyphPart(root, "LeftArm", UDim2.fromOffset(px(5), px(26)), UDim2.new(0, px(pose.leftArmX or 24), 0, px((pose.leftArmY or 28) + 3)), color, px(3), pose.leftArmRotation or -36)
-	createGlyphPart(root, "RightArm", UDim2.fromOffset(px(5), px(26)), UDim2.new(0, px(pose.rightArmX or 40), 0, px((pose.rightArmY or 28) + 3)), color, px(3), pose.rightArmRotation or 36)
-	createGlyphPart(root, "LeftLeg", UDim2.fromOffset(px(5), px(20)), UDim2.new(0, px(28), 0, px(50)), COLORS.Muted, px(3), pose.leftLegRotation or -18)
-	createGlyphPart(root, "RightLeg", UDim2.fromOffset(px(5), px(20)), UDim2.new(0, px(36), 0, px(50)), COLORS.Muted, px(3), pose.rightLegRotation or 18)
+	createGlyphPart(root, "Torso", UDim2.fromOffset(gpx(9), gpx(19)), UDim2.new(0.5, 0, 0, gpx(33)), softColor, gpx(4), pose.torsoRotation or 0)
+	createGlyphPart(root, "LeftArm", UDim2.fromOffset(gpx(5), gpx(26)), UDim2.new(0, gpx(pose.leftArmX or 24), 0, gpx((pose.leftArmY or 28) + 3)), color, gpx(3), pose.leftArmRotation or -36)
+	createGlyphPart(root, "RightArm", UDim2.fromOffset(gpx(5), gpx(26)), UDim2.new(0, gpx(pose.rightArmX or 40), 0, gpx((pose.rightArmY or 28) + 3)), color, gpx(3), pose.rightArmRotation or 36)
+	createGlyphPart(root, "LeftLeg", UDim2.fromOffset(gpx(5), gpx(20)), UDim2.new(0, gpx(28), 0, gpx(50)), COLORS.Muted, gpx(3), pose.leftLegRotation or -18)
+	createGlyphPart(root, "RightLeg", UDim2.fromOffset(gpx(5), gpx(20)), UDim2.new(0, gpx(36), 0, gpx(50)), COLORS.Muted, gpx(3), pose.rightLegRotation or 18)
 
-	local motion = createGlyphPart(root, "MotionLine", UDim2.fromOffset(px(30), px(4)), UDim2.new(0.5, 0, 1, -px(9)), color, px(3), -8)
+	local motion = createGlyphPart(root, "MotionLine", UDim2.fromOffset(gpx(30), gpx(4)), UDim2.new(0.5, 0, 1, -gpx(9)), color, gpx(3), -8)
 	motion.BackgroundTransparency = 0.18
 end
 
@@ -498,14 +505,15 @@ end
 
 local function getMetadataTypeWidth(category)
 	if category == "Emote" then
-		return px(62)
+		return px(72)
 	elseif category == "Trail" then
-		return px(52)
+		return px(64)
 	end
 	return px(44)
 end
 
-local function createMetadataRow(parent, category, rarity, position, size)
+local function createMetadataRow(parent, category, rarity, position, size, textSize)
+	local metadataTextSize = textSize or STYLE.CardSubtitleTextSize
 	local row = Instance.new("Frame")
 	row.Name = "MetadataRow"
 	row.BackgroundTransparency = 1
@@ -524,7 +532,7 @@ local function createMetadataRow(parent, category, rarity, position, size)
 	typeLabel.RichText = false
 	typeLabel.Text = getCategoryLabel(category) .. " ·"
 	typeLabel.TextColor3 = COLORS.Muted
-	typeLabel.TextSize = px(STYLE.CardSubtitleTextSize)
+	typeLabel.TextSize = px(metadataTextSize)
 	typeLabel.TextScaled = false
 	typeLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	typeLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -536,7 +544,7 @@ local function createMetadataRow(parent, category, rarity, position, size)
 	rarityLabel.BackgroundTransparency = 1
 	rarityLabel.Position = UDim2.new(0, typeWidth + px(4), 0, 0)
 	rarityLabel.Size = UDim2.new(1, -(typeWidth + px(4)), 1, 0)
-	rarityLabel.TextSize = px(STYLE.CardSubtitleTextSize)
+	rarityLabel.TextSize = px(metadataTextSize)
 	rarityLabel.Parent = row
 	applyRarityLabelStyle(rarityLabel, rarity)
 
@@ -544,15 +552,18 @@ local function createMetadataRow(parent, category, rarity, position, size)
 end
 
 local function syncMetadataRow(record, item)
+	local isCompactCosmetic = item.Category == "Trail" or item.Category == "Emote"
+	local metadataTextSize = isCompactCosmetic and STYLE.CompactMetadataTextSize or STYLE.CardSubtitleTextSize
 	if record.typeLabel then
 		record.typeLabel.Text = getCategoryLabel(item.Category) .. " ·"
 		record.typeLabel.Size = UDim2.new(0, getMetadataTypeWidth(item.Category), 1, 0)
+		record.typeLabel.TextSize = px(metadataTextSize)
 	end
 	if record.rarityLabel then
 		local typeWidth = getMetadataTypeWidth(item.Category)
 		record.rarityLabel.Position = UDim2.new(0, typeWidth + px(4), 0, 0)
 		record.rarityLabel.Size = UDim2.new(1, -(typeWidth + px(4)), 1, 0)
-		record.rarityLabel.TextSize = px(STYLE.CardSubtitleTextSize)
+		record.rarityLabel.TextSize = px(metadataTextSize)
 		applyRarityLabelStyle(record.rarityLabel, item.Rarity or "Common")
 	end
 end
@@ -1690,7 +1701,9 @@ function SkinsStallUI.Create(parent, options)
 		if not item then
 			selectedName.Text = "Select a cosmetic"
 			selectedDesc.Text = ""
+			categoryPill.Visible = false
 			statusLabel.Text = ""
+			statusLabel.Visible = false
 			setButtonMode(nil)
 			updatePreview(nil)
 			return
@@ -1699,10 +1712,12 @@ function SkinsStallUI.Create(parent, options)
 		local rarityColor = getRarityColor(item)
 		selectedName.Text = item.DisplayName or item.Id
 		selectedDesc.Text = item.Description or ""
+		categoryPill.Visible = false
 		categoryPill.Text = string.upper(getCategoryLabel(item.Category))
 		categoryPill.TextColor3 = rarityColor
 		categoryPillStroke.Color = rarityColor
 		local visualState = getItemVisualState(item)
+		statusLabel.Visible = false
 		statusLabel.Text = visualState.statusText
 		statusLabel.TextColor3 = visualState.textColor
 		statusLabel.BackgroundColor3 = visualState.pillColor
@@ -1881,7 +1896,7 @@ function SkinsStallUI.Create(parent, options)
 			count = #(section.Items or {}),
 			cardWidth = isSkin and STYLE.SkinCardWidth or STYLE.CompactCosmeticCardWidth,
 			cardHeight = isSkin and STYLE.SkinCardHeight or STYLE.CompactCosmeticCardHeight,
-			minWidth = isSkin and 144 or 196,
+			minWidth = isSkin and 144 or 214,
 			minHeight = isSkin and 176 or 126,
 			maxColumns = isSkin and 5 or 4,
 		}
@@ -1908,7 +1923,7 @@ function SkinsStallUI.Create(parent, options)
 			bar.BorderSizePixel = 0
 			bar.AnchorPoint = Vector2.new(0.5, 0.5)
 			bar.Position = UDim2.new(0.5, 0, 0.3 + i * 0.14, 0)
-			bar.Size = UDim2.new(0.78 - i * 0.06, 0, 0, px(compact and 8 or 7))
+			bar.Size = UDim2.new(0.78 - i * 0.06, 0, 0, px(compact and 10 or 7))
 			bar.Rotation = -12
 			bar.Parent = visual
 			applyCorners(bar, px(5))
@@ -1942,7 +1957,7 @@ function SkinsStallUI.Create(parent, options)
 			image.BackgroundTransparency = 1
 			image.AnchorPoint = Vector2.new(0.5, 0.5)
 			image.Position = UDim2.fromScale(0.5, 0.5)
-			image.Size = UDim2.fromScale(0.84, 0.84)
+			image.Size = UDim2.fromScale(0.9, 0.9)
 			image.Image = iconData.Value
 			image.ScaleType = Enum.ScaleType.Fit
 			image.Parent = iconBox
@@ -1955,7 +1970,7 @@ function SkinsStallUI.Create(parent, options)
 			label.BackgroundTransparency = 1
 			label.AnchorPoint = Vector2.new(0.5, 0.5)
 			label.Position = UDim2.fromScale(0.5, 0.5)
-			label.Size = UDim2.fromScale(0.84, 0.84)
+			label.Size = UDim2.fromScale(0.9, 0.9)
 			label.Font = Enum.Font.GothamBold
 			label.Text = iconData.Value
 			label.TextColor3 = accentColor
@@ -1964,7 +1979,7 @@ function SkinsStallUI.Create(parent, options)
 			label.TextXAlignment = Enum.TextXAlignment.Center
 			label.TextYAlignment = Enum.TextYAlignment.Center
 			label.Parent = iconBox
-			addTextLimit(label, px(16), px(38))
+			addTextLimit(label, px(16), px(46))
 		else
 			warnMissingOnce(item, "emote icon")
 			createFallbackEmoteGlyph(iconBox, item, accentColor)
@@ -2146,8 +2161,8 @@ function SkinsStallUI.Create(parent, options)
 		local textLeft = pad + visualSize + px(12)
 		local buttonHeight = px(STYLE.CompactButtonHeight)
 		local headerHeight = px(STYLE.CompactHeaderHeight)
-		local titleHeight = px(30)
-		local metaHeight = px(22)
+		local titleHeight = px(STYLE.CompactTitleHeight)
+		local metaHeight = px(STYLE.CompactMetadataHeight)
 		local textGap = px(4)
 		local textGroupHeight = titleHeight + textGap + metaHeight
 		local textGroupTop = (headerHeight - textGroupHeight) / 2
@@ -2166,7 +2181,8 @@ function SkinsStallUI.Create(parent, options)
 			item.Category,
 			item.Rarity or "Common",
 			UDim2.new(0, textLeft, 0, metaTop),
-			UDim2.new(1, -(textLeft + pad), 0, metaHeight)
+			UDim2.new(1, -(textLeft + pad), 0, metaHeight),
+			STYLE.CompactMetadataTextSize
 		)
 
 		local pill, statusLabelRef, priceIcon, statusStroke = createStatusPill(card, 0.5)

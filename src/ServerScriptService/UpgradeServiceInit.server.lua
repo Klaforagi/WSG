@@ -149,7 +149,7 @@ UpgradeService:Init()
 purchaseRF.OnServerInvoke = function(player, upgradeId)
 	if type(upgradeId) ~= "string" then return false, "Invalid" end
 	print(("[UpgradeServiceInit] Purchase request from %s for '%s'"):format(player.Name, upgradeId))
-	local ok, msg = UpgradeService:PurchaseUpgrade(player, upgradeId)
+	local ok, msg, result = UpgradeService:PurchaseUpgrade(player, upgradeId)
 	if ok then
 		local newLevel = UpgradeService:GetLevel(player, upgradeId)
 		print(("[UpgradeServiceInit] Purchase success: %s → '%s' now level %d"):format(
@@ -162,7 +162,7 @@ purchaseRF.OnServerInvoke = function(player, upgradeId)
 		print(("[UpgradeServiceInit] Purchase denied: %s → '%s' reason: %s"):format(
 			player.Name, upgradeId, tostring(msg)))
 	end
-	return ok, msg
+	return ok, msg, result
 end
 
 getStatesRF.OnServerInvoke = function(player)

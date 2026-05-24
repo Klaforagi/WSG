@@ -256,17 +256,18 @@ local function grantReward(player, rewardEntry)
             return false, "CurrencyService unavailable"
         end
 
-    elseif rtype == config.RewardType.XPBoost then
-        -- Grant xp_2x boosts (2x XP for 30 min each) to inventory
+    elseif rtype == config.RewardType.XPBoost or rtype == config.RewardType.CoinBoost then
+        local defaultBoostId = (rtype == config.RewardType.CoinBoost) and "coins_2x" or "xp_2x"
+        local boostId = rewardEntry.BoostId or defaultBoostId
         local bs = getBoostService()
         if bs and bs.GrantFreeBoost then
-            local granted = bs:GrantFreeBoost(player, "xp_2x", amount)
+            local granted = bs:GrantFreeBoost(player, boostId, amount)
             if granted then
-                print("[DailyRewardService] Granted", amount, "XP Boost(s) to", player.Name)
+                print("[DailyRewardService] Granted", amount, boostId, "boost(s) to", player.Name)
                 return true
             end
         end
-        warn("[DailyRewardService] Could not grant XP boost")
+        warn("[DailyRewardService] Could not grant boost", tostring(boostId))
         return false, "Boost grant failed"
 
     elseif rtype == config.RewardType.QuestReroll then

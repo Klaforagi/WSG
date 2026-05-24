@@ -639,19 +639,18 @@ local function CreateSideLauncher(screenGui)
         local viewportX, viewportY = getViewportSize()
         local cardSize = safeClamp(viewportY * (UserInputService.TouchEnabled and 0.105 or 0.102), UserInputService.TouchEnabled and 62 or 78, UserInputService.TouchEnabled and 94 or 118)
         local spacing = safeClamp(cardSize * 0.18, 10, 18)
-        local leftPad = safeClamp(viewportX * (UserInputService.TouchEnabled and 0.012 or 0.010), 6, px(22))
         local collapsedX = -cardSize - safeClamp(cardSize * 0.28, 18, 32)
         local toggleW = safeClamp(cardSize * 0.30, 28, 36)
         local toggleH = safeClamp(cardSize * 0.34, 28, 36)
         local handleGap = safeClamp(cardSize * 0.018, 1, 3)
-        local stackExpandedX = leftPad + safeClamp(cardSize * 0.31, 26, 36)
-        local toggleExpandedX = stackExpandedX - toggleW - handleGap
-        local toggleCollapsedX = safeClamp(viewportX * 0.004, 2, px(8))
+        local toggleCenterX = safeClamp(viewportX * 0.003, 5, 7)
+        local toggleExpandedX = toggleCenterX - (toggleW * 0.5)
+        local stackExpandedX = toggleExpandedX + toggleW + handleGap
+        local toggleCollapsedX = toggleExpandedX
         local totalHeight = (cardSize * #MENU_DEFS) + (spacing * math.max(0, #MENU_DEFS - 1))
         return {
             cardSize = math.floor(cardSize + 0.5),
             spacing = math.floor(spacing + 0.5),
-            leftPad = math.floor(leftPad + 0.5),
             stackExpandedX = math.floor(stackExpandedX + 0.5),
             collapsedX = math.floor(collapsedX + 0.5),
             toggleW = math.floor(toggleW + 0.5),

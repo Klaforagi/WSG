@@ -10,6 +10,7 @@ local DailyRewardConfig = {}
 DailyRewardConfig.RewardType = {
     Coins           = "Coins",
     XPBoost         = "XPBoost",
+    CoinBoost       = "CoinBoost",
     QuestReroll     = "QuestReroll",
     -- Future types (add here when implemented):
     -- Cosmetic      = "Cosmetic",
@@ -32,6 +33,7 @@ DailyRewardConfig.GraceHours = 48
 DailyRewardConfig.IconGlyphs = {
     Coins       = "\u{1F4B0}",
     XPBoost     = "\u{26A1}",
+    CoinBoost   = "\u{1F4B0}",
     QuestReroll = "\u{1F504}",
     Gift        = "\u{1F381}",
     Star        = "\u{2B50}",
@@ -41,6 +43,7 @@ DailyRewardConfig.IconGlyphs = {
 DailyRewardConfig.IconAssetKeys = {
     Coins       = "Coin",
     XPBoost     = "Boosts",
+    CoinBoost   = "Coin",
     QuestReroll = "Quests",
 }
 
@@ -48,13 +51,14 @@ DailyRewardConfig.IconAssetKeys = {
 DailyRewardConfig.IconColors = {
     Coins       = Color3.fromRGB(255, 215, 80),
     XPBoost     = Color3.fromRGB(100, 200, 255),
+    CoinBoost   = Color3.fromRGB(255, 215, 80),
     QuestReroll = Color3.fromRGB(130, 255, 130),
 }
 
 --------------------------------------------------------------------------------
 -- 7-day reward schedule
 -- Each entry: { Day, RewardType, Amount, DisplayName, Description }
--- Optional fields: Rarity, StyleTag, Metadata (for future expansion)
+-- Optional fields: BoostId, Rarity, StyleTag, Metadata (for future expansion)
 --------------------------------------------------------------------------------
 DailyRewardConfig.Rewards = {
     {
@@ -80,10 +84,11 @@ DailyRewardConfig.Rewards = {
     },
     {
         Day         = 4,
-        RewardType  = DailyRewardConfig.RewardType.QuestReroll,
+        RewardType  = DailyRewardConfig.RewardType.CoinBoost,
         Amount      = 1,
-        DisplayName = "Quest Reroll",
-        Description = "Reroll one daily quest for free.",
+        BoostId     = "coins_2x",
+        DisplayName = "2x Coin Elixir",
+        Description = "A 2x coin elixir for 30 minutes.",
     },
     {
         Day         = 5,
@@ -123,6 +128,7 @@ end
 function DailyRewardConfig.GetTypeLabel(rewardType)
     if rewardType == DailyRewardConfig.RewardType.Coins then return "Coins" end
     if rewardType == DailyRewardConfig.RewardType.XPBoost then return "XP Boost" end
+    if rewardType == DailyRewardConfig.RewardType.CoinBoost then return "Coin Boost" end
     if rewardType == DailyRewardConfig.RewardType.QuestReroll then return "Quest Reroll" end
     return tostring(rewardType)
 end

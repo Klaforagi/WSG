@@ -356,6 +356,71 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		{ id = UpgradeConfig.RANGED, layoutOrder = 2 },
 	}
 
+	local function refreshCardsFromLevels(levels)
+		if type(levels) ~= "table" then
+			return false
+		end
+
+		if levels._playerLevel then
+			playerLevel = levels._playerLevel
+		end
+
+		local nextLevels = {}
+		for key, value in pairs(levels) do
+			if key ~= "_playerLevel" then
+				nextLevels[key] = value
+			end
+		end
+		upgradeLevels = nextLevels
+
+		for _, cardDef in ipairs(CARD_DEFS) do
+			local id = cardDef.id
+			local refs = cardUpdaters[id]
+			if refs then
+				refs.updateCard(upgradeLevels[id] or 0, playerLevel)
+			end
+		end
+
+		return true
+	end
+
+	local function applyPurchaseResult(result)
+		if type(result) ~= "table" then
+			return false
+		end
+
+		local levels = result.updatedUpgradeData or result.levels
+		if refreshCardsFromLevels(levels) then
+			return true
+		end
+
+		local refreshed = false
+		if result.playerLevel ~= nil then
+			playerLevel = math.max(1, math.floor(tonumber(result.playerLevel) or playerLevel))
+			refreshed = true
+		end
+
+		local category = result.category or result.upgradeId
+		if type(category) == "string" and type(result.newLevel) == "number" then
+			upgradeLevels[category] = math.max(0, math.floor(result.newLevel))
+			refreshed = true
+		end
+
+		if refreshed then
+			for _, cardDef in ipairs(CARD_DEFS) do
+				local id = cardDef.id
+				local refs = cardUpdaters[id]
+				if refs then
+					refs.updateCard(upgradeLevels[id] or 0, playerLevel)
+				end
+			end
+		end
+
+		return refreshed
+	end
+
+	local upgradeInFlight = {}
+
 	local GAP = px(16)
 	local cardWidth = UDim2.new(0.5, -GAP / 2, 1, -px(16))
 
@@ -674,7 +739,7 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		costHeader.Parent = costContainer
 
 		-- Price row (number + coin icon, centered)
-		local nextCost = UpgradeConfig.GetCost(currentLevel)
+		local nextCost = UpgradeConfig.GetCost(currentLevel, upgradeId)
 		local costCoinSize = px(16)
 		local priceRowH = px(20)
 
@@ -727,10 +792,12 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		-----------------------------------------------------------------------
 		local function updateCard(level, pLevel)
 			if pLevel then playerLevel = pLevel end
+			level = math.max(0, math.floor(tonumber(level) or 0))
+			currentLevel = level
 			levelLabel.Text  = "Weapon Level: " .. level
 			local bonusTxt = UpgradeConfig.GetBonusText(level, upgradeId)
 			bonusLabel.Text  = (level == 0) and bonusTxt or ("Bonus: " .. bonusTxt)
-			local cost       = UpgradeConfig.GetCost(level)
+			local cost       = UpgradeConfig.GetCost(level, upgradeId)
 
 			-- Player-level cap is disabled by default (UpgradeConfig.REQUIRE_PLAYER_LEVEL).
 			local capped = (UpgradeConfig.REQUIRE_PLAYER_LEVEL == true) and (level >= playerLevel) or false
@@ -776,24 +843,35 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 		-- Click handler (purchase)
 		-----------------------------------------------------------------------
 		trackConn(btn.MouseButton1Click:Connect(function()
-			if not btn.Active then return end
+			if not btn.Active or upgradeInFlight[upgradeId] then return end
+			upgradeInFlight[upgradeId] = true
 			btn.Active = false
 			btn.Text = "..."
 
-			local success, msg = false, "Error"
-			pcall(function()
-				success, msg = purchaseRF:InvokeServer(upgradeId)
+			local success, msg, result = false, "Error", nil
+			local invokeOk, invokeErr = pcall(function()
+				success, msg, result = purchaseRF:InvokeServer(upgradeId)
 			end)
+			upgradeInFlight[upgradeId] = nil
+
+			if not invokeOk then
+				updateCard(currentLevel, playerLevel)
+				showToast(root, tostring(invokeErr or "Purchase failed"), RED_TEXT, 2.5)
+				return
+			end
+
+			local resultApplied = applyPurchaseResult(result)
 
 			if success then
-				currentLevel = currentLevel + 1
-				upgradeLevels[upgradeId] = currentLevel
-				updateCard(currentLevel, playerLevel)
+				if not resultApplied then
+					currentLevel = currentLevel + 1
+					upgradeLevels[upgradeId] = currentLevel
+					updateCard(currentLevel, playerLevel)
+				end
 
 				showToast(root, display.Title .. " upgraded to Level " .. currentLevel .. "!", GREEN_BTN, 2.5)
 
 				-- Success flash
-				local origBg = card.BackgroundColor3
 				TweenService:Create(card, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(30, 60, 40)}):Play()
 				task.delay(0.15, function()
 					if card and card.Parent then
@@ -808,25 +886,19 @@ function UpgradesUI.Create(parent, _coinApi, _inventoryApi)
 				end)
 			else
 				local toastMsg = msg or "Purchase failed"
+				if type(result) == "table" then
+					toastMsg = result.reason or result.message or toastMsg
+				end
 				local toastColor = RED_TEXT
-				if tostring(msg):find("Insufficient") then
+				if tostring(toastMsg):find("Insufficient") then
 					toastMsg = "Not enough Shards!"
-				elseif tostring(msg):find("capped") then
+				elseif tostring(toastMsg):find("capped") then
 					toastMsg = "Upgrade capped by player level!"
 				end
+				if not resultApplied then
+					updateCard(currentLevel, playerLevel)
+				end
 				showToast(root, toastMsg, toastColor, 2.5)
-			end
-
-			-- Restore button state respecting current cap
-			local isCapped = (currentLevel >= playerLevel)
-			if isCapped then
-				btn.Text = "MAXED"
-				btn.Active = false
-				btn.BackgroundColor3 = Color3.fromRGB(45, 48, 62)
-			else
-				btn.Text = "UPGRADE"
-				btn.Active = true
-				btn.BackgroundColor3 = BTN_BG
 			end
 		end))
 	end

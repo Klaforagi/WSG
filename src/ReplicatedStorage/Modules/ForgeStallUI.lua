@@ -1116,6 +1116,7 @@ function ForgeStallUI.Create(parent, options)
 		else
 			refs.costValue.Text = formatNumber(cost)
 		end
+		refs.actionButton.Active = not refs.isPending
 
 		if refs.isPending then
 			refs.actionButton.Text = "UPGRADING"
@@ -1225,13 +1226,47 @@ function ForgeStallUI.Create(parent, options)
 		return refreshed
 	end
 
+	local function applyPurchaseResult(result)
+		if type(result) ~= "table" then
+			return false
+		end
+
+		local refreshed = false
+		local levels = result.updatedUpgradeData or result.levels
+		if type(levels) == "table" then
+			refreshed = applyUpgradeState(levels) or refreshed
+		end
+
+		local resultCategory = result.category or result.upgradeId
+		if type(resultCategory) == "string" and type(result.newLevel) == "number" then
+			upgradeLevels[resultCategory] = math.max(0, math.floor(result.newLevel))
+			refreshed = true
+		end
+
+		if result.playerLevel ~= nil then
+			playerLevel = math.max(1, math.floor(tonumber(result.playerLevel) or playerLevel))
+			refreshed = true
+		end
+
+		local currentCurrency = result.currentCurrency
+		if type(currentCurrency) ~= "number" then
+			currentCurrency = result.shardBalance
+		end
+		if type(currentCurrency) == "number" then
+			shardBalance = math.max(0, math.floor(currentCurrency))
+			refreshed = true
+		end
+
+		return refreshed
+	end
+
+	local upgradeInFlight = {}
 	for upgradeId, refs in pairs(rowRefs) do
 		trackConn(refs.actionButton.Activated:Connect(function()
-			if refs.isPending then
+			if refs.isPending or upgradeInFlight[upgradeId] then
 				return
 			end
 
-			local level = math.max(0, math.floor(tonumber(upgradeLevels[upgradeId]) or 0))
 			local purchaseCost = refs.currentCost
 			local definition = UpgradeConfig.GetDefinition and UpgradeConfig.GetDefinition(upgradeId) or {}
 			local title = definition.Title or "Upgrade"
@@ -1250,31 +1285,42 @@ function ForgeStallUI.Create(parent, options)
 			end
 
 			refs.isPending = true
-			upgradeLevels[upgradeId] = level + 1
-			shardBalance = math.max(0, shardBalance - purchaseCost)
-			playForgeSound()
-			refreshAll()
+			upgradeInFlight[upgradeId] = true
+			updateRow(upgradeId)
 
 			task.spawn(function()
-				local success, msg = false, "Upgrade failed"
-				pcall(function()
-					success, msg = purchaseRF:InvokeServer(upgradeId)
+				local success, msg, result = false, "Upgrade failed", nil
+				local invokeOk, invokeErr = pcall(function()
+					success, msg, result = purchaseRF:InvokeServer(upgradeId)
 				end)
 
 				refs.isPending = false
-				if success then
-					showToast(panel, title .. " upgraded.", GREEN, 2.0)
-					refreshAll()
+				upgradeInFlight[upgradeId] = nil
+
+				if not invokeOk then
+					requestLatestState()
+					showToast(panel, tostring(invokeErr or "Upgrade failed"), RED, 2.5)
 					return
 				end
 
-				local refreshed = requestLatestState()
-				if not refreshed then
-					upgradeLevels[upgradeId] = level
-					shardBalance = math.max(0, shardBalance + purchaseCost)
+				local refreshed = applyPurchaseResult(result)
+				if refreshed then
 					refreshAll()
+				else
+					requestLatestState()
 				end
-				showToast(panel, tostring(msg or "Upgrade failed"), RED, 2.5)
+
+				if success then
+					playForgeSound()
+					showToast(panel, title .. " upgraded.", GREEN, 2.0)
+					return
+				end
+
+				local errorMessage = msg or "Upgrade failed"
+				if type(result) == "table" then
+					errorMessage = result.reason or result.message or errorMessage
+				end
+				showToast(panel, tostring(errorMessage), RED, 2.5)
 			end)
 		end))
 	end

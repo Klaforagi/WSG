@@ -4698,7 +4698,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailDetailName.Position = UDim2.new(0, 0, 0, px(208))
             trailDetailName.TextTruncate = Enum.TextTruncate.AtEnd
 
-            -- Rarity label
+            -- Rarity label (hidden – redundant for trails)
             local trailDetailRarity = Instance.new("TextLabel", trailDetailContent)
             trailDetailRarity.Name = "Rarity"
             trailDetailRarity.BackgroundTransparency = 1
@@ -4708,6 +4708,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailDetailRarity.TextXAlignment = Enum.TextXAlignment.Center
             trailDetailRarity.Size = UDim2.new(1, 0, 0, px(26))
             trailDetailRarity.Position = UDim2.new(0, 0, 0, px(244))
+            trailDetailRarity.Visible = false
 
             -- Description
             local trailDetailDesc = Instance.new("TextLabel", trailDetailContent)
@@ -4729,9 +4730,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local trailEquipBtn = Instance.new("TextButton", trailDetailContent)
             trailEquipBtn.Name = "EquipBtn"
             trailEquipBtn.AutoButtonColor = false
-            trailEquipBtn.BackgroundColor3 = BTN_BG
+            trailEquipBtn.BackgroundColor3 = GREEN_BTN
             trailEquipBtn.Font = Enum.Font.GothamBold
-            trailEquipBtn.Text = "EQUIP"
+            trailEquipBtn.Text = "EQUIP TRAIL"
             trailEquipBtn.TextColor3 = WHITE
             trailEquipBtn.TextTransparency = 0
             trailEquipBtn.TextSize = px(22)
@@ -4793,8 +4794,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     trailEquipBtn.TextColor3 = GREEN_GLOW
                     trailEquipStroke.Color = Color3.fromRGB(0, 0, 0); trailEquipStroke.Transparency = 0.15
                 else
-                    trailEquipBtn.Text = "EQUIP"
-                    trailEquipBtn.BackgroundColor3 = BTN_BG
+                    trailEquipBtn.Text = "EQUIP TRAIL"
+                    trailEquipBtn.BackgroundColor3 = GREEN_BTN
                     trailEquipBtn.TextColor3 = WHITE
                     trailEquipStroke.Color = Color3.fromRGB(0, 0, 0); trailEquipStroke.Transparency = 0.15
                 end
@@ -4862,8 +4863,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 trailDetailName.Text = def.DisplayName or effectId
                 trailDetailName.TextColor3 = isEpic and Color3.fromRGB(220, 185, 255) or brightenColor(effectColor, 0.12)
-                trailDetailRarity.Text = rarity
-                trailDetailRarity.TextColor3 = rarityColor
                 trailDetailDesc.Text = def.IsFree and "Free (default)" or (def.Description or "")
                 trailPreviewVP.BackgroundColor3 = mixColor(rarityBg, effectColor, def.IsRainbow and 0.1 or 0.2)
                 trailVPStroke.Color = rarityColor
@@ -4907,7 +4906,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end)
                 trailEquipBtn.MouseLeave:Connect(function()
                     if selectedEffectId and equippedTrailId ~= selectedEffectId then
-                        TweenService:Create(trailEquipBtn, TWEEN_QUICK, {BackgroundColor3 = BTN_BG}):Play()
+                        TweenService:Create(trailEquipBtn, TWEEN_QUICK, {BackgroundColor3 = GREEN_BTN}):Play()
                     end
                 end)
             end

@@ -12,7 +12,7 @@
 --   UpgradeService:LoadForPlayer(player)  -> table
 --   UpgradeService:SaveForPlayer(player)  -> bool
 --   UpgradeService:SaveAll()
---   UpgradeService:PurchaseUpgrade(player, upgradeId)  -> bool, string
+--   UpgradeService:PurchaseUpgrade(player, upgradeId)  -> bool, string, table?
 --   UpgradeService:GetLevel(player, upgradeId)  -> number
 --   UpgradeService:GetAllLevels(player)  -> { [upgradeId] = level }
 --   UpgradeService:GetMeleeMultiplier(player)  -> number
@@ -67,6 +67,7 @@ end
 -- Per-player state: playerUpgrades[player] = { melee_weapon = N, ranged_weapon = N, max_health = N }
 --------------------------------------------------------------------------------
 local playerUpgrades = {}
+local purchaseLocks = {}
 local stateChangedEvent = Instance.new("BindableEvent")
 local BASE_MAX_HEALTH_ATTRIBUTE = "_upgradeBaseMaxHealth"
 
@@ -132,6 +133,101 @@ local function pushState(player)
 	pcall(function()
 		upgradeStateEvent:FireClient(player, levels)
 	end)
+end
+
+local function getCurrencyBalance(currencyService, player, currency)
+	if not currencyService then
+		return 0
+	end
+	if currency == "scrap" then
+		if currencyService.GetSalvage then
+			return math.max(0, math.floor(tonumber(currencyService:GetSalvage(player)) or 0))
+		end
+		return 0
+	end
+	if currencyService.GetCoins then
+		return math.max(0, math.floor(tonumber(currencyService:GetCoins(player)) or 0))
+	end
+	return 0
+end
+
+local function buildPurchaseResult(player, upgradeId, success, message, extra)
+	extra = type(extra) == "table" and extra or {}
+
+	local config = getUpgradeConfig()
+	local levels = playerUpgrades[player]
+	local currentLevel = 0
+	if type(levels) == "table" and type(upgradeId) == "string" then
+		currentLevel = math.max(0, math.floor(tonumber(levels[upgradeId]) or 0))
+	end
+
+	local currency = "scrap"
+	local nextCost = nil
+	local maxLevel = false
+	if config and type(upgradeId) == "string" and config.IsValid and config.IsValid(upgradeId) then
+		currency = (config.GetCurrency and config.GetCurrency(upgradeId)) or currency
+		maxLevel = (config.IsCapped and config.IsCapped(currentLevel, upgradeId)) or false
+		if not maxLevel and config.GetCost then
+			nextCost = config.GetCost(currentLevel, upgradeId)
+		end
+	end
+
+	local currencyService = getCurrencyService()
+	local currentCurrency = getCurrencyBalance(currencyService, player, currency)
+	local updatedUpgradeData = UpgradeService:GetAllLevels(player)
+	updatedUpgradeData._playerLevel = getPlayerLevel(player)
+
+	local result = {
+		success = success == true,
+		reason = success == true and nil or tostring(message or "Upgrade failed"),
+		message = tostring(message or (success and "Upgraded" or "Upgrade failed")),
+		category = upgradeId,
+		upgradeId = upgradeId,
+		newLevel = currentLevel,
+		nextCost = nextCost,
+		currentCurrency = currentCurrency,
+		currency = currency,
+		maxLevel = maxLevel,
+		playerLevel = updatedUpgradeData._playerLevel,
+		updatedUpgradeData = updatedUpgradeData,
+		levels = updatedUpgradeData,
+	}
+
+	if currency == "scrap" then
+		result.shardBalance = currentCurrency
+	else
+		result.coins = currentCurrency
+	end
+
+	for key, value in pairs(extra) do
+		result[key] = value
+	end
+
+	return result
+end
+
+local function acquirePurchaseLock(player, upgradeId)
+	local locks = purchaseLocks[player]
+	if not locks then
+		locks = {}
+		purchaseLocks[player] = locks
+	end
+	if locks[upgradeId] then
+		return false
+	end
+	locks[upgradeId] = true
+	return true
+end
+
+local function releasePurchaseLock(player, upgradeId)
+	local locks = purchaseLocks[player]
+	if not locks then
+		return
+	end
+	locks[upgradeId] = nil
+	if next(locks) == nil then
+		purchaseLocks[player] = nil
+	end
 end
 
 --------------------------------------------------------------------------------
@@ -229,24 +325,28 @@ end
 -- Purchase
 --------------------------------------------------------------------------------
 
-function UpgradeService:PurchaseUpgrade(player, upgradeId)
+function UpgradeService:_PurchaseUpgradeUnlocked(player, upgradeId)
+	local function fail(message)
+		return false, message, buildPurchaseResult(player, upgradeId, false, message)
+	end
+
 	if not player or type(upgradeId) ~= "string" then
-		return false, "Invalid request"
+		return fail("Invalid request")
 	end
 
 	local config = getUpgradeConfig()
-	if not config then return false, "Config unavailable" end
+	if not config then return fail("Config unavailable") end
 
 	if not config.IsValid(upgradeId) then
-		return false, "Unknown upgrade"
+		return fail("Unknown upgrade")
 	end
 
 	local levels = playerUpgrades[player]
-	if not levels then return false, "Player data not loaded" end
+	if not levels then return fail("Player data not loaded") end
 
 	local currentLevel = levels[upgradeId] or 0
 	if config.IsCapped and config.IsCapped(currentLevel, upgradeId) then
-		return false, "Upgrade maxed"
+		return fail("Upgrade maxed")
 	end
 
 	local pLevel = getPlayerLevel(player)
@@ -254,34 +354,34 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 		local isLocked, requiredLevel = config.IsPlayerLevelLocked(currentLevel, pLevel, upgradeId)
 		if isLocked then
 			if upgradeId == config.HEALTH and requiredLevel then
-				return false, string.format("Reach player level %d to buy this upgrade", requiredLevel)
+				return fail(string.format("Reach player level %d to buy this upgrade", requiredLevel))
 			end
-			return false, "Upgrade capped by player level"
+			return fail("Upgrade capped by player level")
 		end
 	elseif config.REQUIRE_PLAYER_LEVEL == true and currentLevel >= pLevel then
-		return false, "Upgrade capped by player level"
+		return fail("Upgrade capped by player level")
 	end
 
 	local price = config.GetCost(currentLevel, upgradeId)
 	local currency = (config.GetCurrency and config.GetCurrency(upgradeId)) or "scrap"
 
 	local cs = getCurrencyService()
-	if not cs then return false, "Currency system unavailable" end
+	if not cs then return fail("Currency system unavailable") end
 
 	if currency == "scrap" then
 		if not cs.GetSalvage or not cs.RemoveSalvage then
-			return false, "Shard currency unavailable"
+			return fail("Shard currency unavailable")
 		end
 		local balance = cs:GetSalvage(player)
 		if balance < price then
-			return false, "Insufficient Shards"
+			return fail("Insufficient Shards")
 		end
 		cs:RemoveSalvage(player, price)
 	else
 		-- Legacy coin path
 		local balance = cs:GetCoins(player)
 		if balance < price then
-			return false, "Insufficient coins"
+			return fail("Insufficient coins")
 		end
 		cs:AddCoins(player, -price, "upgrade")
 	end
@@ -301,10 +401,6 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 		player.Name, upgradeId, levels[upgradeId], price, currency))
 
 	markUpgradeDirty(player, "upgrade_purchase")
-	DataSaveCoordinator:RequestImmediateSave(player, "upgrade_purchase", {
-		sections = { "Upgrade" },
-		force = true,
-	})
 
 	if upgradeId == config.HEALTH then
 		local humanoid = getHumanoid(player)
@@ -319,7 +415,31 @@ function UpgradeService:PurchaseUpgrade(player, upgradeId)
 	pushState(player)
 	stateChangedEvent:Fire(player, upgradeId, newLevel, copyUpgradeData(levels))
 
-	return true, "Upgraded"
+	return true, "Upgraded", buildPurchaseResult(player, upgradeId, true, "Upgraded", {
+		costPaid = price,
+	})
+end
+
+function UpgradeService:PurchaseUpgrade(player, upgradeId)
+	if not player or type(upgradeId) ~= "string" then
+		return false, "Invalid request", buildPurchaseResult(player, upgradeId, false, "Invalid request")
+	end
+
+	if not acquirePurchaseLock(player, upgradeId) then
+		return false, "Upgrade already in progress", buildPurchaseResult(player, upgradeId, false, "Upgrade already in progress")
+	end
+
+	local ok, success, message, result = pcall(function()
+		return self:_PurchaseUpgradeUnlocked(player, upgradeId)
+	end)
+	releasePurchaseLock(player, upgradeId)
+
+	if not ok then
+		warn("[UpgradeService] purchase failed unexpectedly:", tostring(success))
+		return false, "Upgrade failed", buildPurchaseResult(player, upgradeId, false, "Upgrade failed")
+	end
+
+	return success, message, result
 end
 
 --------------------------------------------------------------------------------
@@ -451,6 +571,7 @@ end
 
 function UpgradeService:ClearPlayer(player)
 	playerUpgrades[player] = nil
+	purchaseLocks[player] = nil
 end
 
 return UpgradeService
