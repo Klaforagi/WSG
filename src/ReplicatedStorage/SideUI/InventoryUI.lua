@@ -548,7 +548,7 @@ local SHARD_UI_FEEDBACK_BG = Color3.fromRGB(58, 33, 14)
 local SHARD_UI_OVERLAY_BG = Color3.fromRGB(22, 12, 4)
 local SHARD_UI_CONFIRM_BG = Color3.fromRGB(48, 29, 14)
 
-local function createShardRewardRow(parent, name, size, anchorPoint, position, textSize, shardImage, zIndex, pxFn)
+local function createShardRewardRow(parent, name, size, anchorPoint, position, textSize, shardImage, zIndex, pxFn, iconSize, iconScale)
     local row = Instance.new("Frame")
     row.Name = name
     row.BackgroundTransparency = 1
@@ -580,14 +580,26 @@ local function createShardRewardRow(parent, name, size, anchorPoint, position, t
     label.Parent = row
 
     if shardImage then
-        local icon = Instance.new("ImageLabel")
+        local iconPixelSize = iconSize or pxFn(18)
+        local imagePixelSize = math.floor(iconPixelSize * (tonumber(iconScale) or 1) + 0.5)
+        local icon = Instance.new("Frame")
         icon.Name = "ShardIcon"
         icon.BackgroundTransparency = 1
-        icon.Size = UDim2.new(0, pxFn(18), 0, pxFn(18))
-        icon.Image = shardImage
-        icon.ScaleType = Enum.ScaleType.Fit
+        icon.Size = UDim2.new(0, iconPixelSize, 0, iconPixelSize)
+        icon.ClipsDescendants = false
         if zIndex then icon.ZIndex = zIndex end
         icon.Parent = row
+
+        local imageIcon = Instance.new("ImageLabel")
+        imageIcon.Name = "Image"
+        imageIcon.BackgroundTransparency = 1
+        imageIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+        imageIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+        imageIcon.Size = UDim2.new(0, imagePixelSize, 0, imagePixelSize)
+        imageIcon.Image = shardImage
+        imageIcon.ScaleType = Enum.ScaleType.Fit
+        if zIndex then imageIcon.ZIndex = zIndex end
+        imageIcon.Parent = icon
     else
         local suffix = Instance.new("TextLabel")
         suffix.Name = "ShardText"
@@ -1506,10 +1518,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailRarity.BackgroundTransparency = 1
     detailRarity.Font = Enum.Font.GothamBold
     detailRarity.TextColor3 = RARITY_COLORS.Common
-    detailRarity.TextSize = px(17)
+    detailRarity.TextSize = px(21)
     detailRarity.TextXAlignment = Enum.TextXAlignment.Center
-    detailRarity.Size = UDim2.new(1, 0, 0, px(22))
-    detailRarity.Position = UDim2.new(0, 0, 0, px(220))
+    detailRarity.Size = UDim2.new(1, 0, 0, px(28))
+    detailRarity.Position = UDim2.new(0, 0, 0, px(216))
 
     -- SIZE ROLL SYSTEM — size info in detail panel (plain coloured text)
     local detailSize = Instance.new("TextLabel", detailContent)
@@ -1518,10 +1530,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.Font = Enum.Font.GothamBold
     detailSize.RichText = true
     detailSize.TextColor3 = WHITE
-    detailSize.TextSize = px(18)
+    detailSize.TextSize = px(24)
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
-    detailSize.Size = UDim2.new(1, 0, 0, px(24))
-    detailSize.Position = UDim2.new(0, 0, 0, px(244))
+    detailSize.Size = UDim2.new(1, 0, 0, px(32))
+    detailSize.Position = UDim2.new(0, 0, 0, px(242))
 
     -- ENCHANT SYSTEM — enchant name in detail panel
     local detailEnchant = Instance.new("TextLabel", detailContent)
@@ -1529,17 +1541,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEnchant.BackgroundTransparency = 1
     detailEnchant.Font = Enum.Font.GothamBold
     detailEnchant.TextColor3 = GOLD
-    detailEnchant.TextSize = px(16)
+    detailEnchant.TextSize = px(21)
     detailEnchant.TextXAlignment = Enum.TextXAlignment.Center
-    detailEnchant.Size = UDim2.new(1, 0, 0, px(22))
-    detailEnchant.Position = UDim2.new(0, 0, 0, px(268))
+    detailEnchant.Size = UDim2.new(1, 0, 0, px(28))
+    detailEnchant.Position = UDim2.new(0, 0, 0, px(274))
     detailEnchant.Text = ""
 
     local masteryPanel = Instance.new("Frame", detailContent)
     masteryPanel.Name = "MasteryPanel"
     masteryPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 38)
     masteryPanel.BackgroundTransparency = 0.08
-    masteryPanel.Size = UDim2.new(0.9, 0, 0, px(112))
+    masteryPanel.Size = UDim2.new(0.9, 0, 0, px(120))
     masteryPanel.AnchorPoint = Vector2.new(0.5, 0)
     masteryPanel.Position = UDim2.new(0.5, 0, 0, px(324))
     masteryPanel.Visible = false
@@ -1592,12 +1604,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryElims.BackgroundTransparency = 0.05
     masteryElims.Font = Enum.Font.GothamBold
     masteryElims.TextColor3 = WHITE
-    masteryElims.TextSize = px(12)
+    masteryElims.TextSize = px(15)
     masteryElims.TextXAlignment = Enum.TextXAlignment.Center
     masteryElims.TextYAlignment = Enum.TextYAlignment.Center
-    masteryElims.Size = UDim2.new(0.48, -px(3), 0, px(30))
-    masteryElims.Position = UDim2.new(0, px(12), 0, px(74))
-    masteryElims.Text = "ELIMS 0"
+    masteryElims.Size = UDim2.new(0.5, -px(15), 0, px(34))
+    masteryElims.Position = UDim2.new(0, px(12), 0, px(78))
+    masteryElims.Text = "Eliminations 0"
     Instance.new("UICorner", masteryElims).CornerRadius = UDim.new(0, px(6))
 
     local masteryDamage = Instance.new("TextLabel", masteryPanel)
@@ -1606,12 +1618,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.BackgroundTransparency = 0.05
     masteryDamage.Font = Enum.Font.GothamBold
     masteryDamage.TextColor3 = WHITE
-    masteryDamage.TextSize = px(12)
+    masteryDamage.TextSize = px(15)
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
-    masteryDamage.Size = UDim2.new(0.48, -px(3), 0, px(30))
+    masteryDamage.Size = UDim2.new(0.5, -px(15), 0, px(34))
     masteryDamage.AnchorPoint = Vector2.new(1, 0)
-    masteryDamage.Position = UDim2.new(1, -px(12), 0, px(74))
+    masteryDamage.Position = UDim2.new(1, -px(12), 0, px(78))
     masteryDamage.Text = "BONUS +0.0 DMG"
     Instance.new("UICorner", masteryDamage).CornerRadius = UDim.new(0, px(6))
 
@@ -1657,13 +1669,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     shardWidgets.salvageValueRow, shardWidgets.salvageValueLabel = createShardRewardRow(
         detailContent,
         "SalvageValuePreview",
-        UDim2.new(0.88, 0, 0, px(24)),
+        UDim2.new(0.88, 0, 0, px(40)),
         Vector2.new(0.5, 1),
         UDim2.new(0.5, 0, 1, -px(114)),
         px(18),
         getShardCurrencyImage(),
         nil,
-        px
+        px,
+        px(44),
+        1.8
     )
     addBlackTextStroke(shardWidgets.salvageValueLabel)
 
@@ -1923,7 +1937,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             masteryBarFill.Size = UDim2.new(progress, 0, 1, 0)
         end
 
-        masteryElims.Text = "ELIMS " .. formatWholeNumber(mastery.eliminations or 0)
+        masteryElims.Text = "Eliminations " .. formatWholeNumber(mastery.eliminations or 0)
         masteryDamage.Text = "BONUS " .. formatMasteryBonus(damageBonus)
     end
 
@@ -2986,36 +3000,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local beLine2 = Instance.new("TextLabel", beCard)
         beLine2.BackgroundTransparency = 1; beLine2.Font = Enum.Font.GothamMedium
-        beLine2.Text = "Visit the shop or spin the wheel to stock up."
+        beLine2.Text = "Visit the potion stall or spin the wheel to stock up."
         beLine2.TextColor3 = UITheme.GOLD_DIM; beLine2.TextSize = math.max(11, math.floor(px(12)))
         beLine2.Size = UDim2.new(0.85, 0, 0, px(20)); beLine2.AnchorPoint = Vector2.new(0.5, 0)
         beLine2.Position = UDim2.new(0.5, 0, 0, px(74)); beLine2.TextXAlignment = Enum.TextXAlignment.Center
-
-        local boostEmptyShopBtn = Instance.new("TextButton", boostEmptyState)
-        boostEmptyShopBtn.Name = "ShopNavBtn"
-        boostEmptyShopBtn.AutoButtonColor = false
-        boostEmptyShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        boostEmptyShopBtn.Font = Enum.Font.GothamBold
-        boostEmptyShopBtn.Text = "\u{1F6D2}  Browse Shop"
-        boostEmptyShopBtn.TextColor3 = WHITE
-        boostEmptyShopBtn.TextTransparency = 0
-        boostEmptyShopBtn.TextSize = math.max(14, math.floor(px(15)))
-        boostEmptyShopBtn.AutomaticSize = Enum.AutomaticSize.X
-        boostEmptyShopBtn.Size = UDim2.new(0, 0, 0, px(36))
-        boostEmptyShopBtn.AnchorPoint = Vector2.new(0.5, 0)
-        boostEmptyShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
-        Instance.new("UICorner", boostEmptyShopBtn).CornerRadius = UDim.new(0, px(8))
-        local besBtnPad = Instance.new("UIPadding", boostEmptyShopBtn)
-        besBtnPad.PaddingLeft = UDim.new(0, px(20)); besBtnPad.PaddingRight = UDim.new(0, px(20))
-        local besBtnStroke = Instance.new("UIStroke", boostEmptyShopBtn)
-        besBtnStroke.Color = Color3.fromRGB(0, 0, 0); besBtnStroke.Thickness = 1.5; besBtnStroke.Transparency = 0.15
-
-        boostEmptyShopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("boosts") end
-            end
-        end)
 
         -- ── Details panel (right side) ──────────────────────────────────
         local boostDetailsPanel = Instance.new("Frame")
@@ -3168,40 +3156,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local boostActivateStroke = Instance.new("UIStroke", boostActivateBtn)
         boostActivateStroke.Color = Color3.fromRGB(0, 0, 0); boostActivateStroke.Thickness = 1.5; boostActivateStroke.Transparency = 0.15
 
-        -- Browse Shop button (above activate)
-        local boostShopNavW = Instance.new("Frame", boostDetailContent)
-        boostShopNavW.Name = "ShopNavWrap"
-        boostShopNavW.BackgroundTransparency = 1
-        boostShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
-        boostShopNavW.AnchorPoint = Vector2.new(0.5, 1)
-        boostShopNavW.Position = UDim2.new(0.5, 0, 1, -px(58))
-
-        local boostShopBtn = Instance.new("TextButton", boostShopNavW)
-        boostShopBtn.AutoButtonColor = false
-        boostShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        boostShopBtn.Font = Enum.Font.GothamBold
-        boostShopBtn.Text = "\u{1F6D2}  Browse Boosts Shop"
-        boostShopBtn.TextColor3 = WHITE
-        boostShopBtn.TextTransparency = 0
-        boostShopBtn.TextSize = math.max(13, math.floor(px(15)))
-        boostShopBtn.AutomaticSize = Enum.AutomaticSize.X
-        boostShopBtn.Size = UDim2.new(0, 0, 1, 0)
-        boostShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-        boostShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-        Instance.new("UICorner", boostShopBtn).CornerRadius = UDim.new(0, px(8))
-        local bsnPad = Instance.new("UIPadding", boostShopBtn)
-        bsnPad.PaddingLeft = UDim.new(0, px(14)); bsnPad.PaddingRight = UDim.new(0, px(14))
-        local bsnStroke = Instance.new("UIStroke", boostShopBtn)
-        bsnStroke.Color = Color3.fromRGB(0, 0, 0); bsnStroke.Thickness = 1.5; bsnStroke.Transparency = 0.15
-
-        boostShopBtn.MouseEnter:Connect(function() TweenService:Create(boostShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
-        boostShopBtn.MouseLeave:Connect(function() TweenService:Create(boostShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
-        boostShopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("boosts") end
-            end
-        end)
 
         -- ── Helpers ─────────────────────────────────────────────────────
 
@@ -3856,7 +3810,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local skinEmptyLbl = Instance.new("TextLabel", skinEmptyCard)
         skinEmptyLbl.BackgroundTransparency = 1
         skinEmptyLbl.Font = Enum.Font.GothamMedium
-        skinEmptyLbl.Text = "You don't own any skins yet.\nVisit the shop to unlock more."
+        skinEmptyLbl.Text = "You don't own any skins yet.\nVisit the cosmetics stall to unlock more."
         skinEmptyLbl.TextColor3 = DIM_TEXT
         skinEmptyLbl.TextSize = math.max(13, math.floor(px(14)))
         skinEmptyLbl.TextWrapped = true
@@ -3864,32 +3818,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinEmptyLbl.AnchorPoint = Vector2.new(0.5, 0.5)
         skinEmptyLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
         skinEmptyLbl.TextXAlignment = Enum.TextXAlignment.Center
-
-        local skinEmptyShopBtn = Instance.new("TextButton", skinEmptyState)
-        skinEmptyShopBtn.Name = "ShopNavBtn"
-        skinEmptyShopBtn.AutoButtonColor = false
-        skinEmptyShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        skinEmptyShopBtn.Font = Enum.Font.GothamBold
-        skinEmptyShopBtn.Text = "\u{1F6D2}  Browse Skins Shop"
-        skinEmptyShopBtn.TextColor3 = WHITE
-        skinEmptyShopBtn.TextTransparency = 0
-        skinEmptyShopBtn.TextSize = math.max(14, math.floor(px(15)))
-        skinEmptyShopBtn.AutomaticSize = Enum.AutomaticSize.X
-        skinEmptyShopBtn.Size = UDim2.new(0, 0, 0, px(36))
-        skinEmptyShopBtn.AnchorPoint = Vector2.new(0.5, 0)
-        skinEmptyShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
-        Instance.new("UICorner", skinEmptyShopBtn).CornerRadius = UDim.new(0, px(8))
-        local sesBtnPad = Instance.new("UIPadding", skinEmptyShopBtn)
-        sesBtnPad.PaddingLeft = UDim.new(0, px(20)); sesBtnPad.PaddingRight = UDim.new(0, px(20))
-        local sesBtnStroke = Instance.new("UIStroke", skinEmptyShopBtn)
-        sesBtnStroke.Color = Color3.fromRGB(0, 0, 0); sesBtnStroke.Thickness = 1.5; sesBtnStroke.Transparency = 0.15
-
-        skinEmptyShopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("skins") end
-            end
-        end)
 
         -- ── Details panel (right side) ──────────────────────────────────
         local skinDetailsPanel = Instance.new("Frame")
@@ -4098,40 +4026,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local skinFavStroke = Instance.new("UIStroke", skinFavBtn)
         skinFavStroke.Color = SKIN_FAV_DIM; skinFavStroke.Thickness = 1.2; skinFavStroke.Transparency = 0.3
 
-        -- Shop nav button under the grid
-        local skinShopNavW = Instance.new("Frame", skinDetailContent)
-        skinShopNavW.Name = "ShopNavWrap"
-        skinShopNavW.BackgroundTransparency = 1
-        skinShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
-        skinShopNavW.AnchorPoint = Vector2.new(0.5, 1)
-        skinShopNavW.Position = UDim2.new(0.5, 0, 1, -px(108))
-
-        local skinShopBtn = Instance.new("TextButton", skinShopNavW)
-        skinShopBtn.AutoButtonColor = false
-        skinShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        skinShopBtn.Font = Enum.Font.GothamBold
-        skinShopBtn.Text = "\u{1F6D2}  Browse Skins Shop"
-        skinShopBtn.TextColor3 = WHITE
-        skinShopBtn.TextTransparency = 0
-        skinShopBtn.TextSize = math.max(13, math.floor(px(15)))
-        skinShopBtn.AutomaticSize = Enum.AutomaticSize.X
-        skinShopBtn.Size = UDim2.new(0, 0, 1, 0)
-        skinShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-        skinShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-        Instance.new("UICorner", skinShopBtn).CornerRadius = UDim.new(0, px(8))
-        local ssnPad = Instance.new("UIPadding", skinShopBtn)
-        ssnPad.PaddingLeft = UDim.new(0, px(14)); ssnPad.PaddingRight = UDim.new(0, px(14))
-        local ssnStroke = Instance.new("UIStroke", skinShopBtn)
-        ssnStroke.Color = Color3.fromRGB(0, 0, 0); ssnStroke.Thickness = 1.5; ssnStroke.Transparency = 0.15
-
-        skinShopBtn.MouseEnter:Connect(function() TweenService:Create(skinShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
-        skinShopBtn.MouseLeave:Connect(function() TweenService:Create(skinShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
-        skinShopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("skins") end
-            end
-        end)
 
         -- ── Helper: update equip button state ───────────────────────────
         local function updateSkinEquipButton()
@@ -4665,31 +4559,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             local eeL = Instance.new("TextLabel", eeCard)
             eeL.BackgroundTransparency = 1; eeL.Font = Enum.Font.GothamMedium
-            eeL.Text = "You don't own any effects yet.\nVisit the shop to unlock more."
+            eeL.Text = "You don't own any effects yet.\nVisit the cosmetics stall to unlock more."
             eeL.TextColor3 = DIM_TEXT; eeL.TextSize = math.max(13, math.floor(px(14)))
             eeL.TextWrapped = true; eeL.Size = UDim2.new(0.85, 0, 0, px(60))
             eeL.AnchorPoint = Vector2.new(0.5, 0.5); eeL.Position = UDim2.new(0.5, 0, 0.5, 0)
             eeL.TextXAlignment = Enum.TextXAlignment.Center
-
-            local eeShopBtn = Instance.new("TextButton", effectsEmptyState)
-            eeShopBtn.Name = "ShopNavBtn"; eeShopBtn.AutoButtonColor = false
-            eeShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT; eeShopBtn.Font = Enum.Font.GothamBold
-            eeShopBtn.Text = "\u{1F6D2}  Browse Effects Shop"; eeShopBtn.TextColor3 = WHITE
-            eeShopBtn.TextTransparency = 0
-            eeShopBtn.TextSize = math.max(14, math.floor(px(15))); eeShopBtn.AutomaticSize = Enum.AutomaticSize.X
-            eeShopBtn.Size = UDim2.new(0, 0, 0, px(36)); eeShopBtn.AnchorPoint = Vector2.new(0.5, 0)
-            eeShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
-            Instance.new("UICorner", eeShopBtn).CornerRadius = UDim.new(0, px(8))
-            local eesPad = Instance.new("UIPadding", eeShopBtn)
-            eesPad.PaddingLeft = UDim.new(0, px(20)); eesPad.PaddingRight = UDim.new(0, px(20))
-            local eesStroke = Instance.new("UIStroke", eeShopBtn)
-            eesStroke.Color = Color3.fromRGB(0, 0, 0); eesStroke.Thickness = 1.5; eesStroke.Transparency = 0.15
-            eeShopBtn.MouseButton1Click:Connect(function()
-                local mc = _G.SideUI and _G.SideUI.MenuController
-                if mc then mc.OpenMenu("Shop")
-                    if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("effects") end
-                end
-            end)
 
             -- ── Right side: details panel ───────────────────────────────
             local trailDetailsPanel = Instance.new("Frame")
@@ -4794,40 +4668,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local trailEquipStroke = Instance.new("UIStroke", trailEquipBtn)
             trailEquipStroke.Color = Color3.fromRGB(0, 0, 0); trailEquipStroke.Thickness = 1.5; trailEquipStroke.Transparency = 0.15
 
-            -- Shop nav button in detail panel
-            local trailShopNavW = Instance.new("Frame", trailDetailContent)
-            trailShopNavW.Name = "ShopNavWrap"
-            trailShopNavW.BackgroundTransparency = 1
-            trailShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
-            trailShopNavW.AnchorPoint = Vector2.new(0.5, 1)
-            trailShopNavW.Position = UDim2.new(0.5, 0, 1, -px(58))
-
-            local trailShopBtn = Instance.new("TextButton", trailShopNavW)
-            trailShopBtn.AutoButtonColor = false
-            trailShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-            trailShopBtn.Font = Enum.Font.GothamBold
-            trailShopBtn.Text = "\u{1F6D2}  Browse Effects Shop"
-            trailShopBtn.TextColor3 = WHITE
-            trailShopBtn.TextTransparency = 0
-            trailShopBtn.TextSize = math.max(13, math.floor(px(15)))
-            trailShopBtn.AutomaticSize = Enum.AutomaticSize.X
-            trailShopBtn.Size = UDim2.new(0, 0, 1, 0)
-            trailShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-            trailShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-            Instance.new("UICorner", trailShopBtn).CornerRadius = UDim.new(0, px(8))
-            local tsnPad = Instance.new("UIPadding", trailShopBtn)
-            tsnPad.PaddingLeft = UDim.new(0, px(14)); tsnPad.PaddingRight = UDim.new(0, px(14))
-            local tsnStroke = Instance.new("UIStroke", trailShopBtn)
-            tsnStroke.Color = Color3.fromRGB(0, 0, 0); tsnStroke.Thickness = 1.5; tsnStroke.Transparency = 0.15
-
-            trailShopBtn.MouseEnter:Connect(function() TweenService:Create(trailShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
-            trailShopBtn.MouseLeave:Connect(function() TweenService:Create(trailShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
-            trailShopBtn.MouseButton1Click:Connect(function()
-                local mc = _G.SideUI and _G.SideUI.MenuController
-                if mc then mc.OpenMenu("Shop")
-                    if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("effects") end
-                end
-            end)
 
             -- ── State ───────────────────────────────────────────────────
             local ownedSet = {}
@@ -5297,7 +5137,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local eeLbl = Instance.new("TextLabel", eeCard)
         eeLbl.BackgroundTransparency = 1
         eeLbl.Font = Enum.Font.GothamMedium
-        eeLbl.Text = "You don't own any emotes yet.\nVisit the shop to unlock more."
+        eeLbl.Text = "You don't own any emotes yet.\nVisit the emote stall to unlock more."
         eeLbl.TextColor3 = DIM_TEXT
         eeLbl.TextSize = math.max(13, math.floor(px(14)))
         eeLbl.TextWrapped = true
@@ -5305,35 +5145,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         eeLbl.AnchorPoint = Vector2.new(0.5, 0.5)
         eeLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
         eeLbl.TextXAlignment = Enum.TextXAlignment.Center
-
-        local eeShopBtn = Instance.new("TextButton", emotesEmptyState)
-        eeShopBtn.Name = "ShopNavBtn"
-        eeShopBtn.AutoButtonColor = false
-        eeShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        eeShopBtn.Font = Enum.Font.GothamBold
-        eeShopBtn.Text = "\u{1F6D2}  Browse Emotes Shop"
-        eeShopBtn.TextColor3 = WHITE
-        eeShopBtn.TextTransparency = 0
-        eeShopBtn.TextSize = math.max(14, math.floor(px(15)))
-        eeShopBtn.AutomaticSize = Enum.AutomaticSize.X
-        eeShopBtn.Size = UDim2.new(0, 0, 0, px(36))
-        eeShopBtn.AnchorPoint = Vector2.new(0.5, 0)
-        eeShopBtn.Position = UDim2.new(0.5, 0, 0.75, 0)
-        Instance.new("UICorner", eeShopBtn).CornerRadius = UDim.new(0, px(8))
-        local eeShopPad = Instance.new("UIPadding", eeShopBtn)
-        eeShopPad.PaddingLeft = UDim.new(0, px(20))
-        eeShopPad.PaddingRight = UDim.new(0, px(20))
-        local eeShopStroke = Instance.new("UIStroke", eeShopBtn)
-        eeShopStroke.Color = Color3.fromRGB(0, 0, 0)
-        eeShopStroke.Thickness = 1.5
-        eeShopStroke.Transparency = 0.15
-        eeShopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then
-                mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("emotes") end
-            end
-        end)
 
         local emoteDetailsPanel = Instance.new("Frame")
         emoteDetailsPanel.Name = "EmoteDetailsPanel"
@@ -5532,42 +5343,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             }
         end
 
-        local emoteShopNavW = Instance.new("Frame", emoteDetailContent)
-        emoteShopNavW.Name = "ShopNavWrap"
-        emoteShopNavW.BackgroundTransparency = 1
-        emoteShopNavW.Size = UDim2.new(0.88, 0, 0, px(36))
-        emoteShopNavW.AnchorPoint = Vector2.new(0.5, 1)
-        emoteShopNavW.Position = UDim2.new(0.5, 0, 1, -px(58))
-
-        local emoteShopBtn = Instance.new("TextButton", emoteShopNavW)
-        emoteShopBtn.AutoButtonColor = false
-        emoteShopBtn.BackgroundColor3 = UITheme.NAVY_LIGHT
-        emoteShopBtn.Font = Enum.Font.GothamBold
-        emoteShopBtn.Text = "\u{1F6D2}  Browse Emotes Shop"
-        emoteShopBtn.TextColor3 = WHITE
-        emoteShopBtn.TextTransparency = 0
-        emoteShopBtn.TextSize = math.max(13, math.floor(px(15)))
-        emoteShopBtn.AutomaticSize = Enum.AutomaticSize.X
-        emoteShopBtn.Size = UDim2.new(0, 0, 1, 0)
-        emoteShopBtn.AnchorPoint = Vector2.new(0.5, 0.5)
-        emoteShopBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
-        Instance.new("UICorner", emoteShopBtn).CornerRadius = UDim.new(0, px(8))
-        local esnPad = Instance.new("UIPadding", emoteShopBtn)
-        esnPad.PaddingLeft = UDim.new(0, px(14))
-        esnPad.PaddingRight = UDim.new(0, px(14))
-        local esnStroke = Instance.new("UIStroke", emoteShopBtn)
-        esnStroke.Color = Color3.fromRGB(0, 0, 0)
-        esnStroke.Thickness = 1.5
-        esnStroke.Transparency = 0.15
-        emoteShopBtn.MouseEnter:Connect(function() TweenService:Create(emoteShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_MID}):Play() end)
-        emoteShopBtn.MouseLeave:Connect(function() TweenService:Create(emoteShopBtn, TWEEN_QUICK, {BackgroundColor3 = UITheme.NAVY_LIGHT}):Play() end)
-        emoteShopBtn.MouseButton1Click:Connect(function()
-            local mc = _G.SideUI and _G.SideUI.MenuController
-            if mc then
-                mc.OpenMenu("Shop")
-                if ShopUIModule and ShopUIModule.setActiveTab then ShopUIModule.setActiveTab("emotes") end
-            end
-        end)
 
         local emoteActionBtn = Instance.new("TextButton", emoteDetailContent)
         emoteActionBtn.Name = "EquipBtn"

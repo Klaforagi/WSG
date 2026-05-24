@@ -192,6 +192,8 @@ local containerCorner = Instance.new("UICorner")
 containerCorner.CornerRadius = UDim.new(0, px(12))
 containerCorner.Parent = container
 
+local shadowCorner = nil
+
 -- Gold outline so the bar pops against any background
 local containerStroke = Instance.new("UIStroke")
 containerStroke.Color = GOLD
@@ -210,7 +212,9 @@ shadow.BackgroundTransparency = 0.65
 shadow.BorderSizePixel = 0
 shadow.ZIndex = 0
 shadow.Parent = container
-Instance.new("UICorner", shadow).CornerRadius = UDim.new(0, px(14))
+shadowCorner = Instance.new("UICorner")
+shadowCorner.CornerRadius = UDim.new(0, px(14))
+shadowCorner.Parent = shadow
 
 -- Inner padding keeps children off the container edges
 local padding = Instance.new("UIPadding")
@@ -247,7 +251,9 @@ barBg.BorderSizePixel = 0
 barBg.ClipsDescendants = true
 barBg.ZIndex = 1
 barBg.Parent = container
-Instance.new("UICorner", barBg).CornerRadius = UDim.new(0, px(8))
+local barBgCorner = Instance.new("UICorner")
+barBgCorner.CornerRadius = UDim.new(0, px(8))
+barBgCorner.Parent = barBg
 
 -- Subtle inner border on the bar track
 local barStroke = Instance.new("UIStroke")
@@ -265,7 +271,9 @@ fill.BackgroundColor3 = GREEN_FILL
 fill.BorderSizePixel = 0
 fill.ZIndex = 2
 fill.Parent = barBg
-Instance.new("UICorner", fill).CornerRadius = UDim.new(0, px(8))
+local fillCorner = Instance.new("UICorner")
+fillCorner.CornerRadius = UDim.new(0, px(8))
+fillCorner.Parent = fill
 
 -- Fill gradient for subtle polish
 local fillGradient = Instance.new("UIGradient")
@@ -297,26 +305,47 @@ textConstraint.Parent = healthLabel
 
 local function applyHealthBarLayout()
 	local viewportX, viewportY = getViewportSize()
-	local barWidth = UserInputService.TouchEnabled
-		and math.clamp(math.floor(viewportX * 0.18), 130, 230)
-		or math.clamp(math.floor(viewportX * 0.135), 170, 270)
-	local barHeight = UserInputService.TouchEnabled
-		and math.clamp(math.floor(viewportY * 0.028), 18, 30)
-		or math.clamp(math.floor(viewportY * 0.027), 22, 36)
-	local edgePad = UserInputService.TouchEnabled
-		and math.max(12, math.floor(viewportY * 0.012))
-		or math.max(16, math.floor(viewportY * 0.018))
-	local iconSize = math.max(20, math.floor(barHeight * 0.64))
-	local barOffset = iconSize + math.max(6, math.floor(barHeight * 0.15))
+	local uiScale = math.clamp(viewportY / 1080, 0.65, 1.15)
+	local isTouch = UserInputService.TouchEnabled
+	local baseWidth = isTouch and 320 or 340
+	local baseHeight = isTouch and 48 or 52
+	local barWidth = math.clamp(
+		math.floor(baseWidth * uiScale),
+		isTouch and 220 or 260,
+		isTouch and 360 or 392
+	)
+	local barHeight = math.clamp(
+		math.floor(baseHeight * uiScale),
+		isTouch and 34 or 40,
+		isTouch and 56 or 60
+	)
+	local edgePad = math.max(isTouch and 12 or 18, math.floor((isTouch and 20 or 24) * uiScale))
+	local innerPadY = math.max(5, math.floor(barHeight * 0.16))
+	local innerPadX = math.max(8, math.floor(barHeight * 0.2))
+	local iconSize = math.max(24, math.floor(barHeight * 0.68))
+	local barOffset = iconSize + math.max(8, math.floor(barHeight * 0.18))
+	local outerCornerRadius = math.max(10, math.floor(barHeight * 0.24))
+	local innerCornerRadius = math.max(8, math.floor(barHeight * 0.18))
 
 	container.Size = UDim2.new(0, barWidth, 0, barHeight)
 	container.Position = UDim2.new(0, edgePad, 1, -edgePad)
+
+	padding.PaddingTop = UDim.new(0, innerPadY)
+	padding.PaddingBottom = UDim.new(0, innerPadY)
+	padding.PaddingLeft = UDim.new(0, innerPadX)
+	padding.PaddingRight = UDim.new(0, innerPadX)
 
 	heartIcon.Size = UDim2.new(0, iconSize, 0, iconSize)
 	barBg.Position = UDim2.new(0, barOffset, 0.5, 0)
 	barBg.Size = UDim2.new(1, -barOffset, 1, 0)
 
-	containerCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(barHeight * 0.23)))
+	containerCorner.CornerRadius = UDim.new(0, outerCornerRadius)
+	if shadowCorner then
+		shadowCorner.CornerRadius = UDim.new(0, outerCornerRadius + 2)
+	end
+	barBgCorner.CornerRadius = UDim.new(0, innerCornerRadius)
+	fillCorner.CornerRadius = UDim.new(0, innerCornerRadius)
+	containerStroke.Thickness = math.max(2, math.floor(barHeight * 0.05))
 	textConstraint.MaxTextSize = math.max(14, math.floor(barHeight * 0.5))
 end
 

@@ -42,6 +42,32 @@ end
 
 local isMobile = UserInputService.TouchEnabled
 
+local function getViewportSize()
+    local cam = workspace.CurrentCamera
+    if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+        return cam.ViewportSize.X, cam.ViewportSize.Y
+    end
+    return 1920, 1080
+end
+
+local function getHudUtilityButtonMetrics()
+    local viewportX, viewportY = getViewportSize()
+    local shortSide = math.min(viewportX, viewportY)
+    local buttonSize = isMobile
+        and math.clamp(shortSide * 0.07, 50, 72)
+        or math.clamp(shortSide * 0.045, 42, 58)
+    local insetX = math.clamp(buttonSize * 0.28, 12, 18)
+    local insetY = math.clamp(buttonSize * 0.24, 10, 16)
+    local gap = math.clamp(buttonSize * 0.18, 8, 14)
+
+    return {
+        buttonSize = math.floor(buttonSize + 0.5),
+        insetX = math.floor(insetX + 0.5),
+        insetY = math.floor(insetY + 0.5),
+        gap = math.floor(gap + 0.5),
+    }
+end
+
 --------------------------------------------------------------------------------
 -- Load shared modules
 --------------------------------------------------------------------------------
@@ -156,9 +182,8 @@ end
 -- HUD Button (top-right, beside Options button)
 -- Positioned to the LEFT of the Options button which sits at (1, -px(12), 0, px(10))
 --------------------------------------------------------------------------------
-local buttonSize = isMobile
-    and math.clamp(px(40), 38, 46)
-    or math.clamp(px(34), 32, 38)
+local hudMetrics = getHudUtilityButtonMetrics()
+local buttonSize = hudMetrics.buttonSize
 
 -- Container (matches Options HUD button style)
 local btnContainer = Instance.new("Frame")
@@ -166,7 +191,7 @@ btnContainer.Name = "DailyRewardsBtnContainer"
 btnContainer.AnchorPoint = Vector2.new(1, 0)
 btnContainer.Size = UDim2.new(0, buttonSize, 0, buttonSize)
 -- Position to the left of the Options button with a small gap
-btnContainer.Position = UDim2.new(1, -px(12) - buttonSize - px(8), 0, px(10))
+btnContainer.Position = UDim2.new(1, -hudMetrics.insetX - buttonSize - hudMetrics.gap, 0, hudMetrics.insetY)
 btnContainer.BackgroundTransparency = 1
 btnContainer.Parent = screenGui
 
@@ -200,9 +225,15 @@ btnScale.Parent = button
 -- Constructed gift-box icon (layered frames) – always renders reliably
 -- Do NOT use an ImageLabel from AssetCodes here; the asset may be missing/invalid
 -- and produce a blank button. The constructed icon is guaranteed visible.
+local iconFrame
+local boxBody
+local boxLid
+local vRib
+local hRib
+local bow
 do
     local iconSize = math.floor(buttonSize * 0.65)
-    local iconFrame = Instance.new("Frame")
+    iconFrame = Instance.new("Frame")
     iconFrame.Name = "IconGlyph"
     iconFrame.AnchorPoint = Vector2.new(0.5, 0.5)
     iconFrame.Position = UDim2.fromScale(0.5, 0.52)
@@ -212,7 +243,7 @@ do
     iconFrame.Parent = button
 
     -- Box body
-    local boxBody = Instance.new("Frame")
+    boxBody = Instance.new("Frame")
     boxBody.Name = "Body"
     boxBody.Size = UDim2.fromScale(0.88, 0.50)
     boxBody.Position = UDim2.fromScale(0.06, 0.48)
@@ -223,7 +254,7 @@ do
     Instance.new("UICorner", boxBody).CornerRadius = UDim.new(0.12, 0)
 
     -- Box lid
-    local boxLid = Instance.new("Frame")
+    boxLid = Instance.new("Frame")
     boxLid.Name = "Lid"
     boxLid.Size = UDim2.fromScale(0.98, 0.24)
     boxLid.Position = UDim2.fromScale(0.01, 0.26)
@@ -234,7 +265,7 @@ do
     Instance.new("UICorner", boxLid).CornerRadius = UDim.new(0.15, 0)
 
     -- Vertical ribbon
-    local vRib = Instance.new("Frame")
+    vRib = Instance.new("Frame")
     vRib.Name = "VRibbon"
     vRib.AnchorPoint = Vector2.new(0.5, 0)
     vRib.Size = UDim2.fromScale(0.16, 0.72)
@@ -245,7 +276,7 @@ do
     vRib.Parent = iconFrame
 
     -- Horizontal ribbon
-    local hRib = Instance.new("Frame")
+    hRib = Instance.new("Frame")
     hRib.Name = "HRibbon"
     hRib.AnchorPoint = Vector2.new(0, 0.5)
     hRib.Size = UDim2.fromScale(0.88, 0.13)
@@ -256,7 +287,7 @@ do
     hRib.Parent = iconFrame
 
     -- Bow knot
-    local bow = Instance.new("Frame")
+    bow = Instance.new("Frame")
     bow.Name = "Bow"
     bow.AnchorPoint = Vector2.new(0.5, 1)
     bow.Size = UDim2.fromScale(0.30, 0.22)
@@ -330,12 +361,18 @@ end)
 
 -- Responsive layout (match Options button sizing logic)
 local function updateLayout()
-    local bs = isMobile
-        and math.clamp(px(40), 38, 46)
-        or math.clamp(px(34), 32, 38)
+    local metrics = getHudUtilityButtonMetrics()
+    local bs = metrics.buttonSize
     btnContainer.Size = UDim2.new(0, bs, 0, bs)
-    btnContainer.Position = UDim2.new(1, -px(12) - bs - px(8), 0, px(10))
+    btnContainer.Position = UDim2.new(1, -metrics.insetX - bs - metrics.gap, 0, metrics.insetY)
     btnCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(bs * 0.24)))
+    if iconFrame then
+        local iconSize = math.floor(bs * 0.65)
+        iconFrame.Size = UDim2.new(0, iconSize, 0, iconSize)
+    end
+    badgeDot.Size = UDim2.new(0, math.max(10, math.floor(bs * 0.22)), 0, math.max(10, math.floor(bs * 0.22)))
+    badgeDot.Position = UDim2.new(1, math.max(2, math.floor(bs * 0.04)), 0, -math.max(2, math.floor(bs * 0.04)))
+    badgeStroke.Thickness = math.max(1.5, bs * 0.035)
 end
 
 local camViewConn

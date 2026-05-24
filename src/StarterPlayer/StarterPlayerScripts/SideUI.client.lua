@@ -1082,6 +1082,22 @@ end
 
 -- Create a compact, top-right utility button for opening Options.
 -- DailyRewardsClient positions its button immediately to the left of this slot.
+local function getHudUtilityButtonMetrics()
+    local viewportX, viewportY = getViewportSize()
+    local shortSide = math.min(viewportX, viewportY)
+    local buttonSize = UserInputService.TouchEnabled
+        and safeClamp(shortSide * 0.07, 50, 72)
+        or safeClamp(shortSide * 0.045, 42, 58)
+    local insetX = safeClamp(buttonSize * 0.28, 12, 18)
+    local insetY = safeClamp(buttonSize * 0.24, 10, 16)
+
+    return {
+        buttonSize = math.floor(buttonSize + 0.5),
+        insetX = math.floor(insetX + 0.5),
+        insetY = math.floor(insetY + 0.5),
+    }
+end
+
 local function CreateHudOptionsButton(onActivated)
     local existingHudGui = playerGui:FindFirstChild("OptionsHudGui")
     if existingHudGui then
@@ -1174,12 +1190,11 @@ local function CreateHudOptionsButton(onActivated)
     end
 
     local function updateLayout()
-        local buttonSize = UserInputService.TouchEnabled
-            and safeClamp(px(44), 42, 56)
-            or safeClamp(px(34), 32, 40)
+        local metrics = getHudUtilityButtonMetrics()
+        local buttonSize = metrics.buttonSize
 
         container.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-        container.Position = UDim2.new(1, -px(12), 0, px(10))
+        container.Position = UDim2.new(1, -metrics.insetX, 0, metrics.insetY)
         buttonCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
         fallbackConstraint.MaxTextSize = math.max(12, math.floor(buttonSize * 0.35))
     end
