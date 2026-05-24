@@ -5,7 +5,8 @@
 -- applies the selected skin's armor overlay matching SkinService.server.lua,
 -- and renders it inside a ViewportFrame.
 --
--- Usage: StandaloneSkinPreview.Update(viewportFrame, skinId, showHelm)
+-- Usage: StandaloneSkinPreview.RenderSkinPreview(viewportFrame, skinId, options)
+--        StandaloneSkinPreview.Update(viewportFrame, skinId, showHelm)
 --------------------------------------------------------------------------------
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -26,6 +27,7 @@ local PREVIEW_FOLDER_NAME = "SkinPreviews"
 local MOTOR_NAME_PREFIX = "SkinMotor_"
 local SAVED_TRANSPARENCY_ATTRIBUTE = "_OrigTransparency"
 local DEBUG_LOGS = false
+local warnedMessages = {}
 
 local cachedHumanoidDescription = nil
 local cachedBaseRig = nil
@@ -35,6 +37,15 @@ local function dprint(...)
     if DEBUG_LOGS then
         print("[StandaloneSkinPreview]", ...)
     end
+end
+
+local function warnOnce(key, ...)
+    key = tostring(key or "unknown")
+    if warnedMessages[key] then
+        return
+    end
+    warnedMessages[key] = true
+    warn("[CosmeticsPreview]", ...)
 end
 
 local function buildRigFromDescription(desc)
@@ -271,6 +282,36 @@ local SKIN_CONFIGS = {
     },
 }
 
+local function resolveConfigColors(skinId, config)
+    local colors = {}
+    for key, value in pairs(config.colors or {}) do
+        colors[key] = value
+    end
+
+    local def = SkinDefs.GetById(skinId)
+    if def then
+        if def.ArmorColor then
+            colors.armor = def.ArmorColor
+        end
+        if def.AccentColor then
+            colors.accent = def.AccentColor
+        end
+        if def.HelmetColor then
+            colors.helmet = def.HelmetColor
+        end
+        if def.VisorColor then
+            colors.visor = def.VisorColor
+        end
+    end
+
+    if skinId == "Knight" or skinId == "IronKnight" then
+        colors.accent = getPreviewTeamAccentColor(colors.accent)
+        colors.cape = getPreviewTeamCapeColor(colors.cape)
+    end
+
+    return colors
+end
+
 --------------------------------------------------------------------------------
 -- HELPERS
 --------------------------------------------------------------------------------
@@ -378,7 +419,7 @@ local function collectBaseParts(model)
     return parts
 end
 
-local function stripAppliedSkinArtifacts(rig)
+stripAppliedSkinArtifacts = function(rig)
     for _, desc in ipairs(rig:GetDescendants()) do
         if desc:IsA("BaseScript") or desc:IsA("BillboardGui") or desc:IsA("ForceField") then
             desc:Destroy()
@@ -547,12 +588,21 @@ local function hidePreviewBody(rig)
     end
 end
 
-local function getReplacementPreviewTemplate(def, skinId)
+local function findReplacementPreviewTemplate(def, skinId)
     local templateName = def.PreviewTemplateName or def.TemplateName or skinId
 
     local previewFolder = ReplicatedStorage:FindFirstChild(PREVIEW_FOLDER_NAME)
     local replicatedTemplate = previewFolder and previewFolder:FindFirstChild(templateName)
     if replicatedTemplate and replicatedTemplate:IsA("Model") then
+        return replicatedTemplate
+    end
+
+    return nil
+end
+
+local function getReplacementPreviewTemplate(def, skinId)
+    local replicatedTemplate = findReplacementPreviewTemplate(def, skinId)
+    if replicatedTemplate then
         dprint("Using replicated preview template for", skinId)
         return replicatedTemplate:Clone()
     end
@@ -850,50 +900,165 @@ end
 
 local function clearViewportScene(viewportFrame)
     for _, child in ipairs(viewportFrame:GetChildren()) do
-        if child:IsA("WorldModel") or child:IsA("Camera") or child:IsA("Model") then
+        if child:IsA("WorldModel") or child:IsA("Camera") or child:IsA("Model") or child.Name == "PreviewPlaceholder" then
             child:Destroy()
         end
     end
+    viewportFrame.CurrentCamera = nil
 end
 
-local function buildViewportScene(contentModel)
-    local worldModel = Instance.new("WorldModel")
-    contentModel.Parent = worldModel
+local function showPlaceholder(viewportFrame, skinId)
+    clearViewportScene(viewportFrame)
+
+    local placeholder = Instance.new("TextLabel")
+    placeholder.Name = "PreviewPlaceholder"
+    placeholder.BackgroundTransparency = 1
+    placeholder.Size = UDim2.fromScale(1, 1)
+    placeholder.Font = Enum.Font.GothamBold
+    placeholder.Text = "Preview unavailable"
+    placeholder.TextColor3 = Color3.fromRGB(205, 210, 225)
+    placeholder.TextScaled = true
+    placeholder.TextWrapped = true
+    placeholder.Parent = viewportFrame
+
+    local textLimit = Instance.new("UITextSizeConstraint")
+    textLimit.MinTextSize = 10
+    textLimit.MaxTextSize = 18
+    textLimit.Parent = placeholder
+
+    viewportFrame:SetAttribute("PreviewSkinId", tostring(skinId or ""))
+    viewportFrame:SetAttribute("PreviewFailed", true)
+end
+
+local function getPreviewMode(options)
+    local mode = type(options) == "table" and tostring(options.mode or options.Mode or "") or ""
+    if mode == "Card" or mode == "Small" or mode == "Thumbnail" then
+        return "Card"
+    end
+    return "Large"
+end
+
+local function getPreviewShowHelm(options)
+    if type(options) == "table" then
+        if options.keepHead ~= nil then
+            return options.keepHead ~= true
+        end
+        if options.KeepHead ~= nil then
+            return options.KeepHead ~= true
+        end
+        if options.showHelm ~= nil then
+            return options.showHelm ~= false
+        end
+        if options.ShowHelm ~= nil then
+            return options.ShowHelm ~= false
+        end
+    end
+    return true
+end
+
+local CAMERA_SETTINGS = {
+    Card = {
+        fieldOfView = 42,
+        padding = 1.12,
+        yawDegrees = 205,
+        lookYOffset = 0.03,
+        cameraYOffset = 0.03,
+    },
+    Large = {
+        fieldOfView = 38,
+        padding = 1.24,
+        yawDegrees = 205,
+        lookYOffset = 0.04,
+        cameraYOffset = 0.06,
+    },
+}
+
+local function positionPreviewModel(contentModel, mode)
+    local settings = CAMERA_SETTINGS[mode] or CAMERA_SETTINGS.Large
+    local _, initialSize = contentModel:GetBoundingBox()
+    local height = math.max(initialSize.Y, 1)
+
+    contentModel:PivotTo(CFrame.new(0, height * 0.5, 0) * CFrame.Angles(0, math.rad(settings.yawDegrees), 0))
+
+    local boundsCFrame, boundsSize = contentModel:GetBoundingBox()
+    local targetCenter = Vector3.new(0, math.max(boundsSize.Y, 1) * 0.5, 0)
+    contentModel:PivotTo(CFrame.new(targetCenter - boundsCFrame.Position) * contentModel:GetPivot())
+
+    return contentModel:GetBoundingBox()
+end
+
+local function setupPreviewCamera(viewportFrame, worldModel, contentModel, mode)
+    local settings = CAMERA_SETTINGS[mode] or CAMERA_SETTINGS.Large
+    local boundsCFrame, boundsSize = positionPreviewModel(contentModel, mode)
+    local center = boundsCFrame.Position
+    local width = math.max(boundsSize.X, boundsSize.Z * 0.65, 1)
+    local height = math.max(boundsSize.Y, 1)
 
     local camera = Instance.new("Camera")
-    camera.FieldOfView = 45
-    camera.CFrame = CFrame.lookAt(
-        Vector3.new(2.5, 4.2, 4),
-        Vector3.new(0, 3.5, 0)
-    )
+    camera.FieldOfView = settings.fieldOfView
+
+    local viewportSize = viewportFrame and viewportFrame.AbsoluteSize
+    local aspect = 1
+    if viewportSize and viewportSize.Y > 0 then
+        aspect = math.max(0.35, viewportSize.X / viewportSize.Y)
+    end
+
+    local verticalFov = math.rad(camera.FieldOfView)
+    local horizontalFov = 2 * math.atan(math.tan(verticalFov * 0.5) * aspect)
+    local distanceForHeight = (height * 0.5) / math.tan(verticalFov * 0.5)
+    local distanceForWidth = (width * 0.5) / math.tan(horizontalFov * 0.5)
+    local distance = math.max(distanceForHeight, distanceForWidth, 4) * settings.padding
+
+    local lookAt = center + Vector3.new(0, height * settings.lookYOffset, 0)
+    local cameraPosition = lookAt + Vector3.new(0, height * settings.cameraYOffset, distance)
+    camera.CFrame = CFrame.lookAt(cameraPosition, lookAt)
+
+    pcall(function()
+        viewportFrame.Ambient = Color3.fromRGB(130, 136, 160)
+        viewportFrame.LightColor = Color3.fromRGB(255, 250, 235)
+        viewportFrame.LightDirection = Vector3.new(-0.35, -0.8, -0.45)
+    end)
 
     local keyLightPart = Instance.new("Part")
     keyLightPart.Anchored = true
     keyLightPart.Transparency = 1
     keyLightPart.CanCollide = false
+    keyLightPart.CanTouch = false
+    keyLightPart.CanQuery = false
     keyLightPart.Size = Vector3.new(0.1, 0.1, 0.1)
-    keyLightPart.CFrame = CFrame.new(4, 6, 5)
+    keyLightPart.CFrame = CFrame.new(center + Vector3.new(width, height * 1.15, distance * 0.45))
     keyLightPart.Parent = worldModel
 
     local keyLight = Instance.new("PointLight")
-    keyLight.Color = Color3.fromRGB(230, 225, 215)
-    keyLight.Brightness = 1.5
-    keyLight.Range = 20
+    keyLight.Color = Color3.fromRGB(235, 232, 220)
+    keyLight.Brightness = mode == "Card" and 1.35 or 1.65
+    keyLight.Range = math.max(18, distance * 2.2)
     keyLight.Parent = keyLightPart
 
     local fillLightPart = Instance.new("Part")
     fillLightPart.Anchored = true
     fillLightPart.Transparency = 1
     fillLightPart.CanCollide = false
+    fillLightPart.CanTouch = false
+    fillLightPart.CanQuery = false
     fillLightPart.Size = Vector3.new(0.1, 0.1, 0.1)
-    fillLightPart.CFrame = CFrame.new(-3, 4, 3)
+    fillLightPart.CFrame = CFrame.new(center + Vector3.new(-width * 0.9, height * 0.65, distance * 0.25))
     fillLightPart.Parent = worldModel
 
     local fillLight = Instance.new("PointLight")
-    fillLight.Color = Color3.fromRGB(160, 170, 200)
-    fillLight.Brightness = 0.7
-    fillLight.Range = 16
+    fillLight.Color = Color3.fromRGB(155, 172, 220)
+    fillLight.Brightness = mode == "Card" and 0.55 or 0.7
+    fillLight.Range = math.max(14, distance * 1.8)
     fillLight.Parent = fillLightPart
+
+    return camera
+end
+
+local function buildViewportScene(viewportFrame, contentModel, options)
+    local mode = getPreviewMode(options)
+    local worldModel = Instance.new("WorldModel")
+    contentModel.Parent = worldModel
+    local camera = setupPreviewCamera(viewportFrame, worldModel, contentModel, mode)
 
     return worldModel, camera
 end
@@ -906,37 +1071,59 @@ local function applyViewportScene(viewportFrame, worldModel, camera)
 end
 
 function SkinPreview.Update(viewportFrame, skinId, showHelm)
+    return SkinPreview.RenderSkinPreview(viewportFrame, skinId, {
+        showHelm = showHelm ~= false,
+        mode = "Large",
+    })
+end
+
+function SkinPreview.RenderSkinPreview(viewportFrame, skinId, options)
     if not viewportFrame then return end
+
+    options = type(options) == "table" and options or {}
+    skinId = skinId or "Default"
+    local mode = getPreviewMode(options)
+    local showHelm = getPreviewShowHelm(options)
+    local selectedDef = SkinDefs.GetById(skinId)
+    local replacementSourceReady = selectedDef and selectedDef.ApplicationType == "ReplacementModel" and findReplacementPreviewTemplate(selectedDef, skinId) ~= nil
+    local expectedSource = replacementSourceReady and "ReplacementModel" or "Cosmetic"
 
     local expectedShowHelm = showHelm and 1 or 0
     if viewportFrame:GetAttribute("PreviewSkinId") == tostring(skinId)
         and viewportFrame:GetAttribute("PreviewShowHelm") == expectedShowHelm
+        and viewportFrame:GetAttribute("PreviewMode") == mode
+        and viewportFrame:GetAttribute("PreviewSource") == expectedSource
         and viewportFrame.CurrentCamera
         and viewportFrame:FindFirstChildOfClass("WorldModel") then
         return true
     end
 
-    dprint("Selected skin changed:", tostring(skinId))
+    print("[CosmeticsPreview] Rendering skin preview:", tostring(skinId), "mode=" .. mode, "keepHead=" .. tostring(showHelm == false))
 
-    local selectedDef = SkinDefs.GetById(skinId)
     if selectedDef and selectedDef.ApplicationType == "ReplacementModel" then
         local replacementPreview = buildReplacementPreview(skinId, showHelm)
         if replacementPreview then
-            replacementPreview:PivotTo(CFrame.new(0, 3, 0) * CFrame.Angles(0, math.rad(180), 0))
-
-            local worldModel, camera = buildViewportScene(replacementPreview)
+            local worldModel, camera = buildViewportScene(viewportFrame, replacementPreview, { mode = mode })
             applyViewportScene(viewportFrame, worldModel, camera)
 
             viewportFrame:SetAttribute("PreviewSkinId", tostring(skinId))
             viewportFrame:SetAttribute("PreviewShowHelm", expectedShowHelm)
+            viewportFrame:SetAttribute("PreviewMode", mode)
+            viewportFrame:SetAttribute("PreviewSource", "ReplacementModel")
+            viewportFrame:SetAttribute("PreviewFailed", nil)
+            print("[CosmeticsPreview] Applied skin to preview dummy:", tostring(skinId))
             return true
         end
-        dprint("ReplacementModel preview unavailable for", skinId, "- falling back to cosmetic rig")
+        warnOnce("missing-replacement-" .. tostring(skinId), "Missing preview source for skinId:", tostring(skinId))
         -- Fall through to cosmetic SKIN_CONFIGS path
     end
 
     local rig = buildRig()
-    if not rig then return false end
+    if not rig then
+        warnOnce("buildrig-" .. tostring(skinId), "Failed to render skin preview for skinId:", tostring(skinId))
+        showPlaceholder(viewportFrame, skinId)
+        return false
+    end
 
     local toRemove = {}
     for _, child in ipairs(rig:GetChildren()) do
@@ -956,19 +1143,11 @@ function SkinPreview.Update(viewportFrame, skinId, showHelm)
     end
 
     saveOriginalAppearance(rig)
-    rig:PivotTo(CFrame.new(0, 3, 0) * CFrame.Angles(0, math.rad(180), 0))
-
     local config = SKIN_CONFIGS[skinId]
     if config then
         dprint("Building preview rig for", skinId)
-        local effectiveColors = config.colors
+        local effectiveColors = resolveConfigColors(skinId, config)
         if skinId == "Knight" or skinId == "IronKnight" then
-            effectiveColors = {}
-            for k, v in pairs(config.colors) do
-                effectiveColors[k] = v
-            end
-            effectiveColors.accent = getPreviewTeamAccentColor(config.colors.accent)
-            effectiveColors.cape = getPreviewTeamCapeColor(config.colors.cape)
             local teamName = Players.LocalPlayer.Team and Players.LocalPlayer.Team.Name or "none"
             dprint("Resolved team color for preview:", teamName)
             dprint("Applying", skinId, "team trim color")
@@ -1000,11 +1179,14 @@ function SkinPreview.Update(viewportFrame, skinId, showHelm)
         dprint("Applied skin to preview rig: Default")
     end
 
-    local worldModel, camera = buildViewportScene(rig)
+    local worldModel, camera = buildViewportScene(viewportFrame, rig, { mode = mode })
     applyViewportScene(viewportFrame, worldModel, camera)
 
     viewportFrame:SetAttribute("PreviewSkinId", tostring(skinId))
     viewportFrame:SetAttribute("PreviewShowHelm", expectedShowHelm)
+    viewportFrame:SetAttribute("PreviewMode", mode)
+    viewportFrame:SetAttribute("PreviewSource", "Cosmetic")
+    viewportFrame:SetAttribute("PreviewFailed", nil)
     return true
 end
 

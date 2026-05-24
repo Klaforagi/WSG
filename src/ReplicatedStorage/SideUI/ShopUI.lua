@@ -2785,17 +2785,27 @@ function ShopUI.Create(parent, coinApi, inventoryApi)
                 local def = SkinDefs and SkinDefs.GetById(skinId)
                 if not def then return end
 
+                local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
+                if previewShowHelm == nil then previewShowHelm = true end
+                if SkinPreview then
+                    local ok, rendered = pcall(function()
+                        if type(SkinPreview.RenderSkinPreview) == "function" then
+                            return SkinPreview.RenderSkinPreview(skinPreviewVP, skinId, {
+                                mode = "Large",
+                                showHelm = previewShowHelm,
+                            })
+                        end
+                        return SkinPreview.Update(skinPreviewVP, skinId, previewShowHelm)
+                    end)
+                    if ok and rendered ~= false then
+                        return
+                    end
+                end
+
                 local previewImage = getSkinPreviewImage(def)
                 if previewImage then
                     skinPreviewImage.Image = previewImage
                     skinPreviewImage.Visible = true
-                    return
-                end
-
-                local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
-                if previewShowHelm == nil then previewShowHelm = true end
-                if SkinPreview then
-                    SkinPreview.Update(skinPreviewVP, skinId, previewShowHelm)
                 end
             end
 

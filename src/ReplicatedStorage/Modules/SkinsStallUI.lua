@@ -908,6 +908,7 @@ function SkinsStallUI.Create(parent, options)
 
 	local previewController = CosmeticPreviewController.new(previewViewport)
 	local currentPreviewKey = nil
+	local largePreviewLogs = {}
 
 	local actionBar = Instance.new("Frame")
 	actionBar.Name = "ActionBar"
@@ -1231,10 +1232,96 @@ function SkinsStallUI.Create(parent, options)
 				pcall(function()
 					record.viewport:SetAttribute("PreviewSkinId", nil)
 					record.viewport:SetAttribute("PreviewShowHelm", nil)
-					SkinThumbnailPreview.Update(record.viewport, record.item.Id, showHelm)
+					record.viewport:SetAttribute("PreviewMode", nil)
+					record.viewport:SetAttribute("PreviewSource", nil)
+					if type(SkinThumbnailPreview.RenderSkinPreview) == "function" then
+						SkinThumbnailPreview.RenderSkinPreview(record.viewport, record.item.Id, {
+							mode = "Card",
+							showHelm = showHelm,
+						})
+					else
+						SkinThumbnailPreview.Update(record.viewport, record.item.Id, showHelm)
+					end
 				end)
 			end
 		end
+	end
+
+	local function logLargePreviewOnce(key, ...)
+		key = tostring(key or "unknown")
+		if largePreviewLogs[key] then
+			return
+		end
+		largePreviewLogs[key] = true
+		print("[CosmeticsLargePreview]", ...)
+	end
+
+	local function warnLargePreviewOnce(key, ...)
+		key = tostring(key or "unknown")
+		if largePreviewLogs[key] then
+			return
+		end
+		largePreviewLogs[key] = true
+		warn("[CosmeticsLargePreview]", ...)
+	end
+
+	local function renderLargeSkinPreview(skinId)
+		if type(skinId) ~= "string" or skinId == "" then
+			return false
+		end
+
+		if previewController then
+			previewController:Stop()
+		end
+
+		previewViewport:SetAttribute("PreviewSkinId", nil)
+		previewViewport:SetAttribute("PreviewShowHelm", nil)
+		previewViewport:SetAttribute("PreviewMode", nil)
+		previewViewport:SetAttribute("PreviewSource", nil)
+
+		local keepHead = showHelm == false
+		logLargePreviewOnce("selected:" .. skinId, "Selected skin changed:", skinId)
+		logLargePreviewOnce("render:" .. skinId .. ":" .. tostring(keepHead), "Rendering selected skin into large preview:", skinId, "keepHead=" .. tostring(keepHead))
+
+		local function verifyRenderedSkin()
+			local renderedSkinId = previewViewport:GetAttribute("PreviewSkinId")
+			if renderedSkinId ~= tostring(skinId) then
+				warnLargePreviewOnce("avatar-fallback:" .. skinId, "WARNING: large preview attempted to render avatar instead of skin for selected skinId=" .. tostring(skinId))
+				return false
+			end
+			return true
+		end
+
+		if SkinThumbnailPreview and type(SkinThumbnailPreview.RenderSkinPreview) == "function" then
+			local ok, rendered = pcall(function()
+				return SkinThumbnailPreview.RenderSkinPreview(previewViewport, skinId, {
+					mode = "Large",
+					showHelm = showHelm,
+					source = "CosmeticsLargePreview",
+				})
+			end)
+			if ok and rendered ~= false and verifyRenderedSkin() then
+				return true
+			end
+			if not ok then
+				warnLargePreviewOnce("render-error:" .. skinId, "Failed to render selected skin into large preview:", skinId, tostring(rendered))
+			end
+		end
+
+		if SkinThumbnailPreview and type(SkinThumbnailPreview.Update) == "function" then
+			local ok, rendered = pcall(function()
+				return SkinThumbnailPreview.Update(previewViewport, skinId, showHelm)
+			end)
+			if ok and rendered ~= false and verifyRenderedSkin() then
+				return true
+			end
+			if not ok then
+				warnLargePreviewOnce("update-error:" .. skinId, "Failed to update selected skin large preview:", skinId, tostring(rendered))
+			end
+		end
+
+		warnLargePreviewOnce("render-failed:" .. skinId, "WARNING: failed to render selected skin into large preview:", skinId)
+		return false
 	end
 
 	local function updatePreview(item, force)
@@ -1262,9 +1349,13 @@ function SkinsStallUI.Create(parent, options)
 			previewViewportStroke.Color = rarityColor
 			previewViewportStroke.Transparency = 0.18
 			previewViewport.BackgroundColor3 = mixColor(Color3.fromRGB(8, 11, 21), rarityColor, item.Category == "Trail" and 0.16 or 0.08)
-			pcall(function()
-				previewController:ShowItem(item, showHelm)
-			end)
+			if item.Category == "Skin" then
+				renderLargeSkinPreview(item.Id)
+			else
+				pcall(function()
+					previewController:ShowItem(item, showHelm)
+				end)
+			end
 		else
 			previewName.Text = "Idle Avatar"
 			previewHeader.Text = "PREVIEW"
@@ -1681,7 +1772,14 @@ function SkinsStallUI.Create(parent, options)
 		viewport.Parent = card
 		applyCorners(viewport, px(10))
 		pcall(function()
-			SkinThumbnailPreview.Update(viewport, item.Id, showHelm)
+			if type(SkinThumbnailPreview.RenderSkinPreview) == "function" then
+				SkinThumbnailPreview.RenderSkinPreview(viewport, item.Id, {
+					mode = "Card",
+					showHelm = showHelm,
+				})
+			else
+				SkinThumbnailPreview.Update(viewport, item.Id, showHelm)
+			end
 		end)
 
 		local _, statusLabelRef, priceIcon = createStatusPill(card, 0.5)

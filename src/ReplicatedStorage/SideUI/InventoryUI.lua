@@ -855,17 +855,27 @@ local function updateSkinDetailPreview(viewportFrame, previewImageLabel, skinId,
     local def = skinDefsModule.GetById and skinDefsModule.GetById(skinId)
     if not def then return end
 
+    local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
+    if previewShowHelm == nil then previewShowHelm = true end
+    if skinPreviewModule then
+        local ok, rendered = pcall(function()
+            if type(skinPreviewModule.RenderSkinPreview) == "function" then
+                return skinPreviewModule.RenderSkinPreview(viewportFrame, skinId, {
+                    mode = "Large",
+                    showHelm = previewShowHelm,
+                })
+            end
+            return skinPreviewModule.Update(viewportFrame, skinId, previewShowHelm)
+        end)
+        if ok and rendered ~= false then
+            return
+        end
+    end
+
     local previewImage = getSkinPreviewImage(def)
     if previewImage then
         previewImageLabel.Image = previewImage
         previewImageLabel.Visible = true
-        return
-    end
-
-    local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
-    if previewShowHelm == nil then previewShowHelm = true end
-    if skinPreviewModule then
-        skinPreviewModule.Update(viewportFrame, skinId, previewShowHelm)
     end
 end
 

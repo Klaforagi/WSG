@@ -7,6 +7,16 @@
 --
 -- Usage:  SkinPreview.Update(viewportFrame, skinId, showHelm)
 --------------------------------------------------------------------------------
+local SharedReplicatedStorage = game:GetService("ReplicatedStorage")
+local sharedModulesFolder = SharedReplicatedStorage:FindFirstChild("Modules")
+local sharedPreviewModule = sharedModulesFolder and sharedModulesFolder:FindFirstChild("StandaloneSkinPreview")
+if sharedPreviewModule and sharedPreviewModule:IsA("ModuleScript") then
+    local ok, sharedPreview = pcall(require, sharedPreviewModule)
+    if ok and type(sharedPreview) == "table" then
+        return sharedPreview
+    end
+end
+
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 

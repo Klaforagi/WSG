@@ -222,7 +222,14 @@ function CosmeticPreviewController:ShowSkin(skinId, showHelm)
 	end
 	if SkinPreview and type(SkinPreview.Update) == "function" then
 		local ok = pcall(function()
-			SkinPreview.Update(self.ViewportFrame, skinId or "Default", showHelm ~= false)
+			if type(SkinPreview.RenderSkinPreview) == "function" then
+				SkinPreview.RenderSkinPreview(self.ViewportFrame, skinId or "Default", {
+					mode = "Large",
+					showHelm = showHelm ~= false,
+				})
+			else
+				SkinPreview.Update(self.ViewportFrame, skinId or "Default", showHelm ~= false)
+			end
 		end)
 		if ok then
 			self._activeMode = "Skin"
