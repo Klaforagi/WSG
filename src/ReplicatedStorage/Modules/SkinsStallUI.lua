@@ -132,8 +132,9 @@ local STYLE = {
 	SkinHeaderHeight = 66,
 	HeaderTextSize = 30,
 	CardTitleTextSize = 23,
-	SkinCardTitleTextSize = 18,
+	SkinCardTitleTextSize = 23,
 	CardSubtitleTextSize = 15,
+	SkinMetadataTextSize = 18,
 	CompactMetadataTextSize = 18,
 	CardButtonTextSize = 17,
 	SectionHeaderTextSize = 25,
@@ -508,6 +509,8 @@ local function getMetadataTypeWidth(category)
 		return px(72)
 	elseif category == "Trail" then
 		return px(64)
+	elseif category == "Skin" then
+		return px(56)
 	end
 	return px(44)
 end
@@ -553,7 +556,7 @@ end
 
 local function syncMetadataRow(record, item)
 	local isCompactCosmetic = item.Category == "Trail" or item.Category == "Emote"
-	local metadataTextSize = isCompactCosmetic and STYLE.CompactMetadataTextSize or STYLE.CardSubtitleTextSize
+	local metadataTextSize = item.Category == "Skin" and STYLE.SkinMetadataTextSize or (isCompactCosmetic and STYLE.CompactMetadataTextSize or STYLE.CardSubtitleTextSize)
 	if record.typeLabel then
 		record.typeLabel.Text = getCategoryLabel(item.Category) .. " ·"
 		record.typeLabel.Size = UDim2.new(0, getMetadataTypeWidth(item.Category), 1, 0)
@@ -2074,7 +2077,8 @@ function SkinsStallUI.Create(parent, options)
 			item.Category,
 			item.Rarity or "Common",
 			UDim2.new(0, px(10), 0, px(40)),
-			UDim2.new(1, -px(20), 0, px(22))
+			UDim2.new(1, -px(20), 0, px(22)),
+			STYLE.SkinMetadataTextSize
 		)
 
 		local viewport = Instance.new("ViewportFrame")

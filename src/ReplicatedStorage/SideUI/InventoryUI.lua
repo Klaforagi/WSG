@@ -1511,17 +1511,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailRarity.Size = UDim2.new(1, 0, 0, px(22))
     detailRarity.Position = UDim2.new(0, 0, 0, px(220))
 
-    -- Weapon type (melee/ranged)
-    local detailType = Instance.new("TextLabel", detailContent)
-    detailType.Name = "WeaponType"
-    detailType.BackgroundTransparency = 1
-    detailType.Font = Enum.Font.GothamMedium
-    detailType.TextColor3 = DIM_TEXT
-    detailType.TextSize = px(15)
-    detailType.TextXAlignment = Enum.TextXAlignment.Center
-    detailType.Size = UDim2.new(1, 0, 0, px(20))
-    detailType.Position = UDim2.new(0, 0, 0, px(244))
-
     -- SIZE ROLL SYSTEM — size info in detail panel (plain coloured text)
     local detailSize = Instance.new("TextLabel", detailContent)
     detailSize.Name = "SizeInfo"
@@ -1532,7 +1521,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.TextSize = px(18)
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
     detailSize.Size = UDim2.new(1, 0, 0, px(24))
-    detailSize.Position = UDim2.new(0, 0, 0, px(268))
+    detailSize.Position = UDim2.new(0, 0, 0, px(244))
 
     -- ENCHANT SYSTEM — enchant name in detail panel
     local detailEnchant = Instance.new("TextLabel", detailContent)
@@ -1543,7 +1532,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEnchant.TextSize = px(16)
     detailEnchant.TextXAlignment = Enum.TextXAlignment.Center
     detailEnchant.Size = UDim2.new(1, 0, 0, px(22))
-    detailEnchant.Position = UDim2.new(0, 0, 0, px(292))
+    detailEnchant.Position = UDim2.new(0, 0, 0, px(268))
     detailEnchant.Text = ""
 
     local masteryPanel = Instance.new("Frame", detailContent)
@@ -2106,8 +2095,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         detailName.Text = itemData.name
         detailRarity.Text = itemData.rarity or "Common"
         detailRarity.TextColor3 = rarColor
-        detailType.Text = (itemData.category == "Melee") and "Melee Weapon" or "Ranged Weapon"
-
         -- SIZE ROLL SYSTEM — show size info in detail panel (coloured tier + white %)
         local pct = itemData.sizePercent or 100
         local tier = itemData.sizeTier or "Normal"
