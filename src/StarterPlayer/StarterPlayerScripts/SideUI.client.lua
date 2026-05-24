@@ -185,8 +185,38 @@ local function makeButtonGradient(parent)
 end
 
 local MENU_DEFS = {
-    { id = "Missions", label = "Achieves", iconKey = "Quests" },
-    { id = "Team", label = "TEAM", iconKey = "Team" },
+    {
+        id = "Shop",
+        label = "Shop",
+        iconKey = "Shop",
+        fallback = "SHOP",
+        accent = Color3.fromRGB(255, 210, 70),
+        aliases = { "SHOP" },
+    },
+    {
+        id = "Inventory",
+        label = "Inventory",
+        iconKey = "Inventory",
+        fallback = "INV",
+        accent = Color3.fromRGB(75, 210, 255),
+        aliases = { "INVENTORY" },
+    },
+    {
+        id = "Missions",
+        label = "Achieves",
+        iconKey = "Quests",
+        fallback = "ACH",
+        accent = Color3.fromRGB(255, 205, 45),
+        aliases = { "Achieves", "Achievement", "Achievements", "Quests" },
+    },
+    {
+        id = "Team",
+        label = "Team",
+        iconKey = "Team",
+        fallback = "TEAM",
+        accent = Color3.fromRGB(235, 70, 70),
+        aliases = { "TEAM" },
+    },
 }
 
 -- Internal state tables to expose
@@ -203,253 +233,542 @@ local function tweenInstance(inst, props, info)
 end
 
 -- UI creation helpers
-local function CreatePanel(screenGui)
-    local panel = Instance.new("Frame")
-    panel.Name = "MainUICard"
-    panel.AnchorPoint = PANEL_ANCHOR
-    panel.Position = PANEL_POS
-    panel.Size = PANEL_WIDTH
-    panel.BackgroundColor3 = COLORS.panelBg
-    panel.BackgroundTransparency = 1
-    panel.BorderSizePixel = 0
-    panel.AutomaticSize = Enum.AutomaticSize.Y
-    panel.Parent = screenGui
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, px(10))
-    corner.Parent = panel
-
-    -- Min/max width clamp so panel stays usable on narrow / ultrawide viewports
-    local sizeConstraint = Instance.new("UISizeConstraint")
-    sizeConstraint.MinSize = Vector2.new(px(140), 0)
-    sizeConstraint.MaxSize = Vector2.new(px(360), math.huge)
-    sizeConstraint.Parent = panel
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = COLORS.gold
-    stroke.Thickness = 1
-    stroke.Transparency = 1
-    stroke.Parent = panel
-
-    local padding = Instance.new("UIPadding")
-    padding.PaddingTop = UDim.new(0, px(10))
-    padding.PaddingBottom = UDim.new(0, px(10))
-    padding.PaddingLeft = UDim.new(0, px(10))
-    padding.PaddingRight = UDim.new(0, px(10))
-    padding.Parent = panel
-
-    local layout = Instance.new("UIListLayout")
-    layout.SortOrder = Enum.SortOrder.LayoutOrder
-    layout.Padding = UDim.new(0, px(4))
-    layout.Parent = panel
-
-    return panel
-end
-
-local function makeTextButtonBase(text)
-    local btn = Instance.new("TextButton")
-    btn.AutoButtonColor = false
-    btn.BackgroundColor3 = Color3.new(1, 1, 1) -- white so UIGradient colour shows through
-    btn.BackgroundTransparency = 0
-    btn.BorderSizePixel = 0
-    btn.Font = Enum.Font.GothamBold
-    btn.Text = text or ""
-    btn.TextColor3 = COLORS.gold
-    btn.TextScaled = true
-    btn.ClipsDescendants = true
-
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, px(8))
-    corner.Parent = btn
-
-    makeButtonGradient(btn)
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = COLORS.gold
-    stroke.Thickness = 1.5
-    stroke.Transparency = 0.12
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Parent = btn
-
-    return btn
-end
-
--- Helper: create a half-width top button (used for SHOP and INVENTORY)
-local function makeTopHalfButton(label, iconKey, layoutOrder)
-    local btn = makeTextButtonBase(label)
-    btn.Name = label .. "Button"
-    btn.LayoutOrder = layoutOrder or 1
-    btn.ClipsDescendants = true
-
-    local labelTextScale = 1
-    local labelWidthScale = 0.92
-    if label == "SHOP" then
-        labelTextScale = 1.0
-        labelWidthScale = 0.92
-    elseif label == "INVENTORY" then
-        labelTextScale = 0.90
-        labelWidthScale = 0.92
-    end
-
-    local function calcBtnHeight()
-        local screenY = 720
-        local cam = workspace.CurrentCamera
-        if cam and cam.ViewportSize then screenY = cam.ViewportSize.Y end
-        return math.max(36, math.floor(screenY * 0.07))
-    end
-    local btnH = calcBtnHeight()
-    btn.Size = UDim2.new(1, 0, 0, btnH)
-
-    -- optional icon
-    local assetId = (AssetCodes and type(AssetCodes.Get) == "function") and AssetCodes.Get(iconKey or label)
-    btn.Text = ""
-    if assetId and type(assetId) == "string" then
-        local icon = Instance.new("ImageLabel")
-        icon.Name = label .. "Icon"
-        local function updateIconSize()
-            local h = btn.AbsoluteSize.Y > 0 and btn.AbsoluteSize.Y or btnH
-            local s = math.max(28, math.floor(h * 0.78))
-            icon.Size = UDim2.new(0, s, 0, s)
-            icon.Position = UDim2.new(0.5, 0, 0.44, 0)
-            icon.AnchorPoint = Vector2.new(0.5, 0.5)
+local function getAssetImage(iconKey)
+    if iconKey and AssetCodes and type(AssetCodes.Get) == "function" then
+        local ok, id = pcall(function() return AssetCodes.Get(iconKey) end)
+        if ok and type(id) == "string" and #id > 0 then
+            return id
         end
-        updateIconSize()
-        icon.BackgroundTransparency = 1
-        icon.Image = assetId
-        icon.ScaleType = Enum.ScaleType.Fit
-        icon.ZIndex = 1
-        icon.Parent = btn
-        btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateIconSize)
-        local cam = workspace.CurrentCamera
-        if cam then cam:GetPropertyChangedSignal("ViewportSize"):Connect(updateIconSize) end
-
-        local overlay = Instance.new("TextLabel")
-        overlay.Name = label .. "OverlayLabel"
-        overlay.BackgroundTransparency = 1
-        overlay.Size = UDim2.new(labelWidthScale, 0, 0, math.max(12, math.floor(btnH * 0.32)))
-        overlay.Position = UDim2.new(0.5, 0, 1, -px(5))
-        overlay.AnchorPoint = Vector2.new(0.5, 1)
-        overlay.Font = Enum.Font.GothamBold
-        overlay.Text = label
-        overlay.TextColor3 = COLORS.gold
-        overlay.TextSize = math.max(11, math.floor(btnH * 0.55 * deviceTextScale * labelTextScale))
-        overlay.TextScaled = false
-        overlay.TextWrapped = false
-        overlay.TextXAlignment = Enum.TextXAlignment.Center
-        overlay.TextYAlignment = Enum.TextYAlignment.Center
-        overlay.ZIndex = 2
-        overlay.TextStrokeColor3 = COLORS.brown
-        overlay.TextStrokeTransparency = 0
-        overlay.Parent = btn
-    else
-        btn.Text = label
-        btn.TextXAlignment = Enum.TextXAlignment.Center
-        btn.TextScaled = false
-        btn.TextSize = math.max(11, math.floor(btnH * 0.55 * deviceTextScale * labelTextScale))
-        btn.TextColor3 = COLORS.gold
-        btn.TextStrokeColor3 = COLORS.brown
-        btn.TextStrokeTransparency = 0
     end
-
-    -- hover & click feedback
-    btn.MouseEnter:Connect(function()
-        tweenInstance(btn, {BackgroundTransparency = 0}, TweenInfo.new(0.12))
-        local s = btn:FindFirstChildOfClass("UIStroke")
-        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.12)) end
-        local lbl = btn:FindFirstChild(label .. "OverlayLabel")
-        if lbl then tweenInstance(lbl, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12))
-        else tweenInstance(btn, {TextColor3 = Color3.new(1,1,1)}, TweenInfo.new(0.12)) end
-    end)
-    btn.MouseLeave:Connect(function()
-        tweenInstance(btn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
-        local s = btn:FindFirstChildOfClass("UIStroke")
-        if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
-        local lbl = btn:FindFirstChild(label .. "OverlayLabel")
-        if lbl then tweenInstance(lbl, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12))
-        else tweenInstance(btn, {TextColor3 = COLORS.gold}, TweenInfo.new(0.12)) end
-    end)
-
-    return btn, btnH
+    return nil
 end
 
-local function CreateShopAndInventoryRow(parent)
-    -- Container frame: full width, holds two half-width buttons side by side
-    local row = Instance.new("Frame")
-    row.Name = "ShopInventoryRow"
-    row.LayoutOrder = 1
-    row.BackgroundTransparency = 1
-    row.Size = UDim2.new(1, 0, 0, 0)
-    row.AutomaticSize = Enum.AutomaticSize.Y
-    row.Parent = parent
+local function activateLauncherButton(def)
+    if not def then return end
 
-    local rowLayout = Instance.new("UIListLayout")
-    rowLayout.FillDirection = Enum.FillDirection.Horizontal
-    rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    rowLayout.Padding = UDim.new(0, px(4))
-    rowLayout.Parent = row
-
-    -- SHOP button (left half)
-    local shopBtn, shopH = makeTopHalfButton("SHOP", "Shop", 1)
-    shopBtn.Size = UDim2.new(0.5, -px(2), 0, shopH)
-    shopBtn.Parent = row
-
-    shopBtn.Activated:Connect(function()
-        tweenInstance(shopBtn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
-        local s = shopBtn:FindFirstChildOfClass("UIStroke")
-        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.06)) end
-        task.delay(0.09, function()
-            tweenInstance(shopBtn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
-            if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
-        end)
+    if def.id == "Shop" then
         if _G and _G.SideUI and type(_G.SideUI.OnShop) == "function" then
             pcall(_G.SideUI.OnShop)
         elseif type(scriptHandlers.OnShop) == "function" then
             pcall(scriptHandlers.OnShop)
-        else
-            print("Shop")
         end
-    end)
+        return
+    end
 
-    -- INVENTORY button (right half)
-    local invBtn, invH = makeTopHalfButton("INVENTORY", "Inventory", 2)
-    invBtn.Size = UDim2.new(0.5, -px(2), 0, invH)
-    invBtn.Parent = row
-
-    invBtn.Activated:Connect(function()
-        tweenInstance(invBtn, {BackgroundTransparency = 0}, TweenInfo.new(0.06))
-        local s = invBtn:FindFirstChildOfClass("UIStroke")
-        if s then tweenInstance(s, {Transparency = 0}, TweenInfo.new(0.06)) end
-        task.delay(0.09, function()
-            tweenInstance(invBtn, {BackgroundTransparency = 0.12}, TweenInfo.new(0.12))
-            if s then tweenInstance(s, {Transparency = 0.12}, TweenInfo.new(0.12)) end
-        end)
+    if def.id == "Inventory" then
         if _G and _G.SideUI and type(_G.SideUI.OnInventory) == "function" then
             pcall(_G.SideUI.OnInventory)
         elseif type(scriptHandlers.OnInventory) == "function" then
             pcall(scriptHandlers.OnInventory)
+        end
+        return
+    end
+
+    if _G and _G.SideUI and type(_G.SideUI.OnMenuButton) == "function" then
+        pcall(_G.SideUI.OnMenuButton, def.id)
+    elseif type(scriptHandlers.OnMenuButton) == "function" then
+        pcall(scriptHandlers.OnMenuButton, def.id)
+    end
+end
+
+local function addCardGradient(parent, accent)
+    accent = accent or COLORS.gold
+    local gradient = Instance.new("UIGradient")
+    gradient.Rotation = 90
+    gradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, accent:Lerp(Color3.new(1, 1, 1), 0.18)),
+        ColorSequenceKeypoint.new(0.16, Color3.fromRGB(32, 34, 55)),
+        ColorSequenceKeypoint.new(0.58, Color3.fromRGB(12, 14, 28)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(5, 6, 14)),
+    })
+    gradient.Parent = parent
+    return gradient
+end
+
+local function buildCrossedFlagIcon(parent, zIndex)
+    local iconRoot = Instance.new("Frame")
+    iconRoot.Name = "TeamCrossedFlagsIcon"
+    iconRoot.BackgroundTransparency = 1
+    iconRoot.Size = UDim2.new(0.84, 0, 0.66, 0)
+    iconRoot.AnchorPoint = Vector2.new(0.5, 0.5)
+    iconRoot.Position = UDim2.new(0.5, 0, 0.43, 0)
+    iconRoot.ZIndex = zIndex or 254
+    iconRoot.Parent = parent
+
+    local function makeFlag(name, angle, direction, poleColor, clothColor, clothShade)
+        local flag = Instance.new("Frame")
+        flag.Name = name
+        flag.BackgroundTransparency = 1
+        flag.Size = UDim2.new(0.78, 0, 0.92, 0)
+        flag.AnchorPoint = Vector2.new(0.5, 0.5)
+        flag.Position = UDim2.new(0.5, 0, 0.54, 0)
+        flag.Rotation = angle
+        flag.ZIndex = iconRoot.ZIndex
+        flag.Parent = iconRoot
+
+        local poleX = direction == 1 and 0.40 or 0.60
+        local outward = direction == 1 and -1 or 1
+
+        local pole = Instance.new("Frame")
+        pole.Name = "Pole"
+        pole.BorderSizePixel = 0
+        pole.BackgroundColor3 = poleColor
+        pole.Size = UDim2.new(0.09, 0, 0.96, 0)
+        pole.AnchorPoint = Vector2.new(0.5, 0)
+        pole.Position = UDim2.new(poleX, 0, 0.02, 0)
+        pole.ZIndex = iconRoot.ZIndex
+        pole.Parent = flag
+        local poleCorner = Instance.new("UICorner")
+        poleCorner.CornerRadius = UDim.new(1, 0)
+        poleCorner.Parent = pole
+
+        local clothMain = Instance.new("Frame")
+        clothMain.Name = "ClothMain"
+        clothMain.BorderSizePixel = 0
+        clothMain.BackgroundColor3 = clothColor
+        clothMain.Size = UDim2.new(0.52, 0, 0.32, 0)
+        clothMain.AnchorPoint = Vector2.new(outward == 1 and 0 or 1, 0)
+        clothMain.Position = UDim2.new(poleX + outward * 0.03, 0, 0.15, 0)
+        clothMain.ZIndex = iconRoot.ZIndex + 1
+        clothMain.Parent = flag
+        local clothMainCorner = Instance.new("UICorner")
+        clothMainCorner.CornerRadius = UDim.new(0, px(4))
+        clothMainCorner.Parent = clothMain
+
+        local clothTip = Instance.new("Frame")
+        clothTip.Name = "ClothTip"
+        clothTip.BorderSizePixel = 0
+        clothTip.BackgroundColor3 = clothColor
+        clothTip.Size = UDim2.new(0.15, 0, 0.15, 0)
+        clothTip.AnchorPoint = Vector2.new(0.5, 0.5)
+        clothTip.Position = UDim2.new(
+            clothMain.Position.X.Scale + outward * clothMain.Size.X.Scale,
+            0,
+            clothMain.Position.Y.Scale + clothMain.Size.Y.Scale * 0.55,
+            0
+        )
+        clothTip.Rotation = outward == 1 and 45 or -45
+        clothTip.ZIndex = iconRoot.ZIndex + 1
+        clothTip.Parent = flag
+
+        local clothStripe = Instance.new("Frame")
+        clothStripe.Name = "ClothStripe"
+        clothStripe.BorderSizePixel = 0
+        clothStripe.BackgroundColor3 = clothShade
+        clothStripe.Size = UDim2.new(0.22, 0, 0.06, 0)
+        clothStripe.AnchorPoint = Vector2.new(outward == 1 and 0 or 1, 0.5)
+        clothStripe.Position = UDim2.new(poleX + outward * 0.06, 0, 0.23, 0)
+        clothStripe.ZIndex = iconRoot.ZIndex + 2
+        clothStripe.Parent = flag
+
+        local clothStroke = Instance.new("UIStroke")
+        clothStroke.Color = clothColor:Lerp(Color3.new(1, 1, 1), 0.25)
+        clothStroke.Thickness = 1.5
+        clothStroke.Transparency = 0.25
+        clothStroke.Parent = clothMain
+    end
+
+    makeFlag("RedFlag", -40, 1, Color3.fromRGB(172, 132, 88), Color3.fromRGB(212, 38, 45), Color3.fromRGB(255, 116, 124))
+    makeFlag("BlueFlag", 40, -1, Color3.fromRGB(150, 118, 82), Color3.fromRGB(56, 120, 220), Color3.fromRGB(122, 188, 255))
+end
+
+local function createLauncherButton(def)
+    local accent = def.accent or COLORS.gold
+    local btn = Instance.new("TextButton")
+    btn.Name = (def.id == "Missions" and "Achieves" or def.id) .. "Button"
+    btn.AutoButtonColor = false
+    btn.BackgroundColor3 = Color3.new(1, 1, 1)
+    btn.BackgroundTransparency = 0
+    btn.BorderSizePixel = 0
+    btn.ClipsDescendants = false
+    btn.Text = ""
+    btn.ZIndex = 252
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, px(12))
+    corner.Parent = btn
+
+    addCardGradient(btn, accent)
+
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = accent
+    stroke.Thickness = px(3)
+    stroke.Transparency = 0.02
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.LineJoinMode = Enum.LineJoinMode.Round
+    stroke.Parent = btn
+
+    local shine = Instance.new("Frame")
+    shine.Name = "TopShine"
+    shine.BackgroundColor3 = Color3.new(1, 1, 1)
+    shine.BackgroundTransparency = 0.88
+    shine.BorderSizePixel = 0
+    shine.Size = UDim2.new(1, -px(10), 0.22, 0)
+    shine.Position = UDim2.new(0, px(5), 0, px(5))
+    shine.ZIndex = 253
+    shine.Parent = btn
+    local shineCorner = Instance.new("UICorner")
+    shineCorner.CornerRadius = UDim.new(0, px(9))
+    shineCorner.Parent = shine
+
+    local iconImage = getAssetImage(def.iconKey)
+    if def.id == "Team" then
+        buildCrossedFlagIcon(btn, 254)
+    elseif iconImage then
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "Icon"
+        icon.BackgroundTransparency = 1
+        icon.AnchorPoint = Vector2.new(0.5, 0.5)
+        icon.Position = UDim2.new(0.5, 0, 0.42, 0)
+        icon.Size = UDim2.new(0.74, 0, 0.66, 0)
+        icon.Image = iconImage
+        icon.ScaleType = Enum.ScaleType.Fit
+        icon.ZIndex = 254
+        icon.Parent = btn
+    else
+        local fallback = Instance.new("TextLabel")
+        fallback.Name = "IconFallback"
+        fallback.BackgroundTransparency = 1
+        fallback.AnchorPoint = Vector2.new(0.5, 0.5)
+        fallback.Position = UDim2.new(0.5, 0, 0.42, 0)
+        fallback.Size = UDim2.new(0.84, 0, 0.56, 0)
+        fallback.Font = Enum.Font.GothamBlack
+        fallback.Text = def.fallback or def.label or def.id
+        fallback.TextColor3 = accent
+        fallback.TextScaled = true
+        fallback.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        fallback.TextStrokeTransparency = 0.1
+        fallback.ZIndex = 254
+        fallback.Parent = btn
+        local fallbackConstraint = Instance.new("UITextSizeConstraint")
+        fallbackConstraint.MinTextSize = 18
+        fallbackConstraint.MaxTextSize = 34
+        fallbackConstraint.Parent = fallback
+    end
+
+    local labelShadow = Instance.new("TextLabel")
+    labelShadow.Name = "LabelShadow"
+    labelShadow.BackgroundTransparency = 1
+    labelShadow.AnchorPoint = Vector2.new(0.5, 1)
+    labelShadow.Position = UDim2.new(0.5, px(2), 1, px(5))
+    labelShadow.Size = UDim2.new(1.2, 0, 0.28, 0)
+    labelShadow.Font = Enum.Font.GothamBlack
+    labelShadow.Text = def.label or def.id
+    labelShadow.TextColor3 = Color3.fromRGB(0, 0, 0)
+    labelShadow.TextScaled = true
+    labelShadow.TextWrapped = false
+    labelShadow.TextXAlignment = Enum.TextXAlignment.Center
+    labelShadow.TextYAlignment = Enum.TextYAlignment.Center
+    labelShadow.ZIndex = 255
+    labelShadow.Parent = btn
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "NameLabel"
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.AnchorPoint = Vector2.new(0.5, 1)
+    nameLabel.Position = UDim2.new(0.5, 0, 1, px(3))
+    nameLabel.Size = UDim2.new(1.2, 0, 0.28, 0)
+    nameLabel.Font = Enum.Font.GothamBlack
+    nameLabel.Text = def.label or def.id
+    nameLabel.TextColor3 = COLORS.white
+    nameLabel.TextScaled = true
+    nameLabel.TextWrapped = false
+    nameLabel.TextXAlignment = Enum.TextXAlignment.Center
+    nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.TextStrokeTransparency = 0
+    nameLabel.ZIndex = 256
+    nameLabel.Parent = btn
+
+    local labelConstraint = Instance.new("UITextSizeConstraint")
+    labelConstraint.MinTextSize = 15
+    labelConstraint.MaxTextSize = 28
+    labelConstraint.Parent = nameLabel
+
+    local shadowConstraint = Instance.new("UITextSizeConstraint")
+    shadowConstraint.MinTextSize = 15
+    shadowConstraint.MaxTextSize = 28
+    shadowConstraint.Parent = labelShadow
+
+    local badge = Instance.new("TextLabel")
+    badge.Name = "Badge"
+    badge.AnchorPoint = Vector2.new(0.5, 0.5)
+    badge.Position = UDim2.new(1, -px(4), 0, px(3))
+    badge.Size = UDim2.new(0, px(34), 0, px(34))
+    badge.BackgroundColor3 = COLORS.badgeBg
+    badge.BorderSizePixel = 0
+    badge.Font = Enum.Font.GothamBlack
+    badge.Text = "!"
+    badge.TextColor3 = Color3.new(1, 1, 1)
+    badge.TextScaled = true
+    badge.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    badge.TextStrokeTransparency = 0.15
+    badge.Visible = false
+    badge.ZIndex = 259
+    badge.Parent = btn
+    local badgeCorner = Instance.new("UICorner")
+    badgeCorner.CornerRadius = UDim.new(1, 0)
+    badgeCorner.Parent = badge
+    local badgeStroke = Instance.new("UIStroke")
+    badgeStroke.Color = Color3.new(1, 1, 1)
+    badgeStroke.Thickness = 1.5
+    badgeStroke.Transparency = 0.1
+    badgeStroke.Parent = badge
+    local badgeConstraint = Instance.new("UITextSizeConstraint")
+    badgeConstraint.MinTextSize = 16
+    badgeConstraint.MaxTextSize = 30
+    badgeConstraint.Parent = badge
+
+    local buttonScale = Instance.new("UIScale")
+    buttonScale.Scale = 1
+    buttonScale.Parent = btn
+
+    local hovering = false
+    btn.MouseEnter:Connect(function()
+        hovering = true
+        tweenInstance(buttonScale, { Scale = 1.045 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(stroke, { Transparency = 0, Thickness = px(4) }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    btn.MouseLeave:Connect(function()
+        hovering = false
+        tweenInstance(buttonScale, { Scale = 1 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(stroke, { Transparency = 0.02, Thickness = px(3) }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    btn.MouseButton1Down:Connect(function()
+        tweenInstance(buttonScale, { Scale = 0.94 }, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    btn.MouseButton1Up:Connect(function()
+        tweenInstance(buttonScale, { Scale = hovering and 1.045 or 1 }, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    btn.Activated:Connect(function()
+        tweenInstance(buttonScale, { Scale = 0.96 }, TweenInfo.new(0.05, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        task.delay(0.06, function()
+            if buttonScale and buttonScale.Parent then
+                tweenInstance(buttonScale, { Scale = hovering and 1.045 or 1 }, TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+            end
+        end)
+        activateLauncherButton(def)
+    end)
+
+    local function updateTextLimits()
+        local h = btn.AbsoluteSize.Y > 0 and btn.AbsoluteSize.Y or px(100)
+        local maxLabel = math.max(18, math.floor(h * 0.26))
+        local minLabel = math.max(13, math.floor(h * 0.15))
+        labelConstraint.MinTextSize = minLabel
+        labelConstraint.MaxTextSize = maxLabel
+        shadowConstraint.MinTextSize = minLabel
+        shadowConstraint.MaxTextSize = maxLabel
+        badge.Size = UDim2.new(0, math.max(24, math.floor(h * 0.33)), 0, math.max(24, math.floor(h * 0.33)))
+        badgeConstraint.MaxTextSize = math.max(22, math.floor(h * 0.27))
+    end
+    btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateTextLimits)
+    task.defer(updateTextLimits)
+
+    return btn, badge
+end
+
+local function CreateSideLauncher(screenGui)
+    local launcher = Instance.new("Frame")
+    launcher.Name = "SideLauncher"
+    launcher.BackgroundTransparency = 1
+    launcher.BorderSizePixel = 0
+    launcher.Size = UDim2.new(1, 0, 1, 0)
+    launcher.Position = UDim2.new(0, 0, 0, 0)
+    launcher.ClipsDescendants = false
+    launcher.ZIndex = 250
+    launcher.Parent = screenGui
+
+    local stack = Instance.new("Frame")
+    stack.Name = "SideButtonStack"
+    stack.AnchorPoint = Vector2.new(0, 0.5)
+    stack.BackgroundTransparency = 1
+    stack.BorderSizePixel = 0
+    stack.ClipsDescendants = false
+    stack.ZIndex = 251
+    stack.Parent = launcher
+
+    local layout = Instance.new("UIListLayout")
+    layout.FillDirection = Enum.FillDirection.Vertical
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.Parent = stack
+
+    for index, def in ipairs(MENU_DEFS) do
+        local btn, badge = createLauncherButton(def)
+        btn.LayoutOrder = index
+        btn.Parent = stack
+        buttonsById[def.id] = btn
+        badgesById[def.id] = badge
+        if type(def.aliases) == "table" then
+            for _, alias in ipairs(def.aliases) do
+                buttonsById[alias] = btn
+                badgesById[alias] = badge
+            end
+        end
+    end
+
+    local toggle = Instance.new("TextButton")
+    toggle.Name = "CollapseToggleButton"
+    toggle.AnchorPoint = Vector2.new(0, 0.5)
+    toggle.AutoButtonColor = false
+    toggle.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+    toggle.BackgroundTransparency = 0.06
+    toggle.BorderSizePixel = 0
+    toggle.Font = Enum.Font.GothamBlack
+    toggle.Text = "<"
+    toggle.TextColor3 = COLORS.white
+    toggle.TextScaled = true
+    toggle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    toggle.TextStrokeTransparency = 0.15
+    toggle.ZIndex = 258
+    toggle.Parent = launcher
+    local toggleCorner = Instance.new("UICorner")
+    toggleCorner.CornerRadius = UDim.new(0, px(7))
+    toggleCorner.Parent = toggle
+    local toggleStroke = Instance.new("UIStroke")
+    toggleStroke.Color = COLORS.gold
+    toggleStroke.Thickness = px(1.5)
+    toggleStroke.Transparency = 0.05
+    toggleStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    toggleStroke.LineJoinMode = Enum.LineJoinMode.Round
+    toggleStroke.Parent = toggle
+    local toggleGradient = Instance.new("UIGradient")
+    toggleGradient.Rotation = 90
+    toggleGradient.Color = ColorSequence.new(Color3.fromRGB(34, 36, 58), Color3.fromRGB(8, 9, 18))
+    toggleGradient.Parent = toggle
+    local toggleConstraint = Instance.new("UITextSizeConstraint")
+    toggleConstraint.MinTextSize = 10
+    toggleConstraint.MaxTextSize = 18
+    toggleConstraint.Parent = toggle
+    local toggleScale = Instance.new("UIScale")
+    toggleScale.Scale = 1
+    toggleScale.Parent = toggle
+
+    local isCollapsed = false
+    local isTweening = false
+    local layoutMetrics = nil
+
+    local function getLauncherMetrics()
+        local viewportX, viewportY = getViewportSize()
+        local cardSize = safeClamp(viewportY * (UserInputService.TouchEnabled and 0.105 or 0.102), UserInputService.TouchEnabled and 62 or 78, UserInputService.TouchEnabled and 94 or 118)
+        local spacing = safeClamp(cardSize * 0.18, 10, 18)
+        local leftPad = safeClamp(viewportX * (UserInputService.TouchEnabled and 0.012 or 0.010), 6, px(22))
+        local collapsedX = -cardSize - safeClamp(cardSize * 0.28, 18, 32)
+        local toggleW = safeClamp(cardSize * 0.24, 22, 28)
+        local toggleH = safeClamp(cardSize * 0.34, 26, 36)
+        local toggleGap = safeClamp(cardSize * 0.06, 4, 8)
+        local stackExpandedX = leftPad + toggleW + toggleGap
+        local toggleExpandedX = leftPad
+        local toggleCollapsedX = safeClamp(viewportX * 0.004, 2, px(8))
+        local totalHeight = (cardSize * #MENU_DEFS) + (spacing * math.max(0, #MENU_DEFS - 1))
+        return {
+            cardSize = math.floor(cardSize + 0.5),
+            spacing = math.floor(spacing + 0.5),
+            leftPad = math.floor(leftPad + 0.5),
+            stackExpandedX = math.floor(stackExpandedX + 0.5),
+            collapsedX = math.floor(collapsedX + 0.5),
+            toggleW = math.floor(toggleW + 0.5),
+            toggleH = math.floor(toggleH + 0.5),
+            toggleExpandedX = math.floor(toggleExpandedX + 0.5),
+            toggleCollapsedX = math.floor(toggleCollapsedX + 0.5),
+            totalHeight = math.floor(totalHeight + 0.5),
+        }
+    end
+
+    local function applyLauncherLayout(animated)
+        layoutMetrics = getLauncherMetrics()
+        layout.Padding = UDim.new(0, layoutMetrics.spacing)
+        stack.Size = UDim2.new(0, layoutMetrics.cardSize, 0, layoutMetrics.totalHeight)
+        for _, def in ipairs(MENU_DEFS) do
+            local btn = buttonsById[def.id]
+            if btn then
+                btn.Size = UDim2.new(0, layoutMetrics.cardSize, 0, layoutMetrics.cardSize)
+            end
+        end
+
+        toggle.Size = UDim2.new(0, layoutMetrics.toggleW, 0, layoutMetrics.toggleH)
+        toggleConstraint.MaxTextSize = math.max(12, math.floor(layoutMetrics.toggleH * 0.48))
+        local stackPos = UDim2.new(0, isCollapsed and layoutMetrics.collapsedX or layoutMetrics.stackExpandedX, 0.5, 0)
+        local togglePos = UDim2.new(0, isCollapsed and layoutMetrics.toggleCollapsedX or layoutMetrics.toggleExpandedX, 0.5, 0)
+
+        if animated then
+            tweenInstance(stack, { Position = stackPos }, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+            tweenInstance(toggle, { Position = togglePos }, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
         else
-            print("Inventory")
+            stack.Position = stackPos
+            toggle.Position = togglePos
+        end
+        toggle.Text = isCollapsed and ">" or "<"
+    end
+
+    toggle.MouseEnter:Connect(function()
+        tweenInstance(toggleScale, { Scale = 1.08 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(toggleStroke, { Transparency = 0, Thickness = px(2) }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    toggle.MouseLeave:Connect(function()
+        tweenInstance(toggleScale, { Scale = 1 }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+        tweenInstance(toggleStroke, { Transparency = 0.05, Thickness = px(1.5) }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    toggle.MouseButton1Down:Connect(function()
+        tweenInstance(toggleScale, { Scale = 0.94 }, TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    toggle.MouseButton1Up:Connect(function()
+        tweenInstance(toggleScale, { Scale = 1.02 }, TweenInfo.new(0.08, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
+    end)
+    toggle.Activated:Connect(function()
+        if isTweening then return end
+        isTweening = true
+        isCollapsed = not isCollapsed
+        layoutMetrics = getLauncherMetrics()
+        toggle.Text = isCollapsed and ">" or "<"
+        local stackPos = UDim2.new(0, isCollapsed and layoutMetrics.collapsedX or layoutMetrics.stackExpandedX, 0.5, 0)
+        local togglePos = UDim2.new(0, isCollapsed and layoutMetrics.toggleCollapsedX or layoutMetrics.toggleExpandedX, 0.5, 0)
+        local tweenInfo = TweenInfo.new(0.26, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+        local ok, stackTween = pcall(function() return TweenService:Create(stack, tweenInfo, { Position = stackPos }) end)
+        pcall(function() TweenService:Create(toggle, tweenInfo, { Position = togglePos }):Play() end)
+        if ok and stackTween then
+            stackTween:Play()
+            stackTween.Completed:Connect(function()
+                isTweening = false
+                applyLauncherLayout(false)
+            end)
+        else
+            stack.Position = stackPos
+            toggle.Position = togglePos
+            isTweening = false
         end
     end)
 
-    return row, shopBtn, invBtn
-end
-
--- CoinDisplay module (ReplicatedStorage): creates coin row + wires server remotes.
--- WaitForChild ensures availability in Team Test (separate server/client processes).
-local CoinDisplayModule = nil
-do
-    local mod = ReplicatedStorage:WaitForChild("CoinDisplay", 10)
-    if mod and mod:IsA("ModuleScript") then
-        local ok, result = pcall(require, mod)
-        if ok then
-            CoinDisplayModule = result
-        else
-            warn("[SideUI] CoinDisplay failed to load:", tostring(result))
+    local launcherCameraViewportConn = nil
+    local launcherCameraChangedConn = nil
+    local function bindCameraViewport()
+        if launcherCameraViewportConn then
+            pcall(function() launcherCameraViewportConn:Disconnect() end)
+            launcherCameraViewportConn = nil
         end
-    else
-        warn("[SideUI] CoinDisplay not found – coin row will be unavailable")
+        local cam = workspace.CurrentCamera
+        if cam then
+            launcherCameraViewportConn = cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+                applyLauncherLayout(false)
+            end)
+        end
     end
+    bindCameraViewport()
+    launcherCameraChangedConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCameraViewport)
+    launcher.Destroying:Connect(function()
+        if launcherCameraViewportConn then
+            pcall(function() launcherCameraViewportConn:Disconnect() end)
+            launcherCameraViewportConn = nil
+        end
+        if launcherCameraChangedConn then
+            pcall(function() launcherCameraChangedConn:Disconnect() end)
+            launcherCameraChangedConn = nil
+        end
+    end)
+    task.defer(function() applyLauncherLayout(false) end)
+
+    return launcher, stack, toggle
 end
 
 -- PREMIUM CRATE / KEY SYSTEM  – KeyDisplay module (mirrors CoinDisplay)
@@ -484,10 +803,10 @@ do
     end
 end
 
-local function CreateMenuGrid(parent)
+local function CreateLegacyLauncherGridUnused(parent)
     local gridContainer = Instance.new("Frame")
-    gridContainer.Name = "MenuGridContainer"
-    gridContainer.LayoutOrder = 3 -- Keys/Salvage no longer in HUD; follows CoinRow (2)
+    gridContainer.Name = "LegacyLauncherGridUnused"
+    gridContainer.LayoutOrder = 3
     gridContainer.Size = UDim2.new(1, 0, 0, 0)
     gridContainer.BackgroundTransparency = 1
     gridContainer.Parent = parent
@@ -515,16 +834,15 @@ local function CreateMenuGrid(parent)
         gridContainer.Size = UDim2.new(1, 0, 0, paddedHeight)
     end
 
-    -- Prefer sizing cells to match the Shop button width so 3 columns always fit.
-    -- Use the ShopInventoryRow (or fallback to grid container width) for cell sizing
-    local shopInvRow = parent:FindFirstChild("ShopInventoryRow")
+    -- Legacy helper kept only as dormant code during the launcher transition.
+    local legacyWidthSource = parent:FindFirstChild("LegacyLauncherWidthSource")
     local function updateCellSize()
         local cols = grid.FillDirectionMaxCells or 3
         local cellPad = (grid and grid.CellPadding and grid.CellPadding.X) and grid.CellPadding.X.Offset or 6
 
         local sourceW = 0
-        if shopInvRow and shopInvRow.AbsoluteSize and shopInvRow.AbsoluteSize.X > 0 then
-            sourceW = shopInvRow.AbsoluteSize.X
+        if legacyWidthSource and legacyWidthSource.AbsoluteSize and legacyWidthSource.AbsoluteSize.X > 0 then
+            sourceW = legacyWidthSource.AbsoluteSize.X
         else
             sourceW = gridContainer.AbsoluteSize.X
         end
@@ -535,8 +853,8 @@ local function CreateMenuGrid(parent)
         updateContainerHeight()
     end
 
-    if shopInvRow then
-        shopInvRow:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize)
+    if legacyWidthSource then
+        legacyWidthSource:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize)
     end
     gridContainer:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize)
     if gridContainer.Parent then
@@ -548,7 +866,7 @@ local function CreateMenuGrid(parent)
     return gridContainer
 end
 
-local function CreateMenuButton(def)
+local function CreateLegacyLauncherButtonUnused(def)
     local btn = Instance.new("TextButton")
     btn.Name = "Btn_" .. tostring(def.id)
     btn.AutoButtonColor = false
@@ -966,13 +1284,17 @@ pcall(function() screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling end)
 pcall(function() screenGui.DisplayOrder = 250 end)
 print("[SideUI] screenGui ready; parent =", tostring(screenGui.Parent))
 
--- Clear existing content in screenGui container area (optional safe-guard: only if it's our MainUICard)
-local existing = screenGui:FindFirstChild("MainUICard")
-if existing then existing:Destroy() end
+for _, existingName in ipairs({ "SideLauncher", "MainUICard" }) do
+    local existing = screenGui:FindFirstChild(existingName)
+    if existing then
+        existing:Destroy()
+    end
+end
 
-local panel = CreatePanel(screenGui)
-local shopInvRow, shopBtn, invBtn = CreateShopAndInventoryRow(panel)
-print("[SideUI] panel created; shopBtn =", tostring(shopBtn), "invBtn =", tostring(invBtn))
+local panel, sideButtonStack, collapseToggleButton = CreateSideLauncher(screenGui)
+local shopBtn = buttonsById.Shop
+local invBtn = buttonsById.Inventory
+print("[SideUI] side launcher created; shopBtn =", tostring(shopBtn), "invBtn =", tostring(invBtn))
 
 -- Simple client-side inventory API
 local Inventory = {}
@@ -1721,7 +2043,7 @@ end
 
 local function updateHeaderCoins()
     local coins = 0
-    -- Try coinApi first (tracks live value from CoinDisplay)
+    -- Try coinApi first (tracks live value without rendering a launcher coin row)
     if coinApi and coinApi.GetCoins then
         local ok, val = pcall(function() return coinApi.GetCoins() end)
         if ok and type(val) == "number" then coins = val end
@@ -1737,7 +2059,11 @@ local function updateHeaderCoins()
                 if getCoinsFn and getCoinsFn:IsA("RemoteFunction") then
                     local res = getCoinsFn:InvokeServer()
                     if type(res) == "number" then
-                        headerCoinLabel.Text = formatCompactCurrency(res)
+                        if coinApi and coinApi.SetCoins then
+                            coinApi.SetCoins(res)
+                        else
+                            headerCoinLabel.Text = formatCompactCurrency(res)
+                        end
                     end
                 end
             end)
@@ -1944,13 +2270,8 @@ local function requestShowModule(mod, label)
     end
 end
 
-shopBtn.Activated:Connect(function()
-    if MenuController then MenuController.ToggleMenu("Shop") else requestShowModule(shopModule, "SHOP") end
-end)
-
-invBtn.Activated:Connect(function()
-    if MenuController then MenuController.ToggleMenu("Inventory") else requestShowModule(invModule, "INVENTORY") end
-end)
+-- Launcher card activation is wired in createLauncherButton and routed through
+-- scriptHandlers below so all four side buttons share the same open path.
 
 -- Options HUD button (must be placed AFTER menu registration)
 local function toggleOptionsMenu()
@@ -1973,17 +2294,12 @@ playerGui.ChildRemoved:Connect(function(child)
     end
 end)
 
--- Coin row from CoinDisplay module (auto-wires to server remotes)
-local coinRow
-if CoinDisplayModule and CoinDisplayModule.Create then
-    coinRow, coinApi = CoinDisplayModule.Create(panel, 2)
-    print("[SideUI] CoinDisplay module initialized; coinApi =", tostring(coinApi))
-    -- Refresh header immediately once the coin API is available so joins show correct value
-    pcall(function() updateHeaderCoins() end)
-end
+-- Side launcher no longer renders a coin row; coinApi remains headless for
+-- Shop/Inventory headers, reward refreshes, and crate-opening integrations.
+print("[SideUI] headless coin API initialized; no launcher coin row created")
+pcall(function() updateHeaderCoins() end)
 
 -- PREMIUM CRATE / KEY SYSTEM  – Key API (no HUD row; displayed in Shop header only)
-local keyApi
 if KeyDisplayModule and KeyDisplayModule.Create then
     -- Create off-screen to initialize the key API without showing the row in the HUD
     local hiddenHost = Instance.new("Frame")
@@ -2030,7 +2346,11 @@ task.spawn(function()
     local coinsEvent = ReplicatedStorage:WaitForChild("CoinsUpdated", 10)
     if coinsEvent and coinsEvent:IsA("RemoteEvent") then
         coinsEvent.OnClientEvent:Connect(function(amount)
-            headerCoinLabel.Text = formatCompactCurrency(amount)
+            if coinApi and coinApi.SetCoins then
+                coinApi.SetCoins(amount)
+            else
+                headerCoinLabel.Text = formatCompactCurrency(amount)
+            end
         end)
         pcall(updateHeaderCoins)
     else
@@ -2080,16 +2400,7 @@ for _, child in ipairs(panel:GetChildren()) do
     end
 end
 
-local menuGridContainer = CreateMenuGrid(panel)
-
--- populate menu buttons from definitions
-for index, def in ipairs(MENU_DEFS) do
-    local btn, badge = CreateMenuButton(def)
-    btn.LayoutOrder = index
-    btn.Parent = menuGridContainer
-    buttonsById[def.id] = btn
-    badgesById[def.id] = badge
-end
+-- Launcher buttons are created inside SideButtonStack during CreateSideLauncher.
 
 -- Exposed API
 local function SetCoins(amount)
@@ -2105,12 +2416,91 @@ local function SetBadge(id, enabled)
     end
 end
 
+local achievementBadgeDataById = {}
+
+local function isAchievementClaimable(entry)
+    if type(entry) ~= "table" then return false end
+    if entry.claimed == true or entry.maxedOut == true then return false end
+    local isComplete = entry.completed == true
+    local goal = tonumber(entry.target) or 0
+    local progress = tonumber(entry.progress) or 0
+    return isComplete or (goal > 0 and progress >= goal)
+end
+
+local function updateAchievementLauncherBadge()
+    local hasClaimable = false
+    for _, entry in pairs(achievementBadgeDataById) do
+        if isAchievementClaimable(entry) then
+            hasClaimable = true
+            break
+        end
+    end
+    SetBadge("Missions", hasClaimable)
+end
+
+local function refreshAchievementLauncherBadge(getAchievementsRF)
+    if not getAchievementsRF or not getAchievementsRF:IsA("RemoteFunction") then return end
+    task.spawn(function()
+        local ok, result = pcall(function()
+            return getAchievementsRF:InvokeServer()
+        end)
+        if not ok or type(result) ~= "table" then return end
+        achievementBadgeDataById = {}
+        for _, entry in ipairs(result) do
+            if type(entry) == "table" and type(entry.id) == "string" then
+                achievementBadgeDataById[entry.id] = entry
+            end
+        end
+        updateAchievementLauncherBadge()
+    end)
+end
+
+local function wireAchievementLauncherBadge()
+    task.spawn(function()
+        local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+        if not remotes then return end
+        local getAchievementsRF = remotes:WaitForChild("GetAchievements", 10)
+        local achievProgressRE = remotes:WaitForChild("AchievementProgress", 10)
+
+        if getAchievementsRF and getAchievementsRF:IsA("RemoteFunction") then
+            refreshAchievementLauncherBadge(getAchievementsRF)
+        end
+
+        if achievProgressRE and achievProgressRE:IsA("RemoteEvent") then
+            achievProgressRE.OnClientEvent:Connect(function(achId, progress, completed, achievedOn, claimed, stageIndex)
+                if achId == "__full_refresh" then
+                    refreshAchievementLauncherBadge(getAchievementsRF)
+                    return
+                end
+                if type(achId) ~= "string" then return end
+
+                local entry = achievementBadgeDataById[achId] or { id = achId }
+                entry.progress = tonumber(progress) or entry.progress or 0
+                entry.completed = completed == true
+                entry.achievedOn = achievedOn
+                entry.claimed = claimed == true
+                if stageIndex ~= nil then
+                    entry.stageIndex = stageIndex
+                end
+                achievementBadgeDataById[achId] = entry
+                updateAchievementLauncherBadge()
+            end)
+        end
+    end)
+end
+
 local function OpenPage(id)
     -- Route all menu opens through MenuController for unified one-click switching
     if MenuController then
         local idToMenu = {
+            Shop     = "Shop",
+            Inventory = "Inventory",
             Options  = "Options",
             Missions = "Quests",
+            Achieves = "Quests",
+            Achievement = "Quests",
+            Achievements = "Quests",
+            Quests   = "Quests",
             Team     = "Team",
         }
         local menuName = idToMenu[id]
@@ -2120,8 +2510,13 @@ local function OpenPage(id)
         end
     else
         -- Fallback if MenuController failed to load
+        if id == "Shop" then requestShowModule(shopModule, "SHOP"); return end
+        if id == "Inventory" then requestShowModule(invModule, "INVENTORY"); return end
         if id == "Options" then toggleOptionsMenu(); return end
-        if id == "Missions" then requestShowModule(questsModule, "Achievements"); return end
+        if id == "Missions" or id == "Achieves" or id == "Achievement" or id == "Achievements" or id == "Quests" then
+            requestShowModule(questsModule, "Achievements")
+            return
+        end
         if id == "Team" then
             if type(_G.TeamStatsToggle) == "function" then pcall(_G.TeamStatsToggle) end
             return
@@ -2143,20 +2538,21 @@ _G.SideUI.MenuController = MenuController  -- expose for other scripts
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
 -- Assign to the forward-declared scriptHandlers table (line ~106) so click closures above see these
 scriptHandlers.OnShop = function()
-    print("Shop")
+    if MenuController then MenuController.ToggleMenu("Shop") else requestShowModule(shopModule, "SHOP") end
 end
 scriptHandlers.OnInventory = function()
-    print("Inventory")
+    if MenuController then MenuController.ToggleMenu("Inventory") else requestShowModule(invModule, "INVENTORY") end
 end
 scriptHandlers.OnMenuButton = function(id)
     OpenPage(id)
 end
 
--- initial default state: only default to 0 if CoinDisplay failed to initialize
+-- Initial default state for the headless coin API and launcher badges.
 if not coinApi then
     SetCoins(0)
 end
 for id,_ in pairs(badgesById) do SetBadge(id, false) end
+wireAchievementLauncherBadge()
 
 
 -- OPTIONAL: small convenience to return refs (not required, but handy during dev)

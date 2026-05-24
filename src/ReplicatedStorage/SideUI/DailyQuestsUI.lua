@@ -3471,12 +3471,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         local title = Instance.new("TextLabel")
         title.Name = "Title"
         title.BackgroundTransparency = 1
-        title.Font = Enum.Font.GothamBold
+        title.Font = Enum.Font.GothamBlack
         title.Text = "Achievement Points"
-        title.TextColor3 = WHITE
-        title.TextSize = achTextPx(14, 10)
+        title.TextColor3 = GOLD
+        title.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        title.TextStrokeTransparency = 0.35
+        title.TextSize = achTextPx(17, 13)
         title.TextXAlignment = Enum.TextXAlignment.Left
-        title.Size = UDim2.new(0.65, 0, 0, px(18))
+        title.TextTruncate = Enum.TextTruncate.AtEnd
+        title.Size = UDim2.new(0.65, 0, 0, px(22))
         title.Position = UDim2.new(0, 0, 0, 0)
         title.Parent = summaryCard
 
@@ -3485,11 +3488,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         subtitle.BackgroundTransparency = 1
         subtitle.Font = Enum.Font.GothamMedium
         subtitle.Text = "Lifetime total from claimed achievements"
-        subtitle.TextColor3 = DIM_TEXT
-        subtitle.TextSize = achTextPx(11, 8)
+        subtitle.TextColor3 = Color3.fromRGB(210, 218, 230)
+        subtitle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        subtitle.TextStrokeTransparency = 0.7
+        subtitle.TextSize = achTextPx(12, 10)
         subtitle.TextXAlignment = Enum.TextXAlignment.Left
-        subtitle.Size = UDim2.new(0.75, 0, 0, px(14))
-        subtitle.Position = UDim2.new(0, 0, 0, px(26))
+        subtitle.TextTruncate = Enum.TextTruncate.AtEnd
+        subtitle.Size = UDim2.new(0.75, 0, 0, px(18))
+        subtitle.Position = UDim2.new(0, 0, 0, px(30))
         subtitle.Parent = summaryCard
 
         local value = Instance.new("TextLabel")
@@ -3567,7 +3573,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             local histCard = Instance.new("Frame")
             histCard.Name             = "HistEntry_" .. tostring(i)
             histCard.BackgroundColor3 = ROW_CLAIMED_BG
-            histCard.Size             = UDim2.new(1, -px(6), 0, px(72))
+            histCard.Size             = UDim2.new(1, -px(6), 0, px(88))
             histCard.LayoutOrder      = 10 + i
             histCard.Parent           = contentPanel
 
@@ -3581,9 +3587,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
 
             local hcPad = Instance.new("UIPadding")
             hcPad.PaddingLeft  = UDim.new(0, px(12))
-            hcPad.PaddingRight = UDim.new(0, px(12))
-            hcPad.PaddingTop   = UDim.new(0, px(8))
-            hcPad.PaddingBottom = UDim.new(0, px(8))
+            hcPad.PaddingRight = UDim.new(0, px(14))
+            hcPad.PaddingTop   = UDim.new(0, px(10))
+            hcPad.PaddingBottom = UDim.new(0, px(10))
             hcPad.Parent       = histCard
 
             -- Checkmark
@@ -3593,22 +3599,26 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             check.Font      = Enum.Font.GothamBold
             check.Text      = "\u{2714}"
             check.TextColor3 = GREEN_GLOW
-            check.TextSize  = achTextPx(18, 12)
-            check.Size      = UDim2.new(0, px(24), 0, px(24))
-            check.Position  = UDim2.new(0, 0, 0, 0)
+            check.TextTransparency = 0.12
+            check.TextSize  = achTextPx(20, 13)
+            check.Size      = UDim2.new(0, px(28), 0, px(28))
+            check.Position  = UDim2.new(0, 0, 0, px(4))
             check.Parent    = histCard
 
             -- Title
             local hTitle = Instance.new("TextLabel")
             hTitle.Name = "Title"
             hTitle.BackgroundTransparency = 1
-            hTitle.Font      = Enum.Font.GothamBold
+            hTitle.Font      = Enum.Font.GothamBlack
             hTitle.Text      = entry.displayName or entry.id
             hTitle.TextColor3 = WHITE
-            hTitle.TextSize  = achTextPx(14, 10)
+            hTitle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            hTitle.TextStrokeTransparency = 0.35
+            hTitle.TextSize  = achTextPx(17, 13)
             hTitle.TextXAlignment = Enum.TextXAlignment.Left
-            hTitle.Size      = UDim2.new(0.6, 0, 0, px(18))
-            hTitle.Position  = UDim2.new(0, px(30), 0, 0)
+            hTitle.TextTruncate = Enum.TextTruncate.AtEnd
+            hTitle.Size      = UDim2.new(1, -px(170), 0, px(22))
+            hTitle.Position  = UDim2.new(0, px(38), 0, 0)
             hTitle.Parent    = histCard
 
             -- Date line (category label removed for cleaner look)
@@ -3618,11 +3628,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hMeta.BackgroundTransparency = 1
             hMeta.Font      = Enum.Font.Gotham
             hMeta.Text      = dateStr
-            hMeta.TextColor3 = DIM_TEXT
-            hMeta.TextSize  = achTextPx(11, 8)
+            hMeta.TextColor3 = Color3.fromRGB(180, 190, 205)
+            hMeta.TextSize  = achTextPx(12, 10)
             hMeta.TextXAlignment = Enum.TextXAlignment.Left
-            hMeta.Size      = UDim2.new(0.7, 0, 0, px(14))
-            hMeta.Position  = UDim2.new(0, px(30), 0, px(20))
+            hMeta.TextTruncate = Enum.TextTruncate.AtEnd
+            hMeta.Size      = UDim2.new(1, -px(170), 0, px(16))
+            hMeta.Position  = UDim2.new(0, px(38), 0, px(26))
             hMeta.Parent    = histCard
 
             -- Desc
@@ -3631,12 +3642,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hDesc.BackgroundTransparency = 1
             hDesc.Font      = Enum.Font.GothamMedium
             hDesc.Text      = entry.desc or ""
-            hDesc.TextColor3 = DIM_TEXT
-            hDesc.TextSize  = achTextPx(11, 8)
+            hDesc.TextColor3 = Color3.fromRGB(210, 218, 230)
+            hDesc.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            hDesc.TextStrokeTransparency = 0.68
+            hDesc.TextSize  = achTextPx(12, 10)
             hDesc.TextXAlignment = Enum.TextXAlignment.Left
             hDesc.TextWrapped = true
-            hDesc.Size      = UDim2.new(0.85, 0, 0, px(14))
-            hDesc.Position  = UDim2.new(0, px(30), 0, px(36))
+            hDesc.Size      = UDim2.new(1, -px(170), 0, px(28))
+            hDesc.Position  = UDim2.new(0, px(38), 0, px(44))
             hDesc.Parent    = histCard
 
             -- Reward on the right (coins + AP)
@@ -3655,12 +3668,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hReward.Font      = Enum.Font.GothamBold
             hReward.Text      = table.concat(rewardLines, "\n")
             hReward.TextColor3 = GOLD
-            hReward.TextSize  = achTextPx(12, 9)
+            hReward.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+            hReward.TextStrokeTransparency = 0.35
+            hReward.TextSize  = achTextPx(14, 11)
             hReward.TextXAlignment = Enum.TextXAlignment.Right
-            hReward.TextYAlignment = Enum.TextYAlignment.Top
-            hReward.AnchorPoint = Vector2.new(1, 0)
-            hReward.Size      = UDim2.new(0.3, 0, 0, px(36))
-            hReward.Position  = UDim2.new(1, 0, 0, 0)
+            hReward.TextYAlignment = Enum.TextYAlignment.Center
+            hReward.AnchorPoint = Vector2.new(1, 0.5)
+            hReward.Size      = UDim2.new(0, px(124), 0, px(46))
+            hReward.Position  = UDim2.new(1, 0, 0.5, 0)
             hReward.Parent    = histCard
         end
     end

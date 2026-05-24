@@ -644,7 +644,7 @@ local function createIndicator(endTime, eventId)
     eventEndTime = endTime
 
     local mainUI = playerGui:FindFirstChild("MainUI")
-    local panel = mainUI and mainUI:FindFirstChild("MainUICard")
+    local panel = mainUI and (mainUI:FindFirstChild("SideLauncher") or mainUI:FindFirstChild("MainUICard"))
     if panel then
         for _, child in ipairs(panel:GetChildren()) do
             if child.Name == "EventCard" or child.Name == "EventTimerLabel" then
