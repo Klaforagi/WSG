@@ -1643,6 +1643,31 @@ function SkinsStallUI.Create(parent, options)
 		end
 	end
 
+	local appearanceRefreshQueued = false
+	local function refreshSkinPreviewsForAppearance()
+		if SkinThumbnailPreview and type(SkinThumbnailPreview.InvalidatePlayerAppearanceCache) == "function" then
+			pcall(function()
+				SkinThumbnailPreview.InvalidatePlayerAppearanceCache()
+			end)
+		end
+		refreshAllSkinThumbnails()
+		local item = getSelectedItem()
+		if item and item.Category == "Skin" then
+			updatePreview(item, true)
+		end
+	end
+
+	local function scheduleSkinPreviewAppearanceRefresh()
+		if appearanceRefreshQueued then
+			return
+		end
+		appearanceRefreshQueued = true
+		task.defer(function()
+			appearanceRefreshQueued = false
+			refreshSkinPreviewsForAppearance()
+		end)
+	end
+
 	local function syncCard(record)
 		local item = record.item
 		local selected = selectedCategory == item.Category and selectedId == item.Id
@@ -2317,6 +2342,34 @@ function SkinsStallUI.Create(parent, options)
 
 	refreshUi()
 	updatePreview(getSelectedItem(), true)
+
+	local watchedCharacters = {}
+	local function watchCharacterAppearance(character)
+		if not character or watchedCharacters[character] then
+			return
+		end
+		watchedCharacters[character] = true
+		trackConn(character.ChildAdded:Connect(function(child)
+			if child.Name == "Head" or child:IsA("Accessory") then
+				scheduleSkinPreviewAppearanceRefresh()
+			end
+		end))
+		trackConn(character.ChildRemoved:Connect(function(child)
+			if child.Name == "Head" or child:IsA("Accessory") then
+				scheduleSkinPreviewAppearanceRefresh()
+			end
+		end))
+	end
+
+	watchCharacterAppearance(player.Character)
+	trackConn(player.CharacterAdded:Connect(function(character)
+		watchCharacterAppearance(character)
+		scheduleSkinPreviewAppearanceRefresh()
+	end))
+	trackConn(player.CharacterAppearanceLoaded:Connect(function(character)
+		watchCharacterAppearance(character)
+		scheduleSkinPreviewAppearanceRefresh()
+	end))
 
 	trackConn(root:GetPropertyChangedSignal("Visible"):Connect(function()
 		if root.Visible then
