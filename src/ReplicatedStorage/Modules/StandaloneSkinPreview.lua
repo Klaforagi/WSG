@@ -373,6 +373,7 @@ local HEAD_ATTACHMENTS = {
     HairAttachment = true,
     FaceFrontAttachment = true,
     FaceCenterAttachment = true,
+    NeckAttachment = true,
 }
 
 local HEAD_ACCESSORY_TYPES = {
@@ -409,6 +410,220 @@ local function isHeadAccessory(acc)
     return false
 end
 
+-- Preview-only: remove head accessories that came from a generated/cached rig.
+-- Keep Head adds fresh clones from the live character later via Humanoid:AddAccessory,
+-- after the preview Head has the live head attachments copied onto it.
+local function stripHeadAccessoriesFromPreview(rig)
+    if not rig then return end
+    for _, child in ipairs(rig:GetChildren()) do
+        if child:IsA("Accessory") and isHeadAccessory(child) then
+            child:Destroy()
+        end
+    end
+end
+
+local function visiblePreviewTransparency(transparency)
+    if type(transparency) == "number" and transparency < 0.99 then
+        return transparency
+    end
+    return 0
+end
+
+local function warnSkippedPreviewAccessory(accessoryName, reason)
+    accessoryName = tostring(accessoryName or "Unknown")
+    local key = "skip-preview-head-accessory-" .. accessoryName .. "-" .. tostring(reason or "")
+    if warnedMessages[key] then
+        return
+    end
+    warnedMessages[key] = true
+    warn("[SkinPreview] Skipped head accessory in preview because " .. tostring(reason or "no valid head attachment was found") .. ": " .. accessoryName)
+end
+
+local function isHeadVisualChild(child)
+    return child:IsA("Decal")
+        or child:IsA("Texture")
+        or child:IsA("SpecialMesh")
+        or child:IsA("SurfaceAppearance")
+        or child.ClassName == "WrapTarget"
+end
+
+local function copyLiveHeadAppearanceToPreview(rig, sourceCharacter)
+    local liveHead = sourceCharacter and sourceCharacter:FindFirstChild("Head")
+    local previewHead = rig and rig:FindFirstChild("Head")
+    if not (liveHead and liveHead:IsA("BasePart") and previewHead and previewHead:IsA("BasePart")) then
+        return false
+    end
+
+    previewHead.Color = liveHead.Color
+    previewHead.Material = liveHead.Material
+    previewHead.Reflectance = liveHead.Reflectance
+    previewHead.Size = liveHead.Size
+    previewHead.Transparency = visiblePreviewTransparency(liveHead.Transparency)
+    pcall(function() previewHead.MaterialVariant = liveHead.MaterialVariant end)
+    pcall(function() previewHead.CastShadow = liveHead.CastShadow end)
+
+    if previewHead:IsA("MeshPart") and liveHead:IsA("MeshPart") then
+        pcall(function() previewHead.MeshId = liveHead.MeshId end)
+        pcall(function() previewHead.TextureID = liveHead.TextureID end)
+        pcall(function() previewHead.RenderFidelity = liveHead.RenderFidelity end)
+        pcall(function() previewHead.DoubleSided = liveHead.DoubleSided end)
+    end
+
+    for _, child in ipairs(previewHead:GetChildren()) do
+        if isHeadVisualChild(child) then
+            child:Destroy()
+        end
+    end
+
+    for _, child in ipairs(liveHead:GetChildren()) do
+        if child:IsA("Attachment") then
+            local existing = previewHead:FindFirstChild(child.Name)
+            if existing and existing:IsA("Attachment") then
+                existing:Destroy()
+            end
+            child:Clone().Parent = previewHead
+        elseif isHeadVisualChild(child) then
+            local clone = child:Clone()
+            if clone:IsA("Decal") or clone:IsA("Texture") then
+                clone.Transparency = visiblePreviewTransparency(clone.Transparency)
+                clone:SetAttribute(SAVED_TRANSPARENCY_ATTRIBUTE, clone.Transparency)
+            end
+            clone.Parent = previewHead
+        end
+    end
+
+    local bodyColors = rig:FindFirstChildOfClass("BodyColors")
+    if bodyColors then
+        bodyColors.HeadColor3 = liveHead.Color
+        bodyColors:SetAttribute("_OrigHeadColor3", liveHead.Color)
+    end
+
+    return true
+end
+
+local function removeStaleAccessoryWelds(accessory)
+    for _, descendant in ipairs(accessory:GetDescendants()) do
+        if descendant:IsA("Weld") and descendant.Name == "AccessoryWeld" then
+            descendant:Destroy()
+        end
+    end
+end
+
+local function keepOnlyMatchingHeadAttachments(accessory, previewHead)
+    local handle = accessory and accessory:FindFirstChild("Handle")
+    if not (handle and handle:IsA("BasePart") and previewHead and previewHead:IsA("BasePart")) then
+        return false
+    end
+
+    local hasValidAttachment = false
+    for _, child in ipairs(handle:GetChildren()) do
+        if child:IsA("Attachment") then
+            local matching = previewHead:FindFirstChild(child.Name)
+            if HEAD_ATTACHMENTS[child.Name] and matching and matching:IsA("Attachment") then
+                hasValidAttachment = true
+            else
+                child:Destroy()
+            end
+        end
+    end
+
+    return hasValidAttachment
+end
+
+local function prepareAccessoryCloneForPreview(accessory)
+    for _, descendant in ipairs(accessory:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            descendant.Anchored = false
+            descendant.CanCollide = false
+            descendant.CanTouch = false
+            descendant.CanQuery = false
+            descendant.Massless = true
+            local visibleTransparency = visiblePreviewTransparency(descendant.Transparency)
+            descendant.Transparency = visibleTransparency
+            descendant:SetAttribute(SAVED_TRANSPARENCY_ATTRIBUTE, visibleTransparency)
+        end
+    end
+end
+
+local function accessoryAttachedToPreviewHead(accessory, previewHead)
+    local handle = accessory and accessory:FindFirstChild("Handle")
+    if not (handle and handle:IsA("BasePart") and previewHead) then
+        return false
+    end
+
+    local accessoryWeld = handle:FindFirstChild("AccessoryWeld")
+    if not (accessoryWeld and accessoryWeld:IsA("Weld")) then
+        return false
+    end
+
+    return accessoryWeld.Part0 == previewHead or accessoryWeld.Part1 == previewHead
+end
+
+local function cloneLiveHeadAccessoryToPreview(rig, humanoid, previewHead, sourceAccessory)
+    local accessoryClone = nil
+    local cloneOk, cloneErr = pcall(function()
+        accessoryClone = sourceAccessory:Clone()
+    end)
+    if not cloneOk or not accessoryClone then
+        warnSkippedPreviewAccessory(sourceAccessory.Name, "it could not be cloned")
+        dprint("Accessory clone failed in preview", sourceAccessory.Name, tostring(cloneErr))
+        return false
+    end
+
+    removeStaleAccessoryWelds(accessoryClone)
+
+    if not keepOnlyMatchingHeadAttachments(accessoryClone, previewHead) then
+        warnSkippedPreviewAccessory(sourceAccessory.Name, "no valid head attachment was found")
+        accessoryClone:Destroy()
+        return false
+    end
+
+    prepareAccessoryCloneForPreview(accessoryClone)
+
+    local ok, err = pcall(function()
+        humanoid:AddAccessory(accessoryClone)
+    end)
+    if not ok then
+        warnSkippedPreviewAccessory(sourceAccessory.Name, "Humanoid:AddAccessory failed")
+        accessoryClone:Destroy()
+        dprint("AddAccessory failed in preview", sourceAccessory.Name, tostring(err))
+        return false
+    end
+
+    if not accessoryAttachedToPreviewHead(accessoryClone, previewHead) then
+        warnSkippedPreviewAccessory(sourceAccessory.Name, "it did not attach to the preview Head")
+        accessoryClone:Destroy()
+        return false
+    end
+
+    prepareAccessoryCloneForPreview(accessoryClone)
+    return true
+end
+
+local function applyLiveHeadAppearanceToPreview(rig)
+    local player = Players.LocalPlayer
+    local sourceCharacter = player and player.Character
+    if not sourceCharacter then
+        return false
+    end
+
+    local previewHead = rig and rig:FindFirstChild("Head")
+    local humanoid = rig and rig:FindFirstChildOfClass("Humanoid")
+    if not (previewHead and previewHead:IsA("BasePart") and humanoid) then
+        return false
+    end
+
+    copyLiveHeadAppearanceToPreview(rig, sourceCharacter)
+
+    for _, child in ipairs(sourceCharacter:GetChildren()) do
+        if child:IsA("Accessory") and isHeadAccessory(child) then
+            cloneLiveHeadAccessoryToPreview(rig, humanoid, previewHead, child)
+        end
+    end
+
+    return true
+end
+
 local function collectBaseParts(model)
     local parts = {}
     for _, desc in ipairs(model:GetDescendants()) do
@@ -433,6 +648,9 @@ stripAppliedSkinArtifacts = function(rig)
             child:Destroy()
         end
     end
+
+    -- Drop generated head accessories; Keep Head re-adds live clones safely.
+    stripHeadAccessoriesFromPreview(rig)
 end
 
 local function buildAliasLookup(binding)
@@ -516,45 +734,58 @@ local function alignModelToRig(model, rootAttachments)
     return true
 end
 
-local function buildJointAdjacency(model)
-    local adjacency = {}
+local REPLACEMENT_HEAD_PART_NAMES = {
+    head = true,
+    face = true,
+    helmet = true,
+    helm = true,
+    helmetroot = true,
+    eye = true,
+    eyes = true,
+    ear = true,
+    ears = true,
+    mouth = true,
+    nose = true,
+    hair = true,
+    hat = true,
+    horn = true,
+    horns = true,
+    visor = true,
+}
 
-    local function connect(part0, part1)
-        if not part0 or not part1 then return end
-        if not part0:IsA("BasePart") or not part1:IsA("BasePart") then return end
-        adjacency[part0] = adjacency[part0] or {}
-        adjacency[part1] = adjacency[part1] or {}
-        adjacency[part0][part1] = true
-        adjacency[part1][part0] = true
+local function isReplacementHeadPart(part)
+    if not part or not part:IsA("BasePart") then
+        return false
+    end
+
+    local normalized = normalizeName(part.Name)
+    if REPLACEMENT_HEAD_PART_NAMES[normalized] then
+        return true
+    end
+
+    for headName in pairs(REPLACEMENT_HEAD_PART_NAMES) do
+        if string.find(normalized, headName, 1, true) then
+            return true
+        end
+    end
+
+    return false
+end
+
+local function collectReplacementHeadParts(model, headRootPart)
+    local parts = {}
+
+    if headRootPart and headRootPart.Parent then
+        parts[headRootPart] = true
     end
 
     for _, desc in ipairs(model:GetDescendants()) do
-        if desc:IsA("JointInstance") or desc:IsA("WeldConstraint") then
-            connect(desc.Part0, desc.Part1)
+        if isReplacementHeadPart(desc) then
+            parts[desc] = true
         end
     end
 
-    return adjacency
-end
-
-local function collectConnectedGroup(startPart, adjacency)
-    local connected = {}
-    if not startPart then return connected end
-
-    local stack = { startPart }
-    connected[startPart] = true
-    while #stack > 0 do
-        local current = stack[#stack]
-        stack[#stack] = nil
-        for neighbor in pairs(adjacency[current] or {}) do
-            if not connected[neighbor] then
-                connected[neighbor] = true
-                stack[#stack + 1] = neighbor
-            end
-        end
-    end
-
-    return connected
+    return parts
 end
 
 local function setModelAnchored(model)
@@ -642,10 +873,11 @@ local function buildReplacementPreview(skinId, showHelm)
         end
     end
 
-    local headSkinParts = collectConnectedGroup(headRootPart, buildJointAdjacency(replacementModel))
+    local headSkinParts = collectReplacementHeadParts(replacementModel, headRootPart)
 
     hidePreviewBody(rig)
     if showHelm == false then
+        applyLiveHeadAppearanceToPreview(rig)
         local head = rig:FindFirstChild("Head")
         if head then head.Transparency = 0 end
         restoreHeadColor(rig)
@@ -733,10 +965,11 @@ end
 restoreHeadAccessories = function(rig)
     for _, acc in ipairs(rig:GetChildren()) do
         if acc:IsA("Accessory") and isHeadAccessory(acc) then
-            local handle = acc:FindFirstChild("Handle")
-            if handle and handle:IsA("BasePart") then
-                local orig = handle:GetAttribute("_OrigTransparency")
-                handle.Transparency = orig or 0
+            for _, desc in ipairs(acc:GetDescendants()) do
+                if desc:IsA("BasePart") then
+                    local orig = desc:GetAttribute(SAVED_TRANSPARENCY_ATTRIBUTE)
+                    desc.Transparency = orig or 0
+                end
             end
         end
     end
@@ -769,6 +1002,19 @@ restoreHeadFaceDetails = function(rig)
             else
                 desc.Transparency = 0
             end
+        end
+    end
+end
+
+local function hideHeadFaceDetails(rig)
+    local head = rig:FindFirstChild("Head")
+    if not head then
+        return
+    end
+
+    for _, desc in ipairs(head:GetDescendants()) do
+        if desc:IsA("Decal") or desc:IsA("Texture") then
+            desc.Transparency = 1
         end
     end
 end
@@ -1136,12 +1382,6 @@ function SkinPreview.RenderSkinPreview(viewportFrame, skinId, options)
     end
     dprint("Cleared previous preview assets")
 
-    for _, d in ipairs(rig:GetDescendants()) do
-        if d:IsA("BasePart") then
-            d.Anchored = true
-        end
-    end
-
     saveOriginalAppearance(rig)
     local config = SKIN_CONFIGS[skinId]
     if config then
@@ -1158,16 +1398,23 @@ function SkinPreview.RenderSkinPreview(viewportFrame, skinId, options)
 
         local hasHelmPieces = config.helm and #config.helm > 0
         if showHelm and hasHelmPieces then
+            hideHeadFaceDetails(rig)
             applyPieces(rig, config.helm, effectiveColors)
             dprint("ShowHelm in preview: true")
         elseif hasHelmPieces then
+            applyLiveHeadAppearanceToPreview(rig)
             restoreHeadColor(rig)
             restoreHeadFaceDetails(rig)
             restoreHeadAccessories(rig)
             dprint("ShowHelm in preview: false")
         else
-            restoreHeadFaceDetails(rig)
-            restoreHeadAccessories(rig)
+            if showHelm == false then
+                applyLiveHeadAppearanceToPreview(rig)
+                restoreHeadFaceDetails(rig)
+                restoreHeadAccessories(rig)
+            else
+                hideHeadFaceDetails(rig)
+            end
             dprint("ShowHelm in preview: n/a (no helm pieces)")
         end
 
@@ -1177,6 +1424,12 @@ function SkinPreview.RenderSkinPreview(viewportFrame, skinId, options)
         restoreBodyColors(rig)
         restoreAccessories(rig)
         dprint("Applied skin to preview rig: Default")
+    end
+
+    for _, d in ipairs(rig:GetDescendants()) do
+        if d:IsA("BasePart") then
+            d.Anchored = true
+        end
     end
 
     local worldModel, camera = buildViewportScene(viewportFrame, rig, { mode = mode })

@@ -23,8 +23,12 @@ local ATTACHED_ATTRIBUTE   = "_overheadUIAttached"
 local BILLBOARD_SIZE       = UDim2.fromOffset(200, 50)
 local NPC_NAMEPLATE_OFFSET = Vector3.new(0, 3.5, 0)
 local PLAYER_NAMEPLATE_OFFSET = Vector3.new(0, 1.25, 0)
+local NAMEPLATE_OFFSET_PADDING = 0.65
+local NAMEPLATE_OFFSET_MAX_Y = 6
+local NAMEPLATE_OFFSET_RECALC_DELAY = 0.15
 local PLAYER_NAMEPLATE_MAX_DISTANCE = 45
 local NPC_NAMEPLATE_MAX_DISTANCE    = 35
+local DEBUG_OVERHEAD_OFFSET = false
 
 -- Health-percent color thresholds (mirrored in MobHealthBar.client.lua)
 local COLOR_HIGH = Color3.fromRGB(80, 210, 80)
@@ -117,6 +121,104 @@ local function getNameplateOffset(ownerType)
 	return NPC_NAMEPLATE_OFFSET
 end
 
+local function getNameplateMinOffsetY(ownerType)
+	return getNameplateOffset(ownerType).Y
+end
+
+local function getNameplateMaxOffsetY(ownerType)
+	return math.max(getNameplateMinOffsetY(ownerType), NAMEPLATE_OFFSET_MAX_Y)
+end
+
+local function isOffsetRelevantPart(part)
+	if not part or not part:IsA("BasePart") then return false end
+	if part.Transparency >= 0.99 then return false end
+	if part:FindFirstAncestorOfClass("Tool") then return false end
+	return true
+end
+
+local function getPartTopY(part)
+	local halfSize = part.Size * 0.5
+	local cf = part.CFrame
+	local yExtent = math.abs(cf.RightVector.Y) * halfSize.X
+		+ math.abs(cf.UpVector.Y) * halfSize.Y
+		+ math.abs(cf.LookVector.Y) * halfSize.Z
+	return cf.Position.Y + yExtent
+end
+
+local function getVisibleModelTopY(model)
+	local topY = nil
+	for _, desc in ipairs(model:GetDescendants()) do
+		if isOffsetRelevantPart(desc) then
+			local partTopY = getPartTopY(desc)
+			if not topY or partTopY > topY then
+				topY = partTopY
+			end
+		end
+	end
+	return topY
+end
+
+local function getBoundingBoxTopY(model)
+	local ok, cf, size = pcall(function()
+		return model:GetBoundingBox()
+	end)
+	if ok and cf and size then
+		return cf.Position.Y + (size.Y * 0.5)
+	end
+	return nil
+end
+
+local function calculateDynamicOverheadOffset(model, attachPart, ownerType)
+	local defaultOffsetY = getNameplateMinOffsetY(ownerType)
+	if not model or not model:IsA("Model") then
+		return defaultOffsetY
+	end
+
+	local referencePart = attachPart
+	if not referencePart or not referencePart:IsA("BasePart") then
+		referencePart = getAttachPart(model)
+	end
+
+	local topY = getVisibleModelTopY(model) or getBoundingBoxTopY(model)
+	if not topY then
+		return defaultOffsetY
+	end
+
+	local baseY = nil
+	if referencePart and referencePart:IsA("BasePart") then
+		baseY = referencePart.Position.Y
+	else
+		local pivotOk, pivot = pcall(function()
+			return model:GetPivot()
+		end)
+		baseY = (pivotOk and pivot and pivot.Position.Y) or topY
+	end
+
+	local distanceAboveBase = math.max(0, topY - baseY)
+	local offsetY = math.clamp(
+		distanceAboveBase + NAMEPLATE_OFFSET_PADDING,
+		defaultOffsetY,
+		getNameplateMaxOffsetY(ownerType)
+	)
+
+	if DEBUG_OVERHEAD_OFFSET then
+		print(string.format(
+			"[OverheadUI] Offset %s: top=%.2f base=%.2f final=%.2f",
+			model.Name,
+			topY,
+			baseY,
+			offsetY
+		))
+	end
+
+	return offsetY
+end
+
+local function updateNameplateOffset(model, billboard, ownerType, attachPart)
+	if not model or not billboard or not billboard.Parent then return end
+	billboard.StudsOffset = Vector3.new(0, calculateDynamicOverheadOffset(model, attachPart or billboard.Parent, ownerType), 0)
+end
+
 local function getNameplateMaxDistance(ownerType)
 	if ownerType == "Player" then
 		return PLAYER_NAMEPLATE_MAX_DISTANCE
@@ -137,11 +239,11 @@ end
 ------------------------------------------------------------------------
 -- Build BillboardGui
 ------------------------------------------------------------------------
-local function buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
+local function buildBillboard(model, attachPart, displayName, ownerType, ownerPlayer)
 	local existing = attachPart:FindFirstChild(BILLBOARD_NAME)
 	if existing and existing:IsA("BillboardGui") then
 		existing:SetAttribute(OWNER_TYPE_ATTRIBUTE, ownerType)
-		existing.StudsOffset = getNameplateOffset(ownerType)
+		updateNameplateOffset(model, existing, ownerType, attachPart)
 		existing.MaxDistance = getNameplateMaxDistance(ownerType)
 		existing.AlwaysOnTop = false
 		local bg = existing:FindFirstChild("Background")
@@ -305,6 +407,7 @@ local function buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
 	hitFlash.Parent                 = barOuter
 
 	billboard.Parent = attachPart
+	updateNameplateOffset(model, billboard, ownerType, attachPart)
 	return billboard
 end
 
@@ -358,12 +461,12 @@ local function attachOverheadUI(model, ownerType, displayName, ownerPlayer)
 
 	local existingBillboard = attachPart:FindFirstChild(BILLBOARD_NAME)
 	if model:GetAttribute(ATTACHED_ATTRIBUTE) and existingBillboard then
-		buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
+		buildBillboard(model, attachPart, displayName, ownerType, ownerPlayer)
 		return
 	end
 	model:SetAttribute(ATTACHED_ATTRIBUTE, true)
 
-	local billboard = buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
+	local billboard = buildBillboard(model, attachPart, displayName, ownerType, ownerPlayer)
 	local ownerLabel = (ownerType == "NPC") and "NPC" or "player"
 	print(string.format("[OverheadUI] Attached %s nameplate for %s", ownerLabel, displayName))
 
@@ -371,11 +474,58 @@ local function attachOverheadUI(model, ownerType, displayName, ownerPlayer)
 
 	local cleaned = false
 	local connections = {}
+	local transparencyConnections = {}
+	local pendingOffsetUpdate = false
+
+	local function scheduleOffsetUpdate(delaySeconds)
+		if pendingOffsetUpdate then return end
+		pendingOffsetUpdate = true
+		task.delay(delaySeconds or NAMEPLATE_OFFSET_RECALC_DELAY, function()
+			pendingOffsetUpdate = false
+			if cleaned or not model.Parent or not billboard or not billboard.Parent then return end
+			updateNameplateOffset(model, billboard, ownerType, attachPart)
+		end)
+	end
+
+	local function watchPartTransparency(part)
+		if not part or not part:IsA("BasePart") or transparencyConnections[part] then return end
+		transparencyConnections[part] = part:GetPropertyChangedSignal("Transparency"):Connect(function()
+			scheduleOffsetUpdate()
+		end)
+	end
+
+	local function unwatchPartTransparency(part)
+		local connection = transparencyConnections[part]
+		if connection then
+			connection:Disconnect()
+			transparencyConnections[part] = nil
+		end
+	end
+
+	for _, desc in ipairs(model:GetDescendants()) do
+		if desc:IsA("BasePart") then
+			watchPartTransparency(desc)
+		end
+	end
+
+	scheduleOffsetUpdate(0.15)
+	task.delay(0.5, function()
+		if cleaned or not model.Parent or not billboard or not billboard.Parent then return end
+		updateNameplateOffset(model, billboard, ownerType, attachPart)
+	end)
+
 	local function cleanup()
 		if cleaned then return end
 		cleaned = true
 		for _, c in ipairs(connections) do
 			c:Disconnect()
+		end
+		local watchedParts = {}
+		for part in pairs(transparencyConnections) do
+			watchedParts[#watchedParts + 1] = part
+		end
+		for _, part in ipairs(watchedParts) do
+			unwatchPartTransparency(part)
 		end
 	end
 
@@ -394,11 +544,29 @@ local function attachOverheadUI(model, ownerType, displayName, ownerPlayer)
 	if ownerType == "Player" and ownerPlayer then
 		connections[#connections + 1] = ownerPlayer:GetPropertyChangedSignal("Team"):Connect(function()
 			if billboard and billboard.Parent then
-				buildBillboard(attachPart, displayName, ownerType, ownerPlayer)
+				buildBillboard(model, attachPart, displayName, ownerType, ownerPlayer)
 				updateBarState(billboard, hum.Health, hum.MaxHealth, ownerPlayer)
 			end
 		end)
 	end
+
+	connections[#connections + 1] = model.DescendantAdded:Connect(function(desc)
+		if desc:IsA("BasePart") then
+			watchPartTransparency(desc)
+			scheduleOffsetUpdate()
+		elseif desc:IsA("Accessory") or desc:IsA("Hat") or desc:IsA("Model") then
+			scheduleOffsetUpdate()
+		end
+	end)
+
+	connections[#connections + 1] = model.DescendantRemoving:Connect(function(desc)
+		if desc:IsA("BasePart") then
+			unwatchPartTransparency(desc)
+			scheduleOffsetUpdate()
+		elseif desc:IsA("Accessory") or desc:IsA("Hat") or desc:IsA("Model") then
+			scheduleOffsetUpdate()
+		end
+	end)
 
 	connections[#connections + 1] = hum.Died:Connect(function()
 		if billboard and billboard.Parent then
