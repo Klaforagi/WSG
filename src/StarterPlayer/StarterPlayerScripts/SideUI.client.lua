@@ -413,9 +413,7 @@ local function createLauncherButton(def)
     shineCorner.Parent = shine
 
     local iconImage = getAssetImage(def.iconKey)
-    if def.id == "Team" then
-        buildCrossedFlagIcon(btn, 254)
-    elseif iconImage then
+    if iconImage then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
         icon.BackgroundTransparency = 1
@@ -988,22 +986,18 @@ local function CreateLegacyLauncherButtonUnused(def)
         )
     end
 
-    -- Background image (fills the button) or Team-specific icon art
-    if def.id == "Team" then
-        buildCrossedFlagIcon(btn)
-    elseif def.iconKey and AssetCodes and type(AssetCodes.Get) == "function" then
-        local ok, id = pcall(function() return AssetCodes.Get(def.iconKey) end)
-        if ok and id and type(id) == "string" then
-            local bgImg = Instance.new("ImageLabel")
-            bgImg.Name = "BgIcon"
-            bgImg.BackgroundTransparency = 1
-            bgImg.Size = UDim2.new(0.7, 0, 0.6, 0)
-            bgImg.AnchorPoint = Vector2.new(0.5, 0.4)
-            bgImg.Position = UDim2.new(0.5, 0, 0.38, 0)
-            bgImg.Image = id
-            bgImg.ScaleType = Enum.ScaleType.Fit
-            bgImg.Parent = btn
-        end
+    -- Background image (fills the button)
+    local iconImage = getAssetImage(def.iconKey)
+    if iconImage then
+        local bgImg = Instance.new("ImageLabel")
+        bgImg.Name = "BgIcon"
+        bgImg.BackgroundTransparency = 1
+        bgImg.Size = UDim2.new(0.7, 0, 0.6, 0)
+        bgImg.AnchorPoint = Vector2.new(0.5, 0.4)
+        bgImg.Position = UDim2.new(0.5, 0, 0.38, 0)
+        bgImg.Image = iconImage
+        bgImg.ScaleType = Enum.ScaleType.Fit
+        bgImg.Parent = btn
     end
 
     -- Small text label at the bottom of the button

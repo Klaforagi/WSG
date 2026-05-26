@@ -18,12 +18,22 @@ local UITheme = require(script.Parent.UITheme)
 local ModulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local LeftPanelStyle = require(ModulesFolder:WaitForChild("LeftPanelStyle"))
 local RarityStyles = require(ModulesFolder:WaitForChild("RarityStyles"))
+local UIResponsiveScaler = require(ModulesFolder:WaitForChild("UIResponsiveScaler"))
 
-local INVENTORY_GRID_COLUMNS = 5
+-- Card sizing bounds for the responsive grid. With these caps the inventory
+-- gains columns on larger viewports instead of growing card sizes.
+local INVENTORY_CARD_MIN_W       = 132
+local INVENTORY_CARD_PREFERRED_W = 178
+local INVENTORY_CARD_MAX_W       = 210
+local INVENTORY_MAX_COLUMNS      = 8
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Responsive pixel helper
+-- Responsive pixel helper (delegates to shared UIResponsiveScaler).
+-- The menu root is capped at scale 1.0 so fullscreen monitors get more usable
+-- surface area instead of inflating cards / panels.
 -- ═══════════════════════════════════════════════════════════════════════════
+local INVENTORY_SCALE_OPTS = { minScale = 0.55, maxScale = 1.0 }
+
 local function getViewportSize()
     local cam = workspace.CurrentCamera
     if cam and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
@@ -33,18 +43,21 @@ local function getViewportSize()
 end
 
 local function getResponsiveViewportScale()
-    local screenX, screenY = getViewportSize()
-    local widthScale = screenX / 1920
-    local heightScale = screenY / 1080
-    return math.clamp(math.min(widthScale, heightScale), 0.38, 1.6)
+    return UIResponsiveScaler.GetViewportScale(INVENTORY_SCALE_OPTS)
 end
 
 local function px(base)
-    return math.max(1, math.round(base * getResponsiveViewportScale()))
+    return UIResponsiveScaler.Px(base, INVENTORY_SCALE_OPTS)
 end
 
 local function attachResponsiveRootScale(root)
     if not root then return end
+    -- Keep legacy name "ResponsiveScale" since other code paths in this file
+    -- look it up by that name. The shared module owns its own
+    -- "ResponsiveUIScale" instance only when ApplyUIScale is used; here we
+    -- manage a single named UIScale ourselves to preserve compatibility.
+    local existing = root:FindFirstChild("ResponsiveScale")
+    if existing and existing:IsA("UIScale") then return end
 
     root:SetAttribute("InventoryInitialResponsiveScale", getResponsiveViewportScale())
 
@@ -66,26 +79,9 @@ end
 
 local function bindViewportResize(trackConn, callback)
     if not (trackConn and callback) then return end
-
-    local cameraViewportConn = nil
-
-    local function attachCamera(camera)
-        if cameraViewportConn then
-            pcall(function() cameraViewportConn:Disconnect() end)
-            cameraViewportConn = nil
-        end
-        if camera then
-            cameraViewportConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(callback)
-            trackConn(cameraViewportConn)
-        end
-    end
-
-    trackConn(workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-        attachCamera(workspace.CurrentCamera)
-        callback()
-    end))
-
-    attachCamera(workspace.CurrentCamera)
+    local disconnect = UIResponsiveScaler.BindToViewportChanged(callback)
+    -- Wrap the disconnect into a fake "connection" so existing trackConn cleanup works.
+    trackConn({ Disconnect = function() disconnect() end })
 end
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -1005,22 +1001,33 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function bindFixedColumnGrid(scrollFrame, gridLayout, gridPadding, baseCellWidth, baseCellHeight)
         if not (scrollFrame and gridLayout and gridPadding) then return end
 
-        local aspectRatio = (tonumber(baseCellHeight) or 1) / math.max(1, tonumber(baseCellWidth) or 1)
+        local baseW = math.max(1, tonumber(baseCellWidth)  or 1)
+        local baseH = math.max(1, tonumber(baseCellHeight) or 1)
+        local aspectRatio = baseH / baseW
 
-        local function updateCellSize()
-            local availableWidth = scrollFrame.AbsoluteSize.X
-                - (gridPadding.PaddingLeft.Offset or 0)
-                - (gridPadding.PaddingRight.Offset or 0)
-                - math.max(0, scrollFrame.ScrollBarThickness or 0)
-            local horizontalPadding = gridLayout.CellPadding.X.Offset * math.max(0, INVENTORY_GRID_COLUMNS - 1)
-            local cellWidth = math.max(1, math.floor((availableWidth - horizontalPadding) / INVENTORY_GRID_COLUMNS))
-            local cellHeight = math.max(1, math.floor(cellWidth * aspectRatio))
-            gridLayout.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
-        end
+        -- Cap the preferred/max card width relative to the base design so that
+        -- cards on large viewports gain neighbours (more columns) instead of
+        -- inflating in size. We allow the chosen cell width to dip a bit below
+        -- the base for tight viewports.
+        local minW       = math.max(INVENTORY_CARD_MIN_W, math.floor(baseW * 0.85))
+        local preferredW = math.max(minW, math.floor(baseW * 1.05))
+        local maxW       = math.max(preferredW, math.floor(baseW * 1.20))
+        preferredW = math.min(preferredW, INVENTORY_CARD_PREFERRED_W + 30)
+        maxW       = math.min(maxW,       INVENTORY_CARD_MAX_W)
+        if preferredW > maxW then preferredW = maxW end
 
-        gridLayout.FillDirectionMaxCells = INVENTORY_GRID_COLUMNS
-        trackConn(scrollFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateCellSize))
-        task.defer(updateCellSize)
+        local disconnect = UIResponsiveScaler.ApplyResponsiveGrid(gridLayout, {
+            container          = scrollFrame,
+            padding            = gridPadding,
+            aspectRatio        = aspectRatio,
+            minCardWidth       = minW,
+            preferredCardWidth = preferredW,
+            maxCardWidth       = maxW,
+            minColumns         = 1,
+            maxColumns         = INVENTORY_MAX_COLUMNS,
+            scrollBarAware     = true,
+        })
+        trackConn({ Disconnect = function() disconnect() end })
     end
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -2952,14 +2959,25 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 - (boostGridPad.PaddingRight.Offset or 0)
                 - math.max(0, boostGridScroll.ScrollBarThickness or 0)
             local gap = px(10)
-            local columns = INVENTORY_GRID_COLUMNS
-            local cellWidth = math.max(1, math.floor((availableWidth - (gap * math.max(0, columns - 1))) / columns))
+            -- Match the responsive grid bounds used by the weapon/skin/etc. grids
+            -- so boost cards do not balloon on large viewports.
+            local minW       = math.max(INVENTORY_CARD_MIN_W, math.floor(140 * 0.85))
+            local preferredW = math.min(INVENTORY_CARD_PREFERRED_W + 30, math.floor(140 * 1.05))
+            local maxW       = math.min(INVENTORY_CARD_MAX_W, math.floor(140 * 1.20))
+            if preferredW < minW then preferredW = minW end
+            if preferredW > maxW then preferredW = maxW end
+
+            local columns = math.floor((math.max(1, availableWidth) + gap) / (preferredW + gap))
+            columns = math.clamp(columns, 1, INVENTORY_MAX_COLUMNS)
+            local fitW = math.floor((availableWidth - gap * math.max(0, columns - 1)) / columns)
+            local cellWidth = math.clamp(math.max(1, fitW), minW, maxW)
             local cellHeight = math.max(1, math.floor(cellWidth * (178 / 140)))
 
             for _, record in ipairs(boostSectionRecords) do
                 local count = math.max(0, tonumber(record.visibleCount) or 0)
                 record.layout.CellPadding = UDim2.new(0, gap, 0, gap)
                 record.layout.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+                record.layout.FillDirectionMaxCells = columns
                 record.grid.Visible = count > 0
                 record.empty.Visible = count <= 0
                 local rows = count > 0 and math.ceil(count / columns) or 0
@@ -2969,6 +2987,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         trackConn(boostGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateBoostSectionLayouts))
+        bindViewportResize(trackConn, updateBoostSectionLayouts)
         task.defer(updateBoostSectionLayouts)
 
         -- Empty state (shown when no boosts owned)

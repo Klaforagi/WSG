@@ -3447,7 +3447,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         local summaryCard = Instance.new("Frame")
         summaryCard.Name = "AchievementPointsSummary"
         summaryCard.BackgroundColor3 = ROW_BG
-        summaryCard.Size = UDim2.new(1, 0, 0, px(82))
+        summaryCard.Size = UDim2.new(1, -px(6), 0, px(82))
         summaryCard.LayoutOrder = layoutOrder or 5
         summaryCard.Parent = contentPanel
 
