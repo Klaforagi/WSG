@@ -189,7 +189,7 @@ local MENU_DEFS = {
     {
         id = "Shop",
         label = "Shop",
-        iconKey = "Shop",
+        iconKey = "SideShop",
         fallback = "SHOP",
         accent = Color3.fromRGB(255, 210, 70),
         aliases = { "SHOP" },
@@ -197,7 +197,7 @@ local MENU_DEFS = {
     {
         id = "Inventory",
         label = "Inventory",
-        iconKey = "Inventory",
+        iconKey = "SideInventory",
         fallback = "INV",
         accent = Color3.fromRGB(75, 210, 255),
         aliases = { "INVENTORY" },
@@ -205,7 +205,7 @@ local MENU_DEFS = {
     {
         id = "Missions",
         label = "Achieves",
-        iconKey = "Quests",
+        iconKey = "SideAchieves",
         fallback = "ACH",
         accent = Color3.fromRGB(255, 205, 45),
         aliases = { "Achieves", "Achievement", "Achievements", "Quests" },
