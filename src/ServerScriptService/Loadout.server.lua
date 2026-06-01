@@ -427,6 +427,28 @@ local function bindGripAlignmentForTool(tool)
     end)
 end
 
+local applyWeaponEnchant
+
+local function bindEnchantVisualsForTool(player, tool)
+    if not WeaponEnchantService or not player or not tool or not tool:IsA("Tool") then
+        return
+    end
+
+    local enchantName = tool:GetAttribute("EnchantName")
+    if type(enchantName) == "string" and enchantName ~= "" then
+        pcall(function()
+            WeaponEnchantService.ApplyEnchantVisuals(tool)
+        end)
+        return
+    end
+
+    local toolName = tool:GetAttribute("WeaponName") or tool.Name
+    local instanceId = tool:GetAttribute("WeaponInstanceId")
+    pcall(function()
+        applyWeaponEnchant(player, tool, toolName, instanceId)
+    end)
+end
+
 local function bindGripAlignmentInContainer(container)
     if not container then
         return
@@ -437,9 +459,19 @@ local function bindGripAlignmentInContainer(container)
     end
 end
 
+local function bindEnchantVisualsInContainer(player, container)
+    if not player or not container then
+        return
+    end
+
+    for _, child in ipairs(container:GetChildren()) do
+        bindEnchantVisualsForTool(player, child)
+    end
+end
+
 --- ENCHANT SYSTEM — Look up the player's weapon instance enchant data and apply visuals.
 --- Called after applyWeaponScale so enchant emitters are created on the already-scaled weapon.
-local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
+applyWeaponEnchant = function(player, toolClone, toolName, instanceId)
     if not WeaponEnchantService or not WeaponInstanceService_scale then return end
     local inv = WeaponInstanceService_scale:GetInventory(player)
     if not inv then return end
@@ -940,8 +972,10 @@ local function onPlayerAdded(player)
     local backpack = player:FindFirstChildOfClass("Backpack") or player:WaitForChild("Backpack", 10)
     if backpack then
         bindGripAlignmentInContainer(backpack)
+        bindEnchantVisualsInContainer(player, backpack)
         backpack.ChildAdded:Connect(function(child)
             bindGripAlignmentForTool(child)
+            bindEnchantVisualsForTool(player, child)
         end)
     end
 
@@ -960,6 +994,7 @@ local function onPlayerAdded(player)
         ensureBackpackFromStarterGear(player)
         local currentBackpack = player:FindFirstChildOfClass("Backpack")
         bindGripAlignmentInContainer(currentBackpack)
+        bindEnchantVisualsInContainer(player, currentBackpack)
         -- Notify client that loadout is ready (ensures hotbar refreshes after tools arrive)
         print("[ToolbarSync]", player.Name, "loadout granted, notifying client")
         pcall(function()
@@ -976,8 +1011,10 @@ local function onPlayerAdded(player)
         local char = player.Character
         if char then
             bindGripAlignmentInContainer(char)
+            bindEnchantVisualsInContainer(player, char)
             char.ChildAdded:Connect(function(child)
                 bindGripAlignmentForTool(child)
+                bindEnchantVisualsForTool(player, child)
                 if child:IsA("Tool") and isPlayerMenuLocked(player) then
                     print("[MenuLock-Server] Failsafe: unequipping", child.Name, "for", player.Name)
                     task.defer(function()
@@ -998,7 +1035,9 @@ local function onPlayerAdded(player)
             ensureBackpackFromStarterGear(player)
             local currentBackpack = player:FindFirstChildOfClass("Backpack")
             bindGripAlignmentInContainer(currentBackpack)
+            bindEnchantVisualsInContainer(player, currentBackpack)
             bindGripAlignmentInContainer(player.Character)
+            bindEnchantVisualsInContainer(player, player.Character)
             -- Notify client that loadout is ready
             print("[ToolbarSync]", player.Name, "loadout granted (fast-start), notifying client")
             pcall(function()
