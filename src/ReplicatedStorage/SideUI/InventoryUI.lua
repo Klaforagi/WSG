@@ -1572,7 +1572,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     __constraint.FillDirection = Enum.FillDirection.Vertical
     __constraint.HorizontalAlignment = Enum.HorizontalAlignment.Center
     __constraint.SortOrder = Enum.SortOrder.LayoutOrder
-    __constraint.Padding = UDim.new(0.02, 0)
+    __constraint.Padding = UDim.new(0.006, 0)
     __constraint.Parent = detailContent
 
     -- Large image with rarity-coloured background + subtle gradient
@@ -1620,7 +1620,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailRarity.TextColor3 = RARITY_COLORS.Common
     detailRarity.TextScaled = true
     detailRarity.TextXAlignment = Enum.TextXAlignment.Center
-    detailRarity.Size = UDim2.new(1, 0, 0.045, 0)
+    detailRarity.Size = UDim2.new(1, 0, 0.03, 0)
     detailRarity.LayoutOrder = 3
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 10
@@ -1636,7 +1636,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.TextColor3 = WHITE
     detailSize.TextScaled = true
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
-    detailSize.Size = UDim2.new(1, 0, 0.05, 0)
+    detailSize.Size = UDim2.new(1, 0, 0.035, 0)
     detailSize.LayoutOrder = 4
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 10
@@ -1651,7 +1651,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEnchant.TextColor3 = GOLD
     detailEnchant.TextScaled = true
     detailEnchant.TextXAlignment = Enum.TextXAlignment.Center
-    detailEnchant.Size = UDim2.new(1, 0, 0.045, 0)
+    detailEnchant.Size = UDim2.new(1, 0, 0.03, 0)
     detailEnchant.LayoutOrder = 5
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 10
@@ -1663,7 +1663,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryPanel.Name = "MasteryPanel"
     masteryPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 38)
     masteryPanel.BackgroundTransparency = 0.08
-    masteryPanel.Size = UDim2.new(0.9, 0, 0.16, 0)
+    masteryPanel.Size = UDim2.new(0.9, 0, 0.17, 0)
     masteryPanel.AnchorPoint = Vector2.new(0.5, 0)
     masteryPanel.LayoutOrder = 6
     masteryPanel.Position = UDim2.new(0.5, 0, 0, 0)
@@ -1680,12 +1680,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryTitle.Font = Enum.Font.GothamBold
     masteryTitle.TextColor3 = GOLD
     masteryTitle.TextScaled = true
-    masteryTitle.TextXAlignment = Enum.TextXAlignment.Left
-    masteryTitle.Size = UDim2.new(1, -px(24), 0.12, 0)
-    masteryTitle.Position = UDim2.new(0, px(12), 0, 0)
+    masteryTitle.TextXAlignment = Enum.TextXAlignment.Center
+    masteryTitle.Size = UDim2.new(1, -px(20), 0.14, 0)
+    masteryTitle.Position = UDim2.new(0.5, 0, 0, 0)
+    masteryTitle.AnchorPoint = Vector2.new(0.5, 0)
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 10
-    __constraint.MaxTextSize = math.max(12, math.floor(px(18)))
+    __constraint.MaxTextSize = math.max(14, math.floor(px(22)))
     __constraint.Parent = masteryTitle
     masteryTitle.Text = "MASTERY I"
 
@@ -1695,12 +1696,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryXP.Font = Enum.Font.GothamBold
     masteryXP.TextColor3 = WHITE
     masteryXP.TextScaled = true
-    masteryXP.TextXAlignment = Enum.TextXAlignment.Left
-    masteryXP.Size = UDim2.new(1, -px(24), 0.08, 0)
-    masteryXP.Position = UDim2.new(0, px(12), 0, 0)
+    masteryXP.TextXAlignment = Enum.TextXAlignment.Center
+    masteryXP.TextYAlignment = Enum.TextYAlignment.Center
+    masteryXP.TextStrokeColor3 = Color3.new(0, 0, 0)
+    masteryXP.TextStrokeTransparency = 0
+    masteryXP.Size = UDim2.new(1, -px(18), 0.1, 0)
+    masteryXP.Position = UDim2.new(0.5, 0, 0, 0)
+    masteryXP.AnchorPoint = Vector2.new(0.5, 0)
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 9
-    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
+    __constraint.MaxTextSize = math.max(12, math.floor(px(16)))
     __constraint.Parent = masteryXP
     masteryXP.Text = "0 / 25 XP"
 
@@ -1709,8 +1714,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryBarBg.BackgroundColor3 = Color3.fromRGB(11, 12, 20)
     masteryBarBg.BorderSizePixel = 0
     -- Make progress bar scale relative to masteryPanel width/height
-    masteryBarBg.Size = UDim2.new(0.94, 0, 0.18, 0)
-    masteryBarBg.Position = UDim2.new(0.03, 0, 0.45, 0)
+    masteryBarBg.Size = UDim2.new(0.94, 0, 0.2, 0)
+    masteryBarBg.Position = UDim2.new(0.03, 0, 0.5, 0)
     Instance.new("UICorner", masteryBarBg).CornerRadius = UDim.new(0, px(5))
 
     masteryXP.Parent = masteryBarBg
@@ -1734,11 +1739,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryElims.BackgroundTransparency = 0.05
     masteryElims.Font = Enum.Font.GothamBold
     masteryElims.TextColor3 = WHITE
-    masteryElims.TextSize = px(15)
+    masteryElims.TextSize = px(16)
     masteryElims.TextXAlignment = Enum.TextXAlignment.Center
     masteryElims.TextYAlignment = Enum.TextYAlignment.Center
-    masteryElims.Size = UDim2.new(0.47, 0, 0.28, 0)
-    masteryElims.Position = UDim2.new(0, px(12), 0.68, 0)
+    masteryElims.Size = UDim2.new(0.47, 0, 0.26, 0)
+    masteryElims.Position = UDim2.new(0, px(10), 0.71, 0)
     masteryElims.Text = "Eliminations 0"
     Instance.new("UICorner", masteryElims).CornerRadius = UDim.new(0, px(6))
 
@@ -1748,12 +1753,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.BackgroundTransparency = 0.05
     masteryDamage.Font = Enum.Font.GothamBold
     masteryDamage.TextColor3 = WHITE
-    masteryDamage.TextSize = px(15)
+    masteryDamage.TextSize = px(16)
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
-    masteryDamage.Size = UDim2.new(0.47, 0, 0.28, 0)
+    masteryDamage.Size = UDim2.new(0.47, 0, 0.26, 0)
     masteryDamage.AnchorPoint = Vector2.new(1, 0)
-    masteryDamage.Position = UDim2.new(0.97, -px(12), 0.68, 0)
+    masteryDamage.Position = UDim2.new(0.97, -px(10), 0.71, 0)
     masteryDamage.Text = "BONUS +0.0 DMG"
     Instance.new("UICorner", masteryDamage).CornerRadius = UDim.new(0, px(6))
 
@@ -1809,7 +1814,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         "SalvageValuePreview",
         UDim2.new(0.88, 0, 0, px(40)),
         Vector2.new(0.5, 1),
-        UDim2.new(0.5, 0, 1, -px(114)),
+        UDim2.new(0.5, 0, 1, -px(106)),
         px(18),
         getShardCurrencyImage(),
         nil,
@@ -1849,7 +1854,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
     end
     actionRow.AnchorPoint = Vector2.new(0.5, 1)
-    actionRow.Position = UDim2.new(0.5, 0, 1, -px(60))
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(50))
 
     -- Favorite button (yellow star)
     local FAV_YELLOW = Color3.fromRGB(255, 210, 50)
@@ -2102,7 +2107,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- Salvage eligibility: equipped or favorited items can't be salvaged
         local canSalvage = showActions and itemData
-            and not isItemEquipped(itemData)
             and itemData.favorited ~= true
         if itemData and not canSalvage and showActions then
             discardBtn.BackgroundColor3 = DISABLED_BG
@@ -2126,7 +2130,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         -- Salvage value preview
-        if canSalvage and SalvageConfig and itemData.rarity then
+        if SalvageConfig and itemData.rarity then
             local val = getSalvageValueForItem(itemData)
             if val and val > 0 then
                 shardWidgets.salvageValueLabel.Text = "Yield: " .. tostring(val)

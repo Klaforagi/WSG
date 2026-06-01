@@ -2046,7 +2046,7 @@ local function applyDetailsPanelScaling(detailsPanel)
         layout.FillDirection = Enum.FillDirection.Vertical
         layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
         layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0.02, 0)
+        layout.Padding = UDim.new(0.006, 0)
         layout.Parent = detailContent
     end
 
@@ -2065,10 +2065,10 @@ local function applyDetailsPanelScaling(detailsPanel)
     local mapping = {
         {name = "ImageBg", size = UDim2.new(0.96,0,0.28,0), order = 1},
         {name = "WeaponName", size = UDim2.new(1,0,0.06,0), order = 2, txt = 28},
-        {name = "Rarity", size = UDim2.new(1,0,0.045,0), order = 3, txt = 21},
-        {name = "SizeInfo", size = UDim2.new(1,0,0.05,0), order = 4, txt = 24},
-        {name = "EnchantInfo", size = UDim2.new(1,0,0.045,0), order = 5, txt = 21},
-        {name = "MasteryPanel", size = UDim2.new(0.9,0,0.16,0), order = 6},
+        {name = "Rarity", size = UDim2.new(1,0,0.03,0), order = 3, txt = 21},
+        {name = "SizeInfo", size = UDim2.new(1,0,0.035,0), order = 4, txt = 24},
+        {name = "EnchantInfo", size = UDim2.new(1,0,0.03,0), order = 5, txt = 21},
+        {name = "MasteryPanel", size = UDim2.new(0.9,0,0.17,0), order = 6},
         {name = "InstanceId", size = UDim2.new(1,0,0.035,0), order = 8, txt = 11},
         {name = "ActionRow", size = UDim2.new(0.88,0,0.07,0), order = 9},
         {name = "EquipBtn", size = UDim2.new(0.88,0,0.08,0), order = 10, txt = 22},
@@ -2092,8 +2092,8 @@ local function applyDetailsPanelScaling(detailsPanel)
         -- center children and use relative sizes
         local mbg = masteryPanel:FindFirstChild("ProgressBg", true)
         if mbg then
-            mbg.Size = UDim2.new(0.94, 0, 0.18, 0)
-            mbg.Position = UDim2.new(0.03, 0, 0.45, 0)
+            mbg.Size = UDim2.new(0.94, 0, 0.2, 0)
+            mbg.Position = UDim2.new(0.03, 0, 0.5, 0)
         end
         local me = masteryPanel:FindFirstChild("Eliminations", true)
         local md = masteryPanel:FindFirstChild("Damage", true)
@@ -2103,9 +2103,10 @@ local function applyDetailsPanelScaling(detailsPanel)
         local titleLbl = masteryPanel:FindFirstChild("Title", true)
         local xpLbl = masteryPanel:FindFirstChild("XP", true)
         if titleLbl and titleLbl:IsA("GuiObject") then
-            titleLbl.AnchorPoint = Vector2.new(0, 0)
-            titleLbl.Position = UDim2.new(0.02, 0, 0.04, 0)
-            ensureTextScaled(titleLbl, 18)
+            titleLbl.AnchorPoint = Vector2.new(0.5, 0)
+            titleLbl.Position = UDim2.new(0.5, 0, 0, 0)
+            titleLbl.TextXAlignment = Enum.TextXAlignment.Center
+            ensureTextScaled(titleLbl, 22)
         end
         if xpLbl and xpLbl:IsA("TextLabel") then
             -- place XP label centered on top of the progress bar
@@ -2113,17 +2114,21 @@ local function applyDetailsPanelScaling(detailsPanel)
                 xpLbl.Parent = mbg
                 xpLbl.AnchorPoint = Vector2.new(0.5, 0.5)
                 xpLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
-                xpLbl.Size = UDim2.new(1, -px(24), 1, 0)
+                xpLbl.Size = UDim2.new(1, -px(18), 1, 0)
                 xpLbl.TextXAlignment = Enum.TextXAlignment.Center
                 xpLbl.TextYAlignment = Enum.TextYAlignment.Center
+                xpLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+                xpLbl.TextStrokeTransparency = 0
                 xpLbl.ZIndex = (mbg and mbg.ZIndex or xpLbl.ZIndex) + 2
             else
                 xpLbl.AnchorPoint = Vector2.new(0.5, 0.5)
                 xpLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
                 xpLbl.TextXAlignment = Enum.TextXAlignment.Center
                 xpLbl.TextYAlignment = Enum.TextYAlignment.Center
+                xpLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+                xpLbl.TextStrokeTransparency = 0
             end
-            ensureTextScaled(xpLbl, 13)
+            ensureTextScaled(xpLbl, 16)
         end
         ensureTextScaled(me, 15)
         ensureTextScaled(md, 15)
@@ -2136,7 +2141,7 @@ local function applyDetailsPanelScaling(detailsPanel)
         salvageRow.AnchorPoint = Vector2.new(0.5, 1)
         salvageRow.Size = UDim2.new(0.88, 0, 0, px(40))
         -- place near bottom using original px offset so it sits above action row
-        salvageRow.Position = UDim2.new(0.5, 0, 1, -px(114))
+        salvageRow.Position = UDim2.new(0.5, 0, 1, -px(106))
         salvageRow.LayoutOrder = nil
         salvageRow.ZIndex = 300
         local valueLabel = salvageRow:FindFirstChild("ValueText", true) or salvageRow:FindFirstChildWhichIsA("TextLabel")
@@ -2151,7 +2156,7 @@ local function applyDetailsPanelScaling(detailsPanel)
     if actionRow and actionRow:IsA("GuiObject") then
         actionRow.Size = UDim2.new(0.88, 0, 0.07, 0)
         actionRow.AnchorPoint = Vector2.new(0.5, 1)
-        actionRow.Position = UDim2.new(0.5, 0, 1, -px(88))
+        actionRow.Position = UDim2.new(0.5, 0, 1, -px(84))
         -- add aspect constraint for child buttons to avoid vertical overflow
         for _, child in ipairs(actionRow:GetChildren()) do
             if child:IsA("TextButton") or child:IsA("ImageButton") then
@@ -2169,7 +2174,7 @@ local function applyDetailsPanelScaling(detailsPanel)
     if detailEquipBtn and detailEquipBtn:IsA("GuiObject") then
         detailEquipBtn.Size = UDim2.new(0.88, 0, 0.08, 0)
         detailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
-        detailEquipBtn.Position = UDim2.new(0.5, 0, 1, -px(36))
+        detailEquipBtn.Position = UDim2.new(0.5, 0, 1, -px(56))
         -- add UITextSizeConstraint if missing
         if not detailEquipBtn:FindFirstChildOfClass("UITextSizeConstraint") then
             local c = Instance.new("UITextSizeConstraint")
