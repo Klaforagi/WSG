@@ -1344,6 +1344,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     sidebar.Name = "TabSidebar"
     sidebar.Parent = root
     LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
+    -- Hide the sidebar background so tabs appear flush with the modal
+    sidebar.BackgroundTransparency = 1
 
     local tabButtons = {}
     local currentTab = "melee"
@@ -1352,7 +1354,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local btn = Instance.new("TextButton")
         btn.Name = def.label .. "Tab"
         btn.AutoButtonColor = false
-        btn.BackgroundColor3 = SIDEBAR_BG
+        -- Make individual tab backgrounds transparent to remove the rail visual
+        btn.BackgroundTransparency = 1
         btn.BorderSizePixel = 0
         btn.Size = UDim2.new(1, -px(2), 0, px(62))
         btn.LayoutOrder = def.order
@@ -6018,9 +6021,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function applyResponsivePanelLayout()
         -- Compute proportional panel widths based on the inventory root size
         local rootW = math.max(1, root.AbsoluteSize.X)
-        local leftRatio = 0.12   -- left sidebar percentage of full width
-        local rightRatio = 0.20  -- right detail panel percentage of full width
-        local centerRatio = math.max(0.0, 1 - leftRatio - rightRatio)
+        -- Explicit ratios requested: left = 5%, center = 65%, right = 30%
+        local leftRatio = 0.05
+        local centerRatio = 0.65
+        local rightRatio = 0.30
 
         -- Pixel sizes derived from ratios to keep internal layout deterministic
         local leftPx = math.floor(rootW * leftRatio)
@@ -6030,31 +6034,40 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Sidebar layout (shorter height so it doesn't stretch too far)
         sidebar.AutomaticSize = Enum.AutomaticSize.None
         sidebar.Position = UDim2.new(0, PANEL_EDGE_INSET, 0, PANEL_VERTICAL_INSET)
-        sidebar.Size = UDim2.new(0, leftPx - PANEL_EDGE_INSET, 0, math.max(0, root.AbsoluteSize.Y - (PANEL_VERTICAL_INSET * 2)))
+        -- Make the tabs area shorter (approx half height) to remove bottom gap
+        local sidebarHeight = math.max(0, math.floor((root.AbsoluteSize.Y - (PANEL_VERTICAL_INSET * 2)) * 0.5))
+        sidebar.Size = UDim2.new(0, leftPx - PANEL_EDGE_INSET, 0, sidebarHeight)
 
         local function resizePage(pageName, gridName, emptyName, detailName)
             local page = root:FindFirstChild(pageName)
             if not (page and page:IsA("GuiObject")) then return end
 
             local pageX = PANEL_EDGE_INSET + leftPx
-            local pageW = math.max(0, centerPx - (PANEL_EDGE_INSET + GRID_GAP))
+            -- Make the page contain both the center (grid) and the right detail panel
+            local pageTotalW = math.max(0, centerPx + rightPx + GRID_GAP)
             page.Position = UDim2.new(0, pageX, 0, PANEL_VERTICAL_INSET)
-            page.Size = UDim2.new(0, pageW, 0, math.max(0, root.AbsoluteSize.Y - (PANEL_VERTICAL_INSET * 2)))
+            page.Size = UDim2.new(0, pageTotalW, 0, math.max(0, root.AbsoluteSize.Y - (PANEL_VERTICAL_INSET * 2)))
 
             local detailPanel = page:FindFirstChild(detailName)
-            if detailPanel and detailPanel:IsA("GuiObject") then
-                detailPanel.Size = UDim2.new(0, rightPx, 1, 0)
-                detailPanel.Position = UDim2.new(0, pageX + pageW, 0, 0)
+            local grid = page:FindFirstChild(gridName)
+
+            -- Size and position the center grid explicitly inside the page
+            if grid and grid:IsA("GuiObject") then
+                grid.Position = UDim2.new(0, 0, 0, 0)
+                grid.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP), 1, 0)
             end
 
-            local grid = page:FindFirstChild(gridName)
-            if grid and grid:IsA("GuiObject") then
-                grid.Size = UDim2.new(1, -rightPx - GRID_GAP, 1, 0)
+            -- Position the detail panel to the right inside the page
+            if detailPanel and detailPanel:IsA("GuiObject") then
+                detailPanel.AnchorPoint = Vector2.new(0, 0)
+                detailPanel.Position = UDim2.new(0, math.max(0, centerPx + GRID_GAP), 0, 0)
+                detailPanel.Size = UDim2.new(0, rightPx, 1, 0)
             end
 
             local emptyState = page:FindFirstChild(emptyName)
             if emptyState and emptyState:IsA("GuiObject") then
-                emptyState.Size = UDim2.new(1, -rightPx - GRID_GAP, 1, 0)
+                emptyState.Position = UDim2.new(0, 0, 0, 0)
+                emptyState.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP), 1, 0)
             end
         end
 

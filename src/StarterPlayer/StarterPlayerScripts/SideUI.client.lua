@@ -1785,6 +1785,22 @@ local function updateModalWindowLayout()
             contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
         end
     end
+
+    -- Also apply same reduction to Team/Stats panels handled outside Modal group
+    if titleUpper == "TEAM" or titleUpper == "STATS" or titleUpper == "TEAMSTATS" then
+        local reducedW = math.max(200, math.floor(windowWidth * 0.75))
+        window.Size = UDim2.new(0, reducedW, 0, windowHeight)
+        if contentFrame then
+            contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+        end
+    end
+
+    -- Reduce header currency label sizes for tighter header spacing on these modals
+    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "TEAM" then
+        if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = math.max(9, math.floor(headerCoinLabelConstraint.MaxTextSize * 0.8)) end
+        if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = math.max(9, math.floor(headerKeyLabelConstraint.MaxTextSize * 0.8)) end
+        if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = math.max(9, math.floor(headerSalvageLabelConstraint.MaxTextSize * 0.8)) end
+    end
     if modalStatusOverlay and contentFrame then
         modalStatusOverlay.Position = contentFrame.Position
         modalStatusOverlay.Size = contentFrame.Size
