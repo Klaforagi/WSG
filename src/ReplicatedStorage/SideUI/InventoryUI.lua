@@ -1344,8 +1344,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     sidebar.Name = "TabSidebar"
     sidebar.Parent = root
     LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
-    -- Hide the sidebar background so tabs appear flush with the modal
+    -- Hide the sidebar background and rail stroke so tabs appear flush with the modal
     sidebar.BackgroundTransparency = 1
+    if sidebar:FindFirstChildOfClass("UIStroke") then sidebar:FindFirstChildOfClass("UIStroke").Transparency = 1 end
 
     local tabButtons = {}
     local currentTab = "melee"
@@ -1398,8 +1399,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         textLbl.Position = UDim2.new(0, px(3), 0, px(34))
         textLbl.TextXAlignment = Enum.TextXAlignment.Center
 
-        local btnStroke = Instance.new("UIStroke", btn)
-        btnStroke.Color = CARD_STROKE; btnStroke.Thickness = 1.2; btnStroke.Transparency = 0.6
+        Instance.new("UIStroke", btn).Color = CARD_STROKE; btnStroke = nil
+        -- set thickness/transparency via the created UIStroke reference without introducing a local
+        if btn:FindFirstChildOfClass("UIStroke") then btn:FindFirstChildOfClass("UIStroke").Thickness = 1.2; btn:FindFirstChildOfClass("UIStroke").Transparency = 1 end
 
         return btn
     end
@@ -5893,11 +5895,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local label      = btn:FindFirstChild("Label")
             local btnStroke  = btn:FindFirstChildOfClass("UIStroke")
 
-            if bar       then bar.BackgroundTransparency = active and 0 or 1 end
-            if icon      then icon.TextColor3 = active and GOLD or DIM_TEXT end
+            -- Only change label/icon color to indicate active tab. Hide the active bar.
+            if icon      then icon.TextColor3 = active and WHITE or DIM_TEXT end
             if iconCustom then setTabIconTint(iconCustom, getCustomTabIconColor(id, active)) end
             if label     then label.TextColor3 = active and WHITE or DIM_TEXT end
-            if btnStroke then btnStroke.Transparency = active and 0.2 or 0.6 end
         end
 
         -- Page visibility
