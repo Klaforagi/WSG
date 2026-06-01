@@ -1689,10 +1689,136 @@ local function updateHeaderCurrencyLayout()
     local leftInset = math.max(12, math.floor(headerHeight * 0.28))
     local rightReserved = rightInset + totalWidth + math.max(8, math.floor(headerHeight * 0.24))
     local titleWidth = math.max(96, math.min(math.floor(windowWidth * 0.34), windowWidth - rightReserved - leftInset))
+
+    -- Default title center (falls back to centered in window)
     local titleCenter = math.max(leftInset + math.floor(titleWidth * 0.5), math.min(math.floor(windowWidth * 0.5), windowWidth - rightReserved - math.floor(titleWidth * 0.5)))
+
+    -- For Inventory / Shop / Achievements, center the header over the modal's
+    -- main content center (e.g. Inventory grid / Shop root / Quests root).
+    local titleUpper = (titleLabel and tostring(titleLabel.Text) or ""):upper()
+    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" then
+        local function tryGetContentCenter()
+            if not contentFrame then return nil end
+            -- Try known root names used by those modules
+            local candidates = { "InventoryUI", "ShopRoot", "QuestsRoot", "AchievHubRoot" }
+            for _, name in ipairs(candidates) do
+                local rootChild = contentFrame:FindFirstChild(name, true) or contentFrame:FindFirstChild(name)
+                if rootChild and rootChild:IsA("GuiObject") and rootChild.AbsoluteSize.X > 0 then
+                    -- Prefer a center grid if present (Inventory -> WeaponArea -> GridScroll)
+                    if name == "InventoryUI" then
+                        local weaponArea = rootChild:FindFirstChild("WeaponArea", true)
+                        if weaponArea and weaponArea:IsA("GuiObject") then
+                            local grid = weaponArea:FindFirstChild("GridScroll", true)
+                            if grid and grid:IsA("GuiObject") and grid.AbsoluteSize.X > 0 then
+                                return grid.AbsolutePosition.X + (grid.AbsoluteSize.X * 0.5)
+                            end
+                        end
+                    end
+                    -- Fallback: use root child's center
+                    return rootChild.AbsolutePosition.X + (rootChild.AbsoluteSize.X * 0.5)
+                end
+            end
+
+            -- Fallback: pick the largest child in the contentFrame and use its center
+            local bestChild, bestW
+            for _, child in ipairs(contentFrame:GetChildren()) do
+                if child:IsA("GuiObject") and child.AbsoluteSize and child.AbsoluteSize.X and child.AbsoluteSize.X > 0 then
+                    local w = child.AbsoluteSize.X
+                    if (not bestW) or w > bestW then
+                        bestW = w
+                        bestChild = child
+                    end
+                end
+            end
+            if bestChild and bestW then
+                return bestChild.AbsolutePosition.X + (bestChild.AbsoluteSize.X * 0.5)
+            end
+            return nil
+        end
+        -- debug prints removed
+        local absCenter = tryGetContentCenter()
+        -- If Inventory should align like Shop, prefer a shop-like center (largest child)
+        if titleUpper == "INVENTORY" then
+            -- try a shop-like center: ignore InventoryUI grid special-casing
+            local function tryGetShopLikeCenter()
+                if not contentFrame then return nil end
+                -- prefer any explicit ShopRoot or QuestsRoot/AchievHubRoot
+                local candidates2 = { "ShopRoot", "QuestsRoot", "AchievHubRoot", "InventoryUI" }
+                for _, name in ipairs(candidates2) do
+                    local rootChild = contentFrame:FindFirstChild(name, true) or contentFrame:FindFirstChild(name)
+                    if rootChild and rootChild:IsA("GuiObject") and rootChild.AbsoluteSize.X > 0 then
+                        return rootChild.AbsolutePosition.X + (rootChild.AbsoluteSize.X * 0.5)
+                    end
+                end
+                -- fallback to largest child
+                local bestChild, bestW
+                for _, child in ipairs(contentFrame:GetChildren()) do
+                    if child:IsA("GuiObject") and child.AbsoluteSize and child.AbsoluteSize.X and child.AbsoluteSize.X > 0 then
+                        local w = child.AbsoluteSize.X
+                        if (not bestW) or w > bestW then
+                            bestW = w
+                            bestChild = child
+                        end
+                    end
+                end
+                if bestChild and bestW then
+                    return bestChild.AbsolutePosition.X + (bestChild.AbsoluteSize.X * 0.5)
+                end
+                return nil
+            end
+            local shopLike = tryGetShopLikeCenter()
+            if shopLike then absCenter = shopLike end
+        end
+        if absCenter and window and window.AbsolutePosition then
+            local localCenter = math.floor(absCenter - window.AbsolutePosition.X)
+            -- debug prints removed
+            -- Prefer true center over content; only shift if it would overlap currency chips
+            local halfW = math.floor(titleWidth * 0.5)
+            local desiredCenter = localCenter
+            local titleLeft = desiredCenter - halfW
+            local titleRight = desiredCenter + halfW
+            local currencyLeftLocal
+            if currencyRow and currencyRow.Parent and currencyRow.AbsoluteSize and currencyRow.AbsoluteSize.X > 0 then
+                currencyLeftLocal = math.floor(currencyRow.AbsolutePosition.X - window.AbsolutePosition.X)
+            else
+                currencyLeftLocal = math.floor(windowWidth - rightReserved)
+            end
+            local margin = math.max(6, math.floor(headerHeight * 0.12))
+            if titleRight + margin > currencyLeftLocal then
+                -- shift left so titleRight + margin == currencyLeftLocal
+                desiredCenter = currencyLeftLocal - margin - halfW
+            end
+            -- enforce left-side inset
+            local minCenter = leftInset + halfW
+            desiredCenter = math.max(minCenter, desiredCenter)
+            titleCenter = math.floor(desiredCenter)
+            -- debug prints removed
+        end
+    end
+
+    -- For Shop and Inventory, apply a larger consistent left nudge so the
+    -- title visually lines up with the center content used by Inventory.
+    local halfW2 = math.floor(titleWidth * 0.5)
+    if titleUpper == "SHOP" or titleUpper == "INVENTORY" then
+        local sharedOffset = math.max(40, math.floor(windowWidth * 0.12))
+        titleCenter = math.max(leftInset + halfW2, titleCenter - sharedOffset)
+    end
 
     titlePill.Size = UDim2.new(0, titleWidth, 0, titleHeight)
     titlePill.Position = UDim2.new(0, titleCenter, 0.5, 0)
+
+    -- Ensure the title text scales to fit the pill width/height using a constraint
+    if titleLabel and titleLabel:IsA("TextLabel") then
+        local existing = titleLabel:FindFirstChildOfClass("UITextSizeConstraint")
+        if not existing then
+            local c = Instance.new("UITextSizeConstraint")
+            c.MinTextSize = 12
+            c.MaxTextSize = math.max(16, math.floor(titleHeight * 0.9))
+            c.Parent = titleLabel
+        else
+            existing.MaxTextSize = math.max(16, math.floor(titleHeight * 0.9))
+        end
+    end
 
     local function sizeChip(frame, width)
         frame.Size = UDim2.new(0, width, 0, chipHeight)
@@ -1877,6 +2003,11 @@ contentPadding.PaddingTop = UDim.new(0, px(14))
 contentPadding.PaddingLeft = UDim.new(0, px(10))
 contentPadding.PaddingRight = UDim.new(0, px(10))
 contentPadding.Parent = contentFrame
+
+-- Recompute header layout when new modal content is added (e.g. InventoryUI root)
+contentFrame.ChildAdded:Connect(function()
+    pcall(updateHeaderCurrencyLayout)
+end)
 
 -- ensure content sits above other UI but behind header elements
 contentFrame.ZIndex = 260
@@ -2232,6 +2363,8 @@ local function configureModalHeader(label)
         updateHeaderKeys()
         updateHeaderSalvage()
     end
+    -- Recompute header layout immediately after title/currency state changes
+    pcall(updateHeaderCurrencyLayout)
 end
 
 local function contentHostHasGuiContent(contentHost)
