@@ -66,6 +66,17 @@ local function attachResponsiveRootScale(root)
     rootScale.Parent = root
 end
 
+local function ensureInventoryUIScale(root)
+    if not root then return end
+    local inv = root:FindFirstChild("InventoryUIScale")
+    if inv and inv:IsA("UIScale") then return inv end
+    inv = Instance.new("UIScale")
+    inv.Name = "InventoryUIScale"
+    inv.Scale = 1
+    inv.Parent = root
+    return inv
+end
+
 local function updateResponsiveRootScale(root)
     if not root then return end
 
@@ -2234,10 +2245,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.TextColor3 = WHITE
-        nameLabel.TextScaled = false
+        nameLabel.TextScaled = true
         nameLabel.TextWrapped = true
         nameLabel.RichText = false
         nameLabel.TextSize = NAME_TEXT_SIZE
+        local nameConstraint = Instance.new("UITextSizeConstraint", nameLabel)
+        nameConstraint.MinTextSize = 9
+        nameConstraint.MaxTextSize = 22
         nameLabel.Size = UDim2.new(1, -px(6), 0.19, 0)
         nameLabel.Position = UDim2.new(0, px(3), 0.01, 0)
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -6002,35 +6016,45 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end)
 
     local function applyResponsivePanelLayout()
-        local contentX = PANEL_EDGE_INSET + TAB_W + TAB_GAP
-        local contentWOff = -(contentX + PANEL_EDGE_INSET)
-        local contentWidthOffset = DETAIL_W + GRID_GAP
+        -- Compute proportional panel widths based on the inventory root size
+        local rootW = math.max(1, root.AbsoluteSize.X)
+        local leftRatio = 0.12   -- left sidebar percentage of full width
+        local rightRatio = 0.20  -- right detail panel percentage of full width
+        local centerRatio = math.max(0.0, 1 - leftRatio - rightRatio)
 
+        -- Pixel sizes derived from ratios to keep internal layout deterministic
+        local leftPx = math.floor(rootW * leftRatio)
+        local rightPx = math.floor(rootW * rightRatio)
+        local centerPx = math.floor(rootW * centerRatio)
+
+        -- Sidebar layout (shorter height so it doesn't stretch too far)
         sidebar.AutomaticSize = Enum.AutomaticSize.None
         sidebar.Position = UDim2.new(0, PANEL_EDGE_INSET, 0, PANEL_VERTICAL_INSET)
-        sidebar.Size = UDim2.new(0, TAB_W, 1, -(PANEL_VERTICAL_INSET * 2))
+        sidebar.Size = UDim2.new(0, leftPx - PANEL_EDGE_INSET, 0, math.max(0, root.AbsoluteSize.Y - (PANEL_VERTICAL_INSET * 2)))
 
         local function resizePage(pageName, gridName, emptyName, detailName)
             local page = root:FindFirstChild(pageName)
             if not (page and page:IsA("GuiObject")) then return end
 
-            page.Position = UDim2.new(0, contentX, 0, PANEL_VERTICAL_INSET)
-            page.Size = UDim2.new(1, contentWOff, 1, -(PANEL_VERTICAL_INSET * 2))
+            local pageX = PANEL_EDGE_INSET + leftPx
+            local pageW = math.max(0, centerPx - (PANEL_EDGE_INSET + GRID_GAP))
+            page.Position = UDim2.new(0, pageX, 0, PANEL_VERTICAL_INSET)
+            page.Size = UDim2.new(0, pageW, 0, math.max(0, root.AbsoluteSize.Y - (PANEL_VERTICAL_INSET * 2)))
 
             local detailPanel = page:FindFirstChild(detailName)
             if detailPanel and detailPanel:IsA("GuiObject") then
-                detailPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
-                detailPanel.Position = UDim2.new(1, 0, 0, 0)
+                detailPanel.Size = UDim2.new(0, rightPx, 1, 0)
+                detailPanel.Position = UDim2.new(0, pageX + pageW, 0, 0)
             end
 
             local grid = page:FindFirstChild(gridName)
             if grid and grid:IsA("GuiObject") then
-                grid.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+                grid.Size = UDim2.new(1, -rightPx - GRID_GAP, 1, 0)
             end
 
             local emptyState = page:FindFirstChild(emptyName)
             if emptyState and emptyState:IsA("GuiObject") then
-                emptyState.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+                emptyState.Size = UDim2.new(1, -rightPx - GRID_GAP, 1, 0)
             end
         end
 
@@ -6039,6 +6063,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         resizePage("SkinsArea", "SkinGridScroll", "SkinEmptyState", "SkinDetailsPanel")
         resizePage("EffectsPage", "TrailGridScroll", "EffectsEmptyState", "TrailDetailsPanel")
         resizePage("EmotesPage", "EmoteGridScroll", "EmotesEmptyState", "EmoteDetailsPanel")
+
+        -- Ensure there is a local UIScale that will scale text and icons relative to the inventory root
+        ensureInventoryUIScale(root)
     end
 
     -- Adapt root height to parent size
@@ -6049,6 +6076,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             root.Size = UDim2.new(1, 0, 0, rootHeight)
         end
         updateResponsiveRootScale(root)
+        -- Scale the inventory contents (text/icons) relative to the inventory root size.
+        local invScaleObj = ensureInventoryUIScale(root)
+        if invScaleObj then
+            local baseW, baseH = 1200, 700
+            local rw, rh = math.max(1, root.AbsoluteSize.X), math.max(1, root.AbsoluteSize.Y)
+            local scaleVal = math.min(rw / baseW, rh / baseH)
+            scaleVal = math.clamp(scaleVal, 0.7, 1.25)
+            invScaleObj.Scale = scaleVal
+        end
         applyResponsivePanelLayout()
     end
 

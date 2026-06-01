@@ -1774,6 +1774,17 @@ local function updateModalWindowLayout()
         contentFrame.Position = UDim2.new(0, 0, 0, contentTop)
         contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
     end
+
+    -- Reduce width for Inventory, Shop and Achievements modals by 25%
+    local titleUpper = (titleLabel and tostring(titleLabel.Text) or ""):upper()
+    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" then
+        local reducedW = math.max(200, math.floor(windowWidth * 0.75))
+        window.Size = UDim2.new(0, reducedW, 0, windowHeight)
+        if contentFrame then
+            -- adjust content width if needed to match smaller window
+            contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+        end
+    end
     if modalStatusOverlay and contentFrame then
         modalStatusOverlay.Position = contentFrame.Position
         modalStatusOverlay.Size = contentFrame.Size
