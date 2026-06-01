@@ -2131,10 +2131,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- Salvage value preview
         if SalvageConfig and itemData.rarity then
-            local val = getSalvageValueForItem(itemData)
-            if val and val > 0 then
-                shardWidgets.salvageValueLabel.Text = "Yield: " .. tostring(val)
-                shardWidgets.salvageValueRow.Visible = true
+            local weaponKey = (itemData.weaponName or itemData.name)
+            local isExplicitlyUnsalvageable = false
+            if weaponKey and SalvageConfig.UnsalvageableWeapons and SalvageConfig.UnsalvageableWeapons[weaponKey] then
+                isExplicitlyUnsalvageable = true
+            end
+            if not isExplicitlyUnsalvageable then
+                local val = getSalvageValueForItem(itemData)
+                if val and val > 0 then
+                    shardWidgets.salvageValueLabel.Text = "Yield: " .. tostring(val)
+                    shardWidgets.salvageValueRow.Visible = true
+                else
+                    shardWidgets.salvageValueRow.Visible = false
+                end
             else
                 shardWidgets.salvageValueRow.Visible = false
             end
