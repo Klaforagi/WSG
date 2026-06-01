@@ -336,7 +336,7 @@ end
 local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
     { id = "ranged",  icon = "\u{1F3F9}", label = "Ranged",  order = 2 },
-    { id = "boosts",  icon = "\u{26A1}",  label = "Potions", order = 3 },
+    { id = "boosts",  icon = "\u{1F9EA}",  label = "Potions", order = 3 },
     { id = "skins",   icon = "\u{2726}",  label = "Skins",   order = 4 },
     { id = "effects", icon = "\u{2738}",  label = "Effects", order = 5 },
     { id = "emotes",  icon = "\u{263A}",  label = "Emotes",  order = 6 },
@@ -1372,13 +1372,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         bar.BackgroundTransparency = 1
         Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5, 0)
 
-        if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" then
+            if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" then
             local iconLbl = Instance.new("TextLabel", btn)
             iconLbl.Name = "Icon"
             iconLbl.BackgroundTransparency = 1
             iconLbl.Font = Enum.Font.GothamBold
             iconLbl.Text = def.icon
-            iconLbl.TextColor3 = DIM_TEXT
+                if def.id == "boosts" then
+                    iconLbl.TextColor3 = Color3.fromRGB(235, 77, 77)
+                else
+                    iconLbl.TextColor3 = DIM_TEXT
+                end
             iconLbl.TextSize = math.max(16, math.floor(px(18)))
             iconLbl.Size = UDim2.new(1, 0, 0, px(24))
             iconLbl.Position = UDim2.new(0, 0, 0, px(8))
@@ -1399,9 +1403,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         textLbl.Position = UDim2.new(0, px(3), 0, px(34))
         textLbl.TextXAlignment = Enum.TextXAlignment.Center
 
-        Instance.new("UIStroke", btn).Color = CARD_STROKE; btnStroke = nil
-        -- set thickness/transparency via the created UIStroke reference without introducing a local
-        if btn:FindFirstChildOfClass("UIStroke") then btn:FindFirstChildOfClass("UIStroke").Thickness = 1.2; btn:FindFirstChildOfClass("UIStroke").Transparency = 1 end
+        Instance.new("UIStroke", btn)
+        if btn:FindFirstChildOfClass("UIStroke") then btn:FindFirstChildOfClass("UIStroke").Color = CARD_STROKE; btn:FindFirstChildOfClass("UIStroke").Thickness = 1.2; btn:FindFirstChildOfClass("UIStroke").Transparency = 1 end
 
         return btn
     end
@@ -5896,7 +5899,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local btnStroke  = btn:FindFirstChildOfClass("UIStroke")
 
             -- Only change label/icon color to indicate active tab. Hide the active bar.
-            if icon      then icon.TextColor3 = active and WHITE or DIM_TEXT end
+            if icon then
+                if id == "boosts" then
+                    icon.TextColor3 = active and WHITE or Color3.fromRGB(235, 77, 77)
+                else
+                    icon.TextColor3 = active and WHITE or DIM_TEXT
+                end
+            end
             if iconCustom then setTabIconTint(iconCustom, getCustomTabIconColor(id, active)) end
             if label     then label.TextColor3 = active and WHITE or DIM_TEXT end
         end
@@ -6031,6 +6040,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local leftPx = math.floor(rootW * leftRatio)
         local rightPx = math.floor(rootW * rightRatio)
         local centerPx = math.floor(rootW * centerRatio)
+        local innerPad = px(6)
 
         -- Sidebar layout (shorter height so it doesn't stretch too far)
         sidebar.AutomaticSize = Enum.AutomaticSize.None
@@ -6054,21 +6064,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             -- Size and position the center grid explicitly inside the page
             if grid and grid:IsA("GuiObject") then
-                grid.Position = UDim2.new(0, 0, 0, 0)
-                grid.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP), 1, 0)
+                grid.Position = UDim2.new(0, 0, 0, innerPad)
+                grid.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP - innerPad), 1, -innerPad*2)
             end
 
             -- Position the detail panel to the right inside the page
             if detailPanel and detailPanel:IsA("GuiObject") then
                 detailPanel.AnchorPoint = Vector2.new(0, 0)
-                detailPanel.Position = UDim2.new(0, math.max(0, centerPx + GRID_GAP), 0, 0)
-                detailPanel.Size = UDim2.new(0, rightPx, 1, 0)
+                detailPanel.Position = UDim2.new(0, math.max(0, centerPx + GRID_GAP - innerPad), 0, innerPad)
+                detailPanel.Size = UDim2.new(0, math.max(0, rightPx - innerPad*2), 1, -innerPad*2)
             end
 
             local emptyState = page:FindFirstChild(emptyName)
             if emptyState and emptyState:IsA("GuiObject") then
-                emptyState.Position = UDim2.new(0, 0, 0, 0)
-                emptyState.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP), 1, 0)
+                emptyState.Position = UDim2.new(0, 0, 0, innerPad)
+                emptyState.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP - innerPad), 1, -innerPad*2)
             end
         end
 
