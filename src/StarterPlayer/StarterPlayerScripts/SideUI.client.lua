@@ -1735,9 +1735,21 @@ local function updateModalWindowLayout()
     local viewportX, viewportY = getViewportSize()
     if viewportX <= 0 or viewportY <= 0 then return end
 
-    local widthTarget = math.floor(viewportX * (viewportX < viewportY and 0.82 or 0.65))
+    local isPortrait = viewportX < viewportY
+    local isInventoryWindow = titleLabel.Text == "INVENTORY"
+
+    local widthTargetFactor = isPortrait and 0.82 or 0.65
     local widthMin = math.min(math.floor(viewportX * 0.92), 540)
-    local widthMax = math.floor(viewportX * 0.86)
+    local widthMaxFactor = 0.86
+
+    if isInventoryWindow then
+        widthTargetFactor = isPortrait and 0.9 or 0.75
+        widthMin = math.min(math.floor(viewportX * (isPortrait and 0.94 or 0.72)), 980)
+        widthMaxFactor = isPortrait and 0.97 or 0.9
+    end
+
+    local widthTarget = math.floor(viewportX * widthTargetFactor)
+    local widthMax = math.floor(viewportX * widthMaxFactor)
 
     local lowerBound = math.max(320, widthMin)
     local upperBound = math.max(widthMax, lowerBound)

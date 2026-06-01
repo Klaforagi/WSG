@@ -26,6 +26,7 @@ local INVENTORY_CARD_MIN_W       = 132
 local INVENTORY_CARD_PREFERRED_W = 178
 local INVENTORY_CARD_MAX_W       = 210
 local INVENTORY_MAX_COLUMNS      = 8
+local INVENTORY_FIXED_COLUMNS    = 5
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Responsive pixel helper (delegates to shared UIResponsiveScaler).
@@ -59,8 +60,6 @@ local function attachResponsiveRootScale(root)
     local existing = root:FindFirstChild("ResponsiveScale")
     if existing and existing:IsA("UIScale") then return end
 
-    root:SetAttribute("InventoryInitialResponsiveScale", getResponsiveViewportScale())
-
     local rootScale = Instance.new("UIScale")
     rootScale.Name = "ResponsiveScale"
     rootScale.Scale = 1
@@ -73,8 +72,10 @@ local function updateResponsiveRootScale(root)
     local rootScale = root:FindFirstChild("ResponsiveScale")
     if not (rootScale and rootScale:IsA("UIScale")) then return end
 
-    local initialResponsiveScale = tonumber(root:GetAttribute("InventoryInitialResponsiveScale")) or getResponsiveViewportScale()
-    rootScale.Scale = getResponsiveViewportScale() / math.max(0.001, initialResponsiveScale)
+    -- The modal window already owns viewport-responsiveness. Keep the
+    -- inventory root at a neutral scale so the internal fixed-width layout
+    -- does not balloon on taller/fullscreen aspect ratios.
+    rootScale.Scale = 1
 end
 
 local function bindViewportResize(trackConn, callback)
@@ -965,6 +966,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local TAB_GAP   = px(LeftPanelStyle.TAB_GAP)
     local DETAIL_W  = px(315)
     local GRID_GAP  = px(10)
+    local PANEL_EDGE_INSET = px(8)
+    local PANEL_VERTICAL_INSET = px(6)
+    local BOOST_CARD_W = px(140)
+    local BOOST_CARD_H = px(178)
+    local BOOST_CARD_GAP = px(10)
 
     -- ── Shared inventory card layout constants (Melee tab = reference) ──
     local INV_CARD = {
@@ -999,35 +1005,36 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
 
     local function bindFixedColumnGrid(scrollFrame, gridLayout, gridPadding, baseCellWidth, baseCellHeight)
-        if not (scrollFrame and gridLayout and gridPadding) then return end
+        if not (scrollFrame and gridLayout) then return end
 
-        local baseW = math.max(1, tonumber(baseCellWidth)  or 1)
-        local baseH = math.max(1, tonumber(baseCellHeight) or 1)
-        local aspectRatio = baseH / baseW
+        local baseW = math.max(1, px(tonumber(baseCellWidth) or 1))
+        local baseH = math.max(1, px(tonumber(baseCellHeight) or 1))
+        local aspectRatio = baseH / math.max(1, baseW)
 
-        -- Cap the preferred/max card width relative to the base design so that
-        -- cards on large viewports gain neighbours (more columns) instead of
-        -- inflating in size. We allow the chosen cell width to dip a bit below
-        -- the base for tight viewports.
-        local minW       = math.max(INVENTORY_CARD_MIN_W, math.floor(baseW * 0.85))
-        local preferredW = math.max(minW, math.floor(baseW * 1.05))
-        local maxW       = math.max(preferredW, math.floor(baseW * 1.20))
-        preferredW = math.min(preferredW, INVENTORY_CARD_PREFERRED_W + 30)
-        maxW       = math.min(maxW,       INVENTORY_CARD_MAX_W)
-        if preferredW > maxW then preferredW = maxW end
+        local function reflow()
+            local availableWidth = scrollFrame.AbsoluteSize.X
+            if availableWidth <= 0 then return end
 
-        local disconnect = UIResponsiveScaler.ApplyResponsiveGrid(gridLayout, {
-            container          = scrollFrame,
-            padding            = gridPadding,
-            aspectRatio        = aspectRatio,
-            minCardWidth       = minW,
-            preferredCardWidth = preferredW,
-            maxCardWidth       = maxW,
-            minColumns         = 1,
-            maxColumns         = INVENTORY_MAX_COLUMNS,
-            scrollBarAware     = true,
-        })
-        trackConn({ Disconnect = function() disconnect() end })
+            if gridPadding then
+                availableWidth = availableWidth
+                    - (gridPadding.PaddingLeft and gridPadding.PaddingLeft.Offset or 0)
+                    - (gridPadding.PaddingRight and gridPadding.PaddingRight.Offset or 0)
+            end
+            if scrollFrame:IsA("ScrollingFrame") then
+                availableWidth = availableWidth - math.max(0, scrollFrame.ScrollBarThickness or 0)
+            end
+
+            local cellPadX = (gridLayout.CellPadding and gridLayout.CellPadding.X.Offset) or 0
+            local cellWidth = math.max(1, math.floor((availableWidth - (cellPadX * math.max(0, INVENTORY_FIXED_COLUMNS - 1))) / INVENTORY_FIXED_COLUMNS))
+            local cellHeight = math.max(1, math.floor(cellWidth * aspectRatio))
+
+            gridLayout.FillDirectionMaxCells = INVENTORY_FIXED_COLUMNS
+            gridLayout.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+        end
+
+        trackConn(scrollFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(reflow))
+        bindViewportResize(trackConn, reflow)
+        task.defer(reflow)
     end
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -1100,6 +1107,44 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         return "Common"
     end
 
+    local function buildWeaponInstanceItem(instanceId, data, previousItem)
+        if type(data) ~= "table" or type(data.weaponName) ~= "string" or data.weaponName == "" then
+            return nil
+        end
+
+        local favorited = previousItem and previousItem.favorited == true or false
+        if type(data.favorited) == "boolean" then
+            favorited = data.favorited
+        end
+
+        return {
+            id          = instanceId,
+            name        = data.weaponName,
+            category    = data.category or (previousItem and previousItem.category) or classifyItem(data.weaponName),
+            rarity      = data.rarity or (previousItem and previousItem.rarity) or "Common",
+            isInstance  = true,
+            instanceId  = instanceId,
+            weaponName  = data.weaponName,
+            source      = data.source or (previousItem and previousItem.source),
+            favorited   = favorited,
+            sizePercent = data.sizePercent or (previousItem and previousItem.sizePercent) or 100,
+            sizeTier    = data.sizeTier or (previousItem and previousItem.sizeTier) or "Normal",
+            enchantName = data.enchantName or (previousItem and previousItem.enchantName) or "",
+            mastery     = data.mastery or (previousItem and previousItem.mastery),
+        }
+    end
+
+    local function appendWeaponInstanceItems(target, inventorySnapshot, existingById)
+        if type(target) ~= "table" or type(inventorySnapshot) ~= "table" then return end
+
+        for instanceId, data in pairs(inventorySnapshot) do
+            local item = buildWeaponInstanceItem(instanceId, data, existingById and existingById[instanceId] or nil)
+            if item then
+                table.insert(target, item)
+            end
+        end
+    end
+
     -- ──────────────────────────────────────────────────────────────────────
     -- getRarityColor / getRarityBgColor
     -- ──────────────────────────────────────────────────────────────────────
@@ -1152,24 +1197,37 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         })
     end
 
-    for instanceId, data in pairs(weaponInstances) do
-        if type(data) == "table" and data.weaponName then
-            table.insert(allWeaponItems, {
-                id          = instanceId,
-                name        = data.weaponName,
-                category    = data.category or classifyItem(data.weaponName),
-                rarity      = data.rarity or "Common",
-                isInstance  = true,
-                instanceId  = instanceId,
-                weaponName  = data.weaponName,
-                source      = data.source,
-                favorited   = data.favorited == true,
-                sizePercent = data.sizePercent or 100,   -- SIZE ROLL SYSTEM
-                sizeTier    = data.sizeTier or "Normal", -- SIZE ROLL SYSTEM
-                enchantName    = data.enchantName or "",       -- ENCHANT SYSTEM
-                mastery        = data.mastery,
-            })
+    appendWeaponInstanceItems(allWeaponItems, weaponInstances)
+
+    local function findWeaponItemById(itemId)
+        if type(itemId) ~= "string" then return nil end
+        for _, item in ipairs(allWeaponItems) do
+            if item.id == itemId then
+                return item
+            end
         end
+        return nil
+    end
+
+    local function replaceWeaponInstanceItems(updatedInventory)
+        if type(updatedInventory) ~= "table" then return end
+
+        local preservedItems = {}
+        local existingById = {}
+        for _, item in ipairs(allWeaponItems) do
+            if item.isInstance and item.instanceId then
+                existingById[item.instanceId] = item
+            else
+                table.insert(preservedItems, item)
+            end
+        end
+
+        table.clear(allWeaponItems)
+        for _, item in ipairs(preservedItems) do
+            table.insert(allWeaponItems, item)
+        end
+
+        appendWeaponInstanceItems(allWeaponItems, updatedInventory, existingById)
     end
 
     -- ──────────────────────────────────────────────────────────────────────
@@ -2476,6 +2534,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         refreshEquippedIndicators()
     end
 
+    local function refreshWeaponInventoryView(updatedInventory)
+        if type(updatedInventory) ~= "table" then return end
+
+        local previouslySelectedId = selectedItem and selectedItem.id or nil
+        replaceWeaponInstanceItems(updatedInventory)
+
+        selectedItem = previouslySelectedId and findWeaponItemById(previouslySelectedId) or nil
+        renderCategory(currentWeaponCategory)
+
+        if selectedItem then
+            setSelectedItem(selectedItem)
+        end
+    end
+
     ---------------------------------------------------------------------------
     -- Equip button handler  (details panel — sole equip point for weapons)
     ---------------------------------------------------------------------------
@@ -2954,24 +3026,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         local function updateBoostSectionLayouts()
+            local columns = INVENTORY_FIXED_COLUMNS
+            local gap = BOOST_CARD_GAP
             local availableWidth = boostGridScroll.AbsoluteSize.X
                 - (boostGridPad.PaddingLeft.Offset or 0)
                 - (boostGridPad.PaddingRight.Offset or 0)
                 - math.max(0, boostGridScroll.ScrollBarThickness or 0)
-            local gap = px(10)
-            -- Match the responsive grid bounds used by the weapon/skin/etc. grids
-            -- so boost cards do not balloon on large viewports.
-            local minW       = math.max(INVENTORY_CARD_MIN_W, math.floor(140 * 0.85))
-            local preferredW = math.min(INVENTORY_CARD_PREFERRED_W + 30, math.floor(140 * 1.05))
-            local maxW       = math.min(INVENTORY_CARD_MAX_W, math.floor(140 * 1.20))
-            if preferredW < minW then preferredW = minW end
-            if preferredW > maxW then preferredW = maxW end
-
-            local columns = math.floor((math.max(1, availableWidth) + gap) / (preferredW + gap))
-            columns = math.clamp(columns, 1, INVENTORY_MAX_COLUMNS)
-            local fitW = math.floor((availableWidth - gap * math.max(0, columns - 1)) / columns)
-            local cellWidth = math.clamp(math.max(1, fitW), minW, maxW)
-            local cellHeight = math.max(1, math.floor(cellWidth * (178 / 140)))
+            local cellWidth = math.max(1, math.floor((math.max(1, availableWidth) - (gap * math.max(0, columns - 1))) / columns))
+            local cellHeight = math.max(1, math.floor(cellWidth * (BOOST_CARD_H / math.max(1, BOOST_CARD_W))))
 
             for _, record in ipairs(boostSectionRecords) do
                 local count = math.max(0, tonumber(record.visibleCount) or 0)
@@ -5899,6 +5961,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end)
 
     pcall(function()
+        local inventoryUpdatedRemote = ReplicatedStorage:FindFirstChild("WeaponInventoryUpdated")
+        if not inventoryUpdatedRemote then
+            inventoryUpdatedRemote = ReplicatedStorage:WaitForChild("WeaponInventoryUpdated", 5)
+        end
+        if inventoryUpdatedRemote and inventoryUpdatedRemote:IsA("RemoteEvent") then
+            trackConn(inventoryUpdatedRemote.OnClientEvent:Connect(function(updatedInventory)
+                refreshWeaponInventoryView(updatedInventory)
+            end))
+        end
+    end)
+
+    pcall(function()
         local masteryRemote = ReplicatedStorage:FindFirstChild("WeaponMasteryUpdated")
         if not masteryRemote then
             masteryRemote = ReplicatedStorage:WaitForChild("WeaponMasteryUpdated", 5)
@@ -5928,56 +6002,24 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end)
 
     local function applyResponsivePanelLayout()
-        local rootWidth = root.AbsoluteSize.X
-        if rootWidth <= 0 then return end
-
-        local scaleObject = root:FindFirstChild("ResponsiveScale")
-        local rootScale = 1
-        if scaleObject and scaleObject:IsA("UIScale") then
-            rootScale = math.max(0.001, scaleObject.Scale)
-        end
-
-        local function offsetFromVisual(visualPixels)
-            return math.max(1, math.floor(visualPixels / rootScale))
-        end
-
-        local gapVisual = math.clamp(math.floor(rootWidth * 0.012), 6, 18)
-        local edgeVisual = math.clamp(math.floor(rootWidth * 0.008), 4, 10)
-        local verticalVisual = math.clamp(math.floor(rootWidth * 0.006), 3, 8)
-        local sidebarVisual = math.clamp(math.floor(rootWidth * 0.122), 50, 112)
-        local detailVisual = math.clamp(math.floor(rootWidth * 0.255), 96, 248)
-        local minGridVisual = math.max(160, math.floor(rootWidth * 0.37))
-        local availableForPanels = math.max(0, rootWidth - minGridVisual - (gapVisual * 2) - (edgeVisual * 2))
-
-        if availableForPanels > 0 and (sidebarVisual + detailVisual) > availableForPanels then
-            local scaleDown = availableForPanels / math.max(1, sidebarVisual + detailVisual)
-            sidebarVisual = math.max(40, math.floor(sidebarVisual * scaleDown))
-            detailVisual = math.max(78, math.floor(detailVisual * scaleDown))
-        end
-
-        local sidebarWidth = offsetFromVisual(sidebarVisual)
-        local detailWidth = offsetFromVisual(detailVisual)
-        local gapWidth = offsetFromVisual(gapVisual)
-        local edgeInset = offsetFromVisual(edgeVisual)
-        local verticalInset = offsetFromVisual(verticalVisual)
-        local contentX = edgeInset + sidebarWidth + gapWidth
-        local contentWOff = -(contentX + edgeInset)
-        local contentWidthOffset = detailWidth + gapWidth
+        local contentX = PANEL_EDGE_INSET + TAB_W + TAB_GAP
+        local contentWOff = -(contentX + PANEL_EDGE_INSET)
+        local contentWidthOffset = DETAIL_W + GRID_GAP
 
         sidebar.AutomaticSize = Enum.AutomaticSize.None
-        sidebar.Position = UDim2.new(0, edgeInset, 0, verticalInset)
-        sidebar.Size = UDim2.new(0, sidebarWidth, 1, -(verticalInset * 2))
+        sidebar.Position = UDim2.new(0, PANEL_EDGE_INSET, 0, PANEL_VERTICAL_INSET)
+        sidebar.Size = UDim2.new(0, TAB_W, 1, -(PANEL_VERTICAL_INSET * 2))
 
         local function resizePage(pageName, gridName, emptyName, detailName)
             local page = root:FindFirstChild(pageName)
             if not (page and page:IsA("GuiObject")) then return end
 
-            page.Position = UDim2.new(0, contentX, 0, verticalInset)
-            page.Size = UDim2.new(1, contentWOff, 1, -(verticalInset * 2))
+            page.Position = UDim2.new(0, contentX, 0, PANEL_VERTICAL_INSET)
+            page.Size = UDim2.new(1, contentWOff, 1, -(PANEL_VERTICAL_INSET * 2))
 
             local detailPanel = page:FindFirstChild(detailName)
             if detailPanel and detailPanel:IsA("GuiObject") then
-                detailPanel.Size = UDim2.new(0, detailWidth, 1, 0)
+                detailPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
                 detailPanel.Position = UDim2.new(1, 0, 0, 0)
             end
 
@@ -6012,7 +6054,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
     task.defer(updateRootLayout)
     trackConn(parent:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootLayout))
-    trackConn(root:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateRootLayout))
     bindViewportResize(trackConn, updateRootLayout)
 
     -- Cleanup on removal

@@ -133,6 +133,13 @@ local keepCrateRewardRF  = getOrCreateRF("KeepCrateReward")
 local salvageCrateRewardRF = getOrCreateRF("SalvageCrateReward")
 local weaponInvUpdatedRE = getOrCreateRE("WeaponInventoryUpdated")
 
+local function pushWeaponInventory(player)
+    if not player then return end
+    pcall(function()
+        weaponInvUpdatedRE:FireClient(player, WeaponMasteryService:AttachMasteryToInventory(player, WeaponInstanceService:GetInventory(player)))
+    end)
+end
+
 --------------------------------------------------------------------------------
 -- DEBOUNCE  (per-player open crate cooldown)
 --------------------------------------------------------------------------------
@@ -159,8 +166,10 @@ openCrateRF.OnServerInvoke = function(player, crateId)
         if AchievementService then
             pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
         end
-        -- NOTE: Do NOT fire WeaponInventoryUpdated here.
-        -- Weapon is pending — client will see Keep/Salvage popup.
+        -- The reward weapon is granted immediately for modern crate rolls, so
+        -- push the latest snapshot now as well. Keep/Salvage still resolve the
+        -- pending decision afterward.
+        pushWeaponInventory(player)
     end
 
     return success, result
@@ -194,9 +203,7 @@ discardWeaponRF.OnServerInvoke = function(player, instanceId)
     WeaponInstanceService:SaveForPlayer(player)
     WeaponMasteryService:SaveForPlayer(player)
     -- Notify client of inventory change
-    pcall(function()
-        weaponInvUpdatedRE:FireClient(player, WeaponMasteryService:AttachMasteryToInventory(player, WeaponInstanceService:GetInventory(player)))
-    end)
+    pushWeaponInventory(player)
     return true, "Discarded"
 end
 
@@ -223,9 +230,7 @@ keepCrateRewardRF.OnServerInvoke = function(player)
         -- clears the reversible pending state. Re-save and push the current
         -- inventory so any open views resync cleanly.
         WeaponInstanceService:SaveForPlayer(player)
-        pcall(function()
-            weaponInvUpdatedRE:FireClient(player, WeaponMasteryService:AttachMasteryToInventory(player, WeaponInstanceService:GetInventory(player)))
-        end)
+        pushWeaponInventory(player)
     end
     return success, result
 end
@@ -254,9 +259,7 @@ salvageCrateRewardRF.OnServerInvoke = function(player)
             WeaponMasteryService:RemoveWeapon(player, removedInstanceId)
             WeaponInstanceService:SaveForPlayer(player)
             WeaponMasteryService:SaveForPlayer(player)
-            pcall(function()
-                weaponInvUpdatedRE:FireClient(player, WeaponMasteryService:AttachMasteryToInventory(player, WeaponInstanceService:GetInventory(player)))
-            end)
+            pushWeaponInventory(player)
         end
 
         -- Fire salvage currency update to client
@@ -295,9 +298,7 @@ local function onPlayerAdded(player)
     end
 
     -- Send initial inventory to client
-    pcall(function()
-        weaponInvUpdatedRE:FireClient(player, WeaponMasteryService:AttachMasteryToInventory(player, WeaponInstanceService:GetInventory(player)))
-    end)
+    pushWeaponInventory(player)
 end
 
 local function onPlayerRemoving(player)
