@@ -5,13 +5,13 @@ local Players = game:GetService("Players")
 
 local TARGET_KEYWORD = "ethereal" -- case-insensitive match for tool name
 
-local ENCHANT_TO_BRICKCOLOR = {
-    Lifesteal = BrickColor.new(Color3.fromRGB(255, 0, 4)),   -- red
-    Fiery     = BrickColor.new(Color3.fromRGB(255, 111, 0)), -- orange
-    Shock     = BrickColor.new(Color3.fromRGB(255, 213, 0)), -- yellow
-    Toxic     = BrickColor.new(Color3.fromRGB(98, 255, 0)),   -- green
-    Icy       = BrickColor.new(Color3.fromRGB(0, 166, 255)), -- blue
-    Void      = BrickColor.new(Color3.fromRGB(162, 0, 255)), -- purple
+local ENCHANT_TO_COLOR = {
+    Lifesteal = Color3.fromRGB(255, 0, 4),   -- red
+    Fiery     = Color3.fromRGB(255, 111, 0), -- orange
+    Shock     = Color3.fromRGB(255, 213, 0), -- yellow
+    Toxic     = Color3.fromRGB(98, 255, 0),  -- green
+    Icy       = Color3.fromRGB(0, 166, 255), -- blue
+    Void      = Color3.fromRGB(162, 0, 255), -- purple
 }
 
 local function isTargetTool(tool)
@@ -20,21 +20,39 @@ local function isTargetTool(tool)
     return string.find(n, TARGET_KEYWORD, 1, true) ~= nil
 end
 
+local originalHandleColors = setmetatable({}, { __mode = "k" })
+
+local function setHandleColor(handle, color3)
+    if not handle or not handle:IsA("BasePart") then return end
+    pcall(function()
+        -- Set Color3 directly to preserve exact color values (avoids BrickColor palette snapping)
+        handle.Color = color3
+    end)
+end
+
 local function applyHandleColorForEnchant(tool)
     if not tool then return end
     local hasEnchant = tool:GetAttribute("HasEnchant")
     local enchantName = tool:GetAttribute("EnchantName")
     if not hasEnchant or not enchantName or enchantName == "" then
+        -- restore original color if we have it saved
+        local handle = tool:FindFirstChild("Handle")
+        local orig = originalHandleColors[tool]
+        if handle and orig then
+            setHandleColor(handle, orig)
+        end
         return
     end
 
     local handle = tool:FindFirstChild("Handle")
     if handle and handle:IsA("BasePart") then
-        local bc = ENCHANT_TO_BRICKCOLOR[enchantName]
-        if bc then
-            pcall(function()
-                handle.BrickColor = bc
-            end)
+        local color3 = ENCHANT_TO_COLOR[enchantName]
+        if color3 then
+            -- save original color once
+            if not originalHandleColors[tool] then
+                originalHandleColors[tool] = handle.Color
+            end
+            setHandleColor(handle, color3)
         end
     end
 end
@@ -54,6 +72,19 @@ local function attachToTool(tool)
     tool.Equipped:Connect(function()
         onToolEquipped(tool)
     end)
+
+    -- Listen for attribute changes so color updates immediately when enchants change
+    if tool.GetAttributeChangedSignal then
+        tool:GetAttributeChangedSignal("HasEnchant"):Connect(function()
+            applyHandleColorForEnchant(tool)
+        end)
+        tool:GetAttributeChangedSignal("EnchantName"):Connect(function()
+            applyHandleColorForEnchant(tool)
+        end)
+        tool:GetAttributeChangedSignal("EnchantColorHex"):Connect(function()
+            applyHandleColorForEnchant(tool)
+        end)
+    end
 
     -- Also react if enchant attributes are already present when the tool appears in a character
     if tool.Parent and tool.Parent:IsA("Model") and tool.Parent:FindFirstChildOfClass("Humanoid") then
