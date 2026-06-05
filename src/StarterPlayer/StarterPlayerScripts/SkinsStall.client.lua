@@ -48,7 +48,7 @@ screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.DisplayOrder = 430
-screenGui.Enabled = true
+screenGui.Enabled = false
 
 local uiRoot = screenGui:FindFirstChild("SkinsStallRoot")
 if uiRoot and not uiRoot:IsA("GuiObject") then
@@ -65,6 +65,31 @@ local suppressUntilExit = false
 local wasInside = false
 local hiddenGuiStates = {}
 local legacyGuiNames = { "MainUI", "OptionsHudGui" }
+
+-- Register with authoritative MenuState so MenuLockEnforcer sees this menu.
+do
+	local ms = nil
+	pcall(function()
+		local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+		if sideUI then
+			local msMod = sideUI:FindFirstChild("MenuState")
+			if msMod and msMod:IsA("ModuleScript") then
+				local ok, result = pcall(require, msMod)
+				if ok then ms = result end
+			end
+		end
+	end)
+	if ms and ms.RegisterMenu then
+		pcall(function()
+			ms.RegisterMenu("SkinsStall", {
+				gui = screenGui,
+				isOpen = function()
+					return isOpen
+				end,
+			})
+		end)
+	end
+end
 
 local currentCharacter = nil
 local currentHumanoid = nil
@@ -108,6 +133,9 @@ end
 local function closeStall()
 	if uiRoot and uiRoot.Parent and uiRoot:IsA("GuiObject") then
 		uiRoot.Visible = false
+	end
+	if screenGui and screenGui.Parent then
+		screenGui.Enabled = false
 	end
 	if isOpen or next(hiddenGuiStates) ~= nil then
 		setLegacyHudVisible(true)
@@ -156,6 +184,36 @@ local function ensureUiBuilt()
 	return uiRoot
 end
 
+-- Register with global SideUI MenuController so MenuLockEnforcer will lock equips
+do
+	local MenuController = nil
+	pcall(function()
+		local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+		if sideUI then
+			local mc = sideUI:FindFirstChild("MenuController")
+			if mc then MenuController = require(mc) end
+		end
+	end)
+	if MenuController then
+		MenuController.RegisterMenu("SkinsStall", {
+			open = function()
+				ensureUiBuilt()
+				if screenGui and screenGui.Parent then
+					screenGui.Enabled = true
+				end
+				if uiRoot and uiRoot:IsA("GuiObject") then
+					uiRoot.Visible = true
+				end
+				-- rely on MenuState/MenuLockEnforcer to block equips and force-unequip
+				isOpen = true
+			end,
+			close = function() suppressUntilExit = true closeStall() end,
+			closeInstant = function() closeStall() end,
+			isOpen = function() return isOpen end,
+		})
+	end
+end
+
 local function openStall()
 	if isOpen or suppressUntilExit then return end
 	local root = ensureUiBuilt()
@@ -163,6 +221,7 @@ local function openStall()
 		return
 	end
 	setLegacyHudVisible(false)
+	screenGui.Enabled = true
 	root.Visible = true
 	isOpen = true
 end

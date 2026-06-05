@@ -48,6 +48,31 @@ local wasInside = false
 local hiddenGuiStates = {}
 local legacyGuiNames = { "MainUI", "OptionsHudGui" }
 
+-- Register with authoritative MenuState so MenuLockEnforcer sees this menu.
+do
+	local ms = nil
+	pcall(function()
+		local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+		if sideUI then
+			local msMod = sideUI:FindFirstChild("MenuState")
+			if msMod and msMod:IsA("ModuleScript") then
+				local ok, result = pcall(require, msMod)
+				if ok then ms = result end
+			end
+		end
+	end)
+	if ms and ms.RegisterMenu then
+		pcall(function()
+			ms.RegisterMenu("ForgeStall", {
+				gui = screenGui,
+				isOpen = function()
+					return isOpen
+				end,
+			})
+		end)
+	end
+end
+
 local currentCharacter = nil
 local currentHumanoid = nil
 local currentRootPart = nil
@@ -110,6 +135,34 @@ local function ensureUiBuilt()
 		end,
 	})
 	built = true
+end
+
+-- Register with global SideUI MenuController so MenuLockEnforcer will lock equips
+do
+	local MenuController = nil
+	pcall(function()
+		local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+		if sideUI then
+			local mc = sideUI:FindFirstChild("MenuController")
+			if mc then MenuController = require(mc) end
+		end
+	end)
+	if MenuController then
+		MenuController.RegisterMenu("ForgeStall", {
+			open = function()
+				ensureUiBuilt()
+				setLegacyHudVisible(false)
+				if screenGui and screenGui.Parent then
+					screenGui.Enabled = true
+				end
+				-- rely on MenuState/MenuLockEnforcer to block equips and force-unequip
+				isOpen = true
+			end,
+			close = function() suppressUntilExit = true closeStall() end,
+			closeInstant = function() closeStall() end,
+			isOpen = function() return isOpen end,
+		})
+	end
 end
 
 local function openStall()

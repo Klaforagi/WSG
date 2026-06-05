@@ -253,7 +253,7 @@ screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.DisplayOrder = 425
-screenGui.Enabled = true
+screenGui.Enabled = false
 
 local uiRoot = screenGui:FindFirstChild("PotionsStallRoot")
 if uiRoot and not uiRoot:IsA("GuiObject") then
@@ -272,6 +272,33 @@ local lastOpenAt = 0
 local openFunctionWarned = false
 local hiddenGuiStates = {}
 local legacyGuiNames = { "MainUI", "OptionsHudGui" }
+
+-- Register with authoritative MenuState so MenuLockEnforcer sees this menu.
+-- Use the local open flag as the source of truth; this avoids depending on
+-- GUI objects before the stall UI has been built.
+do
+	local ms = nil
+	pcall(function()
+		local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+		if sideUI then
+			local msMod = sideUI:FindFirstChild("MenuState")
+			if msMod and msMod:IsA("ModuleScript") then
+				local ok, result = pcall(require, msMod)
+				if ok then ms = result end
+			end
+		end
+	end)
+	if ms and ms.RegisterMenu then
+		pcall(function()
+			ms.RegisterMenu("PotionsStall", {
+				gui = screenGui,
+				isOpen = function()
+					return isOpen
+				end,
+			})
+		end)
+	end
+end
 
 local currentCharacter = nil
 local currentHumanoid = nil
@@ -315,6 +342,9 @@ end
 local function closeStall()
 	if uiRoot and uiRoot.Parent and uiRoot:IsA("GuiObject") then
 		uiRoot.Visible = false
+	end
+	if screenGui and screenGui.Parent then
+		screenGui.Enabled = false
 	end
 	if isOpen or next(hiddenGuiStates) ~= nil then
 		setLegacyHudVisible(true)
@@ -551,7 +581,37 @@ _G.OpenPotionsStallMenu = function()
 	closeSideUiMenus()
 	setLegacyHudVisible(false)
 	screenGui.Enabled = true
+	screenGui.Enabled = true
 	root.Visible = true
 	isOpen = true
 	return true
+end
+
+-- Register with global SideUI MenuController (so MenuLockEnforcer will lock equips)
+do
+	local MenuController = nil
+	pcall(function()
+		local sideUI = ReplicatedStorage:FindFirstChild("SideUI")
+		if sideUI then
+			local mc = sideUI:FindFirstChild("MenuController")
+			if mc then MenuController = require(mc) end
+		end
+	end)
+	if MenuController then
+		MenuController.RegisterMenu("PotionsStall", {
+			open = function()
+				ensureUiBuilt(true)
+				if screenGui and screenGui.Parent then
+					screenGui.Enabled = true
+				end
+				if uiRoot and uiRoot:IsA("GuiObject") then
+					uiRoot.Visible = true
+				end
+				isOpen = true
+			end,
+			close = function() suppressUntilExit = true closeStall() end,
+			closeInstant = function() closeStall() end,
+			isOpen = function() return isOpen end,
+		})
+	end
 end
