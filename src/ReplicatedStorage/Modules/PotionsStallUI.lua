@@ -4,6 +4,7 @@
 --------------------------------------------------------------------------------
 
 local Players = game:GetService("Players")
+local MarketplaceService = game:GetService("MarketplaceService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -247,6 +248,9 @@ local function getAsset(key)
 	return nil
 end
 
+local COIN_ICON_ASSET = getAsset("Coin") or ""
+local ROBUX_ICON_ASSET = getAsset("Robux") or ""
+
 local function getItemIconData(def)
 	if not ItemIconRegistry or type(ItemIconRegistry.Get) ~= "function" or type(def) ~= "table" then
 		return nil
@@ -286,8 +290,20 @@ local function getEntryPrice(entry)
 	return math.max(0, math.floor(tonumber(type(entry) == "table" and entry.PriceCoins or 0) or 0))
 end
 
+local function getEntryRobuxPrice(entry)
+	return math.max(0, math.floor(tonumber(type(entry) == "table" and entry.PriceRobux or 0) or 0))
+end
+
+local function getEntryRobuxProductId(entry)
+	return math.max(0, math.floor(tonumber(type(entry) == "table" and entry.RobuxProductId or 0) or 0))
+end
+
 local function isEntryPurchasable(entry)
 	return type(entry) == "table" and entry.Purchasable ~= false and getEntryPrice(entry) > 0
+end
+
+local function isEntryRobuxPurchasable(entry)
+	return type(entry) == "table" and entry.Purchasable ~= false and getEntryRobuxPrice(entry) > 0
 end
 
 local function buildPotionBottleIcon(parent, iconData, fallbackColor)
@@ -438,11 +454,9 @@ local function ensureRemotes()
 		getCoinsRF = ReplicatedStorage:WaitForChild("GetCoins", 10),
 		coinsUpdatedRE = ReplicatedStorage:WaitForChild("CoinsUpdated", 10),
 		potionGetStateRF = potionsFolder:WaitForChild("GetPotionState", 10),
-		potionSetEquippedRF = potionsFolder:WaitForChild("SetPotionEquipped", 10),
 		potionPurchaseRF = potionsFolder:WaitForChild("PurchasePotion", 10),
 		potionStateUpdatedRE = remotesFolder:WaitForChild("PotionStateUpdated", 10),
 		boostPurchaseRF = boostsFolder:FindFirstChild("PurchaseBoost") or boostsFolder:WaitForChild("RequestBuyOrUseBoost", 10),
-		boostActivateRF = boostsFolder:WaitForChild("ActivateInventoryBoost", 10),
 		boostGetStatesRF = boostsFolder:WaitForChild("GetBoostStates", 10),
 		boostStateUpdatedRE = remotesFolder:WaitForChild("BoostStateUpdated", 10),
 	}
@@ -497,6 +511,8 @@ local function buildStallEntries()
 				DurationSeconds = potionDef.DurationSeconds,
 				CooldownSeconds = potionDef.CooldownSeconds,
 				PriceCoins = potionDef.PriceCoins,
+				PriceRobux = potionDef.PriceRobux,
+				RobuxProductId = potionDef.RobuxProductId,
 				Purchasable = potionDef.Purchasable == true,
 				IconGlyph = potionDef.IconGlyph,
 				BadgeText = potionDef.BadgeText,
@@ -528,6 +544,8 @@ local function buildStallEntries()
 				Description = boostDef.Description,
 				DurationSeconds = boostDef.DurationSeconds,
 				PriceCoins = boostDef.PriceCoins,
+				PriceRobux = boostDef.PriceRobux,
+				RobuxProductId = boostDef.RobuxProductId,
 				Purchasable = boostDef.Purchasable ~= false,
 				IconGlyph = boostDef.IconGlyph,
 				BadgeText = boostDef.BadgeText,
@@ -552,125 +570,133 @@ local function buildStallEntries()
 end
 
 local function setButtonState(button, enabled, text, color)
-	button.Active = enabled == true
-	button.Selectable = enabled == true
-	button.AutoButtonColor = false
-	button.Text = text or button.Text
-	button.BackgroundColor3 = enabled and color or (color == BUTTON_SECONDARY and BUTTON_SECONDARY_DISABLED or BUTTON_PRIMARY_DISABLED)
-	button.BackgroundTransparency = enabled and 0 or 0.12
-	button.TextColor3 = enabled and WHITE or Color3.fromRGB(224, 232, 242)
-	button.TextTransparency = enabled and 0 or 0.04
-	button:SetAttribute("EnabledState", enabled == true)
-	button:SetAttribute("BaseColorR", color.R)
-	button:SetAttribute("BaseColorG", color.G)
-	button:SetAttribute("BaseColorB", color.B)
-	local stroke = button:FindFirstChildOfClass("UIStroke")
-	if stroke then
-		stroke.Transparency = enabled and 0.18 or 0.48
-	end
+		button.Active = enabled == true
+		button.Selectable = enabled == true
+		button.AutoButtonColor = false
+		button.Text = text or button.Text
+		button.BackgroundColor3 = enabled and color or (color == BUTTON_SECONDARY and BUTTON_SECONDARY_DISABLED or BUTTON_PRIMARY_DISABLED)
+		button.BackgroundTransparency = enabled and 0 or 0.12
+		button.TextColor3 = enabled and WHITE or Color3.fromRGB(224, 232, 242)
+		button.TextTransparency = enabled and 0 or 0.04
+		button:SetAttribute("EnabledState", enabled == true)
+		button:SetAttribute("BaseColorR", color.R)
+		button:SetAttribute("BaseColorG", color.G)
+		button:SetAttribute("BaseColorB", color.B)
+		local stroke = button:FindFirstChildOfClass("UIStroke")
+		if stroke then
+			stroke.Transparency = enabled and 0.18 or 0.48
+		end
 end
 
-local function bindButtonHover(button)
-	trackConn(button.MouseEnter:Connect(function()
-		if not button:GetAttribute("EnabledState") then
-			return
+	local function setPurchaseButtonState(button, enabled, color)
+		setButtonState(button, enabled, "", color)
+		button.Active = true
+		button.Selectable = true
+		button.Text = ""
+	end
+
+	local function bindButtonHover(button)
+		trackConn(button.MouseEnter:Connect(function()
+			if not button:GetAttribute("EnabledState") then
+				return
+			end
+			local baseColor = Color3.new(
+				button:GetAttribute("BaseColorR") or button.BackgroundColor3.R,
+				button:GetAttribute("BaseColorG") or button.BackgroundColor3.G,
+				button:GetAttribute("BaseColorB") or button.BackgroundColor3.B
+			)
+			TweenService:Create(button, QUICK_TWEEN, { BackgroundColor3 = brightenColor(baseColor, 0.08) }):Play()
+		end))
+		trackConn(button.MouseLeave:Connect(function()
+			local baseColor = Color3.new(
+				button:GetAttribute("BaseColorR") or button.BackgroundColor3.R,
+				button:GetAttribute("BaseColorG") or button.BackgroundColor3.G,
+				button:GetAttribute("BaseColorB") or button.BackgroundColor3.B
+			)
+			if button:GetAttribute("EnabledState") then
+				TweenService:Create(button, QUICK_TWEEN, { BackgroundColor3 = baseColor }):Play()
+			end
+		end))
+	end
+
+	local PotionsStallUI = {}
+
+	function PotionsStallUI.SetCloseCallback(root, callback)
+		if root then
+			closeCallbacks[root] = callback
 		end
-		local baseColor = Color3.new(
-			button:GetAttribute("BaseColorR") or button.BackgroundColor3.R,
-			button:GetAttribute("BaseColorG") or button.BackgroundColor3.G,
-			button:GetAttribute("BaseColorB") or button.BackgroundColor3.B
-		)
-		TweenService:Create(button, QUICK_TWEEN, { BackgroundColor3 = brightenColor(baseColor, 0.08) }):Play()
-	end))
-	trackConn(button.MouseLeave:Connect(function()
-		local baseColor = Color3.new(
-			button:GetAttribute("BaseColorR") or button.BackgroundColor3.R,
-			button:GetAttribute("BaseColorG") or button.BackgroundColor3.G,
-			button:GetAttribute("BaseColorB") or button.BackgroundColor3.B
-		)
-		if button:GetAttribute("EnabledState") then
-			TweenService:Create(button, QUICK_TWEEN, { BackgroundColor3 = baseColor }):Play()
+	end
+
+	function PotionsStallUI.Create(parent, options)
+		if not parent then
+			return nil
 		end
-	end))
-end
 
-local PotionsStallUI = {}
+		cleanupConnections()
+		clearChildren(parent)
 
-function PotionsStallUI.SetCloseCallback(root, callback)
-	if root then
-		closeCallbacks[root] = callback
-	end
-end
+		options = type(options) == "table" and options or {}
 
-function PotionsStallUI.Create(parent, options)
-	if not parent then
-		return nil
-	end
-
-	cleanupConnections()
-	clearChildren(parent)
-
-	options = type(options) == "table" and options or {}
-
-	if parent:IsA("ScreenGui") then
-		parent.ResetOnSpawn = false
-		parent.IgnoreGuiInset = true
-		parent.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	end
-
-	if not PotionConfig then
-		return createErrorLabel(parent, "Potions unavailable: PotionConfig missing.")
-	end
-	if not BoostConfig then
-		return createErrorLabel(parent, "Potions unavailable: BoostConfig missing.")
-	end
-	if not ensureRemotes() then
-		return createErrorLabel(parent, "Potions unavailable: required remotes not found.")
-	end
-
-	local entries = buildStallEntries()
-	if #entries == 0 then
-		return createErrorLabel(parent, "No potions are configured for the stall.")
-	end
-
-	local potionState = {
-		potions = {},
-		equippedPotionId = nil,
-		cooldownEndsAt = 0,
-		serverTime = 0,
-	}
-	local boostStates = {}
-	local boostTimeDelta = 0
-	local coinBalance = 0
-
-	local function ingestPotionState(state)
-		if type(state) ~= "table" then
-			return
+		if parent:IsA("ScreenGui") then
+			parent.ResetOnSpawn = false
+			parent.IgnoreGuiInset = true
+			parent.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 		end
-		potionState = {
-			potions = type(state.potions) == "table" and state.potions or {},
-			equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
-			cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
-			serverTime = tonumber(state.serverTime) or 0,
+
+		if not PotionConfig then
+			return createErrorLabel(parent, "Potions unavailable: PotionConfig missing.")
+		end
+		if not BoostConfig then
+			return createErrorLabel(parent, "Potions unavailable: BoostConfig missing.")
+		end
+		if not ensureRemotes() then
+			return createErrorLabel(parent, "Potions unavailable: required remotes not found.")
+		end
+
+		local entries = buildStallEntries()
+		if #entries == 0 then
+			return createErrorLabel(parent, "No potions are configured for the stall.")
+		end
+
+		local potionState = {
+			potions = {},
+			equippedPotionId = nil,
+			cooldownEndsAt = 0,
+			serverTime = 0,
 		}
-	end
+		local boostStates = {}
+		local boostTimeDelta = 0
+		local coinBalance = 0
+		local purchasePromptDebounce = false
 
-	local function ingestBoostStates(states)
-		if type(states) ~= "table" then
-			return
+		local function ingestPotionState(state)
+			if type(state) ~= "table" then
+				return
+			end
+			potionState = {
+				potions = type(state.potions) == "table" and state.potions or {},
+				equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
+				cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
+				serverTime = tonumber(state.serverTime) or 0,
+			}
 		end
-		boostStates = states
-		boostTimeDelta = os.time() - (tonumber(states._serverTime) or os.time())
-	end
 
-	local function refreshCoinBalance()
-		local ok, result = pcall(function()
-			return remotes.getCoinsRF:InvokeServer()
-		end)
-		if ok and type(result) == "number" then
-			coinBalance = math.max(0, math.floor(result))
+		local function ingestBoostStates(states)
+			if type(states) ~= "table" then
+				return
+			end
+			boostStates = states
+			boostTimeDelta = os.time() - (tonumber(states._serverTime) or os.time())
 		end
-	end
+
+		local function refreshCoinBalance()
+			local ok, result = pcall(function()
+				return remotes.getCoinsRF:InvokeServer()
+			end)
+			if ok and type(result) == "number" then
+				coinBalance = math.max(0, math.floor(result))
+			end
+		end
 
 	pcall(function()
 		ingestPotionState(remotes.potionGetStateRF:InvokeServer())
@@ -891,9 +917,8 @@ function PotionsStallUI.Create(parent, options)
 	local function getEntryState(entry)
 		if entry.Kind == "potion" then
 			local owned = getPotionCount(entry.Id)
-			local equipped = potionState.equippedPotionId == entry.Id and owned > 0
 			local cooldownRemaining = math.max(0, (tonumber(potionState.cooldownEndsAt) or 0) - getServerNow())
-			return owned, equipped, cooldownRemaining
+			return owned, cooldownRemaining > 0, cooldownRemaining
 		end
 
 		local state = boostStates[entry.Id] or {}
@@ -929,6 +954,69 @@ function PotionsStallUI.Create(parent, options)
 		setButtonState(button, true, label, color)
 		bindButtonHover(button)
 		return button
+	end
+
+	local function createPriceButtonContent(button)
+		local content = Instance.new("Frame")
+		content.Name = "Content"
+		content.BackgroundTransparency = 1
+		content.Size = UDim2.new(1, -px(10), 1, 0)
+		content.Position = UDim2.new(0, px(5), 0, 0)
+		content.Parent = button
+
+		local layout = Instance.new("UIListLayout")
+		layout.FillDirection = Enum.FillDirection.Horizontal
+		layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+		layout.VerticalAlignment = Enum.VerticalAlignment.Center
+		layout.Padding = UDim.new(0, px(6))
+		layout.Parent = content
+
+		local icon = Instance.new("ImageLabel")
+		icon.Name = "Icon"
+		icon.BackgroundTransparency = 1
+		icon.Size = UDim2.fromOffset(readablePx(16, 16), readablePx(16, 16))
+		icon.ScaleType = Enum.ScaleType.Fit
+		icon.Parent = content
+
+		local label = Instance.new("TextLabel")
+		label.Name = "Value"
+		label.BackgroundTransparency = 1
+		label.AutomaticSize = Enum.AutomaticSize.X
+		label.Size = UDim2.new(0, 0, 1, 0)
+		label.Font = Enum.Font.GothamBlack
+		label.Text = ""
+		label.TextColor3 = WHITE
+		label.TextSize = textPx(15, 14, 15)
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Parent = content
+		addTextLimit(label, 14, 15)
+		addTextOutline(label, 0.42, 1)
+
+		return {
+			content = content,
+			icon = icon,
+			label = label,
+		}
+	end
+
+	local function syncPriceButtonContent(parts, text, iconAsset, enabled)
+		if not parts then
+			return
+		end
+		local transparency = enabled and 0 or 0.18
+		local showIcon = type(iconAsset) == "string" and #iconAsset > 0
+		parts.content.Visible = true
+		parts.icon.Visible = showIcon
+		parts.icon.Image = iconAsset or ""
+		parts.icon.ImageTransparency = transparency
+		parts.label.Text = tostring(text or "")
+		parts.label.TextTransparency = transparency
+	end
+
+	local function createPurchaseButton(parentFrame, name, color)
+		local button = createButton(parentFrame, name, "", color)
+		button.Text = ""
+		return button, createPriceButtonContent(button)
 	end
 
 	local function createPotionSection(sectionDef, sectionIndex, itemCount)
@@ -1176,25 +1264,11 @@ function PotionsStallUI.Create(parent, options)
 		addTextLimit(detailLabel, 15, 16)
 		addTextOutline(detailLabel, 0.56, 0.9)
 
-		local priceLabel = Instance.new("TextLabel")
-		priceLabel.Name = "PriceLabel"
-		priceLabel.BackgroundTransparency = 1
-		priceLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(104, 100))
-		priceLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(24, 22))
-		priceLabel.Font = Enum.Font.GothamBlack
-		priceLabel.TextColor3 = ACCENT_GOLD
-		priceLabel.TextSize = textPx(16, 15, 16)
-		priceLabel.TextXAlignment = Enum.TextXAlignment.Left
-		priceLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		priceLabel.Parent = card
-		addTextLimit(priceLabel, 15, 16)
-		addTextOutline(priceLabel, 0.52, 0.9)
-
 		local statusLabel = Instance.new("TextLabel")
 		statusLabel.Name = "StatusLabel"
 		statusLabel.BackgroundColor3 = mixColor(baseBg, BLACK, 0.28)
-		statusLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(76, 74))
-		statusLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(30, 28))
+		statusLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(100, 96))
+		statusLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(54, 50))
 		statusLabel.Font = Enum.Font.GothamBlack
 		statusLabel.TextColor3 = WHITE
 		statusLabel.TextSize = textPx(16, 15, 16)
@@ -1221,54 +1295,34 @@ function PotionsStallUI.Create(parent, options)
 		rowLayout.Padding = UDim.new(0, px(8))
 		rowLayout.Parent = buttonRow
 
-		local purchasable = isEntryPurchasable(entry)
-		local buyWrap = nil
-		local buyButton = nil
-		if purchasable then
-			buyWrap = Instance.new("Frame")
-			buyWrap.Name = "BuyWrap"
-			buyWrap.BackgroundTransparency = 1
-			buyWrap.Size = UDim2.new(0.5, -px(4), 1, 0)
-			buyWrap.Parent = buttonRow
-			buyButton = createButton(buyWrap, "BuyButton", "BUY", BUTTON_SECONDARY)
-		end
+		local robuxWrap = Instance.new("Frame")
+		robuxWrap.Name = "RobuxWrap"
+		robuxWrap.BackgroundTransparency = 1
+		robuxWrap.Size = UDim2.new(0.5, -px(4), 1, 0)
+		robuxWrap.Parent = buttonRow
+		local robuxButton, robuxButtonContent = createPurchaseButton(robuxWrap, "RobuxButton", BUTTON_PRIMARY)
 
-		local actionWrap = Instance.new("Frame")
-		actionWrap.Name = "ActionWrap"
-		actionWrap.BackgroundTransparency = 1
-		actionWrap.Size = purchasable and UDim2.new(0.5, -px(4), 1, 0) or UDim2.new(1, 0, 1, 0)
-		actionWrap.Parent = buttonRow
-		local actionButton = createButton(actionWrap, "ActionButton", entry.Kind == "boost" and "USE" or "EQUIP", BUTTON_PRIMARY)
+		local coinWrap = Instance.new("Frame")
+		coinWrap.Name = "CoinWrap"
+		coinWrap.BackgroundTransparency = 1
+		coinWrap.Size = UDim2.new(0.5, -px(4), 1, 0)
+		coinWrap.Parent = buttonRow
+		local coinButton, coinButtonContent = createPurchaseButton(coinWrap, "CoinButton", BUTTON_SECONDARY)
 
-		if buyButton then
-			trackConn(buyButton.MouseButton1Click:Connect(function()
-				if not buyButton.Active then
-					return
-				end
-				if entry.Kind == "potion" then
-					local ok, success, message, state = pcall(function()
-						return remotes.potionPurchaseRF:InvokeServer(entry.Id)
-					end)
-					if ok and type(state) == "table" then
-						ingestPotionState(state)
-					end
-					if ok and success then
-						refreshCoinBalance()
-						updateBalanceLabel()
-						showToast((entry.DisplayName or "Potion") .. " purchased.", ACCENT_GREEN)
-					else
-						local reason = ok and message or "Purchase failed"
-						showToast(tostring(reason), RED)
-					end
-					refreshCards()
-					return
-				end
+		trackConn(coinButton.MouseButton1Click:Connect(function()
+			if not coinButton:GetAttribute("EnabledState") then
+				showToast(isEntryPurchasable(entry) and "Insufficient coins" or "Coin purchase unavailable", RED)
+				return
+			end
 
-				local ok, success, message, states = pcall(function()
-					return remotes.boostPurchaseRF:InvokeServer(entry.Id)
+			if entry.Kind == "potion" then
+				local ok, success, message, state = pcall(function()
+					return remotes.potionPurchaseRF:InvokeServer(entry.Id)
 				end)
+				if ok and type(state) == "table" then
+					ingestPotionState(state)
+				end
 				if ok and success then
-					ingestBoostStates(states)
 					refreshCoinBalance()
 					updateBalanceLabel()
 					showToast((entry.DisplayName or "Potion") .. " purchased.", ACCENT_GREEN)
@@ -1277,55 +1331,60 @@ function PotionsStallUI.Create(parent, options)
 					showToast(tostring(reason), RED)
 				end
 				refreshCards()
-			end))
-		end
-
-		trackConn(actionButton.MouseButton1Click:Connect(function()
-			if not actionButton.Active then
-				return
-			end
-			if entry.Kind == "potion" then
-				local _, equipped = getEntryState(entry)
-				local shouldEquip = not equipped
-				local ok, success, message, state = pcall(function()
-					return remotes.potionSetEquippedRF:InvokeServer(shouldEquip, entry.Id)
-				end)
-				if ok and type(state) == "table" then
-					ingestPotionState(state)
-				end
-				if ok and success then
-					showToast(shouldEquip and ((entry.DisplayName or "Potion") .. " equipped.") or "Potion unequipped.", ACCENT_BLUE)
-				else
-					showToast(tostring((ok and message) or "Equip failed"), RED)
-				end
-				refreshCards()
 				return
 			end
 
 			local ok, success, message, states = pcall(function()
-				return remotes.boostActivateRF:InvokeServer(entry.Id)
+				return remotes.boostPurchaseRF:InvokeServer(entry.Id)
 			end)
-			if ok and success then
+			if ok and type(states) == "table" then
 				ingestBoostStates(states)
-				showToast((entry.DisplayName or "Potion") .. " activated.", ACCENT_GREEN)
+			end
+			if ok and success then
+				refreshCoinBalance()
+				updateBalanceLabel()
+				showToast((entry.DisplayName or "Potion") .. " purchased.", ACCENT_GREEN)
 			else
-				if ok and type(states) == "table" then
-					ingestBoostStates(states)
-				end
-				showToast(tostring((ok and message) or "Activation failed"), RED)
+				local reason = ok and message or "Purchase failed"
+				showToast(tostring(reason), RED)
 			end
 			refreshCards()
+		end))
+
+		trackConn(robuxButton.MouseButton1Click:Connect(function()
+			local productId = getEntryRobuxProductId(entry)
+			if productId <= 0 then
+				warn("[PotionsStallUI] Missing Developer Product ID for", tostring(entry.Id))
+				showToast("Robux purchase unavailable. Product ID missing.", RED)
+				return
+			end
+			if purchasePromptDebounce then
+				return
+			end
+
+			purchasePromptDebounce = true
+			local ok, err = pcall(function()
+				MarketplaceService:PromptProductPurchase(player, productId)
+			end)
+			if not ok then
+				warn("[PotionsStallUI] PromptProductPurchase failed:", tostring(err))
+				showToast("Unable to open Robux purchase.", RED)
+			end
+			task.delay(2, function()
+				purchasePromptDebounce = false
+			end)
 		end))
 
 		cardRefs[entry.Id] = {
 			entry = entry,
 			card = card,
 			cardStroke = cardStroke,
-			priceLabel = priceLabel,
 			statusLabel = statusLabel,
 			statusStroke = statusStroke,
-			buyButton = buyButton,
-			actionButton = actionButton,
+			coinButton = coinButton,
+			coinButtonContent = coinButtonContent,
+			robuxButton = robuxButton,
+			robuxButtonContent = robuxButtonContent,
 			accent = iconColor,
 			baseBg = baseBg,
 		}
@@ -1342,55 +1401,62 @@ function PotionsStallUI.Create(parent, options)
 	refreshCards = function()
 		for _, refs in pairs(cardRefs) do
 			local entry = refs.entry
-			local owned, active, remaining = getEntryState(entry)
+			local owned, statusActive, remaining = getEntryState(entry)
 			local accent = refs.accent
-			local price = getEntryPrice(entry)
-			local canAfford = price <= 0 or coinBalance >= price
+			local coinPrice = getEntryPrice(entry)
+			local robuxPrice = getEntryRobuxPrice(entry)
+			local canAffordCoins = coinPrice <= 0 or coinBalance >= coinPrice
+			local coinEnabled = isEntryPurchasable(entry) and canAffordCoins
+			local robuxEnabled = isEntryRobuxPurchasable(entry) and getEntryRobuxProductId(entry) > 0
 
-			refs.priceLabel.Visible = refs.buyButton ~= nil
-			if refs.buyButton then
-				refs.priceLabel.Text = string.format("Cost: %s Coins", formatNumber(price))
-				setButtonState(refs.buyButton, canAfford, canAfford and "BUY" or "NEED COINS", BUTTON_SECONDARY)
-			end
+			syncPriceButtonContent(refs.coinButtonContent, formatNumber(coinPrice), COIN_ICON_ASSET, coinEnabled)
+			setPurchaseButtonState(refs.coinButton, coinEnabled, BUTTON_SECONDARY)
+
+			syncPriceButtonContent(refs.robuxButtonContent, formatNumber(robuxPrice), ROBUX_ICON_ASSET, robuxEnabled)
+			setPurchaseButtonState(refs.robuxButton, robuxEnabled, BUTTON_PRIMARY)
 
 			if entry.Kind == "boost" then
-				if active then
+				if statusActive then
 					refs.statusLabel.Text = string.format("Active: %02d:%02d", math.floor(remaining / 60), remaining % 60)
 					refs.statusLabel.TextColor3 = ACCENT_GREEN
 					refs.statusStroke.Color = ACCENT_GREEN
-					setButtonState(refs.actionButton, false, "ACTIVE", BUTTON_PRIMARY)
 				elseif owned > 0 then
 					refs.statusLabel.Text = "Owned: " .. tostring(owned)
 					refs.statusLabel.TextColor3 = WHITE
 					refs.statusStroke.Color = accent
-					setButtonState(refs.actionButton, true, "USE", BUTTON_PRIMARY)
 				else
 					refs.statusLabel.Text = "Not Owned"
 					refs.statusLabel.TextColor3 = MUTED_TEXT
 					refs.statusStroke.Color = CARD_STROKE
-					setButtonState(refs.actionButton, false, "USE", BUTTON_PRIMARY)
 				end
 			else
-				if active then
-					refs.statusLabel.Text = "Equipped to Slot 4"
-					refs.statusLabel.TextColor3 = WHITE
-					refs.statusStroke.Color = accent
-					setButtonState(refs.actionButton, true, "UNEQUIP", BUTTON_PRIMARY)
+				if remaining > 0 then
+					refs.statusLabel.Text = string.format("Cooldown: %02d:%02d", math.floor(remaining / 60), remaining % 60)
+					refs.statusLabel.TextColor3 = ACCENT_BLUE
+					refs.statusStroke.Color = ACCENT_BLUE
 				elseif owned > 0 then
 					refs.statusLabel.Text = "Owned: " .. tostring(owned)
 					refs.statusLabel.TextColor3 = WHITE
 					refs.statusStroke.Color = accent
-					setButtonState(refs.actionButton, true, "EQUIP", BUTTON_PRIMARY)
 				else
 					refs.statusLabel.Text = "Not Owned"
 					refs.statusLabel.TextColor3 = MUTED_TEXT
 					refs.statusStroke.Color = CARD_STROKE
-					setButtonState(refs.actionButton, false, "EQUIP", BUTTON_PRIMARY)
 				end
 			end
 
-			refs.cardStroke.Color = active and ACCENT_GREEN or mixColor(accent, WHITE, 0.18)
-			refs.cardStroke.Transparency = active and 0.08 or 0.22
+			local highlightColor = mixColor(accent, WHITE, 0.18)
+			local highlightActive = false
+			if entry.Kind == "boost" and statusActive then
+				highlightColor = ACCENT_GREEN
+				highlightActive = true
+			elseif entry.Kind == "potion" and remaining > 0 then
+				highlightColor = ACCENT_BLUE
+				highlightActive = true
+			end
+
+			refs.cardStroke.Color = highlightColor
+			refs.cardStroke.Transparency = highlightActive and 0.08 or 0.22
 		end
 	end
 

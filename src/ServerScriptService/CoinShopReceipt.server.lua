@@ -88,6 +88,24 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- Load shared PotionProducts config
+--------------------------------------------------------------------------------
+local PotionProducts
+do
+	local mod = ReplicatedStorage:WaitForChild("PotionProducts", 15)
+	if mod and mod:IsA("ModuleScript") then
+		local ok, result = pcall(require, mod)
+		if ok then
+			PotionProducts = result
+		else
+			warn("[CoinShopReceipt] Failed to require PotionProducts:", tostring(result))
+		end
+	else
+		warn("[CoinShopReceipt] PotionProducts module not found – potion receipt handler disabled")
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Load existing CurrencyService (server module under ServerScriptService)
 --------------------------------------------------------------------------------
 local CurrencyService
@@ -121,6 +139,30 @@ local function getAchievementService()
 end
 
 local grantSkinBindable = nil
+local HealthPotionService = nil
+local BoostService = nil
+
+local function getHealthPotionService()
+	if HealthPotionService then return HealthPotionService end
+	pcall(function()
+		local mod = SSS:FindFirstChild("HealthPotionService")
+		if mod and mod:IsA("ModuleScript") then
+			HealthPotionService = require(mod)
+		end
+	end)
+	return HealthPotionService
+end
+
+local function getBoostService()
+	if BoostService then return BoostService end
+	pcall(function()
+		local mod = SSS:FindFirstChild("BoostService")
+		if mod and mod:IsA("ModuleScript") then
+			BoostService = require(mod)
+		end
+	end)
+	return BoostService
+end
 
 local function getGrantSkinBindable()
 	if grantSkinBindable and grantSkinBindable.Parent then
@@ -188,8 +230,9 @@ local function processReceipt(receiptInfo)
 	local keysToAward  = KeyProducts and KeyProducts.KeysByProductId and KeyProducts.KeysByProductId[productId]
 	local shardsToAward = ShardProducts and ShardProducts.ShardsByProductId and ShardProducts.ShardsByProductId[productId]
 	local skinIdToGrant = SkinProducts and SkinProducts.SkinIdByProductId and SkinProducts.SkinIdByProductId[productId]
+	local potionProduct = PotionProducts and PotionProducts.ProductById and PotionProducts.ProductById[productId]
 
-	if not coinsToAward and not keysToAward and not shardsToAward and not skinIdToGrant then
+	if not coinsToAward and not keysToAward and not shardsToAward and not skinIdToGrant and not potionProduct then
 		-- Not one of our products – another ProcessReceipt handler may
 		-- handle it if you add one later. Return NotProcessedYet so Roblox
 		-- retries and the correct handler can pick it up (or it times out).
@@ -264,6 +307,49 @@ local function processReceipt(receiptInfo)
 		end
 	end
 
+	if potionProduct then
+		if potionProduct.Kind == "potion" then
+			local potionService = getHealthPotionService()
+			if not potionService or type(potionService.GrantPotion) ~= "function" then
+				warn("[CoinShopReceipt] HealthPotionService unavailable – cannot award potion")
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+
+			local grantOk, grantResult = pcall(function()
+				return potionService:GrantPotion(playerObj, potionProduct.ItemId, 1)
+			end)
+			if not grantOk or not grantResult then
+				warn("[CoinShopReceipt] GrantPotion failed for", playerObj.Name, potionProduct.ItemId, ":", tostring(grantResult))
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+
+			pcall(function()
+				potionService:SaveForPlayer(playerObj)
+			end)
+		elseif potionProduct.Kind == "boost" then
+			local boostService = getBoostService()
+			if not boostService or type(boostService.GrantFreeBoost) ~= "function" then
+				warn("[CoinShopReceipt] BoostService unavailable – cannot award boost")
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+
+			local grantOk, grantResult = pcall(function()
+				return boostService:GrantFreeBoost(playerObj, potionProduct.ItemId, 1)
+			end)
+			if not grantOk or not grantResult then
+				warn("[CoinShopReceipt] GrantFreeBoost failed for", playerObj.Name, potionProduct.ItemId, ":", tostring(grantResult))
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+
+			pcall(function()
+				boostService:SaveForPlayer(playerObj)
+			end)
+		else
+			warn("[CoinShopReceipt] Unsupported potion product kind:", tostring(potionProduct.Kind))
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
+	end
+
 	-- 5) Save immediately so the balance is persisted
 	if (coinsToAward or keysToAward or shardsToAward) and CurrencyService then
 		pcall(function()
@@ -272,11 +358,13 @@ local function processReceipt(receiptInfo)
 	end
 
 	-- 6) Mark receipt as processed
-	local awardedAmount = coinsToAward or keysToAward or shardsToAward or skinIdToGrant
+	local awardedAmount = coinsToAward or keysToAward or shardsToAward or skinIdToGrant or (potionProduct and potionProduct.ItemId)
 	local awardedType = coinsToAward and "coins"
 		or (keysToAward and "keys")
 		or (shardsToAward and "shards")
-		or "skin"
+		or (skinIdToGrant and "skin")
+		or (potionProduct and potionProduct.Kind)
+		or "unknown"
 	markReceiptProcessed(receiptId, playerId, productId, awardedAmount, awardedType)
 
 	-- 7) Track Robux spent for achievements
@@ -289,6 +377,8 @@ local function processReceipt(receiptInfo)
 		robuxPrice = ShardProducts.PriceByProductId[productId]
 	elseif skinIdToGrant and SkinProducts and SkinProducts.PriceByProductId then
 		robuxPrice = SkinProducts.PriceByProductId[productId]
+	elseif potionProduct and PotionProducts and PotionProducts.PriceByProductId then
+		robuxPrice = PotionProducts.PriceByProductId[productId]
 	end
 	if robuxPrice and robuxPrice > 0 then
 		task.spawn(function()

@@ -149,20 +149,20 @@ BoostService:Init()
 
 buyBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
-    local ok, msg = BoostService:PurchaseOwnedBoost(player, boostId)
+    local ok, msg, states = BoostService:PurchaseOwnedBoost(player, boostId)
     if ok and AchievementService then
         pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
     end
-    return ok, msg
+    return ok, msg, states
 end
 
 purchaseBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
-    local ok, msg = BoostService:PurchaseOwnedBoost(player, boostId)
+    local ok, msg, states = BoostService:PurchaseOwnedBoost(player, boostId)
     if ok and AchievementService then
         pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
     end
-    return ok, msg
+    return ok, msg, states
 end
 
 activateBoostRF.OnServerInvoke = function(player, boostId)

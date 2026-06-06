@@ -4,6 +4,10 @@
 -- To add a new boost, just append another entry to BOOSTS.
 --------------------------------------------------------------------------------
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local PotionProductIds = require(ReplicatedStorage:WaitForChild("PotionProductIds"))
+
 local BoostConfig = {}
 
 --- Boost type constants
@@ -19,7 +23,9 @@ BoostConfig.Boosts = {
         DisplayName   = "2x Coins",
         Category      = "Elixir",
         Description   = "Doubles gameplay and event coin rewards for 30 minutes.",
-        PriceCoins    = 40,
+        PriceCoins    = 150,
+        PriceRobux    = 19,
+        RobuxProductId = PotionProductIds.CoinsElixirRobuxProductId,
         DurationSeconds = 1800,  -- 30 minutes
         Type          = BoostConfig.Type.Timed,
         Stackable     = false,
@@ -31,14 +37,15 @@ BoostConfig.Boosts = {
         IconAssetId   = "",      -- placeholder; set a Roblox decal id later
         ShowInPotionsStall = true,
         SortOrder     = 1,
-        -- TODO: Add PriceRobux field when Robux purchases are implemented
     },
     {
         Id            = "xp_2x",
         DisplayName   = "2x XP",
         Category      = "Elixir",
         Description   = "Doubles all XP rewards for 30 minutes.",
-        PriceCoins    = 45,
+        PriceCoins    = 150,
+        PriceRobux    = 19,
+        RobuxProductId = PotionProductIds.XpElixirRobuxProductId,
         DurationSeconds = 1800,  -- 30 minutes
         Type          = BoostConfig.Type.Timed,
         Stackable     = false,
@@ -139,6 +146,21 @@ function BoostConfig.GetPotionsStallBoosts()
         return tostring(a.DisplayName or a.Id) < tostring(b.DisplayName or b.Id)
     end)
     return boosts
+end
+
+function BoostConfig.GetRobuxProductId(boostDefOrId)
+    local boostDef = boostDefOrId
+    if type(boostDefOrId) == "string" then
+        boostDef = BoostConfig.GetById(boostDefOrId)
+    end
+    if type(boostDef) ~= "table" then
+        return 0
+    end
+    return math.max(0, math.floor(tonumber(boostDef.RobuxProductId) or 0))
+end
+
+function BoostConfig.IsRobuxPurchasable(boostDefOrId)
+    return BoostConfig.GetRobuxProductId(boostDefOrId) > 0
 end
 
 return BoostConfig

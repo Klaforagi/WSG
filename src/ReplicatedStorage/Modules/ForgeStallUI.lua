@@ -529,8 +529,11 @@ function ForgeStallUI.Create(parent, options)
 
 	local stage = Instance.new("Frame")
 	stage.Name = "ForgeStage"
+	-- Use true centered modal anchoring to match SideUI ModalWindow (Inventory/Shop).
+	-- Anchor at the center and position at 50%/50% so the Forge window always
+	-- rests visually centered across devices and window sizes.
 	stage.AnchorPoint = Vector2.new(0.5, 0.5)
-	stage.Position = UDim2.fromScale(0.5, 0.53)
+	stage.Position = UDim2.fromScale(0.5, 0.5)
 	local isPortrait = viewportSize.X < viewportSize.Y
 	stage.Size = isPortrait and UDim2.new(0.94, 0, 0, stageHeight) or UDim2.new(0.58, 0, 0, stageHeight)
 	stage.BackgroundTransparency = 1

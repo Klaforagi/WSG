@@ -1,3 +1,7 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local PotionProductIds = require(ReplicatedStorage:WaitForChild("PotionProductIds"))
+
 local PotionConfig = {}
 
 PotionConfig.SharedHotbarSlot = 4
@@ -10,6 +14,8 @@ local orderedPotions = {
         Description = "Equip it to slot 4 to drink it for an instant heal.",
         DetailText = "Restores 40 HP instantly",
         PriceCoins = 25,
+        PriceRobux = 5,
+        RobuxProductId = PotionProductIds.HealthPotionRobuxProductId,
         Purchasable = true,
         IconKey = "HealthPotion",
         IconGlyph = "",
@@ -30,6 +36,8 @@ local orderedPotions = {
         Description = "Equip it to slot 4 to gain +6 movement speed for 5 seconds.",
         DetailText = "+6 Move Speed for 5s",
         PriceCoins = 30,
+        PriceRobux = 7,
+        RobuxProductId = PotionProductIds.SpeedPotionRobuxProductId,
         Purchasable = true,
         IconKey = "SpeedPotion",
         IconGlyph = "",
@@ -52,6 +60,8 @@ local orderedPotions = {
         Description = "Increase all damage dealt by 20% for 10 seconds.",
         DetailText = "+20% Damage for 10s",
         PriceCoins = 45,
+        PriceRobux = 9,
+        RobuxProductId = PotionProductIds.StrengthPotionRobuxProductId,
         Purchasable = true,
         IconKey = "StrengthPotion",
         IconGlyph = "",
@@ -86,6 +96,21 @@ function PotionConfig.GetOrderedPotions()
         table.insert(copy, potionDef)
     end
     return copy
+end
+
+function PotionConfig.GetRobuxProductId(potionDefOrId)
+    local potionDef = potionDefOrId
+    if type(potionDefOrId) == "string" then
+        potionDef = PotionConfig.GetById(potionDefOrId)
+    end
+    if type(potionDef) ~= "table" then
+        return 0
+    end
+    return math.max(0, math.floor(tonumber(potionDef.RobuxProductId) or 0))
+end
+
+function PotionConfig.IsRobuxPurchasable(potionDefOrId)
+    return PotionConfig.GetRobuxProductId(potionDefOrId) > 0
 end
 
 function PotionConfig.ShouldShowInPotionsStall(potionDefOrId)
