@@ -15,6 +15,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 --------------------------------------------------------------------------------
 local BoostService  = require(ServerScriptService:WaitForChild("BoostService", 10))
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
+local PotionStockService = require(ServerScriptService:WaitForChild("PotionStockService"))
 local CurrencyService
 pcall(function()
     CurrencyService = require(ServerScriptService:WaitForChild("CurrencyService", 10))
@@ -147,22 +148,33 @@ BoostService:Init()
 -- Remote handlers
 --------------------------------------------------------------------------------
 
+-- Shared gated purchase: elixirs sold in the Potion Stall are limited by
+-- per-player gold stock (server authority). Robux purchases use a separate
+-- receipt flow and never reach these remotes.
+local function purchaseBoostWithStock(player, boostId)
+    local remaining, maxStock = PotionStockService:GetRemaining(player, boostId)
+    if maxStock and maxStock > 0 and remaining <= 0 then
+        return false, "OUT_OF_STOCK", BoostService:GetPlayerBoostStates(player), PotionStockService:BuildState(player)
+    end
+
+    local ok, msg, states = BoostService:PurchaseOwnedBoost(player, boostId)
+    if ok then
+        PotionStockService:Consume(player, boostId)
+        if AchievementService then
+            pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
+        end
+    end
+    return ok, msg, states, PotionStockService:BuildState(player)
+end
+
 buyBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
-    local ok, msg, states = BoostService:PurchaseOwnedBoost(player, boostId)
-    if ok and AchievementService then
-        pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
-    end
-    return ok, msg, states
+    return purchaseBoostWithStock(player, boostId)
 end
 
 purchaseBoostRF.OnServerInvoke = function(player, boostId)
     if type(boostId) ~= "string" then return false, "Invalid" end
-    local ok, msg, states = BoostService:PurchaseOwnedBoost(player, boostId)
-    if ok and AchievementService then
-        pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
-    end
-    return ok, msg, states
+    return purchaseBoostWithStock(player, boostId)
 end
 
 activateBoostRF.OnServerInvoke = function(player, boostId)

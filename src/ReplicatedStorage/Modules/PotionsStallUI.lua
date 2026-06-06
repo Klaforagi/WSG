@@ -108,6 +108,13 @@ local function formatDuration(seconds)
 	return string.format("%d sec", seconds)
 end
 
+local function formatStockTime(seconds)
+	seconds = math.max(0, math.floor(tonumber(seconds) or 0))
+	local minutes = math.floor(seconds / 60)
+	local secs = seconds % 60
+	return string.format("%02d:%02d", minutes, secs)
+end
+
 local function safeRequire(parent, moduleName, timeout)
 	timeout = timeout or 5
 	local mod = parent:WaitForChild(moduleName, timeout)
@@ -468,6 +475,13 @@ local function ensureRemotes()
 		end
 	end
 
+	-- Optional stock remotes. Missing ones degrade gracefully (timer/labels
+	-- simply stay hidden) rather than breaking the whole stall.
+	remotes.potionStockStateRF = potionsFolder:FindFirstChild("GetPotionStockState")
+		or potionsFolder:WaitForChild("GetPotionStockState", 10)
+	remotes.potionStockRefreshedRE = potionsFolder:FindFirstChild("PotionStockRefreshed")
+		or potionsFolder:WaitForChild("PotionStockRefreshed", 10)
+
 	return true
 end
 
@@ -669,6 +683,157 @@ end
 		local coinBalance = 0
 		local purchasePromptDebounce = false
 
+		-- Server-authoritative gold stock state (per-player). The server sends
+		-- secondsRemaining once; this UI owns the visible one-second countdown.
+		local stockState = {
+			items = {},
+			cycle = 0,
+			secondsRemaining = 0,
+			valid = false,
+		}
+		local lastStockResync = 0
+		local stockResyncPending = false
+		local stockRequestInFlight = false
+		local stockCountdownToken = 0
+		local stockSecondsRemaining = 0
+		local stockTimerLabel = nil
+		local refreshCards
+		local updateStockTimer = function() end
+		local requestStockState
+
+		local function setStockTimerText(seconds)
+			if not stockTimerLabel then
+				return
+			end
+			if seconds == nil then
+				stockTimerLabel.Text = "Gold Stock Refreshes In: --:--"
+			elseif seconds <= 0 then
+				stockTimerLabel.Text = "Gold Stock Refreshing..."
+			else
+				stockTimerLabel.Text = "Gold Stock Refreshes In: " .. formatStockTime(seconds)
+			end
+		end
+
+		local function startStockCountdown(seconds)
+			stockCountdownToken += 1
+			local token = stockCountdownToken
+
+			stockSecondsRemaining = math.max(0, math.floor(tonumber(seconds) or 0))
+			setStockTimerText(stockSecondsRemaining)
+
+			task.spawn(function()
+				while token == stockCountdownToken and stockSecondsRemaining > 0 do
+					task.wait(1)
+					if token ~= stockCountdownToken then
+						return
+					end
+					stockSecondsRemaining -= 1
+					setStockTimerText(stockSecondsRemaining)
+				end
+
+				if token == stockCountdownToken and stockSecondsRemaining <= 0 then
+					setStockTimerText(0)
+					task.wait(0.5)
+					if token == stockCountdownToken and requestStockState then
+						requestStockState()
+					end
+				end
+			end)
+		end
+
+		local function ingestStockState(state)
+			if type(state) ~= "table" then
+				warn("[PotionStockUI] Stock state response was not a table")
+				return
+			end
+			if type(state.items) ~= "table" then
+				warn("[PotionStockUI] Stock state items missing")
+			end
+			local items = type(state.items) == "table" and state.items or {}
+			stockState = {
+				items = items,
+				cycle = tonumber(state.cycle) or 0,
+				secondsRemaining = math.max(0, tonumber(state.secondsRemaining) or 0),
+				valid = true,
+			}
+			if next(items) == nil then
+				warn("[PotionStockUI] Stock state loaded but item table is empty -- server may not be configured with StockPerRefresh")
+			end
+			for itemId, itemStockInfo in pairs(items) do
+				if type(itemStockInfo) ~= "table" or itemStockInfo.max == nil then
+					warn("[PotionStockUI] Stock info missing max for:", tostring(itemId))
+				end
+			end
+			startStockCountdown(stockState.secondsRemaining)
+		end
+
+		local function getStockInfo(itemId)
+			local entry = stockState.items and stockState.items[itemId]
+			if type(entry) ~= "table" then
+				return nil
+			end
+			local used = math.max(0, math.floor(tonumber(entry.used) or 0))
+			local maxStock = math.max(0, math.floor(tonumber(entry.max) or 0))
+			local remaining = math.max(0, math.floor(tonumber(entry.remaining) or math.max(0, maxStock - used)))
+			local soldOut = entry.soldOut == true or (maxStock > 0 and used >= maxStock)
+			return {
+				used = used,
+				max = maxStock,
+				remaining = remaining,
+				soldOut = soldOut,
+			}
+		end
+
+		requestStockState = function()
+			if stockRequestInFlight then
+				return
+			end
+			if not remotes.potionStockStateRF then
+				warn("[PotionStockUI] Failed to load potion stock state (remote missing)")
+				setStockTimerText(nil)
+				return
+			end
+			stockRequestInFlight = true
+			task.spawn(function()
+				local ok, result = pcall(function()
+					return remotes.potionStockStateRF:InvokeServer()
+				end)
+				stockRequestInFlight = false
+				if ok and type(result) == "table" then
+					ingestStockState(result)
+					pcall(function()
+						if refreshCards then
+							refreshCards()
+						end
+					end)
+				else
+					warn("[PotionStockUI] Failed to load potion stock state")
+					setStockTimerText(nil)
+				end
+				lastStockResync = os.clock()
+			end)
+		end
+
+		local function scheduleStockResync(delaySeconds)
+			if stockResyncPending then
+				return
+			end
+			stockResyncPending = true
+			task.spawn(function()
+				if delaySeconds and delaySeconds > 0 then
+					task.wait(delaySeconds)
+				end
+				requestStockState()
+				stockResyncPending = false
+				pcall(function()
+					if refreshCards then
+						refreshCards()
+					end
+				end)
+				updateStockTimer()
+			end)
+		end
+
 		local function ingestPotionState(state)
 			if type(state) ~= "table" then
 				return
@@ -703,6 +868,17 @@ end
 	end)
 	pcall(function()
 		ingestBoostStates(remotes.boostGetStatesRF:InvokeServer())
+	end)
+	pcall(function()
+		requestStockState()
+	end)
+	-- Defensive late retry: if the GetPotionStockState remote hadn't replicated
+	-- yet on first open (or returned an empty payload), try again shortly after.
+	task.spawn(function()
+		task.wait(1.5)
+		if not stockState.valid or next(stockState.items) == nil then
+			scheduleStockResync(0)
+		end
 	end)
 	refreshCoinBalance()
 
@@ -825,12 +1001,52 @@ end
 	toastHolder.ZIndex = 30
 	toastHolder.Parent = panel
 
+	-- Gold stock refresh timer (server-synced). Small gold pill under the
+	-- header, pinned above the scroll area so it is always visible. The pill
+	-- auto-sizes to its label so the time and placeholder text always fit.
+	local stockTimerPill = Instance.new("Frame")
+	stockTimerPill.Name = "GoldStockTimerPill"
+	stockTimerPill.AnchorPoint = Vector2.new(0.5, 0)
+	stockTimerPill.Position = UDim2.new(0.5, 0, 0, px(78))
+	stockTimerPill.AutomaticSize = Enum.AutomaticSize.X
+	stockTimerPill.Size = UDim2.new(0, 0, 0, px(28))
+	stockTimerPill.BackgroundColor3 = CONTENT_BG
+	stockTimerPill.BorderSizePixel = 0
+	stockTimerPill.ZIndex = 5
+	stockTimerPill.Parent = panel
+	applyCorners(stockTimerPill, px(14))
+	applyStroke(stockTimerPill, ACCENT_GOLD, 1.2, 0.3)
+
+	local stockTimerPadding = Instance.new("UIPadding")
+	stockTimerPadding.PaddingLeft = UDim.new(0, px(14))
+	stockTimerPadding.PaddingRight = UDim.new(0, px(14))
+	stockTimerPadding.Parent = stockTimerPill
+
+	stockTimerLabel = Instance.new("TextLabel")
+	stockTimerLabel.Name = "GoldStockTimerLabel"
+	stockTimerLabel.BackgroundTransparency = 1
+	stockTimerLabel.AutomaticSize = Enum.AutomaticSize.X
+	stockTimerLabel.Size = UDim2.new(0, 0, 1, 0)
+	stockTimerLabel.Font = Enum.Font.GothamBold
+	stockTimerLabel.Text = "Gold Stock Refreshes In: --:--"
+	stockTimerLabel.TextColor3 = ACCENT_GOLD
+	stockTimerLabel.TextSize = textPx(14, 13, 15)
+	stockTimerLabel.TextXAlignment = Enum.TextXAlignment.Center
+	stockTimerLabel.ZIndex = 6
+	stockTimerLabel.Parent = stockTimerPill
+	addTextOutline(stockTimerLabel, 0.5, 0.8)
+
+	updateStockTimer = function()
+		setStockTimerText(stockState.valid and stockSecondsRemaining or nil)
+	end
+	updateStockTimer()
+
 	local gridWrap = Instance.new("Frame")
 	gridWrap.Name = "GridWrap"
 	gridWrap.BackgroundColor3 = CONTENT_BG
 	gridWrap.BorderSizePixel = 0
-	gridWrap.Position = UDim2.new(0, px(20), 0, px(86))
-	gridWrap.Size = UDim2.new(1, -px(40), 1, -px(106))
+	gridWrap.Position = UDim2.new(0, px(20), 0, px(114))
+	gridWrap.Size = UDim2.new(1, -px(40), 1, -px(134))
 	gridWrap.Parent = panel
 	gridWrap.ZIndex = 2
 	applyCorners(gridWrap, px(24))
@@ -932,8 +1148,6 @@ end
 	local function updateBalanceLabel()
 		balanceLabel.Text = formatNumber(coinBalance)
 	end
-
-	local refreshCards
 
 	local function createButton(parentFrame, name, label, color)
 		local button = Instance.new("TextButton")
@@ -1267,8 +1481,8 @@ end
 		local statusLabel = Instance.new("TextLabel")
 		statusLabel.Name = "StatusLabel"
 		statusLabel.BackgroundColor3 = mixColor(baseBg, BLACK, 0.28)
-		statusLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(100, 96))
-		statusLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(54, 50))
+		statusLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(104, 100))
+		statusLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(40, 38))
 		statusLabel.Font = Enum.Font.GothamBlack
 		statusLabel.TextColor3 = WHITE
 		statusLabel.TextSize = textPx(16, 15, 16)
@@ -1280,6 +1494,24 @@ end
 		local statusStroke = applyStroke(statusLabel, iconColor, 1, 0.42)
 		addTextLimit(statusLabel, 15, 16)
 		addTextOutline(statusLabel, 0.4, 1)
+
+		-- Per-player gold stock indicator (coin/gold purchases only).
+		local stockLabel = Instance.new("TextLabel")
+		stockLabel.Name = "StockLabel"
+		stockLabel.BackgroundTransparency = 1
+		stockLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(60, 60))
+		stockLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(18, 18))
+		stockLabel.Font = Enum.Font.GothamBold
+		stockLabel.Text = "Gold Stock: --/--"
+		stockLabel.TextColor3 = ACCENT_GOLD
+		stockLabel.TextSize = textPx(13, 12, 14)
+		stockLabel.TextXAlignment = Enum.TextXAlignment.Center
+		stockLabel.TextYAlignment = Enum.TextYAlignment.Center
+		stockLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		stockLabel.Visible = true
+		stockLabel.Parent = card
+		addTextLimit(stockLabel, 12, 14)
+		addTextOutline(stockLabel, 0.5, 0.8)
 
 		local buttonRow = Instance.new("Frame")
 		buttonRow.Name = "ButtonRow"
@@ -1309,46 +1541,87 @@ end
 		coinWrap.Parent = buttonRow
 		local coinButton, coinButtonContent = createPurchaseButton(coinWrap, "CoinButton", BUTTON_SECONDARY)
 
+		local coinPurchasePending = false
+
+		local function mapPurchaseFailure(reason)
+			if reason == "OUT_OF_STOCK" then
+				return "Gold stock is sold out until the next refresh."
+			elseif reason == "NOT_ENOUGH_COINS" then
+				return "Not enough gold."
+			elseif reason == "INVALID_ITEM" then
+				return "Purchase unavailable."
+			elseif reason == "PURCHASE_FAILED" then
+				return "Purchase failed."
+			end
+			return tostring(reason or "Purchase failed")
+		end
+
 		trackConn(coinButton.MouseButton1Click:Connect(function()
 			if not coinButton:GetAttribute("EnabledState") then
-				showToast(isEntryPurchasable(entry) and "Insufficient coins" or "Coin purchase unavailable", RED)
+				local stockInfo = getStockInfo(entry.Id)
+				if stockInfo and stockInfo.max > 0 and stockInfo.soldOut then
+					showToast("Gold stock is sold out until the next refresh.", RED)
+				elseif isEntryPurchasable(entry) then
+					showToast("Not enough gold.", RED)
+				else
+					showToast("Coin purchase unavailable", RED)
+				end
 				return
 			end
 
+			-- Debounce while a purchase request is in flight (the server is the
+			-- authority and also prevents over-purchase beyond stock).
+			if coinPurchasePending then
+				return
+			end
+			coinPurchasePending = true
+
 			if entry.Kind == "potion" then
-				local ok, success, message, state = pcall(function()
+				local ok, success, message, state, updatedStockState = pcall(function()
 					return remotes.potionPurchaseRF:InvokeServer(entry.Id)
 				end)
 				if ok and type(state) == "table" then
 					ingestPotionState(state)
+				end
+				if ok and type(updatedStockState) == "table" then
+					ingestStockState(updatedStockState)
+				else
+					requestStockState()
 				end
 				if ok and success then
 					refreshCoinBalance()
 					updateBalanceLabel()
 					showToast((entry.DisplayName or "Potion") .. " purchased.", ACCENT_GREEN)
 				else
-					local reason = ok and message or "Purchase failed"
-					showToast(tostring(reason), RED)
+					showToast(mapPurchaseFailure(ok and message or "Purchase failed"), RED)
 				end
+				coinPurchasePending = false
 				refreshCards()
+				updateStockTimer()
 				return
 			end
 
-			local ok, success, message, states = pcall(function()
+			local ok, success, message, states, updatedStockState = pcall(function()
 				return remotes.boostPurchaseRF:InvokeServer(entry.Id)
 			end)
 			if ok and type(states) == "table" then
 				ingestBoostStates(states)
+			end
+			if ok and type(updatedStockState) == "table" then
+				ingestStockState(updatedStockState)
+			else
+				requestStockState()
 			end
 			if ok and success then
 				refreshCoinBalance()
 				updateBalanceLabel()
 				showToast((entry.DisplayName or "Potion") .. " purchased.", ACCENT_GREEN)
 			else
-				local reason = ok and message or "Purchase failed"
-				showToast(tostring(reason), RED)
+				showToast(mapPurchaseFailure(ok and message or "Purchase failed"), RED)
 			end
+			coinPurchasePending = false
 			refreshCards()
+			updateStockTimer()
 		end))
 
 		trackConn(robuxButton.MouseButton1Click:Connect(function()
@@ -1381,6 +1654,7 @@ end
 			cardStroke = cardStroke,
 			statusLabel = statusLabel,
 			statusStroke = statusStroke,
+			stockLabel = stockLabel,
 			coinButton = coinButton,
 			coinButtonContent = coinButtonContent,
 			robuxButton = robuxButton,
@@ -1406,14 +1680,44 @@ end
 			local coinPrice = getEntryPrice(entry)
 			local robuxPrice = getEntryRobuxPrice(entry)
 			local canAffordCoins = coinPrice <= 0 or coinBalance >= coinPrice
-			local coinEnabled = isEntryPurchasable(entry) and canAffordCoins
+
+			-- Gold/coin purchases are limited by per-player stock; Robux is not.
+			local stockInfo = getStockInfo(entry.Id)
+			local stockTracked = stockInfo ~= nil and stockInfo.max > 0
+			local inStock = (not stockTracked) or not stockInfo.soldOut
+
+			local coinEnabled = isEntryPurchasable(entry) and canAffordCoins and inStock
 			local robuxEnabled = isEntryRobuxPurchasable(entry) and getEntryRobuxProductId(entry) > 0
 
 			syncPriceButtonContent(refs.coinButtonContent, formatNumber(coinPrice), COIN_ICON_ASSET, coinEnabled)
 			setPurchaseButtonState(refs.coinButton, coinEnabled, BUTTON_SECONDARY)
+			refs.coinButton:SetAttribute("SoldOut", stockTracked and stockInfo.soldOut == true)
+			if stockTracked and stockInfo.soldOut then
+				refs.coinButton.Active = false
+				refs.coinButton.Selectable = false
+			end
 
 			syncPriceButtonContent(refs.robuxButtonContent, formatNumber(robuxPrice), ROBUX_ICON_ASSET, robuxEnabled)
 			setPurchaseButtonState(refs.robuxButton, robuxEnabled, BUTTON_PRIMARY)
+
+			if refs.stockLabel then
+				if stockTracked then
+					refs.stockLabel.Visible = true
+					refs.stockLabel.Text = string.format("Gold Stock: %d/%d", stockInfo.used, stockInfo.max)
+					refs.stockLabel.TextColor3 = stockInfo.soldOut and RED or ACCENT_GOLD
+				elseif getEntryPrice(entry) > 0 and isEntryPurchasable(entry) then
+					if stockState.valid then
+						warn("[PotionStockUI] Card item missing from stock state:", tostring(entry.Id))
+					end
+					-- Stock state not yet loaded: keep the label visible with a
+					-- neutral placeholder rather than hiding it.
+					refs.stockLabel.Visible = true
+					refs.stockLabel.Text = "Gold Stock: --/--"
+					refs.stockLabel.TextColor3 = MUTED_TEXT
+				else
+					refs.stockLabel.Visible = false
+				end
+			end
 
 			if entry.Kind == "boost" then
 				if statusActive then
@@ -1488,6 +1792,7 @@ end
 	task.defer(updateGridLayout)
 
 	trackConn(closeButton.MouseButton1Click:Connect(function()
+		stockCountdownToken += 1
 		local callback = closeCallbacks[root]
 		if type(callback) == "function" then
 			callback()
@@ -1516,6 +1821,17 @@ end
 		refreshCards()
 	end))
 
+	if remotes.potionStockRefreshedRE then
+		trackConn(remotes.potionStockRefreshedRE.OnClientEvent:Connect(function(optionalStockState)
+			if type(optionalStockState) == "table" and type(optionalStockState.items) == "table" then
+				ingestStockState(optionalStockState)
+				refreshCards()
+			else
+				requestStockState()
+			end
+		end))
+	end
+
 	local lastTick = 0
 	trackConn(RunService.Heartbeat:Connect(function()
 		local now = os.time()
@@ -1528,6 +1844,7 @@ end
 
 	trackConn(root.AncestryChanged:Connect(function(_, newParent)
 		if not newParent then
+			stockCountdownToken += 1
 			cleanupConnections()
 		end
 	end))

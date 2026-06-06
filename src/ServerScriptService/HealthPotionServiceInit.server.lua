@@ -4,6 +4,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local HealthPotionService = require(ServerScriptService:WaitForChild("HealthPotionService"))
+local PotionStockService = require(ServerScriptService:WaitForChild("PotionStockService"))
 
 local HEALTH_POTION_ID = "health_potion"
 
@@ -207,9 +208,22 @@ end
 
 purchasePotionRF.OnServerInvoke = function(player, potionId)
     if type(potionId) ~= "string" then
-        return false, "Invalid", HealthPotionService:GetState(player)
+        return false, "Invalid", HealthPotionService:GetState(player), PotionStockService:BuildState(player)
     end
-    return HealthPotionService:PurchasePotion(player, potionId)
+
+    -- Gold/coin purchases are gated by per-player stock (server authority).
+    -- Robux purchases never reach this remote, so they are unaffected.
+    local remaining, maxStock = PotionStockService:GetRemaining(player, potionId)
+    if maxStock and maxStock > 0 and remaining <= 0 then
+        return false, "OUT_OF_STOCK", HealthPotionService:GetState(player), PotionStockService:BuildState(player)
+    end
+
+    local success, message, state = HealthPotionService:PurchasePotion(player, potionId)
+    if success then
+        -- Only consume stock after coins were deducted and the item granted.
+        PotionStockService:Consume(player, potionId)
+    end
+    return success, message, state, PotionStockService:BuildState(player)
 end
 
 registerSection()
