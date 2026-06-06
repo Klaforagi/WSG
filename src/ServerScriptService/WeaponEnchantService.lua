@@ -37,6 +37,9 @@ local WeaponEnchantService = {}
 
 -- Prefix applied to all cloned enchant effect instances for safe cleanup
 local ENCHANT_EFFECT_PREFIX = "ActiveEnchantEffect_"
+local ORIGINAL_HANDLE_COLOR_ATTRIBUTE = "_OriginalHandleColor"
+local ORIGINAL_HANDLE_VERTEX_COLOR_ATTRIBUTE = "_OriginalHandleVertexColor"
+local ORIGINAL_DECAL_COLOR_ATTRIBUTE = "_OriginalDecalColor"
 
 -- Legacy names from old code-generated particle system (cleaned up if found)
 local LEGACY_NAMES = {
@@ -68,6 +71,104 @@ local function getAssetNames(enchantName)
     return { enchantName }
 end
 
+local function cacheOriginalHandleColor(handle)
+    if not handle or not handle:IsA("BasePart") then return end
+    if typeof(handle:GetAttribute(ORIGINAL_HANDLE_COLOR_ATTRIBUTE)) == "Color3" then
+        return
+    end
+
+    handle:SetAttribute(ORIGINAL_HANDLE_COLOR_ATTRIBUTE, handle.Color)
+end
+
+local function cacheOriginalHandleVertexColor(handle)
+    if not handle or not handle:IsA("MeshPart") then return end
+    if typeof(handle:GetAttribute(ORIGINAL_HANDLE_VERTEX_COLOR_ATTRIBUTE)) == "Vector3" then
+        return
+    end
+
+    handle:SetAttribute(ORIGINAL_HANDLE_VERTEX_COLOR_ATTRIBUTE, handle.VertexColor)
+end
+
+local function cacheOriginalDecalColor(decal)
+    if not decal or not (decal:IsA("Decal") or decal:IsA("Texture")) then return end
+    if typeof(decal:GetAttribute(ORIGINAL_DECAL_COLOR_ATTRIBUTE)) == "Color3" then
+        return
+    end
+
+    decal:SetAttribute(ORIGINAL_DECAL_COLOR_ATTRIBUTE, decal.Color3)
+end
+
+local function restoreHandleColor(handle)
+    if not handle or not handle:IsA("BasePart") then return end
+
+    cacheOriginalHandleColor(handle)
+
+    local originalColor = handle:GetAttribute(ORIGINAL_HANDLE_COLOR_ATTRIBUTE)
+    if typeof(originalColor) == "Color3" then
+        pcall(function()
+            handle.Color = originalColor
+        end)
+    end
+
+    if handle:IsA("MeshPart") then
+        cacheOriginalHandleVertexColor(handle)
+
+        local originalVertexColor = handle:GetAttribute(ORIGINAL_HANDLE_VERTEX_COLOR_ATTRIBUTE)
+        if typeof(originalVertexColor) == "Vector3" then
+            pcall(function()
+                handle.VertexColor = originalVertexColor
+            end)
+        end
+    end
+
+    for _, desc in ipairs(handle:GetDescendants()) do
+        if desc:IsA("SpecialMesh") then
+            pcall(function()
+                desc.VertexColor = Vector3.new(1, 1, 1)
+            end)
+        elseif desc:IsA("Decal") or desc:IsA("Texture") then
+            cacheOriginalDecalColor(desc)
+            local originalDecalColor = desc:GetAttribute(ORIGINAL_DECAL_COLOR_ATTRIBUTE)
+            if typeof(originalDecalColor) == "Color3" then
+                pcall(function()
+                    desc.Color3 = originalDecalColor
+                end)
+            end
+        end
+    end
+end
+
+local function applyHandleColor(handle, tintColor)
+    if not handle or not handle:IsA("BasePart") then return end
+    if typeof(tintColor) ~= "Color3" then return end
+
+    cacheOriginalHandleColor(handle)
+
+    pcall(function()
+        handle.Color = tintColor
+    end)
+
+    if handle:IsA("MeshPart") then
+        cacheOriginalHandleVertexColor(handle)
+        pcall(function()
+            handle.VertexColor = Vector3.new(tintColor.R, tintColor.G, tintColor.B)
+        end)
+    end
+
+    for _, desc in ipairs(handle:GetDescendants()) do
+        if desc:IsA("SpecialMesh") then
+            pcall(function()
+                desc.VertexColor = Vector3.new(tintColor.R, tintColor.G, tintColor.B)
+            end)
+        elseif desc:IsA("Decal") or desc:IsA("Texture") then
+            cacheOriginalDecalColor(desc)
+            pcall(function()
+                desc.Color3 = tintColor
+            end)
+        end
+    end
+end
+
 --------------------------------------------------------------------------------
 -- CLEAR ENCHANT VISUALS
 -- Removes all enchant-owned cloned visuals from Handle.EnchantBlock.
@@ -79,6 +180,7 @@ function WeaponEnchantService.ClearEnchantVisuals(tool)
     if not tool then return end
 
     local handle = tool:FindFirstChild("Handle")
+    restoreHandleColor(handle)
 
     -- Clean up active enchant effect clones from EnchantBlock
     if handle then
@@ -143,6 +245,10 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
     if not handle then
         warn("[WeaponEnchantService] Handle not found on tool '" .. tool.Name .. "', skipping visuals")
         return
+    end
+
+    if handle:IsA("BasePart") then
+        applyHandleColor(handle, enchantData.color)
     end
 
     local enchantBlock = handle:FindFirstChild("EnchantBlock")

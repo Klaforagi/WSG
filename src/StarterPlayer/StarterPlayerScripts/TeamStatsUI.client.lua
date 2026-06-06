@@ -140,7 +140,8 @@ local panel = Instance.new("Frame")
 panel.Name                 = "TeamStatsPanel"
 panel.AnchorPoint          = Vector2.new(0.5, 0.5)
 panel.Position             = UDim2.new(0.5, 0, 0.5, 0)
-panel.Size                 = UDim2.new(0.72, 0, 0.82, 0)
+-- Reduce width to match other modals (approx 25% narrower)
+panel.Size                 = UDim2.new(0.54, 0, 0.82, 0)
 panel.BackgroundColor3     = NAVY
 panel.BackgroundTransparency = 0.04
 panel.Visible              = false

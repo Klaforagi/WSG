@@ -51,6 +51,9 @@ local function px(base)
     return UIResponsiveScaler.Px(base, INVENTORY_SCALE_OPTS)
 end
 
+-- single temp used to avoid creating many local variables (keeps parser local count low)
+local __constraint
+
 local function attachResponsiveRootScale(root)
     if not root then return end
     -- Keep legacy name "ResponsiveScale" since other code paths in this file
@@ -60,12 +63,21 @@ local function attachResponsiveRootScale(root)
     local existing = root:FindFirstChild("ResponsiveScale")
     if existing and existing:IsA("UIScale") then return end
 
-    root:SetAttribute("InventoryInitialResponsiveScale", getResponsiveViewportScale())
-
     local rootScale = Instance.new("UIScale")
     rootScale.Name = "ResponsiveScale"
     rootScale.Scale = 1
     rootScale.Parent = root
+end
+
+local function ensureInventoryUIScale(root)
+    if not root then return end
+    local inv = root:FindFirstChild("InventoryUIScale")
+    if inv and inv:IsA("UIScale") then return inv end
+    inv = Instance.new("UIScale")
+    inv.Name = "InventoryUIScale"
+    inv.Scale = 1
+    inv.Parent = root
+    return inv
 end
 
 local function updateResponsiveRootScale(root)
@@ -74,8 +86,10 @@ local function updateResponsiveRootScale(root)
     local rootScale = root:FindFirstChild("ResponsiveScale")
     if not (rootScale and rootScale:IsA("UIScale")) then return end
 
-    local initialResponsiveScale = tonumber(root:GetAttribute("InventoryInitialResponsiveScale")) or getResponsiveViewportScale()
-    rootScale.Scale = getResponsiveViewportScale() / math.max(0.001, initialResponsiveScale)
+    -- The modal window already owns viewport-responsiveness. Keep the
+    -- inventory root at a neutral scale so the internal fixed-width layout
+    -- does not balloon on taller/fullscreen aspect ratios.
+    rootScale.Scale = 1
 end
 
 local function bindViewportResize(trackConn, callback)
@@ -325,7 +339,7 @@ end
 local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
     { id = "ranged",  icon = "\u{1F3F9}", label = "Ranged",  order = 2 },
-    { id = "boosts",  icon = "\u{26A1}",  label = "Potions", order = 3 },
+    { id = "boosts",  icon = "\u{1F9EA}",  label = "Potions", order = 3 },
     { id = "skins",   icon = "\u{2726}",  label = "Skins",   order = 4 },
     { id = "effects", icon = "\u{2738}",  label = "Effects", order = 5 },
     { id = "emotes",  icon = "\u{263A}",  label = "Emotes",  order = 6 },
@@ -1333,6 +1347,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     sidebar.Name = "TabSidebar"
     sidebar.Parent = root
     LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
+    -- Hide the sidebar background and rail stroke so tabs appear flush with the modal
+    sidebar.BackgroundTransparency = 1
+    if sidebar:FindFirstChildOfClass("UIStroke") then sidebar:FindFirstChildOfClass("UIStroke").Transparency = 1 end
 
     local tabButtons = {}
     local currentTab = "melee"
@@ -1341,7 +1358,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local btn = Instance.new("TextButton")
         btn.Name = def.label .. "Tab"
         btn.AutoButtonColor = false
-        btn.BackgroundColor3 = SIDEBAR_BG
+        -- Make individual tab backgrounds transparent to remove the rail visual
+        btn.BackgroundTransparency = 1
         btn.BorderSizePixel = 0
         btn.Size = UDim2.new(1, -px(2), 0, px(62))
         btn.LayoutOrder = def.order
@@ -1357,13 +1375,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         bar.BackgroundTransparency = 1
         Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5, 0)
 
-        if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" then
+            if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" then
             local iconLbl = Instance.new("TextLabel", btn)
             iconLbl.Name = "Icon"
             iconLbl.BackgroundTransparency = 1
             iconLbl.Font = Enum.Font.GothamBold
             iconLbl.Text = def.icon
-            iconLbl.TextColor3 = DIM_TEXT
+                if def.id == "boosts" then
+                    iconLbl.TextColor3 = Color3.fromRGB(235, 77, 77)
+                else
+                    iconLbl.TextColor3 = DIM_TEXT
+                end
             iconLbl.TextSize = math.max(16, math.floor(px(18)))
             iconLbl.Size = UDim2.new(1, 0, 0, px(24))
             iconLbl.Position = UDim2.new(0, 0, 0, px(8))
@@ -1384,8 +1406,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         textLbl.Position = UDim2.new(0, px(3), 0, px(34))
         textLbl.TextXAlignment = Enum.TextXAlignment.Center
 
-        local btnStroke = Instance.new("UIStroke", btn)
-        btnStroke.Color = CARD_STROKE; btnStroke.Thickness = 1.2; btnStroke.Transparency = 0.6
+        Instance.new("UIStroke", btn)
+        if btn:FindFirstChildOfClass("UIStroke") then btn:FindFirstChildOfClass("UIStroke").Color = CARD_STROKE; btn:FindFirstChildOfClass("UIStroke").Thickness = 1.2; btn:FindFirstChildOfClass("UIStroke").Transparency = 1 end
 
         return btn
     end
@@ -1540,15 +1562,24 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailContent.Size = UDim2.new(1, 0, 1, 0)
     detailContent.Visible = false
 
+    -- Use relative padding so layout scales with the panel size
     local dPad = Instance.new("UIPadding", detailContent)
-    dPad.PaddingTop  = UDim.new(0, px(12)); dPad.PaddingBottom = UDim.new(0, px(12))
-    dPad.PaddingLeft = UDim.new(0, px(12)); dPad.PaddingRight  = UDim.new(0, px(12))
+    dPad.PaddingTop  = UDim.new(0.02, 0); dPad.PaddingBottom = UDim.new(0.02, 0)
+    dPad.PaddingLeft = UDim.new(0.02, 0); dPad.PaddingRight  = UDim.new(0.02, 0)
+
+    -- Vertical layout distributes elements evenly and centers them horizontally
+    __constraint = Instance.new("UIListLayout")
+    __constraint.FillDirection = Enum.FillDirection.Vertical
+    __constraint.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    __constraint.SortOrder = Enum.SortOrder.LayoutOrder
+    __constraint.Padding = UDim.new(0.006, 0)
+    __constraint.Parent = detailContent
 
     -- Large image with rarity-coloured background + subtle gradient
     local detailImageBg = Instance.new("Frame", detailContent)
     detailImageBg.Name = "ImageBg"
     detailImageBg.BackgroundColor3 = RARITY_BG_COLORS.Common
-    detailImageBg.Size = UDim2.new(1, 0, 0, px(170))
+    detailImageBg.Size = UDim2.new(0.96, 0, 0.28, 0)
     detailImageBg.ClipsDescendants = true
     Instance.new("UICorner", detailImageBg).CornerRadius = UDim.new(0, px(10))
     local imgBgStroke = Instance.new("UIStroke", detailImageBg)
@@ -1571,10 +1602,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailName.BackgroundTransparency = 1
     detailName.Font = Enum.Font.GothamBold
     detailName.TextColor3 = WHITE
-    detailName.TextSize = px(28)
+    detailName.TextScaled = true
     detailName.TextXAlignment = Enum.TextXAlignment.Center
-    detailName.Size = UDim2.new(1, 0, 0, px(36))
-    detailName.Position = UDim2.new(0, 0, 0, px(180))
+    detailName.Size = UDim2.new(1, 0, 0.06, 0)
+    detailName.LayoutOrder = 2
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 12
+    __constraint.MaxTextSize = math.max(16, math.floor(px(28)))
+    __constraint.Parent = detailName
     detailName.TextTruncate = Enum.TextTruncate.AtEnd
 
     -- Rarity label (slightly smaller than name, rarity-coloured)
@@ -1583,10 +1618,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailRarity.BackgroundTransparency = 1
     detailRarity.Font = Enum.Font.GothamBold
     detailRarity.TextColor3 = RARITY_COLORS.Common
-    detailRarity.TextSize = px(21)
+    detailRarity.TextScaled = true
     detailRarity.TextXAlignment = Enum.TextXAlignment.Center
-    detailRarity.Size = UDim2.new(1, 0, 0, px(28))
-    detailRarity.Position = UDim2.new(0, 0, 0, px(216))
+    detailRarity.Size = UDim2.new(1, 0, 0.03, 0)
+    detailRarity.LayoutOrder = 3
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 10
+    __constraint.MaxTextSize = math.max(12, math.floor(px(21)))
+    __constraint.Parent = detailRarity
 
     -- SIZE ROLL SYSTEM — size info in detail panel (plain coloured text)
     local detailSize = Instance.new("TextLabel", detailContent)
@@ -1595,10 +1634,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.Font = Enum.Font.GothamBold
     detailSize.RichText = true
     detailSize.TextColor3 = WHITE
-    detailSize.TextSize = px(24)
+    detailSize.TextScaled = true
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
-    detailSize.Size = UDim2.new(1, 0, 0, px(32))
-    detailSize.Position = UDim2.new(0, 0, 0, px(242))
+    detailSize.Size = UDim2.new(1, 0, 0.035, 0)
+    detailSize.LayoutOrder = 4
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 10
+    __constraint.MaxTextSize = math.max(12, math.floor(px(24)))
+    __constraint.Parent = detailSize
 
     -- ENCHANT SYSTEM — enchant name in detail panel
     local detailEnchant = Instance.new("TextLabel", detailContent)
@@ -1606,19 +1649,24 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEnchant.BackgroundTransparency = 1
     detailEnchant.Font = Enum.Font.GothamBold
     detailEnchant.TextColor3 = GOLD
-    detailEnchant.TextSize = px(21)
+    detailEnchant.TextScaled = true
     detailEnchant.TextXAlignment = Enum.TextXAlignment.Center
-    detailEnchant.Size = UDim2.new(1, 0, 0, px(28))
-    detailEnchant.Position = UDim2.new(0, 0, 0, px(274))
+    detailEnchant.Size = UDim2.new(1, 0, 0.03, 0)
+    detailEnchant.LayoutOrder = 5
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 10
+    __constraint.MaxTextSize = math.max(12, math.floor(px(21)))
+    __constraint.Parent = detailEnchant
     detailEnchant.Text = ""
 
     local masteryPanel = Instance.new("Frame", detailContent)
     masteryPanel.Name = "MasteryPanel"
     masteryPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 38)
     masteryPanel.BackgroundTransparency = 0.08
-    masteryPanel.Size = UDim2.new(0.9, 0, 0, px(120))
+    masteryPanel.Size = UDim2.new(0.9, 0, 0.17, 0)
     masteryPanel.AnchorPoint = Vector2.new(0.5, 0)
-    masteryPanel.Position = UDim2.new(0.5, 0, 0, px(324))
+    masteryPanel.LayoutOrder = 6
+    masteryPanel.Position = UDim2.new(0.5, 0, 0, 0)
     masteryPanel.Visible = false
     Instance.new("UICorner", masteryPanel).CornerRadius = UDim.new(0, px(8))
     local masteryStroke = Instance.new("UIStroke", masteryPanel)
@@ -1631,10 +1679,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryTitle.BackgroundTransparency = 1
     masteryTitle.Font = Enum.Font.GothamBold
     masteryTitle.TextColor3 = GOLD
-    masteryTitle.TextSize = px(18)
-    masteryTitle.TextXAlignment = Enum.TextXAlignment.Left
-    masteryTitle.Size = UDim2.new(1, -px(24), 0, px(24))
-    masteryTitle.Position = UDim2.new(0, px(12), 0, px(8))
+    masteryTitle.TextScaled = true
+    masteryTitle.TextXAlignment = Enum.TextXAlignment.Center
+    masteryTitle.Size = UDim2.new(1, -px(20), 0.14, 0)
+    masteryTitle.Position = UDim2.new(0.5, 0, 0, 0)
+    masteryTitle.AnchorPoint = Vector2.new(0.5, 0)
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 10
+    __constraint.MaxTextSize = math.max(14, math.floor(px(22)))
+    __constraint.Parent = masteryTitle
     masteryTitle.Text = "MASTERY I"
 
     local masteryXP = Instance.new("TextLabel", masteryPanel)
@@ -1642,19 +1695,36 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryXP.BackgroundTransparency = 1
     masteryXP.Font = Enum.Font.GothamBold
     masteryXP.TextColor3 = WHITE
-    masteryXP.TextSize = px(13)
-    masteryXP.TextXAlignment = Enum.TextXAlignment.Left
-    masteryXP.Size = UDim2.new(1, -px(24), 0, px(18))
-    masteryXP.Position = UDim2.new(0, px(12), 0, px(34))
+    masteryXP.TextScaled = true
+    masteryXP.TextXAlignment = Enum.TextXAlignment.Center
+    masteryXP.TextYAlignment = Enum.TextYAlignment.Center
+    masteryXP.TextStrokeColor3 = Color3.new(0, 0, 0)
+    masteryXP.TextStrokeTransparency = 0
+    masteryXP.Size = UDim2.new(1, -px(18), 0.1, 0)
+    masteryXP.Position = UDim2.new(0.5, 0, 0, 0)
+    masteryXP.AnchorPoint = Vector2.new(0.5, 0)
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 9
+    __constraint.MaxTextSize = math.max(12, math.floor(px(16)))
+    __constraint.Parent = masteryXP
     masteryXP.Text = "0 / 25 XP"
 
     local masteryBarBg = Instance.new("Frame", masteryPanel)
     masteryBarBg.Name = "ProgressBg"
     masteryBarBg.BackgroundColor3 = Color3.fromRGB(11, 12, 20)
     masteryBarBg.BorderSizePixel = 0
-    masteryBarBg.Size = UDim2.new(1, -px(24), 0, px(10))
-    masteryBarBg.Position = UDim2.new(0, px(12), 0, px(56))
+    -- Make progress bar scale relative to masteryPanel width/height
+    masteryBarBg.Size = UDim2.new(0.94, 0, 0.2, 0)
+    masteryBarBg.Position = UDim2.new(0.03, 0, 0.5, 0)
     Instance.new("UICorner", masteryBarBg).CornerRadius = UDim.new(0, px(5))
+
+    masteryXP.Parent = masteryBarBg
+    masteryXP.AnchorPoint = Vector2.new(0.5, 0.5)
+    masteryXP.Position = UDim2.new(0.5, 0, 0.5, 0)
+    masteryXP.Size = UDim2.new(1, -px(10), 1, 0)
+    masteryXP.TextXAlignment = Enum.TextXAlignment.Center
+    masteryXP.TextYAlignment = Enum.TextYAlignment.Center
+    masteryXP.ZIndex = masteryBarBg.ZIndex + 1
 
     local masteryBarFill = Instance.new("Frame", masteryBarBg)
     masteryBarFill.Name = "Fill"
@@ -1669,11 +1739,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryElims.BackgroundTransparency = 0.05
     masteryElims.Font = Enum.Font.GothamBold
     masteryElims.TextColor3 = WHITE
-    masteryElims.TextSize = px(15)
+    masteryElims.TextSize = px(16)
     masteryElims.TextXAlignment = Enum.TextXAlignment.Center
     masteryElims.TextYAlignment = Enum.TextYAlignment.Center
-    masteryElims.Size = UDim2.new(0.5, -px(15), 0, px(34))
-    masteryElims.Position = UDim2.new(0, px(12), 0, px(78))
+    masteryElims.Size = UDim2.new(0.47, 0, 0.26, 0)
+    masteryElims.Position = UDim2.new(0, px(10), 0.71, 0)
     masteryElims.Text = "Eliminations 0"
     Instance.new("UICorner", masteryElims).CornerRadius = UDim.new(0, px(6))
 
@@ -1683,12 +1753,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.BackgroundTransparency = 0.05
     masteryDamage.Font = Enum.Font.GothamBold
     masteryDamage.TextColor3 = WHITE
-    masteryDamage.TextSize = px(15)
+    masteryDamage.TextSize = px(16)
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
-    masteryDamage.Size = UDim2.new(0.5, -px(15), 0, px(34))
+    masteryDamage.Size = UDim2.new(0.47, 0, 0.26, 0)
     masteryDamage.AnchorPoint = Vector2.new(1, 0)
-    masteryDamage.Position = UDim2.new(1, -px(12), 0, px(78))
+    masteryDamage.Position = UDim2.new(0.97, -px(10), 0.71, 0)
     masteryDamage.Text = "BONUS +0.0 DMG"
     Instance.new("UICorner", masteryDamage).CornerRadius = UDim.new(0, px(6))
 
@@ -1698,10 +1768,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailInstanceId.BackgroundTransparency = 1
     detailInstanceId.Font = Enum.Font.Code
     detailInstanceId.TextColor3 = DIM_TEXT
-    detailInstanceId.TextSize = px(11)
+    detailInstanceId.TextScaled = true
     detailInstanceId.TextXAlignment = Enum.TextXAlignment.Center
-    detailInstanceId.Size = UDim2.new(1, 0, 0, px(16))
-    detailInstanceId.Position = UDim2.new(0, 0, 0, px(452))
+    detailInstanceId.Size = UDim2.new(1, 0, 0.035, 0)
+    detailInstanceId.LayoutOrder = 8
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 8
+    __constraint.MaxTextSize = math.max(10, math.floor(px(11)))
+    __constraint.Parent = detailInstanceId
     detailInstanceId.Visible = false
 
     -- Equip button (only place weapons can be equipped)
@@ -1713,10 +1787,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEquipBtn.Text = "EQUIP"
     detailEquipBtn.TextColor3 = WHITE
     detailEquipBtn.TextTransparency = 0
-    detailEquipBtn.TextSize = px(22)
-    detailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(48))
-    detailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
-    detailEquipBtn.Position = UDim2.new(0.5, 0, 1, -px(4))
+    detailEquipBtn.TextScaled = true
+    detailEquipBtn.Size = UDim2.new(0.88, 0, 0.08, 0)
+    detailEquipBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+    detailEquipBtn.LayoutOrder = 10
+    __constraint = Instance.new("UITextSizeConstraint")
+    __constraint.MinTextSize = 12
+    __constraint.MaxTextSize = math.max(14, math.floor(px(22)))
+    __constraint.Parent = detailEquipBtn
     Instance.new("UICorner", detailEquipBtn).CornerRadius = UDim.new(0, px(10))
     local equipStroke = Instance.new("UIStroke", detailEquipBtn)
     equipStroke.Color = Color3.fromRGB(0, 0, 0); equipStroke.Thickness = 1.5; equipStroke.Transparency = 0.15
@@ -1724,9 +1802,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local actionRow = Instance.new("Frame", detailContent)
     actionRow.Name = "ActionRow"
     actionRow.BackgroundTransparency = 1
-    actionRow.Size = UDim2.new(0.88, 0, 0, px(42))
-    actionRow.AnchorPoint = Vector2.new(0.5, 1)
-    actionRow.Position = UDim2.new(0.5, 0, 1, -px(60))
+    actionRow.Size = UDim2.new(0.88, 0, 0.07, 0)
+    actionRow.AnchorPoint = Vector2.new(0.5, 0.5)
+    actionRow.LayoutOrder = 9
 
     -- Salvage value preview label (shown above action row for salvageable items)
     local shardWidgets = {}
@@ -1736,7 +1814,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         "SalvageValuePreview",
         UDim2.new(0.88, 0, 0, px(40)),
         Vector2.new(0.5, 1),
-        UDim2.new(0.5, 0, 1, -px(114)),
+        UDim2.new(0.5, 0, 1, -px(106)),
         px(18),
         getShardCurrencyImage(),
         nil,
@@ -1744,6 +1822,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         px(44),
         1.8
     )
+    shardWidgets.salvageValueRow.LayoutOrder = 7
     addBlackTextStroke(shardWidgets.salvageValueLabel)
 
     -- Feedback label (transient success/error message after salvage)
@@ -1775,7 +1854,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
     end
     actionRow.AnchorPoint = Vector2.new(0.5, 1)
-    actionRow.Position = UDim2.new(0.5, 0, 1, -px(60))
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(50))
 
     -- Favorite button (yellow star)
     local FAV_YELLOW = Color3.fromRGB(255, 210, 50)
@@ -2028,7 +2107,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- Salvage eligibility: equipped or favorited items can't be salvaged
         local canSalvage = showActions and itemData
-            and not isItemEquipped(itemData)
             and itemData.favorited ~= true
         if itemData and not canSalvage and showActions then
             discardBtn.BackgroundColor3 = DISABLED_BG
@@ -2052,11 +2130,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         -- Salvage value preview
-        if canSalvage and SalvageConfig and itemData.rarity then
-            local val = getSalvageValueForItem(itemData)
-            if val and val > 0 then
-                shardWidgets.salvageValueLabel.Text = "Yield: " .. tostring(val)
-                shardWidgets.salvageValueRow.Visible = true
+        if SalvageConfig and itemData.rarity then
+            local weaponKey = (itemData.weaponName or itemData.name)
+            local isExplicitlyUnsalvageable = false
+            if weaponKey and SalvageConfig.UnsalvageableWeapons and SalvageConfig.UnsalvageableWeapons[weaponKey] then
+                isExplicitlyUnsalvageable = true
+            end
+            if not isExplicitlyUnsalvageable then
+                local val = getSalvageValueForItem(itemData)
+                if val and val > 0 then
+                    shardWidgets.salvageValueLabel.Text = "Yield: " .. tostring(val)
+                    shardWidgets.salvageValueRow.Visible = true
+                else
+                    shardWidgets.salvageValueRow.Visible = false
+                end
             else
                 shardWidgets.salvageValueRow.Visible = false
             end
@@ -2234,10 +2321,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Font = Enum.Font.GothamBold
         nameLabel.TextColor3 = WHITE
-        nameLabel.TextScaled = false
+        nameLabel.TextScaled = true
         nameLabel.TextWrapped = true
         nameLabel.RichText = false
         nameLabel.TextSize = NAME_TEXT_SIZE
+        local nameConstraint = Instance.new("UITextSizeConstraint", nameLabel)
+        nameConstraint.MinTextSize = 9
+        nameConstraint.MaxTextSize = 22
         nameLabel.Size = UDim2.new(1, -px(6), 0.19, 0)
         nameLabel.Position = UDim2.new(0, px(3), 0.01, 0)
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -5876,11 +5966,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local label      = btn:FindFirstChild("Label")
             local btnStroke  = btn:FindFirstChildOfClass("UIStroke")
 
-            if bar       then bar.BackgroundTransparency = active and 0 or 1 end
-            if icon      then icon.TextColor3 = active and GOLD or DIM_TEXT end
+            -- Only change label/icon color to indicate active tab. Hide the active bar.
+            if icon then
+                if id == "boosts" then
+                    icon.TextColor3 = active and WHITE or Color3.fromRGB(235, 77, 77)
+                else
+                    icon.TextColor3 = active and WHITE or DIM_TEXT
+                end
+            end
             if iconCustom then setTabIconTint(iconCustom, getCustomTabIconColor(id, active)) end
             if label     then label.TextColor3 = active and WHITE or DIM_TEXT end
-            if btnStroke then btnStroke.Transparency = active and 0.2 or 0.6 end
         end
 
         -- Page visibility
@@ -6002,35 +6097,78 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end)
 
     local function applyResponsivePanelLayout()
-        local contentX = PANEL_EDGE_INSET + TAB_W + TAB_GAP
-        local contentWOff = -(contentX + PANEL_EDGE_INSET)
-        local contentWidthOffset = DETAIL_W + GRID_GAP
+        local rootWidth = root.AbsoluteSize.X
+        if rootWidth <= 0 then return end
+
+        local scaleObject = root:FindFirstChild("ResponsiveScale")
+        local rootScale = 1
+        if scaleObject and scaleObject:IsA("UIScale") then
+            rootScale = math.max(0.001, scaleObject.Scale)
+        end
+
+        local function offsetFromVisual(visualPixels)
+            return math.max(1, math.floor(visualPixels / rootScale))
+        end
+
+        local gapVisual = math.clamp(math.floor(rootWidth * 0.012), 6, 18)
+        local edgeVisual = math.clamp(math.floor(rootWidth * 0.008), 4, 10)
+        local verticalVisual = math.clamp(math.floor(rootWidth * 0.006), 3, 8)
+        local sidebarVisual = math.clamp(math.floor(rootWidth * 0.122), 50, 112)
+        local detailVisual = math.clamp(math.floor(rootWidth * 0.255), 96, 248)
+        local minGridVisual = math.max(160, math.floor(rootWidth * 0.37))
+        local availableForPanels = math.max(0, rootWidth - minGridVisual - (gapVisual * 2) - (edgeVisual * 2))
+
+        if availableForPanels > 0 and (sidebarVisual + detailVisual) > availableForPanels then
+            local scaleDown = availableForPanels / math.max(1, sidebarVisual + detailVisual)
+            sidebarVisual = math.max(40, math.floor(sidebarVisual * scaleDown))
+            detailVisual = math.max(78, math.floor(detailVisual * scaleDown))
+        end
+
+        local sidebarWidth = offsetFromVisual(sidebarVisual)
+        local detailWidth = offsetFromVisual(detailVisual)
+        local gapWidth = offsetFromVisual(gapVisual)
+        local edgeInset = offsetFromVisual(edgeVisual)
+        local verticalInset = offsetFromVisual(verticalVisual)
+        local contentX = edgeInset + sidebarWidth + gapWidth
+        local contentWOff = -(contentX + edgeInset)
+        local contentWidthOffset = detailWidth + gapWidth
 
         sidebar.AutomaticSize = Enum.AutomaticSize.None
-        sidebar.Position = UDim2.new(0, PANEL_EDGE_INSET, 0, PANEL_VERTICAL_INSET)
-        sidebar.Size = UDim2.new(0, TAB_W, 1, -(PANEL_VERTICAL_INSET * 2))
+        sidebar.Position = UDim2.new(0, edgeInset, 0, verticalInset)
+        sidebar.Size = UDim2.new(0, sidebarWidth, 1, -(verticalInset * 2))
 
         local function resizePage(pageName, gridName, emptyName, detailName)
             local page = root:FindFirstChild(pageName)
             if not (page and page:IsA("GuiObject")) then return end
 
-            page.Position = UDim2.new(0, contentX, 0, PANEL_VERTICAL_INSET)
-            page.Size = UDim2.new(1, contentWOff, 1, -(PANEL_VERTICAL_INSET * 2))
+            page.Position = UDim2.new(0, contentX, 0, verticalInset)
+            page.Size = UDim2.new(1, contentWOff, 1, -(verticalInset * 2))
 
             local detailPanel = page:FindFirstChild(detailName)
             if detailPanel and detailPanel:IsA("GuiObject") then
-                detailPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
+                detailPanel.Size = UDim2.new(0, detailWidth, 1, 0)
                 detailPanel.Position = UDim2.new(1, 0, 0, 0)
             end
 
             local grid = page:FindFirstChild(gridName)
+
+            -- Size and position the center grid explicitly inside the page
             if grid and grid:IsA("GuiObject") then
-                grid.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+                grid.Position = UDim2.new(0, 0, 0, innerPad)
+                grid.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP - innerPad), 1, -innerPad*2)
+            end
+
+            -- Position the detail panel to the right inside the page
+            if detailPanel and detailPanel:IsA("GuiObject") then
+                detailPanel.AnchorPoint = Vector2.new(0, 0)
+                detailPanel.Position = UDim2.new(0, math.max(0, centerPx + GRID_GAP - innerPad), 0, innerPad)
+                detailPanel.Size = UDim2.new(0, math.max(0, rightPx - innerPad*2), 1, -innerPad*2)
             end
 
             local emptyState = page:FindFirstChild(emptyName)
             if emptyState and emptyState:IsA("GuiObject") then
-                emptyState.Size = UDim2.new(1, -contentWidthOffset, 1, 0)
+                emptyState.Position = UDim2.new(0, 0, 0, innerPad)
+                emptyState.Size = UDim2.new(0, math.max(0, centerPx - GRID_GAP - innerPad), 1, -innerPad*2)
             end
         end
 
@@ -6039,6 +6177,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         resizePage("SkinsArea", "SkinGridScroll", "SkinEmptyState", "SkinDetailsPanel")
         resizePage("EffectsPage", "TrailGridScroll", "EffectsEmptyState", "TrailDetailsPanel")
         resizePage("EmotesPage", "EmoteGridScroll", "EmotesEmptyState", "EmoteDetailsPanel")
+
+        -- Ensure there is a local UIScale that will scale text and icons relative to the inventory root
+        ensureInventoryUIScale(root)
     end
 
     -- Adapt root height to parent size
@@ -6049,6 +6190,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             root.Size = UDim2.new(1, 0, 0, rootHeight)
         end
         updateResponsiveRootScale(root)
+        -- Scale the inventory contents (text/icons) relative to the inventory root size.
+        local invScaleObj = ensureInventoryUIScale(root)
+        if invScaleObj then
+            local baseW, baseH = 1200, 700
+            local rw, rh = math.max(1, root.AbsoluteSize.X), math.max(1, root.AbsoluteSize.Y)
+            local scaleVal = math.min(rw / baseW, rh / baseH)
+            scaleVal = math.clamp(scaleVal, 0.7, 1.25)
+            invScaleObj.Scale = scaleVal
+        end
         applyResponsivePanelLayout()
     end
 

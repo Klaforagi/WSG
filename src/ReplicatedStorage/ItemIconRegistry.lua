@@ -34,11 +34,11 @@ local speedPotionIcon = {
 local strengthPotionIcon = {
     Key = "StrengthPotion",
     Kind = "PotionBottle",
-    IconColor = { 235, 72, 55 },
-    GlassColor = { 255, 226, 218 },
-    LiquidColor = { 215, 48, 42 },
-    StrokeColor = { 120, 32, 32 },
-    CapColor = { 103, 45, 35 },
+    IconColor = { 255, 140, 0 },
+    GlassColor = { 255, 240, 220 },
+    LiquidColor = { 230, 110, 20 },
+    StrokeColor = { 150, 70, 20 },
+    CapColor = { 140, 65, 20 },
     Motif = "strength",
 }
 

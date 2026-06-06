@@ -1434,7 +1434,9 @@ titleLabel.ZIndex = 275
     local currencyRow = Instance.new("Frame")
     currencyRow.Name = "CurrencyRow"
     currencyRow.BackgroundTransparency = 1
-    currencyRow.Size = UDim2.new(0.52, 0, 0, px(34))
+    -- Use automatic horizontal sizing so contents dictate width and we can anchor right
+    currencyRow.AutomaticSize = Enum.AutomaticSize.X
+    currencyRow.Size = UDim2.new(0, 0, 0, px(34))
     currencyRow.AnchorPoint = Vector2.new(1, 0.5)
     currencyRow.Position = UDim2.new(0.935, 0, 0.5, 0)
     currencyRow.ZIndex = 275
@@ -1449,7 +1451,9 @@ titleLabel.ZIndex = 275
     currencyLayout.Parent = currencyRow
 
     local function styleCurrencyChip(frame, accentColor, width)
-        frame.Size = UDim2.new(0, px(width), 0, px(31))
+        -- allow horizontal auto-sizing while keeping fixed height
+        frame.AutomaticSize = Enum.AutomaticSize.X
+        frame.Size = UDim2.new(0, 0, 0, px(31))
         frame.BackgroundColor3 = Color3.fromRGB(17, 20, 34)
         frame.BackgroundTransparency = 0.04
         frame.BorderSizePixel = 0
@@ -1475,6 +1479,7 @@ titleLabel.ZIndex = 275
 
     local function addHeaderTextConstraint(label, maxSize)
         label.TextScaled = true
+        label.TextWrapped = false
         local constraint = Instance.new("UITextSizeConstraint")
         constraint.MinTextSize = 9
         constraint.MaxTextSize = math.max(10, math.floor(px(maxSize)))
@@ -1681,7 +1686,9 @@ local function updateHeaderCurrencyLayout()
     local chipWidth = math.max(50, math.floor((maxRowWidth - (chipGap * 2)) / 3))
     local totalWidth = (chipWidth * 3) + (chipGap * 2)
 
-    currencyRow.Size = UDim2.new(0, totalWidth, 0, chipHeight)
+    -- make the currency row auto-size horizontally and anchor to top-right
+    currencyRow.AutomaticSize = Enum.AutomaticSize.X
+    currencyRow.Size = UDim2.new(0, 0, 0, chipHeight)
     currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
     currencyLayout.Padding = UDim.new(0, chipGap)
 
@@ -1689,13 +1696,141 @@ local function updateHeaderCurrencyLayout()
     local leftInset = math.max(12, math.floor(headerHeight * 0.28))
     local rightReserved = rightInset + totalWidth + math.max(8, math.floor(headerHeight * 0.24))
     local titleWidth = math.max(96, math.min(math.floor(windowWidth * 0.34), windowWidth - rightReserved - leftInset))
+
+    -- Default title center (falls back to centered in window)
     local titleCenter = math.max(leftInset + math.floor(titleWidth * 0.5), math.min(math.floor(windowWidth * 0.5), windowWidth - rightReserved - math.floor(titleWidth * 0.5)))
+
+    -- For Inventory / Shop / Achievements, center the header over the modal's
+    -- main content center (e.g. Inventory grid / Shop root / Quests root).
+    local titleUpper = (titleLabel and tostring(titleLabel.Text) or ""):upper()
+    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" then
+        local function tryGetContentCenter()
+            if not contentFrame then return nil end
+            -- Try known root names used by those modules
+            local candidates = { "InventoryUI", "ShopRoot", "QuestsRoot", "AchievHubRoot" }
+            for _, name in ipairs(candidates) do
+                local rootChild = contentFrame:FindFirstChild(name, true) or contentFrame:FindFirstChild(name)
+                if rootChild and rootChild:IsA("GuiObject") and rootChild.AbsoluteSize.X > 0 then
+                    -- Prefer a center grid if present (Inventory -> WeaponArea -> GridScroll)
+                    if name == "InventoryUI" then
+                        local weaponArea = rootChild:FindFirstChild("WeaponArea", true)
+                        if weaponArea and weaponArea:IsA("GuiObject") then
+                            local grid = weaponArea:FindFirstChild("GridScroll", true)
+                            if grid and grid:IsA("GuiObject") and grid.AbsoluteSize.X > 0 then
+                                return grid.AbsolutePosition.X + (grid.AbsoluteSize.X * 0.5)
+                            end
+                        end
+                    end
+                    -- Fallback: use root child's center
+                    return rootChild.AbsolutePosition.X + (rootChild.AbsoluteSize.X * 0.5)
+                end
+            end
+
+            -- Fallback: pick the largest child in the contentFrame and use its center
+            local bestChild, bestW
+            for _, child in ipairs(contentFrame:GetChildren()) do
+                if child:IsA("GuiObject") and child.AbsoluteSize and child.AbsoluteSize.X and child.AbsoluteSize.X > 0 then
+                    local w = child.AbsoluteSize.X
+                    if (not bestW) or w > bestW then
+                        bestW = w
+                        bestChild = child
+                    end
+                end
+            end
+            if bestChild and bestW then
+                return bestChild.AbsolutePosition.X + (bestChild.AbsoluteSize.X * 0.5)
+            end
+            return nil
+        end
+        -- debug prints removed
+        local absCenter = tryGetContentCenter()
+        -- If Inventory should align like Shop, prefer a shop-like center (largest child)
+        if titleUpper == "INVENTORY" then
+            -- try a shop-like center: ignore InventoryUI grid special-casing
+            local function tryGetShopLikeCenter()
+                if not contentFrame then return nil end
+                -- prefer any explicit ShopRoot or QuestsRoot/AchievHubRoot
+                local candidates2 = { "ShopRoot", "QuestsRoot", "AchievHubRoot", "InventoryUI" }
+                for _, name in ipairs(candidates2) do
+                    local rootChild = contentFrame:FindFirstChild(name, true) or contentFrame:FindFirstChild(name)
+                    if rootChild and rootChild:IsA("GuiObject") and rootChild.AbsoluteSize.X > 0 then
+                        return rootChild.AbsolutePosition.X + (rootChild.AbsoluteSize.X * 0.5)
+                    end
+                end
+                -- fallback to largest child
+                local bestChild, bestW
+                for _, child in ipairs(contentFrame:GetChildren()) do
+                    if child:IsA("GuiObject") and child.AbsoluteSize and child.AbsoluteSize.X and child.AbsoluteSize.X > 0 then
+                        local w = child.AbsoluteSize.X
+                        if (not bestW) or w > bestW then
+                            bestW = w
+                            bestChild = child
+                        end
+                    end
+                end
+                if bestChild and bestW then
+                    return bestChild.AbsolutePosition.X + (bestChild.AbsoluteSize.X * 0.5)
+                end
+                return nil
+            end
+            local shopLike = tryGetShopLikeCenter()
+            if shopLike then absCenter = shopLike end
+        end
+        if absCenter and window and window.AbsolutePosition then
+            local localCenter = math.floor(absCenter - window.AbsolutePosition.X)
+            -- debug prints removed
+            -- Prefer true center over content; only shift if it would overlap currency chips
+            local halfW = math.floor(titleWidth * 0.5)
+            local desiredCenter = localCenter
+            local titleLeft = desiredCenter - halfW
+            local titleRight = desiredCenter + halfW
+            local currencyLeftLocal
+            if currencyRow and currencyRow.Parent and currencyRow.AbsoluteSize and currencyRow.AbsoluteSize.X > 0 then
+                currencyLeftLocal = math.floor(currencyRow.AbsolutePosition.X - window.AbsolutePosition.X)
+            else
+                currencyLeftLocal = math.floor(windowWidth - rightReserved)
+            end
+            local margin = math.max(6, math.floor(headerHeight * 0.12))
+            if titleRight + margin > currencyLeftLocal then
+                -- shift left so titleRight + margin == currencyLeftLocal
+                desiredCenter = currencyLeftLocal - margin - halfW
+            end
+            -- enforce left-side inset
+            local minCenter = leftInset + halfW
+            desiredCenter = math.max(minCenter, desiredCenter)
+            titleCenter = math.floor(desiredCenter)
+            -- debug prints removed
+        end
+    end
+
+    -- For Shop and Inventory, apply a larger consistent left nudge so the
+    -- title visually lines up with the center content used by Inventory.
+    local halfW2 = math.floor(titleWidth * 0.5)
+    if titleUpper == "SHOP" or titleUpper == "INVENTORY" then
+        local sharedOffset = math.max(40, math.floor(windowWidth * 0.12))
+        titleCenter = math.max(leftInset + halfW2, titleCenter - sharedOffset)
+    end
 
     titlePill.Size = UDim2.new(0, titleWidth, 0, titleHeight)
     titlePill.Position = UDim2.new(0, titleCenter, 0.5, 0)
 
+    -- Ensure the title text scales to fit the pill width/height using a constraint
+    if titleLabel and titleLabel:IsA("TextLabel") then
+        local existing = titleLabel:FindFirstChildOfClass("UITextSizeConstraint")
+        if not existing then
+            local c = Instance.new("UITextSizeConstraint")
+            c.MinTextSize = 12
+            c.MaxTextSize = math.max(16, math.floor(titleHeight * 0.9))
+            c.Parent = titleLabel
+        else
+            existing.MaxTextSize = math.max(16, math.floor(titleHeight * 0.9))
+        end
+    end
+
     local function sizeChip(frame, width)
-        frame.Size = UDim2.new(0, width, 0, chipHeight)
+        -- keep chip height fixed; let AutomaticSize.X control width
+        frame.AutomaticSize = Enum.AutomaticSize.X
+        frame.Size = UDim2.new(0, 0, 0, chipHeight)
     end
 
     sizeChip(headerCoinFrame, chipWidth)
@@ -1735,9 +1870,21 @@ local function updateModalWindowLayout()
     local viewportX, viewportY = getViewportSize()
     if viewportX <= 0 or viewportY <= 0 then return end
 
-    local widthTarget = math.floor(viewportX * (viewportX < viewportY and 0.82 or 0.65))
+    local isPortrait = viewportX < viewportY
+    local isInventoryWindow = titleLabel.Text == "INVENTORY"
+
+    local widthTargetFactor = isPortrait and 0.82 or 0.65
     local widthMin = math.min(math.floor(viewportX * 0.92), 540)
-    local widthMax = math.floor(viewportX * 0.86)
+    local widthMaxFactor = 0.86
+
+    if isInventoryWindow then
+        widthTargetFactor = isPortrait and 0.9 or 0.75
+        widthMin = math.min(math.floor(viewportX * (isPortrait and 0.94 or 0.72)), 980)
+        widthMaxFactor = isPortrait and 0.97 or 0.9
+    end
+
+    local widthTarget = math.floor(viewportX * widthTargetFactor)
+    local widthMax = math.floor(viewportX * widthMaxFactor)
 
     local lowerBound = math.max(320, widthMin)
     local upperBound = math.max(widthMax, lowerBound)
@@ -1761,6 +1908,33 @@ local function updateModalWindowLayout()
     if contentFrame then
         contentFrame.Position = UDim2.new(0, 0, 0, contentTop)
         contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+    end
+
+    -- Reduce width for Inventory, Shop and Achievements modals by 25%
+    local titleUpper = (titleLabel and tostring(titleLabel.Text) or ""):upper()
+    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" then
+        local reducedW = math.max(200, math.floor(windowWidth * 0.75))
+        window.Size = UDim2.new(0, reducedW, 0, windowHeight)
+        if contentFrame then
+            -- adjust content width if needed to match smaller window
+            contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+        end
+    end
+
+    -- Also apply same reduction to Team/Stats panels handled outside Modal group
+    if titleUpper == "TEAM" or titleUpper == "STATS" or titleUpper == "TEAMSTATS" then
+        local reducedW = math.max(200, math.floor(windowWidth * 0.75))
+        window.Size = UDim2.new(0, reducedW, 0, windowHeight)
+        if contentFrame then
+            contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+        end
+    end
+
+    -- Reduce header currency label sizes for tighter header spacing on these modals
+    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "TEAM" then
+        if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = math.max(9, math.floor(headerCoinLabelConstraint.MaxTextSize * 0.8)) end
+        if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = math.max(9, math.floor(headerKeyLabelConstraint.MaxTextSize * 0.8)) end
+        if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = math.max(9, math.floor(headerSalvageLabelConstraint.MaxTextSize * 0.8)) end
     end
     if modalStatusOverlay and contentFrame then
         modalStatusOverlay.Position = contentFrame.Position
@@ -1838,6 +2012,209 @@ contentPadding.PaddingTop = UDim.new(0, px(14))
 contentPadding.PaddingLeft = UDim.new(0, px(10))
 contentPadding.PaddingRight = UDim.new(0, px(10))
 contentPadding.Parent = contentFrame
+
+-- Recompute header layout when new modal content is added (e.g. InventoryUI root)
+contentFrame.ChildAdded:Connect(function()
+    pcall(updateHeaderCurrencyLayout)
+end)
+
+-- When InventoryUI is added to the modal content, adjust its DetailsPanel children
+local function applyDetailsPanelScaling(detailsPanel)
+    if not detailsPanel or not detailsPanel:IsA("GuiObject") then return end
+    local detailContent = detailsPanel:FindFirstChild("DetailContent")
+    if not detailContent then return end
+
+    -- Replace absolute padding with scale-based padding
+    local pad = detailContent:FindFirstChildOfClass("UIPadding")
+    if pad then
+        pad.PaddingTop = UDim.new(0.02, 0)
+        pad.PaddingBottom = UDim.new(0.02, 0)
+        pad.PaddingLeft = UDim.new(0.02, 0)
+        pad.PaddingRight = UDim.new(0.02, 0)
+    else
+        local p = Instance.new("UIPadding")
+        p.PaddingTop = UDim.new(0.02, 0)
+        p.PaddingBottom = UDim.new(0.02, 0)
+        p.PaddingLeft = UDim.new(0.02, 0)
+        p.PaddingRight = UDim.new(0.02, 0)
+        p.Parent = detailContent
+    end
+
+    -- Add vertical UIListLayout if missing
+    if not detailContent:FindFirstChildOfClass("UIListLayout") then
+        local layout = Instance.new("UIListLayout")
+        layout.FillDirection = Enum.FillDirection.Vertical
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0.006, 0)
+        layout.Parent = detailContent
+    end
+
+    -- Helper: set text scaling + bounded constraint without introducing many locals
+    local function ensureTextScaled(lbl, maxPx)
+        if not lbl or not lbl:IsA("TextLabel") then return end
+        lbl.TextScaled = true
+        lbl.TextWrapped = false
+        local c = Instance.new("UITextSizeConstraint")
+        c.MinTextSize = 9
+        c.MaxTextSize = math.max(10, math.floor(px(maxPx or 18)))
+        c.Parent = lbl
+    end
+
+    -- Adjust main elements by name and set LayoutOrder to ensure order
+    local mapping = {
+        {name = "ImageBg", size = UDim2.new(0.96,0,0.28,0), order = 1},
+        {name = "WeaponName", size = UDim2.new(1,0,0.06,0), order = 2, txt = 28},
+        {name = "Rarity", size = UDim2.new(1,0,0.03,0), order = 3, txt = 21},
+        {name = "SizeInfo", size = UDim2.new(1,0,0.035,0), order = 4, txt = 24},
+        {name = "EnchantInfo", size = UDim2.new(1,0,0.03,0), order = 5, txt = 21},
+        {name = "MasteryPanel", size = UDim2.new(0.9,0,0.17,0), order = 6},
+        {name = "InstanceId", size = UDim2.new(1,0,0.035,0), order = 8, txt = 11},
+        {name = "ActionRow", size = UDim2.new(0.88,0,0.07,0), order = 9},
+        {name = "EquipBtn", size = UDim2.new(0.88,0,0.08,0), order = 10, txt = 22},
+    }
+    for _, info in ipairs(mapping) do
+        local inst = detailContent:FindFirstChild(info.name, true) or detailsPanel:FindFirstChild(info.name, true)
+        if inst and inst:IsA("GuiObject") then
+            inst.Size = info.size
+            inst.LayoutOrder = info.order
+            if info.txt then
+                ensureTextScaled(inst, info.txt)
+            end
+        end
+    end
+
+    -- MasteryPanel internal adjustments and precise text anchoring
+    local masteryPanel = detailContent:FindFirstChild("MasteryPanel", true) or detailsPanel:FindFirstChild("MasteryPanel", true)
+    if masteryPanel then
+        masteryPanel.Size = UDim2.new(0.9, 0, 0.16, 0)
+        masteryPanel.LayoutOrder = 6
+        -- center children and use relative sizes
+        local mbg = masteryPanel:FindFirstChild("ProgressBg", true)
+        if mbg then
+            mbg.Size = UDim2.new(0.94, 0, 0.2, 0)
+            mbg.Position = UDim2.new(0.03, 0, 0.5, 0)
+        end
+        local me = masteryPanel:FindFirstChild("Eliminations", true)
+        local md = masteryPanel:FindFirstChild("Damage", true)
+        if me then me.Size = UDim2.new(0.47,0,0.28,0) end
+        if md then md.Size = UDim2.new(0.47,0,0.28,0) end
+        -- ensure text scaled for internal labels
+        local titleLbl = masteryPanel:FindFirstChild("Title", true)
+        local xpLbl = masteryPanel:FindFirstChild("XP", true)
+        if titleLbl and titleLbl:IsA("GuiObject") then
+            titleLbl.AnchorPoint = Vector2.new(0.5, 0)
+            titleLbl.Position = UDim2.new(0.5, 0, 0, 0)
+            titleLbl.TextXAlignment = Enum.TextXAlignment.Center
+            ensureTextScaled(titleLbl, 22)
+        end
+        if xpLbl and xpLbl:IsA("TextLabel") then
+            -- place XP label centered on top of the progress bar
+            if mbg and mbg:IsA("GuiObject") then
+                xpLbl.Parent = mbg
+                xpLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+                xpLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
+                xpLbl.Size = UDim2.new(1, -px(18), 1, 0)
+                xpLbl.TextXAlignment = Enum.TextXAlignment.Center
+                xpLbl.TextYAlignment = Enum.TextYAlignment.Center
+                xpLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+                xpLbl.TextStrokeTransparency = 0
+                xpLbl.ZIndex = (mbg and mbg.ZIndex or xpLbl.ZIndex) + 2
+            else
+                xpLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+                xpLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
+                xpLbl.TextXAlignment = Enum.TextXAlignment.Center
+                xpLbl.TextYAlignment = Enum.TextYAlignment.Center
+                xpLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+                xpLbl.TextStrokeTransparency = 0
+            end
+            ensureTextScaled(xpLbl, 16)
+        end
+        ensureTextScaled(me, 15)
+        ensureTextScaled(md, 15)
+    end
+
+    -- Pin salvage/yield row so it never pushes other layout children
+    local salvageRow = detailContent:FindFirstChild("SalvageValuePreview", true) or detailsPanel:FindFirstChild("SalvageValuePreview", true)
+    if salvageRow and salvageRow:IsA("GuiObject") then
+        salvageRow.Parent = detailsPanel -- reparent out of the layout so it doesn't affect flow
+        salvageRow.AnchorPoint = Vector2.new(0.5, 1)
+        salvageRow.Size = UDim2.new(0.88, 0, 0, px(40))
+        -- place near bottom using original px offset so it sits above action row
+        salvageRow.Position = UDim2.new(0.5, 0, 1, -px(106))
+        salvageRow.LayoutOrder = nil
+        salvageRow.ZIndex = 300
+        local valueLabel = salvageRow:FindFirstChild("ValueText", true) or salvageRow:FindFirstChildWhichIsA("TextLabel")
+        if valueLabel then
+            valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+            ensureTextScaled(valueLabel, 18)
+        end
+    end
+
+    -- Ensure action buttons and equip button use scale-based positions and aspect constraints
+    local actionRow = detailContent:FindFirstChild("ActionRow", true) or detailsPanel:FindFirstChild("ActionRow", true)
+    if actionRow and actionRow:IsA("GuiObject") then
+        actionRow.Size = UDim2.new(0.88, 0, 0.07, 0)
+        actionRow.AnchorPoint = Vector2.new(0.5, 1)
+        actionRow.Position = UDim2.new(0.5, 0, 1, -px(84))
+        -- add aspect constraint for child buttons to avoid vertical overflow
+        for _, child in ipairs(actionRow:GetChildren()) do
+            if child:IsA("TextButton") or child:IsA("ImageButton") then
+                if not child:FindFirstChildOfClass("UIAspectRatioConstraint") then
+                    local arc = Instance.new("UIAspectRatioConstraint")
+                    arc.AspectRatio = 6
+                    arc.Parent = child
+                end
+                child.Size = UDim2.new(0.48, 0, 1, 0)
+            end
+        end
+    end
+
+    local detailEquipBtn = detailContent:FindFirstChild("EquipBtn", true) or detailsPanel:FindFirstChild("EquipBtn", true)
+    if detailEquipBtn and detailEquipBtn:IsA("GuiObject") then
+        detailEquipBtn.Size = UDim2.new(0.88, 0, 0.08, 0)
+        detailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
+        detailEquipBtn.Position = UDim2.new(0.5, 0, 1, -px(56))
+        -- add UITextSizeConstraint if missing
+        if not detailEquipBtn:FindFirstChildOfClass("UITextSizeConstraint") then
+            local c = Instance.new("UITextSizeConstraint")
+            c.MinTextSize = 12
+            c.MaxTextSize = math.max(14, math.floor(px(22)))
+            c.Parent = detailEquipBtn
+        end
+        if not detailEquipBtn:FindFirstChildOfClass("UIAspectRatioConstraint") then
+            local arc = Instance.new("UIAspectRatioConstraint")
+            arc.AspectRatio = 6
+            arc.Parent = detailEquipBtn
+        end
+    end
+end
+
+contentFrame.ChildAdded:Connect(function(child)
+    pcall(function()
+        pcall(updateHeaderCurrencyLayout)
+        if child and child.Name == "InventoryUI" then
+            local dp = child:FindFirstChild("DetailsPanel", true)
+            if dp then
+                applyDetailsPanelScaling(dp)
+            end
+        end
+    end)
+end)
+
+-- Apply transformer to any InventoryUI that already exists at startup
+task.defer(function()
+    for _, child in ipairs(contentFrame:GetChildren()) do
+        pcall(function()
+            if child and child.Name == "InventoryUI" then
+                local dp = child:FindFirstChild("DetailsPanel", true)
+                if dp then
+                    applyDetailsPanelScaling(dp)
+                end
+            end
+        end)
+    end
+end)
 
 -- ensure content sits above other UI but behind header elements
 contentFrame.ZIndex = 260
@@ -2193,6 +2570,8 @@ local function configureModalHeader(label)
         updateHeaderKeys()
         updateHeaderSalvage()
     end
+    -- Recompute header layout immediately after title/currency state changes
+    pcall(updateHeaderCurrencyLayout)
 end
 
 local function contentHostHasGuiContent(contentHost)
