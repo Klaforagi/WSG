@@ -122,9 +122,9 @@ local STYLE = {
 	RightPreviewMaxWidth = 340,
 	PreviewViewportHeight = 280,
 	SkinCardWidth = 156,
-	SkinCardHeight = 188,
+	SkinCardHeight = 156,
 	CompactCosmeticCardWidth = 242,
-	CompactCosmeticCardHeight = 150,
+	CompactCosmeticCardHeight = 120,
 	CompactIconSize = 88,
 	CompactHeaderHeight = 98,
 	CompactTitleHeight = 34,
@@ -1687,35 +1687,8 @@ function SkinsStallUI.Create(parent, options)
 		end
 		record.card.BackgroundColor3 = cardColor
 		record.card.BackgroundTransparency = visualState.cardTransparency or 0
-		if record.accentBar then
-			record.accentBar.BackgroundColor3 = visualState.accentColor
-			record.accentBar.BackgroundTransparency = selected and 0 or 0.12
-		end
-
-		record.statusLabel.Text = visualState.statusText
-		record.statusLabel.TextColor3 = visualState.textColor
-		if record.statusPill then
-			record.statusPill.BackgroundColor3 = visualState.pillColor
-		end
-		if record.statusStroke then
-			record.statusStroke.Color = visualState.pillStrokeColor
-			record.statusStroke.Transparency = visualState.pillStrokeTransparency
-		end
-
-		if record.priceIcon then
-			local showIcon = visualState.showCoin == true
-			record.priceIcon.Visible = showIcon
-			if showIcon then
-				record.priceIcon.ImageTransparency = 0
-				record.statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-				record.statusLabel.Position = UDim2.new(0.5, px(13), 0.5, 0)
-				record.statusLabel.Size = UDim2.new(1, -px(48), 1, -px(4))
-			else
-				record.statusLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-				record.statusLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
-				record.statusLabel.Size = UDim2.new(1, -px(16), 1, -px(4))
-			end
-		end
+		-- Cards no longer show an embedded action/status pill; the action is provided
+		-- in the detail panel. Keep card visuals (borders, rarity stroke, selection).
 	end
 
 	local function syncAllCards()
@@ -2015,49 +1988,7 @@ function SkinsStallUI.Create(parent, options)
 		return iconBox
 	end
 
-	local function createStatusPill(parent, xScale)
-		local pill = Instance.new("Frame")
-		pill.Name = "StatusPill"
-		pill.BackgroundColor3 = COLORS.SurfaceSoft
-		pill.BorderSizePixel = 0
-		pill.AnchorPoint = Vector2.new(0.5, 1)
-		pill.Position = UDim2.new(xScale or 0.5, 0, 1, -px(8))
-		pill.Size = UDim2.new(1, -px(18), 0, px(34))
-		pill.Parent = parent
-		applyCorners(pill, px(10))
-		local pillStroke = applyStroke(pill, COLORS.DimStroke, 1, 0.42)
-
-		local icon = Instance.new("ImageLabel")
-		icon.Name = "PriceIcon"
-		icon.BackgroundTransparency = 1
-		icon.AnchorPoint = Vector2.new(0, 0.5)
-		icon.Position = UDim2.new(0, px(12), 0.5, 0)
-		icon.Size = UDim2.fromOffset(px(20), px(20))
-		icon.Image = getAsset("Coin") or ""
-		icon.ScaleType = Enum.ScaleType.Fit
-		icon.Visible = false
-		icon.Parent = pill
-
-		local label = Instance.new("TextLabel")
-		label.Name = "StatusLabel"
-		label.BackgroundTransparency = 1
-		label.AnchorPoint = Vector2.new(0.5, 0.5)
-		label.Position = UDim2.new(0.5, 0, 0.5, 0)
-		label.Size = UDim2.new(1, -px(16), 1, -px(4))
-		label.Font = Enum.Font.GothamBlack
-		label.RichText = false
-		label.Text = ""
-		label.TextColor3 = COLORS.Text
-		label.TextSize = px(STYLE.CardButtonTextSize)
-		label.TextScaled = false
-		label.TextTruncate = Enum.TextTruncate.AtEnd
-		label.TextXAlignment = Enum.TextXAlignment.Center
-		label.TextYAlignment = Enum.TextYAlignment.Center
-		label.Parent = pill
-		addCosmeticTextOutline(label, 0.55, 1)
-
-		return pill, label, icon, pillStroke
-	end
+	-- createStatusPill removed: per-card embedded action/status UI moved to the detail panel
 
 	local function createSkinCard(parentFrame, item, index)
 		local rarityColor = getRarityColor(item)
@@ -2082,12 +2013,7 @@ function SkinsStallUI.Create(parent, options)
 			RarityStyles.AddCardSheen(card, rarityColor, px, STYLE.SkinHeaderHeight / STYLE.SkinCardHeight)
 		end
 
-		local accentBar = Instance.new("Frame")
-		accentBar.BackgroundColor3 = rarityColor
-		accentBar.BorderSizePixel = 0
-		accentBar.Size = UDim2.new(1, 0, 0, px(3))
-		accentBar.Parent = card
-		applyCorners(accentBar, px(2))
+		-- removed accent bar to use a single background color across the card
 
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.BackgroundTransparency = 1
@@ -2108,10 +2034,10 @@ function SkinsStallUI.Create(parent, options)
 
 		local viewport = Instance.new("ViewportFrame")
 		viewport.Name = "Preview"
-		viewport.BackgroundColor3 = mixColor(COLORS.Surface, rarityColor, 0.10)
 		viewport.BorderSizePixel = 0
 		viewport.Position = UDim2.new(0, px(9), 0, px(66))
-		viewport.Size = UDim2.new(1, -px(18), 1, -px(112))
+		viewport.Size = UDim2.new(1, -px(18), 1, -px(66))
+		viewport.BackgroundTransparency = 1
 		viewport.Ambient = Color3.fromRGB(190, 190, 200)
 		viewport.LightColor = COLORS.White
 		viewport.LightDirection = Vector3.new(0, -1, -1)
@@ -2128,9 +2054,7 @@ function SkinsStallUI.Create(parent, options)
 			end
 		end)
 
-		local statusPill, statusLabelRef, priceIcon, statusStroke = createStatusPill(card, 0.5)
-		statusPill.Position = UDim2.new(0.5, 0, 1, -px(9))
-		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, selectedStroke = selectedStroke, accentBar = accentBar, nameLabel = nameLabel, typeLabel = typeLabel, rarityLabel = rarityLabel, statusPill = statusPill, statusLabel = statusLabelRef, priceIcon = priceIcon, statusStroke = statusStroke, viewport = viewport }
+		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, selectedStroke = selectedStroke, nameLabel = nameLabel, typeLabel = typeLabel, rarityLabel = rarityLabel, viewport = viewport }
 		cardRecords[record.key] = record
 
 		trackConn(button.MouseButton1Click:Connect(function()
@@ -2171,13 +2095,7 @@ function SkinsStallUI.Create(parent, options)
 			RarityStyles.AddCardSheen(card, rarityColor, px, STYLE.CompactHeaderHeight / STYLE.CompactCosmeticCardHeight)
 		end
 
-		local accentBar = Instance.new("Frame")
-		accentBar.BackgroundColor3 = rarityColor
-		accentBar.BorderSizePixel = 0
-		accentBar.Position = UDim2.new(0, 0, 0, 0)
-		accentBar.Size = UDim2.new(0, px(4), 1, 0)
-		accentBar.Parent = card
-		applyCorners(accentBar, px(3))
+		-- removed left accent bar to keep single background color for compact cards
 
 		if item.Category == "Trail" then
 			createTrailVisual(card, item, true)
@@ -2214,12 +2132,8 @@ function SkinsStallUI.Create(parent, options)
 			STYLE.CompactMetadataTextSize
 		)
 
-		local pill, statusLabelRef, priceIcon, statusStroke = createStatusPill(card, 0.5)
-		pill.AnchorPoint = Vector2.new(0.5, 1)
-		pill.Position = UDim2.new(0.5, 0, 1, -pad)
-		pill.Size = UDim2.new(1, -pad * 2, 0, buttonHeight)
-
-		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, selectedStroke = selectedStroke, accentBar = accentBar, nameLabel = nameLabel, typeLabel = typeLabel, rarityLabel = rarityLabel, statusPill = pill, statusLabel = statusLabelRef, priceIcon = priceIcon, statusStroke = statusStroke }
+		-- removed bottom status pill from compact card
+		local record = { key = makeKey(item.Category, item.Id), item = item, button = button, card = card, stroke = stroke, selectedStroke = selectedStroke, nameLabel = nameLabel, typeLabel = typeLabel, rarityLabel = rarityLabel }
 		cardRecords[record.key] = record
 
 		trackConn(button.MouseButton1Click:Connect(function()

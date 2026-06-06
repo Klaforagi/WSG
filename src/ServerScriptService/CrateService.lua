@@ -19,6 +19,7 @@ local WeaponEnchantConfig  = require(ReplicatedStorage:WaitForChild("WeaponEncha
 -- Lazy-loaded server modules
 local CurrencyService       = nil
 local WeaponInstanceService = nil
+local SpinWheelService = nil
 
 local function ensureCurrencyService()
     if CurrencyService then return CurrencyService end
@@ -36,6 +37,15 @@ local function ensureWeaponInstanceService()
         WeaponInstanceService = require(mod)
     end
     return WeaponInstanceService
+end
+
+local function ensureSpinWheelService()
+    if SpinWheelService then return SpinWheelService end
+    local mod = ServerScriptService:FindFirstChild("SpinWheelService")
+    if mod and mod:IsA("ModuleScript") then
+        SpinWheelService = require(mod)
+    end
+    return SpinWheelService
 end
 
 local SalvageConfig = nil

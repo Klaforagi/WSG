@@ -154,10 +154,21 @@ local function isCrateRewardSequenceActive()
     return ok and result == true
 end
 
+local function isSpinWheelRewardSequenceActive()
+    local activeCheck = _G.IsSpinWheelRewardSequenceLocked
+    if type(activeCheck) ~= "function" then
+        return false
+    end
+
+    local ok, result = pcall(activeCheck)
+    return ok and result == true
+end
+
 local function canUseChestPrompts()
     return (type(_G.OpenCrateRequested) == "function" or getOpenCrateRemote() ~= nil)
         and not purchaseModalOpen
-        and not isCrateRewardSequenceActive()
+    and not isCrateRewardSequenceActive()
+    and not isSpinWheelRewardSequenceActive()
 end
 
 local function getCurrencyAmount(apiGetterName, remoteName, allowRemoteFallback)

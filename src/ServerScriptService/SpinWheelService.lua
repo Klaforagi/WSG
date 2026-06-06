@@ -638,6 +638,13 @@ function SpinWheelService:RequestSpin(player)
     }
 end
 
+function SpinWheelService:IsPlayerSpinLocked(player)
+    if not player then
+        return false
+    end
+    return spinLocks[player] == true
+end
+
 function SpinWheelService:GrantSpinPack(player, packIndex)
     if not player then
         return false, "Invalid player", {
