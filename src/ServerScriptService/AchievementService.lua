@@ -618,6 +618,69 @@ end
 -- Client-facing API
 --------------------------------------------------------------------------------
 
+local function buildStageHistoryMap(data, achievementId)
+    local completedByStage = {}
+    if type(data.completedHistory) ~= "table" then
+        return completedByStage
+    end
+
+    for _, entry in ipairs(data.completedHistory) do
+        if type(entry) == "table" and entry.id == achievementId then
+            local stageIndex = tonumber(entry.stageIndex) or 1
+            if not completedByStage[stageIndex] then
+                completedByStage[stageIndex] = sanitizeAchievedOn(entry.achievedOn) or true
+            end
+        end
+    end
+
+    return completedByStage
+end
+
+local function buildStageSnapshots(data, def, ach)
+    if not def.staged then
+        return nil
+    end
+
+    local maxStage = AchievementDefs.GetMaxStage(def)
+    if maxStage <= 1 then
+        return nil
+    end
+
+    local completedByStage = buildStageHistoryMap(data, def.id)
+    local activeStage = math.clamp(tonumber(ach.stageIndex) or 1, 1, maxStage)
+    if ach.maxedOut then
+        activeStage = maxStage
+    end
+
+    local statVal = data.stats[def.stat] or 0
+    local stages = {}
+    for stageIndex = 1, maxStage do
+        local target = AchievementDefs.GetStageTarget(def, stageIndex)
+        local completedDate = completedByStage[stageIndex]
+        if stageIndex == activeStage and ach.completed and not ach.claimed then
+            completedDate = sanitizeAchievedOn(ach.achievedOn) or completedDate
+        end
+
+        local isCompleted = ach.maxedOut or completedDate ~= nil or stageIndex < activeStage
+        local isCurrent = (not isCompleted) and stageIndex == activeStage and not ach.maxedOut
+        local stageProgress = math.min(statVal, target)
+
+        table.insert(stages, {
+            stageNumber       = stageIndex,
+            requirementAmount = target,
+            requirementText   = AchievementDefs.GetStageDesc(def, stageIndex),
+            displayName       = AchievementDefs.GetStageTitle(def, stageIndex),
+            rewardText        = string.format("+%d coins, +%d AP", AchievementDefs.GetStageReward(def, stageIndex), AchievementDefs.GetStageAP(def, stageIndex)),
+            completed         = isCompleted,
+            current           = isCurrent,
+            completedDate     = type(completedDate) == "number" and completedDate or nil,
+            progress          = stageProgress,
+        })
+    end
+
+    return stages
+end
+
 --- Returns an array of achievement snapshots for the client.
 --- Each entry represents the CURRENT ACTIVE STAGE only.
 --- Backward-compatible: includes id, title, desc, icon, target, reward,
@@ -657,6 +720,7 @@ function AchievementService:GetAchievementsForPlayer(player)
             stageIndex = si,
             staged     = def.staged,
             maxedOut   = ach.maxedOut,
+            stages     = buildStageSnapshots(data, def, ach),
         })
     end
     -- Attach player's total achievement points to the response

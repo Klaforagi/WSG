@@ -2807,6 +2807,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     local achCards             = {}
     local achCardStrokes       = {}
     local achAchievedOnLabels  = {}
+    local achStageGemRows      = {}
+    local achStageGemWidgets   = {}
+    local achStageGemPulses    = {}
 
     ---------------------------------------------------------------------------
     -- Hub root: fills the achievPage, laid out with absolute positioning
@@ -3057,16 +3060,314 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     end
 
     ---------------------------------------------------------------------------
+    -- Staged achievement gems + hover tooltip
+    ---------------------------------------------------------------------------
+    local stageTooltip
+    local stageTooltipTitle
+    local stageTooltipBody
+
+    local function ensureStageTooltip()
+        if stageTooltip and stageTooltip.Parent then
+            return
+        end
+
+        stageTooltip = Instance.new("Frame")
+        stageTooltip.Name = "AchievementStageTooltip"
+        stageTooltip.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+        stageTooltip.BackgroundTransparency = 0.03
+        stageTooltip.BorderSizePixel = 0
+        stageTooltip.Size = UDim2.new(0, px(260), 0, px(74))
+        stageTooltip.AutomaticSize = Enum.AutomaticSize.Y
+        stageTooltip.Visible = false
+        stageTooltip.ZIndex = 340
+        stageTooltip.Parent = root
+
+        local tipCorner = Instance.new("UICorner")
+        tipCorner.CornerRadius = UDim.new(0, px(8))
+        tipCorner.Parent = stageTooltip
+
+        local tipStroke = Instance.new("UIStroke")
+        tipStroke.Color = CLAIM_GOLD_GLOW
+        tipStroke.Thickness = 1.2
+        tipStroke.Transparency = 0.18
+        tipStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        tipStroke.Parent = stageTooltip
+
+        local tipPad = Instance.new("UIPadding")
+        tipPad.PaddingTop = UDim.new(0, px(9))
+        tipPad.PaddingBottom = UDim.new(0, px(9))
+        tipPad.PaddingLeft = UDim.new(0, px(10))
+        tipPad.PaddingRight = UDim.new(0, px(10))
+        tipPad.Parent = stageTooltip
+
+        local tipLayout = Instance.new("UIListLayout")
+        tipLayout.FillDirection = Enum.FillDirection.Vertical
+        tipLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        tipLayout.Padding = UDim.new(0, px(3))
+        tipLayout.Parent = stageTooltip
+
+        stageTooltipTitle = Instance.new("TextLabel")
+        stageTooltipTitle.Name = "Title"
+        stageTooltipTitle.BackgroundTransparency = 1
+        stageTooltipTitle.Font = Enum.Font.GothamBold
+        stageTooltipTitle.Text = ""
+        stageTooltipTitle.TextColor3 = GOLD
+        stageTooltipTitle.TextSize = achTextPx(14, 11)
+        stageTooltipTitle.TextXAlignment = Enum.TextXAlignment.Left
+        stageTooltipTitle.TextTruncate = Enum.TextTruncate.AtEnd
+        stageTooltipTitle.Size = UDim2.new(1, 0, 0, px(18))
+        stageTooltipTitle.ZIndex = stageTooltip.ZIndex + 1
+        stageTooltipTitle.LayoutOrder = 1
+        stageTooltipTitle.Parent = stageTooltip
+
+        stageTooltipBody = Instance.new("TextLabel")
+        stageTooltipBody.Name = "Body"
+        stageTooltipBody.BackgroundTransparency = 1
+        stageTooltipBody.Font = Enum.Font.GothamMedium
+        stageTooltipBody.Text = ""
+        stageTooltipBody.TextColor3 = WHITE
+        stageTooltipBody.TextSize = achTextPx(12, 10)
+        stageTooltipBody.TextWrapped = true
+        stageTooltipBody.TextXAlignment = Enum.TextXAlignment.Left
+        stageTooltipBody.TextYAlignment = Enum.TextYAlignment.Top
+        stageTooltipBody.AutomaticSize = Enum.AutomaticSize.Y
+        stageTooltipBody.Size = UDim2.new(1, 0, 0, px(38))
+        stageTooltipBody.ZIndex = stageTooltip.ZIndex + 1
+        stageTooltipBody.LayoutOrder = 2
+        stageTooltipBody.Parent = stageTooltip
+    end
+
+    local function positionStageTooltip()
+        if not stageTooltip or not stageTooltip.Visible then return end
+        local rootPos = root.AbsolutePosition
+        local rootSize = root.AbsoluteSize
+        if rootSize.X <= 0 or rootSize.Y <= 0 then return end
+
+        local mouse = UserInputService:GetMouseLocation()
+        local tipW = math.max(stageTooltip.AbsoluteSize.X, px(260))
+        local tipH = math.max(stageTooltip.AbsoluteSize.Y, px(74))
+        local pad = px(6)
+        local x = mouse.X - rootPos.X + px(12)
+        local y = mouse.Y - rootPos.Y + px(12)
+
+        if x + tipW > rootSize.X - pad then
+            x = mouse.X - rootPos.X - tipW - px(12)
+        end
+        if y + tipH > rootSize.Y - pad then
+            y = mouse.Y - rootPos.Y - tipH - px(10)
+        end
+
+        x = math.clamp(x, pad, math.max(pad, rootSize.X - tipW - pad))
+        y = math.clamp(y, pad, math.max(pad, rootSize.Y - tipH - pad))
+        stageTooltip.Position = UDim2.new(0, x, 0, y)
+    end
+
+    local function getStageTooltipLines(stage)
+        local stageNumber = tonumber(stage and stage.stageNumber) or 1
+        local displayName = stage and stage.displayName
+        local titleBase = displayName and displayName ~= "" and displayName or ("Stage " .. tostring(stageNumber))
+        local requirement = stage and stage.requirementText or ""
+
+        if stage and stage.completed then
+            local completedDate = formatAchievedOn(stage.completedDate)
+            local title = string.format("Stage %d Complete", stageNumber)
+            if displayName and displayName ~= "" then
+                title = title .. " - " .. displayName
+            end
+            if completedDate then
+                return title, requirement .. "\nCompleted: " .. completedDate
+            end
+            return title, requirement .. "\nCompleted"
+        end
+
+        local target = tonumber(stage and stage.requirementAmount) or 0
+        local progress = tonumber(stage and stage.progress) or 0
+        local progressLine = target > 0 and ("Progress: " .. FormatProgress(math.min(progress, target), target)) or nil
+        if progressLine then
+            return titleBase, requirement .. "\n" .. progressLine
+        end
+        return titleBase, requirement
+    end
+
+    local function showStageTooltip(stage)
+        ensureStageTooltip()
+        local title, body = getStageTooltipLines(stage or {})
+        stageTooltipTitle.Text = title
+        stageTooltipBody.Text = body
+        stageTooltip.Visible = true
+        task.defer(positionStageTooltip)
+    end
+
+    local function hideStageTooltip()
+        if stageTooltip then
+            stageTooltip.Visible = false
+        end
+    end
+
+    local function applyStageGemVisual(gemButton, stage)
+        local diamond = gemButton:FindFirstChild("GemDiamond")
+        local shine = diamond and diamond:FindFirstChild("Shine")
+        local stroke = diamond and diamond:FindFirstChildOfClass("UIStroke")
+        if not diamond or not stroke then return end
+
+        local function stopPulse()
+            local pulse = achStageGemPulses[gemButton]
+            if pulse then
+                pcall(function() pulse:Cancel() end)
+                achStageGemPulses[gemButton] = nil
+            end
+        end
+
+        if stage.completed then
+            stopPulse()
+            diamond.BackgroundColor3 = Color3.fromRGB(255, 203, 54)
+            diamond.BackgroundTransparency = 0
+            stroke.Color = Color3.fromRGB(255, 246, 174)
+            stroke.Thickness = 1.8
+            stroke.Transparency = 0.06
+            if shine then shine.Visible = true; shine.BackgroundTransparency = 0.3 end
+        elseif stage.current then
+            diamond.BackgroundColor3 = Color3.fromRGB(65, 122, 210)
+            diamond.BackgroundTransparency = 0.05
+            stroke.Color = Color3.fromRGB(230, 244, 255)
+            stroke.Thickness = 2
+            stroke.Transparency = 0.08
+            if shine then shine.Visible = true; shine.BackgroundTransparency = 0.55 end
+            if not achStageGemPulses[gemButton] then
+                local pulse = TweenService:Create(stroke, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {Transparency = 0.34})
+                achStageGemPulses[gemButton] = pulse
+                pulse:Play()
+            end
+        else
+            stopPulse()
+            diamond.BackgroundColor3 = Color3.fromRGB(56, 60, 72)
+            diamond.BackgroundTransparency = 0.28
+            stroke.Color = Color3.fromRGB(105, 110, 126)
+            stroke.Thickness = 1.1
+            stroke.Transparency = 0.48
+            if shine then shine.Visible = false end
+        end
+    end
+
+    local function updateStageGemRow(row, ach)
+        if not row or not row.Parent or type(ach) ~= "table" or type(ach.stages) ~= "table" then
+            return
+        end
+
+        local widgets = achStageGemWidgets[row]
+        if type(widgets) ~= "table" then return end
+        for stageIndex, gemButton in pairs(widgets) do
+            local stage = ach.stages[stageIndex]
+            if stage and gemButton and gemButton.Parent then
+                applyStageGemVisual(gemButton, stage)
+            end
+        end
+    end
+
+    local function buildStageGemRow(card, ach, rowY)
+        if type(ach.stages) ~= "table" or #ach.stages <= 1 then
+            return nil
+        end
+
+        local row = Instance.new("Frame")
+        row.Name = "StageGemRow"
+        row.BackgroundTransparency = 1
+        row.Size = UDim2.new(0.58, 0, 0, px(26))
+        row.Position = UDim2.new(0, 0, 0, rowY)
+        row.ZIndex = 12
+        row.Parent = card
+
+        local layout = Instance.new("UIListLayout")
+        layout.FillDirection = Enum.FillDirection.Horizontal
+        layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+        layout.VerticalAlignment = Enum.VerticalAlignment.Center
+        layout.SortOrder = Enum.SortOrder.LayoutOrder
+        layout.Padding = UDim.new(0, px(7))
+        layout.Parent = row
+
+        achStageGemWidgets[row] = {}
+        local gemSize = (#ach.stages > 5) and px(13) or px(15)
+        gemSize = math.clamp(gemSize, 10, 18)
+
+        for stageIndex, stage in ipairs(ach.stages) do
+            local gemButton = Instance.new("TextButton")
+            gemButton.Name = "StageGem_" .. tostring(stageIndex)
+            gemButton.AutoButtonColor = false
+            gemButton.BackgroundTransparency = 1
+            gemButton.Text = ""
+            gemButton.Size = UDim2.new(0, gemSize + px(6), 0, gemSize + px(6))
+            gemButton.LayoutOrder = stageIndex
+            gemButton.ZIndex = row.ZIndex + 1
+            gemButton.Parent = row
+
+            local diamond = Instance.new("Frame")
+            diamond.Name = "GemDiamond"
+            diamond.BorderSizePixel = 0
+            diamond.AnchorPoint = Vector2.new(0.5, 0.5)
+            diamond.Position = UDim2.new(0.5, 0, 0.5, 0)
+            diamond.Size = UDim2.new(0, gemSize, 0, gemSize)
+            diamond.Rotation = 45
+            diamond.ZIndex = gemButton.ZIndex + 1
+            diamond.Parent = gemButton
+
+            local gemCorner = Instance.new("UICorner")
+            gemCorner.CornerRadius = UDim.new(0, math.max(2, math.floor(gemSize * 0.16)))
+            gemCorner.Parent = diamond
+
+            local gemStroke = Instance.new("UIStroke")
+            gemStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+            gemStroke.Parent = diamond
+
+            local shine = Instance.new("Frame")
+            shine.Name = "Shine"
+            shine.BackgroundColor3 = Color3.fromRGB(255, 255, 230)
+            shine.BorderSizePixel = 0
+            shine.AnchorPoint = Vector2.new(0.5, 0.5)
+            shine.Position = UDim2.new(0.34, 0, 0.34, 0)
+            shine.Size = UDim2.new(0.36, 0, 0.18, 0)
+            shine.Rotation = -10
+            shine.ZIndex = diamond.ZIndex + 1
+            shine.Parent = diamond
+
+            local shineCorner = Instance.new("UICorner")
+            shineCorner.CornerRadius = UDim.new(1, 0)
+            shineCorner.Parent = shine
+
+            applyStageGemVisual(gemButton, stage)
+            achStageGemWidgets[row][stageIndex] = gemButton
+
+            trackConn(gemButton.MouseEnter:Connect(function()
+                local latest = achievementDataById[ach.id] or ach
+                local latestStage = latest.stages and latest.stages[stageIndex] or stage
+                showStageTooltip(latestStage)
+                if latestStage.completed or latestStage.current then
+                    TweenService:Create(diamond, TWEEN_QUICK, {Size = UDim2.new(0, gemSize + px(3), 0, gemSize + px(3))}):Play()
+                end
+            end))
+            trackConn(gemButton.MouseMoved:Connect(function()
+                positionStageTooltip()
+            end))
+            trackConn(gemButton.MouseLeave:Connect(function()
+                hideStageTooltip()
+                TweenService:Create(diamond, TWEEN_QUICK, {Size = UDim2.new(0, gemSize, 0, gemSize)}):Play()
+            end))
+        end
+
+        return row
+    end
+
+    ---------------------------------------------------------------------------
     -- Achievement card builder (reusable for both Home and Category views)
     ---------------------------------------------------------------------------
     local function buildAchievementCard(ach, layoutOrder, parentFrame)
         achGoals[ach.id]   = ach.target
         achClaimed[ach.id] = ach.claimed
+        local hasStageGems = type(ach.stages) == "table" and #ach.stages > 1
 
         local card = Instance.new("Frame")
         card.Name             = "Ach_" .. ach.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, -px(6), 0, px(136))
+        card.Size             = UDim2.new(1, -px(6), 0, hasStageGems and px(158) or px(136))
         card.LayoutOrder      = layoutOrder
         card.Parent           = parentFrame
         achCards[ach.id]      = card
@@ -3302,6 +3603,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                 achievedOnLbl.Text = ""
                 achievedOnLbl.Visible = false
             end
+        end
+
+        local stageGemRow = buildStageGemRow(card, ach, barY + barH + px(26))
+        if stageGemRow then
+            achStageGemRows[ach.id] = stageGemRow
+        else
+            achStageGemRows[ach.id] = nil
         end
 
         -- Status indicator (replaces old Claim button — rewards are auto-granted)
@@ -4147,6 +4455,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                                     achievedOnLabel.Visible = false
                                 end
                             end
+                            updateStageGemRow(achStageGemRows[a.id], a)
                             local claimB = achClaimButtons[a.id]
                             if claimB then
                                 local bS = claimB:FindFirstChildOfClass("UIStroke")
@@ -4256,12 +4565,33 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             if achData then
                 achData.progress = math.min(newProgress, goal)
                 achData.completed = completed == true or achData.completed == true or newProgress >= goal
+                if stageIndex ~= nil then
+                    achData.stageIndex = tonumber(stageIndex) or achData.stageIndex
+                end
                 if achData.completed then
                     if achData.achievedOn == nil then achData.achievedOn = tonumber(achievedOn) end
                 else
                     achData.achievedOn = nil
                 end
                 if claimedFromServer ~= nil then achData.claimed = claimedFromServer == true end
+                if type(achData.stages) == "table" then
+                    local activeStage = tonumber(achData.stageIndex) or 1
+                    for idx, stage in ipairs(achData.stages) do
+                        local isActiveStage = (tonumber(stage.stageNumber) or idx) == activeStage
+                        if isActiveStage then
+                            stage.progress = math.min(newProgress, tonumber(stage.requirementAmount) or goal)
+                            stage.completed = achData.completed == true
+                            stage.current = not stage.completed and achData.maxedOut ~= true
+                            if stage.completed and stage.completedDate == nil then
+                                stage.completedDate = tonumber(achievedOn)
+                            elseif not stage.completed then
+                                stage.completedDate = nil
+                            end
+                        elseif not stage.completed then
+                            stage.current = false
+                        end
+                    end
+                end
             end
             if claimedFromServer ~= nil then achClaimed[achId] = claimedFromServer == true end
 
@@ -4282,6 +4612,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                 if ic and ad then aOnLbl.Text = "Achieved On: " .. ad; aOnLbl.Visible = true
                 else aOnLbl.Text = ""; aOnLbl.Visible = false end
             end
+            updateStageGemRow(achStageGemRows[achId], achData)
             local claimBtn2 = achClaimButtons[achId]
             if claimBtn2 and claimBtn2.Parent then
                 local bStroke = claimBtn2:FindFirstChildOfClass("UIStroke")
