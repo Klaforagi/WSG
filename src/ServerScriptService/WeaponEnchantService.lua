@@ -32,6 +32,7 @@ pcall(function()
     StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
 local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
 
 local WeaponEnchantService = {}
 
@@ -488,6 +489,11 @@ local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantNa
     damage = applyDamageOutputModifiers(attackerPlayer, damage)
     damage = math.round(damage)
     pcall(function()
+        local model = targetHumanoid.Parent
+        if CombatUtils and (CombatUtils.isPodiumAvatar(model) or CombatUtils.isPodiumPart(options and options.PopupPart)) then
+            if _G.DEBUG_COMBAT then print("[Combat] Ignored podium avatar enchant damage:", model and model.Name) end
+            return
+        end
         if attackerPlayer then
             targetHumanoid:SetAttribute("lastDamagerUserId", attackerPlayer.UserId)
             targetHumanoid:SetAttribute("lastDamagerName", attackerPlayer.Name)

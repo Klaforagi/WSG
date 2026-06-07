@@ -7,6 +7,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 local MOVEMENT_SPEED_STAT = "MovementSpeed"
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
 
 local MobCombat = {}
 
@@ -500,6 +501,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                     if not part or not part:IsA("BasePart") then continue end
                     local model = part:FindFirstAncestorOfClass("Model")
                     if not model or model == mobModel then continue end
+                    if CombatUtils and (CombatUtils.isPodiumAvatar(model) or CombatUtils.isPodiumPart(part)) then
+                        continue
+                    end
                     local victimHum = model:FindFirstChildOfClass("Humanoid")
                     if not victimHum or victimHum.Health <= 0 then continue end
                     local ply = Players:GetPlayerFromCharacter(model)
@@ -511,6 +515,13 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
             for victimHum, ply in pairs(hitHumanoids) do
                 didHit = true
+
+                local victimChar = victimHum and victimHum.Parent
+                if CombatUtils and CombatUtils.isPodiumAvatar(victimChar) then
+                    -- Ignore podium avatars
+                    if _G.DEBUG_COMBAT then print("[Combat] Ignored podium avatar mob hit:", victimChar and victimChar.Name) end
+                    continue
+                end
 
                 -- Tag the player victim with this NPC as the attacker so that
                 -- KillTracker can show a kill card crediting the monster on death.

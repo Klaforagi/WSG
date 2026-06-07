@@ -31,6 +31,7 @@ local ServerScriptService  = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage:WaitForChild("MeteorShowerConfig"))
 local EventConfig = require(ReplicatedStorage:WaitForChild("EventConfig"))
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
 
 ---------------------------------------------------------------------
 -- Currency integration (for reward payout)
@@ -491,10 +492,18 @@ local function applyImpactDamage(impactPos)
         local didHit = false
 
         if dist <= directR then
-            hum:TakeDamage(damage)
+            if not (CombatUtils and (CombatUtils.isPodiumAvatar(char) or CombatUtils.isPodiumPart(hrp))) then
+                hum:TakeDamage(damage)
+            else
+                if _G.DEBUG_COMBAT then print("[Combat] Ignored podium avatar meteor hit:", char and char.Name) end
+            end
             didHit = true
         elseif dist <= splashR then
-            hum:TakeDamage(damage)
+            if not (CombatUtils and (CombatUtils.isPodiumAvatar(char) or CombatUtils.isPodiumPart(hrp))) then
+                hum:TakeDamage(damage)
+            else
+                if _G.DEBUG_COMBAT then print("[Combat] Ignored podium avatar meteor splash:", char and char.Name) end
+            end
             didHit = true
         end
 

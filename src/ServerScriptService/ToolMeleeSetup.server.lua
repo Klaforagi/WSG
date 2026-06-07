@@ -78,10 +78,12 @@ local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidSt
 local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
 local MOVEMENT_SPEED_STAT = "MovementSpeed"
 local MELEE_ATTACK_SPEED_MODIFIER_ID = "melee_attack_slow"
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
 
 local function shouldIgnoreHumanoidTarget(model, humanoid)
     if not humanoid then return true end
     if humanoid:GetAttribute("IgnoreCombatTargeting") then return true end
+    if CombatUtils and CombatUtils.isPodiumAvatar(model) then return true end
     if model and (model:GetAttribute(FULL_BODY_SKIN_MODEL_ATTRIBUTE) or model.Name == "AppliedCharacterSkin") then
         return true
     end
@@ -477,6 +479,13 @@ end
 -- Damage helper (same tag pattern as the gun system so KillTracker works)
 ---------------------------------------------------------------------------
 local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, hitPos, weaponInstanceId, weaponName)
+    -- Podium avatars must be ignored by melee damage
+    if CombatUtils and (CombatUtils.isPodiumAvatar(victimModel) or CombatUtils.isPodiumPart(hitPart)) then
+        if _G.DEBUG_COMBAT then
+            print("[Combat] Ignored podium avatar target:", victimModel and victimModel.Name or tostring(hitPart))
+        end
+        return
+    end
     -- prevent friendly fire: if the victim is a player on the same Team, skip damage
     local victimPlayer = nil
     if victimModel and Players then
@@ -556,7 +565,7 @@ local function applyKnockback(victimRoot, direction, force)
     local model = victimRoot:FindFirstAncestorOfClass("Model")
     if model then
         local hum = model:FindFirstChildOfClass("Humanoid")
-        if hum and hum:GetAttribute("knockbackImmune") then return end
+        if hum and (hum:GetAttribute("knockbackImmune") or (CombatUtils and CombatUtils.isPodiumAvatar(model))) then return end
     end
     local bv = Instance.new("BodyVelocity")
     bv.MaxForce = Vector3.new(1e5, 1e5, 1e5)

@@ -148,6 +148,8 @@ pcall(function()
     end
 end)
 
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
+
 local RevengeCurseService
 pcall(function()
     local mod = ServerScriptService:FindFirstChild("RevengeCurseService")
@@ -227,6 +229,9 @@ _G.RegisterMobCombatHit = registerMobCombatHit
 --------------------------------------------------------------------------------
 local function isMonsterModel(model)
     if not model or not model:IsA("Model") then return false end
+
+    -- Podium avatars are display-only and must never be treated as monsters
+    if CombatUtils and CombatUtils.isPodiumAvatar(model) then return false end
 
     -- 1. Explicit IsMonster attribute
     if model:GetAttribute("IsMonster") == true then return true end
@@ -502,6 +507,11 @@ local function resolveRevengeTarget(player, info)
 end
 
 local function applyRevengeKill(attackerPlayer, targetPlayer, targetHumanoid)
+    -- Protect podium avatars from revenge kills
+    if CombatUtils and CombatUtils.isPodiumAvatar(targetHumanoid and targetHumanoid.Parent) then
+        if _G.DEBUG_COMBAT then print("[Combat] Skipped revenge kill on podium avatar:", targetHumanoid and targetHumanoid.Parent and targetHumanoid.Parent.Name) end
+        return
+    end
     if RevengeCurseService and RevengeCurseService.Apply then
         pcall(function()
             RevengeCurseService:Apply(targetPlayer, REVENGE_CURSE_DURATION)
@@ -525,6 +535,20 @@ end
 -- Death handler — single source of truth
 --------------------------------------------------------------------------------
 local function onHumanoidDied(humanoid, model)
+    -- Podium avatars must never trigger death handlers or grant rewards.
+    if CombatUtils and CombatUtils.isPodiumAvatar(model) then
+        if _G.DEBUG_COMBAT then
+            print("[Combat] Ignored podium avatar death:", model and model.Name)
+        end
+        pcall(function()
+            humanoid:SetAttribute("EliminationProcessed", true)
+            humanoid:SetAttribute("_killCredited", true)
+            humanoid:SetAttribute("IsPodiumAvatar", true)
+            humanoid.MaxHealth = math.max(1000000, humanoid.MaxHealth or 100)
+            humanoid.Health = humanoid.MaxHealth
+        end)
+        return
+    end
     -- Dedup: process each death only once
     if humanoid:GetAttribute("EliminationProcessed") then return end
     if humanoid:GetAttribute("_killCredited") then

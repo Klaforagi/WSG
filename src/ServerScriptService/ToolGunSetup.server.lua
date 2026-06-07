@@ -64,6 +64,7 @@ local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidSt
 local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
 local MOVEMENT_SPEED_STAT = "MovementSpeed"
 local RANGED_ATTACK_SPEED_MODIFIER_ID = "ranged_attack_slow"
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
 
 local WeaponTrailService = nil
 pcall(function()
@@ -76,6 +77,7 @@ end)
 local function shouldIgnoreHumanoidTarget(model, humanoid)
     if not humanoid then return true end
     if humanoid:GetAttribute("IgnoreCombatTargeting") then return true end
+    if CombatUtils and CombatUtils.isPodiumAvatar(model) then return true end
     if model and (model:GetAttribute(FULL_BODY_SKIN_MODEL_ATTRIBUTE) or model.Name == "AppliedCharacterSkin") then
         return true
     end
@@ -357,6 +359,13 @@ end
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
 local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos, weaponInstanceId, weaponName, enchantName)
+    -- Podium avatars are fully immune to damage and should be ignored by combat
+    if CombatUtils and (CombatUtils.isPodiumAvatar(victimModel) or CombatUtils.isPodiumPart(hitPart)) then
+        if _G.DEBUG_COMBAT then
+            print("[Combat] Ignored podium avatar target:", victimModel and victimModel.Name or tostring(hitPart))
+        end
+        return
+    end
     -- prevent friendly fire: if the victim is a player on the same Team, skip damage
     local victimPlayer = nil
     if victimModel and Players then

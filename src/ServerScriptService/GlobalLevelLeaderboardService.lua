@@ -10,6 +10,7 @@ local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local EmoteConfig = require(ReplicatedStorage:WaitForChild("SideUI"):WaitForChild("EmoteConfig"))
 local XPModule = require(ServerScriptService:WaitForChild("XPServiceModule"))
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
 
 local GlobalLevelLeaderboardService = {}
 
@@ -394,6 +395,9 @@ local function rebuildPodiumRank(rank, entry, podiumPart, podiumModel)
         local rig = Players:CreateHumanoidModelFromDescription(description, PODIUM_RIG_TYPE)
         rig.Name = string.format("PodiumAvatar_%d", rank)
         rig.Parent = podiumModel
+
+        -- Mark as podium avatar for centralized combat checks and safety
+        pcall(function() CombatUtils.tagPodiumModel(rig) end)
 
         setPodiumRigPhysics(rig)
 
