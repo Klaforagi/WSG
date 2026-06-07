@@ -17,7 +17,7 @@ local ServerScriptService = game:GetService("ServerScriptService")
 
 local PotionStockService = require(ServerScriptService:WaitForChild("PotionStockService"))
 
-local REFRESH_BANNER_TEXT = "Potion Stall gold stock has refreshed!"
+local REFRESH_BANNER_TEXT = "Potion Stall stock has refreshed!"
 local REFRESH_BANNER_COLOR = Color3.fromRGB(255, 208, 95)
 
 local function ensureInstance(parent, className, name)
@@ -83,6 +83,7 @@ task.spawn(function()
                     cycle = currentCycle,
                     secondsRemaining = secondsRemaining,
                     refreshInterval = PotionStockService.RefreshInterval,
+                    items = PotionStockService:GetCycleItems(),
                 })
             end)
 

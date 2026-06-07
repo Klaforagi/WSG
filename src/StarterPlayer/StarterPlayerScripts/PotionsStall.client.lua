@@ -417,6 +417,9 @@ end
 
 local function openStall()
 	if isOpen or suppressUntilExit then return end
+	if buildInProgress then
+		return
+	end
 	local now = os.clock()
 	if now - lastOpenAt < 0.5 then return end
 
