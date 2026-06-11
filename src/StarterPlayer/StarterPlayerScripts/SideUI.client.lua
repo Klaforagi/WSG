@@ -1342,6 +1342,8 @@ do
             end
         end
     end)
+    pcall(function() Inventory:AddItem(savedMelee) end)
+    pcall(function() Inventory:AddItem(savedRanged) end)
     pcall(function() Inventory:SetEquipped("Melee", savedMelee) end)
     pcall(function() Inventory:SetEquipped("Ranged", savedRanged) end)
 end

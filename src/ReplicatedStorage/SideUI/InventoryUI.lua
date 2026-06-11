@@ -2050,23 +2050,44 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if itemData and type(itemData.mastery) == "table" then
             return itemData.mastery
         end
+        local rarity = "Common"
+        local category = "Melee"
+        if type(itemData) == "table" then
+            rarity = itemData.rarity or (itemData.weaponName and getWeaponRarity(itemData.weaponName)) or rarity
+            category = itemData.category or (itemData.weaponName and classifyItem(itemData.weaponName)) or category
+        end
+
+        local nextLevelXP = 200
+        local baseDamage = 0
+        if WeaponMasteryConfig and type(WeaponMasteryConfig.GetProgressForXP) == "function" then
+            local ok, progress = pcall(function()
+                return WeaponMasteryConfig.GetProgressForXP(0, rarity, category)
+            end)
+            if ok and type(progress) == "table" then
+                nextLevelXP = math.max(0, tonumber(progress.nextLevelXP) or nextLevelXP)
+                baseDamage = math.max(0, tonumber(progress.currentDamage or progress.baseDamage or progress.nilDamage) or baseDamage)
+            elseif WeaponMasteryConfig.GetDamageForLevel then
+                baseDamage = math.max(0, tonumber(WeaponMasteryConfig.GetDamageForLevel(0, rarity, category)) or baseDamage)
+            end
+        end
+
         return {
-                level = 0,
-                title = "NIL",
-                romanNumeral = "NIL",
+            level = 0,
+            title = "NIL",
+            romanNumeral = "NIL",
             xp = 0,
             progress = 0,
-                nextLevel = 1,
+            nextLevel = 1,
             currentLevelXP = 0,
-                nextLevelXP = 200,
+            nextLevelXP = nextLevelXP,
             eliminations = 0,
             mobKills = 0,
             captures = 0,
             damage = 0,
             damageBonus = 0,
-                baseDamage = 0,
-                currentDamage = 0,
-                nilDamage = 0,
+            baseDamage = baseDamage,
+            currentDamage = baseDamage,
+            nilDamage = baseDamage,
             maxed = false,
         }
     end
@@ -2652,6 +2673,37 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             setSelectedItem(selectedItem)
         end
     end
+
+    task.spawn(function()
+        local retryDelays = { 0.35, 0.9, 1.75 }
+        for _, delaySeconds in ipairs(retryDelays) do
+            if type(weaponInstances) == "table" and next(weaponInstances) ~= nil then
+                return
+            end
+
+            task.wait(delaySeconds)
+
+            local refreshed = nil
+            pcall(function()
+                local getInvRF = ReplicatedStorage:FindFirstChild("GetWeaponInventory")
+                if not getInvRF then
+                    getInvRF = ReplicatedStorage:WaitForChild("GetWeaponInventory", 5)
+                end
+                if getInvRF and getInvRF:IsA("RemoteFunction") then
+                    local result = getInvRF:InvokeServer()
+                    if type(result) == "table" then
+                        refreshed = result
+                    end
+                end
+            end)
+
+            if type(refreshed) == "table" and next(refreshed) ~= nil then
+                weaponInstances = refreshed
+                refreshWeaponInventoryView(refreshed)
+                return
+            end
+        end
+    end)
 
     ---------------------------------------------------------------------------
     -- Equip button handler  (details panel — sole equip point for weapons)

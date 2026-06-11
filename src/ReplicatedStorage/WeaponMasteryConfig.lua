@@ -201,14 +201,19 @@ function WeaponMasteryConfig.GetLevelDef(level, rarity, category)
     local normalizedCategory = canonicalizeCategory(category)
     local index = numericLevel + 1
     local row = WeaponMasteryConfig.Levels[index] or WeaponMasteryConfig.Levels[1]
-    local damageTable = normalizedCategory == "Ranged" and progression.rangedDamage or progression.meleeDamage
+    local damageTables = progression and progression.damages
+    local damageTable = damageTables and damageTables[normalizedCategory]
+    if type(damageTable) ~= "table" then
+        damageTable = damageTables and damageTables.Melee or nil
+    end
+    local xpTable = progression and progression.xp or nil
 
     return {
         Level = row.Level,
-        XP = progression.xp[index] or 0,
+        XP = (type(xpTable) == "table" and xpTable[index]) or 0,
         Title = row.Title,
         RomanNumeral = row.RomanNumeral,
-        Damage = damageTable[index] or damageTable[1] or 0,
+        Damage = (type(damageTable) == "table" and (damageTable[index] or damageTable[1])) or 0,
         Rarity = canonicalizeRarity(rarity),
         Category = normalizedCategory,
     }

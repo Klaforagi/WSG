@@ -461,7 +461,7 @@ local function loadLegacy(result)
     if type(result) == "table" then
         for instanceId, entry in pairs(result) do
             if type(instanceId) == "string" and instanceId ~= "__version" and type(entry) == "table" then
-                loaded.legacyByInstance[instanceId] = normalizeEntry(copyTable(entry))
+                loaded.legacyByInstance[instanceId] = normalizeEntry(copyTable(entry), entry.weaponName)
             end
         end
     end
@@ -559,12 +559,12 @@ function WeaponMasteryService:SaveProfileForPlayer(player, saveData, oldData)
     local data = DataStoreOps.DeepCopy(saveData or ensureDataForPlayer(player))
     for weaponName, entry in pairs(data.byWeaponName) do
         if type(weaponName) == "string" then
-            data.byWeaponName[weaponName] = normalizeEntry(entry)
+            data.byWeaponName[weaponName] = normalizeEntry(entry, weaponName)
         end
     end
     for instanceId, entry in pairs(data.legacyByInstance) do
         if type(instanceId) == "string" then
-            data.legacyByInstance[instanceId] = normalizeEntry(entry)
+            data.legacyByInstance[instanceId] = normalizeEntry(entry, entry and entry.weaponName or nil)
         end
     end
 
