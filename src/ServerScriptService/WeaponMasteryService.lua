@@ -125,7 +125,9 @@ end
 local function newEntry()
     return {
         xp = 0,
-        level = 1,
+        level = 0,
+        rarity = "Common",
+        category = "Melee",
         eliminations = 0,
         mobKills = 0,
         captures = 0,
@@ -135,12 +137,28 @@ local function newEntry()
     }
 end
 
-local function normalizeEntry(entry)
+local function resolveWeaponMeta(weaponName, meta)
+    local resolved = type(meta) == "table" and meta or nil
+    if not resolved then
+        resolved = Config.GetWeaponMeta(weaponName)
+    end
+    local rarity = Config.NormalizeRarity(resolved and resolved.rarity or "Common")
+    local category = Config.NormalizeCategory(resolved and resolved.category or "Melee")
+    return {
+        rarity = rarity,
+        category = category,
+    }
+end
+
+local function normalizeEntry(entry, weaponName, meta)
     if type(entry) ~= "table" then
         entry = newEntry()
     end
+    local resolved = resolveWeaponMeta(weaponName, meta)
+    entry.rarity = resolved.rarity
+    entry.category = resolved.category
     entry.xp = normalizeXPValue(entry.xp)
-    entry.level = Config.GetLevelForXP(entry.xp)
+    entry.level = Config.GetLevelForXP(entry.xp, entry.rarity)
     entry.eliminations = math.max(0, math.floor(tonumber(entry.eliminations) or 0))
     entry.mobKills = math.max(0, math.floor(tonumber(entry.mobKills) or 0))
     entry.captures = math.max(0, math.floor(tonumber(entry.captures) or 0))
@@ -183,9 +201,9 @@ local function ensureDataForPlayer(player)
     return data
 end
 
-local function mergeEntryInto(targetEntry, sourceEntry)
-    targetEntry = normalizeEntry(targetEntry or newEntry())
-    sourceEntry = normalizeEntry(copyTable(sourceEntry))
+local function mergeEntryInto(targetEntry, sourceEntry, weaponName, meta)
+    targetEntry = normalizeEntry(targetEntry or newEntry(), weaponName, meta)
+    sourceEntry = normalizeEntry(copyTable(sourceEntry), weaponName, meta)
 
     targetEntry.xp = normalizeXPValue((targetEntry.xp or 0) + (sourceEntry.xp or 0))
     targetEntry.eliminations = (targetEntry.eliminations or 0) + (sourceEntry.eliminations or 0)
@@ -200,7 +218,7 @@ local function mergeEntryInto(targetEntry, sourceEntry)
         end
     end
 
-    targetEntry.level = Config.GetLevelForXP(targetEntry.xp)
+    targetEntry.level = Config.GetLevelForXP(targetEntry.xp, targetEntry.rarity)
     return targetEntry
 end
 
@@ -238,7 +256,7 @@ local function getOwnedWeaponName(player, instanceId)
     return nil
 end
 
-local function getEntryForWeaponName(player, weaponName, createIfMissing)
+local function getEntryForWeaponName(player, weaponName, createIfMissing, meta)
     if not player or type(weaponName) ~= "string" or weaponName == "" then return nil end
     local data = ensureDataForPlayer(player)
     local entry = data.byWeaponName[weaponName]
@@ -247,26 +265,41 @@ local function getEntryForWeaponName(player, weaponName, createIfMissing)
         data.byWeaponName[weaponName] = entry
     end
     if entry then
-        data.byWeaponName[weaponName] = normalizeEntry(entry)
+        data.byWeaponName[weaponName] = normalizeEntry(entry, weaponName, meta)
     end
     return data.byWeaponName[weaponName]
 end
 
 local function getEntryForInstance(player, instanceId, createIfMissing)
     local weaponName = getOwnedWeaponName(player, instanceId)
-    if not weaponName then return nil, nil end
-    return getEntryForWeaponName(player, weaponName, createIfMissing), weaponName
+    if not weaponName then return nil, nil, nil end
+    local weaponInstanceService = getWeaponInstanceService()
+    local instanceData = nil
+    if weaponInstanceService then
+        local ok, result = pcall(function()
+            return weaponInstanceService:GetInstance(player, instanceId)
+        end)
+        if ok and type(result) == "table" then
+            instanceData = result
+        end
+    end
+    local meta = resolveWeaponMeta(weaponName, instanceData)
+    return getEntryForWeaponName(player, weaponName, createIfMissing, meta), weaponName, meta
 end
 
-local function buildPayload(entry, weaponName)
-    entry = normalizeEntry(entry or newEntry())
-    local progress = Config.GetProgressForXP(entry.xp)
+local function buildPayload(entry, weaponName, meta)
+    meta = resolveWeaponMeta(weaponName, meta)
+    entry = normalizeEntry(entry or newEntry(), weaponName, meta)
+    local progress = Config.GetProgressForXP(entry.xp, meta.rarity, meta.category)
     local romanNumeral = Config.GetRomanNumeral(entry.level)
-    local damageBonus = Config.GetDamageBonus(entry.level)
+    local baseDamage = Config.GetDamageForLevel(entry.level, meta.rarity, meta.category)
+    local nilDamage = Config.GetDamageForLevel(0, meta.rarity, meta.category)
 
     return {
         weaponName = weaponName,
         masteryKey = weaponName,
+        rarity = meta.rarity,
+        category = meta.category,
         xp = entry.xp,
         level = entry.level,
         title = romanNumeral,
@@ -275,7 +308,11 @@ local function buildPayload(entry, weaponName)
         mobKills = entry.mobKills,
         captures = entry.captures,
         damage = entry.damage,
-        damageBonus = damageBonus,
+        baseDamage = baseDamage,
+        currentDamage = baseDamage,
+        damageBonus = math.max(0, baseDamage - nilDamage),
+        nilDamage = nilDamage,
+        nextDamage = progress.nextDamage,
         currentLevelXP = progress.currentLevelXP,
         nextLevelXP = progress.nextLevelXP,
         nextLevel = progress.nextLevel,
@@ -285,13 +322,31 @@ local function buildPayload(entry, weaponName)
 end
 
 function WeaponMasteryService:GetMasteryPayloadForWeaponName(player, weaponName)
-    local entry = getEntryForWeaponName(player, weaponName, false) or newEntry()
-    return buildPayload(entry, weaponName)
+    local entry = getEntryForWeaponName(player, weaponName, false)
+    return buildPayload(entry or newEntry(), weaponName)
 end
 
 function WeaponMasteryService:GetMasteryPayload(player, instanceId)
-    local entry, weaponName = getEntryForInstance(player, instanceId, false)
-    return buildPayload(entry or newEntry(), weaponName)
+    local entry, weaponName, meta = getEntryForInstance(player, instanceId, false)
+    return buildPayload(entry or newEntry(), weaponName, meta)
+end
+
+function WeaponMasteryService:GetMasteryBaseDamageForWeaponName(player, weaponName)
+    if not player or type(weaponName) ~= "string" or weaponName == "" then
+        return 0
+    end
+    local entry = getEntryForWeaponName(player, weaponName, false)
+    local meta = resolveWeaponMeta(weaponName)
+    return Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
+end
+
+function WeaponMasteryService:GetMasteryBaseDamage(player, instanceId)
+    if not player or type(instanceId) ~= "string" or instanceId == "" then
+        return 0
+    end
+    local entry, weaponName, meta = getEntryForInstance(player, instanceId, false)
+    meta = meta or resolveWeaponMeta(weaponName)
+    return Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
 end
 
 function WeaponMasteryService:GetDamageBonusForWeaponName(player, weaponName)
@@ -299,15 +354,17 @@ function WeaponMasteryService:GetDamageBonusForWeaponName(player, weaponName)
         return 0
     end
     local entry = getEntryForWeaponName(player, weaponName, false)
-    return Config.GetDamageBonus(entry and entry.level or 1)
+    local meta = resolveWeaponMeta(weaponName)
+    return Config.GetDamageBonus(entry and entry.level or 0, meta.rarity, meta.category)
 end
 
 function WeaponMasteryService:GetDamageBonus(player, instanceId)
     if not player or type(instanceId) ~= "string" or instanceId == "" then
         return 0
     end
-    local entry = getEntryForInstance(player, instanceId, false)
-    return Config.GetDamageBonus(entry and entry.level or 1)
+    local entry, weaponName, meta = getEntryForInstance(player, instanceId, false)
+    meta = meta or resolveWeaponMeta(weaponName)
+    return Config.GetDamageBonus(entry and entry.level or 0, meta.rarity, meta.category)
 end
 
 function WeaponMasteryService:AttachMasteryToInventory(player, inventory)
@@ -349,19 +406,19 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     if not isTrackedTeamPlayer(player) then return nil end
     if type(instanceId) ~= "string" or instanceId == "" then return nil end
 
-    local entry, weaponName = getEntryForInstance(player, instanceId, true)
+    local entry, weaponName, meta = getEntryForInstance(player, instanceId, true)
     if not entry or not weaponName then return nil end
 
     xpAmount = normalizeXPValue(xpAmount)
     statAmount = math.max(0, math.floor(tonumber(statAmount) or 0))
-    local oldLevel = entry.level or 1
+    local oldLevel = entry.level or 0
 
     if statKey and statAmount > 0 then
         entry[statKey] = math.max(0, math.floor(tonumber(entry[statKey]) or 0)) + statAmount
     end
     if xpAmount > 0 then
         entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
-        entry.level = Config.GetLevelForXP(entry.xp)
+        entry.level = Config.GetLevelForXP(entry.xp, (meta and meta.rarity) or entry.rarity, (meta and meta.category) or entry.category)
     end
     entry.lastUsedAt = os.time()
 
@@ -369,11 +426,13 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
 
     local updateMeta = meta or {}
     updateMeta.deltaXP = xpAmount
-    updateMeta.leveledUp = (entry.level or 1) > oldLevel
+    updateMeta.leveledUp = (entry.level or 0) > oldLevel
     updateMeta.oldLevel = oldLevel
     if updateMeta.leveledUp then
         updateMeta.newLevel = entry.level
     end
+    updateMeta.rarity = meta and meta.rarity or entry.rarity
+    updateMeta.category = meta and meta.category or entry.category
     fireUpdated(player, instanceId, weaponName, updateMeta)
     return WeaponMasteryService:GetMasteryPayloadForWeaponName(player, weaponName)
 end
@@ -383,14 +442,14 @@ local function loadVersioned(result)
     if type(result.byWeaponName) == "table" then
         for weaponName, entry in pairs(result.byWeaponName) do
             if type(weaponName) == "string" and weaponName ~= "" then
-                loaded.byWeaponName[weaponName] = normalizeEntry(copyTable(entry))
+                loaded.byWeaponName[weaponName] = normalizeEntry(copyTable(entry), weaponName)
             end
         end
     end
     if type(result.legacyByInstance) == "table" then
         for instanceId, entry in pairs(result.legacyByInstance) do
             if type(instanceId) == "string" and instanceId ~= "" then
-                loaded.legacyByInstance[instanceId] = normalizeEntry(copyTable(entry))
+                loaded.legacyByInstance[instanceId] = normalizeEntry(copyTable(entry), nil, nil)
             end
         end
     end
@@ -416,7 +475,7 @@ local function migrateLegacyByInstance(player, data)
     for instanceId, entry in pairs(copyTable(data.legacyByInstance)) do
         local weaponName = getWeaponNameFromInventory(inventory, instanceId)
         if weaponName then
-            data.byWeaponName[weaponName] = mergeEntryInto(data.byWeaponName[weaponName], entry)
+            data.byWeaponName[weaponName] = mergeEntryInto(data.byWeaponName[weaponName], entry, weaponName)
             data.legacyByInstance[instanceId] = nil
             changed = true
         end
@@ -449,6 +508,10 @@ function WeaponMasteryService:LoadProfileForPlayer(player)
 
     if migrateLegacyByInstance(player, loaded) then
         needsSave = true
+    end
+
+    for weaponName, entry in pairs(loaded.byWeaponName) do
+        loaded.byWeaponName[weaponName] = normalizeEntry(entry, weaponName)
     end
 
     playerMasteries[player] = loaded
@@ -585,7 +648,7 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     if not isTrackedTeamPlayer(player) then return nil end
     if type(instanceId) ~= "string" or instanceId == "" then return nil end
 
-    local entry, weaponName = getEntryForInstance(player, instanceId, true)
+    local entry, weaponName, meta = getEntryForInstance(player, instanceId, true)
     if not entry or not weaponName then return nil end
 
     amount = math.max(0, math.floor(tonumber(amount) or 0))
@@ -596,15 +659,17 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     local xpAmount = normalizeXPValue(Config.XP.Hit or 0)
 
     if xpAmount > 0 then
-        local oldLevel = entry.level or 1
+        local oldLevel = entry.level or 0
         entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
-        entry.level = Config.GetLevelForXP(entry.xp)
+        entry.level = Config.GetLevelForXP(entry.xp, (meta and meta.rarity) or entry.rarity, (meta and meta.category) or entry.category)
         fireUpdated(player, instanceId, weaponName, {
             kind = "Hit",
             deltaXP = xpAmount,
-            leveledUp = (entry.level or 1) > oldLevel,
+            leveledUp = (entry.level or 0) > oldLevel,
             oldLevel = oldLevel,
             newLevel = entry.level,
+            rarity = (meta and meta.rarity) or entry.rarity,
+            category = (meta and meta.category) or entry.category,
         })
     end
 

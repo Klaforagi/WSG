@@ -29,13 +29,35 @@ local function mergeTables(base, override)
     return out
 end
 
+local WeaponMasteryConfig
+pcall(function()
+    local module = game:GetService("ReplicatedStorage"):FindFirstChild("WeaponMasteryConfig")
+    if module and module:IsA("ModuleScript") then
+        WeaponMasteryConfig = require(module)
+    end
+end)
+
+local function getNilMasteryDamage(rarity)
+    if WeaponMasteryConfig and type(WeaponMasteryConfig.GetDamageForLevel) == "function" then
+        return WeaponMasteryConfig.GetDamageForLevel(0, rarity, "Ranged")
+    end
+    local fallback = {
+        Common = 3.5,
+        Uncommon = 4,
+        Rare = 4.5,
+        Epic = 5,
+        Legendary = 6,
+    }
+    return fallback[rarity] or fallback.Common
+end
+
 --------------------------------------------------------------------------------
 -- RARITY DEFAULTS
 --------------------------------------------------------------------------------
 
 local rarityDefaults = {
     Common = {
-        damage = 6,
+        damage = getNilMasteryDamage("Common"),
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 150,
@@ -50,7 +72,7 @@ local rarityDefaults = {
     },
 
     Uncommon = {
-        damage = 8.5,
+        damage = getNilMasteryDamage("Uncommon"),
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 175,
@@ -65,7 +87,7 @@ local rarityDefaults = {
     },
 
     Rare = {
-        damage = 11,
+        damage = getNilMasteryDamage("Rare"),
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 225,
@@ -80,7 +102,7 @@ local rarityDefaults = {
     },
 
     Epic = {
-        damage = 14,
+        damage = getNilMasteryDamage("Epic"),
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 275,
@@ -95,7 +117,7 @@ local rarityDefaults = {
     },
 
     Legendary = {
-        damage = 18,
+        damage = getNilMasteryDamage("Legendary"),
         cd = 0.4,
         movement_speed_penalty = -4,
         bulletspeed = 325,

@@ -282,6 +282,7 @@ local function setCardStroke(stroke, color, thickness, transparency)
 end
 
 local MASTERY_ROMAN_FALLBACK = {
+    [0] = "NIL",
     [1] = "I",
     [2] = "II",
     [3] = "III",
@@ -316,6 +317,14 @@ local function formatMasteryXP(value)
     return formatWholeNumber(whole) .. "." .. tostring(tenths)
 end
 
+local function formatMasteryDamage(value)
+    local rounded = math.max(0, math.round((tonumber(value) or 0) * 1000) / 1000)
+    local text = string.format("%.3f", rounded)
+    text = text:gsub("(%..-)0+$", "%1")
+    text = text:gsub("%.$", "")
+    return text
+end
+
 local function getMasteryRoman(level, romanNumeral)
     if type(romanNumeral) == "string" and romanNumeral ~= "" then
         return romanNumeral
@@ -323,12 +332,15 @@ local function getMasteryRoman(level, romanNumeral)
     if WeaponMasteryConfig and WeaponMasteryConfig.GetRomanNumeral then
         return WeaponMasteryConfig.GetRomanNumeral(level)
     end
-    local numericLevel = math.max(1, math.floor(tonumber(level) or 1))
+    local numericLevel = math.max(0, math.floor(tonumber(level) or 0))
+    if numericLevel == 0 then
+        return "NIL"
+    end
     return MASTERY_ROMAN_FALLBACK[numericLevel] or tostring(numericLevel)
 end
 
-local function formatMasteryBonus(bonus)
-    return string.format("+%.1f DMG", math.max(0, tonumber(bonus) or 0))
+local function formatMasteryBaseDamage(damage)
+    return formatMasteryDamage(damage)
 end
 
 -- (SIZE_TIER_STYLES removed — EnchantTextStyler is the sole source of size-tier colors)
@@ -2039,19 +2051,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             return itemData.mastery
         end
         return {
-            level = 1,
-            title = "I",
-            romanNumeral = "I",
+                level = 0,
+                title = "NIL",
+                romanNumeral = "NIL",
             xp = 0,
             progress = 0,
-            nextLevel = 2,
+                nextLevel = 1,
             currentLevelXP = 0,
-            nextLevelXP = 25,
+                nextLevelXP = 200,
             eliminations = 0,
             mobKills = 0,
             captures = 0,
             damage = 0,
             damageBonus = 0,
+                baseDamage = 0,
+                currentDamage = 0,
+                nilDamage = 0,
             maxed = false,
         }
     end
@@ -2063,12 +2078,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         local mastery = getMasteryData(itemData)
-        local level = math.max(1, math.floor(tonumber(mastery.level) or 1))
+        local level = math.max(0, math.floor(tonumber(mastery.level) or 0))
         local romanNumeral = getMasteryRoman(level, mastery.romanNumeral or mastery.title)
         local xp = math.max(0, tonumber(mastery.xp) or 0)
         local progress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
-        local nextLevelXP = math.max(0, tonumber(mastery.nextLevelXP) or 25)
-        local damageBonus = math.max(0, tonumber(mastery.damageBonus) or 0)
+        local nextLevelXP = math.max(0, tonumber(mastery.nextLevelXP) or 200)
+        local baseDamage = math.max(0, tonumber(mastery.baseDamage or mastery.currentDamage or mastery.damage) or 0)
 
         masteryPanel.Visible = true
         masteryTitle.Text = "MASTERY " .. romanNumeral
@@ -2082,7 +2097,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         masteryElims.Text = "Eliminations " .. formatWholeNumber(mastery.eliminations or 0)
-        masteryDamage.Text = "BONUS " .. formatMasteryBonus(damageBonus)
+        masteryDamage.Text = "BASE DMG " .. formatMasteryBaseDamage(baseDamage)
     end
 
     ---------------------------------------------------------------------------

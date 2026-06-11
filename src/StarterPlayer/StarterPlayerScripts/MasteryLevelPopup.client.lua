@@ -12,6 +12,7 @@ if not masteryRemote or not masteryRemote:IsA("RemoteEvent") then
 end
 
 local ROMAN_NUMERALS = {
+    [0] = "NIL",
     [1] = "I",
     [2] = "II",
     [3] = "III",
@@ -86,7 +87,7 @@ local function playMasterySound()
 end
 
 local function getRomanNumeral(level)
-    local numericLevel = math.max(1, math.floor(tonumber(level) or 1))
+    local numericLevel = math.max(0, math.floor(tonumber(level) or 0))
     return ROMAN_NUMERALS[numericLevel] or tostring(numericLevel)
 end
 

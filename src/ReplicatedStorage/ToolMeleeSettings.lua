@@ -40,6 +40,28 @@ pcall(function()
     end
 end)
 
+local WeaponMasteryConfig
+pcall(function()
+    local module = script.Parent:FindFirstChild("WeaponMasteryConfig")
+    if module and module:IsA("ModuleScript") then
+        WeaponMasteryConfig = require(module)
+    end
+end)
+
+local function getNilMasteryDamage(rarity)
+    if WeaponMasteryConfig and type(WeaponMasteryConfig.GetDamageForLevel) == "function" then
+        return WeaponMasteryConfig.GetDamageForLevel(0, rarity, "Melee")
+    end
+    local fallback = {
+        Common = 7,
+        Uncommon = 8,
+        Rare = 9,
+        Epic = 10,
+        Legendary = 12,
+    }
+    return fallback[rarity] or fallback.Common
+end
+
 local defaultSwingAnimationConfig = {
     swing_anim_id   = "131848181334604",
     swing_anim_ids  = { "131848181334604", "86527473231278", "81535913836580" },
@@ -142,7 +164,7 @@ local spearAttackConfig = {
 
 local rarityDefaults = {
     Common = {
-        damage       = 7,
+        damage       = getNilMasteryDamage("Common"),
         cd           = 0.6,
         movement_speed_penalty = -3,
         knockback    = 2,
@@ -154,7 +176,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Uncommon = {
-        damage       = 10,
+        damage       = getNilMasteryDamage("Uncommon"),
         cd           = 0.6,
         movement_speed_penalty = -3,
         knockback    = 2,
@@ -166,7 +188,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Rare = {
-        damage       = 13,
+        damage       = getNilMasteryDamage("Rare"),
         cd           = 0.6,
         movement_speed_penalty = -3,
         knockback    = 2,
@@ -178,7 +200,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Epic = {
-        damage       = 17,
+        damage       = getNilMasteryDamage("Epic"),
         cd           = 0.6,
         movement_speed_penalty = -3,
         knockback    = 2,
@@ -190,7 +212,7 @@ local rarityDefaults = {
         hitboxOffset = Vector3.new(1, 0, 3.5),
     },
     Legendary = {
-        damage       = 21,
+        damage       = getNilMasteryDamage("Legendary"),
         cd           = 0.6,
         movement_speed_penalty = -3,
         knockback    = 2,

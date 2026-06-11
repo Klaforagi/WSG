@@ -494,14 +494,6 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     if victimPlayer and player and player.Team and victimPlayer.Team and player.Team == victimPlayer.Team then
         return
     end
-    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
-        local ok, masteryBonus = pcall(function()
-            return WeaponMasteryService:GetDamageBonus(player, weaponInstanceId)
-        end)
-        if ok and type(masteryBonus) == "number" and masteryBonus > 0 then
-            damage = damage + masteryBonus
-        end
-    end
     damage = math.max(0, math.round(damage))
     pcall(function()
         humanoid:SetAttribute("lastDamagerUserId", player.UserId)
@@ -750,8 +742,18 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     local sizeDamageMult  = getSizeDamageMultiplier(sizePercent)
     local sizeSpeedMult   = getSizeSpeedMultiplier(sizePercent)
 
-    -- Base stats from config (at 100% size)
+    -- Base stats from config (at 100% size). Mastery changes the weapon's
+    -- base damage directly, so the rarity baseline is replaced before scaling.
     local baseDamage   = cfg.damage or 5
+    local weaponInstanceId = tool:GetAttribute("WeaponInstanceId")
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        local ok, masteryDamage = pcall(function()
+            return WeaponMasteryService:GetMasteryBaseDamage(player, weaponInstanceId)
+        end)
+        if ok and type(masteryDamage) == "number" and masteryDamage > 0 then
+            baseDamage = masteryDamage
+        end
+    end
     local baseKnockback = cfg.knockback or 2
 
     -- ── COMBO VALIDATION ──────────────────────────────────────────────

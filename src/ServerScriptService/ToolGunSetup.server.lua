@@ -382,14 +382,6 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
             damage = damage * mult
         end
     end
-    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
-        local ok, masteryBonus = pcall(function()
-            return WeaponMasteryService:GetDamageBonus(player, weaponInstanceId)
-        end)
-        if ok and type(masteryBonus) == "number" and masteryBonus > 0 then
-            damage = damage + masteryBonus
-        end
-    end
     damage = applyOutgoingDamageModifiers(player, damage, {
         source = "ranged",
         weaponName = weaponName,
@@ -1093,6 +1085,16 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     local sizeDamageMult  = getSizeDamageMultiplier(sizePercent)
     local scaledCooldown  = getScaledCooldown(tCOOLDOWN, sizePercent)
     local projVisualScale = getProjectileVisualScale(sizePercent)
+
+    local weaponInstanceId = equippedTool:GetAttribute("WeaponInstanceId")
+    if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
+        local ok, masteryDamage = pcall(function()
+            return WeaponMasteryService:GetMasteryBaseDamage(player, weaponInstanceId)
+        end)
+        if ok and type(masteryDamage) == "number" and masteryDamage > 0 then
+            tDAMAGE = masteryDamage
+        end
+    end
 
     -- Scaled damage is baked into the projectile config so applyDamage
     -- sees it as the base damage (upgrade / headshot multipliers still apply there).
