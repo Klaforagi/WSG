@@ -33,7 +33,7 @@ local INVENTORY_FIXED_COLUMNS    = 4
 -- The menu root is capped at scale 1.0 so fullscreen monitors get more usable
 -- surface area instead of inflating cards / panels.
 -- ═══════════════════════════════════════════════════════════════════════════
-local INVENTORY_SCALE_OPTS = { minScale = 0.55, maxScale = 1.0 }
+local INVENTORY_SCALE_OPTS = { minScale = 0.45, maxScale = 1.0 }
 
 local function getViewportSize()
     local cam = workspace.CurrentCamera
@@ -98,6 +98,10 @@ local function bindViewportResize(trackConn, callback)
     -- Wrap the disconnect into a fake "connection" so existing trackConn cleanup works.
     trackConn({ Disconnect = function() disconnect() end })
 end
+
+-- predeclare a no-op tracker so early helper functions can register connections
+-- before the real tracker is defined later in the file.
+local trackConn = function(conn) end
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Palette (from shared UITheme)
@@ -651,20 +655,20 @@ local function createShardRewardRow(parent, name, size, anchorPoint, position, t
     label.Size = UDim2.new(0, 0, 1, 0)
     label.Font = Enum.Font.GothamBold
     label.TextColor3 = SHARD_UI_ACCENT
-    label.TextSize = textSize
+    label.TextScaled = true
+    local shardLabelC = Instance.new("UITextSizeConstraint", label)
+    shardLabelC.MinTextSize = math.max(8, math.floor(textSize * 0.6))
+    shardLabelC.MaxTextSize = math.max(14, math.floor(textSize * 1.4))
     label.TextXAlignment = Enum.TextXAlignment.Center
     label.Text = ""
     if zIndex then label.ZIndex = zIndex end
     label.Parent = row
 
     if shardImage then
-        local iconPixelSize = iconSize or pxFn(18)
-        local imagePixelSize = math.floor(iconPixelSize * (tonumber(iconScale) or 1) + 0.5)
         local icon = Instance.new("Frame")
         icon.Name = "ShardIcon"
         icon.BackgroundTransparency = 1
-        icon.Size = UDim2.new(0, iconPixelSize, 0, iconPixelSize)
-        icon.ClipsDescendants = false
+        icon.ClipsDescendants = true
         if zIndex then icon.ZIndex = zIndex end
         icon.Parent = row
 
@@ -673,11 +677,23 @@ local function createShardRewardRow(parent, name, size, anchorPoint, position, t
         imageIcon.BackgroundTransparency = 1
         imageIcon.AnchorPoint = Vector2.new(0.5, 0.5)
         imageIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-        imageIcon.Size = UDim2.new(0, imagePixelSize, 0, imagePixelSize)
+        imageIcon.Size = UDim2.new(1, 0, 1, 0)
         imageIcon.Image = shardImage
         imageIcon.ScaleType = Enum.ScaleType.Fit
         if zIndex then imageIcon.ZIndex = zIndex end
         imageIcon.Parent = icon
+
+        -- Adjust icon size relative to the row height so it scales on mobile.
+        local function updateIcon()
+            if not (row and row:IsA("Frame") and icon) then return end
+            local h = row.AbsoluteSize.Y
+            if h and h > 0 then
+                local sizePx = math.clamp(math.floor(h * 0.7), pxFn(12), pxFn(48))
+                icon.Size = UDim2.new(0, sizePx, 0, sizePx)
+            end
+        end
+        updateIcon()
+        trackConn(row:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateIcon))
     else
         local suffix = Instance.new("TextLabel")
         suffix.Name = "ShardText"
@@ -1079,7 +1095,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- Connection tracking
     -- ──────────────────────────────────────────────────────────────────────
     local cleanupConnections = {}
-    local function trackConn(conn) table.insert(cleanupConnections, conn) end
+    trackConn = function(conn) table.insert(cleanupConnections, conn) end
     local function cleanup()
         for _, conn in ipairs(cleanupConnections) do pcall(function() conn:Disconnect() end) end
         table.clear(cleanupConnections)
@@ -1606,6 +1622,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailsPanel.AnchorPoint = Vector2.new(1, 0)
     detailsPanel.Position = UDim2.new(1, 0, 0, 0)
     detailsPanel.Parent = weaponArea
+    detailsPanel.ClipsDescendants = true
     Instance.new("UICorner", detailsPanel).CornerRadius = UDim.new(0, px(12))
     local dpStroke = Instance.new("UIStroke", detailsPanel)
     dpStroke.Color = CARD_STROKE; dpStroke.Thickness = 1.4; dpStroke.Transparency = 0.2
@@ -1623,11 +1640,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
 
     -- Detail content (hidden until a weapon is selected)
-    local detailContent = Instance.new("Frame", detailsPanel)
+    local detailContent = Instance.new("ScrollingFrame", detailsPanel)
     detailContent.Name = "DetailContent"
     detailContent.BackgroundTransparency = 1
     detailContent.Size = UDim2.new(1, 0, 1, 0)
     detailContent.Visible = false
+    detailContent.ScrollBarThickness = math.max(6, px(8))
+    detailContent.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    detailContent.CanvasSize = UDim2.new(0, 0, 0, 0)
+    detailContent.VerticalScrollBarInset = Enum.ScrollBarInset.Always
 
     -- Use relative padding so layout scales with the panel size
     local dPad = Instance.new("UIPadding", detailContent)
