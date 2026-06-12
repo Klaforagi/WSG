@@ -189,6 +189,22 @@ local WEAPON_CARD_BORDER = RarityStyles.WeaponCardBorder
 
 local TextService = game:GetService("TextService")
 
+local function safeGetTextSize(text, size, font, bounds)
+    if typeof(font) ~= "EnumItem" or font == Enum.Font.Unknown then
+        font = Enum.Font.Gotham
+    end
+    local ok, measured = pcall(function()
+        return TextService:GetTextSize(text or "", size or 14, font, bounds or Vector2.new(2000,2000))
+    end)
+    if ok and type(measured) == "table" then
+        return measured
+    end
+    -- conservative fallback: approximate width using character count and size
+    local approxW = math.max(1, (string.len(tostring(text or "")) * (size or 14) * 0.5))
+    local approxH = math.max(1, (size or 14) * 1.2)
+    return Vector2.new(approxW, approxH)
+end
+
 local function bindAutoFitText(label, constraint, opts)
     if not (label and constraint) then return end
 
@@ -214,13 +230,16 @@ local function bindAutoFitText(label, constraint, opts)
         local availableX = math.max(1, absoluteSize.X - paddingX)
         local availableY = math.max(1, absoluteSize.Y - paddingY)
         local bounds = Vector2.new(availableX, math.max(1, math.floor(availableY * measureHeight)))
-        local font = label.Font or Enum.Font.GothamBold
+        local font = label.Font
+        if typeof(font) ~= "EnumItem" or font == Enum.Font.Unknown then
+            font = Enum.Font.GothamBold
+        end
 
         local low, high = minTextSize, maxTextSize
         local best = minTextSize
         while low <= high do
             local mid = math.floor((low + high) / 2)
-            local measured = TextService:GetTextSize(text, mid, font, bounds)
+            local measured = safeGetTextSize(text, mid, font, bounds)
             if measured.X <= availableX and measured.Y <= availableY then
                 best = mid
                 low = mid + 1
@@ -1833,23 +1852,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryBarFill.Size = UDim2.new(0, 0, 1, 0)
     Instance.new("UICorner", masteryBarFill).CornerRadius = UDim.new(0, px(4))
 
-    local masteryElims = Instance.new("TextLabel", masteryPanel)
-    masteryElims.Name = "Eliminations"
-    masteryElims.BackgroundColor3 = Color3.fromRGB(30, 33, 50)
-    masteryElims.BackgroundTransparency = 0.05
-    masteryElims.Font = Enum.Font.GothamBold
-    masteryElims.TextColor3 = WHITE
-    masteryElims.TextScaled = true
-    masteryElims.TextXAlignment = Enum.TextXAlignment.Center
-    masteryElims.TextYAlignment = Enum.TextYAlignment.Center
-    masteryElims.Size = UDim2.new(0.47, 0, 0.26, 0)
-    masteryElims.Position = UDim2.new(0, px(10), 0.71, 0)
-    masteryElims.Text = "Eliminations 0"
-    Instance.new("UICorner", masteryElims).CornerRadius = UDim.new(0, px(6))
-    __constraint = Instance.new("UITextSizeConstraint", masteryElims)
-    __constraint.MinTextSize = 7
-    __constraint.MaxTextSize = math.max(10, math.floor(px(15)))
-
     local masteryDamage = Instance.new("TextLabel", masteryPanel)
     masteryDamage.Name = "Damage"
     masteryDamage.BackgroundColor3 = Color3.fromRGB(30, 33, 50)
@@ -1859,10 +1861,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.TextScaled = true
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
-    masteryDamage.Size = UDim2.new(0.47, 0, 0.26, 0)
-    masteryDamage.AnchorPoint = Vector2.new(1, 0)
-    masteryDamage.Position = UDim2.new(0.97, -px(10), 0.71, 0)
-    masteryDamage.Text = "BONUS +0.0 DMG"
+    masteryDamage.Size = UDim2.new(1, -px(20), 0.26, 0)
+    masteryDamage.AnchorPoint = Vector2.new(0.5, 0)
+    masteryDamage.Position = UDim2.new(0.5, 0, 0.71, 0)
+    masteryDamage.Text = "Damage 0"
     Instance.new("UICorner", masteryDamage).CornerRadius = UDim.new(0, px(6))
     __constraint = Instance.new("UITextSizeConstraint", masteryDamage)
     __constraint.MinTextSize = 7
@@ -2135,12 +2137,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
         descWidth = math.max(descWidth, 1)
 
-        local measuredDesc = TextService:GetTextSize(
-            confirmDesc.Text or "",
-            confirmDesc.TextSize,
-            confirmDesc.Font,
-            Vector2.new(descWidth, 1000)
-        )
+        local cfont = confirmDesc.Font
+        if typeof(cfont) ~= "EnumItem" or cfont == Enum.Font.Unknown then
+            cfont = Enum.Font.GothamMedium
+        end
+        local measuredDesc = safeGetTextSize(confirmDesc.Text or "", confirmDesc.TextSize, cfont, Vector2.new(descWidth, 1000))
         local descHeight = math.max(CONFIRM_DESC_MIN_HEIGHT, measuredDesc.Y + CONFIRM_DESC_EXTRA_PADDING)
         confirmDesc.Size = UDim2.new(CONFIRM_DESC_WIDTH_SCALE, 0, 0, descHeight)
 
@@ -2232,8 +2233,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             masteryBarFill.Size = UDim2.new(progress, 0, 1, 0)
         end
 
-        masteryElims.Text = "Eliminations " .. formatWholeNumber(mastery.eliminations or 0)
-        masteryDamage.Text = "BASE DMG " .. formatMasteryBaseDamage(baseDamage)
+        masteryDamage.Text = "Damage " .. formatMasteryBaseDamage(baseDamage)
     end
 
     ---------------------------------------------------------------------------
@@ -6400,6 +6400,26 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     root.AncestryChanged:Connect(function(_, newParent)
         if not newParent then cleanup() end
     end)
+
+    -- Ensure all text labels and buttons scale responsively so text doesn't overlap.
+    local function enableTextScaling(container)
+        if not (container and container.GetDescendants) then return end
+        for _, obj in ipairs(container:GetDescendants()) do
+            local ok, isText = pcall(function() return obj:IsA("TextLabel") or obj:IsA("TextButton") end)
+            if ok and isText then
+                pcall(function()
+                    obj.TextScaled = true
+                    if not obj:FindFirstChildOfClass("UITextSizeConstraint") then
+                        local c = Instance.new("UITextSizeConstraint")
+                        c.MinTextSize = 8
+                        c.MaxTextSize = math.max(10, math.floor(px(16)))
+                        c.Parent = obj
+                    end
+                end)
+            end
+        end
+    end
+    pcall(function() enableTextScaling(root) end)
 
     return root
 end
