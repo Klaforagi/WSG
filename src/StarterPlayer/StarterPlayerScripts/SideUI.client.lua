@@ -2097,10 +2097,8 @@ local function applyDetailsPanelScaling(detailsPanel)
             mbg.Size = UDim2.new(0.94, 0, 0.2, 0)
             mbg.Position = UDim2.new(0.03, 0, 0.5, 0)
         end
-        local me = masteryPanel:FindFirstChild("Eliminations", true)
         local md = masteryPanel:FindFirstChild("Damage", true)
-        if me then me.Size = UDim2.new(0.47,0,0.28,0) end
-        if md then md.Size = UDim2.new(0.47,0,0.28,0) end
+        if md then md.Size = UDim2.new(1, -px(20), 0.28, 0); md.AnchorPoint = Vector2.new(0.5, 0); md.Position = UDim2.new(0.5, 0, 0.71, 0) end
         -- ensure text scaled for internal labels
         local titleLbl = masteryPanel:FindFirstChild("Title", true)
         local xpLbl = masteryPanel:FindFirstChild("XP", true)
@@ -2132,8 +2130,7 @@ local function applyDetailsPanelScaling(detailsPanel)
             end
             ensureTextScaled(xpLbl, 16)
         end
-        ensureTextScaled(me, 15)
-        ensureTextScaled(md, 15)
+        if md then ensureTextScaled(md, 15) end
     end
 
     -- Pin salvage/yield row so it never pushes other layout children

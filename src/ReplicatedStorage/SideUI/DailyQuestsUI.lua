@@ -618,12 +618,16 @@ local function showRerollTooltipForButton(button, tooltipText)
     local text = tooltipText and tostring(tooltipText) or "Reroll Quest"
     rerollTooltipLabel.Text = text
 
-    local textSize = TextService:GetTextSize(
-        text,
-        rerollTooltipLabel.TextSize,
-        rerollTooltipLabel.Font,
-        Vector2.new(2000, 2000)
-    )
+    local rfont = rerollTooltipLabel.Font
+    if rfont == Enum.Font.Unknown or rfont == nil then
+        rfont = Enum.Font.GothamMedium
+    end
+    local ok, textSize = pcall(function()
+        return TextService:GetTextSize(text, rerollTooltipLabel.TextSize, rfont, Vector2.new(2000,2000))
+    end)
+    if not ok or type(textSize) ~= "table" then
+        textSize = Vector2.new(math.max(1, string.len(tostring(text)) * rerollTooltipLabel.TextSize * 0.5), math.max(1, rerollTooltipLabel.TextSize * 1.2))
+    end
 
     local tooltipW = math.max(px(120), textSize.X + px(20))
     local tooltipH = math.max(px(30), textSize.Y + px(12))
