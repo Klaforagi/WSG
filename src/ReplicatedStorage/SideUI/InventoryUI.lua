@@ -1751,13 +1751,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryElims.BackgroundTransparency = 0.05
     masteryElims.Font = Enum.Font.GothamBold
     masteryElims.TextColor3 = WHITE
-    masteryElims.TextSize = px(16)
+    masteryElims.TextScaled = true
     masteryElims.TextXAlignment = Enum.TextXAlignment.Center
     masteryElims.TextYAlignment = Enum.TextYAlignment.Center
     masteryElims.Size = UDim2.new(0.47, 0, 0.26, 0)
     masteryElims.Position = UDim2.new(0, px(10), 0.71, 0)
     masteryElims.Text = "Eliminations 0"
     Instance.new("UICorner", masteryElims).CornerRadius = UDim.new(0, px(6))
+    __constraint = Instance.new("UITextSizeConstraint", masteryElims)
+    __constraint.MinTextSize = 7
+    __constraint.MaxTextSize = math.max(10, math.floor(px(15)))
 
     local masteryDamage = Instance.new("TextLabel", masteryPanel)
     masteryDamage.Name = "Damage"
@@ -1765,7 +1768,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.BackgroundTransparency = 0.05
     masteryDamage.Font = Enum.Font.GothamBold
     masteryDamage.TextColor3 = WHITE
-    masteryDamage.TextSize = px(16)
+    masteryDamage.TextScaled = true
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
     masteryDamage.Size = UDim2.new(0.47, 0, 0.26, 0)
@@ -1773,6 +1776,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.Position = UDim2.new(0.97, -px(10), 0.71, 0)
     masteryDamage.Text = "BONUS +0.0 DMG"
     Instance.new("UICorner", masteryDamage).CornerRadius = UDim.new(0, px(6))
+    __constraint = Instance.new("UITextSizeConstraint", masteryDamage)
+    __constraint.MinTextSize = 7
+    __constraint.MaxTextSize = math.max(10, math.floor(px(15)))
 
     -- Instance ID (developer-only)
     local detailInstanceId = Instance.new("TextLabel", detailContent)
@@ -1844,7 +1850,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     salvageFeedback.BackgroundTransparency = 0.15
     salvageFeedback.Font = Enum.Font.GothamBold
     salvageFeedback.TextColor3 = SHARD_UI_ACCENT
-    salvageFeedback.TextSize = px(14)
+    salvageFeedback.TextScaled = true
     salvageFeedback.TextWrapped = true
     salvageFeedback.TextXAlignment = Enum.TextXAlignment.Center
     salvageFeedback.Size = UDim2.new(0.88, 0, 0, px(28))
@@ -1853,6 +1859,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     salvageFeedback.ZIndex = 55
     salvageFeedback.Visible = false
     Instance.new("UICorner", salvageFeedback).CornerRadius = UDim.new(0, px(6))
+    __constraint = Instance.new("UITextSizeConstraint", salvageFeedback)
+    __constraint.MinTextSize = 8
+    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
 
     local function showSalvageFeedback(text, color, duration)
         salvageFeedback.Text = text
@@ -1879,10 +1888,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     favBtn.Font = Enum.Font.GothamBold
     favBtn.Text = "\u{2606}"  -- empty star ☆
     favBtn.TextColor3 = FAV_DIM
-    favBtn.TextSize = px(24)
+    favBtn.TextScaled = true
     favBtn.Size = UDim2.new(0.48, 0, 1, 0)
     favBtn.Position = UDim2.new(0, 0, 0, 0)
     Instance.new("UICorner", favBtn).CornerRadius = UDim.new(0, px(8))
+    __constraint = Instance.new("UITextSizeConstraint", favBtn)
+    __constraint.MinTextSize = 12
+    __constraint.MaxTextSize = math.max(14, math.floor(px(22)))
     local favStroke = Instance.new("UIStroke", favBtn)
     favStroke.Color = FAV_DIM; favStroke.Thickness = 1.2; favStroke.Transparency = 0.3
 
@@ -1895,11 +1907,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     discardBtn.Font = Enum.Font.GothamBold
     discardBtn.Text = "DISMANTLE"
     discardBtn.TextColor3 = SHARD_UI_ACCENT
-    discardBtn.TextSize = px(17)
+    discardBtn.TextScaled = true
     discardBtn.Size = UDim2.new(0.48, 0, 1, 0)
     discardBtn.AnchorPoint = Vector2.new(1, 0)
     discardBtn.Position = UDim2.new(1, 0, 0, 0)
     Instance.new("UICorner", discardBtn).CornerRadius = UDim.new(0, px(8))
+    __constraint = Instance.new("UITextSizeConstraint", discardBtn)
+    __constraint.MinTextSize = 9
+    __constraint.MaxTextSize = math.max(11, math.floor(px(15)))
     local discardStroke = Instance.new("UIStroke", discardBtn)
     discardStroke.Color = SHARD_UI_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
 
@@ -1929,11 +1944,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmTitle.Font = Enum.Font.GothamBold
     confirmTitle.Text = "Dismantle Weapon?"
     confirmTitle.TextColor3 = SHARD_UI_ACCENT
-    confirmTitle.TextSize = px(18)
+    confirmTitle.TextScaled = true
     confirmTitle.Size = UDim2.new(1, 0, 0, px(28))
     confirmTitle.Position = UDim2.new(0, 0, 0, px(16))
     confirmTitle.TextXAlignment = Enum.TextXAlignment.Center
     confirmTitle.ZIndex = 52
+    __constraint = Instance.new("UITextSizeConstraint", confirmTitle)
+    __constraint.MinTextSize = 10
+    __constraint.MaxTextSize = math.max(12, math.floor(px(17)))
 
     shardWidgets.confirmRewardRow, shardWidgets.confirmRewardLabel = createShardRewardRow(
         confirmBox,
@@ -1953,7 +1971,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmDesc.Font = Enum.Font.GothamMedium
     confirmDesc.Text = "This action cannot be undone."
     confirmDesc.TextColor3 = DIM_TEXT
-    confirmDesc.TextSize = px(14)
+    confirmDesc.TextScaled = true
     confirmDesc.TextWrapped = true
     confirmDesc.Size = UDim2.new(0.85, 0, 0, px(36))
     confirmDesc.AnchorPoint = Vector2.new(0.5, 0)
@@ -1961,6 +1979,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmDesc.TextXAlignment = Enum.TextXAlignment.Center
     confirmDesc.TextYAlignment = Enum.TextYAlignment.Top
     confirmDesc.ZIndex = 52
+    __constraint = Instance.new("UITextSizeConstraint", confirmDesc)
+    __constraint.MinTextSize = 8
+    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
 
     local confirmYes = Instance.new("TextButton", confirmBox)
     confirmYes.Name = "YesBtn"
@@ -1970,12 +1991,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmYes.Text = "DISMANTLE"
     confirmYes.TextColor3 = WHITE
     confirmYes.TextTransparency = 0
-    confirmYes.TextSize = px(14)
+    confirmYes.TextScaled = true
     confirmYes.Size = UDim2.new(0.42, 0, 0, px(36))
     confirmYes.AnchorPoint = Vector2.new(0, 1)
     confirmYes.Position = UDim2.new(0.06, 0, 1, -px(14))
     confirmYes.ZIndex = 52
     Instance.new("UICorner", confirmYes).CornerRadius = UDim.new(0, px(8))
+    __constraint = Instance.new("UITextSizeConstraint", confirmYes)
+    __constraint.MinTextSize = 8
+    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
     local confirmYesStroke = Instance.new("UIStroke", confirmYes)
     confirmYesStroke.Color = Color3.fromRGB(0, 0, 0); confirmYesStroke.Thickness = 1.5; confirmYesStroke.Transparency = 0.15
 
@@ -1987,12 +2011,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmNo.Text = "CANCEL"
     confirmNo.TextColor3 = WHITE
     confirmNo.TextTransparency = 0
-    confirmNo.TextSize = px(14)
+    confirmNo.TextScaled = true
     confirmNo.Size = UDim2.new(0.42, 0, 0, px(36))
     confirmNo.AnchorPoint = Vector2.new(1, 1)
     confirmNo.Position = UDim2.new(0.94, 0, 1, -px(14))
     confirmNo.ZIndex = 52
     Instance.new("UICorner", confirmNo).CornerRadius = UDim.new(0, px(8))
+    __constraint = Instance.new("UITextSizeConstraint", confirmNo)
+    __constraint.MinTextSize = 8
+    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
     local confirmNoStroke = Instance.new("UIStroke", confirmNo)
     confirmNoStroke.Color = Color3.fromRGB(0, 0, 0); confirmNoStroke.Thickness = 1.5; confirmNoStroke.Transparency = 0.15
 
@@ -6240,8 +6267,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if invScaleObj then
             local baseW, baseH = 1200, 700
             local rw, rh = math.max(1, root.AbsoluteSize.X), math.max(1, root.AbsoluteSize.Y)
-            local scaleVal = math.min(rw / baseW, rh / baseH)
-            scaleVal = math.clamp(scaleVal, 0.7, 1.25)
+            local widthScale = rw / baseW
+            local heightScale = rh / baseH
+            local scaleVal = math.min(widthScale, heightScale)
+            -- Phones lose horizontal room faster than vertical room, so let the
+            -- inner UI shrink further than desktop/tablet layouts.
+            if widthScale < 0.75 then
+                scaleVal = math.min(scaleVal, widthScale * 0.96)
+            end
+            scaleVal = math.clamp(scaleVal, 0.5, 1.1)
             invScaleObj.Scale = scaleVal
         end
         applyResponsivePanelLayout()
