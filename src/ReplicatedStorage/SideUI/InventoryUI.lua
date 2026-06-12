@@ -1469,7 +1469,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 else
                     iconLbl.TextColor3 = DIM_TEXT
                 end
-            iconLbl.TextSize = math.max(16, math.floor(px(18)))
+            iconLbl.TextScaled = true
+            local icC = Instance.new("UITextSizeConstraint", iconLbl)
+            icC.MinTextSize = math.max(10, math.floor(px(10)))
+            icC.MaxTextSize = math.max(20, math.floor(px(24)))
             iconLbl.Size = UDim2.new(1, 0, 0, px(24))
             iconLbl.Position = UDim2.new(0, 0, 0, px(8))
             iconLbl.TextXAlignment = Enum.TextXAlignment.Center
@@ -1484,7 +1487,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         textLbl.Font = Enum.Font.GothamBold
         textLbl.Text = def.label
         textLbl.TextColor3 = DIM_TEXT
-        textLbl.TextSize = math.max(11, math.floor(px(12)))
+        textLbl.TextScaled = true
+        local tC = Instance.new("UITextSizeConstraint", textLbl)
+        tC.MinTextSize = math.max(8, math.floor(px(9)))
+        tC.MaxTextSize = math.max(14, math.floor(px(16)))
         textLbl.Size = UDim2.new(1, -px(6), 0, px(16))
         textLbl.Position = UDim2.new(0, px(3), 0, px(34))
         textLbl.TextXAlignment = Enum.TextXAlignment.Center
@@ -1951,7 +1957,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
     end
     actionRow.AnchorPoint = Vector2.new(0.5, 1)
-    actionRow.Position = UDim2.new(0.5, 0, 1, -px(50))
+    actionRow.Position = UDim2.new(0.5, 0, 1, -px(28))
 
     -- Favorite button (yellow star)
     local FAV_YELLOW = Color3.fromRGB(255, 210, 50)
