@@ -1597,7 +1597,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     emptyShopBtn.Text = "\u{1F6D2}  Browse Shop"
     emptyShopBtn.TextColor3 = WHITE
     emptyShopBtn.TextTransparency = 0
-    emptyShopBtn.TextSize = math.max(14, math.floor(px(15)))
+    emptyShopBtn.TextScaled = true
+    __constraint = Instance.new("UITextSizeConstraint", emptyShopBtn)
+    __constraint.MinTextSize = 10
+    __constraint.MaxTextSize = math.max(16, math.floor(px(15)))
     emptyShopBtn.AutomaticSize = Enum.AutomaticSize.X
     emptyShopBtn.Size = UDim2.new(0, 0, 0, px(36))
     emptyShopBtn.AnchorPoint = Vector2.new(0.5, 0)
@@ -1640,7 +1643,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailPlaceholder.Font = Enum.Font.GothamMedium
     detailPlaceholder.Text = "Select a weapon"
     detailPlaceholder.TextColor3 = DIM_TEXT
-    detailPlaceholder.TextSize = px(22)
+    detailPlaceholder.TextScaled = true
+    __constraint = Instance.new("UITextSizeConstraint", detailPlaceholder)
+    __constraint.MinTextSize = 10
+    __constraint.MaxTextSize = math.max(16, math.floor(px(22)))
     detailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
     detailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
     detailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
