@@ -359,6 +359,22 @@ local function setCardStroke(stroke, color, thickness, transparency)
     stroke.Transparency = transparency
 end
 
+-- Ensure a TextLabel/TextButton scales to available space by enabling TextScaled
+-- and attaching a UITextSizeConstraint. Uses sensible defaults when min/max omitted.
+local function constrainText(obj, minSize, maxSize)
+    if not obj then return end
+    obj.TextScaled = true
+    local existing = nil
+    for _, c in ipairs(obj:GetChildren()) do
+        if c:IsA("UITextSizeConstraint") then existing = c; break end
+    end
+    if not existing then existing = Instance.new("UITextSizeConstraint") end
+    existing.Parent = obj
+    existing.MinTextSize = tonumber(minSize) or 8
+    existing.MaxTextSize = tonumber(maxSize) or math.max(12, math.floor(px(22)))
+    return existing
+end
+
 local MASTERY_ROMAN_FALLBACK = {
     [0] = "NIL",
     [1] = "I",
@@ -3251,12 +3267,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             headerTitle.Font = Enum.Font.GothamBold
             headerTitle.Text = tostring(sectionDef.Header or sectionDef.Category or "POTIONS")
             headerTitle.TextColor3 = WHITE
-            headerTitle.TextSize = math.max(16, math.floor(px(19)))
             headerTitle.TextXAlignment = Enum.TextXAlignment.Left
             headerTitle.TextTruncate = Enum.TextTruncate.AtEnd
             headerTitle.Position = UDim2.new(0, px(16), 0, px(7))
             headerTitle.Size = UDim2.new(1, -px(28), 0, px(22))
             addTextOutline(headerTitle, 0.22, 1.2)
+            constrainText(headerTitle, 12, math.max(16, math.floor(px(19))))
 
             local subtitle = Instance.new("TextLabel", header)
             subtitle.Name = "Subtitle"
@@ -3264,9 +3280,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             subtitle.Font = Enum.Font.GothamMedium
             subtitle.Text = tostring(sectionDef.Subtitle or "")
             subtitle.TextColor3 = DIM_TEXT
-            subtitle.TextSize = math.max(10, math.floor(px(12)))
             subtitle.TextXAlignment = Enum.TextXAlignment.Left
             subtitle.TextTruncate = Enum.TextTruncate.AtEnd
+            constrainText(subtitle, 9, math.max(12, math.floor(px(12))))
             subtitle.Position = UDim2.new(0, px(16), 0, px(30))
             subtitle.Size = UDim2.new(1, -px(28), 0, px(18))
 
@@ -3400,7 +3416,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailPlaceholder.Font = Enum.Font.GothamMedium
         boostDetailPlaceholder.Text = "Select a potion or boost"
         boostDetailPlaceholder.TextColor3 = DIM_TEXT
-        boostDetailPlaceholder.TextSize = px(22)
+        -- make placeholder scalable to avoid overflow on small viewports
+        constrainText(boostDetailPlaceholder, 12, math.max(18, math.floor(px(22))))
         boostDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
         boostDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
@@ -3441,10 +3458,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailIconGlyph.BackgroundTransparency = 1
         boostDetailIconGlyph.Size = UDim2.new(1, 0, 1, 0)
         boostDetailIconGlyph.Font = Enum.Font.GothamBold
-        boostDetailIconGlyph.TextSize = math.max(40, math.floor(px(60)))
         boostDetailIconGlyph.TextColor3 = WHITE
         boostDetailIconGlyph.Text = ""
         addTextOutline(boostDetailIconGlyph, 0.2, 1.6)
+        constrainText(boostDetailIconGlyph, 28, math.max(40, math.floor(px(60))))
 
         -- Boost name
         local boostDetailName = Instance.new("TextLabel", boostDetailContent)
@@ -3452,11 +3469,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailName.BackgroundTransparency = 1
         boostDetailName.Font = Enum.Font.GothamBold
         boostDetailName.TextColor3 = WHITE
-        boostDetailName.TextSize = px(26)
         boostDetailName.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailName.Size = UDim2.new(1, 0, 0, px(34))
         boostDetailName.Position = UDim2.new(0, 0, 0, px(178))
         boostDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+        constrainText(boostDetailName, 12, math.max(20, math.floor(px(26))))
 
         -- Description
         local boostDetailDesc = Instance.new("TextLabel", boostDetailContent)
@@ -3464,11 +3481,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailDesc.BackgroundTransparency = 1
         boostDetailDesc.Font = Enum.Font.GothamMedium
         boostDetailDesc.TextColor3 = DIM_TEXT
-        boostDetailDesc.TextSize = px(17)
         boostDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailDesc.TextWrapped = true
         boostDetailDesc.Size = UDim2.new(1, 0, 0, px(44))
         boostDetailDesc.Position = UDim2.new(0, 0, 0, px(214))
+        constrainText(boostDetailDesc, 9, math.max(14, math.floor(px(17))))
 
         -- Duration label
         local boostDetailDuration = Instance.new("TextLabel", boostDetailContent)
@@ -3476,10 +3493,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailDuration.BackgroundTransparency = 1
         boostDetailDuration.Font = Enum.Font.GothamBold
         boostDetailDuration.TextColor3 = DIM_TEXT
-        boostDetailDuration.TextSize = px(17)
         boostDetailDuration.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailDuration.Size = UDim2.new(1, 0, 0, px(24))
         boostDetailDuration.Position = UDim2.new(0, 0, 0, px(262))
+        constrainText(boostDetailDuration, 10, math.max(14, math.floor(px(17))))
 
         -- Owned count
         local boostDetailOwned = Instance.new("TextLabel", boostDetailContent)
@@ -3487,10 +3504,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailOwned.BackgroundTransparency = 1
         boostDetailOwned.Font = Enum.Font.GothamBold
         boostDetailOwned.TextColor3 = WHITE
-        boostDetailOwned.TextSize = px(19)
         boostDetailOwned.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailOwned.Size = UDim2.new(1, 0, 0, px(26))
         boostDetailOwned.Position = UDim2.new(0, 0, 0, px(290))
+        constrainText(boostDetailOwned, 10, math.max(16, math.floor(px(19))))
 
         -- Status label (Ready / Active / Not Owned)
         local boostDetailStatus = Instance.new("TextLabel", boostDetailContent)
@@ -3498,10 +3515,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailStatus.BackgroundTransparency = 1
         boostDetailStatus.Font = Enum.Font.GothamBold
         boostDetailStatus.TextColor3 = DIM_TEXT
-        boostDetailStatus.TextSize = px(18)
         boostDetailStatus.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailStatus.Size = UDim2.new(1, 0, 0, px(26))
         boostDetailStatus.Position = UDim2.new(0, 0, 0, px(320))
+        constrainText(boostDetailStatus, 10, math.max(16, math.floor(px(18))))
 
         -- Remaining time label (visible only when active)
         local boostDetailTimer = Instance.new("TextLabel", boostDetailContent)
@@ -3509,10 +3526,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailTimer.BackgroundTransparency = 1
         boostDetailTimer.Font = Enum.Font.GothamBold
         boostDetailTimer.TextColor3 = GREEN_GLOW
-        boostDetailTimer.TextSize = px(18)
         boostDetailTimer.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailTimer.Size = UDim2.new(1, 0, 0, px(24))
         boostDetailTimer.Position = UDim2.new(0, 0, 0, px(350))
+        constrainText(boostDetailTimer, 9, math.max(14, math.floor(px(18))))
         boostDetailTimer.Visible = false
 
         -- Activate button
@@ -3524,8 +3541,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostActivateBtn.Text = "ACTIVATE"
         boostActivateBtn.TextColor3 = WHITE
         boostActivateBtn.TextTransparency = 0
-        boostActivateBtn.TextSize = px(22)
         boostActivateBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+        constrainText(boostActivateBtn, 12, math.max(18, math.floor(px(22))))
         boostActivateBtn.AnchorPoint = Vector2.new(0.5, 1)
         boostActivateBtn.Position = UDim2.new(0.5, 0, 1, 0)
         Instance.new("UICorner", boostActivateBtn).CornerRadius = UDim.new(0, px(10))
@@ -4256,11 +4273,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinDetailName.BackgroundTransparency = 1
         skinDetailName.Font = Enum.Font.GothamBold
         skinDetailName.TextColor3 = WHITE
-        skinDetailName.TextSize = px(26)
         skinDetailName.TextXAlignment = Enum.TextXAlignment.Center
         skinDetailName.Size = UDim2.new(1, 0, 0, px(34))
         skinDetailName.Position = UDim2.new(0, 0, 0, px(178))
         skinDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+        constrainText(skinDetailName, 12, math.max(20, math.floor(px(26))))
 
         -- Rarity label
         local skinDetailRarity = Instance.new("TextLabel", skinDetailContent)
@@ -4268,10 +4285,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinDetailRarity.BackgroundTransparency = 1
         skinDetailRarity.Font = Enum.Font.GothamBold
         skinDetailRarity.TextColor3 = RARITY_COLORS.Common
-        skinDetailRarity.TextSize = px(19)
         skinDetailRarity.TextXAlignment = Enum.TextXAlignment.Center
         skinDetailRarity.Size = UDim2.new(1, 0, 0, px(26))
         skinDetailRarity.Position = UDim2.new(0, 0, 0, px(214))
+        constrainText(skinDetailRarity, 10, math.max(16, math.floor(px(19))))
 
         -- Description
         local skinDetailDesc = Instance.new("TextLabel", skinDetailContent)
@@ -4279,11 +4296,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         skinDetailDesc.BackgroundTransparency = 1
         skinDetailDesc.Font = Enum.Font.GothamBold
         skinDetailDesc.TextColor3 = DIM_TEXT
-        skinDetailDesc.TextSize = px(17)
         skinDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
         skinDetailDesc.TextWrapped = true
         skinDetailDesc.Size = UDim2.new(1, 0, 0, px(46))
         skinDetailDesc.Position = UDim2.new(0, 0, 0, px(244))
+        constrainText(skinDetailDesc, 9, math.max(14, math.floor(px(17))))
         local skinDescStroke = Instance.new("UIStroke", skinDetailDesc)
         skinDescStroke.Color = Color3.fromRGB(0, 0, 0)
         skinDescStroke.Thickness = 1.5
@@ -4305,9 +4322,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         helmLabel.Font = Enum.Font.GothamBold
         helmLabel.Text = "Hide Helm"
         helmLabel.TextColor3 = DIM_TEXT
-        helmLabel.TextSize = px(17)
         helmLabel.TextXAlignment = Enum.TextXAlignment.Left
         helmLabel.Size = UDim2.new(0.6, 0, 1, 0)
+        constrainText(helmLabel, 9, math.max(14, math.floor(px(17))))
         local helmLabelStroke = Instance.new("UIStroke", helmLabel)
         helmLabelStroke.Color = Color3.fromRGB(0, 0, 0)
         helmLabelStroke.Thickness = 1.5
@@ -4727,8 +4744,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardRarity.Font = Enum.Font.GothamBold
                 cardRarity.Text = rarity
                 cardRarity.TextColor3 = rarityColor
-                cardRarity.TextSize = INV_CARD.Line1TextSize
+                cardRarity.TextScaled = true
                 cardRarity.TextXAlignment = Enum.TextXAlignment.Center
+                constrainText(cardRarity, 8, INV_CARD.Line1TextSize)
                 cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
                 cardRarity.Position = UDim2.new(0, px(3), 0, 0)
                 cardRarity.ZIndex = 4
@@ -5296,8 +5314,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardRarity.Font = Enum.Font.GothamBold
                 cardRarity.Text = rarity
                 cardRarity.TextColor3 = rarityColor
-                cardRarity.TextSize = INV_CARD.Line1TextSize
+                cardRarity.TextScaled = true
                 cardRarity.TextXAlignment = Enum.TextXAlignment.Center
+                constrainText(cardRarity, 8, INV_CARD.Line1TextSize)
                 cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
                 cardRarity.Position = UDim2.new(0, px(3), 0, 0)
                 cardRarity.ZIndex = 4
