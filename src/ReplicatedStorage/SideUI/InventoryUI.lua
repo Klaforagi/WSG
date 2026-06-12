@@ -26,7 +26,7 @@ local INVENTORY_CARD_MIN_W       = 132
 local INVENTORY_CARD_PREFERRED_W = 178
 local INVENTORY_CARD_MAX_W       = 210
 local INVENTORY_MAX_COLUMNS      = 8
-local INVENTORY_FIXED_COLUMNS    = 5
+local INVENTORY_FIXED_COLUMNS    = 4
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- Responsive pixel helper (delegates to shared UIResponsiveScaler).
@@ -184,6 +184,61 @@ local WEAPON_CARD_BG = RarityStyles.WeaponCardBg
 local WEAPON_CARD_BORDER = RarityStyles.WeaponCardBorder
 
 local TextService = game:GetService("TextService")
+
+local function bindAutoFitText(label, constraint, opts)
+    if not (label and constraint) then return end
+
+    opts = opts or {}
+    local minTextSize = math.max(1, tonumber(opts.minTextSize) or 6)
+    local maxTextSize = math.max(minTextSize, tonumber(opts.maxTextSize) or minTextSize)
+    local paddingX = math.max(0, tonumber(opts.paddingX) or 0)
+    local paddingY = math.max(0, tonumber(opts.paddingY) or 0)
+    local measureHeight = opts.measureHeight or 1
+
+    local function update()
+        local absoluteSize = label.AbsoluteSize
+        if absoluteSize.X <= 0 or absoluteSize.Y <= 0 then return end
+
+        local text = label.ContentText
+        if type(text) ~= "string" or text == "" then
+            text = label.Text
+        end
+        if type(text) ~= "string" or text == "" then
+            text = " "
+        end
+
+        local availableX = math.max(1, absoluteSize.X - paddingX)
+        local availableY = math.max(1, absoluteSize.Y - paddingY)
+        local bounds = Vector2.new(availableX, math.max(1, math.floor(availableY * measureHeight)))
+        local font = label.Font or Enum.Font.GothamBold
+
+        local low, high = minTextSize, maxTextSize
+        local best = minTextSize
+        while low <= high do
+            local mid = math.floor((low + high) / 2)
+            local measured = TextService:GetTextSize(text, mid, font, bounds)
+            if measured.X <= availableX and measured.Y <= availableY then
+                best = mid
+                low = mid + 1
+            else
+                high = mid - 1
+            end
+        end
+
+        constraint.MinTextSize = minTextSize
+        constraint.MaxTextSize = best
+        label.TextSize = best
+    end
+
+    update()
+    label:GetPropertyChangedSignal("AbsoluteSize"):Connect(update)
+    label:GetPropertyChangedSignal("Text"):Connect(update)
+    label.AncestryChanged:Connect(function(_, parent)
+        if not parent then return end
+        task.defer(update)
+    end)
+    task.defer(update)
+end
 
 local function shadeColor(c, factor)
     factor = factor or 0.6
@@ -2390,12 +2445,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         nameLabel.TextSize = NAME_TEXT_SIZE
         local nameConstraint = Instance.new("UITextSizeConstraint", nameLabel)
         nameConstraint.MinTextSize = 9
-        nameConstraint.MaxTextSize = 22
-        nameLabel.Size = UDim2.new(1, -px(6), 0.19, 0)
+        nameConstraint.MaxTextSize = 18
+        nameLabel.Size = UDim2.new(1, -px(10), 0.2, 0)
         nameLabel.Position = UDim2.new(0, px(3), 0.01, 0)
         nameLabel.TextXAlignment = Enum.TextXAlignment.Center
         nameLabel.TextYAlignment = Enum.TextYAlignment.Center
         nameLabel.Text = itemData.name
+        bindAutoFitText(nameLabel, nameConstraint, {
+            minTextSize = 9,
+            maxTextSize = 18,
+            paddingX = px(4),
+            paddingY = px(2),
+            measureHeight = 2,
+        })
         local nameStroke = Instance.new("UIStroke", nameLabel)
         nameStroke.Color = Color3.fromRGB(0, 0, 0)
         nameStroke.Thickness = 1.5; nameStroke.Transparency = 0.15
@@ -2403,14 +2465,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- ── SECTION 2: enchant tag (right under name, centered, fixed size) ──────
         local enchantName = itemData.enchantName or ""
         if enchantName ~= "" then
-            local enchantW = math.floor(px(68))
             local enchantH = math.floor(px(17))
 
             local enchantBg = Instance.new("Frame", card)
             enchantBg.Name = "EnchantTagBg"
             enchantBg.BackgroundTransparency = 1
             enchantBg.BorderSizePixel = 0
-            enchantBg.Size = UDim2.new(0, enchantW, 0, enchantH)
+            enchantBg.Size = UDim2.new(0.56, 0, 0, enchantH)
             enchantBg.AnchorPoint = Vector2.new(0.5, 0)
             enchantBg.Position = UDim2.new(0.5, 0, 0.17, 0)
             enchantBg.ZIndex = 6
@@ -2433,7 +2494,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 EnchantTextStyler.Apply(enchantLabel, enchantName)
             end
             local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
-            pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 13
+            pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 12
+            bindAutoFitText(enchantLabel, pSizeC, {
+                minTextSize = 6,
+                maxTextSize = 12,
+                paddingX = px(2),
+                paddingY = px(1),
+            })
         end
 
         -- ── SECTION 3: Weapon icon (middle 44% of card) ─────────────────
@@ -2477,14 +2544,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- Size tier pill tag — bottom-left corner (fixed size, text scales to fit)
         do
-            local tierW = math.floor(px(isNormalTier and 62 or 46))
             local tierH = math.floor(px(isNormalTier and 22 or 20))
 
             local tierBg = Instance.new("Frame", card)
             tierBg.Name = "SizeTierBg"
             tierBg.BackgroundTransparency = 1
             tierBg.BorderSizePixel = 0
-            tierBg.Size = UDim2.new(0, tierW, 0, tierH)
+            tierBg.Size = UDim2.new(isNormalTier and 0.36 or 0.28, 0, 0, tierH)
             tierBg.AnchorPoint = Vector2.new(0, 1)
             tierBg.Position = UDim2.new(0, px(4), 0.96, 0)
             tierBg.ZIndex = 6
@@ -2505,7 +2571,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.Text = tier
             tierLabel.ZIndex = 7
             local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
-            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = isNormalTier and 20 or 18
+            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = isNormalTier and 15 or 13
             if EnchantTextStyler then
                 EnchantTextStyler.ApplySize(tierLabel, tier, tier)
             end
@@ -2513,6 +2579,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 applyInventoryNormalSizeStyle(tierLabel, 0.08)
                 tierLabel.Text = "Normal"
             end
+            bindAutoFitText(tierLabel, tSizeC, {
+                minTextSize = 6,
+                maxTextSize = isNormalTier and 15 or 13,
+                paddingX = px(2),
+                paddingY = px(1),
+            })
         end
 
         -- Size percent label — bottom-right corner
@@ -2527,7 +2599,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
         local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
         pctConstraint.MinTextSize = 8
-        pctConstraint.MaxTextSize = isNormalTier and 20 or 18
+        pctConstraint.MaxTextSize = isNormalTier and 16 or 14
         local sizePercentText = tostring(math.floor(pct)) .. "%"
         if EnchantTextStyler then
             EnchantTextStyler.ApplySize(sizeLabel, tier, sizePercentText)
@@ -2537,6 +2609,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if isNormalTier then
             applyInventoryNormalSizeStyle(sizeLabel, 0.08)
         end
+        bindAutoFitText(sizeLabel, pctConstraint, {
+            minTextSize = 8,
+            maxTextSize = isNormalTier and 16 or 14,
+            paddingX = px(2),
+            paddingY = px(1),
+        })
 
         -- ── Equipped bar indicator (green bottom strip) ─────────────────
         local eqBar = Instance.new("Frame", card)
