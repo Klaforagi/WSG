@@ -475,6 +475,24 @@ function CrateOpeningUI.Init(playerGui)
     resultImage.ZIndex = 21
     resultImage.Parent = resultFrame
 
+    -- Reward text stack (compact, vertically centered list)
+    local rewardTextStack = Instance.new("Frame")
+    rewardTextStack.Name = "RewardTextStack"
+    rewardTextStack.BackgroundTransparency = 1
+    rewardTextStack.AnchorPoint = Vector2.new(0.5, 0.5)
+    rewardTextStack.Position = UDim2.fromScale(0.5, 0.52)
+    rewardTextStack.Size = UDim2.fromScale(0.85, 0.24)
+    rewardTextStack.ZIndex = 21
+    rewardTextStack.Parent = resultFrame
+
+    local stackLayout = Instance.new("UIListLayout")
+    stackLayout.FillDirection = Enum.FillDirection.Vertical
+    stackLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    stackLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    stackLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    stackLayout.Padding = UDim.new(0, 1)
+    stackLayout.Parent = rewardTextStack
+
     local resultName = Instance.new("TextLabel")
     resultName.Name = "WeaponName"
     resultName.BackgroundTransparency = 1
@@ -482,15 +500,16 @@ function CrateOpeningUI.Init(playerGui)
     resultName.Text = "?"
     resultName.TextColor3 = WHITE
     resultName.TextSize = resultTextPx(22, 16)
-    resultName.TextWrapped = true
-    resultName.Size = UDim2.new(0.84, 0, 0, px(50))
-    resultName.AnchorPoint = Vector2.new(0.5, 0)
-    resultName.Position = UDim2.new(0.5, 0, 0, px(170))
+    resultName.TextWrapped = false
     resultName.TextXAlignment = Enum.TextXAlignment.Center
     resultName.TextYAlignment = Enum.TextYAlignment.Center
+    resultName.LayoutOrder = 1
+    resultName.Size = UDim2.new(1, 0, 0, px(26))
     resultName.ZIndex = 21
-    resultName.Parent = resultFrame
+    resultName.Parent = rewardTextStack
     configureAutoFitText(resultName, 10, resultTextPx(22, 16))
+    resultName.TextScaled = false
+    resultName.TextSize = math.max(18, math.floor(resultTextPx(20, 18)))
 
     local resultRarity = Instance.new("TextLabel")
     resultRarity.Name = "Rarity"
@@ -499,14 +518,16 @@ function CrateOpeningUI.Init(playerGui)
     resultRarity.Text = "Common"
     resultRarity.TextColor3 = DIM_TEXT
     resultRarity.TextSize = resultTextPx(15, 12)
-    resultRarity.Size = UDim2.new(0.84, 0, 0, px(24))
-    resultRarity.AnchorPoint = Vector2.new(0.5, 0)
-    resultRarity.Position = UDim2.new(0.5, 0, 0, px(216))
+    resultRarity.TextWrapped = false
     resultRarity.TextXAlignment = Enum.TextXAlignment.Center
     resultRarity.TextYAlignment = Enum.TextYAlignment.Center
+    resultRarity.LayoutOrder = 2
+    resultRarity.Size = UDim2.new(1, 0, 0, px(22))
     resultRarity.ZIndex = 21
-    resultRarity.Parent = resultFrame
+    resultRarity.Parent = rewardTextStack
     configureAutoFitText(resultRarity, 10, resultTextPx(15, 12))
+    resultRarity.TextScaled = false
+    resultRarity.TextSize = math.max(14, math.floor(resultTextPx(15, 12)))
 
     -- SIZE ROLL SYSTEM — shows the exact rolled size percentage below rarity
     local resultSizeLabel = Instance.new("TextLabel")
@@ -516,14 +537,17 @@ function CrateOpeningUI.Init(playerGui)
     resultSizeLabel.Text = ""
     resultSizeLabel.TextColor3 = GOLD
     resultSizeLabel.TextSize = resultTextPx(18, 13)
-    resultSizeLabel.Size = UDim2.new(0.84, 0, 0, px(28))
-    resultSizeLabel.AnchorPoint = Vector2.new(0.5, 0)
-    resultSizeLabel.Position = UDim2.new(0.5, 0, 0, px(244))
+    resultSizeLabel.TextWrapped = false
     resultSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
     resultSizeLabel.TextYAlignment = Enum.TextYAlignment.Center
+    resultSizeLabel.LayoutOrder = 3
+    resultSizeLabel.Size = UDim2.new(1, 0, 0, px(22))
     resultSizeLabel.ZIndex = 21
-    resultSizeLabel.Parent = resultFrame
+    resultSizeLabel.Parent = rewardTextStack
+    resultSizeLabel.Visible = false
     configureAutoFitText(resultSizeLabel, 10, resultTextPx(18, 13))
+    resultSizeLabel.TextScaled = false
+    resultSizeLabel.TextSize = math.max(14, math.floor(resultTextPx(15, 12)))
 
     -- ENCHANT SYSTEM — shows the enchant name below the size label, styled like a tag
     local resultEnchantLabel = Instance.new("TextLabel")
@@ -533,14 +557,17 @@ function CrateOpeningUI.Init(playerGui)
     resultEnchantLabel.Text = ""
     resultEnchantLabel.TextColor3 = GOLD
     resultEnchantLabel.TextSize = resultTextPx(16, 12)
-    resultEnchantLabel.Size = UDim2.new(0.84, 0, 0, px(26))
-    resultEnchantLabel.AnchorPoint = Vector2.new(0.5, 0)
-    resultEnchantLabel.Position = UDim2.new(0.5, 0, 0, px(272))
+    resultEnchantLabel.TextWrapped = false
     resultEnchantLabel.TextXAlignment = Enum.TextXAlignment.Center
     resultEnchantLabel.TextYAlignment = Enum.TextYAlignment.Center
+    resultEnchantLabel.LayoutOrder = 4
+    resultEnchantLabel.Size = UDim2.new(1, 0, 0, px(22))
     resultEnchantLabel.ZIndex = 21
-    resultEnchantLabel.Parent = resultFrame
+    resultEnchantLabel.Parent = rewardTextStack
+    resultEnchantLabel.Visible = false
     configureAutoFitText(resultEnchantLabel, 10, resultTextPx(16, 12))
+    resultEnchantLabel.TextScaled = false
+    resultEnchantLabel.TextSize = math.max(14, math.floor(resultTextPx(16, 12)))
 
     local closeBtn = Instance.new("TextButton")
     closeBtn.Name = "CloseBtn"
@@ -780,21 +807,36 @@ function CrateOpeningUI.Init(playerGui)
         resultImage.Size = UDim2.new(0, imageSize, 0, imageSize)
         resultImage.Position = UDim2.new(0.5, 0, 0, px(42))
 
-        resultName.TextSize = resultTextPx(22, 16)
-        resultName.Size = UDim2.new(0.84, 0, 0, px(50))
-        resultName.Position = UDim2.new(0.5, 0, 0, px(170))
+        -- Use explicit readable TextSize values and label heights for the stack
+        if resultName then
+            resultName.TextSize = math.max(18, math.floor(resultTextPx(20, 18)))
+            resultName.TextScaled = false
+            resultName.Size = UDim2.new(1, 0, 0, px(26))
+        end
 
-        resultRarity.TextSize = resultTextPx(15, 12)
-        resultRarity.Size = UDim2.new(0.84, 0, 0, px(24))
-        resultRarity.Position = UDim2.new(0.5, 0, 0, px(216))
+        if resultRarity then
+            resultRarity.TextSize = math.max(14, math.floor(resultTextPx(15, 12)))
+            resultRarity.TextScaled = false
+            resultRarity.Size = UDim2.new(1, 0, 0, px(22))
+        end
 
-        resultSizeLabel.TextSize = resultTextPx(18, 13)
-        resultSizeLabel.Size = UDim2.new(0.84, 0, 0, px(28))
-        resultSizeLabel.Position = UDim2.new(0.5, 0, 0, px(244))
+        if resultSizeLabel then
+            resultSizeLabel.TextSize = math.max(14, math.floor(resultTextPx(15, 12)))
+            resultSizeLabel.TextScaled = false
+            resultSizeLabel.Size = UDim2.new(1, 0, 0, px(22))
+        end
 
-        resultEnchantLabel.TextSize = resultTextPx(16, 12)
-        resultEnchantLabel.Size = UDim2.new(0.84, 0, 0, px(26))
-        resultEnchantLabel.Position = UDim2.new(0.5, 0, 0, px(272))
+        if resultEnchantLabel then
+            resultEnchantLabel.TextSize = math.max(14, math.floor(resultTextPx(16, 12)))
+            resultEnchantLabel.TextScaled = false
+            resultEnchantLabel.Size = UDim2.new(1, 0, 0, px(22))
+        end
+
+        -- RewardTextStack remains scale-based so it stays centered regardless of viewport
+        if rewardTextStack then
+            rewardTextStack.Size = UDim2.fromScale(0.85, 0.24)
+            rewardTextStack.Position = UDim2.fromScale(0.5, 0.52)
+        end
 
         closeBtn.TextSize = math.max(14, math.floor(px(16)))
         closeBtn.Size = UDim2.new(0, math.max(px(140), pxWidth(160)), 0, px(40))
@@ -1369,8 +1411,11 @@ function CrateOpeningUI.Init(playerGui)
             local rc = rarityColor(resultData.rarity)
             resultName.Text = resultData.weaponName
             resultName.TextColor3 = WHITE
+            resultName.Visible = true
+
             resultRarity.Text = resultData.rarity
             resultRarity.TextColor3 = rc
+            resultRarity.Visible = true
             rfStroke.Color = rc
 
             -- SIZE ROLL SYSTEM — display exact rolled size percentage
@@ -1387,14 +1432,29 @@ function CrateOpeningUI.Init(playerGui)
                 else
                     resultSizeLabel.Text = resultSizeText
                 end
+                resultSizeLabel.Visible = true
             else
                 resultSizeLabel.Text = ""
+                resultSizeLabel.Visible = false
             end
 
             -- ENCHANT SYSTEM — display enchant name with animated shimmer
             local enchantForDisplay = (resultData.enchantName and resultData.enchantName ~= "") and resultData.enchantName or nil
-            if EnchantTextStyler then
-                EnchantTextStyler.Apply(resultEnchantLabel, enchantForDisplay)
+            local hasEnchant = enchantForDisplay and tostring(enchantForDisplay) ~= "None" and tostring(enchantForDisplay) ~= "nil"
+            if hasEnchant then
+                resultEnchantLabel.Visible = true
+                if EnchantTextStyler then
+                    EnchantTextStyler.Apply(resultEnchantLabel, enchantForDisplay)
+                else
+                    resultEnchantLabel.Text = tostring(enchantForDisplay)
+                end
+            else
+                resultEnchantLabel.Visible = false
+                if EnchantTextStyler then
+                    EnchantTextStyler.Clear(resultEnchantLabel)
+                else
+                    resultEnchantLabel.Text = ""
+                end
             end
 
             -- Set weapon image
