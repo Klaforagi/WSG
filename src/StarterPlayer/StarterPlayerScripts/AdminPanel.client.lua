@@ -183,19 +183,55 @@ addCorner(adminButton, 6)
 --------------------------------------------------------------------------------
 local panelFrame = createInstance("Frame", {
     Name = "AdminPanel",
-    Size = UDim2.new(0, 900, 0, 560),
-    Position = UDim2.new(0.5, -450, 0.5, -280),
+    Size = UDim2.new(0.6, 0, 0.6, 0),
+    Position = UDim2.new(0.5, 0, 0.5, 0),
+    AnchorPoint = Vector2.new(0.5, 0.5),
     BackgroundColor3 = COLORS.BG_DARK,
     Visible = false,
-    Parent = screenGui,
 })
 addCorner(panelFrame, 10)
 addStroke(panelFrame, COLORS.BORDER, 2)
+-- Ensure the main panel keeps a good aspect ratio across screen sizes
+createInstance("UIAspectRatioConstraint", {
+    AspectRatio = 1.66,
+    AspectType = Enum.AspectType.FitWithinMaxSize,
+    DominantAxis = Enum.DominantAxis.Width,
+    Parent = panelFrame,
+})
+-- Parent the panel to the ScreenGui after constraint and styling are applied
+panelFrame.Parent = screenGui
+
+-- Convert any remaining UDim2 offsets (pixels) into scale values
+local PANEL_BASE_W, PANEL_BASE_H = 900, 560
+local function convertUDim2ToScale(udim)
+    return UDim2.new(
+        udim.X.Scale + (udim.X.Offset / PANEL_BASE_W), 0,
+        udim.Y.Scale + (udim.Y.Offset / PANEL_BASE_H), 0
+    )
+end
+
+local function convertFrameChildrenToScale(root)
+    for _, obj in ipairs(root:GetDescendants()) do
+        if obj:IsA("GuiObject") then
+            local ok, s = pcall(function() return obj.Size end)
+            if ok and typeof(s) == "UDim2" then
+                obj.Size = convertUDim2ToScale(s)
+            end
+            local ok2, p = pcall(function() return obj.Position end)
+            if ok2 and typeof(p) == "UDim2" then
+                obj.Position = convertUDim2ToScale(p)
+            end
+        end
+    end
+end
+
+-- Run conversion on the main panel so all children use scale-only UDim2s
+convertFrameChildrenToScale(panelFrame)
 
 -- Title bar
 local titleBar = createInstance("Frame", {
     Name = "TitleBar",
-    Size = UDim2.new(1, 0, 0, 40),
+    Size = UDim2.new(1, 0, 40/560, 0),
     BackgroundColor3 = COLORS.BG_PANEL,
     Parent = panelFrame,
 })
@@ -203,16 +239,16 @@ addCorner(titleBar, 10)
 
 -- Fill bottom corners of title bar
 createInstance("Frame", {
-    Size = UDim2.new(1, 0, 0, 12),
-    Position = UDim2.new(0, 0, 1, -12),
+    Size = UDim2.new(1, 0, 12/560, 0),
+    Position = UDim2.new(0, 0, 1 - 12/560, 0),
     BackgroundColor3 = COLORS.BG_PANEL,
     BorderSizePixel = 0,
     Parent = titleBar,
 })
 
 createInstance("TextLabel", {
-    Size = UDim2.new(1, -50, 1, 0),
-    Position = UDim2.new(0, 12, 0, 0),
+    Size = UDim2.new(1 - 50/900, 0, 1, 0),
+    Position = UDim2.new(12/900, 0, 0, 0),
     BackgroundTransparency = 1,
     Text = "Admin Panel",
     TextColor3 = COLORS.TEXT_PRIMARY,
@@ -224,8 +260,8 @@ createInstance("TextLabel", {
 
 local closeButton = createInstance("TextButton", {
     Name = "CloseBtn",
-    Size = UDim2.new(0, 32, 0, 32),
-    Position = UDim2.new(1, -36, 0, 4),
+    Size = UDim2.new(0.04, 0, 1, 0),
+    Position = UDim2.new(1 - 36/900, 0, 0, 0),
     BackgroundColor3 = COLORS.RED,
     Text = "X",
     TextColor3 = Color3.new(1, 1, 1),
@@ -238,8 +274,8 @@ addCorner(closeButton, 6)
 -- Tab bar
 local tabBar = createInstance("Frame", {
     Name = "TabBar",
-    Size = UDim2.new(1, 0, 0, 36),
-    Position = UDim2.new(0, 0, 0, 42),
+    Size = UDim2.new(1, 0, 36/560, 0),
+    Position = UDim2.new(0, 0, 42/560, 0),
     BackgroundTransparency = 1,
     Parent = panelFrame,
 })
@@ -247,8 +283,8 @@ local tabBar = createInstance("Frame", {
 local function createTab(name, text, order)
     local btn = createInstance("TextButton", {
         Name = name,
-        Size = UDim2.new(0, 132, 0, 30),
-        Position = UDim2.new(0, 12 + (order - 1) * 140, 0, 3),
+        Size = UDim2.new(132/900, 0, 30/560, 0),
+        Position = UDim2.new((12 + (order - 1) * 140)/900, 0, 3/560, 0),
         BackgroundColor3 = COLORS.TAB_INACTIVE,
         Text = text,
         TextColor3 = COLORS.TEXT_PRIMARY,
@@ -269,11 +305,20 @@ userDataTab.Visible = USER_DATA_AVAILABLE
 local userDataRTab = createTab("UserDataRTab", "User Data (R)", 6)
 userDataRTab.Visible = RESTORE_AVAILABLE
 
+-- Ensure these tabs have a taller, fully-clickable height
+local TAB_CLICK_SIZE = UDim2.new(0.147, 0, 1, 0)
+searchTab.Size = TAB_CLICK_SIZE
+grantTab.Size = TAB_CLICK_SIZE
+grantCurrencyTab.Size = TAB_CLICK_SIZE
+eventsTab.Size = TAB_CLICK_SIZE
+userDataTab.Size = TAB_CLICK_SIZE
+userDataRTab.Size = TAB_CLICK_SIZE
+
 -- Content area
 local contentArea = createInstance("Frame", {
     Name = "Content",
-    Size = UDim2.new(1, -16, 1, -86),
-    Position = UDim2.new(0, 8, 0, 80),
+    Size = UDim2.new(1 - 16/900, 0, 1 - 86/560, 0),
+    Position = UDim2.new(8/900, 0, 80/560, 0),
     BackgroundTransparency = 1,
     ClipsDescendants = true,
     Parent = panelFrame,
@@ -293,7 +338,7 @@ local searchPage = createInstance("Frame", {
 -- Left column: search controls + results list
 local searchLeft = createInstance("Frame", {
     Name = "SearchLeft",
-    Size = UDim2.new(0.5, -4, 1, 0),
+    Size = UDim2.new(0.5 - 4/900, 0, 1, 0),
     BackgroundColor3 = COLORS.BG_PANEL,
     Parent = searchPage,
 })
@@ -302,7 +347,7 @@ addPadding(searchLeft, 10, 10, 10, 10)
 
 -- Search type selector
 createInstance("TextLabel", {
-    Size = UDim2.new(1, 0, 0, 18),
+    Size = UDim2.new(1, 0, 18/560, 0),
     BackgroundTransparency = 1,
     Text = "Search Type",
     TextColor3 = COLORS.TEXT_SECONDARY,
@@ -315,8 +360,8 @@ createInstance("TextLabel", {
 -- Search type toggle buttons
 local searchTypeFrame = createInstance("Frame", {
     Name = "SearchTypeFrame",
-    Size = UDim2.new(1, 0, 0, 30),
-    Position = UDim2.new(0, 0, 0, 22),
+    Size = UDim2.new(1, 0, 30/560, 0),
+    Position = UDim2.new(0, 0, 22/560, 0),
     BackgroundTransparency = 1,
     Parent = searchLeft,
 })
@@ -340,6 +385,22 @@ for i, st in ipairs(searchTypes) do
     })
     addCorner(btn, 4)
     searchTypeBtns[st] = btn
+end
+
+-- Explicitly adjust the SearchType buttons to the requested sizes/positions
+if searchTypeBtns then
+    if searchTypeBtns.WeaponId then
+        searchTypeBtns.WeaponId.Position = UDim2.new(0, 0, 0, 0)
+        searchTypeBtns.WeaponId.Size = UDim2.new(0.3, 0, 2, 0)
+    end
+    if searchTypeBtns.OwnerUserId then
+        searchTypeBtns.OwnerUserId.Position = UDim2.new(0.35, 0, 0, 0)
+        searchTypeBtns.OwnerUserId.Size = UDim2.new(0.3, 0, 2, 0)
+    end
+    if searchTypeBtns.Username then
+        searchTypeBtns.Username.Position = UDim2.new(0.7, 0, 0, 0)
+        searchTypeBtns.Username.Size = UDim2.new(0.3, 0, 2, 0)
+    end
 end
 
 -- Search value input
@@ -754,6 +815,22 @@ for i, currency in ipairs(currencyTypes) do
     currencyTypeBtns[currency.key] = btn
 end
 
+-- Explicitly set Currency type button sizes/positions for easier clicking
+if currencyTypeBtns then
+    if currencyTypeBtns.Coins then
+        currencyTypeBtns.Coins.Position = UDim2.new(0, 0, 0, 0)
+        currencyTypeBtns.Coins.Size = UDim2.new(0.3, 0, 1, 0)
+    end
+    if currencyTypeBtns.Keys then
+        currencyTypeBtns.Keys.Position = UDim2.new(0.35, 0, 0, 0)
+        currencyTypeBtns.Keys.Size = UDim2.new(0.3, 0, 1, 0)
+    end
+    if currencyTypeBtns.Salvage then
+        currencyTypeBtns.Salvage.Position = UDim2.new(0.7, 0, 0, 0)
+        currencyTypeBtns.Salvage.Size = UDim2.new(0.3, 0, 1, 0)
+    end
+end
+
 local currencyAmountInput = createFormField(currencyLeft, "Amount", "e.g. 100", 172)
 currencyAmountInput.Name = "CurrencyAmountField"
 
@@ -810,6 +887,25 @@ for i, preset in ipairs(currencyPresets) do
     btn.MouseEnter:Connect(function() btn.BackgroundColor3 = COLORS.BG_CARD_HOVER end)
     btn.MouseLeave:Connect(function() btn.BackgroundColor3 = COLORS.BG_INPUT end)
     table.insert(currencyPresetButtons, { button = btn, preset = preset })
+end
+
+-- Explicitly set preset button sizes/positions for easier clicking
+do
+    local pCoins = presetFrame:FindFirstChild("Preset_Coins")
+    if pCoins then
+        pCoins.Size = UDim2.new(0.3, 0, 1, 0)
+        pCoins.Position = UDim2.new(0, 0, 0, 0)
+    end
+    local pKeys = presetFrame:FindFirstChild("Preset_Keys")
+    if pKeys then
+        pKeys.Size = UDim2.new(0.3, 0, 1, 0)
+        pKeys.Position = UDim2.new(0.35, 0, 0, 0)
+    end
+    local pSalvage = presetFrame:FindFirstChild("Preset_Salvage")
+    if pSalvage then
+        pSalvage.Size = UDim2.new(0.3, 0, 1, 0)
+        pSalvage.Position = UDim2.new(0.7, 0, 0, 0)
+    end
 end
 
 local currencyPreview = createInstance("TextLabel", {

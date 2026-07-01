@@ -16,7 +16,7 @@ local Teams = game:GetService("Teams")
 ---------------------------------------------------------------------
 -- Config
 ---------------------------------------------------------------------
-local MATCH_DURATION   = 10 * 60  -- round duration in seconds (600 s = 10 min)
+local MATCH_DURATION   = 15 * 60  -- round duration in seconds (900 s = 15 min)
 local END_SCREEN_TIME  = 8        -- seconds the winner screen stays up
 local INTERMISSION_DURATION = 60  -- seconds players wait in the lobby between rounds
 local MIN_PLAYERS      = 0        -- set >0 if you want a lobby phase
