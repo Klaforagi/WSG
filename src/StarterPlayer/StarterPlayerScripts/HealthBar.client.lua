@@ -200,8 +200,6 @@ local containerCorner = Instance.new("UICorner")
 containerCorner.CornerRadius = UDim.new(px(12) / BAR_HEIGHT, 0)
 containerCorner.Parent = container
 
-local shadowCorner = nil
-
 -- Gold outline so the bar pops against any background
 local containerStroke = Instance.new("UIStroke")
 containerStroke.Color = GOLD
@@ -209,21 +207,7 @@ containerStroke.Thickness = px(2)
 containerStroke.Transparency = 0.35
 containerStroke.Parent = container
 
--- Drop shadow for depth
-local shadow = Instance.new("Frame")
-shadow.Name = "Shadow"
-shadow.AnchorPoint = Vector2.new(0.5, 0.5)
--- Use scale-only values derived from earlier pixel baselines so no offsets remain
-shadow.Position = UDim2.new(0.5, 0, 0.55 + (3 / BAR_HEIGHT), 0)
-shadow.Size = UDim2.new(1 + (10 / BAR_WIDTH), 0, 1 + (10 / BAR_HEIGHT), 0)
-shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-shadow.BackgroundTransparency = 0.65
-shadow.BorderSizePixel = 0
-shadow.ZIndex = 0
-shadow.Parent = container
-shadowCorner = Instance.new("UICorner")
-shadowCorner.CornerRadius = UDim.new(px(14) / BAR_HEIGHT, 0)
-shadowCorner.Parent = shadow
+-- (Drop shadow removed by request)
 
 -- Inner padding keeps children off the container edges
 local padding = Instance.new("UIPadding")
@@ -355,9 +339,7 @@ local function applyHealthBarLayout()
 	barBg.Size = UDim2.new(1 - barOffsetXScale, 0, 1, 0)
 
 	containerCorner.CornerRadius = UDim.new(outerCornerRadius / barHeight, 0)
-	if shadowCorner then
-		shadowCorner.CornerRadius = UDim.new((outerCornerRadius + 2) / barHeight, 0)
-	end
+	-- shadow removed: no shadowCorner to update
 	barBgCorner.CornerRadius = UDim.new(innerCornerRadius / barHeight, 0)
 	fillCorner.CornerRadius = UDim.new(innerCornerRadius / barHeight, 0)
 	containerStroke.Thickness = math.max(2, math.floor(barHeight * 0.05))
