@@ -146,10 +146,41 @@ local buttonSize = hudMetrics.buttonSize
 local btnContainer = Instance.new("Frame")
 btnContainer.Name = "DailyRewardsBtnContainer"
 btnContainer.AnchorPoint = Vector2.new(1, 0)
-btnContainer.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-btnContainer.Position = UDim2.new(1, -hudMetrics.insetX - buttonSize - hudMetrics.gap, 0, hudMetrics.insetY)
+-- Fixed scale-only placement and sizing (no pixel offsets)
+btnContainer.Size = UDim2.new(0.8, 0, 0.8, 0)
+btnContainer.Position = UDim2.new(0.93, 0, 0.02, 0)
 btnContainer.BackgroundTransparency = 1
-btnContainer.Parent = hudScreenGui
+-- Try to parent into the shared TopRightButtonsFrame if available; create
+-- it locally as a fallback to ensure consistent top-right alignment.
+local function ensureTopRightButtonsFrame()
+    local topGui = playerGui:FindFirstChild("TopRightButtonsGui")
+    if not topGui then
+        topGui = Instance.new("ScreenGui")
+        topGui.Name = "TopRightButtonsGui"
+        topGui.ResetOnSpawn = false
+        topGui.IgnoreGuiInset = true
+        topGui.DisplayOrder = 1200
+        topGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        topGui.Parent = playerGui
+    end
+    local frame = topGui:FindFirstChild("TopRightButtonsFrame")
+    if not frame then
+        frame = Instance.new("Frame")
+        frame.Name = "TopRightButtonsFrame"
+        frame.AnchorPoint = Vector2.new(1, 0)
+        frame.BackgroundTransparency = 1
+        frame.Position = UDim2.new(0.99, 0, 0.02, 0)
+        frame.Size = UDim2.new(0.05, 0, 0.1, 0)
+        frame.Parent = topGui
+    end
+    return frame
+end
+
+local topFrame = playerGui:FindFirstChild("TopRightButtonsGui") and playerGui.TopRightButtonsGui:FindFirstChild("TopRightButtonsFrame") or nil
+if not topFrame then
+    topFrame = ensureTopRightButtonsFrame()
+end
+btnContainer.Parent = topFrame
 
 local button = Instance.new("ImageButton")
 button.Name = "DailyRewardsButton"
@@ -183,7 +214,7 @@ do
     iconFrame.Name = "IconGlyph"
     iconFrame.AnchorPoint = Vector2.new(0.5, 0.5)
     iconFrame.Position = UDim2.fromScale(0.5, 0.52)
-    iconFrame.Size = UDim2.new(0, iconSize, 0, iconSize)
+    iconFrame.Size = UDim2.new(0.6, 0, 0.6, 0)
     iconFrame.BackgroundTransparency = 1
     iconFrame.ZIndex = 610
     iconFrame.Parent = button

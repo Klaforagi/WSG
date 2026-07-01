@@ -12,6 +12,52 @@ local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 print("[SideUI] initializing for", player and player.Name)
 
+-- Top-right shared container for small HUD buttons (Options, DailyRewards, etc.)
+local function ensureTopRightButtonsContainer()
+    local topGui = playerGui:FindFirstChild("TopRightButtonsGui")
+    if not topGui then
+        topGui = Instance.new("ScreenGui")
+        topGui.Name = "TopRightButtonsGui"
+        topGui.ResetOnSpawn = false
+        topGui.IgnoreGuiInset = true
+        topGui.DisplayOrder = 1200
+        topGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+        topGui.Parent = playerGui
+    end
+    local frame = topGui:FindFirstChild("TopRightButtonsFrame")
+    if not frame then
+        frame = Instance.new("Frame")
+        frame.Name = "TopRightButtonsFrame"
+        frame.AnchorPoint = Vector2.new(1, 0)
+        frame.BackgroundTransparency = 1
+        frame.Position = UDim2.new(0.99, 0, 0.02, 0)
+        frame.Size = UDim2.new(0.05, 0, 0.1, 0)
+        frame.Parent = topGui
+    end
+    -- Ensure a UIListLayout exists and has the correct settings so children
+    -- are aligned horizontally and right-aligned in the frame.
+    local layout = frame:FindFirstChildOfClass("UIListLayout")
+    if not layout then
+        layout = Instance.new("UIListLayout")
+        layout.Parent = frame
+    end
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.Padding = UDim.new(0.08, 0)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    -- Ensure an aspect ratio constraint for consistent shape
+    local aspect = frame:FindFirstChildOfClass("UIAspectRatioConstraint")
+    if not aspect then
+        aspect = Instance.new("UIAspectRatioConstraint")
+        aspect.Parent = frame
+    end
+    aspect.AspectRatio = 1
+    aspect.AspectType = Enum.AspectType.FitWithinMaxSize
+    aspect.DominantAxis = Enum.DominantAxis.Width
+    return topGui, frame
+end
+
 -- In Team Test the camera ViewportSize can be (0,0) until the first frame
 -- renders. Since 0 is truthy in Lua, the old `or 1080` fallback never fired,
 -- causing every px() call to return 1 and making all UI elements invisible.
@@ -1131,7 +1177,11 @@ local function CreateHudOptionsButton(onActivated)
     container.Name = "HudControls"
     container.AnchorPoint = Vector2.new(1, 0)
     container.BackgroundTransparency = 1
-    container.Parent = hudGui
+    container.Size = UDim2.new(0.8, 0, 0.8, 0)
+    -- Parent HudControls into the shared TopRightButtonsFrame so multiple
+    -- small HUD buttons can be aligned together in the top-right corner.
+    local _, topFrame = ensureTopRightButtonsContainer()
+    container.Parent = topFrame
 
     local button = Instance.new("ImageButton")
     button.Name = "OptionsButton"
@@ -1208,8 +1258,9 @@ local function CreateHudOptionsButton(onActivated)
         local metrics = getHudUtilityButtonMetrics()
         local buttonSize = metrics.buttonSize
 
-        container.Size = UDim2.new(0, buttonSize, 0, buttonSize)
-        container.Position = UDim2.new(1, -metrics.insetX, 0, metrics.insetY)
+        -- Preserve scale-only sizing/position for HudControls (no pixel offsets)
+        container.Size = UDim2.new(0.8, 0, 0.8, 0)
+        container.Position = UDim2.new(0.99, 0, 0.02, 0)
         buttonCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
         fallbackConstraint.MaxTextSize = math.max(12, math.floor(buttonSize * 0.35))
     end
