@@ -220,6 +220,14 @@ local MENU_DEFS = {
     },
 }
 
+-- Explicit size overrides for specific launcher buttons (scale-based UDim2)
+local LAUNCHER_SIZE_OVERRIDES = {
+    Shop = UDim2.new(0.7, 0, 0.15, 0),
+    Inventory = UDim2.new(0.7, 0, 0.15, 0),
+    Missions = UDim2.new(0.7, 0, 0.15, 0), -- becomes AchievesButton
+    Team = UDim2.new(0.7, 0, 0.15, 0),
+}
+
 -- Internal state tables to expose
 local buttonsById = {}
 local badgesById = {}
@@ -586,6 +594,13 @@ local function CreateSideLauncher(screenGui)
     stack.ZIndex = 251
     stack.Parent = launcher
 
+    -- Maintain a consistent aspect ratio for the side button stack
+    local stackAspect = Instance.new("UIAspectRatioConstraint")
+    stackAspect.AspectRatio = 0.25
+    stackAspect.AspectType = Enum.AspectType.ScaleWithParentSize
+    stackAspect.DominantAxis = Enum.DominantAxis.Width
+    stackAspect.Parent = stack
+
     local layout = Instance.new("UIListLayout")
     layout.FillDirection = Enum.FillDirection.Vertical
     layout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -666,7 +681,13 @@ local function CreateSideLauncher(screenGui)
         for _, def in ipairs(MENU_DEFS) do
             local btn = buttonsById[def.id]
             if btn then
+                -- Default: square pixel size based on layout metrics
                 btn.Size = UDim2.new(0, layoutMetrics.cardSize, 0, layoutMetrics.cardSize)
+                -- Apply scale-based overrides for specific buttons if requested
+                local override = LAUNCHER_SIZE_OVERRIDES[def.id]
+                if override then
+                    btn.Size = override
+                end
             end
         end
 
