@@ -174,12 +174,19 @@ end
 local container = Instance.new("Frame")
 container.Name = "HealthContainer"
 container.AnchorPoint = Vector2.new(0, 1)
-container.Position = UDim2.new(0, EDGE_PAD, 1, -EDGE_PAD)
-container.Size = UDim2.new(0, BAR_WIDTH, 0, BAR_HEIGHT)
+container.Position = UDim2.new(0.01, 0, 0.995, 0)
+container.Size = UDim2.new(0.2, 0, 0.05, 0)
 container.BackgroundColor3 = NAVY
 container.BackgroundTransparency = 0.06
 container.BorderSizePixel = 0
 container.Parent = screenGui
+
+-- Keep the health container's aspect ratio stable across resolutions
+local containerAspect = Instance.new("UIAspectRatioConstraint")
+containerAspect.AspectRatio = 7.84
+containerAspect.AspectType = Enum.AspectType.ScaleWithParentSize
+containerAspect.DominantAxis = Enum.DominantAxis.Width
+containerAspect.Parent = container
 
 local function refreshLocalHealthDisplaySettings()
 	container.Visible = shouldShowBottomLeftHealth()
@@ -189,7 +196,8 @@ _G.RefreshLocalHealthDisplaySettings = refreshLocalHealthDisplaySettings
 refreshLocalHealthDisplaySettings()
 
 local containerCorner = Instance.new("UICorner")
-containerCorner.CornerRadius = UDim.new(0, px(12))
+-- Use scale-based corner radius relative to the container height
+containerCorner.CornerRadius = UDim.new(px(12) / BAR_HEIGHT, 0)
 containerCorner.Parent = container
 
 local shadowCorner = nil
@@ -205,23 +213,24 @@ containerStroke.Parent = container
 local shadow = Instance.new("Frame")
 shadow.Name = "Shadow"
 shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-shadow.Position = UDim2.new(0.5, 0, 0.55, 3)
-shadow.Size = UDim2.new(1, 10, 1, 10)
+-- Use scale-only values derived from earlier pixel baselines so no offsets remain
+shadow.Position = UDim2.new(0.5, 0, 0.55 + (3 / BAR_HEIGHT), 0)
+shadow.Size = UDim2.new(1 + (10 / BAR_WIDTH), 0, 1 + (10 / BAR_HEIGHT), 0)
 shadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 shadow.BackgroundTransparency = 0.65
 shadow.BorderSizePixel = 0
 shadow.ZIndex = 0
 shadow.Parent = container
 shadowCorner = Instance.new("UICorner")
-shadowCorner.CornerRadius = UDim.new(0, px(14))
+shadowCorner.CornerRadius = UDim.new(px(14) / BAR_HEIGHT, 0)
 shadowCorner.Parent = shadow
 
 -- Inner padding keeps children off the container edges
 local padding = Instance.new("UIPadding")
-padding.PaddingTop = UDim.new(0, px(8))
-padding.PaddingBottom = UDim.new(0, px(8))
-padding.PaddingLeft = UDim.new(0, px(10))
-padding.PaddingRight = UDim.new(0, px(10))
+padding.PaddingTop = UDim.new(px(8) / BAR_HEIGHT, 0)
+padding.PaddingBottom = UDim.new(px(8) / BAR_HEIGHT, 0)
+padding.PaddingLeft = UDim.new(px(10) / BAR_WIDTH, 0)
+padding.PaddingRight = UDim.new(px(10) / BAR_WIDTH, 0)
 padding.Parent = container
 
 -- Heart icon – large enough to be instantly recognisable
@@ -229,8 +238,9 @@ local ICON_SIZE = px(34)
 local heartIcon = Instance.new("TextLabel")
 heartIcon.Name = "HeartIcon"
 heartIcon.AnchorPoint = Vector2.new(0, 0.5)
+-- Position and size use scale-only values derived from the pixel baselines
 heartIcon.Position = UDim2.new(0, 0, 0.5, 0)
-heartIcon.Size = UDim2.new(0, ICON_SIZE, 0, ICON_SIZE)
+heartIcon.Size = UDim2.new(ICON_SIZE / BAR_WIDTH, 0, ICON_SIZE / BAR_HEIGHT, 0)
 heartIcon.BackgroundTransparency = 1
 heartIcon.Text = "❤"
 heartIcon.Font = Enum.Font.GothamBold
@@ -244,15 +254,15 @@ local BAR_OFFSET = ICON_SIZE + px(8) -- start bar to the right of the heart
 local barBg = Instance.new("Frame")
 barBg.Name = "BarBackground"
 barBg.AnchorPoint = Vector2.new(0, 0.5)
-barBg.Position = UDim2.new(0, BAR_OFFSET, 0.5, 0)
-barBg.Size = UDim2.new(1, -BAR_OFFSET, 1, 0)
+barBg.Position = UDim2.new(BAR_OFFSET / BAR_WIDTH, 0, 0.5, 0)
+barBg.Size = UDim2.new(1 - (BAR_OFFSET / BAR_WIDTH), 0, 1, 0)
 barBg.BackgroundColor3 = NAVY_LIGHT
 barBg.BorderSizePixel = 0
 barBg.ClipsDescendants = true
 barBg.ZIndex = 1
 barBg.Parent = container
 local barBgCorner = Instance.new("UICorner")
-barBgCorner.CornerRadius = UDim.new(0, px(8))
+barBgCorner.CornerRadius = UDim.new(px(8) / BAR_HEIGHT, 0)
 barBgCorner.Parent = barBg
 
 -- Subtle inner border on the bar track
@@ -272,7 +282,7 @@ fill.BorderSizePixel = 0
 fill.ZIndex = 2
 fill.Parent = barBg
 local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0, px(8))
+fillCorner.CornerRadius = UDim.new(px(8) / BAR_HEIGHT, 0)
 fillCorner.Parent = fill
 
 -- Fill gradient for subtle polish
@@ -327,24 +337,29 @@ local function applyHealthBarLayout()
 	local outerCornerRadius = math.max(10, math.floor(barHeight * 0.24))
 	local innerCornerRadius = math.max(8, math.floor(barHeight * 0.18))
 
-	container.Size = UDim2.new(0, barWidth, 0, barHeight)
-	container.Position = UDim2.new(0, edgePad, 1, -edgePad)
+	-- Preserve the container's scale-based size/position; convert computed
+	-- pixel metrics into scale-only values for all children so no offsets
+	-- override the container layout.
+	local padTopScale = innerPadY / barHeight
+	local padLeftScale = innerPadX / barWidth
 
-	padding.PaddingTop = UDim.new(0, innerPadY)
-	padding.PaddingBottom = UDim.new(0, innerPadY)
-	padding.PaddingLeft = UDim.new(0, innerPadX)
-	padding.PaddingRight = UDim.new(0, innerPadX)
+	padding.PaddingTop = UDim.new(padTopScale, 0)
+	padding.PaddingBottom = UDim.new(padTopScale, 0)
+	padding.PaddingLeft = UDim.new(padLeftScale, 0)
+	padding.PaddingRight = UDim.new(padLeftScale, 0)
 
-	heartIcon.Size = UDim2.new(0, iconSize, 0, iconSize)
-	barBg.Position = UDim2.new(0, barOffset, 0.5, 0)
-	barBg.Size = UDim2.new(1, -barOffset, 1, 0)
+	heartIcon.Size = UDim2.new(iconSize / barWidth, 0, iconSize / barHeight, 0)
 
-	containerCorner.CornerRadius = UDim.new(0, outerCornerRadius)
+	local barOffsetXScale = barOffset / barWidth
+	barBg.Position = UDim2.new(barOffsetXScale, 0, 0.5, 0)
+	barBg.Size = UDim2.new(1 - barOffsetXScale, 0, 1, 0)
+
+	containerCorner.CornerRadius = UDim.new(outerCornerRadius / barHeight, 0)
 	if shadowCorner then
-		shadowCorner.CornerRadius = UDim.new(0, outerCornerRadius + 2)
+		shadowCorner.CornerRadius = UDim.new((outerCornerRadius + 2) / barHeight, 0)
 	end
-	barBgCorner.CornerRadius = UDim.new(0, innerCornerRadius)
-	fillCorner.CornerRadius = UDim.new(0, innerCornerRadius)
+	barBgCorner.CornerRadius = UDim.new(innerCornerRadius / barHeight, 0)
+	fillCorner.CornerRadius = UDim.new(innerCornerRadius / barHeight, 0)
 	containerStroke.Thickness = math.max(2, math.floor(barHeight * 0.05))
 	textConstraint.MaxTextSize = math.max(14, math.floor(barHeight * 0.5))
 end
