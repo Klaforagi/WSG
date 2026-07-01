@@ -47,9 +47,67 @@ end
 -- Try to find and initialize your pre-built GUI
 --------------------------------------------------------------------------------
 local realGui = playerGui:FindFirstChild("DailyRewardsGui")
+local drRemotes = nil
+local getStateRF, claimRF, stateUpdatedRE
+local uiInitialized = false
+
+local function doClaim()
+    if not claimRF or not claimRF:IsA("RemoteFunction") then return end
+    local ok, success, message, updatedState = pcall(function()
+        return claimRF:InvokeServer()
+    end)
+    if not ok then
+        warn("[DailyRewardsClient] Claim RPC failed:", success)
+        return
+    end
+    if updatedState and DailyRewardsUI and DailyRewardsUI.Refresh then
+        DailyRewardsUI.Refresh(updatedState)
+    else
+        if getStateRF and getStateRF:IsA("RemoteFunction") then
+            local ok2, s2 = pcall(function() return getStateRF:InvokeServer() end)
+            if ok2 and type(s2) == "table" and DailyRewardsUI and DailyRewardsUI.Refresh then
+                DailyRewardsUI.Refresh(s2)
+            end
+        end
+    end
+end
+
 if realGui and DailyRewardsUI then
     pcall(function()
-        DailyRewardsUI.Create(realGui, nil)
+        -- Find remotes (optional, DailyRewardServiceInit creates these)
+        local remotesRoot = ReplicatedStorage:FindFirstChild("Remotes")
+        if remotesRoot then
+            local drFolder = remotesRoot:FindFirstChild("DailyRewards")
+            drFolder = drFolder or (remotesRoot:FindFirstChild("DailyRewards") and remotesRoot:FindFirstChild("DailyRewards"))
+            if drFolder then
+                getStateRF = drFolder:FindFirstChild("GetDailyRewardState")
+                claimRF = drFolder:FindFirstChild("ClaimDailyReward")
+                stateUpdatedRE = drFolder:FindFirstChild("DailyRewardStateUpdated")
+            end
+        end
+
+        local initialState = nil
+        if getStateRF and getStateRF:IsA("RemoteFunction") then
+            local ok, s = pcall(function() return getStateRF:InvokeServer() end)
+            if ok and type(s) == "table" then
+                initialState = s
+            end
+        end
+
+        DailyRewardsUI.Create(realGui, initialState, { onClaim = doClaim })
+        uiInitialized = true
+
+        -- Listen for server pushes
+        if stateUpdatedRE and stateUpdatedRE:IsA("RemoteEvent") then
+            stateUpdatedRE.OnClientEvent:Connect(function(state)
+                if DailyRewardsUI and DailyRewardsUI.Refresh then
+                    DailyRewardsUI.Refresh(state)
+                end
+                if state and state.autoPopup and state.canClaimToday and DailyRewardsUI and not DailyRewardsUI.IsOpen() then
+                    DailyRewardsUI.Open()
+                end
+            end)
+        end
     end)
 end
 
@@ -219,14 +277,24 @@ button.Activated:Connect(function()
         return
     end
 
-    -- Try to initialize if not already done
+    -- Try to initialize if not already done (ensure callbacks wired)
     if not DailyRewardsUI.IsOpen() then
-        local success, err = pcall(function()
-            DailyRewardsUI.Create(realGui, nil)
-        end)
-        if not success then
-            warn("[DailyRewardsClient] ERROR in DailyRewardsUI.Create:", err)
-            return
+        if not uiInitialized then
+            local success, err = pcall(function()
+                local initialState = nil
+                if getStateRF and getStateRF:IsA("RemoteFunction") then
+                    local ok, s = pcall(function() return getStateRF:InvokeServer() end)
+                    if ok and type(s) == "table" then
+                        initialState = s
+                    end
+                end
+                DailyRewardsUI.Create(realGui, initialState, { onClaim = doClaim })
+            end)
+            if not success then
+                warn("[DailyRewardsClient] ERROR in DailyRewardsUI.Create:", err)
+                return
+            end
+            uiInitialized = true
         end
     end
 
