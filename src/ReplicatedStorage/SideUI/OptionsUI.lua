@@ -173,12 +173,24 @@ local function ApplySettings(settings)
 		if soundsRoot then
 			local musicFolder = soundsRoot:FindFirstChild("Music")
 			if musicFolder then
-				-- Map slider 0..1 -> actual volume 0..0.5 so 100% = 0.5
-				local mapped = math.clamp(tonumber(settings.MusicVolume) or 0.5, 0, 1) * 0.5
+				-- Map slider 0..1 -> actual volume 0..0.2 so 100% = 0.2
+				local mapped = math.clamp(tonumber(settings.MusicVolume) or 0.5, 0, 1) * 0.2
+				-- Update volume for all music sounds
 				for _, obj in ipairs(musicFolder:GetDescendants()) do
 					if obj:IsA("Sound") then
 						pcall(function() obj.Volume = mapped end)
 					end
+				end
+				-- Only toggle playback for the main track we want playing by default
+				local mainTrack = musicFolder:FindFirstChild("Ancient Castle Halls")
+				if mainTrack and mainTrack:IsA("Sound") then
+					pcall(function()
+						if mapped > 0 then
+							if not mainTrack.Playing then mainTrack.Playing = true end
+						else
+							mainTrack.Playing = false
+						end
+					end)
 				end
 			end
 		end
