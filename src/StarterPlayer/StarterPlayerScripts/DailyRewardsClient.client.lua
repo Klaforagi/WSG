@@ -22,15 +22,26 @@ hudScreenGui.Parent = playerGui
 -- Load DailyRewardsUI module
 --------------------------------------------------------------------------------
 local DailyRewardsUI
-pcall(function()
-    local sideUI = ReplicatedStorage:WaitForChild("SideUI", 10)
-    if sideUI then
-        local mod = sideUI:WaitForChild("DailyRewardsUI", 5)
-        if mod and mod:IsA("ModuleScript") then
-            DailyRewardsUI = require(mod)
+do
+    local ok, sideUI = pcall(function() return ReplicatedStorage:WaitForChild("SideUI", 10) end)
+    if not ok or not sideUI then
+        warn("[DailyRewardsClient] SideUI folder not found in ReplicatedStorage")
+    else
+        local mod = sideUI:FindFirstChild("DailyRewardsUI") or sideUI:WaitForChild("DailyRewardsUI", 5)
+        if not mod then
+            warn("[DailyRewardsClient] DailyRewardsUI ModuleScript not found under SideUI")
+        elseif not mod:IsA("ModuleScript") then
+            warn("[DailyRewardsClient] DailyRewardsUI exists but is not a ModuleScript (type:", mod.ClassName, ")")
+        else
+            local okReq, res = pcall(function() return require(mod) end)
+            if okReq then
+                DailyRewardsUI = res
+            else
+                warn("[DailyRewardsClient] Failed to require DailyRewardsUI:", res)
+            end
         end
     end
-end)
+end
 
 --------------------------------------------------------------------------------
 -- Try to find and initialize your pre-built GUI
