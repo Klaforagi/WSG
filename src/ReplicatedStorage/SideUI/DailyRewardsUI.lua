@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- DailyRewardsUI.lua – Controller for your pre-built UI
+-- DailyRewardsUI.lua  –  Controller for your pre-built Studio UI
 --------------------------------------------------------------------------------
 local TweenService = game:GetService("TweenService")
 
@@ -7,6 +7,8 @@ local DailyRewardsUI = {}
 
 local screenGui = nil
 local window = nil
+local screenGui = nil          -- The ScreenGui (DailyRewardsGui)
+local window = nil             -- DailyRewardsWindow
 local dayCards = {}
 local claimFrame = nil
 local claimButton = nil
@@ -30,6 +32,41 @@ function DailyRewardsUI.Create(passedScreenGui, initialState, callbacks)
     claimFrame = window:FindFirstChild("ClaimButton")
     closeBtn = window:FindFirstChild("CloseBtn")
 
+    if claimFrame then
+        claimButton = claimFrame:FindFirstChild("Claim")
+    end
+
+local isOpen = false
+
+local function tweenProp(inst, props, info)
+    info = info or TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    local tw = TweenService:Create(inst, info, props)
+    tw:Play()
+    return tw
+end
+
+function DailyRewardsUI.Create(passedScreenGui, initialState)
+    if not passedScreenGui then
+        warn("[DailyRewardsUI] No ScreenGui passed!")
+        return
+    end
+
+    screenGui = passedScreenGui
+    window = screenGui:FindFirstChild("DailyRewardsWindow")
+
+    if not window then
+        warn("[DailyRewardsUI] ERROR: Could not find 'DailyRewardsWindow'!")
+        return
+    end
+
+    print("[DailyRewardsUI] Found DailyRewardsWindow successfully")
+
+    -- Find streak elements
+    streakNumberLabel = window:FindFirstChild("Streak#")
+    daysLabel = window:FindFirstChild("Days")
+
+    -- Claim area
+    claimFrame = window:FindFirstChild("ClaimButton")
     if claimFrame then
         claimButton = claimFrame:FindFirstChild("Claim")
     end
@@ -65,6 +102,12 @@ function DailyRewardsUI.Create(passedScreenGui, initialState, callbacks)
         claimButton.Activated:Connect(callbacks.onClaim)
     end
 
+    if claimButton then
+        claimButton.Activated:Connect(function()
+            if DailyRewardsUI.onClaim then DailyRewardsUI.onClaim() end
+        end)
+    end
+
     if initialState then
         DailyRewardsUI.Refresh(initialState)
     end
@@ -84,6 +127,15 @@ function DailyRewardsUI.Refresh(state)
     end
 
     -- Update day cards
+    if streakNumberLabel then
+        streakNumberLabel.Text = tostring(state.currentStreak or 0)
+    end
+
+    if daysLabel then
+        local streak = state.currentStreak or 0
+        daysLabel.Text = (streak == 1) and "Day" or "Days"
+    end
+
     local rewards = state.rewards or {}
     for i, card in ipairs(dayCards) do
         local reward = rewards[i]
@@ -110,6 +162,13 @@ function DailyRewardsUI.Refresh(state)
             else
                 card.frame.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
                 if card.stroke then card.stroke.Color = Color3.fromRGB(55, 62, 95) end
+            if card.statusClaimed then card.statusClaimed.Visible = false end
+            if card.statusToday then card.statusToday.Visible = false end
+
+            if status == "claimed" and card.statusClaimed then
+                card.statusClaimed.Visible = true
+            elseif status == "claimable" and card.statusToday then
+                card.statusToday.Visible = true
             end
         end
     end
@@ -137,6 +196,16 @@ function DailyRewardsUI.Open()
     isOpen = true
     screenGui.Enabled = true
     window.Visible = true
+    if not screenGui or not window then
+        warn("[DailyRewardsUI] ERROR: screenGui or window is nil")
+        return
+    end
+    if isOpen then return end
+
+    isOpen = true
+    screenGui.Enabled = true          -- ← This is the key fix
+    window.Visible = true
+    print("[DailyRewardsUI] UI Opened (Enabled = true)")
 end
 
 function DailyRewardsUI.Close()
@@ -148,6 +217,19 @@ end
 
 function DailyRewardsUI.IsOpen()
     return isOpen
+end
+
+function DailyRewardsUI.PlayClaimAnimation(dayIndex)
+    local card = dayCards[dayIndex]
+    if not card or not card.frame then return end
+
+    local original = card.frame.BackgroundColor3
+    tweenProp(card.frame, { BackgroundColor3 = Color3.fromRGB(255, 215, 80) }, TweenInfo.new(0.12))
+    task.delay(0.18, function()
+        if card.frame then
+            tweenProp(card.frame, { BackgroundColor3 = original }, TweenInfo.new(0.25))
+        end
+    end)
 end
 
 return DailyRewardsUI

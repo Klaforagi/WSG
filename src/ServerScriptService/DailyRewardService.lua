@@ -1,6 +1,7 @@
 --------------------------------------------------------------------------------
--- DailyRewardService.lua  –  Fixed & Clean Version
+-- DailyRewardService.lua  –  Simplified version for your fixed rewards
 --------------------------------------------------------------------------------
+
 local Players = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,7 +21,7 @@ local function getKey(player)
     return "User_" .. tostring(player.UserId)
 end
 
--- ==================== YOUR FIXED 7-DAY REWARDS ====================
+-- Your fixed 7-day rewards
 local REWARDS = {
     [1] = { type = "Coins",  amount = 100, displayName = "100 Coins" },
     [2] = { type = "Shards", amount = 50,  displayName = "50 Shards" },
@@ -63,29 +64,13 @@ local function getTodayKey()
     return os.date("!%Y-%m-%d", os.time())
 end
 
-local function daysSinceLastClaim(lastClaimDate)
-    if lastClaimDate == "" then return 999 end
-    local today = getTodayKey()
-
-    local y1, m1, d1 = lastClaimDate:match("^(%d%d%d%d)-(%d%d)-(%d%d)$")
-    local y2, m2, d2 = today:match("^(%d%d%d%d)-(%d%d)-(%d%d)$")
-    if not y1 or not y2 then return 999 end
-
-    local date1 = os.time({year = tonumber(y1), month = tonumber(m1), day = tonumber(d1)})
-    local date2 = os.time({year = tonumber(y2), month = tonumber(m2), day = tonumber(d2)})
-
-    return math.floor((date2 - date1) / 86400)
-end
-
---------------------------------------------------------------------------------
--- PUBLIC FUNCTIONS
---------------------------------------------------------------------------------
-
 function DailyRewardService:LoadProfileForPlayer(player)
     if not player then return { status = "failed", data = makeEmptyState() } end
 
     local key = getKey(player)
-    local success, result = pcall(function() return ds:GetAsync(key) end)
+    local success, result = pcall(function()
+        return ds:GetAsync(key)
+    end)
 
     if success and result then
         playerData[player] = normalizeState(result)
@@ -100,41 +85,19 @@ end
 function DailyRewardService:GetState(player)
     local pd = ensurePlayerData(player)
     local today = getTodayKey()
-    local alreadyClaimedToday = (pd.lastClaimDate == today)
-    local daysSince = daysSinceLastClaim(pd.lastClaimDate)
+    local alreadyClaimed = (pd.lastClaimDate == today)
 
-    local canClaim = false
-    local claimDay = 1
-
-    if not alreadyClaimedToday then
-        if pd.currentDay == 0 then
-            -- First time ever
-            canClaim = true
-            claimDay = 1
-        elseif daysSince == 1 then
-            -- Consecutive day
-            canClaim = true
-            claimDay = pd.currentDay + 1
-            if claimDay > 7 then claimDay = 1 end
-        elseif daysSince > 1 then
-            -- Missed day(s) → reset
-            canClaim = true
-            claimDay = 1
-        end
-    end
-
-    -- Build reward list with correct status
     local rewards = {}
     for i = 1, 7 do
         local r = REWARDS[i]
         local status = "future"
 
-        if alreadyClaimedToday then
+        if alreadyClaimed then
             if i <= pd.currentDay then
                 status = "claimed"
             end
         else
-            if canClaim and i == claimDay then
+            if i == pd.currentDay + 1 then
                 status = "claimable"
             elseif i <= pd.currentDay then
                 status = "claimed"
@@ -152,8 +115,8 @@ function DailyRewardService:GetState(player)
     return {
         currentStreak  = pd.currentStreak,
         currentDay     = pd.currentDay,
-        canClaimToday  = canClaim,
-        alreadyClaimed = alreadyClaimedToday,
+        canClaimToday  = not alreadyClaimed and pd.currentDay < 7,
+        alreadyClaimed = alreadyClaimed,
         cycleDays      = 7,
         rewards        = rewards,
     }
@@ -165,48 +128,38 @@ function DailyRewardService:ClaimReward(player)
 
     local pd = ensurePlayerData(player)
     local today = getTodayKey()
-    local daysSince = daysSinceLastClaim(pd.lastClaimDate)
 
     if pd.lastClaimDate == today then
         claimLocks[player] = nil
         return false, "Already claimed today"
     end
 
-    local claimDay = 1
+    local nextDay = pd.currentDay + 1
+    if nextDay > 7 then nextDay = 1 end
 
-    if pd.currentDay == 0 or daysSince > 1 then
-        -- First claim or reset
-        claimDay = 1
-        pd.currentStreak = 1
-    else
-        -- Normal consecutive claim
-        claimDay = pd.currentDay + 1
-        if claimDay > 7 then claimDay = 1 end
-        pd.currentStreak = pd.currentStreak + 1
-    end
-
-    local reward = REWARDS[claimDay]
+    local reward = REWARDS[nextDay]
     if not reward then
         claimLocks[player] = nil
         return false, "No reward configured"
     end
 
-    -- ==================== GIVE THE REWARD ====================
+    -- TODO: Replace these with your actual systems
     if reward.type == "Coins" then
+        -- Example: CurrencyService:AddCoins(player, reward.amount, "daily_reward")
         print("[DailyReward] Gave", reward.amount, "Coins to", player.Name)
-        -- TODO: Put your actual coin giving code here
 
     elseif reward.type == "Shards" then
+        -- Example: YourShardSystem:AddShards(player, reward.amount)
         print("[DailyReward] Gave", reward.amount, "Shards to", player.Name)
-        -- TODO: Put your actual shards giving code here
 
     elseif reward.type == "Key" then
+        -- Example: InventoryService:GiveItem(player, "GoldenKey", 1)
         print("[DailyReward] Gave 1 Golden Key to", player.Name)
-        -- TODO: Put your actual key/item giving code here
     end
 
     -- Update state
-    pd.currentDay = claimDay
+    pd.currentStreak = pd.currentStreak + 1
+    pd.currentDay = nextDay
     pd.lastClaimDate = today
     pd.lastClaimTime = os.time()
     pd.totalClaims = pd.totalClaims + 1

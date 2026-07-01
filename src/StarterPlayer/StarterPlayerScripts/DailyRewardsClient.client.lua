@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- DailyRewardsClient.client.lua (Final Fixed Version)
+-- DailyRewardsClient.client.lua
 --------------------------------------------------------------------------------
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -9,14 +9,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Wait for viewport
-do
-    local cam = workspace.CurrentCamera or workspace:WaitForChild("Camera", 5)
-    if cam then
-        local t = 0
-        while cam.ViewportSize.Y < 2 and t < 3 do t = t + task.wait() end
-    end
-end
+-- Create a dedicated high-priority ScreenGui for the HUD button
+local hudScreenGui = Instance.new("ScreenGui")
+hudScreenGui.Name = "DailyRewardsHUD"
+hudScreenGui.ResetOnSpawn = false
+hudScreenGui.IgnoreGuiInset = true
+hudScreenGui.DisplayOrder = 500
+hudScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+hudScreenGui.Parent = playerGui
 
 --------------------------------------------------------------------------------
 -- Load DailyRewardsUI module
@@ -32,62 +32,18 @@ pcall(function()
     end
 end)
 
-if not DailyRewardsUI then
-    warn("[DailyRewardsClient] DailyRewardsUI module not found!")
-    return
+--------------------------------------------------------------------------------
+-- Try to find and initialize your pre-built GUI
+--------------------------------------------------------------------------------
+local realGui = playerGui:FindFirstChild("DailyRewardsGui")
+if realGui and DailyRewardsUI then
+    pcall(function()
+        DailyRewardsUI.Create(realGui, nil)
+    end)
 end
 
 --------------------------------------------------------------------------------
--- Find your pre-built popup GUI
---------------------------------------------------------------------------------
-local popupGui = playerGui:FindFirstChild("DailyRewardsGui")
-
-if not popupGui then
-    warn("DailyRewardsGui not found in PlayerGui!")
-    return
-end
-
---------------------------------------------------------------------------------
--- Create a SEPARATE ScreenGui just for the HUD button (always visible)
---------------------------------------------------------------------------------
-local hudGui = Instance.new("ScreenGui")
-hudGui.Name = "DailyRewardsHUD"
-hudGui.ResetOnSpawn = false
-hudGui.IgnoreGuiInset = true
-hudGui.DisplayOrder = 500
-hudGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-hudGui.Parent = playerGui
-
---------------------------------------------------------------------------------
--- Get Remotes
---------------------------------------------------------------------------------
-local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
-local drFolder = remotes:FindFirstChild("DailyRewards")
-local getStateRF = drFolder and drFolder:FindFirstChild("GetDailyRewardState")
-local claimRF = drFolder and drFolder:FindFirstChild("ClaimDailyReward")
-
---------------------------------------------------------------------------------
--- Initialize the popup UI (with claim callback)
---------------------------------------------------------------------------------
-DailyRewardsUI.Create(popupGui, nil, {
-    onClaim = function()
-        if not claimRF then return end
-
-        local success, message = claimRF:InvokeServer()
-
-        if success then
-            if getStateRF then
-                local newState = getStateRF:InvokeServer()
-                DailyRewardsUI.Refresh(newState)
-            end
-        else
-            warn("[DailyRewardsClient] Claim failed:", message)
-        end
-    end
-})
-
---------------------------------------------------------------------------------
--- Top Right Gift Box Button (on its own ScreenGui - always visible)
+-- Create the Top-Right Button
 --------------------------------------------------------------------------------
 local function px(base)
     local cam = workspace.CurrentCamera
@@ -124,7 +80,7 @@ btnContainer.AnchorPoint = Vector2.new(1, 0)
 btnContainer.Size = UDim2.new(0, buttonSize, 0, buttonSize)
 btnContainer.Position = UDim2.new(1, -hudMetrics.insetX - buttonSize - hudMetrics.gap, 0, hudMetrics.insetY)
 btnContainer.BackgroundTransparency = 1
-btnContainer.Parent = hudGui   -- ← Button is on its own ScreenGui now
+btnContainer.Parent = hudScreenGui
 
 local button = Instance.new("ImageButton")
 button.Name = "DailyRewardsButton"
@@ -234,17 +190,43 @@ button.MouseButton1Up:Connect(function()
     TweenService:Create(btnScale, TweenInfo.new(0.1), {Scale = 1}):Play()
 end)
 
--- Button Click → Open/Close popup
+--------------------------------------------------------------------------------
+-- Button Click
+--------------------------------------------------------------------------------
 button.Activated:Connect(function()
+    print("[DailyRewardsClient] Button clicked!")
+
+    local realGui = playerGui:FindFirstChild("DailyRewardsGui")
+
+    if not realGui then
+        warn("[DailyRewardsClient] ERROR: DailyRewardsGui not found in PlayerGui!")
+        return
+    end
+
+    if not DailyRewardsUI then
+        warn("[DailyRewardsClient] ERROR: DailyRewardsUI module is nil!")
+        return
+    end
+
+    -- Try to initialize if not already done
+    if not DailyRewardsUI.IsOpen() then
+        local success, err = pcall(function()
+            DailyRewardsUI.Create(realGui, nil)
+        end)
+        if not success then
+            warn("[DailyRewardsClient] ERROR in DailyRewardsUI.Create:", err)
+            return
+        end
+    end
+
+    -- Now open or close
     if DailyRewardsUI.IsOpen() then
         DailyRewardsUI.Close()
+        print("[DailyRewardsClient] Closed UI")
     else
-        if getStateRF then
-            local state = getStateRF:InvokeServer()
-            DailyRewardsUI.Refresh(state)
-        end
         DailyRewardsUI.Open()
+        print("[DailyRewardsClient] Opened UI")
     end
 end)
 
-print("[DailyRewardsClient] Button is now always visible (separate HUD ScreenGui)")
+print("[DailyRewardsClient] Button created successfully")
