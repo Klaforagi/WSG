@@ -446,9 +446,9 @@ local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
     { id = "ranged",  icon = "\u{1F3F9}", label = "Ranged",  order = 2 },
     { id = "boosts",  icon = "\u{1F9EA}",  label = "Potions", order = 3 },
-    { id = "skins",   icon = "\u{2726}",  label = "Skins",   order = 4 },
-    { id = "effects", icon = "\u{2738}",  label = "Effects", order = 5 },
-    { id = "emotes",  icon = "\u{263A}",  label = "Emotes",  order = 6 },
+    { id = "skins",   icon = "\u{1F94B}", label = "Skins",   order = 4 }, -- martial uniform (🥋)
+    { id = "effects", icon = "\u{1F4AB}",  label = "Effects", order = 5 }, -- dizzy
+    { id = "emotes",  icon = "\u{1F57A}",  label = "Emotes",  order = 6 }, -- man dancing 🕺
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
@@ -492,7 +492,8 @@ local function buildCustomTabIcon(parentBtn, tabId)
     local root = Instance.new("Frame")
     root.Name = "IconCustom"
     root.BackgroundTransparency = 1
-    root.Size = UDim2.new(0, px(26), 0, px(24))
+    -- use scale so custom icons (if used) fit the tab sizing
+    root.Size = UDim2.fromScale(0.5, 0.5)
     root.AnchorPoint = Vector2.new(0.5, 0)
     root.Position = UDim2.new(0.5, 0, 0, px(8))
     root.Parent = parentBtn
@@ -560,11 +561,11 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 local function showToast(parentFrame, message, color, duration)
     local toast = Instance.new("TextLabel")
-    toast.Name = "Toast"
-    toast.BackgroundColor3 = Color3.fromRGB(18, 20, 36)
-    toast.BackgroundTransparency = 0.08
+        root.Name = "IconCustom"
+        root.AnchorPoint = Vector2.new(0.5, 0.5)
+        root.Position = UDim2.new(0.5, 0, 0.5, 0)
     toast.Size = UDim2.new(0.85, 0, 0, px(40))
-    toast.AnchorPoint = Vector2.new(0.5, 0)
+        local shoulders = markIconPart(Instance.new("Frame"))
     toast.Position = UDim2.new(0.5, 0, 0, px(6))
     toast.Font = Enum.Font.GothamBold
     toast.TextSize = math.max(13, math.floor(px(14)))
@@ -1500,7 +1501,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         bar.BackgroundTransparency = 1
         Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5, 0)
 
-            if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" then
+            if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" or def.id == "skins" or def.id == "effects" then
             local iconLbl = Instance.new("TextLabel", btn)
             iconLbl.Name = "Icon"
             iconLbl.BackgroundTransparency = 1
@@ -1512,9 +1513,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     iconLbl.TextColor3 = DIM_TEXT
                 end
             iconLbl.TextScaled = true
-            -- icon should fill the tab
-            iconLbl.Size = UDim2.new(1, 0, 1, 0)
-            iconLbl.Position = UDim2.new(0, 0, 0, 0)
+            -- icon centered and scaled to 50%
+            iconLbl.Size = UDim2.new(0.5, 0, 0.5, 0)
+            iconLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+            iconLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
             iconLbl.TextXAlignment = Enum.TextXAlignment.Center
         else
             local custom = buildCustomTabIcon(btn, def.id)
