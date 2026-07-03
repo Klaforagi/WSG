@@ -6449,6 +6449,93 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end
     pcall(function() enableTextScaling(root) end)
 
+    -- Convert any pixel-offset sizes/positions/paddings under detailContent to scale-based values
+    local function convertOffsetsToScale(container)
+        if not (container and container.GetDescendants) then return end
+
+        local function safeAbsSize(obj)
+            local ok, x = pcall(function() return obj.AbsoluteSize end)
+            if not ok or not x then return 0, 0 end
+            return math.max(1, x.X), math.max(1, x.Y)
+        end
+
+        local function removeHardTextConstraints(obj)
+            for _, c in ipairs(obj:GetDescendants()) do
+                if c and c.IsA and c:IsA("UITextSizeConstraint") then
+                    pcall(function() c:Destroy() end)
+                end
+            end
+        end
+
+        local function convertGui(obj)
+            if not obj or not obj.Parent then return end
+            local pW, pH = safeAbsSize(obj.Parent)
+            -- Convert Size offsets to scale relative to parent
+            local s = obj.Size
+            local newSX = s.X.Scale
+            local newSY = s.Y.Scale
+            if s.X.Offset ~= 0 then newSX = newSX + (s.X.Offset / pW) end
+            if s.Y.Offset ~= 0 then newSY = newSY + (s.Y.Offset / pH) end
+            obj.Size = UDim2.new(newSX, 0, newSY, 0)
+            -- Convert Position offsets to scale relative to parent
+            local pos = obj.Position
+            local newPX = pos.X.Scale
+            local newPY = pos.Y.Scale
+            if pos.X.Offset ~= 0 then newPX = newPX + (pos.X.Offset / pW) end
+            if pos.Y.Offset ~= 0 then newPY = newPY + (pos.Y.Offset / pH) end
+            obj.Position = UDim2.new(newPX, 0, newPY, 0)
+
+            -- Convert UIPadding offsets to scale relative to parent
+            for _, child in ipairs(obj:GetChildren()) do
+                if child and child.IsA and child:IsA("UIPadding") then
+                    child.PaddingTop = UDim.new(child.PaddingTop.Scale + (child.PaddingTop.Offset / pH), 0)
+                    child.PaddingBottom = UDim.new(child.PaddingBottom.Scale + (child.PaddingBottom.Offset / pH), 0)
+                    child.PaddingLeft = UDim.new(child.PaddingLeft.Scale + (child.PaddingLeft.Offset / pW), 0)
+                    child.PaddingRight = UDim.new(child.PaddingRight.Scale + (child.PaddingRight.Offset / pW), 0)
+                end
+                if child and child.IsA and child:IsA("UIListLayout") then
+                    local pad = child.Padding
+                    if pad and pad.Offset and (pad.Offset ~= 0) then
+                        child.Padding = UDim.new(pad.Scale + (pad.Offset / pH), 0)
+                    end
+                end
+            end
+
+            -- Ensure text scales
+            if (obj.Text or obj:IsA("TextLabel") or obj:IsA("TextButton")) then
+                pcall(function() obj.TextScaled = true end)
+            end
+
+            for _, c in ipairs(obj:GetChildren()) do
+                convertGui(c)
+            end
+        end
+
+        -- Remove hard constraints under detailContent so dynamic scaling can apply
+        removeHardTextConstraints(container)
+        -- Walk descendants and convert
+        convertGui(container)
+        -- Re-apply text-scaling constraints now that sizes are scale-based
+        pcall(function() enableTextScaling(container) end)
+    end
+
+    -- Apply conversion once the detailContent has a real size, and reapply on resize
+    local function applyConversionWhenReady()
+        task.spawn(function()
+            local tries = 0
+            while (detailContent.AbsoluteSize.Y == 0 or detailContent.AbsoluteSize.X == 0) do
+                if tries >= 30 then break end
+                tries = tries + 1
+                task.wait(0.05)
+            end
+            pcall(function() convertOffsetsToScale(detailContent) end)
+        end)
+    end
+    applyConversionWhenReady()
+    detailContent:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        pcall(function() convertOffsetsToScale(detailContent) end)
+    end)
+
     return root
 end
 
