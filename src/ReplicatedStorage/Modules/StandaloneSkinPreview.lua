@@ -852,6 +852,11 @@ local function applyLiveHeadAppearanceToPreview(rig, preferredPlayer)
     return true
 end
 
+-- Expose helper so other preview modules can attach live head + head accessories
+function SkinPreview.ApplyLiveHeadToRig(rig, preferredPlayer)
+    return applyLiveHeadAppearanceToPreview(rig, preferredPlayer)
+end
+
 local function collectBaseParts(model)
     local parts = {}
     for _, desc in ipairs(model:GetDescendants()) do

@@ -24,6 +24,16 @@ pcall(function()
     if mod and mod:IsA("ModuleScript") then EffectDefs = require(mod) end
 end)
 
+-- Optional: reuse head + accessory attachment helper from StandaloneSkinPreview
+local StandaloneSkinPreview = nil
+pcall(function()
+    local mods = ReplicatedStorage:FindFirstChild("Modules")
+    local mod = mods and mods:FindFirstChild("StandaloneSkinPreview")
+    if mod and mod:IsA("ModuleScript") then
+        StandaloneSkinPreview = require(mod)
+    end
+end)
+
 local EffectsPreview = {}
 
 local function dprint(...)
@@ -302,6 +312,13 @@ function EffectsPreview.Update(viewportFrame, effectId)
         end
     end
     for _, child in ipairs(toRemove) do child:Destroy() end
+
+    -- Try to apply live head + head accessories onto preview rig (best-effort)
+    if StandaloneSkinPreview and type(StandaloneSkinPreview.ApplyLiveHeadToRig) == "function" then
+        pcall(function()
+            StandaloneSkinPreview.ApplyLiveHeadToRig(rig)
+        end)
+    end
 
     -- Anchor all parts
     for _, d in ipairs(rig:GetDescendants()) do
