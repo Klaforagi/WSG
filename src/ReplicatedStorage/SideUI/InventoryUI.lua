@@ -1512,9 +1512,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     iconLbl.TextColor3 = DIM_TEXT
                 end
             iconLbl.TextScaled = true
-            local icC = Instance.new("UITextSizeConstraint", iconLbl)
-            icC.MinTextSize = math.max(10, math.floor(px(10)))
-            icC.MaxTextSize = math.max(20, math.floor(px(24)))
             -- icon should fill the tab
             iconLbl.Size = UDim2.new(1, 0, 1, 0)
             iconLbl.Position = UDim2.new(0, 0, 0, 0)
@@ -1531,9 +1528,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         textLbl.Text = def.label
         textLbl.TextColor3 = DIM_TEXT
         textLbl.TextScaled = true
-        local tC = Instance.new("UITextSizeConstraint", textLbl)
-        tC.MinTextSize = math.max(8, math.floor(px(9)))
-        tC.MaxTextSize = math.max(14, math.floor(px(16)))
         -- label fills tab and is positioned slightly down
         textLbl.Size = UDim2.new(1, 0, 1, 0)
         textLbl.Position = UDim2.new(0, 0, 0.4, 0)
@@ -6437,6 +6431,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if ok and isText then
                 pcall(function()
                     obj.TextScaled = true
+                    -- Don't add constraints to elements that are part of the left tab sidebar
+                    if sidebar and obj:IsDescendantOf(sidebar) then
+                        return
+                    end
                     if not obj:FindFirstChildOfClass("UITextSizeConstraint") then
                         local c = Instance.new("UITextSizeConstraint")
                         c.MinTextSize = 8
