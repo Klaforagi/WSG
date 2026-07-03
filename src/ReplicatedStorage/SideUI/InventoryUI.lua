@@ -1465,6 +1465,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     sidebar.Name = "TabSidebar"
     sidebar.Parent = root
     LeftPanelStyle.ApplyLeftTabRailStyle(sidebar, px)
+    -- Override sidebar layout for inventory: disable automatic sizing and apply scale-based position/size
+    sidebar.AutomaticSize = Enum.AutomaticSize.None
+    sidebar.AnchorPoint = Vector2.new(0, 0)
+    sidebar.Position = UDim2.new(0, 0, 0, 0)
+    sidebar.Size = UDim2.new(0.1, 0, 1, 0)
     -- Hide the sidebar background and rail stroke so tabs appear flush with the modal
     sidebar.BackgroundTransparency = 1
     if sidebar:FindFirstChildOfClass("UIStroke") then sidebar:FindFirstChildOfClass("UIStroke").Transparency = 1 end
@@ -1479,7 +1484,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         -- Make individual tab backgrounds transparent to remove the rail visual
         btn.BackgroundTransparency = 1
         btn.BorderSizePixel = 0
-        btn.Size = UDim2.new(1, -px(2), 0, px(62))
+        -- Use scale-based sizing for tabs (width, height)
+        btn.Size = UDim2.new(0.8, 0, 0.15, 0)
         btn.LayoutOrder = def.order
         btn.Text = ""
         btn.Parent = sidebar
@@ -1488,7 +1494,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local bar = Instance.new("Frame", btn)
         bar.Name = "ActiveBar"
         bar.BackgroundColor3 = GOLD; bar.BorderSizePixel = 0
-        bar.Size = UDim2.new(0, px(3), 0.6, 0)
+        -- make active bar fill the tab (scale-based)
+        bar.Size = UDim2.new(1, 0, 1, 0)
         bar.AnchorPoint = Vector2.new(0, 0.5); bar.Position = UDim2.new(0, 0, 0.5, 0)
         bar.BackgroundTransparency = 1
         Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5, 0)
@@ -1508,8 +1515,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             local icC = Instance.new("UITextSizeConstraint", iconLbl)
             icC.MinTextSize = math.max(10, math.floor(px(10)))
             icC.MaxTextSize = math.max(20, math.floor(px(24)))
-            iconLbl.Size = UDim2.new(1, 0, 0, px(24))
-            iconLbl.Position = UDim2.new(0, 0, 0, px(8))
+            -- icon should fill the tab
+            iconLbl.Size = UDim2.new(1, 0, 1, 0)
+            iconLbl.Position = UDim2.new(0, 0, 0, 0)
             iconLbl.TextXAlignment = Enum.TextXAlignment.Center
         else
             local custom = buildCustomTabIcon(btn, def.id)
@@ -1526,8 +1534,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local tC = Instance.new("UITextSizeConstraint", textLbl)
         tC.MinTextSize = math.max(8, math.floor(px(9)))
         tC.MaxTextSize = math.max(14, math.floor(px(16)))
-        textLbl.Size = UDim2.new(1, -px(6), 0, px(16))
-        textLbl.Position = UDim2.new(0, px(3), 0, px(34))
+        -- label fills tab and is positioned slightly down
+        textLbl.Size = UDim2.new(1, 0, 1, 0)
+        textLbl.Position = UDim2.new(0, 0, 0.4, 0)
         textLbl.TextXAlignment = Enum.TextXAlignment.Center
 
         Instance.new("UIStroke", btn)
@@ -6323,10 +6332,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local function applyResponsivePanelLayout()
         -- Compute proportional panel widths based on the inventory root size
         local rootW = math.max(1, root.AbsoluteSize.X)
-        -- Explicit ratios requested: left = 5%, center = 65%, right = 30%
-        local leftRatio = 0.05
+        -- Explicit ratios requested: left = 10%, center = 65%, right = 25%
+        -- Increase leftRatio so the sidebar occupies ~10% of the root width.
+        local leftRatio = 0.10
         local centerRatio = 0.65
-        local rightRatio = 0.30
+        local rightRatio = 0.25
 
         -- Pixel sizes derived from ratios to keep internal layout deterministic
         local leftPx = math.floor(rootW * leftRatio)
@@ -6334,12 +6344,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local centerPx = math.floor(rootW * centerRatio)
         local innerPad = px(6)
 
-        -- Sidebar layout (shorter height so it doesn't stretch too far)
+        -- Sidebar layout: force scale-based size/position so it isn't overridden
         sidebar.AutomaticSize = Enum.AutomaticSize.None
-        sidebar.Position = UDim2.new(0, PANEL_EDGE_INSET, 0, PANEL_VERTICAL_INSET)
-        -- Make the tabs area shorter (approx half height) to remove bottom gap
-        local sidebarHeight = math.max(0, math.floor((root.AbsoluteSize.Y - (PANEL_VERTICAL_INSET * 2)) * 0.5))
-        sidebar.Size = UDim2.new(0, leftPx - PANEL_EDGE_INSET, 0, sidebarHeight)
+        sidebar.AnchorPoint = Vector2.new(0, 0)
+        sidebar.Position = UDim2.new(0, 0, 0, 0)
+        sidebar.Size = UDim2.new(0.1, 0, 1, 0)
 
         local function resizePage(pageName, gridName, emptyName, detailName)
             local page = root:FindFirstChild(pageName)
