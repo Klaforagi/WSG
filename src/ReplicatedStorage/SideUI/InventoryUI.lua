@@ -2525,9 +2525,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             enchantBg.Name = "EnchantTagBg"
             enchantBg.BackgroundTransparency = 1
             enchantBg.BorderSizePixel = 0
-            enchantBg.Size = UDim2.new(0.55, 0, 0.08, 0)
+            enchantBg.Size = UDim2.new(0.55, 0, 0.12, 0)
             enchantBg.AnchorPoint = Vector2.new(0.5, 0)
-            enchantBg.Position = UDim2.new(0.5, 0, 0.17, 0)
+            enchantBg.Position = UDim2.new(0.5, 0, 0.2, 0)
             enchantBg.ZIndex = 6
             enchantBg.ClipsDescendants = false
             local pCorner = Instance.new("UICorner", enchantBg)
