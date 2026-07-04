@@ -2139,9 +2139,9 @@ local function applyDetailsPanelScaling(detailsPanel)
     local mapping = {
         {name = "ImageBg", size = UDim2.new(0.96,0,0.28,0), order = 1},
         {name = "WeaponName", size = UDim2.new(1,0,0.06,0), order = 2, txt = 28},
-        {name = "Rarity", size = UDim2.new(1,0,0.03,0), order = 3, txt = 21},
-        {name = "SizeInfo", size = UDim2.new(1,0,0.035,0), order = 4, txt = 24},
-        {name = "EnchantInfo", size = UDim2.new(1,0,0.03,0), order = 5, txt = 21},
+        {name = "Rarity", size = UDim2.new(1,0,0.045,0), order = 3, txt = 21},
+        {name = "SizeInfo", size = UDim2.new(1,0,0.055,0), order = 4, txt = 24},
+        {name = "EnchantInfo", size = UDim2.new(1,0,0.055,0), order = 5, txt = 21},
         {name = "MasteryPanel", size = UDim2.new(1,0,0.25,0), order = 6},
         {name = "InstanceId", size = UDim2.new(1,0,0.035,0), order = 8, txt = 11},
         {name = "ActionRow", size = UDim2.new(0.88,0,0.07,0), order = 9},

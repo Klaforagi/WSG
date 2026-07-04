@@ -713,7 +713,7 @@ local function createShardRewardRow(parent, name, size, anchorPoint, position, t
         imageIcon.BackgroundTransparency = 1
         imageIcon.AnchorPoint = Vector2.new(0.5, 0.5)
         imageIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
-        imageIcon.Size = UDim2.new(1, 0, 1, 0)
+        imageIcon.Size = UDim2.new(2, 0, 2, 0)
         imageIcon.Image = shardImage
         imageIcon.ScaleType = Enum.ScaleType.Fit
         if zIndex then imageIcon.ZIndex = zIndex end
@@ -1760,7 +1760,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailRarity.TextColor3 = RARITY_COLORS.Common
     detailRarity.TextScaled = true
     detailRarity.TextXAlignment = Enum.TextXAlignment.Center
-    detailRarity.Size = UDim2.new(1, 0, 0.03, 0)
+    detailRarity.Size = UDim2.new(1, 0, 0.045, 0)
     detailRarity.LayoutOrder = 3
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 10
@@ -1776,7 +1776,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailSize.TextColor3 = WHITE
     detailSize.TextScaled = true
     detailSize.TextXAlignment = Enum.TextXAlignment.Center
-    detailSize.Size = UDim2.new(1, 0, 0.035, 0)
+    detailSize.Size = UDim2.new(1, 0, 0.055, 0)
     detailSize.LayoutOrder = 4
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 10
@@ -1791,7 +1791,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     detailEnchant.TextColor3 = GOLD
     detailEnchant.TextScaled = true
     detailEnchant.TextXAlignment = Enum.TextXAlignment.Center
-    detailEnchant.Size = UDim2.new(1, 0, 0.03, 0)
+    detailEnchant.Size = UDim2.new(1, 0, 0.055, 0)
     detailEnchant.LayoutOrder = 5
     __constraint = Instance.new("UITextSizeConstraint")
     __constraint.MinTextSize = 10
@@ -1941,7 +1941,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     shardWidgets.salvageValueRow, shardWidgets.salvageValueLabel = createShardRewardRow(
         detailContent,
         "SalvageValuePreview",
-        UDim2.new(0.88, 0, 0, px(40)),
+        UDim2.new(0.88, 0, 0.05, 0),
         Vector2.new(0.5, 1),
         UDim2.new(0.5, 0, 1, -px(106)),
         px(18),
