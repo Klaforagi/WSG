@@ -2525,7 +2525,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             enchantBg.Name = "EnchantTagBg"
             enchantBg.BackgroundTransparency = 1
             enchantBg.BorderSizePixel = 0
-            enchantBg.Size = UDim2.new(0.56, 0, 0, enchantH)
+            enchantBg.Size = UDim2.new(0.55, 0, 0.08, 0)
             enchantBg.AnchorPoint = Vector2.new(0.5, 0)
             enchantBg.Position = UDim2.new(0.5, 0, 0.17, 0)
             enchantBg.ZIndex = 6
@@ -2547,9 +2547,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             if EnchantTextStyler then
                 EnchantTextStyler.Apply(enchantLabel, enchantName)
             end
-            local pSizeC = Instance.new("UITextSizeConstraint", enchantLabel)
-            pSizeC.MinTextSize = 6; pSizeC.MaxTextSize = 12
-            bindAutoFitText(enchantLabel, pSizeC, {
+            bindAutoFitText(enchantLabel, nil, {
                 minTextSize = 6,
                 maxTextSize = 12,
                 paddingX = px(2),
@@ -2604,7 +2602,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierBg.Name = "SizeTierBg"
             tierBg.BackgroundTransparency = 1
             tierBg.BorderSizePixel = 0
-            tierBg.Size = UDim2.new(isNormalTier and 0.36 or 0.28, 0, 0, tierH)
+            tierBg.Size = UDim2.new(0.28, 0, 0.12, 0)
             tierBg.AnchorPoint = Vector2.new(0, 1)
             tierBg.Position = UDim2.new(0, px(4), 0.96, 0)
             tierBg.ZIndex = 6
