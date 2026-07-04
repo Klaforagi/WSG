@@ -2142,7 +2142,7 @@ local function applyDetailsPanelScaling(detailsPanel)
         {name = "Rarity", size = UDim2.new(1,0,0.03,0), order = 3, txt = 21},
         {name = "SizeInfo", size = UDim2.new(1,0,0.035,0), order = 4, txt = 24},
         {name = "EnchantInfo", size = UDim2.new(1,0,0.03,0), order = 5, txt = 21},
-        {name = "MasteryPanel", size = UDim2.new(0.9,0,0.17,0), order = 6},
+        {name = "MasteryPanel", size = UDim2.new(1,0,0.25,0), order = 6},
         {name = "InstanceId", size = UDim2.new(1,0,0.035,0), order = 8, txt = 11},
         {name = "ActionRow", size = UDim2.new(0.88,0,0.07,0), order = 9},
         {name = "EquipBtn", size = UDim2.new(0.88,0,0.08,0), order = 10, txt = 22},
@@ -2161,7 +2161,7 @@ local function applyDetailsPanelScaling(detailsPanel)
     -- MasteryPanel internal adjustments and precise text anchoring
     local masteryPanel = detailContent:FindFirstChild("MasteryPanel", true) or detailsPanel:FindFirstChild("MasteryPanel", true)
     if masteryPanel then
-        masteryPanel.Size = UDim2.new(0.9, 0, 0.16, 0)
+        masteryPanel.Size = UDim2.new(1, 0, 0.25, 0)
         masteryPanel.LayoutOrder = 6
         -- center children and use relative sizes
         local mbg = masteryPanel:FindFirstChild("ProgressBg", true)

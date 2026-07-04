@@ -1705,7 +1705,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- Use relative padding so layout scales with the panel size
     local dPad = Instance.new("UIPadding", detailContent)
     dPad.PaddingTop  = UDim.new(0.02, 0); dPad.PaddingBottom = UDim.new(0.02, 0)
-    dPad.PaddingLeft = UDim.new(0.02, 0); dPad.PaddingRight  = UDim.new(0.02, 0)
+    dPad.PaddingLeft = UDim.new(0.02, 0); dPad.PaddingRight  = UDim.new(-0.055, 0)
 
     -- Vertical layout distributes elements evenly and centers them horizontally
     __constraint = Instance.new("UIListLayout")
@@ -1803,7 +1803,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryPanel.Name = "MasteryPanel"
     masteryPanel.BackgroundColor3 = Color3.fromRGB(22, 24, 38)
     masteryPanel.BackgroundTransparency = 0.08
-    masteryPanel.Size = UDim2.new(0.9, 0, 0.17, 0)
+    masteryPanel.Size = UDim2.new(1, 0, 0.25, 0)
     masteryPanel.AnchorPoint = Vector2.new(0.5, 0)
     masteryPanel.LayoutOrder = 6
     masteryPanel.Position = UDim2.new(0.5, 0, 0, 0)
