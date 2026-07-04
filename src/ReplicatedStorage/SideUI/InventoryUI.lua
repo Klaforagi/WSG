@@ -1719,7 +1719,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local detailImageBg = Instance.new("Frame", detailContent)
     detailImageBg.Name = "ImageBg"
     detailImageBg.BackgroundColor3 = RARITY_BG_COLORS.Common
-    detailImageBg.Size = UDim2.new(0.96, 0, 0.28, 0)
+    detailImageBg.Size = UDim2.new(0.96, 0, 0.2, 0)
     detailImageBg.ClipsDescendants = true
     Instance.new("UICorner", detailImageBg).CornerRadius = UDim.new(0, px(10))
     local imgBgStroke = Instance.new("UIStroke", detailImageBg)
@@ -1731,7 +1731,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local detailImage = Instance.new("ImageLabel", detailImageBg)
     detailImage.Name = "Icon"
     detailImage.BackgroundTransparency = 1
-    detailImage.Size = UDim2.new(0.72, 0, 0.72, 0)
+    detailImage.Size = UDim2.new(0.9, 0, 0.9, 0)
     detailImage.AnchorPoint = Vector2.new(0.5, 0.5)
     detailImage.Position = UDim2.new(0.5, 0, 0.5, 0)
     detailImage.ScaleType = Enum.ScaleType.Fit
@@ -1821,7 +1821,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryTitle.TextColor3 = GOLD
     masteryTitle.TextScaled = true
     masteryTitle.TextXAlignment = Enum.TextXAlignment.Center
-    masteryTitle.Size = UDim2.new(1, -px(20), 0.14, 0)
+    masteryTitle.Size = UDim2.new(1, 0, 0.16, 0)
     masteryTitle.Position = UDim2.new(0.5, 0, 0, 0)
     masteryTitle.AnchorPoint = Vector2.new(0.5, 0)
     __constraint = Instance.new("UITextSizeConstraint")
@@ -1882,7 +1882,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     masteryDamage.TextScaled = true
     masteryDamage.TextXAlignment = Enum.TextXAlignment.Center
     masteryDamage.TextYAlignment = Enum.TextYAlignment.Center
-    masteryDamage.Size = UDim2.new(1, -px(20), 0.26, 0)
+    masteryDamage.Size = UDim2.new(1, 0, 0.22, 0)
     masteryDamage.AnchorPoint = Vector2.new(0.5, 0)
     masteryDamage.Position = UDim2.new(0.5, 0, 0.71, 0)
     masteryDamage.Text = "Damage 0"

@@ -2170,10 +2170,11 @@ local function applyDetailsPanelScaling(detailsPanel)
             mbg.Position = UDim2.new(0.03, 0, 0.5, 0)
         end
         local md = masteryPanel:FindFirstChild("Damage", true)
-        if md then md.Size = UDim2.new(1, -px(20), 0.28, 0); md.AnchorPoint = Vector2.new(0.5, 0); md.Position = UDim2.new(0.5, 0, 0.71, 0) end
+        if md then md.Size = UDim2.new(1, 0, 0.22, 0); md.AnchorPoint = Vector2.new(0.5, 0); md.Position = UDim2.new(0.5, 0, 0.71, 0) end
         -- ensure text scaled for internal labels
         local titleLbl = masteryPanel:FindFirstChild("Title", true)
         local xpLbl = masteryPanel:FindFirstChild("XP", true)
+        if titleLbl and titleLbl:IsA("GuiObject") then titleLbl.Size = UDim2.new(1, 0, 0.16, 0) end
         if titleLbl and titleLbl:IsA("GuiObject") then
             titleLbl.AnchorPoint = Vector2.new(0.5, 0)
             titleLbl.Position = UDim2.new(0.5, 0, 0, 0)
