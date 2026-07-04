@@ -2108,9 +2108,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmYes.Position = UDim2.new(0.06, 0, 1, -px(14))
     confirmYes.ZIndex = 52
     Instance.new("UICorner", confirmYes).CornerRadius = UDim.new(0, px(8))
-    __constraint = Instance.new("UITextSizeConstraint", confirmYes)
-    __constraint.MinTextSize = 8
-    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
+    -- Ensure no leftover UITextSizeConstraint exists on confirmYes
+    for _, _c in ipairs(confirmYes:GetDescendants()) do
+        if _c and _c.IsA and _c:IsA("UITextSizeConstraint") then
+            pcall(function() _c:Destroy() end)
+        end
+    end
     local confirmYesStroke = Instance.new("UIStroke", confirmYes)
     confirmYesStroke.Color = Color3.fromRGB(0, 0, 0); confirmYesStroke.Thickness = 1.5; confirmYesStroke.Transparency = 0.15
 
@@ -2128,9 +2131,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     confirmNo.Position = UDim2.new(0.94, 0, 1, -px(14))
     confirmNo.ZIndex = 52
     Instance.new("UICorner", confirmNo).CornerRadius = UDim.new(0, px(8))
-    __constraint = Instance.new("UITextSizeConstraint", confirmNo)
-    __constraint.MinTextSize = 8
-    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
+    -- Ensure no leftover UITextSizeConstraint exists on confirmNo
+    for _, _c in ipairs(confirmNo:GetDescendants()) do
+        if _c and _c.IsA and _c:IsA("UITextSizeConstraint") then
+            pcall(function() _c:Destroy() end)
+        end
+    end
     local confirmNoStroke = Instance.new("UIStroke", confirmNo)
     confirmNoStroke.Color = Color3.fromRGB(0, 0, 0); confirmNoStroke.Thickness = 1.5; confirmNoStroke.Transparency = 0.15
 
@@ -6433,6 +6439,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     obj.TextScaled = true
                     -- Don't add constraints to elements that are part of the left tab sidebar
                     if sidebar and obj:IsDescendantOf(sidebar) then
+                        return
+                    end
+                    -- Don't add constraints to elements that are part of the salvage/confirm overlay
+                    if confirmOverlay and obj:IsDescendantOf(confirmOverlay) then
                         return
                     end
                     if not obj:FindFirstChildOfClass("UITextSizeConstraint") then
