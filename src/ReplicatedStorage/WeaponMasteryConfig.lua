@@ -176,7 +176,7 @@ WeaponMasteryConfig.Progression = {
 }
 
 WeaponMasteryConfig.XP = {
-    Hit = 1,5,
+    Hit = 3,
     PlayerElimination = 30,
     GoblinKill = 10,
     OrcKill = 20,

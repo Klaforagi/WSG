@@ -30,8 +30,8 @@ local Defaults = {
         ChaseSpeed       = 14,  -- speed while chasing an aggroed target
         EnragedSpeed     = 18,  -- speed after taking any damage (if UseEnraged = true)
         UseEnraged       = false,
-        DetectionRadius  = 20,  -- studs; range for auto-detecting nearby players
-        AggroDuration    = 8,   -- seconds to remain aggroed on the attacker
+        DetectionRadius  = 12,  -- studs; range for auto-detecting nearby players
+        AggroDuration    = 6,   -- seconds to remain aggroed on the attacker
     },
     Attack = {
         Damage      = 5,
@@ -143,7 +143,7 @@ local Presets = {
 
     Ogre = {
         Spawn = {
-            Weight   = 2,
+            Weight   = 0.5,
             XPReward = 60,
             CoinReward = { Min = 20, Max = 40 },
             ScoreReward = 20,
