@@ -473,6 +473,13 @@ function ForgeStallUI.Create(parent, options)
 		end
 	end)
 
+	-- Defensive: remove any stray duplicate ForgeRoot frames
+	for _, existing in ipairs(parent:GetChildren()) do
+		if existing.Name == "ForgeRoot" then
+			pcall(function() existing:Destroy() end)
+		end
+	end
+
 	local root = Instance.new("Frame")
 	root.Name = "ForgeRoot"
 	root.Size = UDim2.fromScale(1, 1)
@@ -534,18 +541,18 @@ function ForgeStallUI.Create(parent, options)
 	-- rests visually centered across devices and window sizes.
 	stage.AnchorPoint = Vector2.new(0.5, 0.5)
 	stage.Position = UDim2.fromScale(0.5, 0.5)
-	local isPortrait = viewportSize.X < viewportSize.Y
-	stage.Size = isPortrait and UDim2.new(0.94, 0, 0, stageHeight) or UDim2.new(0.58, 0, 0, stageHeight)
+	-- Fixed size per request: 80% width and 80% height of the screen
+	stage.Size = UDim2.new(0.8, 0, 0.8, 0)
 	stage.BackgroundTransparency = 1
 	stage.BorderSizePixel = 0
 	stage.Parent = root
-	local stageConstraint = Instance.new("UISizeConstraint")
-	stageConstraint.MaxSize = Vector2.new(
-		math.max(320, math.floor(viewportSize.X * 0.96)),
-		math.max(260, math.floor(viewportSize.Y * 0.94))
-	)
-	stageConstraint.MinSize = Vector2.new(320, math.max(260, math.floor(viewportSize.Y * 0.5)))
-	stageConstraint.Parent = stage
+
+	-- Enforce aspect ratio: 1.5, fit within max size, dominant width
+	local stageAspect = Instance.new("UIAspectRatioConstraint")
+	stageAspect.AspectRatio = 1.5
+	stageAspect.AspectType = Enum.AspectType.FitWithinMaxSize
+	stageAspect.DominantAxis = Enum.DominantAxis.Width
+	stageAspect.Parent = stage
 
 	local panelPosition = UDim2.new(1, 0, 0, stageTopPadding)
 	local panelSize = UDim2.new(1, -(leftWidth + railGap), 0, panelHeight)
@@ -581,8 +588,9 @@ function ForgeStallUI.Create(parent, options)
 
 	local titleBadge = Instance.new("Frame")
 	titleBadge.Name = "TitleBadge"
-	titleBadge.Position = UDim2.new(0, px(18), 0, -px(30))
-	titleBadge.Size = UDim2.new(0, px(346), 0, px(74))
+	-- Updated position/size per request (scale-based)
+	titleBadge.Position = UDim2.new(0.03, 0, -0.05, 0)
+	titleBadge.Size = UDim2.new(0.3, 0, 0.1, 0)
 	titleBadge.BackgroundColor3 = Color3.fromRGB(19, 19, 20)
 	titleBadge.BorderSizePixel = 0
 	titleBadge.Parent = panel
@@ -591,27 +599,29 @@ function ForgeStallUI.Create(parent, options)
 
 	local titleText = Instance.new("TextLabel")
 	titleText.BackgroundTransparency = 1
-	titleText.Position = UDim2.new(0, px(18), 0, -px(12))
-	titleText.Size = UDim2.new(1, -px(28), 1, 0)
+	-- Fill the badge and shift slightly per request
+	titleText.Position = UDim2.new(0, 0, 0, 0)
+	titleText.Size = UDim2.new(1, 0, 1, 0)
 	titleText.Font = Enum.Font.GothamBlack
 	titleText.Text = "FORGE"
 	titleText.TextColor3 = WHITE
 	titleText.TextSize = tpx(36, 24)
-	titleText.TextXAlignment = Enum.TextXAlignment.Left
+	titleText.TextXAlignment = Enum.TextXAlignment.Center
 	titleText.Parent = titleBadge
 	configureAutoText(titleText, 18, tpx(36, 24))
 
 	local closeButton = Instance.new("TextButton")
 	closeButton.Name = "CloseButton"
 	closeButton.AnchorPoint = Vector2.new(1, 0)
-	closeButton.Position = UDim2.new(1, -px(8), 0, -px(8))
-	closeButton.Size = UDim2.new(0, px(36), 0, px(36))
-	closeButton.BackgroundColor3 = ORANGE
+	closeButton.Position = UDim2.new(1.03, 0, -0.03, 0)
+	closeButton.Size = UDim2.new(0.07, 0, 0.08, 0)
+	closeButton.BackgroundColor3 = Color3.fromRGB(198, 148, 56)
 	closeButton.BorderSizePixel = 0
 	closeButton.AutoButtonColor = false
 	closeButton.Text = "X"
 	closeButton.TextColor3 = WHITE
 	closeButton.TextSize = math.max(16, px(16))
+	closeButton.TextScaled = true
 	closeButton.Font = Enum.Font.GothamBlack
 	closeButton.Parent = panel
 	applyCorners(closeButton, px(10))
@@ -788,8 +798,9 @@ function ForgeStallUI.Create(parent, options)
 	local balanceCard = Instance.new("Frame")
 	balanceCard.Name = "BalanceCard"
 	balanceCard.AnchorPoint = Vector2.new(0.5, 1)
-	balanceCard.Position = UDim2.new(0.5, 0, 1, 0)
-	balanceCard.Size = UDim2.new(balanceCardWidthScale, 0, 0, balanceHeight)
+	-- Updated size/position per request
+	balanceCard.Size = UDim2.new(0.8, 0, 0.15, 0)
+	balanceCard.Position = UDim2.new(0.5, 0, 0.97, 0)
 	balanceCard.BackgroundColor3 = CARD_BG_ALT
 	balanceCard.BorderSizePixel = 0
 	balanceCard.Parent = leftColumn
@@ -797,6 +808,7 @@ function ForgeStallUI.Create(parent, options)
 	applyStroke(balanceCard, ORANGE, 1.1, 0.12)
 
 	local balanceTitle = Instance.new("TextLabel")
+	balanceTitle.Name = "YOURSHARDS"
 	balanceTitle.BackgroundTransparency = 1
 	balanceTitle.Position = UDim2.new(0, px(12), 0, px(10))
 	balanceTitle.Size = UDim2.new(1, -px(24), 0, px(14))
@@ -813,12 +825,22 @@ function ForgeStallUI.Create(parent, options)
 	balanceIconWrap.Position = UDim2.new(0, -px(16), 0, px(8))
 	balanceIconWrap.Size = UDim2.new(0, px(72), 0, px(72))
 	balanceIconWrap.Parent = balanceCard
-	makeShardIcon(balanceIconWrap, px(72))
+	local createdIcon = makeShardIcon(balanceIconWrap, px(72))
+	-- If an ImageLabel was created (or exists inside), set its size/position
+	for _, d in ipairs(balanceIconWrap:GetDescendants()) do
+		if d:IsA("ImageLabel") then
+			d.Size = UDim2.new(1, 0, 1, 0)
+			d.Position = UDim2.new(0.12, 0, 0.12, 0)
+			break
+		end
+	end
 
 	local balanceValue = Instance.new("TextLabel")
+	balanceValue.Name = "Balance"
 	balanceValue.BackgroundTransparency = 1
-	balanceValue.Position = UDim2.new(0, px(52), 0, px(28))
-	balanceValue.Size = UDim2.new(1, -px(56), 0, px(26))
+	-- Set to requested scale size and position
+	balanceValue.Position = UDim2.new(0.3, 0, 0.35, 0)
+	balanceValue.Size = UDim2.new(0.45, 0, 0.45, 0)
 	balanceValue.Font = Enum.Font.GothamBlack
 	balanceValue.TextColor3 = WHITE
 	balanceValue.TextSize = tpx(15, 12)
@@ -1347,6 +1369,13 @@ function ForgeStallUI.Create(parent, options)
 			shardBalance = math.max(0, math.floor(tonumber(amount) or 0))
 			refreshAll()
 		end))
+	end
+
+	-- Remove any AutoFit text constraints created by configureAutoText
+	for _, desc in ipairs(root:GetDescendants()) do
+		if desc:IsA("UITextSizeConstraint") and desc.Name == "AutoFitTextConstraint" then
+			pcall(function() desc:Destroy() end)
+		end
 	end
 
 	refreshAll()
