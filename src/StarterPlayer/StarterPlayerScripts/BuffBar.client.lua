@@ -396,7 +396,8 @@ local container = Instance.new("Frame")
 container.Name = "BuffBarContainer"
 container.AnchorPoint = Vector2.new(1, 1)
 container.BackgroundTransparency = 1
-container.Size = UDim2.new(1, -px(28), 0, TOTAL_HEIGHT)
+container.Size = UDim2.new(0.22, 0, 0.35, 0)
+container.Position = UDim2.new(0.98, 0, 0.94, 0)
 container.Parent = screenGui
 
 local layout = Instance.new("UIListLayout")
@@ -504,9 +505,9 @@ local function applyLayout()
     TILE_GAP = px(8)
     TOTAL_HEIGHT = TILE_SIZE + px(4) + TIMER_HEIGHT
 
-    local bottomOffset = UserInputService.TouchEnabled and px(48) or px(24)
-    container.Position = UDim2.new(1, -px(14), 1, -bottomOffset)
-    container.Size = UDim2.new(1, -px(28), 0, TOTAL_HEIGHT)
+    -- Use scale-based positioning/size requested by layout preferences
+    container.Position = UDim2.new(0.98, 0, 0.94, 0)
+    container.Size = UDim2.new(0.22, 0, 0.35, 0)
     layout.Padding = UDim.new(0, TILE_GAP)
     if relayoutTiles then
         relayoutTiles()
