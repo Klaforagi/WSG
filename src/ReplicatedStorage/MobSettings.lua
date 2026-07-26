@@ -30,7 +30,7 @@ local Defaults = {
         ChaseSpeed       = 14,  -- speed while chasing an aggroed target
         EnragedSpeed     = 18,  -- speed after taking any damage (if UseEnraged = true)
         UseEnraged       = false,
-        DetectionRadius  = 12,  -- studs; range for auto-detecting nearby players
+        DetectionRadius  = 18,  -- studs; range for auto-detecting nearby players
         AggroDuration    = 6,   -- seconds to remain aggroed on the attacker
     },
     Attack = {
@@ -55,6 +55,8 @@ local Defaults = {
     Appearance = {
         SkinVariation = 8,       -- max RGB offset applied per channel on spawn
     },
+    -- MaxHealth: optional per-mob numeric health override (sets Humanoid.MaxHealth)
+    MaxHealth = 100,
     Debug = {
         ShowHitbox  = false,
         HitboxColor = Color3.fromRGB(255, 50, 50),
@@ -100,6 +102,8 @@ local Presets = {
             ShowHitbox  = false,
             HitboxColor = Color3.fromRGB(50, 255, 50),
         },
+        -- Health (Humanoid.MaxHealth)
+        MaxHealth = 125,
     },
 
     Goblin = {
@@ -139,6 +143,8 @@ local Presets = {
             },
             SkinVariation = 8,
         },
+        -- Health (Humanoid.MaxHealth)
+        MaxHealth = 50,
     },
 
     Ogre = {
@@ -177,6 +183,8 @@ local Presets = {
             ShowHitbox  = false,
             HitboxColor = Color3.fromRGB(180, 50, 255),
         },
+        -- Health (Humanoid.MaxHealth)
+        MaxHealth = 600,
     },
 }
 
@@ -287,6 +295,11 @@ local function validate(name, cfg)
         end
         if type(atk.PreferredDistanceOffset) ~= "number" then
             warn(("[MobSettings] '%s' Attack.PreferredDistanceOffset must be a number"):format(name))
+        end
+    end
+    if cfg.MaxHealth ~= nil then
+        if type(cfg.MaxHealth) ~= "number" or cfg.MaxHealth <= 0 then
+            warn(("[MobSettings] '%s' MaxHealth must be a positive number"):format(name))
         end
     end
 end

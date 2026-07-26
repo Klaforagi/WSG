@@ -139,6 +139,20 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         return
     end
 
+    -- Apply configured MaxHealth if provided in the mob config.
+    -- Prefer `MaxHealth` (explicit) but also accept `Health` for compatibility.
+    local desiredMaxHealth = nil
+    if mobConfig then
+        desiredMaxHealth = mobConfig.MaxHealth or mobConfig.Health
+    end
+    if type(desiredMaxHealth) == "number" then
+        local hp = math.max(1, math.floor(desiredMaxHealth))
+        pcall(function()
+            humanoid.MaxHealth = hp
+            humanoid.Health = hp
+        end)
+    end
+
     local WALK_SPEED = cfgMove.WalkSpeed or 10
     local CHASE_SPEED = cfgMove.ChaseSpeed or 14
     local ENRAGED_SPEED = cfgMove.EnragedSpeed or CHASE_SPEED

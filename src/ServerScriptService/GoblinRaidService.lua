@@ -486,9 +486,7 @@ local function spawnGoblin()
         return nil
     end
 
-    local health = math.max(1, math.floor(getNumber("GoblinHealth", 70)))
-    humanoid.MaxHealth = health
-    humanoid.Health = health
+    -- Humanoid MaxHealth is handled by MobCombat using MobSettings.MaxHealth when present.
 
     if type(appearanceCfg.SkinPalette) == "table" and #appearanceCfg.SkinPalette > 0 then
         MobSkinService.applyMobSkin(mob, appearanceCfg.SkinPalette, appearanceCfg.SkinVariation)
