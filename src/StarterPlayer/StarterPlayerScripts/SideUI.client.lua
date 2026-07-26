@@ -1432,7 +1432,7 @@ modalOverlay.Parent = screenGui
 -- ── Modal window ──────────────────────────────────────────────────────────
 local window = Instance.new("Frame")
 window.Name = "ModalWindow"
-window.Size = UDim2.new(0.65, 0, 0.72, 0)
+window.Size = UDim2.new(0.75, 0, 0.75, 0)
 window.AnchorPoint = Vector2.new(0.5, 0.5)
 window.Position = UDim2.new(0.5, 0, 0.5, 0)
 -- Deep navy background matching Team menu
@@ -1440,6 +1440,11 @@ window.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
 window.BackgroundTransparency = 0.04
 window.Parent = modalOverlay
 window.ZIndex = 260
+local winAspect = Instance.new("UIAspectRatioConstraint")
+winAspect.AspectRatio = 1
+winAspect.AspectType = Enum.AspectType.FitWithinMaxSize
+winAspect.DominantAxis = Enum.DominantAxis.Width
+winAspect.Parent = window
 local winCorner = Instance.new("UICorner")
 winCorner.CornerRadius = UDim.new(0, px(14))
 winCorner.Parent = window
@@ -1974,21 +1979,24 @@ local function updateModalWindowLayout()
     local contentTop = headerHeight + math.max(6, math.floor(windowHeight * 0.015))
     local closeSize = math.max(36, math.floor(headerHeight * 0.84))
 
-    window.Size = UDim2.new(0, windowWidth, 0, windowHeight)
+    local scaleX = (viewportX > 0) and (windowWidth / viewportX) or 0.75
+    local scaleY = (viewportY > 0) and (windowHeight / viewportY) or 0.75
+    window.Size = UDim2.new(scaleX, 0, scaleY, 0)
     headerBar.Size = UDim2.new(1, 0, 0, headerHeight)
     closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeXY
     closeBtn.Size = UDim2.new(0, closeSize, 0, closeSize)
 
     if contentFrame then
-        contentFrame.Position = UDim2.new(0, 0, 0, contentTop)
-        contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+        contentFrame.Position = UDim2.new(0, 0, 0.11, 0)
+        contentFrame.Size = UDim2.new(1, 0, 0.88, 0)
     end
 
     -- Reduce width for Inventory, Shop and Achievements modals by 25%
     local titleUpper = (titleLabel and tostring(titleLabel.Text) or ""):upper()
     if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" then
         local reducedW = math.max(200, math.floor(windowWidth * 0.75))
-        window.Size = UDim2.new(0, reducedW, 0, windowHeight)
+        local reducedScaleX = (viewportX > 0) and (reducedW / viewportX) or 0.5
+        window.Size = UDim2.new(reducedScaleX, 0, scaleY, 0)
         if contentFrame then
             -- adjust content width if needed to match smaller window
             contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
@@ -1998,7 +2006,8 @@ local function updateModalWindowLayout()
     -- Also apply same reduction to Team/Stats panels handled outside Modal group
     if titleUpper == "TEAM" or titleUpper == "STATS" or titleUpper == "TEAMSTATS" then
         local reducedW = math.max(200, math.floor(windowWidth * 0.75))
-        window.Size = UDim2.new(0, reducedW, 0, windowHeight)
+        local reducedScaleX = (viewportX > 0) and (reducedW / viewportX) or 0.5
+        window.Size = UDim2.new(reducedScaleX, 0, scaleY, 0)
         if contentFrame then
             contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
         end
@@ -2063,11 +2072,11 @@ closeBtn.MouseButton1Up:Connect(function()
 end)
 
 -- ── Content area (below header) ───────────────────────────────────────────
-contentFrame = Instance.new("ScrollingFrame")
-contentFrame.Name = "ModalContent"
-contentFrame.BackgroundTransparency = 1
-contentFrame.Size = UDim2.new(1, 0, 1 - HEADER_H - 0.02, 0)
-contentFrame.Position = UDim2.new(0, 0, HEADER_H + 0.01, 0)
+    contentFrame = Instance.new("ScrollingFrame")
+    contentFrame.Name = "ModalContent"
+    contentFrame.BackgroundTransparency = 1
+    contentFrame.Size = UDim2.new(1, 0, 0.88, 0)
+    contentFrame.Position = UDim2.new(0, 0, 0.11, 0)
 contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
 contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
 contentFrame.ScrollBarThickness = px(4)
@@ -2080,12 +2089,7 @@ local contentLayout = Instance.new("UIListLayout")
 contentLayout.Padding = UDim.new(0, px(8))
 contentLayout.Parent = contentFrame
 
--- add top padding so first row of cards is not clipped by fixed header
-local contentPadding = Instance.new("UIPadding")
-contentPadding.PaddingTop = UDim.new(0, px(14))
-contentPadding.PaddingLeft = UDim.new(0, px(10))
-contentPadding.PaddingRight = UDim.new(0, px(10))
-contentPadding.Parent = contentFrame
+-- content padding removed per request (handled in child layouts)
 
 -- Recompute header layout when new modal content is added (e.g. InventoryUI root)
 contentFrame.ChildAdded:Connect(function()

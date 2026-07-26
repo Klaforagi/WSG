@@ -62,6 +62,9 @@ local DATASTORES = {
     XP           = { name = "WSG_XP_v1",         keyFmt = "%d"       },
     Upgrades     = { name = "Upgrades_v3",       keyFmt = "User_%d"  },
     Weapons      = { name = "WeaponInstances_v1",keyFmt = "WpnInv_%d"},
+    WeaponMastery = { name = "WeaponMastery_v1", keyFmt = "WpnMastery_%d" },
+    HealthPotions = { name = "HealthPotions_v1", keyFmt = "User_%d" },
+    PotionStock   = { name = "PotionStock_v1",   keyFmt = "User_%d" },
     Skins        = { name = "Skins_v1",          keyFmt = "User_%d"  },
     Effects      = { name = "Effects_v1",        keyFmt = "User_%d"  },
     Emotes       = { name = "Emotes_v1",         keyFmt = "User_%d"  },
@@ -89,7 +92,8 @@ end
 local RESET_GROUPS = {
     Currency     = { "Coins", "Keys", "Salvage" },
     Progression  = { "XP", "Upgrades" },
-    Inventory    = { "Weapons", "Skins", "Effects", "Emotes", "Loadout" },
+    Inventory    = { "Weapons", "WeaponMastery", "HealthPotions", "PotionStock", "Skins", "Effects", "Emotes", "Loadout" },
+
     Quests       = { "DailyQuests", "WeeklyQuests" },
     Achievements = { "Achievements" },
 }

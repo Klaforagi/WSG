@@ -176,11 +176,11 @@ WeaponMasteryConfig.Progression = {
 }
 
 WeaponMasteryConfig.XP = {
-    Hit = 0.8,
-    PlayerElimination = 20,
-    GoblinKill = 5,
-    OrcKill = 15,
-    OgreKill = 30,
+    Hit = 1,5,
+    PlayerElimination = 30,
+    GoblinKill = 10,
+    OrcKill = 20,
+    OgreKill = 50,
 }
 
 function WeaponMasteryConfig.NormalizeRarity(rarity)

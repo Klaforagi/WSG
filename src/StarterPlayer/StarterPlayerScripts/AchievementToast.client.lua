@@ -7,6 +7,7 @@
 
 local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
+local SoundService      = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player    = Players.LocalPlayer
@@ -63,6 +64,47 @@ screenGui.Parent        = playerGui
 --------------------------------------------------------------------------------
 local toastQueue  = {}
 local isShowing   = false
+
+local warnedMissingAchievementSound = false
+local cachedAchievementSoundTemplate = nil
+
+local function getAchievementSoundTemplate()
+    if cachedAchievementSoundTemplate and cachedAchievementSoundTemplate.Parent then
+        return cachedAchievementSoundTemplate
+    end
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    if not soundsFolder then
+        return nil
+    end
+    local template = soundsFolder:FindFirstChild("Achievement")
+    if not template then
+        template = soundsFolder:FindFirstChild("Achievement", true)
+    end
+    if template and template:IsA("Sound") then
+        cachedAchievementSoundTemplate = template
+        return template
+    end
+    return nil
+end
+
+local function playAchievementSound()
+    local template = getAchievementSoundTemplate()
+    if not template then
+        if not warnedMissingAchievementSound then
+            warnedMissingAchievementSound = true
+            warn("[AchievementToast] ReplicatedStorage.Sounds.Achievement not found; achievement sound disabled")
+        end
+        return
+    end
+    local sound = template:Clone()
+    sound.Parent = SoundService
+    pcall(function() sound:Play() end)
+    task.delay(math.max(1, (sound.TimeLength or 1) + 0.25), function()
+        if sound and sound.Parent then
+            sound:Destroy()
+        end
+    end)
+end
 
 local function showToast(title, icon, reward, ap, achId, category)
     -- Toast frame (TextButton so the whole card is clickable)
@@ -189,6 +231,9 @@ local function showToast(title, icon, reward, ap, achId, category)
     -- Animate in
     local TWEEN_IN  = TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
     local TWEEN_OUT = TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+    -- Play achievement sound locally
+    pcall(playAchievementSound)
 
     local targetPos = UDim2.new(0.5, 0, 1, -px(POPUP_ABOVE_TOOLBAR_OFFSET))
     TweenService:Create(toast, TWEEN_IN, {Position = targetPos}):Play()
