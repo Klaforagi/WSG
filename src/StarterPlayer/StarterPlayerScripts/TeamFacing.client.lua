@@ -9,11 +9,28 @@ local player = Players.LocalPlayer
 local function applyTeamYaw(teamName)
     local cam = workspace.CurrentCamera
     if not cam then return end
+
+    local desiredYaw = nil
     if teamName == "Red" or teamName == "Barbarian" then
-        -- set camera to pitch=15°, yaw=180° (preserve position)
-        local pos = cam.CFrame.Position
-        cam.CFrame = CFrame.new(pos) * CFrame.Angles(math.rad(15), math.rad(180), 0)
+        desiredYaw = math.pi -- 180°
+    elseif teamName == "Blue" then
+        desiredYaw = 0
+    else
+        return
     end
+
+    -- Preserve the camera's pitch (elevation) by building a new lookVector
+    -- from the current pitch and the desired yaw. This avoids Euler gimbal
+    -- flips that invert the pitch when yaw is rotated by 180°.
+    local pos = cam.CFrame.Position
+    local look = cam.CFrame.LookVector
+    local pitch = math.asin(math.clamp(look.Y, -1, 1)) -- current pitch in radians
+
+    local yaw = desiredYaw
+    local cp = math.cos(pitch)
+    local newLook = Vector3.new(math.sin(yaw) * cp, math.sin(pitch), -math.cos(yaw) * cp)
+
+    cam.CFrame = CFrame.new(pos, pos + newLook)
 end
 
 local function onCharacterAdded(char)

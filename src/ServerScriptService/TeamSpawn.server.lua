@@ -172,8 +172,22 @@ local function doAssignTeam(player, teamName, sendResponse)
 		chooseResponse:FireClient(player, true, "Joined " .. TeamDisplayNames.Get(teamName))
 	end
 
-	-- Reload character — CharacterAdded handler will teleport to team spawn
-	pcall(function() player:LoadCharacter() end)
+	-- If the player already has a character, teleport them instantly to the
+	-- team's main spawn. Otherwise, reload the character which will place
+	-- them at the correct spawn via the CharacterAdded handler.
+	local char = player.Character
+	if char and char.Parent then
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		local spawnName = teamName == "Red" and "RedSpawn" or "BlueSpawn"
+		local spawnPart = Map:FindFirstChild(spawnName)
+		if hrp and spawnPart and spawnPart:IsA("BasePart") then
+			hrp.CFrame = randomPointOnPart(spawnPart)
+		else
+			pcall(function() player:LoadCharacter() end)
+		end
+	else
+		pcall(function() player:LoadCharacter() end)
+	end
 	return true
 end
 
