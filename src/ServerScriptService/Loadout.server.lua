@@ -499,6 +499,7 @@ local function grantTool(player, folder, toolName, instanceId)
     local char = player.Character
 
     -- 1) StarterGear — persists across respawns; engine auto-clones to Backpack
+    local addedToStarterGear = false
     if sg and not sg:FindFirstChild(toolName) then
         local clone = template:Clone()
         stampWeaponAttributes(player, clone, folder, toolName, instanceId)
@@ -510,22 +511,45 @@ local function grantTool(player, folder, toolName, instanceId)
         -- ENCHANT SYSTEM: apply enchant visuals after scaling
         local enchantOk, enchantErr = pcall(applyWeaponEnchant, player, clone, toolName, instanceId)
         if not enchantOk then warn("[Loadout] applyWeaponEnchant error:", enchantErr) end
+        addedToStarterGear = true
     end
 
-    -- 2) Backpack — skip if already in Backpack or equipped in Character
+    -- 2) Backpack — skip if already in Backpack or equipped in Character.
+    -- If we just added the tool to StarterGear, wait a short moment and let
+    -- the engine copy StarterGear → Backpack; only create a Backup clone if
+    -- the engine did not produce one (avoids creating duplicates).
     local inBP   = bp and bp:FindFirstChild(toolName)
     local inChar = char and char:FindFirstChild(toolName)
     if not inBP and not inChar and bp then
-        local clone = template:Clone()
-        stampWeaponAttributes(player, clone, folder, toolName, instanceId)
-        sanitizeTool(clone)
-        -- Parent into Backpack first so the tool's world/relative CFrames are stable
-        clone.Parent = bp
-        local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
-        if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
-        -- ENCHANT SYSTEM: apply enchant visuals after scaling
-        local enchantOk, enchantErr = pcall(applyWeaponEnchant, player, clone, toolName, instanceId)
-        if not enchantOk then warn("[Loadout] applyWeaponEnchant error:", enchantErr) end
+        if addedToStarterGear then
+            task.delay(0.2, function()
+                if not (bp and bp.Parent) then return end
+                local nowInBP = bp:FindFirstChild(toolName)
+                if nowInBP then
+                    return
+                end
+                -- engine didn't copy StarterGear → Backpack; create the clone now
+                local clone = template:Clone()
+                stampWeaponAttributes(player, clone, folder, toolName, instanceId)
+                sanitizeTool(clone)
+                clone.Parent = bp
+                local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
+                if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
+                local enchantOk, enchantErr = pcall(applyWeaponEnchant, player, clone, toolName, instanceId)
+                if not enchantOk then warn("[Loadout] applyWeaponEnchant error:", enchantErr) end
+            end)
+        else
+            local clone = template:Clone()
+            stampWeaponAttributes(player, clone, folder, toolName, instanceId)
+            sanitizeTool(clone)
+            -- Parent into Backpack first so the tool's world/relative CFrames are stable
+            clone.Parent = bp
+            local scaleOk, scaleErr = pcall(applyWeaponScale, player, clone, toolName, instanceId)
+            if not scaleOk then warn("[Loadout] applyWeaponScale error:", scaleErr) end
+            -- ENCHANT SYSTEM: apply enchant visuals after scaling
+            local enchantOk, enchantErr = pcall(applyWeaponEnchant, player, clone, toolName, instanceId)
+            if not enchantOk then warn("[Loadout] applyWeaponEnchant error:", enchantErr) end
+        end
     end
 end
 

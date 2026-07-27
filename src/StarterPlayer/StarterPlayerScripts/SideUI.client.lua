@@ -1395,7 +1395,7 @@ end
 -- Starter weapons are granted as instances with IDs by the server (CrateServiceInit),
 -- so no need to preload plain items here.
 
--- Fetch saved loadout from server so inventory shows the correct equipped state
+-- Fetch saved loadout from server so the inventory starts with the correct equipped state
 do
     local savedMelee = "Starter Sword"
     local savedRanged = "Starter Slingshot"
@@ -1414,8 +1414,6 @@ do
             end
         end
     end)
-    pcall(function() Inventory:AddItem(savedMelee) end)
-    pcall(function() Inventory:AddItem(savedRanged) end)
     pcall(function() Inventory:SetEquipped("Melee", savedMelee) end)
     pcall(function() Inventory:SetEquipped("Ranged", savedRanged) end)
 end
