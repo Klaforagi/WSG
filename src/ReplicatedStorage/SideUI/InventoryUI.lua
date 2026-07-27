@@ -19,6 +19,7 @@ local ModulesFolder = ReplicatedStorage:WaitForChild("Modules")
 local LeftPanelStyle = require(ModulesFolder:WaitForChild("LeftPanelStyle"))
 local RarityStyles = require(ModulesFolder:WaitForChild("RarityStyles"))
 local UIResponsiveScaler = require(ModulesFolder:WaitForChild("UIResponsiveScaler"))
+local WeaponMasteryConfig = require(ReplicatedStorage:WaitForChild("WeaponMasteryConfig"))
 
 -- Card sizing bounds for the responsive grid. With these caps the inventory
 -- gains columns on larger viewports instead of growing card sizes.
@@ -1830,6 +1831,166 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     __constraint.Parent = masteryTitle
     masteryTitle.Text = "MASTERY I"
 
+    -- Stage gems row (shows 10 mastery stages / gems)
+    local masteryStageRow = Instance.new("Frame", masteryPanel)
+    masteryStageRow.Name = "StageGemRow"
+    masteryStageRow.BackgroundTransparency = 1
+    masteryStageRow.Size = UDim2.new(0.94, 0, 0, px(28))
+    masteryStageRow.Position = UDim2.new(0.03, 0, 0.18, 0)
+    masteryStageRow.ZIndex = masteryPanel.ZIndex + 1
+
+    local stageLayout = Instance.new("UIListLayout")
+    stageLayout.FillDirection = Enum.FillDirection.Horizontal
+    stageLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    stageLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    stageLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    stageLayout.Padding = UDim.new(0, px(6))
+    stageLayout.Parent = masteryStageRow
+
+    local masteryGems = {}
+    local currentMasteryContext = { rarity = "Common", category = "Melee" }
+
+    -- Tooltip for stage gems
+    local stageTooltip = nil
+    local stageTooltipTitle = nil
+    local stageTooltipBody = nil
+    local function ensureStageTooltip()
+        if stageTooltip and stageTooltip.Parent then return end
+        stageTooltip = Instance.new("Frame")
+        stageTooltip.Name = "StageTooltip"
+        stageTooltip.BackgroundColor3 = Color3.fromRGB(20, 18, 36)
+        stageTooltip.BackgroundTransparency = 0
+        stageTooltip.BorderSizePixel = 0
+        stageTooltip.Size = UDim2.new(0, px(240), 0, px(64))
+        stageTooltip.Visible = false
+        stageTooltip.ZIndex = masteryPanel.ZIndex + 50
+        stageTooltip.Parent = detailsPanel
+
+        local corner = Instance.new("UICorner", stageTooltip)
+        corner.CornerRadius = UDim.new(0, px(8))
+        local stroke = Instance.new("UIStroke", stageTooltip)
+        stroke.Color = Color3.fromRGB(180,150,50)
+        stroke.Transparency = 0.6
+
+        stageTooltipTitle = Instance.new("TextLabel", stageTooltip)
+        stageTooltipTitle.Name = "Title"
+        stageTooltipTitle.BackgroundTransparency = 1
+        stageTooltipTitle.Font = Enum.Font.GothamBold
+        stageTooltipTitle.TextColor3 = Color3.fromRGB(255,215,80)
+        stageTooltipTitle.TextScaled = true
+        stageTooltipTitle.Size = UDim2.new(1, -px(12), 0, px(28))
+        stageTooltipTitle.Position = UDim2.new(0, px(6), 0, px(4))
+
+        stageTooltipBody = Instance.new("TextLabel", stageTooltip)
+        stageTooltipBody.Name = "Body"
+        stageTooltipBody.BackgroundTransparency = 1
+        stageTooltipBody.Font = Enum.Font.Gotham
+        stageTooltipBody.TextColor3 = Color3.fromRGB(220,220,220)
+        stageTooltipBody.TextScaled = true
+        stageTooltipBody.TextWrapped = true
+        stageTooltipBody.Size = UDim2.new(1, -px(12), 0, px(28))
+        stageTooltipBody.Position = UDim2.new(0, px(6), 0, px(32))
+    end
+
+    local function positionStageTooltip()
+        if not stageTooltip or not stageTooltip.Visible then return end
+        local rootPos = detailsPanel.AbsolutePosition
+        local rootSize = detailsPanel.AbsoluteSize
+        if rootSize.X <= 0 or rootSize.Y <= 0 then return end
+        local mouse = game:GetService("UserInputService"):GetMouseLocation()
+        local tipW = math.max(stageTooltip.AbsoluteSize.X, px(220))
+        local tipH = math.max(stageTooltip.AbsoluteSize.Y, px(64))
+        local pad = px(6)
+        local x = mouse.X - rootPos.X + px(12)
+        local y = mouse.Y - rootPos.Y + px(12)
+        if x + tipW > rootSize.X - pad then
+            x = mouse.X - rootPos.X - tipW - px(12)
+        end
+        if y + tipH > rootSize.Y - pad then
+            y = mouse.Y - rootPos.Y - tipH - px(10)
+        end
+        x = math.clamp(x, pad, math.max(pad, rootSize.X - tipW - pad))
+        y = math.clamp(y, pad, math.max(pad, rootSize.Y - tipH - pad))
+        stageTooltip.Position = UDim2.new(0, x, 0, y)
+    end
+
+    local function showStageTooltip(title, body)
+        ensureStageTooltip()
+        stageTooltipTitle.Text = title or ""
+        stageTooltipBody.Text = body or ""
+        stageTooltip.Visible = true
+        task.defer(positionStageTooltip)
+    end
+
+    local function hideStageTooltip()
+        if stageTooltip then stageTooltip.Visible = false end
+    end
+
+    -- Build 10 gem widgets
+    for i = 1, 10 do
+        local gemButton = Instance.new("TextButton")
+        gemButton.Name = "StageGem_" .. tostring(i)
+        gemButton.AutoButtonColor = false
+        gemButton.BackgroundTransparency = 1
+        gemButton.Text = ""
+        gemButton.Size = UDim2.new(0, px(28), 0, px(28))
+        gemButton.LayoutOrder = i
+        gemButton.ZIndex = masteryStageRow.ZIndex + 1
+        gemButton.Parent = masteryStageRow
+
+        local diamond = Instance.new("Frame")
+        diamond.Name = "GemDiamond"
+        diamond.BorderSizePixel = 0
+        diamond.AnchorPoint = Vector2.new(0.5, 0.5)
+        diamond.Position = UDim2.new(0.5, 0, 0.5, 0)
+        diamond.Size = UDim2.new(0, px(18), 0, px(18))
+        diamond.Rotation = 45
+        diamond.ZIndex = gemButton.ZIndex + 1
+        diamond.Parent = gemButton
+
+        local gemCorner = Instance.new("UICorner")
+        gemCorner.CornerRadius = UDim.new(0, math.max(2, math.floor(px(18) * 0.16)))
+        gemCorner.Parent = diamond
+
+        local gemStroke = Instance.new("UIStroke")
+        gemStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        gemStroke.Parent = diamond
+
+        local shine = Instance.new("Frame")
+        shine.Name = "Shine"
+        shine.BackgroundColor3 = Color3.fromRGB(255, 255, 230)
+        shine.BorderSizePixel = 0
+        shine.AnchorPoint = Vector2.new(0.5, 0.5)
+        shine.Position = UDim2.new(0.34, 0, 0.34, 0)
+        shine.Size = UDim2.new(0.36, 0, 0.18, 0)
+        shine.Rotation = -10
+        shine.ZIndex = diamond.ZIndex + 1
+        shine.Parent = diamond
+
+        masteryGems[i] = gemButton
+
+        gemButton.MouseEnter:Connect(function()
+            -- Show tooltip with level and damage using current context
+            local def = WeaponMasteryConfig.GetLevelDef(i, currentMasteryContext.rarity or "Common", currentMasteryContext.category or "Melee")
+            local title = "MASTERY " .. (def and def.RomanNumeral or tostring(i))
+            local dmg = def and def.Damage or 0
+            showStageTooltip(title, "Damage " .. tostring(dmg))
+        end)
+        gemButton.MouseMoved:Connect(function()
+            positionStageTooltip()
+        end)
+        gemButton.MouseLeave:Connect(function()
+            hideStageTooltip()
+        end)
+        gemButton.MouseButton1Down:Connect(function()
+            -- also show on tap
+            local def = WeaponMasteryConfig.GetLevelDef(i, "Common", "Melee")
+            local title = "MASTERY " .. (def and def.RomanNumeral or tostring(i))
+            local dmg = def and def.Damage or 0
+            showStageTooltip(title, "Damage " .. tostring(dmg))
+        end)
+    end
+
     local masteryXP = Instance.new("TextLabel", masteryPanel)
     masteryXP.Name = "XP"
     masteryXP.BackgroundTransparency = 1
@@ -2261,6 +2422,42 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end
 
         masteryDamage.Text = "Damage " .. formatMasteryBaseDamage(baseDamage)
+
+        -- update stage gem visuals based on current level/progress
+        local rarity = itemData.rarity or "Common"
+        local category = itemData.category or "Melee"
+        currentMasteryContext.rarity = rarity
+        currentMasteryContext.category = category
+        local curLevel = level
+        for i = 1, 10 do
+            local gemButton = masteryGems[i]
+            if gemButton and gemButton.Parent then
+                local diamond = gemButton:FindFirstChild("GemDiamond")
+                local stroke = diamond and diamond:FindFirstChildOfClass("UIStroke")
+                local shine = diamond and diamond:FindFirstChild("Shine")
+                local def = WeaponMasteryConfig.GetLevelDef(i, rarity, category)
+                local dmg = def and def.Damage or 0
+                -- completed
+                if i <= curLevel then
+                    diamond.BackgroundColor3 = Color3.fromRGB(255, 203, 54)
+                    diamond.BackgroundTransparency = 0
+                    if stroke then stroke.Color = Color3.fromRGB(255,246,174); stroke.Thickness = 1.6; stroke.Transparency = 0.06 end
+                    if shine then shine.Visible = true; shine.BackgroundTransparency = 0.3 end
+                elseif i == curLevel + 1 then
+                    -- current target
+                    diamond.BackgroundColor3 = Color3.fromRGB(65, 122, 210)
+                    diamond.BackgroundTransparency = 0.05
+                    if stroke then stroke.Color = Color3.fromRGB(230,244,255); stroke.Thickness = 1.8; stroke.Transparency = 0.08 end
+                    if shine then shine.Visible = true; shine.BackgroundTransparency = 0.55 end
+                else
+                    diamond.BackgroundColor3 = Color3.fromRGB(56, 60, 72)
+                    diamond.BackgroundTransparency = 0.28
+                    if stroke then stroke.Color = Color3.fromRGB(105,110,126); stroke.Thickness = 1.1; stroke.Transparency = 0.48 end
+                    if shine then shine.Visible = false end
+                end
+                -- tooltip content is handled by the original MouseEnter handler (created at build time)
+            end
+        end
     end
 
     ---------------------------------------------------------------------------
@@ -2470,6 +2667,44 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     ---------------------------------------------------------------------------
     -- createWeaponCard(itemData)  –  compact square card for the grid
     ---------------------------------------------------------------------------
+    local function buildCardFooter(card, rarity, rarityColor, borderC, equipped)
+        -- Rarity label (bottom of card)
+        local rarityPill = Instance.new("Frame", card)
+        rarityPill.Name = "RarityPill"
+        rarityPill.BackgroundColor3 = mixColor(card.BackgroundColor3 or Color3.new(0,0,0), Color3.fromRGB(8, 10, 18), 0.28)
+        rarityPill.BorderSizePixel = 0
+        rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
+        rarityPill.AnchorPoint = Vector2.new(0.5, 1)
+        rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+        rarityPill.ZIndex = 3
+        Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
+        local rarityPillStroke = Instance.new("UIStroke", rarityPill)
+        rarityPillStroke.Color = rarityColor; rarityPillStroke.Thickness = 1; rarityPillStroke.Transparency = 0.42
+
+        local cardRarity = Instance.new("TextLabel", rarityPill)
+        cardRarity.Name = "RarityLabel"
+        cardRarity.BackgroundTransparency = 1
+        cardRarity.Font = Enum.Font.GothamBold
+        cardRarity.Text = rarity
+        cardRarity.TextColor3 = rarityColor
+        cardRarity.TextScaled = true
+        cardRarity.TextXAlignment = Enum.TextXAlignment.Center
+        constrainText(cardRarity, 8, INV_CARD.Line1TextSize)
+        cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
+        cardRarity.Position = UDim2.new(0, px(3), 0, 0)
+        cardRarity.ZIndex = 4
+        addTextOutline(cardRarity, 0.3, 1)
+
+        -- Equipped bar at bottom
+        local eqBar = Instance.new("Frame", card)
+        eqBar.Name = "EquippedBar"
+        eqBar.BackgroundColor3 = GREEN_GLOW
+        eqBar.Size = UDim2.new(1, 0, 0, px(3))
+        eqBar.AnchorPoint = Vector2.new(0, 1)
+        eqBar.Position = UDim2.new(0, 0, 1, 0)
+        eqBar.ZIndex = 3
+        eqBar.Visible = equipped == true
+    end
     local function createWeaponCard(itemData)
         local rarity   = itemData.rarity or "Common"
         local rarColor = getRarityColor(rarity)
@@ -2674,15 +2909,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             paddingY = px(1),
         })
 
-        -- ── Equipped bar indicator (green bottom strip) ─────────────────
-        local eqBar = Instance.new("Frame", card)
-        eqBar.Name = "EquippedBar"
-        eqBar.BackgroundColor3 = GREEN_GLOW
-        eqBar.Size = UDim2.new(1, 0, 0, 3)
-        eqBar.AnchorPoint = Vector2.new(0, 1)
-        eqBar.Position = UDim2.new(0, 0, 1, 0)
-        eqBar.BorderSizePixel = 0; eqBar.ZIndex = 5
-        eqBar.Visible = equipped
+        -- Footer (rarity pill + equipped bar)
+        buildCardFooter(card, rarity, rarColor, borderC, equipped)
 
         -- ── Favorite star indicator (top-right corner) ──────────────────
         if itemData.favorited == true then
@@ -4732,47 +4960,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 swatchStroke.Transparency = 0.24
             end
 
-            do
-                local rarityPill = Instance.new("Frame", card)
-                rarityPill.Name = "RarityPill"
-                rarityPill.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.28)
-                rarityPill.BorderSizePixel = 0
-                rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
-                rarityPill.AnchorPoint = Vector2.new(0.5, 1)
-                rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
-                rarityPill.ZIndex = 3
-                Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
-                local rarityPillStroke = Instance.new("UIStroke", rarityPill)
-                rarityPillStroke.Color = rarityColor
-                rarityPillStroke.Thickness = 1
-                rarityPillStroke.Transparency = 0.42
-
-                local cardRarity = Instance.new("TextLabel", rarityPill)
-                cardRarity.Name = "RarityLabel"
-                cardRarity.BackgroundTransparency = 1
-                cardRarity.Font = Enum.Font.GothamBold
-                cardRarity.Text = rarity
-                cardRarity.TextColor3 = rarityColor
-                cardRarity.TextScaled = true
-                cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-                constrainText(cardRarity, 8, INV_CARD.Line1TextSize)
-                cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
-                cardRarity.Position = UDim2.new(0, px(3), 0, 0)
-                cardRarity.ZIndex = 4
-                addTextOutline(cardRarity, 0.3, 1)
-            end
-
-            do
-                local eqBar = Instance.new("Frame", card)
-                eqBar.Name = "EquippedBar"
-                eqBar.BackgroundColor3 = GREEN_GLOW
-                eqBar.Size = UDim2.new(1, 0, 0, px(3))
-                eqBar.AnchorPoint = Vector2.new(0, 1)
-                eqBar.Position = UDim2.new(0, 0, 1, 0)
-                eqBar.BorderSizePixel = 0
-                eqBar.ZIndex = 5
-                eqBar.Visible = false
-            end
+            -- Footer (rarity pill + equipped bar)
+            buildCardFooter(card, rarity, rarityColor, rarityColor, false)
 
             do
                 local favStar = Instance.new("TextLabel", card)
@@ -5304,42 +5493,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end
                 addTextOutline(trailGlyph, 0.24, 1.4)
 
-                -- Rarity label (bottom of card)
-                local rarityPill = Instance.new("Frame", card)
-                rarityPill.Name = "RarityPill"
-                rarityPill.BackgroundColor3 = mixColor(baseBg, Color3.fromRGB(8, 10, 18), 0.28)
-                rarityPill.BorderSizePixel = 0
-                rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
-                rarityPill.AnchorPoint = Vector2.new(0.5, 1)
-                rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
-                rarityPill.ZIndex = 3
-                Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
-                local rarityPillStroke = Instance.new("UIStroke", rarityPill)
-                rarityPillStroke.Color = rarityColor; rarityPillStroke.Thickness = 1; rarityPillStroke.Transparency = 0.42
-
-                local cardRarity = Instance.new("TextLabel", rarityPill)
-                cardRarity.Name = "RarityLabel"
-                cardRarity.BackgroundTransparency = 1
-                cardRarity.Font = Enum.Font.GothamBold
-                cardRarity.Text = rarity
-                cardRarity.TextColor3 = rarityColor
-                cardRarity.TextScaled = true
-                cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-                constrainText(cardRarity, 8, INV_CARD.Line1TextSize)
-                cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
-                cardRarity.Position = UDim2.new(0, px(3), 0, 0)
-                cardRarity.ZIndex = 4
-                addTextOutline(cardRarity, 0.3, 1)
-
-                -- Equipped bar at bottom
-                local eqBar = Instance.new("Frame", card)
-                eqBar.Name = "EquippedBar"
-                eqBar.BackgroundColor3 = GREEN_GLOW
-                eqBar.Size = UDim2.new(1, 0, 0, px(3))
-                eqBar.AnchorPoint = Vector2.new(0, 1)
-                eqBar.Position = UDim2.new(0, 0, 1, 0)
-                eqBar.BorderSizePixel = 0; eqBar.ZIndex = 5
-                eqBar.Visible = false
+                -- Footer (rarity pill + equipped bar)
+                buildCardFooter(card, rarity, rarityColor, baseStrokeColor, false)
 
                 effectCards[effectId] = {
                     card = card,
@@ -5975,7 +6130,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             updateEmoteActionButton()
         end)
 
-        for i_emote, def in ipairs(allEmoteDefs) do
+        local function createEmoteCard(def, i_emote)
             local emoteId = def.Id
             local displayName = def.DisplayName or emoteId
             local baseBg = accentPanelColor(GOLD, 0.18)
@@ -6131,6 +6286,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     end
                 end)
             end
+        end
+
+        for i_emote, def in ipairs(allEmoteDefs) do
+            createEmoteCard(def, i_emote)
         end
 
         task.spawn(function()
