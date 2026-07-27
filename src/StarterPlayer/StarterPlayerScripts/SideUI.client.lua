@@ -1420,8 +1420,9 @@ end
 -- Create centered modal window (hidden by default)
 local modalOverlay = Instance.new("Frame")
 modalOverlay.Name = "ModalOverlay"
-modalOverlay.Size = UDim2.new(1,0,1,0)
-modalOverlay.Position = UDim2.new(0,0,0,0)
+modalOverlay.Size = UDim2.new(1.1, 0, 1.1, 0)
+modalOverlay.Position = UDim2.new(0.5, 0, 0.5, 0)
+modalOverlay.AnchorPoint = Vector2.new(0.5, 0.5)
 modalOverlay.BackgroundTransparency = 0.5
 modalOverlay.BackgroundColor3 = Color3.fromRGB(10,10,10)
 modalOverlay.Visible = false
@@ -1439,7 +1440,7 @@ window.BackgroundTransparency = 0.04
 window.Parent = modalOverlay
 window.ZIndex = 260
 local winAspect = Instance.new("UIAspectRatioConstraint")
-winAspect.AspectRatio = 1
+winAspect.AspectRatio = 1.4
 winAspect.AspectType = Enum.AspectType.FitWithinMaxSize
 winAspect.DominantAxis = Enum.DominantAxis.Width
 winAspect.Parent = window
