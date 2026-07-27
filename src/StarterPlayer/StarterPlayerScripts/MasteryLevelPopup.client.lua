@@ -38,12 +38,13 @@ local lastShownLevelByWeapon = {}
 local popupQueue = {}
 local popupRunnerActive = false
 local popupRandom = Random.new()
+local DEBUG_MASTERY_POPUP = false
 
 local POPUP_X_MIN = 0.47
 local POPUP_X_MAX = 0.65
 local POPUP_Y_MIN = 0.38
 local POPUP_Y_MAX = 0.60
-local POPUP_LIFETIME = 2.8
+local POPUP_LIFETIME = 3.6
 
 local function getMasterySoundTemplate()
     if cachedSoundTemplate and cachedSoundTemplate.Parent then
@@ -133,8 +134,16 @@ local function showPopup(level)
     numeralLabel.Size = UDim2.new(1, 0, 0.78, 0)
     numeralLabel.BackgroundTransparency = 1
     numeralLabel.BorderSizePixel = 0
-    numeralLabel.Font = Enum.Font.Garamond
-    numeralLabel.Text = getRomanNumeral(level)
+    numeralLabel.Font = Enum.Font.GothamBold
+    local function sanitizeRoman(s)
+        s = tostring(s or "")
+        local match = s:match("[IVX]+")
+        if match and match ~= "" then
+            return match
+        end
+        return tostring(level)
+    end
+    numeralLabel.Text = sanitizeRoman(getRomanNumeral(level))
     numeralLabel.TextColor3 = Color3.fromRGB(255, 241, 182)
     numeralLabel.TextScaled = true
     numeralLabel.TextTransparency = 1
@@ -199,10 +208,16 @@ masteryRemote.OnClientEvent:Connect(function(instanceId, mastery, meta)
     if type(instanceId) ~= "string" or instanceId == "" then
         return
     end
+    if DEBUG_MASTERY_POPUP then
+        warn("[MasteryLevelPopup] event", instanceId, "meta.oldLevel=", tostring(meta.oldLevel), "meta.newLevel=", tostring(meta.newLevel), "payload.level=", tostring(type(mastery) == "table" and mastery.level or "nil"))
+    end
 
     local newLevel = math.max(1, math.floor(tonumber(meta.newLevel or (type(mastery) == "table" and mastery.level) or 1) or 1))
     local oldLevel = math.max(0, math.floor(tonumber(meta.oldLevel) or (newLevel - 1)))
     local lastShownLevel = lastShownLevelByWeapon[instanceId] or 0
+    if DEBUG_MASTERY_POPUP then
+        warn("[MasteryLevelPopup] computed newLevel=", newLevel, "oldLevel=", oldLevel, "lastShown=", lastShownLevel)
+    end
     if newLevel <= lastShownLevel then
         return
     end
