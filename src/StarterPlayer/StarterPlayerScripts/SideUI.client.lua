@@ -640,12 +640,7 @@ local function CreateSideLauncher(screenGui)
     stack.ZIndex = 251
     stack.Parent = launcher
 
-    -- Maintain a consistent aspect ratio for the side button stack
-    local stackAspect = Instance.new("UIAspectRatioConstraint")
-    stackAspect.AspectRatio = 0.25
-    stackAspect.AspectType = Enum.AspectType.ScaleWithParentSize
-    stackAspect.DominantAxis = Enum.DominantAxis.Width
-    stackAspect.Parent = stack
+    -- Side button stack: keep manual sizing (remove auto aspect constraint)
 
     local layout = Instance.new("UIListLayout")
     layout.FillDirection = Enum.FillDirection.Vertical
@@ -1472,7 +1467,7 @@ winPad.Parent = window
 local HEADER_H = 0.10 -- fraction of window height
 local headerBar = Instance.new("Frame")
 headerBar.Name = "HeaderBar"
-headerBar.Size = UDim2.new(1, 0, HEADER_H, 0)
+headerBar.Size = UDim2.new(1, 0, 0.1, 0)
 headerBar.BackgroundTransparency = 1
 headerBar.ZIndex = 10
 headerBar.Parent = window
@@ -1481,9 +1476,9 @@ headerBar.ZIndex = 270
 -- Title pill (matches Team menu title bar)
 local titlePill = Instance.new("Frame")
 titlePill.Name = "TitlePill"
-titlePill.Size = UDim2.new(0.30, 0, 0.80, 0)
+titlePill.Size = UDim2.new(0.4, 0, 0.9, 0)
 titlePill.AnchorPoint = Vector2.new(0.5, 0.5)
-titlePill.Position = UDim2.new(0.5, 0, 0.5, 0)
+titlePill.Position = UDim2.new(0.3, 0, 0.5, 0)
 titlePill.BackgroundColor3 = Color3.fromRGB(22, 26, 48)
 titlePill.ZIndex = 10
 titlePill.Parent = headerBar
@@ -1512,9 +1507,8 @@ titleLabel.ZIndex = 275
     local currencyRow = Instance.new("Frame")
     currencyRow.Name = "CurrencyRow"
     currencyRow.BackgroundTransparency = 1
-    -- Use automatic horizontal sizing so contents dictate width and we can anchor right
-    currencyRow.AutomaticSize = Enum.AutomaticSize.X
-    currencyRow.Size = UDim2.new(0, 0, 0, px(34))
+    -- Fixed width as fraction of header and full height of header
+    currencyRow.Size = UDim2.new(0.3, 0, 1, 0)
     currencyRow.AnchorPoint = Vector2.new(1, 0.5)
     currencyRow.Position = UDim2.new(0.935, 0, 0.5, 0)
     currencyRow.ZIndex = 275
@@ -1529,9 +1523,8 @@ titleLabel.ZIndex = 275
     currencyLayout.Parent = currencyRow
 
     local function styleCurrencyChip(frame, accentColor, width)
-        -- allow horizontal auto-sizing while keeping fixed height
-        frame.AutomaticSize = Enum.AutomaticSize.X
-        frame.Size = UDim2.new(0, 0, 0, px(31))
+        -- keep frames manual-sized; do not enable AutomaticSize here
+        frame.AutomaticSize = Enum.AutomaticSize.None
         frame.BackgroundColor3 = Color3.fromRGB(17, 20, 34)
         frame.BackgroundTransparency = 0.04
         frame.BorderSizePixel = 0
@@ -1572,11 +1565,13 @@ titleLabel.ZIndex = 275
     headerCoinFrame.LayoutOrder = 1
     headerCoinFrame.Parent = currencyRow
     styleCurrencyChip(headerCoinFrame, Color3.fromRGB(255, 215, 80), 96)
+    headerCoinFrame.AutomaticSize = Enum.AutomaticSize.None
+    headerCoinFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
 
     local headerCoinIcon = Instance.new("ImageLabel")
     headerCoinIcon.Name = "CoinIcon"
-    headerCoinIcon.Size = UDim2.new(0, px(22), 0, px(22))
-    headerCoinIcon.Position = UDim2.new(0, px(9), 0.5, 0)
+    headerCoinIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
+    headerCoinIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
     headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
     headerCoinIcon.BackgroundTransparency = 1
     headerCoinIcon.ScaleType = Enum.ScaleType.Fit
@@ -1591,16 +1586,16 @@ titleLabel.ZIndex = 275
 
     local headerCoinLabel = Instance.new("TextLabel")
     headerCoinLabel.Name = "CoinLabel"
-    headerCoinLabel.Size = UDim2.new(1, -px(40), 1, -px(4))
-    headerCoinLabel.Position = UDim2.new(0, px(34), 0, px(2))
+    headerCoinLabel.Size = UDim2.new(0.6, 0, 0.6, 0)
+    headerCoinLabel.Position = UDim2.new(0.3, 0, 0.2, 0)
     headerCoinLabel.BackgroundTransparency = 1
     headerCoinLabel.Font = Enum.Font.GothamBold
     headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
     headerCoinLabel.TextXAlignment = Enum.TextXAlignment.Left
     headerCoinLabel.Text = "0"
+    headerCoinLabel.TextScaled = true
     headerCoinLabel.ZIndex = 277
     headerCoinLabel.Parent = headerCoinFrame
-    local headerCoinLabelConstraint = addHeaderTextConstraint(headerCoinLabel, 15)
 
     -- Keys display (right side, LayoutOrder 2 = appears after coins)
     local headerKeyFrame = Instance.new("Frame")
@@ -1609,6 +1604,8 @@ titleLabel.ZIndex = 275
     headerKeyFrame.LayoutOrder = 2
     headerKeyFrame.Parent = currencyRow
     styleCurrencyChip(headerKeyFrame, Color3.fromRGB(170, 100, 255), 72)
+    headerKeyFrame.AutomaticSize = Enum.AutomaticSize.None
+    headerKeyFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
 
     local headerKeyIcon = nil
     local headerKeyIconConstraint = nil
@@ -1616,8 +1613,8 @@ titleLabel.ZIndex = 275
     if keyImage then
         headerKeyIcon = Instance.new("ImageLabel")
         headerKeyIcon.Name = "KeyIcon"
-        headerKeyIcon.Size = UDim2.new(0, px(22), 0, px(22))
-        headerKeyIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerKeyIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
+        headerKeyIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
         headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerKeyIcon.BackgroundTransparency = 1
         headerKeyIcon.Image = keyImage
@@ -1627,8 +1624,8 @@ titleLabel.ZIndex = 275
     else
         headerKeyIcon = Instance.new("TextLabel")
         headerKeyIcon.Name = "KeyIcon"
-        headerKeyIcon.Size = UDim2.new(0, px(22), 0, px(22))
-        headerKeyIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerKeyIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
+        headerKeyIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
         headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerKeyIcon.BackgroundTransparency = 1
         headerKeyIcon.Font = Enum.Font.GothamBold
@@ -1636,21 +1633,20 @@ titleLabel.ZIndex = 275
         headerKeyIcon.TextColor3 = Color3.fromRGB(170, 100, 255)
         headerKeyIcon.ZIndex = 277
         headerKeyIcon.Parent = headerKeyFrame
-        headerKeyIconConstraint = addHeaderTextConstraint(headerKeyIcon, 18)
     end
 
     local headerKeyLabel = Instance.new("TextLabel")
     headerKeyLabel.Name = "KeyLabel"
-    headerKeyLabel.Size = UDim2.new(1, -px(36), 1, -px(4))
-    headerKeyLabel.Position = UDim2.new(0, px(33), 0, px(2))
+    headerKeyLabel.Size = UDim2.new(0.6, 0, 0.6, 0)
+    headerKeyLabel.Position = UDim2.new(0.3, 0, 0.2, 0)
     headerKeyLabel.BackgroundTransparency = 1
     headerKeyLabel.Font = Enum.Font.GothamBold
     headerKeyLabel.TextColor3 = Color3.fromRGB(170, 100, 255)
     headerKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
     headerKeyLabel.Text = "0"
+    headerKeyLabel.TextScaled = true
     headerKeyLabel.ZIndex = 277
     headerKeyLabel.Parent = headerKeyFrame
-    local headerKeyLabelConstraint = addHeaderTextConstraint(headerKeyLabel, 15)
 
     -- Salvage display (header currency row, LayoutOrder 3 = after keys)
     local SHARD_ACCENT = Color3.fromRGB(255, 158, 74)
@@ -1661,6 +1657,8 @@ titleLabel.ZIndex = 275
     headerSalvageFrame.LayoutOrder = 3
     headerSalvageFrame.Parent = currencyRow
     styleCurrencyChip(headerSalvageFrame, SHARD_ACCENT, 98)
+    headerSalvageFrame.AutomaticSize = Enum.AutomaticSize.None
+    headerSalvageFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
     headerSalvageFrame.BackgroundColor3 = Color3.fromRGB(57, 33, 12)
     local headerSalvageGradient = headerSalvageFrame:FindFirstChildOfClass("UIGradient")
     if headerSalvageGradient then
@@ -1676,8 +1674,8 @@ titleLabel.ZIndex = 275
     if shardImage then
         headerSalvageIcon = Instance.new("ImageLabel")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
-        headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerSalvageIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
+        headerSalvageIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
         headerSalvageIcon.Image = shardImage
@@ -1687,8 +1685,8 @@ titleLabel.ZIndex = 275
     else
         headerSalvageIcon = Instance.new("TextLabel")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0, px(22), 0, px(22))
-        headerSalvageIcon.Position = UDim2.new(0, px(8), 0.5, 0)
+        headerSalvageIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
+        headerSalvageIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
         headerSalvageIcon.Font = Enum.Font.GothamBold
@@ -1696,21 +1694,20 @@ titleLabel.ZIndex = 275
         headerSalvageIcon.TextColor3 = SHARD_ACCENT
         headerSalvageIcon.ZIndex = 277
         headerSalvageIcon.Parent = headerSalvageFrame
-        headerSalvageIconConstraint = addHeaderTextConstraint(headerSalvageIcon, 18)
     end
 
     local headerSalvageLabel = Instance.new("TextLabel")
     headerSalvageLabel.Name = "SalvageLabel"
-    headerSalvageLabel.Size = UDim2.new(1, -px(36), 1, -px(4))
-    headerSalvageLabel.Position = UDim2.new(0, px(33), 0, px(2))
+    headerSalvageLabel.Size = UDim2.new(0.6, 0, 0.6, 0)
+    headerSalvageLabel.Position = UDim2.new(0.3, 0, 0.2, 0)
     headerSalvageLabel.BackgroundTransparency = 1
     headerSalvageLabel.Font = Enum.Font.GothamBold
     headerSalvageLabel.TextColor3 = SHARD_ACCENT
     headerSalvageLabel.TextXAlignment = Enum.TextXAlignment.Left
     headerSalvageLabel.Text = "0"
+    headerSalvageLabel.TextScaled = true
     headerSalvageLabel.ZIndex = 277
     headerSalvageLabel.Parent = headerSalvageFrame
-    local headerSalvageLabelConstraint = addHeaderTextConstraint(headerSalvageLabel, 15)
 
 -- Close X (top-right corner of window) — dark + gold style
 local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
@@ -1722,7 +1719,7 @@ closeBtn.Name = "Close"
 closeBtn.Text = "X"
 closeBtn.Font = Enum.Font.GothamBlack
 closeBtn.TextScaled = true
-closeBtn.Size = UDim2.new(0.05, 0, HEADER_H * 0.85, 0)
+closeBtn.Size = UDim2.new(0.1, 0, 0.1, 0)
 closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeYY
 closeBtn.AnchorPoint = Vector2.new(1, 0)
 closeBtn.Position = UDim2.new(1, 0, 0, 0)
@@ -1764,9 +1761,8 @@ local function updateHeaderCurrencyLayout()
     local chipWidth = math.max(50, math.floor((maxRowWidth - (chipGap * 2)) / 3))
     local totalWidth = (chipWidth * 3) + (chipGap * 2)
 
-    -- make the currency row auto-size horizontally and anchor to top-right
-    currencyRow.AutomaticSize = Enum.AutomaticSize.X
-    currencyRow.Size = UDim2.new(0, 0, 0, chipHeight)
+    -- keep currency row manual-sized; only update position and padding
+    currencyRow.AutomaticSize = Enum.AutomaticSize.None
     currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
     currencyLayout.Padding = UDim.new(0, chipGap)
 
@@ -1906,9 +1902,8 @@ local function updateHeaderCurrencyLayout()
     end
 
     local function sizeChip(frame, width)
-        -- keep chip height fixed; let AutomaticSize.X control width
-        frame.AutomaticSize = Enum.AutomaticSize.X
-        frame.Size = UDim2.new(0, 0, 0, chipHeight)
+        -- keep chip manual-sized; do not enable AutomaticSize
+        frame.AutomaticSize = Enum.AutomaticSize.None
     end
 
     sizeChip(headerCoinFrame, chipWidth)
@@ -1981,13 +1976,14 @@ local function updateModalWindowLayout()
     local scaleX = (viewportX > 0) and (windowWidth / viewportX) or 0.75
     local scaleY = (viewportY > 0) and (windowHeight / viewportY) or 0.75
     window.Size = UDim2.new(scaleX, 0, scaleY, 0)
-    headerBar.Size = UDim2.new(1, 0, 0, headerHeight)
+    -- keep header height proportional to window (use HEADER_H fraction)
+    headerBar.Size = UDim2.new(1, 0, HEADER_H, 0)
     closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeXY
     closeBtn.Size = UDim2.new(0, closeSize, 0, closeSize)
 
     if contentFrame then
-        contentFrame.Position = UDim2.new(0, 0, 0.11, 0)
-        contentFrame.Size = UDim2.new(1, 0, 0.88, 0)
+        contentFrame.Position = UDim2.new(0, 0, HEADER_H, 0)
+        contentFrame.Size = UDim2.new(1, 0, 1 - HEADER_H, 0)
     end
 
     -- Reduce width for Inventory, Shop and Achievements modals by 25%
@@ -1998,7 +1994,7 @@ local function updateModalWindowLayout()
         window.Size = UDim2.new(reducedScaleX, 0, scaleY, 0)
         if contentFrame then
             -- adjust content width if needed to match smaller window
-            contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+            contentFrame.Size = UDim2.new(1, 0, 1 - HEADER_H, 0)
         end
     end
 
@@ -2008,7 +2004,7 @@ local function updateModalWindowLayout()
         local reducedScaleX = (viewportX > 0) and (reducedW / viewportX) or 0.5
         window.Size = UDim2.new(reducedScaleX, 0, scaleY, 0)
         if contentFrame then
-            contentFrame.Size = UDim2.new(1, 0, 1, -contentTop)
+            contentFrame.Size = UDim2.new(1, 0, 1 - HEADER_H, 0)
         end
     end
 
@@ -2074,10 +2070,10 @@ end)
     contentFrame = Instance.new("ScrollingFrame")
     contentFrame.Name = "ModalContent"
     contentFrame.BackgroundTransparency = 1
-    contentFrame.Size = UDim2.new(1, 0, 0.88, 0)
-    contentFrame.Position = UDim2.new(0, 0, 0.11, 0)
+    contentFrame.Size = UDim2.new(1, 0, 0.9, 0)
+    contentFrame.Position = UDim2.new(0, 0, 0.1, 0)
 contentFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
-contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+contentFrame.AutomaticCanvasSize = Enum.AutomaticSize.None
 contentFrame.ScrollBarThickness = px(4)
 contentFrame.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
 contentFrame.BorderSizePixel = 0
