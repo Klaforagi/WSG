@@ -51,7 +51,7 @@ UITheme.GRAY         = Color3.fromRGB(140, 140, 155)      -- column headers
 -- Buttons
 -- ═══════════════════════════════════════════════════════════════════════════
 UITheme.BTN_BG       = Color3.fromRGB(48, 55, 82)         -- standard button bg
-UITheme.BTN_STROKE   = Color3.fromRGB(90, 100, 140)       -- standard button stroke
+UITheme.BTN_STROKE   = Color3.fromRGB(7, 71, 0)           -- standard button stroke (overridden per request)
 UITheme.GREEN_BTN    = Color3.fromRGB(35, 190, 75)        -- positive / confirm
 UITheme.GREEN_GLOW   = Color3.fromRGB(50, 230, 110)       -- success glow
 UITheme.RED_TEXT     = Color3.fromRGB(255, 80, 80)         -- error / negative
