@@ -108,8 +108,7 @@ end
 -- show one message for 3 seconds
 ---------------------------------------------------------------------
 local function displayItem(item)
-    local soundName = EVENT_SOUNDS[item.eventType]
-    if soundName then playLocalSound(soundName) end
+    -- Sound playback is handled via explicit "playSound" events from server.
 
     -- dark navy banner with gold border
     local panel = Instance.new("Frame")
@@ -211,7 +210,11 @@ end
 -- listen for events
 ---------------------------------------------------------------------
 FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName, flagTeamName, accentColor)
-    if eventType == "playSound" then return end
+    if eventType == "playSound" then
+        -- `playerName` param holds the sound name for this event
+        playLocalSound(playerName)
+        return
+    end
 
     if eventType == "pickup" or eventType == "returned" or eventType == "captured" then
         table.insert(messageQueue, {

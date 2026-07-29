@@ -188,6 +188,25 @@ local function getStandTeamFromInstance(instance)
     return nil
 end
 
+local function canonicalizeTeamName(rawName)
+    if not rawName then return rawName end
+    -- Try to map display names like "Knights"/"Barbarians" to "Blue"/"Red"
+    local ok, TeamDisplayNames = pcall(function()
+        return ReplicatedStorage:FindFirstChild("TeamDisplayNames") and require(ReplicatedStorage:FindFirstChild("TeamDisplayNames"))
+    end)
+    if ok and TeamDisplayNames then
+        if TeamDisplayNames.Get("Blue") == rawName then
+            return "Blue"
+        elseif TeamDisplayNames.Get("Red") == rawName then
+            return "Red"
+        end
+    end
+    local lower = string.lower(tostring(rawName))
+    if string.find(lower, "knight") then return "Blue" end
+    if string.find(lower, "barbar") or string.find(lower, "barb") then return "Red" end
+    return rawName
+end
+
 local function getStandPromptPart(instance)
     local standRoot = getStandRoot(instance) or instance
     if not standRoot then
@@ -556,7 +575,8 @@ local function pickUpFlag(team, model, player)
         return false
     end
 
-    local playerTeamName = player.Team and player.Team.Name or nil
+    local rawPlayerTeamName = player.Team and player.Team.Name or nil
+    local playerTeamName = canonicalizeTeamName(rawPlayerTeamName)
 
     if model.Parent then
         for _, obj in ipairs(model:GetDescendants()) do
@@ -603,7 +623,13 @@ local function pickUpFlag(team, model, player)
     syncFlagState(team)
     applyFlagCarrySlow(player)
     FlagStatus:FireAllClients("pickup", player.Name, playerTeamName, team)
-    FlagStatus:FireAllClients("playSound", "Flag_taken")
+    local takenSoundName = "Flag_taken"
+    if playerTeamName == "Blue" and team == "Red" then
+        takenSoundName = "Flag_taken_blue"
+    elseif playerTeamName == "Red" and team == "Blue" then
+        takenSoundName = "Flag_taken_red"
+    end
+    FlagStatus:FireAllClients("playSound", takenSoundName)
 
     local function onDied()
         if not carrying[player] or carrying[player].team ~= team then
@@ -910,7 +936,8 @@ local function captureFlagAtStand(pl, standTeam)
         return false
     end
 
-    local playerTeamName = pl.Team and pl.Team.Name or nil
+    local rawPlayerTeamName = pl.Team and pl.Team.Name or nil
+    local playerTeamName = canonicalizeTeamName(rawPlayerTeamName)
     if not isPlayableTeamName(playerTeamName) or playerTeamName ~= standTeam then
         return false
     end
@@ -956,7 +983,13 @@ local function captureFlagAtStand(pl, standTeam)
     end
 
     FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)
-    FlagStatus:FireAllClients("playSound", "Flag_capture")
+    local captureSoundName = "Flag_capture"
+    if playerTeamName == "Blue" and flagTeam == "Red" then
+        captureSoundName = "Flag_capture_blue"
+    elseif playerTeamName == "Red" and flagTeam == "Blue" then
+        captureSoundName = "Flag_capture_red"
+    end
+    FlagStatus:FireAllClients("playSound", captureSoundName)
 
     task.delay(5, function()
         respawnFlag(flagTeam)
