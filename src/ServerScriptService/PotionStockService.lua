@@ -345,6 +345,7 @@ getPlayerUsage = function(player)
                 for id, cnt in pairs(result.purchases) do
                     usage.purchases[tostring(id)] = math.max(0, math.floor(tonumber(cnt) or 0))
                 end
+                warn(string.format("[PotionStockService] Loaded persisted usage for %s: cycle=%s purchases=%s", tostring(key), tostring(usage.cycle), tostring(DataStoreOps and DataStoreOps.DeepCopy and "<table>" or "table")) )
             end
         end
     end
@@ -399,6 +400,7 @@ function PotionStockService:Consume(player, itemId)
     local key = getKeyForPlayer(player)
     if key then
         local cycle = usage.cycle or self:GetCurrentCycle()
+        warn(string.format("[PotionStockService] Persisting consume for %s item=%s used(before)=%d cycle=%d", tostring(key), tostring(itemId), math.max(0, math.floor(tonumber(usage.purchases[itemId]) or 0)), cycle))
         local ok, res, err = DataStoreOps.Update(ds, key, "PotionStock/" .. key, function(stored)
             stored = type(stored) == "table" and stored or {}
             if tonumber(stored.cycle) ~= cycle then
@@ -411,7 +413,49 @@ function PotionStockService:Consume(player, itemId)
         end)
         if not ok then
             warn("[PotionStockService] Failed to persist purchase for", tostring(key), "item", tostring(itemId), "err:", tostring(res or err))
+            return false
         end
+        warn(string.format("[PotionStockService] Persisted consume for %s item=%s used(after)=%d", tostring(key), tostring(itemId), math.max(0, math.floor(tonumber(usage.purchases[itemId]) or 0))))
+    end
+
+    return true
+end
+
+-- Rollback a previously recorded purchase. Used when a purchase fails after
+-- the stock was consumed (to revert the persisted count).
+function PotionStockService:RollbackConsume(player, itemId)
+    local maxStock = getMaxStock(itemId)
+    if maxStock <= 0 then
+        return true
+    end
+
+    local usage = getPlayerUsage(player)
+    local used = math.max(0, math.floor(tonumber(usage.purchases[itemId]) or 0))
+    if used > 0 then
+        usage.purchases[itemId] = used - 1
+    else
+        usage.purchases[itemId] = 0
+    end
+
+    local key = getKeyForPlayer(player)
+    if key then
+        local cycle = usage.cycle or self:GetCurrentCycle()
+        warn(string.format("[PotionStockService] Rolling back consume for %s item=%s used(now)=%d", tostring(key), tostring(itemId), math.max(0, math.floor(tonumber(usage.purchases[itemId]) or 0))))
+        local ok, res, err = DataStoreOps.Update(ds, key, "PotionStock/" .. key, function(stored)
+            stored = type(stored) == "table" and stored or {}
+            if tonumber(stored.cycle) ~= cycle then
+                stored.cycle = cycle
+                stored.purchases = {}
+            end
+            stored.purchases = type(stored.purchases) == "table" and stored.purchases or {}
+            stored.purchases[itemId] = math.max(0, math.floor(tonumber(stored.purchases[itemId]) or 0) - 1)
+            return stored
+        end)
+        if not ok then
+            warn("[PotionStockService] Failed to rollback purchase for", tostring(key), "item", tostring(itemId), "err:", tostring(res or err))
+            return false
+        end
+        warn(string.format("[PotionStockService] Rollback persisted for %s item=%s", tostring(key), tostring(itemId)))
     end
 
     return true

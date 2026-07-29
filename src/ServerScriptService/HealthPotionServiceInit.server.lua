@@ -219,11 +219,21 @@ purchasePotionRF.OnServerInvoke = function(player, potionId)
         return false, "OUT_OF_STOCK", HealthPotionService:GetState(player), PotionStockService:BuildState(player)
     end
 
-    local success, message, state = HealthPotionService:PurchasePotion(player, potionId)
-    if success then
-        -- Only consume stock after coins were deducted and the item granted.
-        PotionStockService:Consume(player, potionId)
+    -- Reserve/consume stock BEFORE granting the potion so persistence is
+    -- recorded prior to giving the item. If the purchase fails after
+    -- reserving, rollback the consumption.
+    local consumed = PotionStockService:Consume(player, potionId)
+    if not consumed then
+        return false, "STOCK_PERSIST_FAILED", HealthPotionService:GetState(player), PotionStockService:BuildState(player)
     end
+
+    local success, message, state = HealthPotionService:PurchasePotion(player, potionId)
+    if not success then
+        -- Purchase failed (e.g., insufficient coins) — revert the consumed stock
+        PotionStockService:RollbackConsume(player, potionId)
+        return success, message, state, PotionStockService:BuildState(player)
+    end
+
     return success, message, state, PotionStockService:BuildState(player)
 end
 

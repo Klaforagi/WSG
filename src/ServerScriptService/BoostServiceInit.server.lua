@@ -157,12 +157,21 @@ local function purchaseBoostWithStock(player, boostId)
         return false, "OUT_OF_STOCK", BoostService:GetPlayerBoostStates(player), PotionStockService:BuildState(player)
     end
 
+    -- Reserve stock before attempting the purchase so persistence is recorded
+    -- prior to granting. Rollback if the purchase fails.
+    local consumed = PotionStockService:Consume(player, boostId)
+    if not consumed then
+        return false, "STOCK_PERSIST_FAILED", BoostService:GetPlayerBoostStates(player), PotionStockService:BuildState(player)
+    end
+
     local ok, msg, states = BoostService:PurchaseOwnedBoost(player, boostId)
-    if ok then
-        PotionStockService:Consume(player, boostId)
-        if AchievementService then
-            pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
-        end
+    if not ok then
+        PotionStockService:RollbackConsume(player, boostId)
+        return ok, msg, states, PotionStockService:BuildState(player)
+    end
+
+    if AchievementService then
+        pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
     end
     return ok, msg, states, PotionStockService:BuildState(player)
 end

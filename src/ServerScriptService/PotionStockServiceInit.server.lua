@@ -57,10 +57,9 @@ getPotionStockStateRF.OnServerInvoke = function(player)
     return PotionStockService:BuildState(player)
 end
 
--- Free per-player usage when they leave (stock is session-only by design).
-Players.PlayerRemoving:Connect(function(player)
-    PotionStockService:ClearPlayer(player)
-end)
+-- Do not clear per-player usage on leave so purchases persist across rejoins.
+-- Clearing here made players able to repurchase after reconnecting within
+-- the same cycle. Persistence is handled by PotionStockService via DataStore.
 
 --------------------------------------------------------------------------------
 -- Refresh broadcast loop. Detects cycle changes and notifies all clients once
