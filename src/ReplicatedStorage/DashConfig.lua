@@ -10,7 +10,7 @@ local DashConfig = {}
 -- Movement
 DashConfig.Distance     = 22      -- studs to travel
 DashConfig.Duration     = 0.18    -- seconds the dash lasts
-DashConfig.Cooldown     = 3      -- seconds between dashes
+DashConfig.Cooldown     = 8      -- seconds between dashes
 
 -- Physics
 DashConfig.VerticalDamp = 0.05    -- small upward nudge to stay grounded over bumps

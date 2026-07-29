@@ -387,6 +387,45 @@ local function setButtonPressed()
     btn.BackgroundColor3 = getTeamTintPressedFill(currentTeamColor)
 end
 
+local function setButtonBlocked()
+    -- Use the same visuals as cooldown to indicate unavailable (server enforces reasons)
+    setButtonCooldown()
+end
+
+-- Update button visuals based on availability (cooldown takes precedence)
+local humanoidStateConn, humanoidFloorConn = nil, nil
+local availabilityConn = nil
+local function updateButtonAvailability()
+    if isCoolingDown then return end
+    local char = player.Character
+    if not char then
+        setButtonReady()
+        return
+    end
+    local humanoid = char:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        setButtonReady()
+        return
+    end
+
+    -- Block if airborne
+    local ok, stateType = pcall(function() return humanoid:GetState() end)
+    if ok and (stateType == Enum.HumanoidStateType.Freefall or stateType == Enum.HumanoidStateType.Jumping
+        or humanoid.FloorMaterial == Enum.Material.Air) then
+        setButtonBlocked()
+        return
+    end
+
+    -- Block if carrying flag
+    if player:GetAttribute("CarryingFlag") then
+        setButtonBlocked()
+        return
+    end
+
+    -- Otherwise ready
+    setButtonReady()
+end
+
 -- Hover (desktop only)
 if not UserInputService.TouchEnabled then
     btn.MouseEnter:Connect(function()
@@ -690,6 +729,19 @@ local function requestDashAction()
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid or humanoid.Health <= 0 then return end
 
+    -- Client-side: disallow dash while airborne (jumping/freefall) or if carrying flag
+    local ok, stateType = pcall(function() return humanoid:GetState() end)
+    if ok and (stateType == Enum.HumanoidStateType.Freefall or stateType == Enum.HumanoidStateType.Jumping
+        or humanoid.FloorMaterial == Enum.Material.Air) then
+        log("dash blocked client-side: not grounded or airborne")
+        return
+    end
+
+    if player:GetAttribute("CarryingFlag") then
+        log("dash blocked client-side: carrying flag")
+        return
+    end
+
     currentDashId = currentDashId + 1
     local thisDashId = currentDashId
     isDashing = true
@@ -754,12 +806,13 @@ end
 -- Keep dash button fill synced to current team at runtime (no respawn needed)
 currentTeamColor = teamColorOrNil(player.Team)
 setButtonReady()
+updateButtonAvailability()
 player:GetPropertyChangedSignal("Team"):Connect(function()
     currentTeamColor = teamColorOrNil(player.Team)
     if isCoolingDown then
         setButtonCooldown()
     else
-        setButtonReady()
+        updateButtonAvailability()
     end
 end)
 
@@ -804,5 +857,60 @@ player.CharacterAdded:Connect(function()
     loadedAnim = nil
     animTrack = nil
 end)
+
+-- Listen for carrying flag attribute changes so UI updates immediately
+player:GetAttributeChangedSignal("CarryingFlag"):Connect(function()
+    updateButtonAvailability()
+end)
+
+-- Hook humanoid state changes per-character to reflect airborne / grounded state
+-- (setupCharacter defined below)
+local function setupCharacter(char)
+    -- small delay to allow humanoid to exist
+    task.defer(function()
+        if humanoidStateConn then
+            pcall(function() humanoidStateConn:Disconnect() end)
+            humanoidStateConn = nil
+        end
+        if humanoidFloorConn then
+            pcall(function() humanoidFloorConn:Disconnect() end)
+            humanoidFloorConn = nil
+        end
+        -- stop previous Heartbeat connection
+        if availabilityConn then
+            pcall(function() availabilityConn:Disconnect() end)
+            availabilityConn = nil
+        end
+
+        if not char then return end
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            humanoidStateConn = humanoid.StateChanged:Connect(function(_, newState)
+                updateButtonAvailability()
+            end)
+            if humanoid.GetPropertyChangedSignal then
+                humanoidFloorConn = humanoid:GetPropertyChangedSignal("FloorMaterial"):Connect(function()
+                    updateButtonAvailability()
+                end)
+            end
+        end
+        updateButtonAvailability()
+
+        -- Start a Heartbeat connection to update availability each frame
+        availabilityConn = RunService.Heartbeat:Connect(function()
+            if not char or char ~= player.Character then return end
+            updateButtonAvailability()
+        end)
+    end)
+end
+
+player.CharacterAdded:Connect(function(char)
+    setupCharacter(char)
+end)
+
+-- If the character already exists when this script runs, set up immediately
+if player.Character then
+    setupCharacter(player.Character)
+end
 
 log("ready")

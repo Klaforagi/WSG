@@ -191,6 +191,19 @@ function DashService:TryDash(player)
         return false, "dead"
     end
 
+    -- Disallow dashing while airborne (jumping/freefall) — require being on the ground
+    local ok, stateType = pcall(function() return humanoid:GetState() end)
+    if ok and (stateType == Enum.HumanoidStateType.Freefall or stateType == Enum.HumanoidStateType.Jumping
+        or humanoid.FloorMaterial == Enum.Material.Air) then
+        log(player.Name, "rejected: not grounded or airborne")
+        return false, "not_grounded"
+    end
+
+    -- Disallow dashing while carrying the flag
+    if player:GetAttribute("CarryingFlag") then
+        log(player.Name, "rejected: carrying flag")
+        return false, "carrying_flag"
+    end
     -- Record dash time BEFORE execution so rapid re-fires are blocked
     state.lastDashTime = now
 
