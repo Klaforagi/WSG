@@ -159,17 +159,17 @@ local POTION_SECTION_DEFS = {
 	{
 		Id = "Battle",
 		Category = CATEGORY_BATTLE,
-		Header = "BATTLE",
+		Header = "POTIONS",
 		Subtitle = "Equip these to slot 4 and use them during battle.",
-		EmptyText = "No battle potions available.",
+		EmptyText = "No potions available.",
 		Accent = Color3.fromRGB(239, 111, 91),
 	},
 	{
 		Id = "Elixir",
 		Category = CATEGORY_ELIXIR,
-		Header = "ELIXIR",
+		Header = "ELXIRS",
 		Subtitle = "Activate these for longer-lasting buffs.",
-		EmptyText = "No elixirs available.",
+		EmptyText = "No elxirs available.",
 		Accent = Color3.fromRGB(190, 139, 255),
 	},
 }
@@ -1640,10 +1640,16 @@ end
 					local stockInfo = getStockInfo(entry.Id)
 					if stockInfo and stockInfo.max > 0 and stockInfo.soldOut then
 						showToast("Stock is sold out until the next refresh.", RED)
-					elseif isEntryPurchasable(entry) then
-						showToast("Not enough gold.", RED)
 					else
-						showToast("Coin purchase unavailable", RED)
+						local coinPrice = getEntryPrice(entry)
+						local canAffordCoins = coinPrice <= 0 or coinBalance >= coinPrice
+						if isEntryPurchasable(entry) and not canAffordCoins then
+							showToast("Not enough gold.", RED)
+						elseif isEntryPurchasable(entry) then
+							showToast("Coin purchase unavailable", RED)
+						else
+							showToast("Coin purchase unavailable", RED)
+						end
 					end
 					return
 				end

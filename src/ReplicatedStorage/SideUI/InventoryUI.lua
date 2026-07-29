@@ -777,23 +777,23 @@ local BOOST_ACCENT_COLORS = {
     quest_2x = Color3.fromRGB(80, 165, 255),
 }
 
-local POTION_CATEGORY_BATTLE = "Battle"
+    local POTION_CATEGORY_BATTLE = "Battle"
 local POTION_CATEGORY_ELIXIR = "Elixir"
 local POTION_CATEGORY_SECTIONS = {
     {
         Id = "Battle",
         Category = POTION_CATEGORY_BATTLE,
-        Header = "BATTLE",
+        Header = "POTIONS",
         Subtitle = "Equip these to slot 4 and use them during battle.",
-        EmptyText = "No battle potions owned yet.",
+        EmptyText = "No potions owned yet.",
         Accent = Color3.fromRGB(239, 111, 91),
     },
     {
         Id = "Elixir",
         Category = POTION_CATEGORY_ELIXIR,
-        Header = "ELIXIR",
+        Header = "ELXIRS",
         Subtitle = "Activate these for longer-lasting buffs.",
-        EmptyText = "No elixirs owned yet.",
+        EmptyText = "No elxirs owned yet.",
         Accent = Color3.fromRGB(190, 139, 255),
     },
 }
