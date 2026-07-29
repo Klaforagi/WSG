@@ -2841,7 +2841,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         btnCorner.Parent = btn
 
         local btnStroke = Instance.new("UIStroke")
-        btnStroke.Color       = BTN_STROKE
+        btnStroke.Color       = Color3.fromRGB(36, 15, 77) -- numbers / default status color
         btnStroke.Thickness   = 1.4
         btnStroke.Transparency = 0.3
         btnStroke.Parent      = btn
@@ -2873,11 +2873,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             elseif isClaimable then
                 btn.Text = "\u{2B50} CLAIM"; btn.BackgroundColor3 = BTN_CLAIM
                 btn.TextColor3 = WHITE; btn.Active = true
-                btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.15
+                btnStroke.Color = Color3.fromRGB(7, 71, 0); btnStroke.Transparency = 0.05; btnStroke.Thickness = 1.6
             else
                 btn.Text = FormatProgress(progress, goal)
                 btn.BackgroundColor3 = BTN_LOCKED; btn.TextColor3 = DIM_TEXT; btn.Active = false
-                btnStroke.Color = BTN_STROKE; btnStroke.Transparency = 0.4
+                btnStroke.Color = Color3.fromRGB(36, 15, 77); btnStroke.Transparency = 0.4
             end
             updateAchCardVisuals(progress, goal, claimed, completed)
         end
@@ -3677,11 +3677,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                                 elseif isClaimable then
                                     claimB.Text = "\u{2B50} CLAIM"; claimB.BackgroundColor3 = BTN_CLAIM
                                     claimB.TextColor3 = WHITE; claimB.Active = true
-                                    if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.15 end
+                                    if bS then bS.Color = Color3.fromRGB(7, 71, 0); bS.Transparency = 0.05; bS.Thickness = 1.6 end
                                 else
                                     claimB.Text = FormatProgress(a.progress, a.target)
                                     claimB.BackgroundColor3 = BTN_LOCKED; claimB.TextColor3 = DIM_TEXT; claimB.Active = false
-                                    if bS then bS.Color = BTN_STROKE; bS.Transparency = 0.4 end
+                                    if bS then bS.Color = Color3.fromRGB(36, 15, 77); bS.Transparency = 0.4 end
                                 end
                             end
                             local cFrame = achCards[a.id]
@@ -3835,11 +3835,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                 elseif isClaimable then
                     claimBtn2.Text = "\u{2B50} CLAIM"; claimBtn2.BackgroundColor3 = BTN_CLAIM
                     claimBtn2.TextColor3 = WHITE; claimBtn2.Active = true
-                    if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.15 end
+                    if bStroke then bStroke.Color = Color3.fromRGB(7, 71, 0); bStroke.Transparency = 0.05; bStroke.Thickness = 1.6 end
                 else
                     claimBtn2.Text = FormatProgress(math.min(newProgress, goal), goal)
                     claimBtn2.BackgroundColor3 = BTN_LOCKED; claimBtn2.TextColor3 = DIM_TEXT; claimBtn2.Active = false
-                    if bStroke then bStroke.Color = BTN_STROKE; bStroke.Transparency = 0.4 end
+                    if bStroke then bStroke.Color = Color3.fromRGB(36, 15, 77); bStroke.Transparency = 0.4 end
                 end
             end
             local cardFrame = achCards[achId]
