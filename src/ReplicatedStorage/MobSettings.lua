@@ -70,7 +70,7 @@ local Defaults = {
 local Presets = {
     Orc = {
         Spawn = {
-            Weight   = 5,
+            Weight   = 10,
             XPReward = 16,
             CoinReward = { Min = 4, Max = 10 },
             ScoreReward = 5,
@@ -108,7 +108,7 @@ local Presets = {
 
     Goblin = {
         Spawn = {
-            Weight   = 10,  -- 2x Orc's weight of 5
+            Weight   = 20,  -- 2x Orc's weight of 5
             XPReward = 8,
             CoinReward = { Min = 1, Max = 6 },
             ScoreReward = 3,
@@ -149,7 +149,7 @@ local Presets = {
 
     Ogre = {
         Spawn = {
-            Weight   = 0.5,
+            Weight   = 1,
             XPReward = 60,
             CoinReward = { Min = 20, Max = 40 },
             ScoreReward = 20,
