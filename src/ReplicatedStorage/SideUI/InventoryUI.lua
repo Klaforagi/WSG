@@ -760,12 +760,13 @@ local function ensurePotionRemotes()
     if potionRemotes then return potionRemotes end
     local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 10)
     if not remotesFolder then return nil end
-    local potionsFolder = remotesFolder:FindFirstChild("Potions") or remotesFolder:WaitForChild("Potions", 5)
+    local potionsFolder = remotesFolder:FindFirstChild("Potions") or remotesFolder:WaitForChild("Potions", 10)
     if not potionsFolder then return nil end
-    local getStateRF = potionsFolder:FindFirstChild("GetPotionState")
-    local setEquippedRF = potionsFolder:FindFirstChild("SetPotionEquipped")
-    local stateUpdatedRE = remotesFolder:FindFirstChild("PotionStateUpdated")
-    if not getStateRF or not setEquippedRF or not stateUpdatedRE then return nil end
+
+    local ok, getStateRF = pcall(function() return potionsFolder:WaitForChild("GetPotionState", 5) end)
+    local ok2, setEquippedRF = pcall(function() return potionsFolder:WaitForChild("SetPotionEquipped", 5) end)
+    local ok3, stateUpdatedRE = pcall(function() return remotesFolder:WaitForChild("PotionStateUpdated", 5) end)
+    if not ok or not ok2 or not ok3 or not getStateRF or not setEquippedRF or not stateUpdatedRE then return nil end
     potionRemotes = { getState = getStateRF, setEquipped = setEquippedRF, stateUpdated = stateUpdatedRE }
     return potionRemotes
 end

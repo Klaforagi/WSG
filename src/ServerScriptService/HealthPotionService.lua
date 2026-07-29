@@ -724,8 +724,9 @@ function HealthPotionService:UseEquippedPotion(player)
         payload.expiresAt = getServerTime() + effectDuration
         payload.displayName = potionDef.DisplayName
         payload.description = payload.description or potionDef.DetailText or potionDef.Description
-        effectStartedEvent:Fire(player, payload)
     end
+    -- Fire effect started for all potion uses (instant or duration) so clients can respond (e.g., play sounds)
+    effectStartedEvent:Fire(player, payload)
 
     return true, "Potion used", payload
 end

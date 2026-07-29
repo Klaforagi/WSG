@@ -27,6 +27,7 @@ local SPAWN_INTERVAL = 5
 local SPAWN_BATCH = 1
 local MAX_PER_PORTAL = 4
 local MAX_TOTAL = 8
+local GLOBAL_SPAWN_RAISE = 2 -- studs to raise all spawns to avoid clipping under map
 local DEFAULT_MOB_TAG = "ZombieNPC"
 local DEFAULT_WALK_ANIM_ID = "rbxassetid://180426354"
 
@@ -309,6 +310,17 @@ local function spawnMobFromTemplate(entry, template)
     local rootHalfY = (root and root:IsA("BasePart")) and (root.Size.Y / 2 + 0.5) or 2
     local spawnHeightOffset = (type(spawnCfg.SpawnHeightOffset) == "number") and spawnCfg.SpawnHeightOffset or 0
     local spawnPos = entry.portal.Position - Vector3.new(0, entry.portal.Size.Y / 2 + rootHalfY - spawnHeightOffset, 0)
+    -- Apply a small global upward raise to reduce chance of spawning inside geometry
+    spawnPos = spawnPos + Vector3.new(0, GLOBAL_SPAWN_RAISE, 0)
+
+    -- Ensure we don't spawn below the portal area (clamp to area top + small buffer)
+    if entry.area and entry.area:IsA("BasePart") then
+        local areaTopY = entry.area.Position.Y + (entry.area.Size.Y / 2)
+        local minY = areaTopY + rootHalfY + 1 -- 1 stud safety buffer
+        if spawnPos.Y < minY then
+            spawnPos = Vector3.new(spawnPos.X, minY, spawnPos.Z)
+        end
+    end
 
     pcall(function()
         if not mob.PrimaryPart and root then

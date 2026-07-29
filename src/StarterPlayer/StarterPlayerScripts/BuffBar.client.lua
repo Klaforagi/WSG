@@ -88,6 +88,48 @@ local function getItemIconData(def)
     return ItemIconRegistry.Get(def.IconKey) or ItemIconRegistry.Get(def.SourceId) or ItemIconRegistry.Get(def.Id)
 end
 
+-- Cached potion sound template and player helpers
+local SoundService = game:GetService("SoundService")
+local warnedMissingPotionSound = false
+local cachedPotionSoundTemplate = nil
+local function getPotionSoundTemplate()
+    if cachedPotionSoundTemplate and cachedPotionSoundTemplate.Parent then
+        return cachedPotionSoundTemplate
+    end
+    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+    if not soundsFolder then
+        return nil
+    end
+    local template = soundsFolder:FindFirstChild("Potion")
+    if not template then
+        template = soundsFolder:FindFirstChild("Potion", true)
+    end
+    if template and template:IsA("Sound") then
+        cachedPotionSoundTemplate = template
+        return template
+    end
+    return nil
+end
+
+local function playPotionSound()
+    local template = getPotionSoundTemplate()
+    if not template then
+        if not warnedMissingPotionSound then
+            warnedMissingPotionSound = true
+            warn("[BuffBar] ReplicatedStorage.Sounds.Potion not found; potion sound disabled")
+        end
+        return
+    end
+    local sound = template:Clone()
+    sound.Parent = SoundService
+    sound:Play()
+    task.delay(math.max(1, (sound.TimeLength or 1) + 0.25), function()
+        if sound and sound.Parent then
+            sound:Destroy()
+        end
+    end)
+end
+
 local function applyCorner(frame, radius)
     local corner = Instance.new("UICorner")
     corner.CornerRadius = UDim.new(0, radius)
@@ -1236,6 +1278,13 @@ local function applyPotionEffect(payload)
         return
     end
 
+    local def = getPotionEffectDef(payload.potionId)
+    if not def then
+        return
+    end
+    -- Play potion sound when effect starts (also covers instant-use potions)
+    pcall(function() playPotionSound() end)
+
     local expiresAt = tonumber(payload.expiresAt)
     local duration = tonumber(payload.duration)
     if (not expiresAt or expiresAt <= 0) and duration and duration > 0 then
@@ -1243,11 +1292,6 @@ local function applyPotionEffect(payload)
     end
     if not expiresAt or expiresAt <= workspace:GetServerTimeNow() then
         removeEntry("potion_" .. payload.potionId)
-        return
-    end
-
-    local def = getPotionEffectDef(payload.potionId)
-    if not def then
         return
     end
     if type(payload.displayName) == "string" and payload.displayName ~= "" then

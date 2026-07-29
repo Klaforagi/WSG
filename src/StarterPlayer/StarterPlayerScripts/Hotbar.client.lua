@@ -135,6 +135,9 @@ local function getPotionDefinition(potionId)
     return PotionConfig.GetById(potionId)
 end
 
+-- Potion sound helper (matches other client scripts)
+-- potion sound is played globally via server broadcast (BuffBar handles playback)
+
 local function getPotionAccentColor(potionDef)
     local iconColor = potionDef and potionDef.IconColor
     if type(iconColor) == "table" then
@@ -874,15 +877,16 @@ local function ensurePotionRemotes()
         return nil
     end
 
-    local potionFolder = remotesFolder:FindFirstChild("Potions") or remotesFolder:WaitForChild("Potions", 5)
+    local potionFolder = remotesFolder:FindFirstChild("Potions") or remotesFolder:WaitForChild("Potions", 10)
     if not potionFolder then
         return nil
     end
 
-    local getState = potionFolder:FindFirstChild("GetPotionState")
-    local usePotion = potionFolder:FindFirstChild("UseEquippedPotion")
-    local stateUpdated = remotesFolder:FindFirstChild("PotionStateUpdated")
-    if not getState or not usePotion or not stateUpdated then
+    -- Wait for the specific remotes with short timeouts to avoid races on join
+    local ok, getState = pcall(function() return potionFolder:WaitForChild("GetPotionState", 5) end)
+    local ok2, usePotion = pcall(function() return potionFolder:WaitForChild("UseEquippedPotion", 5) end)
+    local ok3, stateUpdated = pcall(function() return remotesFolder:WaitForChild("PotionStateUpdated", 5) end)
+    if not ok or not ok2 or not ok3 or not getState or not usePotion or not stateUpdated then
         return nil
     end
 
@@ -967,6 +971,24 @@ local function refreshPotionState()
     if ok then
         ingestPotionState(state)
     end
+end
+
+-- Request potion state from server with retries to avoid race conditions on join
+local function requestPotionStateWithRetries(maxAttempts, delaySec)
+    maxAttempts = math.max(1, tonumber(maxAttempts) or 6)
+    delaySec = tonumber(delaySec) or 0.2
+    for attempt = 1, maxAttempts do
+        local remotes = ensurePotionRemotes()
+        if remotes and remotes.getState then
+            local ok, state = pcall(function() return remotes.getState:InvokeServer() end)
+            if ok and type(state) == "table" then
+                ingestPotionState(state)
+                return true
+            end
+        end
+        task.wait(delaySec)
+    end
+    return false
 end
 
 --------------------------------------------------------------------------------
@@ -1103,6 +1125,8 @@ if player.Character then onCharacter(player.Character) end
 player.CharacterAdded:Connect(function(char)
     task.wait(0.3)
     onCharacter(char)
+    -- Try to fetch potion state after character spawn to recover from races
+    task.defer(function() requestPotionStateWithRetries(6, 0.2) end)
 end)
 
 -- apply initial team color and update when team changes
@@ -1110,6 +1134,8 @@ currentTeamColor = teamColorOrNil(player.Team)
 player:GetPropertyChangedSignal("Team"):Connect(function()
     currentTeamColor = teamColorOrNil(player.Team)
     task.defer(refreshSlots)
+    -- Re-request potion state when team changes to ensure hotbar stays in sync
+    task.defer(function() requestPotionStateWithRetries(6, 0.2) end)
 end)
 
 --------------------------------------------------------------------------------
@@ -1121,12 +1147,24 @@ specialUnlockGranted.OnClientEvent:Connect(function(unlocked)
 end)
 
 do
-    local remotes = ensurePotionRemotes()
-    if remotes and remotes.stateUpdated and remotes.stateUpdated:IsA("RemoteEvent") then
-        remotes.stateUpdated.OnClientEvent:Connect(function(state)
-            ingestPotionState(state)
-        end)
-    end
+    task.spawn(function()
+        local attempts = 0
+        while attempts < 20 do
+            local remotes = ensurePotionRemotes()
+            if remotes and remotes.stateUpdated and remotes.stateUpdated:IsA("RemoteEvent") then
+                remotes.stateUpdated.OnClientEvent:Connect(function(state)
+                    ingestPotionState(state)
+                end)
+                -- Also request current state immediately to avoid race where server fired earlier
+                task.spawn(function()
+                    requestPotionStateWithRetries(6, 0.2)
+                end)
+                return
+            end
+            attempts = attempts + 1
+            task.wait(0.25)
+        end
+    end)
 end
 
 --------------------------------------------------------------------------------
@@ -1190,7 +1228,7 @@ end)
 -- INITIAL REFRESH (wait briefly for server to deliver tools)
 --------------------------------------------------------------------------------
 task.spawn(function()
-    refreshPotionState()
+    requestPotionStateWithRetries(8, 0.2)
     for _ = 1, 30 do
         refreshSlots()
         if slotTools[1] and slotTools[2] then break end
