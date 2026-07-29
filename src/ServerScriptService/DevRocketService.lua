@@ -33,7 +33,11 @@ end)
 local XPModule
 pcall(function()
     XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
-local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
+end)
+
+local CombatUtils
+pcall(function()
+    CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
 end)
 if not AddScore then
     AddScore = Instance.new("BindableEvent")
@@ -63,16 +67,13 @@ local function applyDamageOutputModifiers(attackerPlayer, damage)
         return damage
     end
     local ok, multiplier = pcall(function()
+        return _G.GetRevengeCurseDamageMultiplier(attackerPlayer)
     end)
     if ok and type(multiplier) == "number" and multiplier > 0 then
         return damage * multiplier
     end
     return damage
-        if not (CombatUtils and (CombatUtils.isPodiumAvatar(otherPlayer.Character) or CombatUtils.isPodiumPart(hrp))) then
-            hum:TakeDamage(damage)
-        else
-            if _G.DEBUG_COMBAT then print("[Combat] Ignored podium avatar rocket hit:", otherPlayer.Character and otherPlayer.Character.Name) end
-        end
+end
 
 --------------------------------------------------------------------------------
 -- COOLDOWN STATE
@@ -110,11 +111,6 @@ function DevRocketService.CreateToolTemplate()
     handle.Color = Color3.fromRGB(60, 60, 60)
     handle.Material = Enum.Material.Metal
     handle.CanCollide = false
-        if not (CombatUtils and (CombatUtils.isPodiumAvatar(character) or CombatUtils.isPodiumPart(hrp))) then
-            model:TakeDamage(damage)
-        else
-            if _G.DEBUG_COMBAT then print("[Combat] Ignored podium avatar AoE hit:", character and character.Name) end
-        end
     handle.Parent = tool
 
     -- Barrel tip (visual muzzle reference)
