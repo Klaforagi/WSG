@@ -1706,7 +1706,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- Use relative padding so layout scales with the panel size
     local dPad = Instance.new("UIPadding", detailContent)
     dPad.PaddingTop  = UDim.new(0.02, 0); dPad.PaddingBottom = UDim.new(0.02, 0)
-    dPad.PaddingLeft = UDim.new(0.02, 0); dPad.PaddingRight  = UDim.new(-0.055, 0)
+    dPad.PaddingLeft = UDim.new(0.02, 0); dPad.PaddingRight  = UDim.new(-0.022, 0)
 
     -- Vertical layout distributes elements evenly and centers them horizontally
     __constraint = Instance.new("UIListLayout")
@@ -1835,17 +1835,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local masteryStageRow = Instance.new("Frame", masteryPanel)
     masteryStageRow.Name = "StageGemRow"
     masteryStageRow.BackgroundTransparency = 1
-    masteryStageRow.Size = UDim2.new(0.94, 0, 0, px(28))
-    masteryStageRow.Position = UDim2.new(0.03, 0, 0.18, 0)
+    masteryStageRow.Size = UDim2.new(0.94, 0, 0.25, 0)
+    masteryStageRow.Position = UDim2.new(0.03, 0, 0.15, 0)
     masteryStageRow.ZIndex = masteryPanel.ZIndex + 1
 
-    local stageLayout = Instance.new("UIListLayout")
-    stageLayout.FillDirection = Enum.FillDirection.Horizontal
-    stageLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-    stageLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-    stageLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    stageLayout.Padding = UDim.new(0, px(6))
-    stageLayout.Parent = masteryStageRow
+    local stageGrid = Instance.new("UIGridLayout")
+    stageGrid.FillDirection = Enum.FillDirection.Horizontal
+    stageGrid.FillDirectionMaxCells = 5
+    stageGrid.CellPadding = UDim2.new(0.17, 0, 0.25, 0)
+    stageGrid.CellSize = UDim2.new(0.06, 0, 0.35, 0)
+    stageGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    stageGrid.VerticalAlignment = Enum.VerticalAlignment.Center
+    stageGrid.SortOrder = Enum.SortOrder.LayoutOrder
+    stageGrid.Parent = masteryStageRow
 
     local masteryGems = {}
     local currentMasteryContext = { rarity = "Common", category = "Melee" }
@@ -1933,7 +1935,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         gemButton.AutoButtonColor = false
         gemButton.BackgroundTransparency = 1
         gemButton.Text = ""
-        gemButton.Size = UDim2.new(0, px(28), 0, px(28))
+        gemButton.Size = UDim2.new(0.1, 0, 0.1, 0)
         gemButton.LayoutOrder = i
         gemButton.ZIndex = masteryStageRow.ZIndex + 1
         gemButton.Parent = masteryStageRow
@@ -1943,13 +1945,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         diamond.BorderSizePixel = 0
         diamond.AnchorPoint = Vector2.new(0.5, 0.5)
         diamond.Position = UDim2.new(0.5, 0, 0.5, 0)
-        diamond.Size = UDim2.new(0, px(18), 0, px(18))
+        diamond.Size = UDim2.new(0, 2, 0, 2)
         diamond.Rotation = 45
         diamond.ZIndex = gemButton.ZIndex + 1
         diamond.Parent = gemButton
 
         local gemCorner = Instance.new("UICorner")
-        gemCorner.CornerRadius = UDim.new(0, math.max(2, math.floor(px(18) * 0.16)))
+        gemCorner.CornerRadius = UDim.new(0, 1)
         gemCorner.Parent = diamond
 
         local gemStroke = Instance.new("UIStroke")
@@ -2421,7 +2423,33 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             masteryBarFill.Size = UDim2.new(progress, 0, 1, 0)
         end
 
-        masteryDamage.Text = "Damage " .. formatMasteryBaseDamage(baseDamage)
+        -- Apply size multiplier to mastery base damage using the game's
+        -- centralized size→damage curves (matches server logic for melee/ranged)
+        local function getSizeDamageMultiplierForCategory(sizePercent, category)
+            local sp = tonumber(sizePercent) or 100
+            if tostring(category):lower() == "ranged" then
+                -- Ranged: linear 1:1 with size, clamped 0.5x..3.0x
+                return math.clamp(sp / 100, 0.5, 3.0)
+            else
+                -- Melee: half-rate above 100% (200% => 1.5x). Below 100% linear.
+                if sp <= 100 then
+                    return math.clamp(sp / 100, 0.5, 1.0)
+                end
+                return math.clamp(1.0 + (sp - 100) / 200, 1.0, 1.5)
+            end
+        end
+
+        local sizePct = tonumber(itemData.sizePercent) or 100
+        local sizeMult = getSizeDamageMultiplierForCategory(sizePct, itemData.category or "Melee")
+        local dmgWithSize = math.max(0, tonumber(baseDamage) or 0) * sizeMult
+        local rounded = math.floor(dmgWithSize * 10 + 0.5) / 10
+        local dmgText
+        if rounded == math.floor(rounded) then
+            dmgText = tostring(math.floor(rounded))
+        else
+            dmgText = string.format("%.1f", rounded)
+        end
+        masteryDamage.Text = "Damage " .. dmgText
 
         -- update stage gem visuals based on current level/progress
         local rarity = itemData.rarity or "Common"
