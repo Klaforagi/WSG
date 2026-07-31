@@ -260,6 +260,7 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
         bestLabel.TextColor3 = ORANGE_BRIGHT
         bestLabel.TextSize = px(10)
         bestLabel.TextXAlignment = Enum.TextXAlignment.Right
+        bestLabel.TextYAlignment = Enum.TextYAlignment.Center
         bestLabel.Parent = card
     end
 
@@ -579,17 +580,24 @@ local function buildShopCard(parent, item, host)
     descConstraint.MaxTextSize = px(14)
     descConstraint.Parent = description
 
+    local footerRow = Instance.new("Frame")
+    footerRow.Name = "BottomRow"
+    footerRow.BackgroundTransparency = 1
+    footerRow.Position = UDim2.fromScale(0.05, 0.77)
+    footerRow.Size = UDim2.fromScale(0.90, 0.16)
+    footerRow.Parent = card
+
     local buyButton = Instance.new("TextButton")
     buyButton.Name = "BuyButton"
-    buyButton.AnchorPoint = Vector2.new(1, 1)
-    buyButton.Position = UDim2.new(0.96, 0, 0.93, 0)
-    buyButton.Size = UDim2.new(0.34, 0, 0.16, 0)
+    buyButton.AnchorPoint = Vector2.new(1, 0.5)
+    buyButton.Position = UDim2.fromScale(1, 0.5)
+    buyButton.Size = UDim2.fromScale(0.34, 0.86)
     buyButton.AutoButtonColor = false
     buyButton.BorderSizePixel = 0
     buyButton.Font = Enum.Font.GothamBlack
     buyButton.TextColor3 = WHITE
     buyButton.TextScaled = true
-    buyButton.Parent = card
+    buyButton.Parent = footerRow
     applyCorners(buyButton, px(10))
     local buyStroke = applyStroke(buyButton, accent, 1, 0.15)
     local buyConstraint = Instance.new("UITextSizeConstraint")
@@ -600,20 +608,18 @@ local function buildShopCard(parent, item, host)
     if item.BestValue or item.isBest then
         local bestLabel = Instance.new("TextLabel")
         bestLabel.Name = "BestValue"
-        bestLabel.AnchorPoint = Vector2.new(1, 1)
+        bestLabel.AnchorPoint = Vector2.new(0, 0.5)
         bestLabel.BackgroundTransparency = 1
-        bestLabel.Position = UDim2.new(0.96, 0, 0.86, 0)
-        bestLabel.Size = UDim2.new(0.24, 0, 0.08, 0)
+        bestLabel.Position = UDim2.fromScale(0, 0.5)
+        bestLabel.Size = UDim2.fromScale(0.26, 0.72)
         bestLabel.Font = Enum.Font.GothamBlack
         bestLabel.Text = "BEST VALUE"
         bestLabel.TextColor3 = ORANGE_BRIGHT
         bestLabel.TextScaled = true
-        bestLabel.TextXAlignment = Enum.TextXAlignment.Right
-        bestLabel.Parent = card
-        local bestConstraint = Instance.new("UITextSizeConstraint")
-        bestConstraint.MinTextSize = 9
-        bestConstraint.MaxTextSize = px(14)
-        bestConstraint.Parent = bestLabel
+        bestLabel.TextXAlignment = Enum.TextXAlignment.Left
+        bestLabel.TextYAlignment = Enum.TextYAlignment.Center
+        bestLabel.ZIndex = 4
+        bestLabel.Parent = footerRow
     end
 
     local owned = false
@@ -729,8 +735,12 @@ local function getPackTabItems(source, kindLabel, iconKey, accentColor, nounLabe
     return items
 end
 
-local function buildCatalogPage(parent, items, host)
+local function buildCatalogPage(parent, items, host, options)
     local catalogItems = (type(items) == "table") and items or {}
+    local cardHeightScale = 0.40
+    if type(options) == "table" and type(options.cardHeightScale) == "number" then
+        cardHeightScale = math.clamp(options.cardHeightScale, 0.30, 0.50)
+    end
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "ShopScroll"
     scroll.BackgroundTransparency = 1
@@ -738,15 +748,18 @@ local function buildCatalogPage(parent, items, host)
     scroll.Size = UDim2.new(1, 0, 1, 0)
     scroll.CanvasSize = UDim2.fromScale(0, 0)
     scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scroll.ScrollBarThickness = math.max(6, px(8))
+    scroll.Active = true
+    scroll.ScrollingEnabled = true
+    scroll.ScrollBarThickness = math.max(8, px(10))
     scroll.ScrollBarImageColor3 = UITheme.GOLD
     scroll.ScrollBarImageTransparency = 0.15
     scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroll.ZIndex = 3
     scroll.Parent = parent
 
     local padding = Instance.new("UIPadding")
     padding.PaddingTop = UDim.new(0.02, 0)
-    padding.PaddingBottom = UDim.new(0.09, 0)
+    padding.PaddingBottom = UDim.new(0.24, 0)
     padding.PaddingLeft = UDim.new(0.02, 0)
     padding.PaddingRight = UDim.new(0.02, 0)
     padding.Parent = scroll
@@ -758,7 +771,7 @@ local function buildCatalogPage(parent, items, host)
     grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
     grid.VerticalAlignment = Enum.VerticalAlignment.Top
     grid.CellPadding = UDim2.fromScale(0.02, 0.02)
-    grid.CellSize = UDim2.fromScale(0.47, 0.44)
+    grid.CellSize = UDim2.fromScale(0.47, cardHeightScale)
     grid.Parent = scroll
 
     for _, item in ipairs(catalogItems) do
@@ -766,7 +779,7 @@ local function buildCatalogPage(parent, items, host)
     end
 
     local rowCount = math.max(1, math.ceil(#catalogItems / 2))
-    local contentHeight = 0.02 + (rowCount * 0.44) + math.max(0, rowCount - 1) * 0.02 + 0.22
+    local contentHeight = 0.26 + (rowCount * cardHeightScale) + math.max(0, rowCount - 1) * 0.02 + 0.34
     scroll.CanvasSize = UDim2.fromScale(0, contentHeight)
 
     return scroll
@@ -874,9 +887,9 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
     contentGradient.Parent = contentArea
 
     local tabPages = {}
-    tabPages.gamepasses = buildCatalogPage(contentArea, getGamepassTabItems(), root)
+    tabPages.gamepasses = buildCatalogPage(contentArea, getGamepassTabItems(), root, { cardHeightScale = 0.36 })
     tabPages.coins = buildCatalogPage(contentArea, getPackTabItems(CoinProducts, "COINS", "Coin", ORANGE, "Coin"), root)
-    tabPages.keys = buildCatalogPage(contentArea, getPackTabItems(KeyProducts, "KEYS", "Key", UITheme.GOLD, "Key"), root)
+    tabPages.keys = buildCatalogPage(contentArea, getPackTabItems(KeyProducts, "KEYS", "Key", Color3.fromRGB(166, 118, 255), "Key"), root)
 
     for _, page in pairs(tabPages) do
         page.Visible = false
@@ -904,11 +917,6 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
                 label.TextColor3 = active and WHITE or DIM_TEXT
             end
 
-            local indicator = btn:FindFirstChild("ActiveBar")
-            if indicator then
-                indicator.BackgroundTransparency = active and 0 or 1
-            end
-
             local stroke = btn:FindFirstChildOfClass("UIStroke")
             if stroke then
                 stroke.Color = active and UITheme.GOLD_WARM or UITheme.CARD_STROKE
@@ -934,17 +942,6 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
         btn.Parent = sidebar
         applyCorners(btn, px(12))
         applyStroke(btn, UITheme.CARD_STROKE, 1, 0.25)
-
-        local activeBar = Instance.new("Frame")
-        activeBar.Name = "ActiveBar"
-        activeBar.BackgroundColor3 = UITheme.GOLD_WARM
-        activeBar.BorderSizePixel = 0
-        activeBar.BackgroundTransparency = 1
-        activeBar.Position = UDim2.new(0.05, 0, 0.18, 0)
-        activeBar.Size = UDim2.new(0.03, 0, 0.64, 0)
-        activeBar.ZIndex = 7
-        activeBar.Parent = btn
-        applyCorners(activeBar, px(8))
 
         local label = Instance.new("TextLabel")
         label.Name = "Label"
