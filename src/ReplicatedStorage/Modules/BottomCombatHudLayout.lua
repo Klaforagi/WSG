@@ -105,12 +105,12 @@ local function applyLayout()
 	local xpFrame = state.XPBarFrame
 
 	root.AnchorPoint = Vector2.new(0.5, 1)
-	root.Position = UDim2.new(0.5, 0, 1, -metrics.BottomPad)
-	root.Size = UDim2.fromOffset(metrics.RootWidth, metrics.RootHeight)
+	root.Position = UDim2.new(0.5, 0, 0.98, 0)
+	root.Size = UDim2.new(0.4, 0, 0.2, 0)
 
 	xpFrame.AnchorPoint = Vector2.new(0.5, 1)
 	xpFrame.Position = UDim2.new(0.5, 0, 1, 0)
-	xpFrame.Size = UDim2.new(1, 0, 0, metrics.XPHeight)
+	xpFrame.Size = UDim2.new(1, 0, 0.25, 0)
 
 	row.AnchorPoint = Vector2.new(0.5, 1)
 	row.Position = UDim2.new(0.5, 0, 1, -(metrics.XPHeight + metrics.RowGap))
@@ -118,13 +118,18 @@ local function applyLayout()
 
 	hotbar.AnchorPoint = Vector2.new(0.5, 0.5)
 	hotbar.Position = UDim2.new(0.5, 0, 0.5, 0)
-	hotbar.Size = UDim2.fromOffset(metrics.HotbarWidth, metrics.SlotSize)
+	hotbar.Size = UDim2.new(1, 0, 1, 0)
 
 	local dashFrame = row:FindFirstChild("DashButtonFrame")
 	if dashFrame and dashFrame:IsA("GuiObject") then
 		dashFrame.AnchorPoint = Vector2.new(1, 0.5)
 		dashFrame.Position = UDim2.new(1, 0, 0.5, 0)
-		dashFrame.Size = UDim2.fromOffset(metrics.DashButtonSize, metrics.DashButtonSize)
+		dashFrame.Size = UDim2.new(1, 0, 1, 0)
+
+		-- Use the Frame's SizeConstraint property (Enum.SizeConstraint)
+		pcall(function()
+			dashFrame.SizeConstraint = Enum.SizeConstraint.RelativeYY
+		end)
 	end
 
 	return metrics
@@ -174,14 +179,9 @@ function Layout.Get(playerGui)
 	local xpFrame = ensureFrame(root, XP_FRAME_NAME)
 
 	local constraint = root:FindFirstChild("SizeConstraint")
-	if not constraint or not constraint:IsA("UISizeConstraint") then
-		if constraint then constraint:Destroy() end
-		constraint = Instance.new("UISizeConstraint")
-		constraint.Name = "SizeConstraint"
-		constraint.Parent = root
+	if constraint and constraint:IsA("UISizeConstraint") then
+		constraint:Destroy()
 	end
-	constraint.MinSize = Vector2.new(260, 92)
-	constraint.MaxSize = Vector2.new(MAX_WIDTH, 190)
 
 	state = {
 		Gui = gui,

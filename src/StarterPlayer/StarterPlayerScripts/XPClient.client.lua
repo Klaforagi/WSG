@@ -152,12 +152,12 @@ local function applyXPBarLayout()
         return
     end
 
-    levelLabel.Size = UDim2.new(0, responsiveLabelSize, 0, responsiveLabelSize)
-    nextLabel.Size = UDim2.new(0, responsiveLabelSize, 0, responsiveLabelSize)
-    levelLabel.TextSize = math.max(12, math.floor(responsiveLabelSize * 0.62))
-    nextLabel.TextSize = levelLabel.TextSize
+    levelLabel.Size = UDim2.new(0.06, 0, 0.5, 0)
+    nextLabel.Size = UDim2.new(0.06, 0, 0.5, 0)
+    levelLabel.TextScaled = true
+    nextLabel.TextScaled = true
 
-    barBG.Size = UDim2.new(1, -(responsiveLabelSize * 2 + 12), 0, responsiveTrackH)
+    barBG.Size = UDim2.new(0.86, 0, 0.55, 0)
 end
 
 do
@@ -191,29 +191,19 @@ shellStroke.Thickness = 2
 shellStroke.Transparency = 0.38
 shellStroke.Parent = container
 
-local shellShadow = Instance.new("Frame")
-shellShadow.Name = "Shadow"
-shellShadow.AnchorPoint = Vector2.new(0.5, 0.5)
-shellShadow.Position = UDim2.new(0.5, 0, 0.55, 3)
-shellShadow.Size = UDim2.new(1, 10, 1, 10)
-shellShadow.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-shellShadow.BackgroundTransparency = 0.66
-shellShadow.BorderSizePixel = 0
-shellShadow.ZIndex = 0
-shellShadow.Parent = container
-Instance.new("UICorner", shellShadow).CornerRadius = UDim.new(0, 14)
+-- Shadow frame removed per layout change
 
 --------------------------------------------------------------------------------
 -- LEVEL LABELS  (outside bar, left = current, right = next)
 --------------------------------------------------------------------------------
 levelLabel = Instance.new("TextLabel")
 levelLabel.Name = "LevelLabel"
-levelLabel.Size = UDim2.new(0, LABEL_SIZE, 0, LABEL_SIZE)
+levelLabel.Size = UDim2.new(0.06, 0, 0.5, 0)
 levelLabel.Position = UDim2.new(0, 0, 0.5, 0)
 levelLabel.AnchorPoint = Vector2.new(0, 0.5)
 levelLabel.BackgroundTransparency = 1
 levelLabel.Font = Enum.Font.GothamBold
-levelLabel.TextSize = 14
+levelLabel.TextScaled = true
 levelLabel.TextColor3 = COLOR_LABEL
 levelLabel.Text = "1"
 levelLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -223,12 +213,12 @@ levelLabel.Parent = container
 
 nextLabel = Instance.new("TextLabel")
 nextLabel.Name = "NextLevelLabel"
-nextLabel.Size = UDim2.new(0, LABEL_SIZE, 0, LABEL_SIZE)
+nextLabel.Size = UDim2.new(0.06, 0, 0.5, 0)
 nextLabel.Position = UDim2.new(1, 0, 0.5, 0)
 nextLabel.AnchorPoint = Vector2.new(1, 0.5)
 nextLabel.BackgroundTransparency = 1
 nextLabel.Font = Enum.Font.GothamBold
-nextLabel.TextSize = 14
+nextLabel.TextScaled = true
 nextLabel.TextColor3 = COLOR_LABEL
 nextLabel.Text = "2"
 nextLabel.TextXAlignment = Enum.TextXAlignment.Center

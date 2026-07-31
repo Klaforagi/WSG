@@ -174,7 +174,7 @@ end
 local container = Instance.new("Frame")
 container.Name = "HealthContainer"
 container.AnchorPoint = Vector2.new(0, 1)
-container.Position = UDim2.new(0.01, 0, 0.995, 0)
+container.Position = UDim2.new(0.01, 0, 0.98, 0)
 container.Size = UDim2.new(0.2, 0, 0.05, 0)
 container.BackgroundColor3 = NAVY
 container.BackgroundTransparency = 0.06
