@@ -100,7 +100,6 @@ local function applyLayout()
 
 	local metrics = computeMetrics()
 	local root = state.Root
-	local row = state.HotbarDashRow
 	local hotbar = state.HotbarButtonsContainer
 	local xpFrame = state.XPBarFrame
 
@@ -112,21 +111,18 @@ local function applyLayout()
 	xpFrame.Position = UDim2.new(0.5, 0, 1, 0)
 	xpFrame.Size = UDim2.new(1, 0, 0.25, 0)
 
-	row.AnchorPoint = Vector2.new(0.5, 1)
-	row.Position = UDim2.new(0.5, 0, 1, -(metrics.XPHeight + metrics.RowGap))
-	row.Size = UDim2.new(1, 0, 0, metrics.RowHeight)
+	-- HotbarDashRow removed; dash button will be parented directly under Root
 
 		hotbar.AnchorPoint = Vector2.new(0.5, 0.5)
 		hotbar.Position = UDim2.new(0.5, 0, 0.4, 0)
 		hotbar.Size = UDim2.new(0.6, 0, 0.6, 0)
 
-	local dashFrame = row:FindFirstChild("DashButtonFrame")
+	local dashFrame = root:FindFirstChild("DashButtonFrame")
 	if dashFrame and dashFrame:IsA("GuiObject") then
 		dashFrame.AnchorPoint = Vector2.new(1, 0.5)
-		dashFrame.Position = UDim2.new(1, 0, 0.5, 0)
-		dashFrame.Size = UDim2.new(1, 0, 1, 0)
 
-		-- Use the Frame's SizeConstraint property (Enum.SizeConstraint)
+		-- Don't overwrite position/size here; the Dash client manages those.
+		-- Only attempt to set SizeConstraint so the dash can remain square if desired.
 		pcall(function()
 			dashFrame.SizeConstraint = Enum.SizeConstraint.RelativeYY
 		end)
@@ -174,7 +170,6 @@ function Layout.Get(playerGui)
 	end
 
 	local root = ensureFrame(gui, ROOT_NAME)
-	local row = ensureFrame(root, ROW_NAME)
 	local hotbar = ensureFrame(root, HOTBAR_NAME)
 	local xpFrame = ensureFrame(root, XP_FRAME_NAME)
 
@@ -186,7 +181,6 @@ function Layout.Get(playerGui)
 	state = {
 		Gui = gui,
 		Root = root,
-		HotbarDashRow = row,
 		HotbarButtonsContainer = hotbar,
 		XPBarFrame = xpFrame,
 		ViewportConn = nil,

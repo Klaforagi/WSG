@@ -159,8 +159,8 @@ end
 
 local bottomHud = BottomCombatHudLayout.Get(playerGui)
 local screenGui = bottomHud.Gui
-local hotbarDashRow = bottomHud.HotbarDashRow
-local oldDashButtonFrame = hotbarDashRow:FindFirstChild("DashButtonFrame")
+local hudRoot = bottomHud.Root
+local oldDashButtonFrame = hudRoot:FindFirstChild("DashButtonFrame")
 if oldDashButtonFrame then
     oldDashButtonFrame:Destroy()
 end
@@ -175,10 +175,10 @@ local initialMetrics = BottomCombatHudLayout.Apply(playerGui)
 local btnFrame = Instance.new("Frame")
 btnFrame.Name = "DashButtonFrame"
 btnFrame.AnchorPoint = Vector2.new(1, 0.5)
-btnFrame.Position = UDim2.new(1, 0, 0.5, 0)
-btnFrame.Size = UDim2.fromOffset(initialMetrics.DashButtonSize or px(BUTTON_SIZE), initialMetrics.DashButtonSize or px(BUTTON_SIZE))
+btnFrame.Position = UDim2.new(1.3, 0, 0.4, 0)
+btnFrame.Size = UDim2.new(0.7, 0, 0.7, 0)
 btnFrame.BackgroundTransparency = 1
-btnFrame.Parent = hotbarDashRow
+btnFrame.Parent = hudRoot
 
 local applyingLayout = false
 local function applyButtonLayout()
@@ -187,8 +187,8 @@ local function applyButtonLayout()
     local buttonSize = metrics.DashButtonSize or px(BUTTON_SIZE)
 
     btnFrame.AnchorPoint = Vector2.new(1, 0.5)
-    btnFrame.Position = UDim2.new(1, 0, 0.5, 0)
-    btnFrame.Size = UDim2.fromOffset(buttonSize, buttonSize)
+    btnFrame.Position = UDim2.new(1.3, 0, 0.4, 0)
+    btnFrame.Size = UDim2.new(0.7, 0, 0.7, 0)
     applyingLayout = false
 end
 
