@@ -31,6 +31,8 @@ local keyBalances = {} -- PREMIUM CRATE / KEY SYSTEM
 local salvageBalances = {} -- SALVAGE SYSTEM
 local recentMutations = {}
 local _saveCoordinator
+local BoostService
+local GamepassService
 
 local function getSaveCoordinator()
     if _saveCoordinator == nil then
@@ -48,6 +50,32 @@ local function getSaveCoordinator()
         return nil
     end
     return _saveCoordinator
+end
+
+local function getBoostService()
+    if BoostService then
+        return BoostService
+    end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("BoostService")
+        if mod and mod:IsA("ModuleScript") then
+            BoostService = require(mod)
+        end
+    end)
+    return BoostService
+end
+
+local function getGamepassService()
+    if GamepassService then
+        return GamepassService
+    end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("GamepassService")
+        if mod and mod:IsA("ModuleScript") then
+            GamepassService = require(mod)
+        end
+    end)
+    return GamepassService
 end
 
 local function getKey(player)
@@ -244,10 +272,36 @@ function CurrencyService:SetCoins(player, amount)
     applyCoins(player, amount)
 end
 
-function CurrencyService:AddCoins(player, amount)
+function CurrencyService:AddCoins(player, amount, reasonOrOptions)
     if not player then return end
     amount = math.floor(tonumber(amount) or 0)
     if amount == 0 then return end
+
+    local skipMultipliers = false
+    local reason = nil
+    if type(reasonOrOptions) == "string" then
+        reason = reasonOrOptions
+    elseif type(reasonOrOptions) == "table" then
+        reason = reasonOrOptions.reason
+        skipMultipliers = reasonOrOptions.skipMultipliers == true
+    end
+
+    if amount > 0 and not skipMultipliers and reason ~= "purchase" then
+        local baseMultiplier = 1
+        local boostSvc = getBoostService()
+        if boostSvc and type(boostSvc.GetCoinMultiplier) == "function" then
+            baseMultiplier = math.max(1, tonumber(boostSvc:GetCoinMultiplier(player)) or 1)
+        end
+
+        local bonus = 0
+        local gamepassSvc = getGamepassService()
+        if gamepassSvc and type(gamepassSvc.GetCoinBonus) == "function" then
+            bonus = math.max(0, tonumber(gamepassSvc:GetCoinBonus(player)) or 0)
+        end
+
+        amount = math.floor(amount * math.max(1, baseMultiplier + bonus))
+    end
+
     local cur = CurrencyService:GetCoins(player)
     CurrencyService:SetCoins(player, cur + amount)
 end

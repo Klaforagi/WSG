@@ -10,10 +10,10 @@
 --------------------------------------------------------------------------------
 
 local MarketplaceService = game:GetService("MarketplaceService")
-local DataStoreService   = game:GetService("DataStoreService")
-local Players            = game:GetService("Players")
-local ReplicatedStorage  = game:GetService("ReplicatedStorage")
-local SSS                = game:GetService("ServerScriptService")
+local DataStoreService = game:GetService("DataStoreService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SSS = game:GetService("ServerScriptService")
 
 --------------------------------------------------------------------------------
 -- Load shared CoinProducts config
@@ -106,6 +106,24 @@ do
 end
 
 --------------------------------------------------------------------------------
+-- Load shared ShopCatalog config (starter pack bundle product)
+--------------------------------------------------------------------------------
+local ShopCatalog
+do
+	local mod = ReplicatedStorage:WaitForChild("ShopCatalog", 15)
+	if mod and mod:IsA("ModuleScript") then
+		local ok, result = pcall(require, mod)
+		if ok then
+			ShopCatalog = result
+		else
+			warn("[CoinShopReceipt] Failed to require ShopCatalog:", tostring(result))
+		end
+	else
+		warn("[CoinShopReceipt] ShopCatalog module not found – starter pack receipt handler disabled")
+	end
+end
+
+--------------------------------------------------------------------------------
 -- Load existing CurrencyService (server module under ServerScriptService)
 --------------------------------------------------------------------------------
 local CurrencyService
@@ -176,9 +194,6 @@ local function getGrantSkinBindable()
 	return nil
 end
 
---------------------------------------------------------------------------------
--- Receipt tracking DataStore (prevents granting coins more than once per receipt)
---------------------------------------------------------------------------------
 local RECEIPT_DS_NAME = "CoinShopReceipts_v1"
 local receiptStore = DataStoreService:GetDataStore(RECEIPT_DS_NAME)
 
@@ -186,7 +201,6 @@ local function receiptKey(receiptId)
 	return "receipt_" .. tostring(receiptId)
 end
 
---- Returns true if this receipt was already processed.
 local function isReceiptProcessed(receiptId)
 	local ok, val = pcall(function()
 		return receiptStore:GetAsync(receiptKey(receiptId))
@@ -197,15 +211,14 @@ local function isReceiptProcessed(receiptId)
 	return false
 end
 
--- Mark a receipt as processed.
 local function markReceiptProcessed(receiptId, playerId, productId, amount, awardedType)
 	local ok, err = pcall(function()
 		receiptStore:SetAsync(receiptKey(receiptId), {
-			playerId  = playerId,
+			playerId = playerId,
 			productId = productId,
-			amount    = amount,
-			type      = awardedType,
-			time      = os.time(),
+			amount = amount,
+			type = awardedType,
+			time = os.time(),
 		})
 	end)
 	if not ok then
@@ -214,49 +227,38 @@ local function markReceiptProcessed(receiptId, playerId, productId, amount, awar
 	return ok
 end
 
---------------------------------------------------------------------------------
--- ProcessReceipt callback
---------------------------------------------------------------------------------
 local function processReceipt(receiptInfo)
-	local playerId  = receiptInfo.PlayerId
+
+	local playerId = receiptInfo.PlayerId
 	local productId = receiptInfo.ProductId
 	local receiptId = receiptInfo.PurchaseId
 
-	print("[CoinShopReceipt] Processing receipt:", receiptId,
-		"Player:", playerId, "Product:", productId)
+	print("[CoinShopReceipt] Processing receipt:", receiptId, "Player:", playerId, "Product:", productId)
 
-	-- 1) Determine what this product grants (coins, keys, or shards)
 	local coinsToAward = CoinProducts and CoinProducts.CoinsByProductId and CoinProducts.CoinsByProductId[productId]
-	local keysToAward  = KeyProducts and KeyProducts.KeysByProductId and KeyProducts.KeysByProductId[productId]
+	local keysToAward = KeyProducts and KeyProducts.KeysByProductId and KeyProducts.KeysByProductId[productId]
 	local shardsToAward = ShardProducts and ShardProducts.ShardsByProductId and ShardProducts.ShardsByProductId[productId]
 	local skinIdToGrant = SkinProducts and SkinProducts.SkinIdByProductId and SkinProducts.SkinIdByProductId[productId]
 	local potionProduct = PotionProducts and PotionProducts.ProductById and PotionProducts.ProductById[productId]
+	local shopProduct = ShopCatalog and ShopCatalog.GetByProductId and ShopCatalog.GetByProductId(productId)
 
-	if not coinsToAward and not keysToAward and not shardsToAward and not skinIdToGrant and not potionProduct then
-		-- Not one of our products – another ProcessReceipt handler may
-		-- handle it if you add one later. Return NotProcessedYet so Roblox
-		-- retries and the correct handler can pick it up (or it times out).
+	if not coinsToAward and not keysToAward and not shardsToAward and not skinIdToGrant and not potionProduct and not (shopProduct and shopProduct.Reward) then
 		warn("[CoinShopReceipt] Unknown product ID:", productId, "– skipping")
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- 2) Check for duplicate receipt
 	if isReceiptProcessed(receiptId) then
 		print("[CoinShopReceipt] Receipt already processed:", receiptId)
 		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
-	-- 3) Find the player in the server
 	local playerObj = Players:GetPlayerByUserId(playerId)
 	if not playerObj then
-		-- Player left before we could grant. Return NotProcessedYet so
-		-- Roblox re-delivers the receipt when they rejoin.
 		warn("[CoinShopReceipt] Player", playerId, "not in server – will retry later")
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
 
-	-- 4) Award the product.
-	if (coinsToAward or keysToAward or shardsToAward) and not CurrencyService then
+	if (coinsToAward or keysToAward or shardsToAward or (shopProduct and shopProduct.Reward)) and not CurrencyService then
 		warn("[CoinShopReceipt] CurrencyService unavailable – cannot award currency")
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
@@ -350,24 +352,56 @@ local function processReceipt(receiptInfo)
 		end
 	end
 
-	-- 5) Save immediately so the balance is persisted
+	if shopProduct and type(shopProduct.Reward) == "table" then
+		local reward = shopProduct.Reward
+		if reward.Coins then
+			local awardOk, awardErr = pcall(function()
+				CurrencyService:AddCoins(playerObj, reward.Coins, { reason = "purchase" })
+			end)
+			if not awardOk then
+				warn("[CoinShopReceipt] StarterPack AddCoins failed for", playerObj.Name, ":", tostring(awardErr))
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+		end
+		if reward.Keys then
+			local awardOk, awardErr = pcall(function()
+				CurrencyService:AddKeys(playerObj, reward.Keys, "purchase")
+			end)
+			if not awardOk then
+				warn("[CoinShopReceipt] StarterPack AddKeys failed for", playerObj.Name, ":", tostring(awardErr))
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+		end
+		if reward.Salvage then
+			local awardOk, awardErr = pcall(function()
+				CurrencyService:AddSalvage(playerObj, reward.Salvage, "purchase")
+			end)
+			if not awardOk then
+				warn("[CoinShopReceipt] StarterPack AddSalvage failed for", playerObj.Name, ":", tostring(awardErr))
+				return Enum.ProductPurchaseDecision.NotProcessedYet
+			end
+		end
+		pcall(function()
+			CurrencyService:SaveForPlayer(playerObj)
+		end)
+	end
+
 	if (coinsToAward or keysToAward or shardsToAward) and CurrencyService then
 		pcall(function()
 			CurrencyService:SaveForPlayer(playerObj)
 		end)
 	end
 
-	-- 6) Mark receipt as processed
-	local awardedAmount = coinsToAward or keysToAward or shardsToAward or skinIdToGrant or (potionProduct and potionProduct.ItemId)
+	local awardedAmount = coinsToAward or keysToAward or shardsToAward or skinIdToGrant or (shopProduct and shopProduct.Id) or (potionProduct and potionProduct.ItemId)
 	local awardedType = coinsToAward and "coins"
 		or (keysToAward and "keys")
 		or (shardsToAward and "shards")
 		or (skinIdToGrant and "skin")
+		or (shopProduct and shopProduct.Id)
 		or (potionProduct and potionProduct.Kind)
 		or "unknown"
 	markReceiptProcessed(receiptId, playerId, productId, awardedAmount, awardedType)
 
-	-- 7) Track Robux spent for achievements
 	local robuxPrice = nil
 	if coinsToAward and CoinProducts and CoinProducts.PriceByProductId then
 		robuxPrice = CoinProducts.PriceByProductId[productId]
@@ -377,6 +411,8 @@ local function processReceipt(receiptInfo)
 		robuxPrice = ShardProducts.PriceByProductId[productId]
 	elseif skinIdToGrant and SkinProducts and SkinProducts.PriceByProductId then
 		robuxPrice = SkinProducts.PriceByProductId[productId]
+	elseif shopProduct and type(shopProduct.PriceRobux) == "number" then
+		robuxPrice = shopProduct.PriceRobux
 	elseif potionProduct and PotionProducts and PotionProducts.PriceByProductId then
 		robuxPrice = PotionProducts.PriceByProductId[productId]
 	end
@@ -389,8 +425,7 @@ local function processReceipt(receiptInfo)
 		end)
 	end
 
-	print("[CoinShopReceipt] Awarded", awardedAmount, awardedType, "to", playerObj.Name,
-		"(receipt:", receiptId, ")")
+	print("[CoinShopReceipt] Awarded", awardedAmount, awardedType, "to", playerObj.Name, "(receipt:", receiptId, ")")
 
 	return Enum.ProductPurchaseDecision.PurchaseGranted
 end

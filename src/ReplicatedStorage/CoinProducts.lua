@@ -15,35 +15,47 @@ local CoinProducts = {}
 CoinProducts.SMALL_COIN_PRODUCT_ID  = 0   -- ← Replace with real ID
 CoinProducts.MEDIUM_COIN_PRODUCT_ID = 0   -- ← Replace with real ID
 CoinProducts.LARGE_COIN_PRODUCT_ID  = 0   -- ← Replace with real ID
+CoinProducts.ULTRA_COIN_PRODUCT_ID  = 0   -- ← Replace with real ID
 
 ----------------------------------------------------------------------
 -- Robux prices displayed in the UI  ← UPDATE to match your Creator Dashboard
 ----------------------------------------------------------------------
-CoinProducts.SMALL_PACK_PRICE  = 29    -- ← Robux price for Small Pack
-CoinProducts.MEDIUM_PACK_PRICE = 79    -- ← Robux price for Medium Pack
-CoinProducts.LARGE_PACK_PRICE  = 149   -- ← Robux price for Large Pack
+CoinProducts.SMALL_PACK_PRICE  = 49     -- ← Robux price for Small Pack
+CoinProducts.MEDIUM_PACK_PRICE = 99     -- ← Robux price for Medium Pack
+CoinProducts.LARGE_PACK_PRICE  = 449    -- ← Robux price for Large Pack
+CoinProducts.ULTRA_PACK_PRICE  = 1000   -- ← Robux price for Ultra Pack
 
 ----------------------------------------------------------------------
 -- Pack definitions (order = display order in the popup)
 ----------------------------------------------------------------------
 CoinProducts.Packs = {
 	{
-		Name       = "Small Coin Pack",
-		Coins      = 100,
+		Name       = "200 Coin Pack",
+		Coins      = 200,
 		ProductId  = CoinProducts.SMALL_COIN_PRODUCT_ID,
 		Price      = CoinProducts.SMALL_PACK_PRICE,
+		BestValue  = false,
 	},
 	{
-		Name       = "Medium Coin Pack",
-		Coins      = 300,
+		Name       = "450 Coin Pack",
+		Coins      = 450,
 		ProductId  = CoinProducts.MEDIUM_COIN_PRODUCT_ID,
 		Price      = CoinProducts.MEDIUM_PACK_PRICE,
+		BestValue  = false,
 	},
 	{
-		Name       = "Large Coin Pack",
-		Coins      = 700,
+		Name       = "3,000 Coin Pack",
+		Coins      = 3000,
 		ProductId  = CoinProducts.LARGE_COIN_PRODUCT_ID,
 		Price      = CoinProducts.LARGE_PACK_PRICE,
+		BestValue  = false,
+	},
+	{
+		Name       = "7,500 Coin Pack",
+		Coins      = 7500,
+		ProductId  = CoinProducts.ULTRA_COIN_PRODUCT_ID,
+		Price      = CoinProducts.ULTRA_PACK_PRICE,
+		BestValue  = true,
 	},
 }
 

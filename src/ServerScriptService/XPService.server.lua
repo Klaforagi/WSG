@@ -24,6 +24,18 @@ local function getBoostService()
     return BoostService
 end
 
+local GamepassService
+local function getGamepassService()
+    if GamepassService then return GamepassService end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("GamepassService")
+        if mod and mod:IsA("ModuleScript") then
+            GamepassService = require(mod)
+        end
+    end)
+    return GamepassService
+end
+
 -- DataStore
 local DS = DataStoreService:GetDataStore("WSG_XP_v1")
 
@@ -270,13 +282,21 @@ local function AwardXP(player, reason, amountOverride, metadata)
 
     if amount <= 0 then return false end
 
-    -- Apply optional XP boost multiplier (2x XP, etc.)
+    -- Apply optional XP boost multiplier (2x XP, etc.) plus permanent
+    -- additive gamepass bonuses (VIP / 2x XP).
+    local boostMultiplier = 1
     local boostSvc = getBoostService()
     if boostSvc and type(boostSvc.GetXPMultiplier) == "function" then
-        local mult = tonumber(boostSvc:GetXPMultiplier(player)) or 1
-        mult = math.max(1, mult)
-        amount = math.floor(amount * mult)
+        boostMultiplier = math.max(1, tonumber(boostSvc:GetXPMultiplier(player)) or 1)
     end
+
+    local gamepassBonus = 0
+    local gamepassSvc = getGamepassService()
+    if gamepassSvc and type(gamepassSvc.GetXPBonus) == "function" then
+        gamepassBonus = math.max(0, tonumber(gamepassSvc:GetXPBonus(player)) or 0)
+    end
+
+    amount = math.floor(amount * math.max(1, boostMultiplier + gamepassBonus))
 
     if amount <= 0 then return false end
 

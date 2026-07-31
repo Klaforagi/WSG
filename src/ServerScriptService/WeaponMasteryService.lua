@@ -28,6 +28,7 @@ local saveScheduled = {}
 
 local _WeaponInstanceService
 local _SaveCoordinator
+local GamepassService
 
 local function getWeaponInstanceService()
     if not _WeaponInstanceService then
@@ -54,6 +55,19 @@ local function getSaveCoordinator()
         return nil
     end
     return _SaveCoordinator
+end
+
+local function getGamepassService()
+    if GamepassService then
+        return GamepassService
+    end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("GamepassService")
+        if mod and mod:IsA("ModuleScript") then
+            GamepassService = require(mod)
+        end
+    end)
+    return GamepassService
 end
 
 local function ensureRemote(className, name)
@@ -413,10 +427,18 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     statAmount = math.max(0, math.floor(tonumber(statAmount) or 0))
     local oldLevel = entry.level or 0
 
+    local gamepassBonus = 0
+    local gamepassSvc = getGamepassService()
+    if gamepassSvc and type(gamepassSvc.GetMasteryBonus) == "function" then
+        gamepassBonus = math.max(0, tonumber(gamepassSvc:GetMasteryBonus(player)) or 0)
+    end
+    local masteryMultiplier = math.max(1, 1 + gamepassBonus)
+
     if statKey and statAmount > 0 then
         entry[statKey] = math.max(0, math.floor(tonumber(entry[statKey]) or 0)) + statAmount
     end
     if xpAmount > 0 then
+        xpAmount = normalizeXPValue(math.floor((xpAmount * masteryMultiplier) * 10) / 10)
         entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
         entry.level = Config.GetLevelForXP(entry.xp, (meta and meta.rarity) or entry.rarity, (meta and meta.category) or entry.category)
     end

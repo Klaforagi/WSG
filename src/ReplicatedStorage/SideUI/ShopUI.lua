@@ -58,6 +58,7 @@ end
 local CoinProducts = safeRequire(ReplicatedStorage, "CoinProducts", 5)
 local KeyProducts  = safeRequire(ReplicatedStorage, "KeyProducts", 5)
 local AssetCodes   = safeRequire(ReplicatedStorage, "AssetCodes", 5)
+local ShopCatalog  = safeRequire(ReplicatedStorage, "ShopCatalog", 5)
 
 local function getAsset(key)
     if AssetCodes and type(AssetCodes.Get) == "function" then
@@ -81,10 +82,11 @@ end
 --------------------------------------------------------------------------------
 -- Palette (sourced from ForgeStallUI for visual parity with the shard column)
 --------------------------------------------------------------------------------
-local PANEL_BG       = Color3.fromRGB(8, 8, 9)
-local PANEL_BG_LIGHT = Color3.fromRGB(13, 13, 15)
-local CARD_BG        = Color3.fromRGB(16, 16, 18)
-local CARD_BG_HOVER  = Color3.fromRGB(22, 22, 24)
+local PANEL_BG       = Color3.fromRGB(6, 12, 26)
+local PANEL_BG_LIGHT = Color3.fromRGB(8, 16, 34)
+local CARD_BG        = Color3.fromRGB(12, 22, 46)
+local CARD_BG_HOVER  = Color3.fromRGB(17, 30, 58)
+local TOAST_BG       = Color3.fromRGB(10, 18, 38)
 local ORANGE         = Color3.fromRGB(255, 145, 20)
 local ORANGE_BRIGHT  = Color3.fromRGB(255, 191, 72)
 local WHITE          = UITheme.WHITE
@@ -114,24 +116,30 @@ end
 -- ShopUI module
 --------------------------------------------------------------------------------
 local ShopUI = {}
+local currentShopTab = "gamepasses"
+local activeTabSetter = nil
 
 local function showToast(parent, message, color, duration)
     local toast = Instance.new("TextLabel")
     toast.AnchorPoint = Vector2.new(0.5, 1)
-    toast.Position = UDim2.new(0.5, 0, 1, -px(20))
-    toast.Size = UDim2.new(0, px(360), 0, px(44))
-    toast.BackgroundColor3 = Color3.fromRGB(20, 20, 22)
+    toast.Position = UDim2.new(0.5, 0, 0.97, 0)
+    toast.Size = UDim2.new(0.36, 0, 0.08, 0)
+    toast.BackgroundColor3 = TOAST_BG
     toast.BackgroundTransparency = 0.05
     toast.BorderSizePixel = 0
     toast.Font = Enum.Font.GothamBold
     toast.Text = message
     toast.TextColor3 = color or WHITE
-    toast.TextSize = px(16)
+    toast.TextScaled = true
     toast.TextWrapped = true
     toast.ZIndex = 260
     toast.Parent = parent
     applyCorners(toast, px(8))
     applyStroke(toast, ORANGE, 1, 0.4)
+    local toastConstraint = Instance.new("UITextSizeConstraint")
+    toastConstraint.MinTextSize = 10
+    toastConstraint.MaxTextSize = px(16)
+    toastConstraint.Parent = toast
     task.delay(duration or 2.2, function()
         if toast and toast.Parent then
             pcall(function() toast:Destroy() end)
@@ -377,6 +385,407 @@ local function buildCurrencyStrip(parent)
     return strip, cardCount
 end
 
+local function getShopItems()
+    if ShopCatalog and type(ShopCatalog.GetItems) == "function" then
+        return ShopCatalog.GetItems()
+    end
+    return {}
+end
+
+local function getItemOwnedAttribute(item)
+    if type(item) ~= "table" then
+        return nil
+    end
+    if type(item.OwnedAttribute) == "string" and item.OwnedAttribute ~= "" then
+        return item.OwnedAttribute
+    end
+    return nil
+end
+
+local function promptPurchaseForItem(item)
+    if type(item) ~= "table" then
+        return false, "invalid item"
+    end
+
+    if item.Kind == "GamePass" then
+        local gamePassId = math.floor(tonumber(item.GamePassId) or 0)
+        if gamePassId <= 0 then
+            return false, "gamepass id not set"
+        end
+        MarketplaceService:PromptGamePassPurchase(player, gamePassId)
+        return true
+    end
+
+    if item.Kind == "Product" then
+        local productId = math.floor(tonumber(item.ProductId) or 0)
+        if productId <= 0 then
+            return false, "product id not set"
+        end
+        MarketplaceService:PromptProductPurchase(player, productId)
+        return true
+    end
+
+    return false, "unsupported purchase type"
+end
+
+local function buildShopCard(parent, item, host)
+    local accent = item.AccentColor or ORANGE
+    local card = Instance.new("Frame")
+    card.Name = tostring(item.Id or "ShopItem") .. "Card"
+    card.LayoutOrder = math.floor(tonumber(item.SortOrder) or 0)
+    card.BackgroundColor3 = CARD_BG
+    card.BorderSizePixel = 0
+    card.ClipsDescendants = true
+    card.Parent = parent
+    applyCorners(card, px(16))
+    local cardStroke = applyStroke(card, accent, 1.4, 0.08)
+
+    local topBar = Instance.new("Frame")
+    topBar.Name = "TopBar"
+    topBar.BackgroundColor3 = accent
+    topBar.BackgroundTransparency = 0.12
+    topBar.BorderSizePixel = 0
+    topBar.Size = UDim2.new(1, 0, 0.035, 0)
+    topBar.Parent = card
+
+    local badge = Instance.new("TextLabel")
+    badge.Name = "Badge"
+    badge.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.2)
+    badge.BorderSizePixel = 0
+    badge.Position = UDim2.new(0.04, 0, 0.07, 0)
+    badge.Size = UDim2.new(0.24, 0, 0.13, 0)
+    badge.Font = Enum.Font.GothamBlack
+    badge.Text = tostring(item.BadgeText or item.Kind or "SHOP")
+    badge.TextColor3 = WHITE
+    badge.TextScaled = true
+    badge.ZIndex = 2
+    badge.Parent = card
+    applyCorners(badge, px(10))
+    local badgeStroke = Instance.new("UIStroke")
+    badgeStroke.Color = accent
+    badgeStroke.Transparency = 0.25
+    badgeStroke.Thickness = 1
+    badgeStroke.Parent = badge
+    local badgeConstraint = Instance.new("UITextSizeConstraint")
+    badgeConstraint.MinTextSize = 10
+    badgeConstraint.MaxTextSize = px(18)
+    badgeConstraint.Parent = badge
+
+    local pricePill = Instance.new("Frame")
+    pricePill.Name = "PricePill"
+    pricePill.AnchorPoint = Vector2.new(1, 0)
+    pricePill.Position = UDim2.new(0.96, 0, 0.07, 0)
+    pricePill.Size = UDim2.new(0.22, 0, 0.13, 0)
+    pricePill.BackgroundColor3 = PANEL_BG
+    pricePill.BorderSizePixel = 0
+    pricePill.Parent = card
+    applyCorners(pricePill, px(10))
+    local priceStroke = applyStroke(pricePill, accent, 1, 0.3)
+
+    local robuxImage = getAsset("Robux")
+    if robuxImage then
+        local robuxIcon = Instance.new("ImageLabel")
+        robuxIcon.Name = "RobuxIcon"
+        robuxIcon.BackgroundTransparency = 1
+        robuxIcon.AnchorPoint = Vector2.new(0, 0.5)
+        robuxIcon.Position = UDim2.new(0.08, 0, 0.5, 0)
+        robuxIcon.Size = UDim2.new(0.18, 0, 0.62, 0)
+        robuxIcon.ScaleType = Enum.ScaleType.Fit
+        robuxIcon.Image = robuxImage
+        robuxIcon.Parent = pricePill
+    end
+
+    local priceLabel = Instance.new("TextLabel")
+    priceLabel.Name = "Price"
+    priceLabel.BackgroundTransparency = 1
+    priceLabel.Position = UDim2.new(0.32, 0, 0, 0)
+    priceLabel.Size = UDim2.new(0.66, 0, 1, 0)
+    priceLabel.Font = Enum.Font.GothamBlack
+    priceLabel.Text = tostring(math.floor(tonumber(item.PriceRobux) or 0))
+    priceLabel.TextColor3 = ORANGE_BRIGHT
+    priceLabel.TextScaled = true
+    priceLabel.TextXAlignment = Enum.TextXAlignment.Left
+    priceLabel.TextYAlignment = Enum.TextYAlignment.Center
+    priceLabel.Parent = pricePill
+    local priceConstraint = Instance.new("UITextSizeConstraint")
+    priceConstraint.MinTextSize = 10
+    priceConstraint.MaxTextSize = px(18)
+    priceConstraint.Parent = priceLabel
+
+    local iconBubble = Instance.new("Frame")
+    iconBubble.Name = "IconBubble"
+    iconBubble.BackgroundColor3 = accent:Lerp(Color3.new(1, 1, 1), 0.16)
+    iconBubble.BorderSizePixel = 0
+    iconBubble.Position = UDim2.new(0.04, 0, 0.25, 0)
+    iconBubble.Size = UDim2.new(0.20, 0, 0.36, 0)
+    iconBubble.Parent = card
+    applyCorners(iconBubble, px(18))
+    local iconStroke = applyStroke(iconBubble, accent, 1, 0.25)
+
+    local iconAsset = item.IconKey and getAsset(item.IconKey) or nil
+    if iconAsset then
+        local iconImage = Instance.new("ImageLabel")
+        iconImage.Name = "IconImage"
+        iconImage.BackgroundTransparency = 1
+        iconImage.Size = UDim2.new(0.72, 0, 0.72, 0)
+        iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+        iconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
+        iconImage.ScaleType = Enum.ScaleType.Fit
+        iconImage.Image = iconAsset
+        iconImage.Parent = iconBubble
+    else
+        local iconLabel = Instance.new("TextLabel")
+        iconLabel.Name = "IconText"
+        iconLabel.BackgroundTransparency = 1
+        iconLabel.Size = UDim2.new(1, 0, 1, 0)
+        iconLabel.Font = Enum.Font.GothamBlack
+        iconLabel.Text = tostring(item.IconText or string.upper(string.sub(item.DisplayName or item.Id or "", 1, 3)))
+        iconLabel.TextColor3 = PANEL_BG
+        iconLabel.TextScaled = true
+        iconLabel.Parent = iconBubble
+        local iconConstraint = Instance.new("UITextSizeConstraint")
+        iconConstraint.MinTextSize = 18
+        iconConstraint.MaxTextSize = px(38)
+        iconConstraint.Parent = iconLabel
+    end
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.Position = UDim2.new(0.28, 0, 0.24, 0)
+    title.Size = UDim2.new(0.67, 0, 0.14, 0)
+    title.Font = Enum.Font.GothamBlack
+    title.Text = tostring(item.DisplayName or item.Id or "Shop Item")
+    title.TextColor3 = WHITE
+    title.TextScaled = true
+    title.TextXAlignment = Enum.TextXAlignment.Left
+    title.TextYAlignment = Enum.TextYAlignment.Center
+    title.Parent = card
+    local titleConstraint = Instance.new("UITextSizeConstraint")
+    titleConstraint.MinTextSize = 11
+    titleConstraint.MaxTextSize = px(22)
+    titleConstraint.Parent = title
+
+    local description = Instance.new("TextLabel")
+    description.Name = "Description"
+    description.BackgroundTransparency = 1
+    description.Position = UDim2.new(0.28, 0, 0.41, 0)
+    description.Size = UDim2.new(0.67, 0, 0.21, 0)
+    description.Font = Enum.Font.Gotham
+    description.Text = tostring(item.Description or "")
+    description.TextColor3 = DIM_TEXT
+    description.TextScaled = true
+    description.TextWrapped = true
+    description.TextXAlignment = Enum.TextXAlignment.Left
+    description.TextYAlignment = Enum.TextYAlignment.Top
+    description.Parent = card
+    local descConstraint = Instance.new("UITextSizeConstraint")
+    descConstraint.MinTextSize = 9
+    descConstraint.MaxTextSize = px(14)
+    descConstraint.Parent = description
+
+    local buyButton = Instance.new("TextButton")
+    buyButton.Name = "BuyButton"
+    buyButton.AnchorPoint = Vector2.new(1, 1)
+    buyButton.Position = UDim2.new(0.96, 0, 0.93, 0)
+    buyButton.Size = UDim2.new(0.34, 0, 0.16, 0)
+    buyButton.AutoButtonColor = false
+    buyButton.BorderSizePixel = 0
+    buyButton.Font = Enum.Font.GothamBlack
+    buyButton.TextColor3 = WHITE
+    buyButton.TextScaled = true
+    buyButton.Parent = card
+    applyCorners(buyButton, px(10))
+    local buyStroke = applyStroke(buyButton, accent, 1, 0.15)
+    local buyConstraint = Instance.new("UITextSizeConstraint")
+    buyConstraint.MinTextSize = 10
+    buyConstraint.MaxTextSize = px(18)
+    buyConstraint.Parent = buyButton
+
+    if item.BestValue or item.isBest then
+        local bestLabel = Instance.new("TextLabel")
+        bestLabel.Name = "BestValue"
+        bestLabel.AnchorPoint = Vector2.new(1, 1)
+        bestLabel.BackgroundTransparency = 1
+        bestLabel.Position = UDim2.new(0.96, 0, 0.86, 0)
+        bestLabel.Size = UDim2.new(0.24, 0, 0.08, 0)
+        bestLabel.Font = Enum.Font.GothamBlack
+        bestLabel.Text = "BEST VALUE"
+        bestLabel.TextColor3 = ORANGE_BRIGHT
+        bestLabel.TextScaled = true
+        bestLabel.TextXAlignment = Enum.TextXAlignment.Right
+        bestLabel.Parent = card
+        local bestConstraint = Instance.new("UITextSizeConstraint")
+        bestConstraint.MinTextSize = 9
+        bestConstraint.MaxTextSize = px(14)
+        bestConstraint.Parent = bestLabel
+    end
+
+    local owned = false
+    local busy = false
+    local ownedAttr = getItemOwnedAttribute(item)
+
+    local function refreshVisuals()
+        if item.Kind == "GamePass" and ownedAttr then
+            owned = player:GetAttribute(ownedAttr) == true
+        else
+            owned = false
+        end
+
+        local buttonText = "BUY"
+        local buttonColor = accent
+        local textColor = WHITE
+        local strokeColor = accent
+
+        if owned then
+            buttonText = "OWNED"
+            buttonColor = Color3.fromRGB(34, 42, 68)
+            textColor = DIM_TEXT
+            strokeColor = Color3.fromRGB(120, 126, 145)
+        end
+
+        buyButton.Text = buttonText
+        buyButton.BackgroundColor3 = buttonColor
+        buyButton.TextColor3 = textColor
+        cardStroke.Color = strokeColor
+        badgeStroke.Color = strokeColor
+        priceStroke.Color = strokeColor
+        iconStroke.Color = strokeColor
+        buyStroke.Color = strokeColor
+    end
+
+    local function openPurchase()
+        if busy then
+            return
+        end
+        if item.Kind == "GamePass" and owned then
+            showToast(host or card, tostring(item.DisplayName or item.Id or "Item") .. " already owned.", ORANGE_BRIGHT, 2)
+            return
+        end
+
+        local success, err = promptPurchaseForItem(item)
+        if not success then
+            showToast(host or card, tostring(item.DisplayName or item.Id or "Item") .. " is not configured yet.", RED, 2.5)
+            warn("[ShopUI] Purchase blocked for", tostring(item.Id), ":", tostring(err))
+            return
+        end
+
+        busy = true
+        task.delay(1.5, function()
+            busy = false
+        end)
+    end
+
+    card.MouseEnter:Connect(function()
+        TweenService:Create(card, QUICK_TWEEN, { BackgroundColor3 = CARD_BG_HOVER }):Play()
+    end)
+    card.MouseLeave:Connect(function()
+        TweenService:Create(card, QUICK_TWEEN, { BackgroundColor3 = CARD_BG }):Play()
+    end)
+
+    buyButton.Activated:Connect(openPurchase)
+
+    if item.Kind == "GamePass" and ownedAttr then
+        player:GetAttributeChangedSignal(ownedAttr):Connect(refreshVisuals)
+    end
+
+    refreshVisuals()
+    return card
+end
+
+local function getGamepassTabItems()
+    local items = {}
+    if ShopCatalog and type(ShopCatalog.GetItems) == "function" then
+        for _, item in ipairs(ShopCatalog.GetItems()) do
+            if item.Id == "starter_pack" or item.Kind == "GamePass" then
+                table.insert(items, item)
+            end
+        end
+    end
+    return items
+end
+
+local function getPackTabItems(source, kindLabel, iconKey, accentColor, nounLabel)
+    local items = {}
+    if not (source and type(source.Packs) == "table") then
+        return items
+    end
+
+    for index, pack in ipairs(source.Packs) do
+        local amount = math.floor(tonumber(pack.Coins or pack.Keys) or 0)
+        local price = math.floor(tonumber(pack.Price) or 0)
+        local nounText = amount == 1 and nounLabel or (nounLabel .. "s")
+        table.insert(items, {
+            Id = string.lower(kindLabel) .. "_pack_" .. tostring(index),
+            SortOrder = index,
+            Kind = "Product",
+            DisplayName = tostring(pack.Name or (formatNumber(amount) .. " " .. nounLabel .. " Pack")),
+            BadgeText = kindLabel,
+            Description = string.format("%s %s for %d Robux.", formatNumber(amount), nounText, price),
+            PriceRobux = price,
+            ProductId = pack.ProductId,
+            AccentColor = accentColor,
+            IconKey = iconKey,
+            IconText = nounLabel:sub(1, 3):upper(),
+            BestValue = pack.BestValue == true or index == #source.Packs,
+        })
+    end
+
+    return items
+end
+
+local function buildCatalogPage(parent, items, host)
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Name = "ShopScroll"
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.Size = UDim2.new(1, 0, 1, 0)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroll.ScrollBarThickness = math.max(6, px(8))
+    scroll.ScrollBarImageColor3 = UITheme.GOLD
+    scroll.ScrollBarImageTransparency = 0.15
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroll.Parent = parent
+
+    local padding = Instance.new("UIPadding")
+    padding.PaddingTop = UDim.new(0.02, 0)
+    padding.PaddingBottom = UDim.new(0.09, 0)
+    padding.PaddingLeft = UDim.new(0.02, 0)
+    padding.PaddingRight = UDim.new(0.02, 0)
+    padding.Parent = scroll
+
+    local grid = Instance.new("UIGridLayout")
+    grid.SortOrder = Enum.SortOrder.LayoutOrder
+    grid.FillDirection = Enum.FillDirection.Horizontal
+    grid.FillDirectionMaxCells = 2
+    grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    grid.VerticalAlignment = Enum.VerticalAlignment.Top
+    grid.CellPadding = UDim2.new(0, 0, 0, 0)
+    grid.Parent = scroll
+
+    local function updateGridSize()
+        local availableWidth = math.max(1, math.floor(scroll.AbsoluteSize.X or 0))
+        local gap = math.max(px(10), math.floor(availableWidth * 0.018))
+        local sideInset = math.max(px(10), math.floor(availableWidth * 0.018)) * 2
+        local cellWidth = math.max(px(250), math.floor((availableWidth - sideInset - gap) / 2))
+        local cellHeight = math.clamp(math.floor(cellWidth * 0.58), px(184), px(236))
+        grid.CellPadding = UDim2.new(0, gap, 0, gap)
+        grid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
+        scroll.CanvasSize = UDim2.new(0, 0, 0, grid.AbsoluteContentSize.Y + math.max(px(48), math.floor(cellHeight * 0.24)))
+    end
+
+    scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateGridSize)
+    grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateGridSize)
+    task.defer(updateGridSize)
+
+    for _, item in ipairs(getShopItems()) do
+        buildShopCard(scroll, item, host)
+    end
+
+    return scroll
+end
+
 --------------------------------------------------------------------------------
 -- Walk up the ancestor chain to find the modal window (ModalWindow) so the
 -- currency strip can be parented as a sibling and floated to its left edge.
@@ -406,131 +815,209 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
         end
     end
 
-    -- Root container lives inside the modal's content frame (kept simple — the
-    -- right side of the window is intentionally empty aside from a subtle
-    -- placeholder). The currency strip itself is parented OUTSIDE the window
-    -- (see below) so the cards float to the left of the panel like the Forge
-    -- shard column.
     local root = Instance.new("Frame")
-    root.Name                   = "ShopRoot"
+    root.Name = "ShopRoot"
     root.BackgroundTransparency = 1
-    root.Size                   = UDim2.new(1, 0, 1, 0)
-    root.ZIndex                 = 240
-    root.LayoutOrder            = 1
-    root.ClipsDescendants       = false
-    root.Parent                 = parent
+    root.Size = UDim2.new(1, 0, 1, 0)
+    root.ZIndex = 240
+    root.LayoutOrder = 1
+    root.ClipsDescendants = false
+    root.Parent = parent
 
-    -- Subtle centered placeholder inside the main window
-    local placeholder = Instance.new("TextLabel")
-    placeholder.Name = "Placeholder"
-    placeholder.AnchorPoint = Vector2.new(0.5, 0.5)
-    placeholder.Position = UDim2.new(0.5, 0, 0.5, 0)
-    placeholder.Size = UDim2.new(1, -px(40), 0, px(40))
-    placeholder.BackgroundTransparency = 1
-    placeholder.Font = Enum.Font.Gotham
-    placeholder.Text = "Currency purchases coming soon."
-    placeholder.TextColor3 = DIM_TEXT
-    placeholder.TextSize = px(18)
-    placeholder.TextTransparency = 0.25
-    placeholder.TextXAlignment = Enum.TextXAlignment.Center
-    placeholder.TextYAlignment = Enum.TextYAlignment.Center
-    placeholder.Parent = root
+    local shell = Instance.new("Frame")
+    shell.Name = "ShopShell"
+    shell.BackgroundColor3 = UITheme.NAVY
+    shell.BorderSizePixel = 0
+    shell.AnchorPoint = Vector2.new(0.5, 0.5)
+    shell.Position = UDim2.new(0.5, 0, 0.5, 0)
+    shell.Size = UDim2.new(0.985, 0, 0.985, 0)
+    shell.Parent = root
+    applyCorners(shell, px(18))
+    applyStroke(shell, UITheme.GOLD_DIM, 1, 0.88)
 
-    -- ──────────────────────────────────────────────────────────────────────
-    -- Currency strip: float OUTSIDE the modal window on the left, mirroring
-    -- ForgeStallUI's shard column. Parent the strip to the modal window itself
-    -- so it inherits show/hide with the window. Position it with a negative X
-    -- offset so it sits to the left of the window's outer edge.
-    -- ──────────────────────────────────────────────────────────────────────
-    local STRIP_W   = px(150)
-    local STRIP_GAP = px(12)
-    local cardCount = 0
+    local shellGradient = Instance.new("UIGradient")
+    shellGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(5, 11, 24)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(12, 20, 42)),
+    })
+    shellGradient.Rotation = 90
+    shellGradient.Parent = shell
 
-    local modalWindow = findModalWindow(parent)
-    local stripHost = modalWindow or root
+    local sidebar = Instance.new("Frame")
+    sidebar.Name = "ShopTabs"
+    sidebar.BackgroundColor3 = UITheme.SIDEBAR_BG
+    sidebar.BorderSizePixel = 0
+    sidebar.Position = UDim2.new(0.015, 0, 0.02, 0)
+    sidebar.Size = UDim2.new(0.14, 0, 0.96, 0)
+    sidebar.Parent = shell
+    applyCorners(sidebar, px(16))
+    applyStroke(sidebar, UITheme.CARD_STROKE, 1, 0.82)
 
-    -- Account for the modal window's UIPadding so the strip floats outside
-    -- the window's true outer edge (not the padded content area).
-    local hostPadLeft = 0
-    if modalWindow then
-        local pad = modalWindow:FindFirstChildOfClass("UIPadding")
-        if pad and pad.PaddingLeft then
-            hostPadLeft = pad.PaddingLeft.Offset
-        end
+    local sidebarPadding = Instance.new("UIPadding")
+    sidebarPadding.PaddingTop = UDim.new(0.04, 0)
+    sidebarPadding.PaddingBottom = UDim.new(0.04, 0)
+    sidebarPadding.PaddingLeft = UDim.new(0.05, 0)
+    sidebarPadding.PaddingRight = UDim.new(0.05, 0)
+    sidebarPadding.Parent = sidebar
+
+    local sidebarLayout = Instance.new("UIListLayout")
+    sidebarLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    sidebarLayout.Padding = UDim.new(0.03, 0)
+    sidebarLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    sidebarLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    sidebarLayout.Parent = sidebar
+
+    local contentArea = Instance.new("Frame")
+    contentArea.Name = "ShopPages"
+    contentArea.BackgroundColor3 = UITheme.NAVY_MID
+    contentArea.BorderSizePixel = 0
+    contentArea.Position = UDim2.new(0.17, 0, 0.02, 0)
+    contentArea.Size = UDim2.new(0.815, 0, 0.96, 0)
+    contentArea.Parent = shell
+    applyCorners(contentArea, px(16))
+    applyStroke(contentArea, UITheme.CARD_STROKE, 1, 0.9)
+
+    local contentGradient = Instance.new("UIGradient")
+    contentGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(7, 16, 34)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(14, 26, 52)),
+    })
+    contentGradient.Rotation = 90
+    contentGradient.Parent = contentArea
+
+    local tabPages = {}
+    tabPages.gamepasses = buildCatalogPage(contentArea, getGamepassTabItems(), root)
+    tabPages.coins = buildCatalogPage(contentArea, getPackTabItems(CoinProducts, "COINS", "Coin", ORANGE, "Coin"), root)
+    tabPages.keys = buildCatalogPage(contentArea, getPackTabItems(KeyProducts, "KEYS", "Key", UITheme.GOLD, "Key"), root)
+
+    for _, page in pairs(tabPages) do
+        page.Visible = false
+        page.Parent = contentArea
     end
 
-    local stripContainer = Instance.new("Frame")
-    stripContainer.Name = "ShopCurrencyStripContainer"
-    stripContainer.BackgroundTransparency = 1
-    stripContainer.BorderSizePixel = 0
-    stripContainer.AnchorPoint = Vector2.new(1, 0.5)
-    stripContainer.Position = UDim2.new(0, -(hostPadLeft + STRIP_GAP), 0.5, 0)
-    stripContainer.Size = UDim2.new(0, STRIP_W, 1, 0)
-    stripContainer.ZIndex = 270
-    stripContainer.ClipsDescendants = false
-    stripContainer.Parent = stripHost
+    local tabButtons = {}
 
-    local _strip
-    _strip, cardCount = buildCurrencyStrip(stripContainer)
-    print(string.format("[ShopUI] Rendered %d currency purchase cards", cardCount))
+    local function setActiveTab(tabId)
+        if tabId == "currency" then
+            tabId = "coins"
+        end
+        if not tabPages[tabId] then
+            tabId = "gamepasses"
+        end
 
-    -- The shop's content host is reparented between the active content frame
-    -- (ModalContent) and an offscreen prewarm container (also a descendant of
-    -- ModalWindow) when other modal menus take focus. Bind the floating
-    -- strip's visibility to whether the shop root is currently a descendant
-    -- of ModalContent so the coin/key packs only appear while the Shop is
-    -- the active page.
-    if modalWindow then
-        local function isInActiveContent()
-            local cur = root.Parent
-            while cur and cur ~= modalWindow do
-                if cur.Name == "ModalContent" then
-                    return true
-                end
-                cur = cur.Parent
+        currentShopTab = tabId
+
+        for id, btn in pairs(tabButtons) do
+            local active = (id == tabId)
+            btn.BackgroundColor3 = active and UITheme.TAB_ACTIVE or UITheme.SIDEBAR_BG
+
+            local label = btn:FindFirstChild("Label")
+            if label then
+                label.TextColor3 = active and WHITE or DIM_TEXT
             end
-            return false
+
+            local indicator = btn:FindFirstChild("ActiveBar")
+            if indicator then
+                indicator.BackgroundTransparency = active and 0 or 1
+            end
+
+            local stroke = btn:FindFirstChildOfClass("UIStroke")
+            if stroke then
+                stroke.Color = active and UITheme.GOLD_WARM or UITheme.CARD_STROKE
+                stroke.Transparency = active and 0.08 or 0.25
+            end
         end
-        local function syncStripVisibility()
-            if not stripContainer or not stripContainer.Parent then return end
-            stripContainer.Visible = isInActiveContent()
-        end
-        syncStripVisibility()
-        root.AncestryChanged:Connect(syncStripVisibility)
-        if root.Parent then
-            root.Parent.AncestryChanged:Connect(syncStripVisibility)
+
+        for id, page in pairs(tabPages) do
+            page.Visible = (id == tabId)
         end
     end
 
-    -- Clean up the strip when the shop root is destroyed entirely.
-    root.Destroying:Connect(function()
-        if stripContainer and stripContainer.Parent then
-            pcall(function() stripContainer:Destroy() end)
-        end
-    end)
+    local function makeTabButton(tabId, labelText, order)
+        local btn = Instance.new("TextButton")
+        btn.Name = labelText .. "Tab"
+        btn.AutoButtonColor = false
+        btn.BackgroundColor3 = UITheme.SIDEBAR_BG
+        btn.BorderSizePixel = 0
+        btn.Size = UDim2.new(0.92, 0, 0.24, 0)
+        btn.LayoutOrder = order
+        btn.Text = ""
+        btn.Parent = sidebar
+        applyCorners(btn, px(12))
+        applyStroke(btn, UITheme.CARD_STROKE, 1, 0.25)
 
-    print("[ShopUI] Opened simplified shop menu")
+        local activeBar = Instance.new("Frame")
+        activeBar.Name = "ActiveBar"
+        activeBar.BackgroundColor3 = UITheme.GOLD_WARM
+        activeBar.BorderSizePixel = 0
+        activeBar.BackgroundTransparency = 1
+        activeBar.Position = UDim2.new(0.05, 0, 0.18, 0)
+        activeBar.Size = UDim2.new(0.03, 0, 0.64, 0)
+        activeBar.Parent = btn
+        applyCorners(activeBar, px(8))
 
-    -- Public tab API: kept for backwards compatibility with CoinDisplay's
-    -- "+" coin button. In simplified mode there are no tabs; we always report
-    -- "currency" so the existing toggle behavior on the coin "+" button works.
-    ShopUI.getActiveTab = function() return "currency" end
-    ShopUI.setActiveTab = function(tabId)
-        if tabId and tabId ~= "currency" then
-            warn("[ShopUI] Old shop tab creation skipped in simplified shop mode (requested: " .. tostring(tabId) .. ")")
-        end
-        -- no-op: there is only one page
+        local label = Instance.new("TextLabel")
+        label.Name = "Label"
+        label.BackgroundTransparency = 1
+        label.Position = UDim2.new(0.14, 0, 0.18, 0)
+        label.Size = UDim2.new(0.78, 0, 0.64, 0)
+        label.Font = Enum.Font.GothamBlack
+        label.Text = labelText
+        label.TextColor3 = DIM_TEXT
+        label.TextScaled = true
+        label.TextXAlignment = Enum.TextXAlignment.Center
+        label.TextYAlignment = Enum.TextYAlignment.Center
+        label.Parent = btn
+        local labelConstraint = Instance.new("UITextSizeConstraint")
+        labelConstraint.MinTextSize = 10
+        labelConstraint.MaxTextSize = px(20)
+        labelConstraint.Parent = label
+
+        btn.MouseEnter:Connect(function()
+            if currentShopTab ~= tabId then
+                TweenService:Create(btn, QUICK_TWEEN, { BackgroundColor3 = UITheme.TAB_HOVER }):Play()
+            end
+        end)
+        btn.MouseLeave:Connect(function()
+            if currentShopTab ~= tabId then
+                TweenService:Create(btn, QUICK_TWEEN, { BackgroundColor3 = UITheme.SIDEBAR_BG }):Play()
+            end
+        end)
+        btn.Activated:Connect(function()
+            setActiveTab(tabId)
+        end)
+
+        tabButtons[tabId] = btn
+        return btn
     end
+
+    makeTabButton("gamepasses", "Gamepasses", 1)
+    makeTabButton("coins", "Coins", 2)
+    makeTabButton("keys", "Keys", 3)
+
+    activeTabSetter = setActiveTab
+    setActiveTab(currentShopTab)
+
+    print(string.format("[ShopUI] Opened shop catalog with %d items", #getGamepassTabItems() + #getPackTabItems(CoinProducts, "COINS", "Coin", ORANGE, "Coin") + #getPackTabItems(KeyProducts, "KEYS", "Key", UITheme.GOLD, "Key")))
 
     return root
 end
 
 -- Default tab API (overwritten on Create as well, but exposed so callers
 -- requiring this module before the menu is built can still introspect safely).
-ShopUI.getActiveTab = function() return "currency" end
+ShopUI.getActiveTab = function()
+    return currentShopTab == "coins" and "currency" or currentShopTab
+end
 ShopUI.setActiveTab = function(tabId)
-    if tabId and tabId ~= "currency" then
-        warn("[ShopUI] Old shop tab creation skipped in simplified shop mode (requested: " .. tostring(tabId) .. ")")
+    if tabId == "currency" then
+        tabId = "coins"
+    end
+    if type(tabId) ~= "string" or tabId == "" then
+        tabId = "gamepasses"
+    end
+    currentShopTab = tabId
+    if activeTabSetter then
+        activeTabSetter(tabId)
     end
 end
 

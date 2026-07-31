@@ -56,7 +56,58 @@ pcall(function()
     end
 end)
 
+local GamepassService = nil
+local function ensureGamepassService()
+    if GamepassService then return GamepassService end
+    local mod = ServerScriptService:FindFirstChild("GamepassService")
+    if mod and mod:IsA("ModuleScript") then
+        GamepassService = require(mod)
+    end
+    return GamepassService
+end
+
 local CrateService = {}
+
+local function copyWeights(source)
+    local result = {}
+    if type(source) ~= "table" then
+        return result
+    end
+    for key, value in pairs(source) do
+        result[key] = value
+    end
+    return result
+end
+
+local function getBaseRarityWeights(crateDef)
+    local weights = {}
+    if type(crateDef) ~= "table" then
+        return weights
+    end
+
+    for rarity, rarityDef in pairs(CrateConfig.Rarities or {}) do
+        local weight = 0
+        if crateDef.rarities and crateDef.rarities[rarity] then
+            weight = crateDef.rarities[rarity]
+        else
+            weight = (rarityDef and rarityDef.weight) or 0
+        end
+        weights[rarity] = weight
+    end
+
+    return weights
+end
+
+local function getRarityWeights(player, crateId, crateDef)
+    local gamepassSvc = ensureGamepassService()
+    if gamepassSvc and type(gamepassSvc.GetLuckyRarityWeights) == "function" then
+        local luckyWeights = gamepassSvc:GetLuckyRarityWeights(player, crateId)
+        if type(luckyWeights) == "table" and next(luckyWeights) ~= nil then
+            return copyWeights(luckyWeights)
+        end
+    end
+    return getBaseRarityWeights(crateDef)
+end
 
 local function resolveCrateId(crateId)
     if type(crateId) ~= "string" then return crateId end
@@ -102,22 +153,18 @@ local PendingRewards = {}
 -- PREMIUM CRATE / KEY SYSTEM  – uses per-crate rarities table if present,
 -- otherwise falls back to global CrateConfig.Rarities[rarity].weight.
 --------------------------------------------------------------------------------
-local function rollWeapon(crateDef)
+local function rollWeapon(player, crateId, crateDef)
     local pool = crateDef.pool
     if not pool or #pool == 0 then return nil end
+
+    local rarityWeights = getRarityWeights(player, crateId, crateDef)
 
     -- Build weight table: each entry gets the weight of its rarity
     local entries = {}
     local totalWeight = 0
     for _, entry in ipairs(pool) do
         -- PREMIUM CRATE / KEY SYSTEM  – prefer per-crate rarity weight
-        local w = 0
-        if crateDef.rarities and crateDef.rarities[entry.rarity] then
-            w = crateDef.rarities[entry.rarity]
-        else
-            local rarityDef = CrateConfig.Rarities[entry.rarity]
-            w = (rarityDef and rarityDef.weight) or 0
-        end
+        local w = tonumber(rarityWeights[entry.rarity]) or 0
         if w > 0 then
             totalWeight = totalWeight + w
             table.insert(entries, { entry = entry, cumulative = totalWeight })
@@ -298,7 +345,7 @@ function CrateService:OpenCrate(player, crateId)
     end
 
     -- Roll weapon
-    local rolled = rollWeapon(crateDef)
+    local rolled = rollWeapon(player, crateId, crateDef)
     if not rolled then
         print("[CrateService] FAILED – empty pool for " .. crateId)
         return false, "Empty pool"
@@ -577,7 +624,7 @@ function CrateService:RollAndGrant(player, crateId)
     end
 
     -- Roll weapon (same weighted logic as OpenCrate)
-    local rolled = rollWeapon(crateDef)
+    local rolled = rollWeapon(player, crateId, crateDef)
     if not rolled then
         print("[CrateService] RollAndGrant FAILED – empty pool for " .. crateId)
         return false, "Empty pool"
@@ -650,7 +697,7 @@ function CrateService:RollAndPend(player, crateId)
     end
 
     -- Roll weapon (same weighted logic as OpenCrate)
-    local rolled = rollWeapon(crateDef)
+    local rolled = rollWeapon(player, crateId, crateDef)
     if not rolled then
         print("[CrateService] RollAndPend FAILED – empty pool for " .. crateId)
         return false, "Empty pool"
@@ -708,32 +755,29 @@ end
 -- GET POOL INFO  (for client display of drop chances)
 -- PREMIUM CRATE / KEY SYSTEM  – uses per-crate rarities if available
 --------------------------------------------------------------------------------
-function CrateService:GetPoolInfo(crateId)
+function CrateService:GetPoolInfo(playerOrCrateId, maybeCrateId)
+    local player = nil
+    local crateId = playerOrCrateId
+    if typeof(playerOrCrateId) == "Instance" and playerOrCrateId:IsA("Player") then
+        player = playerOrCrateId
+        crateId = maybeCrateId
+    end
+
     crateId = resolveCrateId(crateId)
     local crateDef = CrateConfig.Crates[crateId]
     if not crateDef then return nil end
 
+    local rarityWeights = getRarityWeights(player, crateId, crateDef)
+
     local totalWeight = 0
     for _, entry in ipairs(crateDef.pool) do
-        local w = 0
-        if crateDef.rarities and crateDef.rarities[entry.rarity] then
-            w = crateDef.rarities[entry.rarity]
-        else
-            local rarityDef = CrateConfig.Rarities[entry.rarity]
-            w = (rarityDef and rarityDef.weight) or 0
-        end
+        local w = tonumber(rarityWeights[entry.rarity]) or 0
         totalWeight = totalWeight + w
     end
 
     local info = {}
     for _, entry in ipairs(crateDef.pool) do
-        local w = 0
-        if crateDef.rarities and crateDef.rarities[entry.rarity] then
-            w = crateDef.rarities[entry.rarity]
-        else
-            local rarityDef = CrateConfig.Rarities[entry.rarity]
-            w = (rarityDef and rarityDef.weight) or 0
-        end
+        local w = tonumber(rarityWeights[entry.rarity]) or 0
         local chance = (totalWeight > 0) and (w / totalWeight * 100) or 0
         table.insert(info, {
             weapon  = entry.weapon,
