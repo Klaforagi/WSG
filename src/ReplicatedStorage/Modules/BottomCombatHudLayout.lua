@@ -116,9 +116,9 @@ local function applyLayout()
 	row.Position = UDim2.new(0.5, 0, 1, -(metrics.XPHeight + metrics.RowGap))
 	row.Size = UDim2.new(1, 0, 0, metrics.RowHeight)
 
-	hotbar.AnchorPoint = Vector2.new(0.5, 0.5)
-	hotbar.Position = UDim2.new(0.5, 0, 0.5, 0)
-	hotbar.Size = UDim2.new(1, 0, 1, 0)
+		hotbar.AnchorPoint = Vector2.new(0.5, 0.5)
+		hotbar.Position = UDim2.new(0.5, 0, 0.4, 0)
+		hotbar.Size = UDim2.new(0.6, 0, 0.6, 0)
 
 	local dashFrame = row:FindFirstChild("DashButtonFrame")
 	if dashFrame and dashFrame:IsA("GuiObject") then
@@ -175,7 +175,7 @@ function Layout.Get(playerGui)
 
 	local root = ensureFrame(gui, ROOT_NAME)
 	local row = ensureFrame(root, ROW_NAME)
-	local hotbar = ensureFrame(row, HOTBAR_NAME)
+	local hotbar = ensureFrame(root, HOTBAR_NAME)
 	local xpFrame = ensureFrame(root, XP_FRAME_NAME)
 
 	local constraint = root:FindFirstChild("SizeConstraint")

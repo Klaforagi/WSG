@@ -603,9 +603,9 @@ local function buildSlot(def)
 
     local countBadge = Instance.new("Frame")
     countBadge.Name = "CountBadge"
-    countBadge.AnchorPoint = Vector2.new(1, 0)
-    countBadge.Position = UDim2.new(1, -6, 0, 6)
-    countBadge.Size = UDim2.new(0, 24, 0, 18)
+    countBadge.AnchorPoint = Vector2.new(0, 0)
+    countBadge.Position = UDim2.new(0.6, 0, 0.07, 0)
+    countBadge.Size = UDim2.new(0.35, 0, 0.2, 0)
     countBadge.BackgroundColor3 = Color3.fromRGB(18, 26, 40)
     countBadge.BorderSizePixel = 0
     countBadge.ZIndex = 6
