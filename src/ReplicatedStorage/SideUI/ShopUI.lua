@@ -198,15 +198,10 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     amountLabel.Font = Enum.Font.GothamBlack
     amountLabel.Text = formatNumber(opts.amount)
     amountLabel.TextColor3 = WHITE
-    amountLabel.TextSize = px(22)
     amountLabel.TextXAlignment = Enum.TextXAlignment.Left
     amountLabel.TextYAlignment = Enum.TextYAlignment.Center
     amountLabel.TextScaled = true
     amountLabel.Parent = card
-    local amountConstraint = Instance.new("UITextSizeConstraint")
-    amountConstraint.MinTextSize = 12
-    amountConstraint.MaxTextSize = px(22)
-    amountConstraint.Parent = amountLabel
 
     -- Pack name (under amount)
     local nameLabel = Instance.new("TextLabel")
@@ -248,9 +243,9 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     priceLabel.Font = Enum.Font.GothamBlack
     priceLabel.Text = tostring(opts.price or 0)
     priceLabel.TextColor3 = ORANGE_BRIGHT
-    priceLabel.TextSize = px(16)
     priceLabel.TextXAlignment = Enum.TextXAlignment.Left
     priceLabel.TextYAlignment = Enum.TextYAlignment.Center
+    priceLabel.TextScaled = true
     priceLabel.Parent = priceRow
 
     -- BEST VALUE tag (bottom-right corner)
@@ -735,13 +730,14 @@ local function getPackTabItems(source, kindLabel, iconKey, accentColor, nounLabe
 end
 
 local function buildCatalogPage(parent, items, host)
+    local catalogItems = (type(items) == "table") and items or {}
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "ShopScroll"
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.Size = UDim2.new(1, 0, 1, 0)
     scroll.CanvasSize = UDim2.fromScale(0, 0)
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
     scroll.ScrollBarThickness = math.max(6, px(8))
     scroll.ScrollBarImageColor3 = UITheme.GOLD
     scroll.ScrollBarImageTransparency = 0.15
@@ -765,9 +761,13 @@ local function buildCatalogPage(parent, items, host)
     grid.CellSize = UDim2.fromScale(0.47, 0.44)
     grid.Parent = scroll
 
-    for _, item in ipairs(getShopItems()) do
+    for _, item in ipairs(catalogItems) do
         buildShopCard(scroll, item, host)
     end
+
+    local rowCount = math.max(1, math.ceil(#catalogItems / 2))
+    local contentHeight = 0.02 + (rowCount * 0.44) + math.max(0, rowCount - 1) * 0.02 + 0.22
+    scroll.CanvasSize = UDim2.fromScale(0, contentHeight)
 
     return scroll
 end
