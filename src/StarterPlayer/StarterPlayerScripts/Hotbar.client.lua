@@ -829,7 +829,7 @@ local function refreshSlots()
                         ui.btn.BackgroundColor3 = bgColor
                         ui.stroke.Color         = strokeColor
                         ui.nameLabel.TextColor3 = COLOR_TEXT
-                        ui.nameLabel.Text       = "Bandage"
+                        ui.nameLabel.Text       = "Heal"
                     elseif utilityType == "potion" then
                         local equippedPotionDef = getPotionDefinition(potionState.equippedPotionId)
                         local potionAccent = getPotionAccentColor(equippedPotionDef)
@@ -1015,8 +1015,22 @@ equipSlot = function(idx)
     -- Slot 3 = Bandage utility (not a weapon)
     if def.isUtility then
         if def.utilityType == "bandage" then
-            if _G.ActivateBandage then
-                _G.ActivateBandage()
+            local tool = getToolForSlot(idx)
+            if not tool then
+                refreshSlots()
+                return
+            end
+
+            local char = player.Character
+            local hum = char and char:FindFirstChildOfClass("Humanoid")
+            if tool.Parent == char then
+                if hum then
+                    pcall(function()
+                        hum:UnequipTools()
+                    end)
+                end
+            else
+                forceEquipRemote:FireServer(def.category, tool.Name)
             end
         elseif def.utilityType == "potion" then
             local hasEquippedPotion = potionState.equipped == true and math.max(0, math.floor(tonumber(potionState.count) or 0)) > 0

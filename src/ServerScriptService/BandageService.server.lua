@@ -8,11 +8,17 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local Debris            = game:GetService("Debris")
+local MarketplaceService = game:GetService("MarketplaceService")
+
+local ShopCatalog = require(ReplicatedStorage:WaitForChild("ShopCatalog"))
 
 local VFXFolder = ReplicatedStorage:FindFirstChild("VFX")
 local PlusHealsTemplate = VFXFolder and VFXFolder:FindFirstChild("PlusHeals")
 local BANDAGE_END_TIME_ATTR = "BandageEndTime"
 local DEFEAT_LOCK_ATTR = "DefeatLockActive"
+local BANDAGE_TOOL_NAME = "Bandage"
+local BANDAGE_PASS_ID = 0
+local BANDAGE_PASS_ITEM_ID = "bandage_gamepass"
 
 --------------------------------------------------------------------------------
 -- LOAD CONFIG
@@ -74,6 +80,7 @@ local function getState(player)
             healthConn   = nil,
             plusHealsVFX = nil,
             bandageEndTime = 0,
+            targetUserId = nil,
         }
     end
     return playerState[player]
@@ -101,6 +108,42 @@ local function getVFXAttachPart(player)
         or char:FindFirstChild("UpperTorso")
         or char:FindFirstChild("Torso")
         or char:FindFirstChild("Head")
+end
+
+local function hasBandagePass(player)
+    if not player then
+        return false
+    end
+
+    local catalogItem = ShopCatalog.GetById(BANDAGE_PASS_ITEM_ID)
+    local passId = catalogItem and math.floor(tonumber(catalogItem.GamePassId) or 0) or BANDAGE_PASS_ID
+    if passId > 0 then
+        local ok, owns = pcall(function()
+            return MarketplaceService:UserOwnsGamePassAsync(player.UserId, passId)
+        end)
+        if ok and owns == true then
+            return true
+        end
+    end
+
+    return player:GetAttribute("ShopBandageOwned") == true
+end
+
+local function hasBandageTool(player)
+    local char = player and player.Character
+    local bp = player and player:FindFirstChildOfClass("Backpack")
+    local sg = player and player:FindFirstChild("StarterGear")
+
+    if char and char:FindFirstChild(BANDAGE_TOOL_NAME) then
+        return true
+    end
+    if bp and bp:FindFirstChild(BANDAGE_TOOL_NAME) then
+        return true
+    end
+    if sg and sg:FindFirstChild(BANDAGE_TOOL_NAME) then
+        return true
+    end
+    return false
 end
 
 local function startCooldown(player, state)
@@ -133,6 +176,7 @@ local function stopBandage(player, reason)
     state.startPos = nil
     state.totalHealed = 0
     state.bandageEndTime = 0
+    state.targetUserId = nil
 
     -- Cancel running heal thread
     if state.thread then
@@ -173,6 +217,7 @@ local function healLoop(player)
     local tickInterval = tonumber(BandageConfig.TickInterval) or 1
     local healPerTick = tonumber(BandageConfig.HealPerTick) or 0
     local maxTotalHeal = tonumber(BandageConfig.MaxTotalHeal) or math.huge
+    local targetRange = tonumber(BandageConfig.TargetRange) or 8
 
     while state.active do
         local remainingDuration = state.bandageEndTime - workspace:GetServerTimeNow()
@@ -191,7 +236,7 @@ local function healLoop(player)
             return
         end
 
-        -- Check movement
+        -- Check movement for the healer.
         local hrp = getRootPart(player)
         if hrp and state.startPos then
             local dist = (hrp.Position - state.startPos).Magnitude
@@ -199,6 +244,30 @@ local function healLoop(player)
                 stopBandage(player, "interrupted")
                 return
             end
+        end
+
+        local healTarget = player
+        if state.targetUserId then
+            healTarget = Players:GetPlayerByUserId(state.targetUserId)
+            if not healTarget then
+                stopBandage(player, "interrupted")
+                return
+            end
+        end
+
+        if healTarget ~= player then
+            local targetHum = getHumanoid(healTarget)
+            local targetRoot = getRootPart(healTarget)
+            if not targetHum or targetHum.Health <= 0 or not targetRoot or not hrp then
+                stopBandage(player, "interrupted")
+                return
+            end
+            local targetDistance = (targetRoot.Position - hrp.Position).Magnitude
+            if targetDistance > targetRange then
+                stopBandage(player, "interrupted")
+                return
+            end
+            hum = targetHum
         end
 
         -- Apply heal tick without shortening the cast if the player reaches full health.
@@ -222,11 +291,20 @@ end
 --------------------------------------------------------------------------------
 -- START BANDAGE  (server-authoritative validation)
 --------------------------------------------------------------------------------
-local function startBandage(player)
+local function startBandage(player, targetUserId)
     local state = getState(player)
 
     if player:GetAttribute(DEFEAT_LOCK_ATTR) == true then
         return
+    end
+
+    -- Require the bandage gamepass to use bandage at all.
+    if not hasBandagePass(player) then
+        return false, "gamepass"
+    end
+
+    if not hasBandageTool(player) then
+        return false, "no_tool"
     end
 
     -- Already bandaging
@@ -242,6 +320,28 @@ local function startBandage(player)
     -- Get start position for movement check
     local hrp = getRootPart(player)
     if not hrp then return end
+
+    if targetUserId ~= nil then
+        local targetId = math.floor(tonumber(targetUserId) or 0)
+        local candidate = targetId > 0 and Players:GetPlayerByUserId(targetId) or nil
+        if not candidate or candidate == player then
+            return false, "invalid_target"
+        end
+        if not player.Team or candidate.Team ~= player.Team then
+            return false, "invalid_target"
+        end
+        local targetHum = getHumanoid(candidate)
+        local targetRoot = getRootPart(candidate)
+        if not targetHum or targetHum.Health <= 0 or not targetRoot then
+            return false, "invalid_target"
+        end
+        if (targetRoot.Position - hrp.Position).Magnitude > (tonumber(BandageConfig.TargetRange) or 8) then
+            return false, "out_of_range"
+        end
+        state.targetUserId = candidate.UserId
+    else
+        state.targetUserId = nil
+    end
 
     -- Activate
     state.active = true
@@ -287,13 +387,24 @@ local function startBandage(player)
 
     -- Start heal loop in a separate thread
     state.thread = task.spawn(healLoop, player)
+
+    return true
 end
 
 --------------------------------------------------------------------------------
 -- REMOTE HANDLERS
 --------------------------------------------------------------------------------
-requestBandage.OnServerEvent:Connect(function(player)
-    startBandage(player)
+requestBandage.OnServerEvent:Connect(function(player, targetUserId)
+    local ok, reason = startBandage(player, targetUserId)
+    if ok == false and reason == "gamepass" then
+        pcall(function()
+            local catalogItem = ShopCatalog.GetById(BANDAGE_PASS_ITEM_ID)
+            local passId = catalogItem and math.floor(tonumber(catalogItem.GamePassId) or 0) or BANDAGE_PASS_ID
+            if passId > 0 then
+                MarketplaceService:PromptGamePassPurchase(player, passId)
+            end
+        end)
+    end
 end)
 
 cancelBandage.OnServerEvent:Connect(function(player)
@@ -316,6 +427,7 @@ Players.PlayerAdded:Connect(function(player)
             state.startPos = nil
             state.totalHealed = 0
             state.bandageEndTime = 0
+            state.targetUserId = nil
             if state.thread then pcall(task.cancel, state.thread); state.thread = nil end
             if state.healthConn then pcall(function() state.healthConn:Disconnect() end); state.healthConn = nil end
             clearBandageVFX(state)
@@ -334,6 +446,7 @@ Players.PlayerRemoving:Connect(function(player)
             if state.thread then pcall(task.cancel, state.thread); state.thread = nil end
             if state.healthConn then pcall(function() state.healthConn:Disconnect() end); state.healthConn = nil end
             state.bandageEndTime = 0
+            state.targetUserId = nil
         end
         clearBandageVFX(state)
     end

@@ -819,9 +819,9 @@ end
 
 local function buildCatalogPage(parent, items, host, options)
     local catalogItems = (type(items) == "table") and items or {}
-    local cardHeightScale = 0.40
+    local cardHeightScale = 0.34
     if type(options) == "table" and type(options.cardHeightScale) == "number" then
-        cardHeightScale = math.clamp(options.cardHeightScale, 0.30, 0.50)
+        cardHeightScale = math.clamp(options.cardHeightScale, 0.26, 0.42)
     end
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "ShopScroll"
@@ -861,7 +861,7 @@ local function buildCatalogPage(parent, items, host, options)
     end
 
     local rowCount = math.max(1, math.ceil(#catalogItems / 2))
-    local contentHeight = 0.26 + (rowCount * cardHeightScale) + math.max(0, rowCount - 1) * 0.02 + 0.34
+    local contentHeight = 0.42 + (rowCount * cardHeightScale) + math.max(0, rowCount - 1) * 0.02 + 1.12
     scroll.CanvasSize = UDim2.fromScale(0, contentHeight)
 
     return scroll
@@ -969,7 +969,7 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
     contentGradient.Parent = contentArea
 
     local tabPages = {}
-    tabPages.gamepasses = buildCatalogPage(contentArea, getGamepassTabItems(), root, { cardHeightScale = 0.36 })
+    tabPages.gamepasses = buildCatalogPage(contentArea, getGamepassTabItems(), root, { cardHeightScale = 0.30 })
     tabPages.coins = buildCatalogPage(contentArea, getPackTabItems(CoinProducts, "COINS", "Coin", ORANGE, "Coin"), root)
     tabPages.keys = buildCatalogPage(contentArea, getPackTabItems(KeyProducts, "KEYS", "Key", Color3.fromRGB(166, 118, 255), "Key"), root)
 

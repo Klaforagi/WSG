@@ -10,8 +10,10 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
 
 local player    = Players.LocalPlayer
+local backpack  = player:WaitForChild("Backpack")
 local playerGui = player:WaitForChild("PlayerGui")
 
 --------------------------------------------------------------------------------
@@ -70,6 +72,9 @@ local startPosition = nil
 local castStartTime = 0
 local renderConn    = nil  -- RenderStepped connection for progress bar
 local interruptConns = {}  -- connections to disconnect on stop
+local activeBandageTool = nil
+local attachedBandageTools = setmetatable({}, { __mode = "k" })
+local activeBandagePrompts = {}
 
 -- Expose bandaging state globally so other scripts can check
 _G.IsBandaging = false
@@ -361,6 +366,214 @@ local function disconnectInterruptListeners()
     interruptConns = {}
 end
 
+local function isBandageTool(tool)
+    if not tool or not tool:IsA("Tool") then
+        return false
+    end
+
+    if tool.Name == "Bandage" then
+        return true
+    end
+
+    if tool:GetAttribute("BandageTool") == true then
+        return true
+    end
+
+    local utilityType = tool:GetAttribute("UtilityType")
+    return type(utilityType) == "string" and utilityType:lower() == "bandage"
+end
+
+local function clearBandagePrompts()
+    for _, prompt in pairs(activeBandagePrompts) do
+        if prompt and prompt.Parent then
+            pcall(function()
+                prompt:Destroy()
+            end)
+        end
+    end
+    activeBandagePrompts = {}
+end
+
+local function refreshBandagePrompts()
+    clearBandagePrompts()
+
+    if not activeBandageTool or isBandaging or isCoolingDown then
+        return
+    end
+
+    local maxRange = tonumber(BandageConfig.TargetRange) or 8
+    local myTeam = player.Team
+    if not myTeam then
+        return
+    end
+
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player and other.Team == myTeam then
+            local otherChar = other.Character
+            local otherHum = otherChar and otherChar:FindFirstChildOfClass("Humanoid")
+            local otherRoot = otherChar and otherChar:FindFirstChild("HumanoidRootPart")
+            if otherHum and otherRoot and otherHum.Health > 0 then
+                local targetPlayer = other
+                local prompt = Instance.new("ProximityPrompt")
+                prompt.Name = "BandageHealPrompt"
+                prompt.ActionText = "Heal"
+                prompt.ObjectText = targetPlayer.DisplayName or targetPlayer.Name
+                prompt.KeyboardKeyCode = Enum.KeyCode.E
+                prompt.HoldDuration = 0
+                prompt.RequiresLineOfSight = false
+                prompt.MaxActivationDistance = maxRange
+                prompt.Style = Enum.ProximityPromptStyle.Default
+                prompt.Parent = otherRoot
+
+                prompt.Triggered:Connect(function()
+                    if activeBandageTool and not isBandaging and not isCoolingDown then
+                        activateBandage(targetPlayer.UserId)
+                    end
+                end)
+
+                activeBandagePrompts[targetPlayer] = prompt
+            end
+        end
+    end
+end
+
+local function getNearestBandageTarget()
+    if not activeBandageTool or isBandaging or isCoolingDown then
+        return nil
+    end
+
+    local char = player.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local myTeam = player.Team
+    if not hrp or not myTeam then
+        return nil
+    end
+
+    local maxRange = tonumber(BandageConfig.TargetRange) or 8
+    local closestPlayer = nil
+    local closestDistance = math.huge
+
+    for _, other in ipairs(Players:GetPlayers()) do
+        if other ~= player and other.Team == myTeam then
+            local otherChar = other.Character
+            local otherHum = otherChar and otherChar:FindFirstChildOfClass("Humanoid")
+            local otherRoot = otherChar and otherChar:FindFirstChild("HumanoidRootPart")
+            if otherHum and otherRoot and otherHum.Health > 0 then
+                local distance = (otherRoot.Position - hrp.Position).Magnitude
+                if distance <= maxRange and distance < closestDistance then
+                    closestPlayer = other
+                    closestDistance = distance
+                end
+            end
+        end
+    end
+
+    return closestPlayer
+end
+
+local function setActiveBandageTool(tool)
+    if activeBandageTool == tool then
+        return
+    end
+
+    activeBandageTool = tool
+    refreshBandagePrompts()
+end
+
+local function attachBandageTool(tool)
+    if not isBandageTool(tool) or attachedBandageTools[tool] then
+        return
+    end
+
+    attachedBandageTools[tool] = true
+
+    tool.Activated:Connect(function()
+        if activeBandageTool ~= tool then
+            return
+        end
+        activateBandage()
+    end)
+
+    tool.Equipped:Connect(function()
+        setActiveBandageTool(tool)
+    end)
+
+    tool.Unequipped:Connect(function()
+        if activeBandageTool == tool then
+            activeBandageTool = nil
+            refreshBandagePrompts()
+        end
+    end)
+end
+
+local function watchBandageContainers(container)
+    if not container then
+        return
+    end
+
+    for _, child in ipairs(container:GetChildren()) do
+        attachBandageTool(child)
+        if container == player.Character and isBandageTool(child) then
+            setActiveBandageTool(child)
+        end
+    end
+
+    container.ChildAdded:Connect(attachBandageTool)
+end
+
+local function watchBandagePromptSources(otherPlayer)
+    if not otherPlayer or otherPlayer == player then
+        return
+    end
+
+    otherPlayer:GetPropertyChangedSignal("Team"):Connect(function()
+        if activeBandageTool then
+            refreshBandagePrompts()
+        end
+    end)
+
+    otherPlayer.CharacterAdded:Connect(function()
+        if activeBandageTool then
+            refreshBandagePrompts()
+        end
+    end)
+
+    otherPlayer.CharacterRemoving:Connect(function()
+        if activeBandageTool then
+            refreshBandagePrompts()
+        end
+    end)
+end
+
+watchBandageContainers(backpack)
+if player.Character then
+    watchBandageContainers(player.Character)
+end
+for _, otherPlayer in ipairs(Players:GetPlayers()) do
+    watchBandagePromptSources(otherPlayer)
+end
+Players.PlayerAdded:Connect(watchBandagePromptSources)
+player.CharacterAdded:Connect(function(char)
+    activeBandageTool = nil
+    clearBandagePrompts()
+    watchBandageContainers(char)
+    task.defer(refreshBandagePrompts)
+end)
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then
+        return
+    end
+    if input.KeyCode ~= Enum.KeyCode.E then
+        return
+    end
+
+    local targetPlayer = getNearestBandageTarget()
+    if targetPlayer then
+        activateBandage(targetPlayer.UserId)
+    end
+end)
+
 local function cancelBandaging(reason)
     if not isBandaging then return end
     print("[BandageAnim] cancelBandaging called, reason:", reason)
@@ -448,6 +661,7 @@ end
 local function startClientCooldown(duration)
     isCoolingDown = true
     cooldownEnd = tick() + duration
+    refreshBandagePrompts()
 
     -- Use the hotbar cooldown overlay system for slot 3
     if _G.HotbarCooldown and _G.HotbarCooldown.start then
@@ -462,14 +676,15 @@ local function startClientCooldown(duration)
     task.delay(duration, function()
         if tick() >= cooldownEnd - 0.1 then
             isCoolingDown = false
+            refreshBandagePrompts()
         end
     end)
 end
 
 --------------------------------------------------------------------------------
--- ACTIVATE BANDAGE (called by hotbar slot 3 click or key 3)
+-- ACTIVATE BANDAGE (called by tool click or teammate prompt)
 --------------------------------------------------------------------------------
-local function activateBandage()
+function activateBandage(targetUserId)
     print("[BandageAnim] activateBandage called")
     if isBandaging then print("[BandageAnim] already bandaging, returning") return end
     if isCoolingDown then print("[BandageAnim] on cooldown, returning") return end
@@ -480,11 +695,9 @@ local function activateBandage()
     if not hum or hum.Health <= 0 then print("[BandageAnim] no humanoid or dead, returning") return end
 
     print("[BandageAnim] requesting bandage from server")
-    -- Unequip any held weapon first
-    pcall(function() hum:UnequipTools() end)
 
-    -- Request from server
-    requestBandage:FireServer()
+    -- Request from server; targetUserId is only set when healing a teammate.
+    requestBandage:FireServer(targetUserId)
 end
 
 -- Expose activation function globally so Hotbar can call it
@@ -504,6 +717,7 @@ if bandageStarted then
         startBandageSound()
         showProgressBar()
         setupInterruptListeners()
+        refreshBandagePrompts()
         print("[BandageAnim] bandage start sequence complete")
     end)
 end
@@ -562,4 +776,6 @@ player.CharacterAdded:Connect(function(newChar)
     hideProgressBar()
     disconnectInterruptListeners()
     statusLabel.Visible = false
+    activeBandageTool = nil
+    clearBandagePrompts()
 end)
