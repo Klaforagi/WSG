@@ -34,13 +34,27 @@ local AdminUserDataConfig   = require(ReplicatedStorage:WaitForChild("AdminUserD
 local SavedPlayersIndexService = require(script.Parent.SavedPlayersIndexService)
 
 -- Lazy-loaded peer modules to avoid circular requires.
-local _CurrencyService, _AdminAuditService
+local _CurrencyService, _AdminAuditService, _GamepassService, _WeaponMasteryService
 local function getCurrencyService()
     if not _CurrencyService then
         local ok, mod = pcall(function() return require(script.Parent.CurrencyService) end)
         if ok then _CurrencyService = mod end
     end
     return _CurrencyService
+end
+local function getGamepassService()
+    if not _GamepassService then
+        local ok, mod = pcall(function() return require(script.Parent.GamepassService) end)
+        if ok then _GamepassService = mod end
+    end
+    return _GamepassService
+end
+local function getWeaponMasteryService()
+    if not _WeaponMasteryService then
+        local ok, mod = pcall(function() return require(script.Parent.WeaponMasteryService) end)
+        if ok then _WeaponMasteryService = mod end
+    end
+    return _WeaponMasteryService
 end
 local function getAdminAuditService()
     if not _AdminAuditService then
@@ -92,7 +106,9 @@ end
 local RESET_GROUPS = {
     Currency     = { "Coins", "Keys", "Salvage" },
     Progression  = { "XP", "Upgrades" },
-    Inventory    = { "Weapons", "WeaponMastery", "HealthPotions", "PotionStock", "Skins", "Effects", "Emotes", "Loadout" },
+    Inventory    = { "Weapons", "HealthPotions", "PotionStock", "Skins", "Effects", "Emotes", "Loadout" },
+    Mastery      = { "WeaponMastery" },
+    Gamepasses   = { "Gamepasses" },
 
     Quests       = { "DailyQuests", "WeeklyQuests" },
     Achievements = { "Achievements" },
@@ -332,12 +348,49 @@ local function applyLiveOnlineUpdate(player, subsystems, valueOverrides)
         end
     end
 
+    if subsetSet.Gamepasses then
+        local gp = getGamepassService()
+        if gp then
+            if type(gp.ClearStudioTestOwnership) == "function" then
+                pcall(function()
+                    gp:ClearStudioTestOwnership(player)
+                end)
+            end
+            if type(gp.ClearPlayer) == "function" then
+                pcall(function()
+                    gp:ClearPlayer(player)
+                end)
+            end
+            if type(gp.RefreshPlayer) == "function" then
+                pcall(function()
+                    gp:RefreshPlayer(player)
+                end)
+            end
+            table.insert(refreshed, "Gamepasses")
+        else
+            needsRejoin = true
+        end
+    end
+
+    if subsetSet.WeaponMastery then
+        local masterySvc = getWeaponMasteryService()
+        if masterySvc and type(masterySvc.RemovePlayer) == "function" then
+            pcall(function()
+                masterySvc:RemovePlayer(player)
+            end)
+            table.insert(refreshed, "WeaponMastery")
+            needsRejoin = true
+        else
+            needsRejoin = true
+        end
+    end
+
     -- Anything outside currency: in-memory state will overwrite our wiped
     -- DataStore key on PlayerRemoving's save. Without per-service reset hooks
     -- we can't safely nuke that in-memory state, so the only reliable path is
     -- to ask the player to rejoin (or kick on Full Reset, see caller).
     for _, s in ipairs(subsystems) do
-        if s ~= "Coins" and s ~= "Keys" and s ~= "Salvage" then
+        if s ~= "Coins" and s ~= "Keys" and s ~= "Salvage" and s ~= "Gamepasses" and s ~= "WeaponMastery" then
             needsRejoin = true
             break
         end
@@ -496,6 +549,10 @@ function PlayerDataAdminService:ResetUserData(adminPlayer, userId, resetType)
             end)
             kicked = true
         end
+    end
+
+    if resetType == "Gamepasses" then
+        table.insert(wiped, "Gamepasses")
     end
 
     -- 5. Audit

@@ -19,6 +19,7 @@
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local MarketplaceService  = game:GetService("MarketplaceService")
 local Players             = game:GetService("Players")
+local RunService          = game:GetService("RunService")
 local TweenService        = game:GetService("TweenService")
 local Workspace           = game:GetService("Workspace")
 
@@ -59,6 +60,7 @@ local CoinProducts = safeRequire(ReplicatedStorage, "CoinProducts", 5)
 local KeyProducts  = safeRequire(ReplicatedStorage, "KeyProducts", 5)
 local AssetCodes   = safeRequire(ReplicatedStorage, "AssetCodes", 5)
 local ShopCatalog  = safeRequire(ReplicatedStorage, "ShopCatalog", 5)
+local StudioShopTestRF = nil
 
 local function getAsset(key)
     if AssetCodes and type(AssetCodes.Get) == "function" then
@@ -66,6 +68,38 @@ local function getAsset(key)
         if type(id) == "string" and #id > 0 then return id end
     end
     return nil
+end
+
+local function getStudioShopTestRemote()
+    if StudioShopTestRF ~= nil then
+        return StudioShopTestRF
+    end
+
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+    local shopFolder = remotesFolder and remotesFolder:FindFirstChild("Shop")
+    local remote = shopFolder and shopFolder:FindFirstChild("ShopTestPurchase")
+    if remote and remote:IsA("RemoteFunction") then
+        StudioShopTestRF = remote
+    end
+    return StudioShopTestRF
+end
+
+local function invokeStudioShopTest(payload)
+    local remote = getStudioShopTestRemote()
+    if not remote then
+        return false, "Studio test purchase remote unavailable"
+    end
+
+    local ok, result = pcall(function()
+        return remote:InvokeServer(payload)
+    end)
+    if not ok then
+        return false, tostring(result)
+    end
+    if type(result) ~= "table" or result.success ~= true then
+        return false, tostring(result and result.error or "Studio test purchase failed")
+    end
+    return true, result
 end
 
 local function formatNumber(value)
@@ -278,6 +312,21 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     local debounce = false
     card.Activated:Connect(function()
         if debounce then return end
+        if RunService:IsStudio() then
+            local ok, result = invokeStudioShopTest({
+                kind = "CurrencyPack",
+                currencyType = opts.currencyType,
+                amount = opts.amount,
+                packName = opts.packName,
+                productId = math.floor(tonumber(opts.productId) or 0),
+            })
+            if ok then
+                showToast(parent.Parent, (result.message or (tostring(opts.packName) .. " granted for Studio testing.")), ORANGE_BRIGHT, 2.5)
+            else
+                showToast(parent.Parent, tostring(result), RED, 2.7)
+            end
+            return
+        end
         if not opts.productId or opts.productId <= 0 then
             showToast(parent.Parent, "Product ID not set for " .. tostring(opts.packName), RED, 2.7)
             return
@@ -339,6 +388,7 @@ local function buildCurrencyStrip(parent)
         for i, pack in ipairs(CoinProducts.Packs) do
             order += 1
             buildCurrencyCard(strip, order, {
+                currencyType = "Coins",
                 iconKey   = "Coin",
                 iconGlyph = "\u{1FA99}",
                 amount    = pack.Coins,
@@ -366,6 +416,7 @@ local function buildCurrencyStrip(parent)
         for i, pack in ipairs(KeyProducts.Packs) do
             order += 1
             buildCurrencyCard(strip, order, {
+                currencyType = "Keys",
                 iconKey   = "Key",
                 iconGlyph = "\u{1F511}",
                 amount    = pack.Keys,
@@ -405,6 +456,17 @@ local function promptPurchaseForItem(item)
 
     if item.Kind == "GamePass" then
         local gamePassId = math.floor(tonumber(item.GamePassId) or 0)
+        if RunService:IsStudio() then
+            local ok, result = invokeStudioShopTest({
+                kind = "GamePass",
+                itemId = item.Id,
+                gamePassId = gamePassId,
+            })
+            if ok then
+                return true, result.message or (tostring(item.DisplayName or item.Id or "Gamepass") .. " granted for Studio testing.")
+            end
+            return false, result
+        end
         if gamePassId <= 0 then
             return false, "gamepass id not set"
         end
@@ -414,6 +476,17 @@ local function promptPurchaseForItem(item)
 
     if item.Kind == "Product" then
         local productId = math.floor(tonumber(item.ProductId) or 0)
+        if RunService:IsStudio() then
+            local ok, result = invokeStudioShopTest({
+                kind = "Product",
+                itemId = item.Id,
+                productId = productId,
+            })
+            if ok then
+                return true, result.message or (tostring(item.DisplayName or item.Id or "Item") .. " granted for Studio testing.")
+            end
+            return false, result
+        end
         if productId <= 0 then
             return false, "product id not set"
         end
@@ -664,10 +737,19 @@ local function buildShopCard(parent, item, host)
             return
         end
 
-        local success, err = promptPurchaseForItem(item)
+        local success, resultOrErr = promptPurchaseForItem(item)
         if not success then
             showToast(host or card, tostring(item.DisplayName or item.Id or "Item") .. " is not configured yet.", RED, 2.5)
-            warn("[ShopUI] Purchase blocked for", tostring(item.Id), ":", tostring(err))
+            warn("[ShopUI] Purchase blocked for", tostring(item.Id), ":", tostring(resultOrErr))
+            return
+        end
+
+        if RunService:IsStudio() then
+            busy = true
+            showToast(host or card, tostring(resultOrErr or (item.DisplayName or item.Id or "Item") .. " granted for Studio testing."), ORANGE_BRIGHT, 2.5)
+            task.delay(1.5, function()
+                busy = false
+            end)
             return
         end
 

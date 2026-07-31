@@ -6,6 +6,7 @@
 
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local ShopCatalog = require(ReplicatedStorage:WaitForChild("ShopCatalog"))
@@ -78,6 +79,11 @@ local function recomputeState(player)
                 return MarketplaceService:UserOwnsGamePassAsync(player.UserId, passId)
             end)
             owns = ok and result == true
+        end
+
+        if not owns and RunService:IsStudio() then
+            local studioAttr = "StudioShopTestOwned_" .. tostring(item.Id)
+            owns = player:GetAttribute(studioAttr) == true
         end
 
         state.owned[item.Id] = owns
@@ -165,6 +171,32 @@ end
 
 function GamepassService:ClearPlayer(player)
     clearState(player)
+end
+
+function GamepassService:SetStudioTestOwnership(player, itemId, owned)
+    if not player or type(itemId) ~= "string" or itemId == "" then
+        return false, "invalid itemId"
+    end
+
+    pcall(function()
+        player:SetAttribute("StudioShopTestOwned_" .. itemId, owned == true and true or nil)
+    end)
+
+    return self:RefreshPlayer(player)
+end
+
+function GamepassService:ClearStudioTestOwnership(player)
+    if not player then
+        return false, "missing player"
+    end
+
+    for _, item in ipairs(ShopCatalog.GetGamepassItems()) do
+        pcall(function()
+            player:SetAttribute("StudioShopTestOwned_" .. tostring(item.Id), nil)
+        end)
+    end
+
+    return self:RefreshPlayer(player)
 end
 
 function GamepassService:GetState(player)

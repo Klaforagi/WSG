@@ -2184,7 +2184,7 @@ if USER_DATA_AVAILABLE then
         Parent = udResetArea,
     })
     local resetGrid = createInstance("UIGridLayout", {
-        CellSize = UDim2.new(0.5, -4, 0, 36),
+        CellSize = UDim2.new(0.5, -4, 0, 30),
         CellPadding = UDim2.new(0, 6, 0, 6),
         SortOrder = Enum.SortOrder.LayoutOrder,
         Parent = resetButtonsFrame,
@@ -2857,9 +2857,12 @@ if USER_DATA_AVAILABLE then
         activeReset = { id = resetId, spec = spec }
         confirmTitle.Text = spec.label
         local who = string.format("%s (%d)", selectedSnapshot.username or "?", selectedUserId)
+        local resetSubject = spec.id == "Gamepasses" and "gamepass state"
+            or (spec.id == "Mastery" and "mastery data"
+            or (spec.id == "Full" and "ALL" or spec.id))
         local body = string.format(
             "Are you sure you want to reset %s data for %s? This cannot be undone.\n\nDetails: %s",
-            spec.id == "Full" and "ALL" or spec.id, who, spec.desc or ""
+            resetSubject, who, spec.desc or ""
         )
         if selectedSnapshot.isOnline then
             body = body .. "\n\nThis player is ONLINE."
@@ -2867,6 +2870,10 @@ if USER_DATA_AVAILABLE then
                 body = body .. " They will be kicked to reload defaults."
             elseif spec.id == "Currency" then
                 body = body .. " Their currency UI will refresh live."
+            elseif spec.id == "Gamepasses" then
+                body = body .. " Their live gamepass bonuses will refresh immediately."
+            elseif spec.id == "Mastery" then
+                body = body .. " They will be kicked so mastery can reload cleanly."
             else
                 body = body .. " They will be kicked so the reset isn't overwritten on save."
             end
