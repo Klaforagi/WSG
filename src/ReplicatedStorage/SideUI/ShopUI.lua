@@ -740,8 +740,8 @@ local function buildCatalogPage(parent, items, host)
     scroll.BackgroundTransparency = 1
     scroll.BorderSizePixel = 0
     scroll.Size = UDim2.new(1, 0, 1, 0)
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroll.CanvasSize = UDim2.fromScale(0, 0)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
     scroll.ScrollBarThickness = math.max(6, px(8))
     scroll.ScrollBarImageColor3 = UITheme.GOLD
     scroll.ScrollBarImageTransparency = 0.15
@@ -761,23 +761,9 @@ local function buildCatalogPage(parent, items, host)
     grid.FillDirectionMaxCells = 2
     grid.HorizontalAlignment = Enum.HorizontalAlignment.Center
     grid.VerticalAlignment = Enum.VerticalAlignment.Top
-    grid.CellPadding = UDim2.new(0, 0, 0, 0)
+    grid.CellPadding = UDim2.fromScale(0.02, 0.02)
+    grid.CellSize = UDim2.fromScale(0.47, 0.44)
     grid.Parent = scroll
-
-    local function updateGridSize()
-        local availableWidth = math.max(1, math.floor(scroll.AbsoluteSize.X or 0))
-        local gap = math.max(px(10), math.floor(availableWidth * 0.018))
-        local sideInset = math.max(px(10), math.floor(availableWidth * 0.018)) * 2
-        local cellWidth = math.max(px(250), math.floor((availableWidth - sideInset - gap) / 2))
-        local cellHeight = math.clamp(math.floor(cellWidth * 0.58), px(184), px(236))
-        grid.CellPadding = UDim2.new(0, gap, 0, gap)
-        grid.CellSize = UDim2.new(0, cellWidth, 0, cellHeight)
-        scroll.CanvasSize = UDim2.new(0, 0, 0, grid.AbsoluteContentSize.Y + math.max(px(48), math.floor(cellHeight * 0.24)))
-    end
-
-    scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateGridSize)
-    grid:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(updateGridSize)
-    task.defer(updateGridSize)
 
     for _, item in ipairs(getShopItems()) do
         buildShopCard(scroll, item, host)
@@ -849,6 +835,7 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
     sidebar.BorderSizePixel = 0
     sidebar.Position = UDim2.new(0.015, 0, 0.02, 0)
     sidebar.Size = UDim2.new(0.14, 0, 0.96, 0)
+    sidebar.ZIndex = 5
     sidebar.Parent = shell
     applyCorners(sidebar, px(16))
     applyStroke(sidebar, UITheme.CARD_STROKE, 1, 0.82)
@@ -873,6 +860,7 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
     contentArea.BorderSizePixel = 0
     contentArea.Position = UDim2.new(0.17, 0, 0.02, 0)
     contentArea.Size = UDim2.new(0.815, 0, 0.96, 0)
+    contentArea.ZIndex = 2
     contentArea.Parent = shell
     applyCorners(contentArea, px(16))
     applyStroke(contentArea, UITheme.CARD_STROKE, 1, 0.9)
@@ -939,7 +927,8 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
         btn.AutoButtonColor = false
         btn.BackgroundColor3 = UITheme.SIDEBAR_BG
         btn.BorderSizePixel = 0
-        btn.Size = UDim2.new(0.92, 0, 0.24, 0)
+        btn.ZIndex = 6
+        btn.Size = UDim2.fromScale(0.92, 0.26)
         btn.LayoutOrder = order
         btn.Text = ""
         btn.Parent = sidebar
@@ -953,25 +942,23 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
         activeBar.BackgroundTransparency = 1
         activeBar.Position = UDim2.new(0.05, 0, 0.18, 0)
         activeBar.Size = UDim2.new(0.03, 0, 0.64, 0)
+        activeBar.ZIndex = 7
         activeBar.Parent = btn
         applyCorners(activeBar, px(8))
 
         local label = Instance.new("TextLabel")
         label.Name = "Label"
         label.BackgroundTransparency = 1
-        label.Position = UDim2.new(0.14, 0, 0.18, 0)
-        label.Size = UDim2.new(0.78, 0, 0.64, 0)
+        label.Position = UDim2.fromScale(0.08, 0.08)
+        label.Size = UDim2.fromScale(0.84, 0.84)
         label.Font = Enum.Font.GothamBlack
         label.Text = labelText
         label.TextColor3 = DIM_TEXT
         label.TextScaled = true
         label.TextXAlignment = Enum.TextXAlignment.Center
         label.TextYAlignment = Enum.TextYAlignment.Center
+        label.ZIndex = 7
         label.Parent = btn
-        local labelConstraint = Instance.new("UITextSizeConstraint")
-        labelConstraint.MinTextSize = 10
-        labelConstraint.MaxTextSize = px(20)
-        labelConstraint.Parent = label
 
         btn.MouseEnter:Connect(function()
             if currentShopTab ~= tabId then
@@ -986,12 +973,15 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
         btn.Activated:Connect(function()
             setActiveTab(tabId)
         end)
+        btn.MouseButton1Click:Connect(function()
+            setActiveTab(tabId)
+        end)
 
         tabButtons[tabId] = btn
         return btn
     end
 
-    makeTabButton("gamepasses", "Gamepasses", 1)
+    makeTabButton("gamepasses", "Passes", 1)
     makeTabButton("coins", "Coins", 2)
     makeTabButton("keys", "Keys", 3)
 
