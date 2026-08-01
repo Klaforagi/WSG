@@ -989,6 +989,19 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
     tabPages.coins = buildCatalogPage(contentArea, getPackTabItems(CoinProducts, "COINS", "Coin", ORANGE, "Coin"), root)
     tabPages.keys = buildCatalogPage(contentArea, getPackTabItems(KeyProducts, "KEYS", "Key", Color3.fromRGB(166, 118, 255), "Key"), root)
 
+    -- Explicit per-tab grid sizing to match designer request:
+    -- Passes:  UDim2.fromScale(0.47, 0.22)
+    -- Coins:   UDim2.fromScale(0.47, 0.27)
+    -- Keys:    UDim2.fromScale(0.47, 0.27)
+    do
+        local gp = tabPages.gamepasses and tabPages.gamepasses:FindFirstChildOfClass("UIGridLayout")
+        if gp then gp.CellSize = UDim2.fromScale(0.47, 0.22) end
+        local cn = tabPages.coins and tabPages.coins:FindFirstChildOfClass("UIGridLayout")
+        if cn then cn.CellSize = UDim2.fromScale(0.47, 0.27) end
+        local ky = tabPages.keys and tabPages.keys:FindFirstChildOfClass("UIGridLayout")
+        if ky then ky.CellSize = UDim2.fromScale(0.47, 0.27) end
+    end
+
     for _, page in pairs(tabPages) do
         page.Visible = false
         page.Parent = contentArea
