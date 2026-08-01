@@ -446,11 +446,11 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         sec.AutomaticSize = Enum.AutomaticSize.Y
         sec.LayoutOrder = (name == "Blue" and 1) or (name == "Red" and 2) or 3
         if name == "Blue" then
-            sec.BackgroundColor3 = Color3.fromRGB(65, 105, 225)
+            sec.BackgroundColor3 = Color3.fromRGB(20, 24, 255)
         elseif name == "Red" then
-            sec.BackgroundColor3 = Color3.fromRGB(255, 75, 75)
+            sec.BackgroundColor3 = Color3.fromRGB(255, 0, 4)
         else
-            sec.BackgroundColor3 = Color3.fromRGB(255, 215, 80)
+            sec.BackgroundColor3 = Color3.fromRGB(255, 204, 1)
         end
         sec.BackgroundTransparency = 0.8
         sec.Parent = contentScroll
@@ -1012,7 +1012,7 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
             end)
         end
 
-        buildCareerSection(careerContainer, "Combat", {
+        local combatSection = buildCareerSection(careerContainer, "Combat", {
             { key = "PlayersEliminated", label = "Players Eliminated" },
             { key = "MonstersEliminated", label = "Monsters Eliminated" },
             { key = "GoblinsEliminated", label = "Goblins Eliminated" },
@@ -1022,13 +1022,15 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
             { key = "TotalDamageDone", label = "Total Damage Done" },
             { key = "HighestEliminationStreak", label = "Highest Elimination Streak" },
         }, profileData)
+        combatSection.LayoutOrder = nextOrder()
 
-        buildCareerSection(careerContainer, "Objective", {
+        local objectiveSection = buildCareerSection(careerContainer, "Objective", {
             { key = "FlagCaptures", label = "Flag Captures" },
             { key = "FlagReturns", label = "Flag Returns" },
         }, profileData)
+        objectiveSection.LayoutOrder = nextOrder()
 
-        buildCareerSection(careerContainer, "Progression", {
+        local progressionSection = buildCareerSection(careerContainer, "Progression", {
             { key = "MatchesPlayed", label = "Matches Played" },
             { key = "Wins", label = "Wins" },
             { key = "TotalXP", label = "Total XP" },
@@ -1036,10 +1038,12 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
             { key = "AchievementPoints", label = "Achievement Points" },
             { key = "QuestsCompleted", label = "Quests Completed" },
         }, profileData)
+        progressionSection.LayoutOrder = nextOrder()
 
-        buildCareerSection(careerContainer, "Time", {
+        local timeSection = buildCareerSection(careerContainer, "Time", {
             { key = "TotalPlaytimeSeconds", label = "Total Playtime", formatter = formatPlaytime },
         }, profileData)
+        timeSection.LayoutOrder = nextOrder()
     end
 
     local function updateSectionCounts()
