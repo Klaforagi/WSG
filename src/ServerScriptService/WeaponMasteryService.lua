@@ -10,6 +10,7 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local Config = require(ReplicatedStorage:WaitForChild("WeaponMasteryConfig"))
+local ShopCatalog = require(ReplicatedStorage:WaitForChild("ShopCatalog"))
 local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 
 local DATASTORE_NAME = "WeaponMastery_v1"
@@ -68,6 +69,54 @@ local function getGamepassService()
         end
     end)
     return GamepassService
+end
+
+local function getMasteryBonusBreakdown(player)
+    local breakdown = {
+        vipOwned = false,
+        vipBonus = 0,
+        masteryOwned = false,
+        masteryBonus = 0,
+        totalBonus = 0,
+        multiplier = 1,
+    }
+
+    local gamepassSvc = getGamepassService()
+    local state = gamepassSvc and type(gamepassSvc.GetState) == "function" and gamepassSvc:GetState(player) or nil
+    local owned = state and state.owned or {}
+
+    local vipItem = ShopCatalog.GetById("vip_gamepass")
+    if vipItem then
+        breakdown.vipOwned = owned[vipItem.Id] == true
+        if breakdown.vipOwned then
+            breakdown.vipBonus = math.max(0, tonumber(vipItem.Bonus and vipItem.Bonus.Mastery) or 0)
+        end
+    end
+
+    local masteryItem = ShopCatalog.GetById("mastery_2x_gamepass")
+    if masteryItem then
+        breakdown.masteryOwned = owned[masteryItem.Id] == true
+        if breakdown.masteryOwned then
+            breakdown.masteryBonus = math.max(0, tonumber(masteryItem.Bonus and masteryItem.Bonus.Mastery) or 0)
+        end
+    end
+
+    breakdown.totalBonus = breakdown.vipBonus + breakdown.masteryBonus
+    breakdown.multiplier = math.max(1, 1 + breakdown.totalBonus)
+    return breakdown
+end
+
+local function getMasteryDamageMultiplier(player)
+    local gamepassSvc = getGamepassService()
+    if gamepassSvc and type(gamepassSvc.GetMasteryBonus) == "function" then
+        local bonus = math.max(0, tonumber(gamepassSvc:GetMasteryBonus(player)) or 0)
+        return math.max(1, 1 + bonus)
+    end
+    return 1
+end
+
+local function roundDamage(value)
+    return math.floor((tonumber(value) or 0) * 10 + 0.5) / 10
 end
 
 local function ensureRemote(className, name)
@@ -360,7 +409,8 @@ function WeaponMasteryService:GetMasteryBaseDamage(player, instanceId)
     end
     local entry, weaponName, meta = getEntryForInstance(player, instanceId, false)
     meta = meta or resolveWeaponMeta(weaponName)
-    return Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
+    local baseDamage = Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
+    return roundDamage(baseDamage * getMasteryDamageMultiplier(player))
 end
 
 function WeaponMasteryService:GetDamageBonusForWeaponName(player, weaponName)
@@ -369,7 +419,9 @@ function WeaponMasteryService:GetDamageBonusForWeaponName(player, weaponName)
     end
     local entry = getEntryForWeaponName(player, weaponName, false)
     local meta = resolveWeaponMeta(weaponName)
-    return Config.GetDamageBonus(entry and entry.level or 0, meta.rarity, meta.category)
+    local baseDamage = Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
+    local nilDamage = Config.GetDamageForLevel(0, meta.rarity, meta.category)
+    return math.max(0, roundDamage((baseDamage * getMasteryDamageMultiplier(player)) - nilDamage))
 end
 
 function WeaponMasteryService:GetDamageBonus(player, instanceId)
@@ -378,7 +430,9 @@ function WeaponMasteryService:GetDamageBonus(player, instanceId)
     end
     local entry, weaponName, meta = getEntryForInstance(player, instanceId, false)
     meta = meta or resolveWeaponMeta(weaponName)
-    return Config.GetDamageBonus(entry and entry.level or 0, meta.rarity, meta.category)
+    local baseDamage = Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
+    local nilDamage = Config.GetDamageForLevel(0, meta.rarity, meta.category)
+    return math.max(0, roundDamage((baseDamage * getMasteryDamageMultiplier(player)) - nilDamage))
 end
 
 function WeaponMasteryService:AttachMasteryToInventory(player, inventory)
@@ -423,31 +477,48 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     local entry, weaponName, meta = getEntryForInstance(player, instanceId, true)
     if not entry or not weaponName then return nil end
 
-    xpAmount = normalizeXPValue(xpAmount)
+    local baseXP = normalizeXPValue(xpAmount)
     statAmount = math.max(0, math.floor(tonumber(statAmount) or 0))
     local oldLevel = entry.level or 0
 
-    local gamepassBonus = 0
-    local gamepassSvc = getGamepassService()
-    if gamepassSvc and type(gamepassSvc.GetMasteryBonus) == "function" then
-        gamepassBonus = math.max(0, tonumber(gamepassSvc:GetMasteryBonus(player)) or 0)
-    end
-    local masteryMultiplier = math.max(1, 1 + gamepassBonus)
+    local bonusInfo = getMasteryBonusBreakdown(player)
+    local masteryMultiplier = bonusInfo.multiplier
+    local awardedXP = baseXP
 
     if statKey and statAmount > 0 then
         entry[statKey] = math.max(0, math.floor(tonumber(entry[statKey]) or 0)) + statAmount
     end
-    if xpAmount > 0 then
-        xpAmount = normalizeXPValue(math.floor((xpAmount * masteryMultiplier) * 10) / 10)
-        entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
+    if baseXP > 0 then
+        awardedXP = normalizeXPValue(math.floor((baseXP * masteryMultiplier) * 10) / 10)
+        entry.xp = normalizeXPValue((entry.xp or 0) + awardedXP)
         entry.level = Config.GetLevelForXP(entry.xp, (meta and meta.rarity) or entry.rarity, (meta and meta.category) or entry.category)
     end
     entry.lastUsedAt = os.time()
 
+    if awardedXP > 0 then
+        local sourceText = {}
+        table.insert(sourceText, string.format("VIP=%s(+%.1f)", tostring(bonusInfo.vipOwned == true), bonusInfo.vipBonus))
+        table.insert(sourceText, string.format("MasteryPass=%s(+%.1f)", tostring(bonusInfo.masteryOwned == true), bonusInfo.masteryBonus))
+        print(string.format(
+            "[WeaponMastery] %s/%s gain: baseXP=%.1f, sources={%s}, totalBonus=%.1f, formula=%.1f * (1 + %.1f) = %.1f, awardedXP=%.1f, level %d -> %d",
+            tostring(player.Name),
+            tostring(weaponName),
+            baseXP,
+            table.concat(sourceText, ", "),
+            bonusInfo.totalBonus,
+            baseXP,
+            bonusInfo.totalBonus,
+            awardedXP,
+            awardedXP,
+            oldLevel,
+            entry.level or oldLevel
+        ))
+    end
+
     markDirty(player)
 
     local updateMeta = meta or {}
-    updateMeta.deltaXP = xpAmount
+    updateMeta.deltaXP = awardedXP
     updateMeta.leveledUp = (entry.level or 0) > oldLevel
     updateMeta.oldLevel = oldLevel
     if updateMeta.leveledUp then
@@ -678,12 +749,26 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
 
     entry.damage = (entry.damage or 0) + amount
     entry.lastUsedAt = os.time()
-    local xpAmount = normalizeXPValue(Config.XP.Hit or 0)
+    local bonusInfo = getMasteryBonusBreakdown(player)
+    local baseXP = normalizeXPValue(Config.XP.Hit or 0)
+    local xpAmount = normalizeXPValue(math.floor((baseXP * bonusInfo.multiplier) * 10) / 10)
 
     if xpAmount > 0 then
         local oldLevel = entry.level or 0
         entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
         entry.level = Config.GetLevelForXP(entry.xp, (meta and meta.rarity) or entry.rarity, (meta and meta.category) or entry.category)
+        print(string.format(
+            "[WeaponMastery] %s/%s hit gain: baseXP=%.1f, VIP=%s(+%.1f), MasteryPass=%s(+%.1f), multiplier=%.1f, awardedXP=%.1f",
+            tostring(player.Name),
+            tostring(weaponName),
+            baseXP,
+            tostring(bonusInfo.vipOwned == true),
+            bonusInfo.vipBonus,
+            tostring(bonusInfo.masteryOwned == true),
+            bonusInfo.masteryBonus,
+            bonusInfo.multiplier,
+            xpAmount
+        ))
         fireUpdated(player, instanceId, weaponName, {
             kind = "Hit",
             deltaXP = xpAmount,

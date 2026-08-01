@@ -103,10 +103,52 @@ local function getRarityWeights(player, crateId, crateDef)
     if gamepassSvc and type(gamepassSvc.GetLuckyRarityWeights) == "function" then
         local luckyWeights = gamepassSvc:GetLuckyRarityWeights(player, crateId)
         if type(luckyWeights) == "table" and next(luckyWeights) ~= nil then
-            return copyWeights(luckyWeights)
+            return copyWeights(luckyWeights), true
         end
     end
-    return getBaseRarityWeights(crateDef)
+    return getBaseRarityWeights(crateDef), false
+end
+
+local function getRarityChanceMessage(crateName, weights, luckyActive)
+    local orderedRarities = {}
+    local seen = {}
+
+    for _, rarity in ipairs(CrateConfig.RarityOrder or {}) do
+        if type(weights) == "table" and weights[rarity] ~= nil then
+            table.insert(orderedRarities, rarity)
+            seen[rarity] = true
+        end
+    end
+
+    if type(weights) == "table" then
+        for rarity in pairs(weights) do
+            if not seen[rarity] then
+                table.insert(orderedRarities, rarity)
+            end
+        end
+    end
+
+    local totalWeight = 0
+    for _, rarity in ipairs(orderedRarities) do
+        totalWeight = totalWeight + math.max(0, tonumber(weights and weights[rarity]) or 0)
+    end
+
+    local parts = {}
+    for _, rarity in ipairs(orderedRarities) do
+        local weight = math.max(0, tonumber(weights and weights[rarity]) or 0)
+        local chance = 0
+        if totalWeight > 0 then
+            chance = (weight / totalWeight) * 100
+        end
+        table.insert(parts, string.format("%s=%.1f%%", rarity, chance))
+    end
+
+    return string.format(
+        "[CrateService] %s rarity chances (LuckyGamepass=%s): %s",
+        tostring(crateName),
+        tostring(luckyActive == true),
+        table.concat(parts, ", ")
+    )
 end
 
 local function resolveCrateId(crateId)
@@ -343,6 +385,9 @@ function CrateService:OpenCrate(player, crateId)
             return false, "Not enough coins"
         end
     end
+
+    local rarityWeights, luckyActive = getRarityWeights(player, crateId, crateDef)
+    print(getRarityChanceMessage(crateDef.displayName or crateId, rarityWeights, luckyActive))
 
     -- Roll weapon
     local rolled = rollWeapon(player, crateId, crateDef)
