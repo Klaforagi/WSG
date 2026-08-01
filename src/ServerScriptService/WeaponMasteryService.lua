@@ -106,19 +106,6 @@ local function getMasteryBonusBreakdown(player)
     return breakdown
 end
 
-local function getMasteryDamageMultiplier(player)
-    local gamepassSvc = getGamepassService()
-    if gamepassSvc and type(gamepassSvc.GetMasteryBonus) == "function" then
-        local bonus = math.max(0, tonumber(gamepassSvc:GetMasteryBonus(player)) or 0)
-        return math.max(1, 1 + bonus)
-    end
-    return 1
-end
-
-local function roundDamage(value)
-    return math.floor((tonumber(value) or 0) * 10 + 0.5) / 10
-end
-
 local function ensureRemote(className, name)
     local existing = ReplicatedStorage:FindFirstChild(name)
     if existing and existing:IsA(className) then
@@ -409,8 +396,7 @@ function WeaponMasteryService:GetMasteryBaseDamage(player, instanceId)
     end
     local entry, weaponName, meta = getEntryForInstance(player, instanceId, false)
     meta = meta or resolveWeaponMeta(weaponName)
-    local baseDamage = Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
-    return roundDamage(baseDamage * getMasteryDamageMultiplier(player))
+    return Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
 end
 
 function WeaponMasteryService:GetDamageBonusForWeaponName(player, weaponName)
@@ -419,9 +405,7 @@ function WeaponMasteryService:GetDamageBonusForWeaponName(player, weaponName)
     end
     local entry = getEntryForWeaponName(player, weaponName, false)
     local meta = resolveWeaponMeta(weaponName)
-    local baseDamage = Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
-    local nilDamage = Config.GetDamageForLevel(0, meta.rarity, meta.category)
-    return math.max(0, roundDamage((baseDamage * getMasteryDamageMultiplier(player)) - nilDamage))
+    return Config.GetDamageBonus(entry and entry.level or 0, meta.rarity, meta.category)
 end
 
 function WeaponMasteryService:GetDamageBonus(player, instanceId)
@@ -430,9 +414,7 @@ function WeaponMasteryService:GetDamageBonus(player, instanceId)
     end
     local entry, weaponName, meta = getEntryForInstance(player, instanceId, false)
     meta = meta or resolveWeaponMeta(weaponName)
-    local baseDamage = Config.GetDamageForLevel(entry and entry.level or 0, meta.rarity, meta.category)
-    local nilDamage = Config.GetDamageForLevel(0, meta.rarity, meta.category)
-    return math.max(0, roundDamage((baseDamage * getMasteryDamageMultiplier(player)) - nilDamage))
+    return Config.GetDamageBonus(entry and entry.level or 0, meta.rarity, meta.category)
 end
 
 function WeaponMasteryService:AttachMasteryToInventory(player, inventory)
