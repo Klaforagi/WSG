@@ -85,13 +85,19 @@ local function getBaseRarityWeights(crateDef)
         return weights
     end
 
-    for rarity, rarityDef in pairs(CrateConfig.Rarities or {}) do
-        local weight = 0
-        if crateDef.rarities and crateDef.rarities[rarity] then
-            weight = crateDef.rarities[rarity]
-        else
-            weight = (rarityDef and rarityDef.weight) or 0
+    -- If the crate defines its own rarities table, only use those entries.
+    -- This prevents falling back to global rarity weights for rarities
+    -- that the crate explicitly omits (e.g. Premium crates without Commons).
+    if type(crateDef.rarities) == "table" and next(crateDef.rarities) ~= nil then
+        for rarity, w in pairs(crateDef.rarities) do
+            weights[rarity] = tonumber(w) or 0
         end
+        return weights
+    end
+
+    -- Fallback: include the full global rarity set using their default weights.
+    for rarity, rarityDef in pairs(CrateConfig.Rarities or {}) do
+        local weight = (rarityDef and rarityDef.weight) or 0
         weights[rarity] = weight
     end
 
@@ -175,16 +181,25 @@ local function computeSalvageValue(itemData)
     return 0
 end
 
-local function rollEnchantForRarity(rarityName, crateDef)
-    if WeaponEnchantConfig and type(WeaponEnchantConfig.RollEnchant) == "function" then
-        return WeaponEnchantConfig.RollEnchant({
-            rarity = rarityName,
-            enchantChance = crateDef and crateDef.enchantChance,
-            enchantChanceMultiplier = crateDef and crateDef.enchantChanceMultiplier,
-        }) or ""
+local function rollEnchantForRarity(player, rarityName, crateDef)
+    if not (WeaponEnchantConfig and type(WeaponEnchantConfig.RollEnchant) == "function") then
+        return ""
     end
 
-    return ""
+    -- Base enchant chance: crate override or global default
+    local baseChance = tonumber(crateDef and crateDef.enchantChance) or WeaponEnchantConfig.ENCHANT_CHANCE
+
+    -- If player has Lucky gamepass, boost enchant chance to requested value (30%).
+    local gamepassSvc = ensureGamepassService()
+    if gamepassSvc and type(gamepassSvc.HasLuckyGamepass) == "function" and gamepassSvc:HasLuckyGamepass(player) then
+        baseChance = 0.30
+    end
+
+    return WeaponEnchantConfig.RollEnchant({
+        rarity = rarityName,
+        enchantChance = baseChance,
+        enchantChanceMultiplier = crateDef and crateDef.enchantChanceMultiplier,
+    }) or ""
 end
 
 -- Pending crate rewards: PendingRewards[player] = { weaponName, rarity, ... }
@@ -399,8 +414,8 @@ function CrateService:OpenCrate(player, crateId)
     -- Roll weapon size (80–200%) using weighted tiers
     local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
-    -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
-    local enchantName = rollEnchantForRarity(rolled.rarity, crateDef)
+    -- ENCHANT SYSTEM: chance to receive one elemental enchant (adjusted for Lucky pass)
+    local enchantName = rollEnchantForRarity(player, rolled.rarity, crateDef)
 
     print(string.format("[CrateService] Rolled: %s (%s) Size: %d%% [%s] Enchant: %s",
         rolled.weapon, rolled.rarity, sizePercent, sizeTier, enchantName ~= "" and enchantName or "None"))
@@ -678,8 +693,8 @@ function CrateService:RollAndGrant(player, crateId)
     -- Roll weapon size
     local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
-    -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
-    local enchantName = rollEnchantForRarity(rolled.rarity, crateDef)
+    -- ENCHANT SYSTEM: chance to receive one elemental enchant (adjusted for Lucky pass)
+    local enchantName = rollEnchantForRarity(player, rolled.rarity, crateDef)
 
     print(string.format("[CrateService] RollAndGrant: %s (%s) Size: %d%% [%s] Enchant: %s",
         rolled.weapon, rolled.rarity, sizePercent, sizeTier, enchantName ~= "" and enchantName or "None"))
@@ -751,8 +766,8 @@ function CrateService:RollAndPend(player, crateId)
     -- Roll weapon size
     local sizePercent, sizeTier = rollSizeForCrate(crateDef)
 
-    -- ENCHANT SYSTEM: 20% chance to receive one elemental enchant
-    local enchantName = rollEnchantForRarity(rolled.rarity, crateDef)
+    -- ENCHANT SYSTEM: chance to receive one elemental enchant (adjusted for Lucky pass)
+    local enchantName = rollEnchantForRarity(player, rolled.rarity, crateDef)
 
     local category = rolled.category or crateDef.category or "Melee"
 

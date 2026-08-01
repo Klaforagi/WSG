@@ -95,7 +95,7 @@ local function recomputeState(player)
             if type(item.ChatPrefix) == "string" and item.ChatPrefix ~= "" then
                 table.insert(prefixes, item.ChatPrefix)
             end
-            if type(item.LuckyWeights) == "table" then
+            if type(item.LuckyWeights) == "table" or type(item.LuckyWeightsByCrate) == "table" then
                 state.lucky = true
             end
         end
@@ -246,12 +246,29 @@ function GamepassService:GetLuckyRarityWeights(player, crateId)
         return nil
     end
 
-    if type(crateId) ~= "string" or crateId ~= luckyItem.LuckyCrateId then
+    -- Support per-crate lucky weights. Prefer explicit per-crate table, then
+    -- fall back to a single LuckyWeights field for backwards compatibility.
+    local byCrate = luckyItem.LuckyWeightsByCrate
+    if type(crateId) ~= "string" then
         return nil
+    end
+
+    if type(byCrate) == "table" and type(byCrate[crateId]) == "table" then
+        local copy = {}
+        for key, value in pairs(byCrate[crateId]) do
+            copy[key] = value
+        end
+        return copy
     end
 
     local weights = luckyItem.LuckyWeights
     if type(weights) ~= "table" then
+        return nil
+    end
+
+    -- Optional: check LuckyCrateId field if present to limit which crate this
+    -- lucky pass applies to (backwards compat).
+    if type(luckyItem.LuckyCrateId) == "string" and luckyItem.LuckyCrateId ~= crateId then
         return nil
     end
 

@@ -87,13 +87,24 @@ ShopCatalog.Items = {
         AccentColor = Color3.fromRGB(70, 178, 96),
         IconText = "LCK",
         OwnedAttribute = "ShopLuckyOwned",
-        LuckyCrateId = "WeaponCrate",
-        LuckyWeights = {
-            Common = 42.4,
-            Uncommon = 37.6,
-            Rare = 10,
-            Epic = 9,
-            Legendary = 1,
+        -- Per-crate lucky weights: keyed by crate id. Values are percentage-like weights
+        -- for rarities. These override the crate's normal rarities when the player
+        -- owns the lucky gamepass.
+        LuckyWeightsByCrate = {
+            WeaponCrate = {
+                Legendary = 1,   -- 1%
+                Epic      = 6,   -- 6%
+                Rare      = 13,  -- 13%
+                Uncommon  = 40,  -- 40%
+                Common    = 40,  -- 40%
+            },
+            PremiumWeaponCrate = {
+                Legendary = 8,
+                Epic      = 20,
+                Rare      = 65,
+                Uncommon  = 7,
+                Common    = 0,
+            },
         },
     },
     {

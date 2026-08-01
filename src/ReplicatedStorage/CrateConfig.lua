@@ -145,7 +145,7 @@ CrateConfig.Crates = {
         currency    = "Keys",
         cost        = 1,
         price       = 1,
-        enchantChance = 0.40,
+        enchantChance = 0.20,
         iconGlyph   = "\u{2728}",      -- ✨
 
         -- >>> EDIT PERCENTAGES HERE to rebalance premium weapon odds <<<
