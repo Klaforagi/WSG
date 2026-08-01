@@ -612,7 +612,8 @@ local function createLauncherButton(def)
         shadowConstraint.MinTextSize = minLabel
         shadowConstraint.MaxTextSize = maxLabel
         badge.Size = UDim2.new(0, math.max(24, math.floor(h * 0.33)), 0, math.max(24, math.floor(h * 0.33)))
-        badgeConstraint.MaxTextSize = math.max(22, math.floor(h * 0.27))
+        local badgeBase = badgeConstraint and (badgeConstraint:GetAttribute("BaseMaxTextSize") or badge:GetAttribute("BaseMaxTextSize")) or 22
+        badgeConstraint.MaxTextSize = math.max(badgeBase, math.floor(h * 0.27))
     end
     btn:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateTextLimits)
     task.defer(updateTextLimits)
@@ -1257,7 +1258,8 @@ local function CreateHudOptionsButton(onActivated)
         container.Size = UDim2.new(0.8, 0, 0.8, 0)
         container.Position = UDim2.new(0.99, 0, 0.02, 0)
         buttonCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
-        fallbackConstraint.MaxTextSize = math.max(12, math.floor(buttonSize * 0.35))
+        local fbBase = fallbackConstraint and (fallbackConstraint:GetAttribute("BaseMaxTextSize") or container:GetAttribute("BaseMaxTextSize")) or 12
+        fallbackConstraint.MaxTextSize = math.max(fbBase, math.floor(buttonSize * 0.35))
     end
 
     local cameraViewportConn
@@ -1570,8 +1572,8 @@ titleLabel.ZIndex = 275
 
     local headerCoinIcon = Instance.new("ImageLabel")
     headerCoinIcon.Name = "CoinIcon"
-    headerCoinIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
-    headerCoinIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
+    headerCoinIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+    headerCoinIcon.Position = UDim2.new(0, 0, 0.5, 0)
     headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
     headerCoinIcon.BackgroundTransparency = 1
     headerCoinIcon.ScaleType = Enum.ScaleType.Fit
@@ -1586,8 +1588,8 @@ titleLabel.ZIndex = 275
 
     local headerCoinLabel = Instance.new("TextLabel")
     headerCoinLabel.Name = "CoinLabel"
-    headerCoinLabel.Size = UDim2.new(0.6, 0, 0.6, 0)
-    headerCoinLabel.Position = UDim2.new(0.3, 0, 0.2, 0)
+    headerCoinLabel.Size = UDim2.new(0.5, 0, 0.5, 0)
+    headerCoinLabel.Position = UDim2.new(0.4, 0, 0.25, 0)
     headerCoinLabel.BackgroundTransparency = 1
     headerCoinLabel.Font = Enum.Font.GothamBold
     headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
@@ -1596,6 +1598,15 @@ titleLabel.ZIndex = 275
     headerCoinLabel.TextScaled = true
     headerCoinLabel.ZIndex = 277
     headerCoinLabel.Parent = headerCoinFrame
+
+    -- remove any explicit UITextSizeConstraint on the CoinLabel so runtime scaler controls sizing
+    do
+        local existingCoinConstraint = headerCoinLabel:FindFirstChildOfClass("UITextSizeConstraint")
+        if existingCoinConstraint then
+            existingCoinConstraint:Destroy()
+        end
+    end
+    local headerCoinLabelConstraint = nil
 
     -- Keys display (right side, LayoutOrder 2 = appears after coins)
     local headerKeyFrame = Instance.new("Frame")
@@ -1613,8 +1624,8 @@ titleLabel.ZIndex = 275
     if keyImage then
         headerKeyIcon = Instance.new("ImageLabel")
         headerKeyIcon.Name = "KeyIcon"
-        headerKeyIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
-        headerKeyIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
+        headerKeyIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+        headerKeyIcon.Position = UDim2.new(0, 0, 0.5, 0)
         headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerKeyIcon.BackgroundTransparency = 1
         headerKeyIcon.Image = keyImage
@@ -1624,8 +1635,8 @@ titleLabel.ZIndex = 275
     else
         headerKeyIcon = Instance.new("TextLabel")
         headerKeyIcon.Name = "KeyIcon"
-        headerKeyIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
-        headerKeyIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
+        headerKeyIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+        headerKeyIcon.Position = UDim2.new(0, 0, 0.5, 0)
         headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerKeyIcon.BackgroundTransparency = 1
         headerKeyIcon.Font = Enum.Font.GothamBold
@@ -1647,6 +1658,13 @@ titleLabel.ZIndex = 275
     headerKeyLabel.TextScaled = true
     headerKeyLabel.ZIndex = 277
     headerKeyLabel.Parent = headerKeyFrame
+    -- ensure scaled text and remove any explicit constraint so runtime scaler controls sizing
+    headerKeyLabel.TextScaled = true
+    do
+        local existing = headerKeyLabel:FindFirstChildOfClass("UITextSizeConstraint")
+        if existing then existing:Destroy() end
+    end
+    local headerKeyLabelConstraint = nil
 
     -- Salvage display (header currency row, LayoutOrder 3 = after keys)
     local SHARD_ACCENT = Color3.fromRGB(255, 158, 74)
@@ -1674,8 +1692,8 @@ titleLabel.ZIndex = 275
     if shardImage then
         headerSalvageIcon = Instance.new("ImageLabel")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
-        headerSalvageIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
+        headerSalvageIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+        headerSalvageIcon.Position = UDim2.new(0, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
         headerSalvageIcon.Image = shardImage
@@ -1685,8 +1703,8 @@ titleLabel.ZIndex = 275
     else
         headerSalvageIcon = Instance.new("TextLabel")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0.45, 0, 0.45, 0)
-        headerSalvageIcon.Position = UDim2.new(-0.05, 0, 0.45, 0)
+        headerSalvageIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+        headerSalvageIcon.Position = UDim2.new(0, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
         headerSalvageIcon.Font = Enum.Font.GothamBold
@@ -1708,6 +1726,24 @@ titleLabel.ZIndex = 275
     headerSalvageLabel.TextScaled = true
     headerSalvageLabel.ZIndex = 277
     headerSalvageLabel.Parent = headerSalvageFrame
+    -- ensure scaled text and remove any explicit constraint so runtime scaler controls sizing
+    headerSalvageLabel.TextScaled = true
+    do
+        local existing = headerSalvageLabel:FindFirstChildOfClass("UITextSizeConstraint")
+        if existing then existing:Destroy() end
+    end
+    local headerSalvageLabelConstraint = nil
+
+    if headerKeyIcon and headerKeyIcon:IsA("TextLabel") then
+        local existing = headerKeyIcon:FindFirstChildOfClass("UITextSizeConstraint")
+        if existing then existing:Destroy() end
+        headerKeyIconConstraint = nil
+    end
+    if headerSalvageIcon and headerSalvageIcon:IsA("TextLabel") then
+        local existing = headerSalvageIcon:FindFirstChildOfClass("UITextSizeConstraint")
+        if existing then existing:Destroy() end
+        headerSalvageIconConstraint = nil
+    end
 
 -- Close X (top-right corner of window) — dark + gold style
 local CLOSE_DEFAULT = Color3.fromRGB(26, 30, 48)
@@ -1891,13 +1927,18 @@ local function updateHeaderCurrencyLayout()
     -- Ensure the title text scales to fit the pill width/height using a constraint
     if titleLabel and titleLabel:IsA("TextLabel") then
         local existing = titleLabel:FindFirstChildOfClass("UITextSizeConstraint")
-        if not existing then
+        local defaultBase = 16
+        local base = defaultBase
+        if existing then
+            base = existing:GetAttribute("BaseMaxTextSize") or titleLabel:GetAttribute("BaseMaxTextSize") or defaultBase
+            existing.MinTextSize = 12
+            existing.MaxTextSize = math.max(base, math.floor(titleHeight * 0.9))
+        else
+            base = titleLabel:GetAttribute("BaseMaxTextSize") or defaultBase
             local c = Instance.new("UITextSizeConstraint")
             c.MinTextSize = 12
-            c.MaxTextSize = math.max(16, math.floor(titleHeight * 0.9))
+            c.MaxTextSize = math.max(base, math.floor(titleHeight * 0.9))
             c.Parent = titleLabel
-        else
-            existing.MaxTextSize = math.max(16, math.floor(titleHeight * 0.9))
         end
     end
 
@@ -1935,8 +1976,14 @@ local function updateHeaderCurrencyLayout()
     if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = maxLabelSize end
     if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = maxLabelSize end
     if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = maxLabelSize end
-    if headerKeyIconConstraint then headerKeyIconConstraint.MaxTextSize = math.max(12, math.floor(chipHeight * 0.62)) end
-    if headerSalvageIconConstraint then headerSalvageIconConstraint.MaxTextSize = math.max(12, math.floor(chipHeight * 0.62)) end
+    if headerKeyIconConstraint then
+        local base = headerKeyIconConstraint:GetAttribute("BaseMaxTextSize") or headerKeyIcon:GetAttribute("BaseMaxTextSize") or 12
+        headerKeyIconConstraint.MaxTextSize = math.max(base, math.floor(chipHeight * 0.62))
+    end
+    if headerSalvageIconConstraint then
+        local base = headerSalvageIconConstraint:GetAttribute("BaseMaxTextSize") or headerSalvageIcon:GetAttribute("BaseMaxTextSize") or 12
+        headerSalvageIconConstraint.MaxTextSize = math.max(base, math.floor(chipHeight * 0.62))
+    end
 end
 
 local function updateModalWindowLayout()
@@ -2128,10 +2175,18 @@ local function applyDetailsPanelScaling(detailsPanel)
         if not lbl or not lbl:IsA("TextLabel") then return end
         lbl.TextScaled = true
         lbl.TextWrapped = false
-        local c = Instance.new("UITextSizeConstraint")
-        c.MinTextSize = 9
-        c.MaxTextSize = math.max(10, math.floor(px(maxPx or 18)))
-        c.Parent = lbl
+        local existing = lbl:FindFirstChildOfClass("UITextSizeConstraint")
+        local defaultBase = 10
+        if existing then
+            local base = existing:GetAttribute("BaseMaxTextSize") or lbl:GetAttribute("BaseMaxTextSize") or defaultBase
+            existing.MinTextSize = 9
+            existing.MaxTextSize = math.max(base, math.floor(px(maxPx or 18)))
+        else
+            local c = Instance.new("UITextSizeConstraint")
+            c.MinTextSize = 9
+            c.MaxTextSize = math.max(defaultBase, math.floor(px(maxPx or 18)))
+            c.Parent = lbl
+        end
     end
 
     -- Adjust main elements by name and set LayoutOrder to ensure order
@@ -2250,7 +2305,8 @@ local function applyDetailsPanelScaling(detailsPanel)
         if not detailEquipBtn:FindFirstChildOfClass("UITextSizeConstraint") then
             local c = Instance.new("UITextSizeConstraint")
             c.MinTextSize = 12
-            c.MaxTextSize = math.max(14, math.floor(px(22)))
+            local base = detailEquipBtn:GetAttribute("BaseMaxTextSize") or 14
+            c.MaxTextSize = math.max(base, math.floor(px(22)))
             c.Parent = detailEquipBtn
         end
         if not detailEquipBtn:FindFirstChildOfClass("UIAspectRatioConstraint") then

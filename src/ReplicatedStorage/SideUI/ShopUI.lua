@@ -281,7 +281,7 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     local priceLabel = Instance.new("TextLabel")
     priceLabel.BackgroundTransparency = 1
     priceLabel.Position = UDim2.new(0, priceOffset, 0, 0)
-    priceLabel.Size = UDim2.new(1, -priceOffset, 1, 0)
+    priceLabel.Size = UDim2.new(0.6, 0, 1, 0)
     priceLabel.Font = Enum.Font.GothamBlack
     priceLabel.Text = tostring(opts.price or 0)
     priceLabel.TextColor3 = ORANGE_BRIGHT
@@ -289,10 +289,7 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     priceLabel.TextYAlignment = Enum.TextYAlignment.Center
     priceLabel.TextScaled = true
     priceLabel.Parent = priceRow
-    local priceConstraint = Instance.new("UITextSizeConstraint")
-    priceConstraint.MinTextSize = 10
-    priceConstraint.MaxTextSize = px(28)
-    priceConstraint.Parent = priceLabel
+    -- removed fixed UITextSizeConstraint per design: allow scaled sizing
 
     -- BEST VALUE tag (bottom-right corner)
     if opts.isBest then
@@ -551,10 +548,7 @@ local function buildShopCard(parent, item, host)
     badgeStroke.Transparency = 0.25
     badgeStroke.Thickness = 1
     badgeStroke.Parent = badge
-    local badgeConstraint = Instance.new("UITextSizeConstraint")
-    badgeConstraint.MinTextSize = 10
-    badgeConstraint.MaxTextSize = px(18)
-    badgeConstraint.Parent = badge
+    -- badge text sizing: runtime scaler will handle sizing; no explicit constraint
 
     local pricePill = Instance.new("Frame")
     pricePill.Name = "PricePill"
@@ -584,7 +578,7 @@ local function buildShopCard(parent, item, host)
     priceLabel.Name = "Price"
     priceLabel.BackgroundTransparency = 1
     priceLabel.Position = UDim2.new(0.32, 0, 0, 0)
-    priceLabel.Size = UDim2.new(0.66, 0, 1, 0)
+    priceLabel.Size = UDim2.new(0.6, 0, 1, 0)
     priceLabel.Font = Enum.Font.GothamBlack
     priceLabel.Text = tostring(math.floor(tonumber(item.PriceRobux) or 0))
     priceLabel.TextColor3 = ORANGE_BRIGHT
@@ -592,10 +586,7 @@ local function buildShopCard(parent, item, host)
     priceLabel.TextXAlignment = Enum.TextXAlignment.Left
     priceLabel.TextYAlignment = Enum.TextYAlignment.Center
     priceLabel.Parent = pricePill
-    local priceConstraint = Instance.new("UITextSizeConstraint")
-    priceConstraint.MinTextSize = 10
-    priceConstraint.MaxTextSize = px(18)
-    priceConstraint.Parent = priceLabel
+    -- removed fixed UITextSizeConstraint per design: allow scaled sizing
 
     local iconBubble = Instance.new("Frame")
     iconBubble.Name = "IconBubble"
@@ -646,10 +637,7 @@ local function buildShopCard(parent, item, host)
     title.TextXAlignment = Enum.TextXAlignment.Left
     title.TextYAlignment = Enum.TextYAlignment.Center
     title.Parent = card
-    local titleConstraint = Instance.new("UITextSizeConstraint")
-    titleConstraint.MinTextSize = 12
-    titleConstraint.MaxTextSize = px(28)
-    titleConstraint.Parent = title
+    -- title text sizing: removed fixed UITextSizeConstraint per request
 
     local description = Instance.new("TextLabel")
     description.Name = "Description"
@@ -664,10 +652,7 @@ local function buildShopCard(parent, item, host)
     description.TextXAlignment = Enum.TextXAlignment.Left
     description.TextYAlignment = Enum.TextYAlignment.Top
     description.Parent = card
-    local descConstraint = Instance.new("UITextSizeConstraint")
-    descConstraint.MinTextSize = 10
-    descConstraint.MaxTextSize = px(20)
-    descConstraint.Parent = description
+    -- description text sizing: removed fixed UITextSizeConstraint per request
 
     local footerRow = Instance.new("Frame")
     footerRow.Name = "BottomRow"
