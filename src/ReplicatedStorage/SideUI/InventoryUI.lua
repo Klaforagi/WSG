@@ -562,11 +562,10 @@ end
 -- ═══════════════════════════════════════════════════════════════════════════
 local function showToast(parentFrame, message, color, duration)
     local toast = Instance.new("TextLabel")
-        root.Name = "IconCustom"
-        root.AnchorPoint = Vector2.new(0.5, 0.5)
-        root.Position = UDim2.new(0.5, 0, 0.5, 0)
+    toast.Name = "Toast"
+    toast.AnchorPoint = Vector2.new(0.5, 0.5)
     toast.Size = UDim2.new(0.85, 0, 0, px(40))
-        local shoulders = markIconPart(Instance.new("Frame"))
+    local shoulders = markIconPart(Instance.new("Frame"))
     toast.Position = UDim2.new(0.5, 0, 0, px(6))
     toast.Font = Enum.Font.GothamBold
     toast.TextSize = math.max(13, math.floor(px(14)))
@@ -3290,6 +3289,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local salvageRF = ReplicatedStorage:FindFirstChild("SalvageWeapon")
         if not salvageRF or not salvageRF:IsA("RemoteFunction") then discardTarget = nil return end
+
+        -- Play local dismantle sound immediately for low-latency feedback
+        pcall(function()
+            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+            if soundsFolder then
+                local s = soundsFolder:FindFirstChild("Dismantle") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Dismantle"))
+                if s and s:IsA("Sound") then
+                    local SoundService = game:GetService("SoundService")
+                    local clone = s:Clone()
+                    clone.Parent = SoundService
+                    clone:Play()
+                    task.delay((clone.TimeLength or 1) + 0.1, function() pcall(function() clone:Destroy() end) end)
+                end
+            end
+        end)
 
         local ok, success, result = pcall(function()
             return salvageRF:InvokeServer(instanceId)

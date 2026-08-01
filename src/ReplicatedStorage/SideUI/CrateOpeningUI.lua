@@ -1087,6 +1087,20 @@ function CrateOpeningUI.Init(playerGui)
             print("[CrateReward] Salvage confirmation required for rarity: " .. rarity)
             confirmFrame.Visible = true
         else
+            -- Play sound immediately for instant feedback
+            pcall(function()
+                local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                if soundsFolder then
+                    local s = soundsFolder:FindFirstChild("Dismantle") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Dismantle"))
+                    if s and s:IsA("Sound") then
+                        local SoundService = game:GetService("SoundService")
+                        local clone = s:Clone()
+                        clone.Parent = SoundService
+                        clone:Play()
+                        task.delay((clone.TimeLength or 1) + 0.1, function() pcall(function() clone:Destroy() end) end)
+                    end
+                end
+            end)
             doSalvage()
         end
     end)
@@ -1096,6 +1110,20 @@ function CrateOpeningUI.Init(playerGui)
     ---------------------------------------------------------------------------
     confirmYes.MouseButton1Click:Connect(function()
         confirmFrame.Visible = false
+        -- Play sound immediately on confirm accept
+        pcall(function()
+            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+            if soundsFolder then
+                local s = soundsFolder:FindFirstChild("Dismantle") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Dismantle"))
+                if s and s:IsA("Sound") then
+                    local SoundService = game:GetService("SoundService")
+                    local clone = s:Clone()
+                    clone.Parent = SoundService
+                    clone:Play()
+                    task.delay((clone.TimeLength or 1) + 0.1, function() pcall(function() clone:Destroy() end) end)
+                end
+            end
+        end)
         doSalvage()
     end)
 
