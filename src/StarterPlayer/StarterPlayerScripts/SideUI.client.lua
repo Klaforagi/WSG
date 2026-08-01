@@ -2607,7 +2607,7 @@ local function updateHeaderCoins()
         headerCoinLabel.Text = formatCompactCurrency(coins)
     else
         -- Defer server call to avoid yielding during menu transitions
-        headerCoinLabel.Text = formatCompactCurrency(0)
+        -- keep current displayed value to avoid flicker; update when server responds
         task.spawn(function()
             pcall(function()
                 local getCoinsFn = ReplicatedStorage:FindFirstChild("GetCoins")
@@ -2637,7 +2637,7 @@ local function updateHeaderKeys()
     if keys > 0 then
         headerKeyLabel.Text = formatCompactCurrency(keys)
     else
-        headerKeyLabel.Text = formatCompactCurrency(0)
+        -- keep current displayed value to avoid flicker; update when server responds
         task.spawn(function()
             pcall(function()
                 local getKeysFn = ReplicatedStorage:FindFirstChild("GetKeys")
