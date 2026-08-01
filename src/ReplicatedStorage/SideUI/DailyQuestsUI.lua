@@ -3466,9 +3466,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         label.TextColor3          = DIM_TEXT
         label.TextSize            = achTextPx(14, 10)
         label.TextXAlignment      = Enum.TextXAlignment.Center
-        label.Size                = UDim2.new(1, 0, 0, px(18))
+        label.Size                = UDim2.new(1, 0, 0.13, 0)
         label.AnchorPoint         = Vector2.new(0.5, 0)
-        label.Position            = UDim2.new(0.5, 0, 0, px(12) + iconWellSize + px(5))
+        label.Position            = UDim2.new(0.5, 0, 0.6, 0)
+        label.TextScaled          = true
         label.TextTruncate        = Enum.TextTruncate.AtEnd
         label.ZIndex              = 2
         label.Parent              = catBtn
@@ -3483,9 +3484,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         progLbl.TextColor3          = Color3.fromRGB(120, 125, 150)
         progLbl.TextSize            = achTextPx(13, 10)
         progLbl.TextXAlignment      = Enum.TextXAlignment.Center
-        progLbl.Size                = UDim2.new(1, 0, 0, px(16))
+        progLbl.Size                = UDim2.new(1, 0, 0.13, 0)
         progLbl.AnchorPoint         = Vector2.new(0.5, 0)
-        progLbl.Position            = UDim2.new(0.5, 0, 0, pctY)
+        progLbl.Position            = UDim2.new(0.5, 0, 0.72, 0)
+        progLbl.TextScaled          = true
         progLbl.ZIndex              = 2
         progLbl.Parent              = catBtn
 
