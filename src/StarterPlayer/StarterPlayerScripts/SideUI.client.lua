@@ -2557,6 +2557,7 @@ local shopModule = sideUIFolder and sideUIFolder:WaitForChild("ShopUI", 5)
 local invModule = sideUIFolder and sideUIFolder:WaitForChild("InventoryUI", 5)
 local optionsModule = sideUIFolder and sideUIFolder:WaitForChild("OptionsUI", 5)
 local questsModule = sideUIFolder and sideUIFolder:WaitForChild("DailyQuestsUI", 5)
+local teamModule = sideUIFolder and sideUIFolder:FindFirstChild("TeamUI")
 local boostsModule = sideUIFolder and sideUIFolder:WaitForChild("BoostsUI", 5)
 local crateOpeningModule = sideUIFolder and sideUIFolder:WaitForChild("CrateOpeningUI", 5)
 if not sideUIFolder then
@@ -3132,10 +3133,12 @@ if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
 if questsModule then registerModalMenu("Quests", questsModule, "Achievements", { achievementsOnly = true, initialTabId = "achiev" }) end
+if teamModule then registerModalMenu("Team", teamModule, "TEAMS") end
 if shopModule then registerPrewarmedModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerPrewarmedModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerPrewarmedModalMenu("Options", optionsModule, "OPTIONS") end
 if questsModule then registerPrewarmedModalMenu("Quests", questsModule, "Achievements", { achievementsOnly = true, initialTabId = "achiev" }) end
+if teamModule then registerPrewarmedModalMenu("Team", teamModule, "TEAMS") end
 startMenuWarmup()
 -- Legacy helper kept for any external code that may still reference it
 local function requestShowModule(mod, label)

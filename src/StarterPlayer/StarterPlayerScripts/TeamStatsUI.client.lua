@@ -2012,15 +2012,18 @@ end
 ---------------------------------------------------------------------------
 -- Register "Team" with the shared MenuController
 ---------------------------------------------------------------------------
-if MenuController then
+-- If a Team modal exists in ReplicatedStorage.SideUI (TeamUI), SideUI will
+-- register and manage the modal. Only register here when that module is
+-- absent so we don't create duplicate menu registrations.
+local sideFolder = ReplicatedStorage:FindFirstChild("SideUI")
+local teamModuleExists = sideFolder and sideFolder:FindFirstChild("TeamUI")
+if not teamModuleExists and MenuController then
 	MenuController.RegisterMenu("Team", {
 		group = "team",  -- own group (not modal)
 		open = function(_sameGroup)
-			print("[TeamStatsUI] open callback | sameGroup=", tostring(_sameGroup))
 			show()
 		end,
 		close = function()
-			print("[TeamStatsUI] close callback (animated)")
 			hide()
 		end,
 		closeInstant = function(sameGroup, isSwitching)
