@@ -30,7 +30,7 @@ local container = Instance.new("Frame")
 container.Name = "LocalKillContainer"
 container.AnchorPoint = Vector2.new(0.5, 1)
 -- slightly raised from previous position so popups sit above other bottom UI
-container.Position = UDim2.new(0.5, 0, 0.82, 0)
+container.Position = UDim2.new(0.5, 0, 0.76, 0)
 container.Size = UDim2.new(0, 0, 0, 36)
 container.BackgroundTransparency = 1
 container.AutomaticSize = Enum.AutomaticSize.X
