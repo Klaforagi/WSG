@@ -3426,9 +3426,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         iconWell.BackgroundColor3      = CARD_ICON_BG
         iconWell.BackgroundTransparency = 0.15
         iconWell.BorderSizePixel       = 0
-        iconWell.Size                  = UDim2.new(0, iconWellSize, 0, iconWellSize)
+        iconWell.Size                  = UDim2.new(0.4, 0, 0.4, 0)
         iconWell.AnchorPoint           = Vector2.new(0.5, 0)
-        iconWell.Position              = UDim2.new(0.5, 0, 0, px(12))
+        iconWell.Position              = UDim2.new(0.5, 0, 0.08, 0)
         iconWell.ZIndex                = 2
         iconWell.Parent                = catBtn
 
@@ -3443,15 +3443,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         iconWellStroke.Parent       = iconWell
 
         -- Category icon (large, primary focal point)
-        local iconSize = math.max(32, math.floor(px(42)))
         local icon = Instance.new("TextLabel")
         icon.Name                = "CatIcon"
         icon.BackgroundTransparency = 1
         icon.Font                = Enum.Font.GothamBold
         icon.Text                = CATEGORY_ICONS[def.id] or "\u{2605}"
         icon.TextColor3          = DIM_TEXT
-        icon.TextSize            = iconSize
         icon.Size                = UDim2.new(1, 0, 1, 0)
+        icon.Position            = UDim2.new(0, 0, 0, 0)
+        icon.TextScaled          = true
         icon.TextXAlignment      = Enum.TextXAlignment.Center
         icon.TextYAlignment      = Enum.TextYAlignment.Center
         icon.ZIndex              = 3
