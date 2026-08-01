@@ -365,7 +365,13 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         row.Name = "Row_" .. plr.Name
         row.Size = UDim2.new(1, 0, 0, px(ROW_HEIGHT))
         row.LayoutOrder = order or 999
-        row.BackgroundColor3 = NAVY_LIGHT
+        if teamName == "Blue" then
+            row.BackgroundColor3 = Color3.fromRGB(22, 17, 74)
+        elseif teamName == "Red" then
+            row.BackgroundColor3 = Color3.fromRGB(57, 0, 1)
+        else
+            row.BackgroundColor3 = Color3.fromRGB(45, 44, 53)
+        end
         row.BackgroundTransparency = (isLocal and 0.05) or 0.30
         Instance.new("UICorner", row).CornerRadius = UDim.new(0, px(6))
 
@@ -392,8 +398,8 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
                 local nameLabel = Instance.new("TextLabel")
                 nameLabel.Name = "CellName"
                 nameLabel.BackgroundTransparency = 1
-                nameLabel.Position = UDim2.new(xOff, px(AVATAR_SIZE + 12), 0, 0)
-                nameLabel.Size = UDim2.new(col.width, -px(AVATAR_SIZE + 18), 1, 0)
+                nameLabel.Position = UDim2.new(0.125, 0, 0.2, 0)
+                nameLabel.Size = UDim2.new(0.22, 0, 0.65, 0)
                 nameLabel.Font = Enum.Font.GothamBold
                 nameLabel.TextScaled = true
                 nameLabel.TextSize = 16
