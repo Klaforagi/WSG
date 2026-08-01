@@ -954,8 +954,21 @@ local function createPlayerRow(plr, teamName, order)
 	local row = Instance.new("Frame")
 	row.Name                 = "Row_" .. plr.Name
 	row.Size                 = UDim2.new(1, 0, 0, px(ROW_HEIGHT))
-	row.BackgroundColor3     = isLocal and Color3.fromRGB(30, 34, 58) or NAVY_LIGHT
-	row.BackgroundTransparency = isLocal and 0.05 or 0.30
+	-- Team-specific base colors and transparency
+	local baseColor = (isLocal and Color3.fromRGB(30, 34, 58)) or NAVY_LIGHT
+	local baseTrans = (isLocal and 0.05) or 0.30
+	if teamName == "Blue" then
+		baseColor = Color3.fromRGB(10, 22, 255)
+		baseTrans = 0.8
+	elseif teamName == "Red" then
+		baseColor = Color3.fromRGB(255, 0, 4)
+		baseTrans = 0.7
+	elseif teamName == "Neutral" then
+		baseColor = Color3.fromRGB(176, 176, 176)
+		baseTrans = 0.7
+	end
+	row.BackgroundColor3     = baseColor
+	row.BackgroundTransparency = baseTrans
 	row.LayoutOrder          = order
 	Instance.new("UICorner", row).CornerRadius = UDim.new(0, px(6))
 
