@@ -185,7 +185,7 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     -- opts: { iconKey, iconGlyph, amount, packName, productId, price, isBest }
     local card = Instance.new("TextButton")
     card.Name = "CurrencyPack_" .. tostring(layoutOrder)
-    card.Size = UDim2.new(1, 0, 0, px(108))
+    card.Size = UDim2.new(1, 0, 0, px(96))
     card.BackgroundColor3 = CARD_BG
     card.BorderSizePixel = 0
     card.AutoButtonColor = false
@@ -200,7 +200,7 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     local iconBubble = Instance.new("Frame")
     iconBubble.AnchorPoint = Vector2.new(0, 0.5)
     iconBubble.Position = UDim2.new(0, px(8), 0.5, 0)
-    iconBubble.Size = UDim2.new(0, px(78), 0, px(78))
+    iconBubble.Size = UDim2.new(0, px(70), 0, px(70))
     iconBubble.BackgroundTransparency = 1
     iconBubble.BorderSizePixel = 0
     iconBubble.Parent = card
@@ -227,8 +227,8 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     -- Amount (top right of icon)
     local amountLabel = Instance.new("TextLabel")
     amountLabel.BackgroundTransparency = 1
-    amountLabel.Position = UDim2.new(0, px(94), 0, px(14))
-    amountLabel.Size = UDim2.new(1, -px(100), 0, px(28))
+    amountLabel.Position = UDim2.new(0, px(86), 0, px(12))
+    amountLabel.Size = UDim2.new(1, -px(90), 0, px(26))
     amountLabel.Font = Enum.Font.GothamBlack
     amountLabel.Text = formatNumber(opts.amount)
     amountLabel.TextColor3 = WHITE
@@ -236,38 +236,46 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     amountLabel.TextYAlignment = Enum.TextYAlignment.Center
     amountLabel.TextScaled = true
     amountLabel.Parent = card
+    local amountConstraint = Instance.new("UITextSizeConstraint")
+    amountConstraint.MinTextSize = 10
+    amountConstraint.MaxTextSize = px(28)
+    amountConstraint.Parent = amountLabel
 
     -- Pack name (under amount)
     local nameLabel = Instance.new("TextLabel")
     nameLabel.BackgroundTransparency = 1
-    nameLabel.Position = UDim2.new(0, px(94), 0, px(44))
-    nameLabel.Size = UDim2.new(1, -px(100), 0, px(18))
+    nameLabel.Position = UDim2.new(0, px(86), 0, px(40))
+    nameLabel.Size = UDim2.new(1, -px(92), 0, px(18))
     nameLabel.Font = Enum.Font.Gotham
     nameLabel.Text = opts.packName or ""
     nameLabel.TextColor3 = DIM_TEXT
-    nameLabel.TextSize = px(13)
+    nameLabel.TextScaled = true
     nameLabel.TextXAlignment = Enum.TextXAlignment.Left
     nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
     nameLabel.Parent = card
+    local nameConstraint = Instance.new("UITextSizeConstraint")
+    nameConstraint.MinTextSize = 10
+    nameConstraint.MaxTextSize = px(22)
+    nameConstraint.Parent = nameLabel
 
     -- Price row (robux + price)
     local priceRow = Instance.new("Frame")
     priceRow.BackgroundTransparency = 1
-    priceRow.Position = UDim2.new(0, px(94), 0, px(68))
-    priceRow.Size = UDim2.new(1, -px(100), 0, px(24))
+    priceRow.Position = UDim2.new(0, px(86), 0, px(62))
+    priceRow.Size = UDim2.new(1, -px(92), 0, px(22))
     priceRow.Parent = card
 
     local robuxImage = getAsset("Robux")
     local priceOffset = 0
     if robuxImage then
         local robuxIcon = Instance.new("ImageLabel")
-        robuxIcon.Size = UDim2.new(0, px(18), 0, px(18))
-        robuxIcon.Position = UDim2.new(0, 0, 0.5, -px(9))
+        robuxIcon.Size = UDim2.new(0, px(16), 0, px(16))
+        robuxIcon.Position = UDim2.new(0, 0, 0.5, -px(8))
         robuxIcon.BackgroundTransparency = 1
         robuxIcon.Image = robuxImage
         robuxIcon.ScaleType = Enum.ScaleType.Fit
         robuxIcon.Parent = priceRow
-        priceOffset = px(22)
+        priceOffset = px(20)
     end
 
     local priceLabel = Instance.new("TextLabel")
@@ -281,6 +289,10 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
     priceLabel.TextYAlignment = Enum.TextYAlignment.Center
     priceLabel.TextScaled = true
     priceLabel.Parent = priceRow
+    local priceConstraint = Instance.new("UITextSizeConstraint")
+    priceConstraint.MinTextSize = 10
+    priceConstraint.MaxTextSize = px(28)
+    priceConstraint.Parent = priceLabel
 
     -- BEST VALUE tag (bottom-right corner)
     if opts.isBest then
@@ -292,10 +304,14 @@ local function buildCurrencyCard(parent, layoutOrder, opts)
         bestLabel.Font = Enum.Font.GothamBlack
         bestLabel.Text = "BEST VALUE"
         bestLabel.TextColor3 = ORANGE_BRIGHT
-        bestLabel.TextSize = px(10)
+        bestLabel.TextScaled = true
         bestLabel.TextXAlignment = Enum.TextXAlignment.Right
         bestLabel.TextYAlignment = Enum.TextYAlignment.Center
         bestLabel.Parent = card
+        local bestConstraint = Instance.new("UITextSizeConstraint")
+        bestConstraint.MinTextSize = 9
+        bestConstraint.MaxTextSize = px(18)
+        bestConstraint.Parent = bestLabel
     end
 
     -- Hover effects
@@ -631,8 +647,8 @@ local function buildShopCard(parent, item, host)
     title.TextYAlignment = Enum.TextYAlignment.Center
     title.Parent = card
     local titleConstraint = Instance.new("UITextSizeConstraint")
-    titleConstraint.MinTextSize = 11
-    titleConstraint.MaxTextSize = px(22)
+    titleConstraint.MinTextSize = 12
+    titleConstraint.MaxTextSize = px(28)
     titleConstraint.Parent = title
 
     local description = Instance.new("TextLabel")
@@ -649,8 +665,8 @@ local function buildShopCard(parent, item, host)
     description.TextYAlignment = Enum.TextYAlignment.Top
     description.Parent = card
     local descConstraint = Instance.new("UITextSizeConstraint")
-    descConstraint.MinTextSize = 9
-    descConstraint.MaxTextSize = px(14)
+    descConstraint.MinTextSize = 10
+    descConstraint.MaxTextSize = px(20)
     descConstraint.Parent = description
 
     local footerRow = Instance.new("Frame")
@@ -674,8 +690,8 @@ local function buildShopCard(parent, item, host)
     applyCorners(buyButton, px(10))
     local buyStroke = applyStroke(buyButton, accent, 1, 0.15)
     local buyConstraint = Instance.new("UITextSizeConstraint")
-    buyConstraint.MinTextSize = 10
-    buyConstraint.MaxTextSize = px(18)
+    buyConstraint.MinTextSize = 12
+    buyConstraint.MaxTextSize = px(28)
     buyConstraint.Parent = buyButton
 
     if item.BestValue or item.isBest then
@@ -819,9 +835,9 @@ end
 
 local function buildCatalogPage(parent, items, host, options)
     local catalogItems = (type(items) == "table") and items or {}
-    local cardHeightScale = 0.34
+    local cardHeightScale = 0.30
     if type(options) == "table" and type(options.cardHeightScale) == "number" then
-        cardHeightScale = math.clamp(options.cardHeightScale, 0.26, 0.42)
+        cardHeightScale = math.clamp(options.cardHeightScale, 0.24, 0.36)
     end
     local scroll = Instance.new("ScrollingFrame")
     scroll.Name = "ShopScroll"
@@ -861,7 +877,7 @@ local function buildCatalogPage(parent, items, host, options)
     end
 
     local rowCount = math.max(1, math.ceil(#catalogItems / 2))
-    local contentHeight = 0.42 + (rowCount * cardHeightScale) + math.max(0, rowCount - 1) * 0.02 + 1.12
+    local contentHeight = 0.48 + (rowCount * cardHeightScale) + math.max(0, rowCount - 1) * 0.02 + 1.18
     scroll.CanvasSize = UDim2.fromScale(0, contentHeight)
 
     return scroll
@@ -969,7 +985,7 @@ function ShopUI.Create(parent, _coinApi, _inventoryApi)
     contentGradient.Parent = contentArea
 
     local tabPages = {}
-    tabPages.gamepasses = buildCatalogPage(contentArea, getGamepassTabItems(), root, { cardHeightScale = 0.30 })
+    tabPages.gamepasses = buildCatalogPage(contentArea, getGamepassTabItems(), root, { cardHeightScale = 0.28 })
     tabPages.coins = buildCatalogPage(contentArea, getPackTabItems(CoinProducts, "COINS", "Coin", ORANGE, "Coin"), root)
     tabPages.keys = buildCatalogPage(contentArea, getPackTabItems(KeyProducts, "KEYS", "Key", Color3.fromRGB(166, 118, 255), "Key"), root)
 
