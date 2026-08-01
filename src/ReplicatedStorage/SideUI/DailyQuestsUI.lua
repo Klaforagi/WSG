@@ -1490,7 +1490,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     local root = Instance.new("Frame")
     root.Name                = "QuestsRoot"
     root.BackgroundTransparency = 1
-    root.Size                = UDim2.new(1, 0, 0, rootH)
+    root.Size                = UDim2.new(1, 0, 1, 0)
     root.LayoutOrder         = 1
     root.ClipsDescendants    = false
     root.Parent              = parent
@@ -1560,13 +1560,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         local targetHeight = math.max(pageHeightForCount(minRows), px(220))
         if targetHeight <= rootH then return end
         rootH = targetHeight
-        root.Size = UDim2.new(1, 0, 0, rootH)
-        for id, page in pairs(contentPages) do
-            -- achievPage uses relative sizing (1,0) for its hub layout; skip it
-            if id ~= "achiev" then
-                page.Size = UDim2.new(1, 0, 0, rootH)
-            end
-        end
+        -- Intentionally do not change `root.Size` at runtime; keep it fixed to fill parent.
+        -- This function updates internal `rootH` only for legacy layout calculations.
     end
 
     ---------------------------------------------------------------------------
@@ -2105,7 +2100,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     end
 
     -- Showcase layout: left category cards + right content panel
-    local SHOWCASE_W_SCALE = 0.42   -- left showcase takes ~42% width
+    local SHOWCASE_W_SCALE = 0.41   -- left showcase takes 41% width
     local CONTENT_GAP = px(10)
 
     ---------------------------------------------------------------------------
@@ -2114,7 +2109,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     local showcaseFrame = Instance.new("Frame")
     showcaseFrame.Name                = "CategoryShowcase"
     showcaseFrame.BackgroundTransparency = 1
-    showcaseFrame.Size                = UDim2.new(SHOWCASE_W_SCALE, -CONTENT_GAP, 1, 0)
+    showcaseFrame.Size                = UDim2.new(0.41, 0, 1, 0)
     showcaseFrame.Position            = UDim2.new(0, 0, 0, 0)
     showcaseFrame.ClipsDescendants    = true
     showcaseFrame.Parent              = hubRoot
@@ -2136,7 +2131,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     local contentPanel = Instance.new("ScrollingFrame")
     contentPanel.Name                    = "ContentPanel"
     contentPanel.BackgroundTransparency  = 1
-    contentPanel.Size                    = UDim2.new(1 - SHOWCASE_W_SCALE, -CONTENT_GAP, 1, 0)
+    contentPanel.Size                    = UDim2.new(0.56, 0, 1, 0)
     contentPanel.Position               = UDim2.new(SHOWCASE_W_SCALE, CONTENT_GAP, 0, 0)
     contentPanel.CanvasSize             = UDim2.new(0, 0, 0, 0)
     contentPanel.AutomaticCanvasSize    = Enum.AutomaticSize.Y
@@ -3368,8 +3363,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
 
     -- Use UIGridLayout for clean 2-column arrangement
     local gridLayout = Instance.new("UIGridLayout")
-    gridLayout.CellSize        = UDim2.new(0.5, -math.ceil(GRID_GAP * 0.75), 0, CARD_H)
-    gridLayout.CellPadding     = UDim2.new(0, GRID_GAP, 0, GRID_GAP)
+    gridLayout.CellSize        = UDim2.new(0.48, 0, 0.32, 0)
+    gridLayout.CellPadding     = UDim2.new(0.01, 0, 0.01, 0)
     gridLayout.SortOrder       = Enum.SortOrder.LayoutOrder
     gridLayout.FillDirection   = Enum.FillDirection.Horizontal
     gridLayout.Parent          = gridFrame
@@ -3589,15 +3584,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     applyAchievementsScrollStyle = function(isAchievTab)
         if isAchievTab then
             achDisableParentScroll()
-            -- Fit root to the parent viewport so the hub fills available space
-            if parentScroll and parentScroll.AbsoluteSize.Y > 0 then
-                root.Size = UDim2.new(1, 0, 0, parentScroll.AbsoluteSize.Y)
-            elseif parent and parent.AbsoluteSize.Y > 0 then
-                root.Size = UDim2.new(1, 0, 0, parent.AbsoluteSize.Y)
-            end
+            -- Do not resize `root`; keep QuestsRoot sized to fill the parent (1,0,1,0).
         else
             achRestoreParentScroll()
-            root.Size = UDim2.new(1, 0, 0, rootH)
+            -- Do not resize `root` on tab change.
         end
     end
 
