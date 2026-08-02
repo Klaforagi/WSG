@@ -1795,6 +1795,7 @@ end
 	unifiedLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	unifiedLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 	unifiedLayout.CellPadding = UDim2.fromOffset(px(14), px(14))
+	unifiedLayout.CellSize = UDim2.new(0.98, 0, 0.4, 0)
 	unifiedLayout.Parent = unifiedGrid
 
 	local unifiedEmpty = Instance.new("TextLabel")
@@ -1930,13 +1931,30 @@ end
 		for _, record in ipairs(sectionRecords) do
 			local count = math.max(0, tonumber(record.count) or 0)
 			record.layout.CellPadding = UDim2.fromOffset(gap, gap)
-			record.layout.CellSize = UDim2.fromOffset(cellWidth, cellHeight)
+
+			-- Determine pixel cell size. If the layout's CellSize uses scale,
+			-- compute pixel size from scroller.AbsoluteSize rather than overwriting it.
+			local layoutCellSize = record.layout.CellSize
+			local pxCellW, pxCellH = cellWidth, cellHeight
+			if layoutCellSize and layoutCellSize.X and layoutCellSize.X.Scale and layoutCellSize.X.Scale > 0 then
+				pxCellW = math.max(1, math.floor(layoutCellSize.X.Scale * (scroller.AbsoluteSize.X - px(4))))
+			end
+			if layoutCellSize and layoutCellSize.Y and layoutCellSize.Y.Scale and layoutCellSize.Y.Scale > 0 then
+				pxCellH = math.max(1, math.floor(layoutCellSize.Y.Scale * scroller.AbsoluteSize.Y))
+			end
+
+			-- Only overwrite the layout CellSize when it is pixel-based; keep scale-based sizes as-is.
+			if not (layoutCellSize and layoutCellSize.X and layoutCellSize.X.Scale and layoutCellSize.X.Scale > 0) and
+			   not (layoutCellSize and layoutCellSize.Y and layoutCellSize.Y.Scale and layoutCellSize.Y.Scale > 0) then
+				record.layout.CellSize = UDim2.fromOffset(pxCellW, pxCellH)
+			end
+
 			record.grid.Visible = count > 0
 			if record.empty then
 				record.empty.Visible = count <= 0
 			end
 			local rows = count > 0 and math.ceil(count / columns) or 0
-			local height = rows > 0 and ((rows * cellHeight) + (math.max(0, rows - 1) * gap)) or px(1)
+			local height = rows > 0 and ((rows * pxCellH) + (math.max(0, rows - 1) * gap)) or px(1)
 			record.grid.Size = UDim2.new(1, 0, 0, height)
 		end
 	end
