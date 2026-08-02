@@ -148,7 +148,18 @@ local function updateSpeedLabel()
     if not char then speedLabel.Text = "" return end
     local hum = char:FindFirstChildOfClass("Humanoid")
     if not hum then speedLabel.Text = "" return end
-    speedLabel.Text = string.format("Speed: %.2f", hum.WalkSpeed)
+    local sizeAttr = hum:GetAttribute("Size")
+    local sizeText = ""
+    if type(sizeAttr) == "number" then
+        sizeText = string.format("  Size: %.2f", sizeAttr)
+    else
+        -- fallback to SizePercent attribute
+        local sp = hum:GetAttribute("SizePercent")
+        if type(sp) == "number" then
+            sizeText = string.format("  Size: %d%%", math.floor(sp))
+        end
+    end
+    speedLabel.Text = string.format("Speed: %.2f%s", hum.WalkSpeed, sizeText)
 end
 
 -- Listen for state changes
