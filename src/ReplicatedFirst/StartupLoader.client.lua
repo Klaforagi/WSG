@@ -29,8 +29,81 @@ local UserInputService = game:GetService("UserInputService")
 
 ReplicatedFirst:RemoveDefaultLoadingScreen()
 
+-- Immediately silence any music assets in ReplicatedStorage so nothing
+-- starts playing before the loader UI is visible.
+pcall(function()
+	local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")
+	if soundsRoot then
+		local musicFolder = soundsRoot:FindFirstChild("Music")
+		if musicFolder then
+			for _, obj in ipairs(musicFolder:GetDescendants()) do
+				if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
+					pcall(function()
+						obj.Playing = false
+					end)
+					pcall(function()
+						obj.Volume = 0
+					end)
+				end
+			end
+		end
+	end
+end)
+
+-- Create an immediate minimal early-loading UI on `StarterGui` so the
+-- player sees a loading screen before `PlayerGui` or other systems finish
+-- initializing. This avoids a blank default Roblox loading screen (clouds).
+local earlyGui
+do
+	local ok, eg = pcall(function()
+		local g = Instance.new("ScreenGui")
+		g.Name = "_StartupLoadingGuiEarly"
+		g.ResetOnSpawn = false
+		g.IgnoreGuiInset = true
+		g.DisplayOrder = 999999
+		g.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+		local f = Instance.new("Frame")
+		f.Size = UDim2.fromScale(1, 1)
+		f.BackgroundColor3 = Color3.fromRGB(63, 0, 253)
+		f.BorderSizePixel = 0
+		f.Parent = g
+
+		local lbl = Instance.new("TextLabel")
+		lbl.Size = UDim2.new(0.6, 0, 0.06, 0)
+		lbl.Position = UDim2.new(0.2, 0, 0.48, 0)
+		lbl.AnchorPoint = Vector2.new(0.5, 0.5)
+		lbl.BackgroundTransparency = 1
+		lbl.Text = "Loading..."
+		lbl.Font = Enum.Font.GothamBold
+		lbl.TextSize = 20
+		lbl.TextColor3 = Color3.fromRGB(255, 183, 2)
+		lbl.Parent = f
+
+		g.Parent = StarterGui
+		return g
+	end)
+	if ok then earlyGui = eg end
+end
+
+-- Debug: print that the StartupLoader script has created the early GUI
+pcall(function()
+    print("[StartupLoader] Early GUI created on StarterGui")
+end)
+
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- Debug: PlayerGui is available
+pcall(function()
+	print("[StartupLoader] PlayerGui available for ", player and player.Name)
+	if earlyGui and earlyGui.Parent ~= playerGui then
+		pcall(function()
+			earlyGui.Parent = playerGui
+			print("[StartupLoader] Reparented early GUI to PlayerGui")
+		end)
+	end
+end)
 
 if UserInputService.TouchEnabled then
 	pcall(function()
@@ -57,6 +130,11 @@ local SKIP_HOVER_COLOR = Color3.fromRGB(251, 255, 0)
 --------------------------------------------------------------------------------
 -- UTILITY HELPERS
 --------------------------------------------------------------------------------
+
+-- Minimal early-loading UI so the player sees something immediately while
+-- the rest of the loader warms up. This is removed when the full loader GUI
+-- is created later.
+-- (early GUI created earlier on StarterGui)
 
 --- WaitForChild with a bounded timeout. Returns the child or nil.
 local function safeWaitForChild(parent, name, timeout)
@@ -407,7 +485,6 @@ local function createGui()
 			blocker:Destroy()
 			blocker = nil
 		end
-		bg.Visible = false
 	end
 
 	skipBtn.MouseEnter:Connect(function()
@@ -427,7 +504,18 @@ local function createGui()
 	skipBtn.MouseButton1Click:Connect(doSkip)
 	skipBtn.TouchTap:Connect(doSkip)
 
+	-- Remove the minimal early GUI if it exists now that the full loader GUI is ready
+	if earlyGui then
+		pcall(function()
+			print("[StartupLoader] Main loader ready — destroying early GUI")
+			earlyGui:Destroy()
+		end)
+		earlyGui = nil
+	end
 	gui.Parent = playerGui
+	pcall(function()
+		print("[StartupLoader] Main loader GUI parented to PlayerGui")
+	end)
 	return gui, blocker, bg, title, statusLbl, barBg, barFill
 end
 
@@ -441,12 +529,8 @@ function setProgress(statusLabel, barFill, text, alpha)
 end
 
 local function fadeOut(gui, blocker, bg, title, statusLbl, barBg, barFill)
-	-- If the user already hit Skip, the UI is hidden and the blocker is gone.
-	-- Just clean up the gui and bail out — no tweens needed.
-	if skipped then
-		if gui then gui:Destroy() end
-		return
-	end
+	-- If the gui is already gone, nothing to do.
+	if not gui or not gui.Parent then return end
 
 	-- Remove input blocker immediately so gameplay input works during fade
 	if blocker then blocker:Destroy() end
@@ -553,16 +637,15 @@ pcall(function()
 				local musicFolder = soundsRoot:FindFirstChild("Music")
 				if musicFolder then
 					for _, obj in ipairs(musicFolder:GetDescendants()) do
-						if obj:IsA("Sound") then obj.Playing = false end
+						if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then obj.Playing = false end
 					end
 					local mapped = math.clamp(tonumber(settings.MusicVolume) or 1.0, 0, 1) * 0.2
 					for _, obj in ipairs(musicFolder:GetDescendants()) do
-						if obj:IsA("Sound") then pcall(function() obj.Volume = mapped end) end
+						if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then pcall(function() obj.Volume = mapped end) end
 					end
-					if mapped > 0 then
-						local ach = musicFolder:FindFirstChild("Ancient Castle Halls")
-						if ach and ach:IsA("Sound") then ach.Playing = true end
-					end
+					-- Do NOT start playback here. We only set volumes during Stage 0.
+					-- Playback will begin after the loader completes and the player
+					-- has seen the loading screen.
 				end
 			end
 			local SoundService = game:GetService("SoundService")
@@ -831,25 +914,38 @@ setProgress(statusLbl, barFill, "Ready for Battle...", 1)
 task.wait(0.15)
 
 openMenu()
--- Require an explicit click on the Skip button before fading out the loader.
--- This prevents the loading screen from auto-closing.
+-- Auto-advance: no click required. Proceed immediately when loading finishes.
 if not skipped then
-	-- Update the status to prompt the player
-	pcall(function()
-		if statusLbl and statusLbl.Set then end
-		statusLbl.Text = trackedStatusText("Click to continue...")
-	end)
-	-- Pulse the Skip button to draw attention (best-effort)
-	local skipBtn = gui:FindFirstChild("SkipButton", true)
-	if skipBtn and skipBtn:IsA("TextButton") then
-		local pulse = TweenService:Create(skipBtn, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { BackgroundTransparency = 0.18 })
-		pcall(function() pulse:Play() end)
-	end
-
-	-- Wait until the player clicks Skip (doSkip sets `skipped = true`)
-	while not skipped do
-		task.wait(0.1)
-	end
+    -- brief pause to ensure final progress visuals render
+    task.wait(0.5)
 end
+
+-- Start music now that the loader is complete and the player has seen the UI
+pcall(function()
+	local musicVol = 0.2
+	if type(_G) == "table" and _G.PlayerSettings and tonumber(_G.PlayerSettings.MusicVolume) then
+		musicVol = math.clamp(tonumber(_G.PlayerSettings.MusicVolume) or 1.0, 0, 1) * 0.2
+	end
+	local soundsRoot = ReplicatedStorage:FindFirstChild("Sounds")
+	if soundsRoot then
+		local musicFolder = soundsRoot:FindFirstChild("Music")
+		if musicFolder then
+			for _, obj in ipairs(musicFolder:GetDescendants()) do
+				if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
+					pcall(function() obj.Volume = musicVol end)
+				end
+			end
+			local ach = musicFolder:FindFirstChild("Ancient Castle Halls")
+			if ach and type(ach.IsA) == "function" and ach:IsA("Sound") then
+				pcall(function()
+					ach.Volume = musicVol
+					if not ach.Playing then
+						ach:Play()
+					end
+				end)
+			end
+		end
+	end
+end)
 
 fadeOut(gui, blocker, bg, title, statusLbl, barBg, barFill)
