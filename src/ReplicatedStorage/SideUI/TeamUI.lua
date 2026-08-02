@@ -436,8 +436,27 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         clickOverlay.BorderSizePixel = 0
         clickOverlay.ZIndex = 5
         clickOverlay.Parent = row
+        -- Track exact input position for precise popup placement (mouse & touch)
+        local lastInputPos = nil
+        clickOverlay.InputBegan:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1
+                or input.UserInputType == Enum.UserInputType.Touch then
+                lastInputPos = input.Position
+            end
+        end)
+
         clickOverlay.MouseButton1Click:Connect(function()
-            openPlayerActionPopup(plr, row, UserInputService:GetMouseLocation())
+            local mousePos = lastInputPos
+            if not mousePos then
+                pcall(function()
+                    local m = Players.LocalPlayer and Players.LocalPlayer:GetMouse()
+                    if m then mousePos = Vector2.new(m.X or 0, m.Y or 0) end
+                end)
+            end
+            if not mousePos then
+                mousePos = UserInputService:GetMouseLocation()
+            end
+            openPlayerActionPopup(plr, row, mousePos)
         end)
 
         return row, cells
@@ -627,7 +646,11 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
 
             posX = math.clamp(posX, panelL + px(4), panelR - popW - px(4))
             posY = math.clamp(posY, panelT + px(4), panelB - popH - px(4))
-            popup.Position = UDim2.new(0, posX, 0, posY)
+            -- Convert absolute screen coords to host-local coords (popup's parent is `host`)
+            local hostPos = host.AbsolutePosition
+            local localX = math.floor(posX - hostPos.X + 0)
+            local localY = math.floor(posY - hostPos.Y + 0)
+            popup.Position = UDim2.new(0, localX, 0, localY)
         end
 
         task.defer(positionPopup)
