@@ -984,10 +984,12 @@ end
 	applyCorners(panel, px(28))
 	applyStroke(panel, PANEL_EDGE, 2, 0.1)
 
-	local panelConstraint = Instance.new("UISizeConstraint")
-	panelConstraint.MinSize = Vector2.new(math.min(640, math.floor(viewportSize.X * 0.92)), math.min(px(470), math.floor(viewportSize.Y * 0.78)))
-	panelConstraint.MaxSize = Vector2.new(math.max(320, math.floor(viewportSize.X * 0.94)), math.max(360, math.floor(viewportSize.Y * 0.88)))
-	panelConstraint.Parent = panel
+	-- Use aspect ratio constraint (width-dominant) instead of UISizeConstraint
+	local panelAspect = Instance.new("UIAspectRatioConstraint")
+	panelAspect.AspectRatio = 1.4
+	panelAspect.AspectType = Enum.AspectType.FitWithinMaxSize
+	panelAspect.DominantAxis = Enum.DominantAxis.Width
+	panelAspect.Parent = panel
 
 	local panelGradient = Instance.new("UIGradient")
 	panelGradient.Rotation = 90
