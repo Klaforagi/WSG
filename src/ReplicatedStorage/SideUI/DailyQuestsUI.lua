@@ -1376,6 +1376,19 @@ local DailyQuestsUI = {}
 -- and navigates to the category that contains the given achievement id.
 -- Called by AchievementToast when the player clicks a toast notification.
 _G.NavigateToAchievement = function(achId, category)
+    -- If caller provided only an achievement id, try to resolve its category
+    if (not category) and type(achId) == "string" then
+        pcall(function()
+            local defMod = ReplicatedStorage:FindFirstChild("AchievementDefs")
+            if defMod and defMod:IsA("ModuleScript") then
+                local ok, defs = pcall(function() return require(defMod) end)
+                if ok and defs and defs.ById and defs.ById[achId] and defs.ById[achId].category then
+                    category = defs.ById[achId].category
+                end
+            end
+        end)
+    end
+
     local mc = _G.SideUI and _G.SideUI.MenuController
     if mc and not mc.IsOpen("Quests") then
         -- Store intent so BuildUI picks it up after constructing the UI

@@ -1077,7 +1077,14 @@ local function createPlayerRow(plr, teamName, order)
 		TweenService:Create(row, hoverFi, {BackgroundColor3 = rowHoverBG}):Play()
 	end)
 	clickOverlay.MouseButton1Click:Connect(function()
-		local mousePos = UserInputService:GetMouseLocation()
+		local mousePos = nil
+		pcall(function()
+			local m = player:GetMouse()
+			if m then mousePos = Vector2.new(m.X or 0, m.Y or 0) end
+		end)
+		if not mousePos then
+			mousePos = UserInputService:GetMouseLocation()
+		end
 		openPlayerActionPopup(plr, row, mousePos)
 	end)
 
