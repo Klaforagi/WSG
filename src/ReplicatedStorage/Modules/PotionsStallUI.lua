@@ -1782,12 +1782,44 @@ end
 		}
 	end
 
-	for sectionIndex, sectionDef in ipairs(POTION_SECTION_DEFS) do
-		local sectionEntries = entriesByCategory[sectionDef.Category] or {}
-		local sectionRecord = createPotionSection(sectionDef, sectionIndex, #sectionEntries)
-		for index, entry in ipairs(sectionEntries) do
-			createCard(entry, index, sectionRecord.grid)
-		end
+	-- Single unified grid: combine all potions and elixirs into one area
+	local unifiedGrid = Instance.new("Frame")
+	unifiedGrid.Name = "AllGrid"
+	unifiedGrid.BackgroundTransparency = 1
+	unifiedGrid.Size = UDim2.new(1, 0, 0, px(1))
+	unifiedGrid.LayoutOrder = 1
+	unifiedGrid.Parent = scroller
+
+	local unifiedLayout = Instance.new("UIGridLayout")
+	unifiedLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	unifiedLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	unifiedLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	unifiedLayout.CellPadding = UDim2.fromOffset(px(14), px(14))
+	unifiedLayout.Parent = unifiedGrid
+
+	local unifiedEmpty = Instance.new("TextLabel")
+	unifiedEmpty.Name = "EmptyMessage"
+	unifiedEmpty.BackgroundColor3 = mixColor(CONTENT_BG, ACCENT_GOLD, 0.08)
+	unifiedEmpty.BorderSizePixel = 0
+	unifiedEmpty.Size = UDim2.new(1, 0, 0, readablePx(58, 56))
+	unifiedEmpty.LayoutOrder = 2
+	unifiedEmpty.Font = Enum.Font.GothamBold
+	unifiedEmpty.Text = "No items available."
+	unifiedEmpty.TextColor3 = MUTED_TEXT
+	unifiedEmpty.TextSize = textPx(15, 14, 15)
+	unifiedEmpty.TextWrapped = true
+	unifiedEmpty.Visible = #entries <= 0
+	unifiedEmpty.Parent = scroller
+	applyCorners(unifiedEmpty, px(12))
+	applyStroke(unifiedEmpty, CARD_STROKE, 1, 0.48)
+	addTextLimit(unifiedEmpty, 14, 15)
+	addTextOutline(unifiedEmpty, 0.62, 0.8)
+
+	sectionRecords = {{ grid = unifiedGrid, layout = unifiedLayout, empty = unifiedEmpty, count = #entries }}
+
+	-- Populate unified grid with all entries in order
+	for index, entry in ipairs(entries) do
+		createCard(entry, index, unifiedGrid)
 	end
 
 	refreshCards = function()
