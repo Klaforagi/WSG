@@ -114,8 +114,8 @@ local function applyLayout()
 	-- HotbarDashRow removed; dash button will be parented directly under Root
 
 		hotbar.AnchorPoint = Vector2.new(0.5, 0.5)
-		hotbar.Position = UDim2.new(0.5, 0, 0.4, 0)
-		hotbar.Size = UDim2.new(0.6, 0, 0.6, 0)
+		hotbar.Position = UDim2.new(0.5, 0, 0.47, 0)
+		hotbar.Size = UDim2.new(0.6, 0, 0.45, 0)
 
 	local dashFrame = root:FindFirstChild("DashButtonFrame")
 	if dashFrame and dashFrame:IsA("GuiObject") then
