@@ -44,15 +44,15 @@ local skipped = false
 
 local BANDAGE_ANIM = "rbxassetid://139297808237661"
 local FALLBACK_LOGO_IMAGE = "rbxassetid://137602836160101"
-local BG_TOP = Color3.fromRGB(48, 70, 118)
-local BG_BOTTOM = Color3.fromRGB(26, 34, 62)
-local BAR_BG_COLOR = Color3.fromRGB(20, 28, 50)
-local BAR_STROKE_COLOR = Color3.fromRGB(84, 122, 196)
-local BAR_FILL_START = Color3.fromRGB(82, 146, 255)
-local BAR_FILL_END = Color3.fromRGB(170, 220, 255)
-local STATUS_TEXT_COLOR = Color3.fromRGB(178, 186, 208)
-local SKIP_BG_COLOR = Color3.fromRGB(42, 55, 92)
-local SKIP_HOVER_COLOR = Color3.fromRGB(60, 78, 126)
+local BG_TOP = Color3.fromRGB(63, 0, 253)
+local BG_BOTTOM = Color3.fromRGB(255, 0, 0)
+local BAR_BG_COLOR = Color3.fromRGB(49, 45, 40)
+local BAR_STROKE_COLOR = Color3.fromRGB(255, 204, 0)
+local BAR_FILL_START = Color3.fromRGB(211, 116, 1)
+local BAR_FILL_END = Color3.fromRGB(251, 255, 0)
+local STATUS_TEXT_COLOR = Color3.fromRGB(255, 183, 2)
+local SKIP_BG_COLOR = Color3.fromRGB(255, 170, 0)
+local SKIP_HOVER_COLOR = Color3.fromRGB(251, 255, 0)
 
 --------------------------------------------------------------------------------
 -- UTILITY HELPERS
@@ -231,16 +231,20 @@ local function createGui()
 	local bg = Instance.new("Frame")
 	bg.Name = "BG"
 	bg.Size = UDim2.fromScale(1, 1)
-	bg.BackgroundColor3 = BG_TOP
+	bg.BackgroundColor3 = Color3.fromRGB(120, 108, 80)
 	bg.BorderSizePixel = 0
 	bg.ZIndex = 1
 	bg.Parent = gui
 
 	local bgGradient = Instance.new("UIGradient")
-	bgGradient.Rotation = 90
+	bgGradient.Rotation = 0
 	bgGradient.Color = ColorSequence.new({
-		ColorSequenceKeypoint.new(0, BG_TOP),
-		ColorSequenceKeypoint.new(1, BG_BOTTOM),
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(0, 34, 255)),
+		ColorSequenceKeypoint.new(0.197, Color3.fromRGB(56, 83, 255)),
+		ColorSequenceKeypoint.new(0.5, Color3.fromRGB(138, 153, 255)),
+		ColorSequenceKeypoint.new(0.815, Color3.fromRGB(209, 60,100)),
+		ColorSequenceKeypoint.new(0.919, Color3.fromRGB(231, 31, 52)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)),
 	})
 	bgGradient.Parent = bg
 
@@ -249,9 +253,9 @@ local function createGui()
 	local titleBaseW = UserInputService.TouchEnabled and 590 or 820
 	local titleBaseH = UserInputService.TouchEnabled and 330 or 460
 	local titleYScale = UserInputService.TouchEnabled and 0.595 or 0.60
-	title.Size = UDim2.new(0, uiPx(titleBaseW), 0, uiPx(titleBaseH))
+	title.Size = UDim2.new(0.55, 0, 0.7, 0)
 	title.AnchorPoint = Vector2.new(0.5, 1)
-	title.Position = UDim2.new(0.5, 0, titleYScale, uiPx(38))
+	title.Position = UDim2.new(0.5, 0, 0.65, 0)
 	title.BackgroundTransparency = 1
 	title.ZIndex = 7
 	title.Parent = bg
@@ -325,7 +329,7 @@ local function createGui()
 	local barFill = Instance.new("Frame")
 	barFill.Name = "BarFill"
 	barFill.Size = UDim2.new(0, 0, 1, 0)
-	barFill.BackgroundColor3 = BAR_FILL_START
+	barFill.BackgroundColor3 = Color3.fromRGB(234, 197, 183)
 	barFill.BorderSizePixel = 0
 	barFill.ZIndex = 6
 	barFill.Parent = barBg
@@ -337,7 +341,7 @@ local function createGui()
 	local barFillGradient = Instance.new("UIGradient")
 	barFillGradient.Color = ColorSequence.new({
 		ColorSequenceKeypoint.new(0, BAR_FILL_START),
-		ColorSequenceKeypoint.new(0.55, Color3.fromRGB(116, 178, 255)),
+		ColorSequenceKeypoint.new(0.55, Color3.fromRGB(255, 179, 0)),
 		ColorSequenceKeypoint.new(1, BAR_FILL_END),
 	})
 	barFillGradient.Rotation = 0
@@ -365,7 +369,7 @@ local function createGui()
 	skipCorner.Parent = skipBtn
 
 	local skipStroke = Instance.new("UIStroke")
-	skipStroke.Color = Color3.fromRGB(130, 160, 220)
+	skipStroke.Color = Color3.fromRGB(111, 78, 0)
 	skipStroke.Thickness = 1.4
 	skipStroke.Transparency = 0.45
 	skipStroke.Parent = skipBtn
@@ -827,4 +831,25 @@ setProgress(statusLbl, barFill, "Ready for Battle...", 1)
 task.wait(0.15)
 
 openMenu()
+-- Require an explicit click on the Skip button before fading out the loader.
+-- This prevents the loading screen from auto-closing.
+if not skipped then
+	-- Update the status to prompt the player
+	pcall(function()
+		if statusLbl and statusLbl.Set then end
+		statusLbl.Text = trackedStatusText("Click to continue...")
+	end)
+	-- Pulse the Skip button to draw attention (best-effort)
+	local skipBtn = gui:FindFirstChild("SkipButton", true)
+	if skipBtn and skipBtn:IsA("TextButton") then
+		local pulse = TweenService:Create(skipBtn, TweenInfo.new(0.9, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), { BackgroundTransparency = 0.18 })
+		pcall(function() pulse:Play() end)
+	end
+
+	-- Wait until the player clicks Skip (doSkip sets `skipped = true`)
+	while not skipped do
+		task.wait(0.1)
+	end
+end
+
 fadeOut(gui, blocker, bg, title, statusLbl, barBg, barFill)
