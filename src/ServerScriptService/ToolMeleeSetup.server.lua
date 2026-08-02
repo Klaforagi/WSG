@@ -744,6 +744,15 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
 
     -- resolve config (rarity defaults merged with weapon overrides)
     local sizePercent     = getToolSizePercent(tool)
+    -- incorporate player-level size stat (base 10 = normal)
+    if HumanoidStatService and type(HumanoidStatService.GetFinalStat) == "function" then
+        local ok, playerSize = pcall(function()
+            return HumanoidStatService:GetFinalStat(player, "Size")
+        end)
+        if ok and type(playerSize) == "number" and playerSize > 0 then
+            sizePercent = sizePercent * (playerSize / 10)
+        end
+    end
     local cfg = getServerMeleeCfg(toolName, sizePercent)
 
     -- ── SIZE SCALING ──────────────────────────────────────────────────

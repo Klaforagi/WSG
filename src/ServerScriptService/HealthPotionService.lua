@@ -399,7 +399,7 @@ local function applyPotionEffect(player, potionDef, humanoid)
         local sizeAdd = tonumber(potionDef.SizeAdd) or 0
         if sizeAdd ~= 0 then
             pcall(function()
-                HumanoidStatService:SetModifier(player, "SizePercent", modifierId .. "_size", {
+                HumanoidStatService:SetModifier(player, "Size", modifierId .. "_size", {
                     additive = sizeAdd,
                     duration = durationSeconds > 0 and durationSeconds or nil,
                     source = potionDef.DisplayName,
