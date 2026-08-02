@@ -22,6 +22,7 @@ local _saveCoordinator
 local stateChangedEvent = Instance.new("BindableEvent")
 local effectStartedEvent = Instance.new("BindableEvent")
 local activeOutgoingDamageModifiers = {}
+local activeOutgoingFlatModifiers = {}
 
 local function getServerTime()
     local ok, result = pcall(function()
@@ -255,6 +256,27 @@ local function removeOutgoingDamageModifier(player, modifierId)
     return true
 end
 
+local function removeOutgoingFlatModifier(player, modifierId)
+    local modifiers = activeOutgoingFlatModifiers[player]
+    if not modifiers then
+        return false
+    end
+
+    if modifierId then
+        if not modifiers[modifierId] then
+            return false
+        end
+        modifiers[modifierId] = nil
+    else
+        table.clear(modifiers)
+    end
+
+    if next(modifiers) == nil then
+        activeOutgoingFlatModifiers[player] = nil
+    end
+    return true
+end
+
 local function scheduleOutgoingDamageExpiry(player, modifierId, token, durationSeconds)
     task.delay(durationSeconds, function()
         local modifiers = activeOutgoingDamageModifiers[player]
@@ -266,6 +288,20 @@ local function scheduleOutgoingDamageExpiry(player, modifierId, token, durationS
             return
         end
         removeOutgoingDamageModifier(player, modifierId)
+    end)
+end
+
+local function scheduleOutgoingFlatExpiry(player, modifierId, token, durationSeconds)
+    task.delay(durationSeconds, function()
+        local modifiers = activeOutgoingFlatModifiers[player]
+        local modifier = modifiers and modifiers[modifierId]
+        if not modifier or modifier.token ~= token then
+            return
+        end
+        if modifier.expiresAt > getServerTime() + 0.05 then
+            return
+        end
+        removeOutgoingFlatModifier(player, modifierId)
     end)
 end
 
@@ -331,6 +367,57 @@ local function applyPotionEffect(player, potionDef, humanoid)
             damageMultiplier = damageMultiplier,
             modifierId = modifierId,
             description = string.format("%s: +%d%% damage", potionDef.DisplayName or "Strength", math.floor(((damageMultiplier - 1) * 100) + 0.5)),
+        }
+    end
+
+    if potionDef.EffectType == "OutgoingDamageFlat" then
+        local durationSeconds = math.max(0, tonumber(potionDef.DurationSeconds) or 0)
+        local flatAdd = tonumber(potionDef.FlatDamageAdd) or 0
+        if durationSeconds <= 0 or flatAdd == 0 then
+            return false, "Potion effect unavailable", nil
+        end
+
+        local modifierId = potionDef.ModifierId or potionDef.Id
+        local modifiers = activeOutgoingFlatModifiers[player]
+        if not modifiers then
+            modifiers = {}
+            activeOutgoingFlatModifiers[player] = modifiers
+        end
+
+        local existing = modifiers[modifierId]
+        local token = (existing and existing.token or 0) + 1
+        local expiresAt = getServerTime() + durationSeconds
+        modifiers[modifierId] = {
+            flat = flatAdd,
+            expiresAt = expiresAt,
+            token = token,
+            source = potionDef.DisplayName,
+        }
+        scheduleOutgoingFlatExpiry(player, modifierId, token, durationSeconds)
+
+        -- Also apply size additive via HumanoidStatService if present
+        local sizeAdd = tonumber(potionDef.SizeAdd) or 0
+        if sizeAdd ~= 0 then
+            pcall(function()
+                HumanoidStatService:SetModifier(player, "SizePercent", modifierId .. "_size", {
+                    additive = sizeAdd,
+                    duration = durationSeconds > 0 and durationSeconds or nil,
+                    source = potionDef.DisplayName,
+                })
+            end)
+        end
+
+        effectStartedEvent:Fire(player, {
+            potionId = modifierId,
+            duration = durationSeconds,
+            expiresAt = expiresAt,
+        })
+
+        return true, nil, {
+            duration = durationSeconds,
+            flatAdd = flatAdd,
+            modifierId = modifierId,
+            description = string.format("%s: +%d flat damage (melee)", potionDef.DisplayName or "Strength", flatAdd),
         }
     end
 
@@ -484,13 +571,54 @@ function HealthPotionService:GetOutgoingDamageMultiplier(player)
     return totalMultiplier
 end
 
+function HealthPotionService:GetOutgoingDamageFlat(player, _damageContext)
+    local modifiers = activeOutgoingFlatModifiers[player]
+    if not modifiers then
+        return 0
+    end
+
+    local serverTime = getServerTime()
+    local totalFlat = 0
+    local hadExpired = false
+    for modifierId, modifier in pairs(modifiers) do
+        local expiresAt = tonumber(modifier.expiresAt) or 0
+        if expiresAt <= serverTime then
+            modifiers[modifierId] = nil
+            hadExpired = true
+        else
+            local flat = tonumber(modifier.flat) or 0
+            if flat ~= 0 then
+                totalFlat = totalFlat + flat
+            end
+        end
+    end
+    if hadExpired and next(modifiers) == nil then
+        activeOutgoingFlatModifiers[player] = nil
+    end
+    return totalFlat
+end
+
 function HealthPotionService:ApplyOutgoingDamageModifiers(player, baseDamage, _damageContext)
     local damage = tonumber(baseDamage) or 0
     local multiplier = self:GetOutgoingDamageMultiplier(player)
     if multiplier <= 0 then
         return damage
     end
-    return damage * multiplier
+    local result = damage * multiplier
+    local flatAdd = self:GetOutgoingDamageFlat(player, _damageContext) or 0
+    if type(flatAdd) == "number" and flatAdd ~= 0 then
+        -- Only apply flat additions to melee by default. If callers supply a
+        -- context with source ~= "melee" and you want flats to apply broadly,
+        -- adapt this check accordingly.
+        local applyFlat = true
+        if type(_damageContext) == "table" and _damageContext.source and _damageContext.source ~= "melee" then
+            applyFlat = false
+        end
+        if applyFlat then
+            result = result + flatAdd
+        end
+    end
+    return result
 end
 
 function HealthPotionService:GetPotionCount(player, potionId)

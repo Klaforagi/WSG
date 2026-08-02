@@ -72,6 +72,14 @@ pcall(function()
     end
 end)
 
+local PotionService
+pcall(function()
+    local mod = ServerScriptService:FindFirstChild("HealthPotionService")
+    if mod and mod:IsA("ModuleScript") then
+        PotionService = require(mod)
+    end
+end)
+
 -- Shared weapon switch lock
 local WeaponLockService = require(ServerScriptService:WaitForChild("WeaponLockService"))
 local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
@@ -1045,18 +1053,34 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                     local hit = entry.hit
                     hitAlready[hit.humanoid] = true
 
-                    local damageMultiplier = cleaveDamageMultipliers[index] or cleaveDamageMultipliers[#cleaveDamageMultipliers]
-                    local knockbackMultiplier = cleaveKnockbackMultipliers[index] or cleaveKnockbackMultipliers[#cleaveKnockbackMultipliers]
-                    applyMeleeDamage(
-                        player,
-                        hit.humanoid,
-                        hit.model,
-                        damage * damageMultiplier,
-                        hit.hitPart,
-                        hit.hitPos,
-                        tool:GetAttribute("WeaponInstanceId"),
-                        tool:GetAttribute("WeaponName") or toolName
-                    )
+                                local damageMultiplier = cleaveDamageMultipliers[index] or cleaveDamageMultipliers[#cleaveDamageMultipliers]
+                                local knockbackMultiplier = cleaveKnockbackMultipliers[index] or cleaveKnockbackMultipliers[#cleaveKnockbackMultipliers]
+                                local hitDamage = damage * damageMultiplier
+                                -- apply potion-based outgoing modifiers (melee context)
+                                if PotionService and type(PotionService.ApplyOutgoingDamageModifiers) == "function" then
+                                    local ok, modified = pcall(function()
+                                        return PotionService:ApplyOutgoingDamageModifiers(player, hitDamage, {
+                                            source = "melee",
+                                            weaponName = toolName,
+                                            weaponInstanceId = tool:GetAttribute("WeaponInstanceId"),
+                                            victimModel = hit.model,
+                                        })
+                                    end)
+                                    if ok and type(modified) == "number" then
+                                        hitDamage = modified
+                                    end
+                                end
+
+                                applyMeleeDamage(
+                                    player,
+                                    hit.humanoid,
+                                    hit.model,
+                                    hitDamage,
+                                    hit.hitPart,
+                                    hit.hitPos,
+                                    tool:GetAttribute("WeaponInstanceId"),
+                                    tool:GetAttribute("WeaponName") or toolName
+                                )
 
                     if canTryEnchant and (not enchantProcced) then
                         local procSucceeded = false
