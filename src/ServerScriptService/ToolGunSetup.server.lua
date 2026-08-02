@@ -310,7 +310,7 @@ local function applyOutgoingDamageModifiers(player, damage, context)
 end
 
 -- Raycast helper that skips Accessory parts so bullets pass through hats/attachments.
-local function raycastSkippingAccessories(origin, direction, rayParams)
+local function raycastSkippingAccessories(origin, direction, rayParams, attackerPlayer)
     local maxIter = 10
     local start = origin
     local remaining = direction
@@ -336,6 +336,16 @@ local function raycastSkippingAccessories(origin, direction, rayParams)
                 or (ogreModel and ogreModel:FindFirstChildOfClass("Humanoid") ~= nil)
                 or inst.CanQuery == false
             )
+            -- Skip teammate character parts so tracers/projectiles pass through allies
+            if not shouldSkip then
+                local maybeModel = inst:FindFirstAncestorOfClass("Model")
+                if maybeModel then
+                    local targetPlayer = Players:GetPlayerFromCharacter(maybeModel)
+                    if targetPlayer and attackerPlayer and targetPlayer.Team and attackerPlayer.Team and targetPlayer.Team == attackerPlayer.Team then
+                        shouldSkip = true
+                    end
+                end
+            end
             if not shouldSkip and inst:FindFirstAncestor("EventMeteorZones") then
                 shouldSkip = true
             end
@@ -632,7 +642,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         -- apply gravity/bullet drop to vertical component of velocity
         velocity = velocity + Vector3.new(0, -pDrop * dt, 0)
         local nextPos = lastPos + velocity * dt
-        local rayResult = raycastSkippingAccessories(lastPos, (nextPos - lastPos), params)
+        local rayResult = raycastSkippingAccessories(lastPos, (nextPos - lastPos), params, player)
         if rayResult and rayResult.Instance then
             -- hit detected
             if WeaponTrailService and visual then
@@ -1154,7 +1164,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     local tBULLETSPEED = tCfg.bulletspeed or PROJECTILE_SPEED
 
     -- Compute an aim point on the camera ray (server-side) so projectiles from the muzzle converge on the crosshair
-    local camHit = raycastSkippingAccessories(camOrigin, rayDir * tRANGE, params)
+    local camHit = raycastSkippingAccessories(camOrigin, rayDir * tRANGE, params, player)
     local aimPoint
     if camHit and camHit.Instance and camHit.Position then
         aimPoint = camHit.Position
@@ -1171,7 +1181,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     end
 
     -- muzzle obstruction check along the computed aimDir from gunOrigin
-    local gunObstruction = raycastSkippingAccessories(gunOrigin, aimDir * tRANGE, params)
+    local gunObstruction = raycastSkippingAccessories(gunOrigin, aimDir * tRANGE, params, player)
     if gunObstruction and gunObstruction.Instance then
         local showTracerForTool = (tCfg and tCfg.showTracer ~= nil) and tCfg.showTracer or SHOW_TRACER
         if showTracerForTool then

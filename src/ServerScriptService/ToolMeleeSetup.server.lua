@@ -679,6 +679,12 @@ local function getTargetsInBox(playerChar, boxCFrame, halfSize)
             if model == playerChar then continue end
             local hum = model:FindFirstChildOfClass("Humanoid")
             if not hum or hum.Health <= 0 then continue end
+            -- Ignore teammates: if both are player characters on the same Team, skip
+            local attackerPlayer = Players:GetPlayerFromCharacter(playerChar)
+            local targetPlayer = Players:GetPlayerFromCharacter(model)
+            if attackerPlayer and targetPlayer and attackerPlayer.Team and targetPlayer.Team and attackerPlayer.Team == targetPlayer.Team then
+                continue
+            end
             if shouldIgnoreHumanoidTarget(model, hum) then continue end
             if seenHum[hum] then continue end
 
