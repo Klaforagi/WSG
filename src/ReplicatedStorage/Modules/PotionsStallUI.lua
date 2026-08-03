@@ -1126,8 +1126,8 @@ end
 	gridWrap.Name = "GridWrap"
 	gridWrap.BackgroundColor3 = CONTENT_BG
 	gridWrap.BorderSizePixel = 0
-	gridWrap.Position = UDim2.new(0, px(20), 0, px(114))
-	gridWrap.Size = UDim2.new(1, -px(40), 1, -px(134))
+	gridWrap.Position = UDim2.new(0.02, 0, 0.12, 0)
+	gridWrap.Size = UDim2.new(0.96, 0, 0.85, 0)
 	gridWrap.Parent = panel
 	gridWrap.ZIndex = 2
 	applyCorners(gridWrap, px(24))
@@ -1138,7 +1138,7 @@ end
 	scroller.BackgroundTransparency = 1
 	scroller.BorderSizePixel = 0
 	scroller.Position = UDim2.new(0, px(14), 0, px(14))
-	scroller.Size = UDim2.new(1, -px(28), 1, -px(28))
+	scroller.Size = UDim2.new(0.98, 0, 0.98, 0)
 	scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	scroller.CanvasSize = UDim2.new()
 	scroller.ScrollBarThickness = px(6)
@@ -1452,8 +1452,8 @@ end
 		iconFrame.Name = "IconFrame"
 		iconFrame.BackgroundColor3 = mixColor(CARD_BG_DARK, iconColor, 0.34)
 		iconFrame.BorderSizePixel = 0
-		iconFrame.Position = UDim2.new(0, readablePx(12, 12), 0, readablePx(12, 12))
-		iconFrame.Size = UDim2.fromOffset(readablePx(58, 54), readablePx(58, 54))
+		iconFrame.Position = UDim2.new(0.02, 0, 0.04, 0)
+		iconFrame.Size = UDim2.new(0.23, 0, 0.7, 0)
 		iconFrame.Parent = card
 		applyCorners(iconFrame, px(12))
 		applyStroke(iconFrame, iconColor, 1.2, 0.2)
@@ -1502,8 +1502,8 @@ end
 		local nameLabel = Instance.new("TextLabel")
 		nameLabel.Name = "NameLabel"
 		nameLabel.BackgroundTransparency = 1
-		nameLabel.Position = UDim2.new(0, readablePx(82, 76), 0, readablePx(11, 10))
-		nameLabel.Size = UDim2.new(1, -readablePx(96, 88), 0, readablePx(31, 30))
+		nameLabel.Position = UDim2.new(0.26, 0, 0.05, 0)
+		nameLabel.Size = UDim2.new(0.7, 0, 0.13, 0)
 		nameLabel.Font = Enum.Font.GothamBlack
 		nameLabel.Text = tostring(entry.DisplayName or entry.Id or "Potion")
 		nameLabel.TextColor3 = WHITE
@@ -1511,14 +1511,14 @@ end
 		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 		nameLabel.Parent = card
-		addTextLimit(nameLabel, 19, 21)
+		nameLabel.TextScaled = true
 		addTextOutline(nameLabel, 0.48, 1.1)
 
 		local typeBadge = Instance.new("TextLabel")
 		typeBadge.Name = "TypeBadge"
 		typeBadge.BackgroundColor3 = mixColor(baseBg, BLACK, 0.24)
-		typeBadge.Position = UDim2.new(0, readablePx(82, 76), 0, readablePx(44, 41))
-		typeBadge.Size = UDim2.new(0, readablePx(100, 94), 0, readablePx(23, 22))
+		typeBadge.Position = UDim2.new(0.26, 0, 0.19, 0)
+		typeBadge.Size = UDim2.new(0.14, 0, 0.1, 0)
 		typeBadge.Font = Enum.Font.GothamBold
 		typeBadge.Text = entry.Kind == "boost" and "BOOST" or "POTION"
 		typeBadge.TextColor3 = mixColor(iconColor, WHITE, 0.2)
@@ -1532,8 +1532,8 @@ end
 		local desc = Instance.new("TextLabel")
 		desc.Name = "Description"
 		desc.BackgroundTransparency = 1
-		desc.Position = UDim2.new(0, readablePx(12, 12), 0, readablePx(82, 78))
-		desc.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(64, 60))
+		desc.Position = UDim2.new(0.26, 0, 0.32, 0)
+		desc.Size = UDim2.new(0.7, 0, 0.18, 0)
 		desc.Font = Enum.Font.GothamMedium
 		desc.Text = tostring(entry.Description or "")
 		desc.TextColor3 = DIM_TEXT
@@ -1547,8 +1547,8 @@ end
 		local detailLabel = Instance.new("TextLabel")
 		detailLabel.Name = "DetailLabel"
 		detailLabel.BackgroundTransparency = 1
-		detailLabel.Position = UDim2.new(0, readablePx(12, 12), 0, readablePx(154, 148))
-		detailLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(24, 22))
+		detailLabel.Position = UDim2.new(0.26, 0, 0.36, 0)
+		detailLabel.Size = UDim2.new(0.7, 0, 0.18, 0)
 		detailLabel.Font = Enum.Font.GothamBold
 		detailLabel.TextColor3 = brightenColor(iconColor, 0.08)
 		detailLabel.TextSize = textPx(16, 15, 16)
@@ -1562,8 +1562,8 @@ end
 		local statusLabel = Instance.new("TextLabel")
 		statusLabel.Name = "StatusLabel"
 		statusLabel.BackgroundColor3 = mixColor(baseBg, BLACK, 0.28)
-		statusLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(104, 100))
-		statusLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(40, 38))
+		statusLabel.Position = UDim2.new(0.26, 0, 0.52, 0)
+		statusLabel.Size = UDim2.new(0.7, 0, 0.2, 0)
 		statusLabel.Font = Enum.Font.GothamBlack
 		statusLabel.TextColor3 = WHITE
 		statusLabel.TextSize = textPx(16, 15, 16)
@@ -1597,8 +1597,8 @@ end
 		local buttonRow = Instance.new("Frame")
 		buttonRow.Name = "ButtonRow"
 		buttonRow.BackgroundTransparency = 1
-		buttonRow.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(40, 40))
-		buttonRow.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(34, 34))
+		buttonRow.Position = UDim2.new(0.02, 0, 0.8, 0)
+		buttonRow.Size = UDim2.new(0.96, 0, 0.18, 0)
 		buttonRow.Parent = card
 
 		local rowLayout = Instance.new("UIListLayout")
@@ -1786,7 +1786,7 @@ end
 	local unifiedGrid = Instance.new("Frame")
 	unifiedGrid.Name = "AllGrid"
 	unifiedGrid.BackgroundTransparency = 1
-	unifiedGrid.Size = UDim2.new(1, 0, 0, px(1))
+	unifiedGrid.Size = UDim2.new(0.99, 0, 1.25, 0)
 	unifiedGrid.LayoutOrder = 1
 	unifiedGrid.Parent = scroller
 
