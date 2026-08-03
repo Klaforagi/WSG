@@ -1141,7 +1141,7 @@ end
 	scroller.Size = UDim2.new(0.98, 0, 0.98, 0)
 	scroller.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	-- Force taller canvas so the scroller can reach all items (allows manual scroll beyond content)
-	scroller.CanvasSize = UDim2.new(0, 0, 2, 0)
+	scroller.CanvasSize = UDim2.new(0, 0, 2.6, 0)
 	scroller.ScrollBarThickness = px(6)
 	scroller.ScrollBarImageColor3 = Color3.fromRGB(151, 174, 230)
 	scroller.Parent = gridWrap
