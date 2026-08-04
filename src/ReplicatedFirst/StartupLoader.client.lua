@@ -167,18 +167,24 @@ local function normalizeAssetId(id)
 end
 
 local function getLoaderLogoImage()
-	local ok, logoImage = pcall(function()
-		local assetCodesModule = ReplicatedStorage:FindFirstChild("AssetCodes")
-		if not assetCodesModule then return nil end
-		local AssetCodes = require(assetCodesModule)
-		if type(AssetCodes.Get) ~= "function" then return nil end
-		return AssetCodes.Get("Logo")
+	-- Prefer the `AssetCodes` module if available. Wait briefly so that
+	-- replication or other early initialization has a chance to place it.
+	local assetCodesModule = nil
+	local okModule = pcall(function()
+		assetCodesModule = ReplicatedStorage:WaitForChild("AssetCodes", 2)
 	end)
-
-	if ok then
-		return normalizeAssetId(logoImage) or FALLBACK_LOGO_IMAGE
+	if assetCodesModule then
+		local okReq, AssetCodes = pcall(require, assetCodesModule)
+		if okReq and type(AssetCodes) == "table" and type(AssetCodes.Get) == "function" then
+			local logo = nil
+			local okGet, result = pcall(AssetCodes.Get, "Logo")
+			if okGet then logo = result end
+			local normalized = normalizeAssetId(logo)
+			if normalized then return normalized end
+		end
 	end
 
+	-- Fallback to previous approach or static fallback image.
 	return FALLBACK_LOGO_IMAGE
 end
 
@@ -368,6 +374,31 @@ local function createGui()
 
 	title.Image = logoImageId
 	title.ScaleType = Enum.ScaleType.Fit
+
+	-- Ensure loader logo reflects any runtime updates to AssetCodes.Logo
+	-- (some workflows may set AssetCodes after this script loads). Poll briefly.
+	task.spawn(function()
+		local current = logoImageId
+		local attempts = 0
+		while attempts < 20 and gui and gui.Parent do
+			attempts = attempts + 1
+			local ok, newLogo = pcall(function()
+				local assetCodesModule = ReplicatedStorage:FindFirstChild("AssetCodes")
+				if not assetCodesModule then return nil end
+				local AssetCodes = require(assetCodesModule)
+				if type(AssetCodes.Get) ~= "function" then return nil end
+				return normalizeAssetId(AssetCodes.Get("Logo"))
+			end)
+			if ok and newLogo and newLogo ~= current then
+				current = newLogo
+				title.Image = current
+				if logoGoldGlow then logoGoldGlow.Image = current end
+				if logoBlueGlow then logoBlueGlow.Image = current end
+				break
+			end
+			task.wait(0.15)
+		end
+	end)
 
 	local statusLbl = Instance.new("TextLabel")
 	statusLbl.Name = "Status"

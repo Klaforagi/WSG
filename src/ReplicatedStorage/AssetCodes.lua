@@ -5,7 +5,7 @@ local AssetCodes = {}
 
 AssetCodes.images = {
     -- GAME icons
-    Logo = "rbxassetid://137602836160101",  -- replace with a final uploaded logo asset ID later
+    Logo = "rbxassetid://134714248434074",  
     -- UI icons
     Coin = "rbxassetid://15589362394",
     Shards = "rbxassetid://138717301679393",
