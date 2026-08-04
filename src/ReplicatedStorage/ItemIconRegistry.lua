@@ -9,15 +9,10 @@ local function register(key, data)
     iconsByKey[key] = data
 end
 
+-- Health potion: use a direct asset key so UIs render a simple image instead
 local healthPotionIcon = {
     Key = "HealthPotion",
-    Kind = "PotionBottle",
-    IconColor = { 245, 86, 86 },
-    GlassColor = { 255, 225, 225 },
-    LiquidColor = { 222, 63, 67 },
-    StrokeColor = { 118, 38, 44 },
-    CapColor = { 104, 48, 58 },
-    Motif = "health",
+    AssetKey = "HealthPotion",
 }
 
 local speedPotionIcon = {

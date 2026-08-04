@@ -277,12 +277,8 @@ local function getIconImage(def, iconData)
 		if type(iconData.IconAssetId) == "string" and #iconData.IconAssetId > 0 then
 			return iconData.IconAssetId
 		end
-		-- Procedurally-drawn potion/elixir bottles must not fall back to an
-		-- AssetCodes image (e.g. IconKey = "Coin" on the 2x Coins elixir would
-		-- otherwise resolve to a flat coin image and hide the generated bottle).
-		if iconData.Kind == "PotionBottle" then
-			return nil
-		end
+		-- Allow ItemIconRegistry AssetKey images for potions/elixirs so they
+		-- render as uploaded images rather than procedural frames.
 		if type(iconData.AssetKey) == "string" then
 			local asset = getAsset(iconData.AssetKey)
 			if asset then
@@ -313,133 +309,7 @@ local function isEntryRobuxPurchasable(entry)
 	return type(entry) == "table" and entry.Purchasable ~= false and getEntryRobuxPrice(entry) > 0
 end
 
-local function buildPotionBottleIcon(parent, iconData, fallbackColor)
-	iconData = type(iconData) == "table" and iconData or {}
 
-	local liquidColor = colorFromRGBArray(iconData.LiquidColor, fallbackColor or ACCENT_BLUE)
-	local glassColor = colorFromRGBArray(iconData.GlassColor, mixColor(WHITE, liquidColor, 0.18))
-	local strokeColor = colorFromRGBArray(iconData.StrokeColor, mixColor(liquidColor, BLACK, 0.45))
-	local capColor = colorFromRGBArray(iconData.CapColor, strokeColor)
-	local zBase = (parent and parent.ZIndex or 1) + 1
-
-	local root = Instance.new("Frame")
-	root.Name = "GeneratedPotionIcon"
-	root.AnchorPoint = Vector2.new(0.5, 0.5)
-	root.Position = UDim2.fromScale(0.5, 0.5)
-	root.Size = UDim2.fromScale(0.88, 0.88)
-	root.BackgroundTransparency = 1
-	root.ZIndex = zBase
-	root.Parent = parent
-
-	local isElixir = iconData.Shape == "elixir"
-
-	local body = Instance.new("Frame")
-	body.Name = "Body"
-	body.AnchorPoint = Vector2.new(0.5, 1)
-	body.Position = UDim2.fromScale(0.5, isElixir and 0.97 or 0.96)
-	body.Size = isElixir and UDim2.fromScale(0.68, 0.56) or UDim2.fromScale(0.56, 0.62)
-	body.BackgroundColor3 = glassColor
-	body.BorderSizePixel = 0
-	body.ZIndex = zBase + 1
-	body.Parent = root
-	applyCorners(body, px(9))
-	if isElixir then
-		for _, child in ipairs(body:GetChildren()) do
-			if child:IsA("UICorner") then
-				child.CornerRadius = UDim.new(1, 0)
-			end
-		end
-	end
-	applyStroke(body, strokeColor, 1.2, 0.08)
-
-	local neck = Instance.new("Frame")
-	neck.Name = "Neck"
-	neck.AnchorPoint = Vector2.new(0.5, 1)
-	neck.Position = UDim2.fromScale(0.5, 0.39)
-	neck.Size = UDim2.fromScale(0.22, 0.24)
-	neck.BackgroundColor3 = glassColor
-	neck.BorderSizePixel = 0
-	neck.ZIndex = zBase + 2
-	neck.Parent = root
-	applyCorners(neck, px(5))
-	applyStroke(neck, strokeColor, 1, 0.12)
-
-	local cap = Instance.new("Frame")
-	cap.Name = "Cap"
-	cap.AnchorPoint = Vector2.new(0.5, 0)
-	cap.Position = UDim2.fromScale(0.5, 0.08)
-	cap.Size = UDim2.fromScale(0.34, 0.11)
-	cap.BackgroundColor3 = capColor
-	cap.BorderSizePixel = 0
-	cap.ZIndex = zBase + 4
-	cap.Parent = root
-	applyCorners(cap, px(5))
-
-	local liquid = Instance.new("Frame")
-	liquid.Name = "Liquid"
-	liquid.AnchorPoint = Vector2.new(0.5, 1)
-	liquid.Position = UDim2.fromScale(0.5, 0.9)
-	liquid.Size = UDim2.fromScale(0.44, 0.34)
-	liquid.BackgroundColor3 = liquidColor
-	liquid.BorderSizePixel = 0
-	liquid.ZIndex = zBase + 3
-	liquid.Parent = root
-	applyCorners(liquid, px(7))
-
-	local shine = Instance.new("Frame")
-	shine.Name = "Highlight"
-	shine.AnchorPoint = Vector2.new(0, 0)
-	shine.Position = UDim2.fromScale(0.36, 0.38)
-	shine.Size = UDim2.fromScale(0.09, 0.34)
-	shine.BackgroundColor3 = WHITE
-	shine.BackgroundTransparency = 0.32
-	shine.BorderSizePixel = 0
-	shine.Rotation = 14
-	shine.ZIndex = zBase + 5
-	shine.Parent = root
-	applyCorners(shine, px(5))
-
-	if iconData.Motif == "speed" then
-		for index = 1, 3 do
-			local streak = Instance.new("Frame")
-			streak.Name = "SpeedStreak" .. tostring(index)
-			streak.AnchorPoint = Vector2.new(0.5, 0.5)
-			streak.Position = UDim2.fromScale(0.34 + (index * 0.11), 0.55 + ((index - 2) * 0.08))
-			streak.Size = UDim2.fromScale(0.24 - (index * 0.025), 0.045)
-			streak.BackgroundColor3 = WHITE
-			streak.BackgroundTransparency = 0.08
-			streak.BorderSizePixel = 0
-			streak.Rotation = -16
-			streak.ZIndex = zBase + 6
-			streak.Parent = root
-			applyCorners(streak, px(5))
-		end
-	elseif iconData.Motif == "health" then
-		local plusH = Instance.new("Frame")
-		plusH.Name = "PlusH"
-		plusH.AnchorPoint = Vector2.new(0.5, 0.5)
-		plusH.Position = UDim2.fromScale(0.5, 0.62)
-		plusH.Size = UDim2.fromScale(0.25, 0.075)
-		plusH.BackgroundColor3 = WHITE
-		plusH.BorderSizePixel = 0
-		plusH.ZIndex = zBase + 6
-		plusH.Parent = root
-		applyCorners(plusH, px(5))
-
-		local plusV = Instance.new("Frame")
-		plusV.Name = "PlusV"
-		plusV.AnchorPoint = Vector2.new(0.5, 0.5)
-		plusV.Position = UDim2.fromScale(0.5, 0.62)
-		plusV.Size = UDim2.fromScale(0.075, 0.25)
-		plusV.BackgroundColor3 = WHITE
-		plusV.BorderSizePixel = 0
-		plusV.ZIndex = zBase + 6
-		plusV.Parent = root
-		applyCorners(plusV, px(5))
-	end
-
-	return root
-end
 
 local function ensureRemotes()
 	if remotes then
@@ -1470,11 +1340,6 @@ end
 		iconImage.Visible = iconImage.Image ~= ""
 		iconImage.Parent = iconFrame
 
-		local generatedIcon = nil
-		if not iconImage.Visible and type(iconData) == "table" and iconData.Kind == "PotionBottle" then
-			generatedIcon = buildPotionBottleIcon(iconFrame, iconData, iconColor)
-		end
-
 		local iconGlyph = Instance.new("TextLabel")
 		iconGlyph.Name = "IconGlyph"
 		iconGlyph.BackgroundTransparency = 1
@@ -1490,7 +1355,7 @@ end
 		iconGlyph.Text = tostring(glyphText)
 		iconGlyph.TextColor3 = iconColor
 		iconGlyph.TextScaled = true
-		iconGlyph.Visible = not iconImage.Visible and generatedIcon == nil
+		iconGlyph.Visible = not iconImage.Visible
 		iconGlyph.Parent = iconFrame
 		addTextLimit(iconGlyph, 14, 30)
 		local glyphStroke = Instance.new("UIStroke")

@@ -147,112 +147,8 @@ local function applyStroke(frame, color, thickness, transparency)
     return stroke
 end
 
-local function createPotionBottleIcon(parent, iconData, accent)
-    iconData = type(iconData) == "table" and iconData or {}
-    accent = accent or COLORS.green
 
-    local liquidColor = colorFrom(iconData.LiquidColor, accent)
-    local glassColor = colorFrom(iconData.GlassColor, liquidColor:Lerp(Color3.new(1, 1, 1), 0.58))
-    local strokeColor = colorFrom(iconData.StrokeColor, liquidColor:Lerp(Color3.new(0, 0, 0), 0.48))
-    local capColor = colorFrom(iconData.CapColor, strokeColor)
-    local zBase = (parent and parent.ZIndex or 1) + 1
 
-    local root = Instance.new("Frame")
-    root.Name = "GeneratedPotionIcon"
-    root.AnchorPoint = Vector2.new(0.5, 0.5)
-    root.Position = UDim2.fromScale(0.5, 0.5)
-    root.Size = UDim2.fromScale(0.86, 0.86)
-    root.BackgroundTransparency = 1
-    root.ZIndex = zBase
-    root.Parent = parent
-
-    local isElixir = iconData.Shape == "elixir"
-
-    local body = Instance.new("Frame")
-    body.Name = "Body"
-    body.AnchorPoint = Vector2.new(0.5, 1)
-    body.Position = UDim2.fromScale(0.5, isElixir and 0.97 or 0.96)
-    body.Size = isElixir and UDim2.fromScale(0.68, 0.56) or UDim2.fromScale(0.56, 0.62)
-    body.BackgroundColor3 = glassColor
-    body.BorderSizePixel = 0
-    body.ZIndex = zBase + 1
-    body.Parent = root
-    applyCorner(body, px(8))
-    if isElixir then
-        for _, child in ipairs(body:GetChildren()) do
-            if child:IsA("UICorner") then
-                child.CornerRadius = UDim.new(1, 0)
-            end
-        end
-    end
-    applyStroke(body, strokeColor, 1.2, 0.08)
-
-    local neck = Instance.new("Frame")
-    neck.Name = "Neck"
-    neck.AnchorPoint = Vector2.new(0.5, 1)
-    neck.Position = UDim2.fromScale(0.5, 0.39)
-    neck.Size = UDim2.fromScale(0.22, 0.24)
-    neck.BackgroundColor3 = glassColor
-    neck.BorderSizePixel = 0
-    neck.ZIndex = zBase + 2
-    neck.Parent = root
-    applyCorner(neck, px(5))
-    applyStroke(neck, strokeColor, 1, 0.12)
-
-    local cap = Instance.new("Frame")
-    cap.Name = "Cap"
-    cap.AnchorPoint = Vector2.new(0.5, 0)
-    cap.Position = UDim2.fromScale(0.5, 0.08)
-    cap.Size = UDim2.fromScale(0.34, 0.11)
-    cap.BackgroundColor3 = capColor
-    cap.BorderSizePixel = 0
-    cap.ZIndex = zBase + 4
-    cap.Parent = root
-    applyCorner(cap, px(5))
-
-    local liquid = Instance.new("Frame")
-    liquid.Name = "Liquid"
-    liquid.AnchorPoint = Vector2.new(0.5, 1)
-    liquid.Position = UDim2.fromScale(0.5, 0.9)
-    liquid.Size = UDim2.fromScale(0.44, 0.34)
-    liquid.BackgroundColor3 = liquidColor
-    liquid.BorderSizePixel = 0
-    liquid.ZIndex = zBase + 3
-    liquid.Parent = root
-    applyCorner(liquid, px(7))
-
-    local shine = Instance.new("Frame")
-    shine.Name = "Highlight"
-    shine.AnchorPoint = Vector2.new(0, 0)
-    shine.Position = UDim2.fromScale(0.36, 0.38)
-    shine.Size = UDim2.fromScale(0.09, 0.34)
-    shine.BackgroundColor3 = COLORS.white
-    shine.BackgroundTransparency = 0.32
-    shine.BorderSizePixel = 0
-    shine.Rotation = 14
-    shine.ZIndex = zBase + 5
-    shine.Parent = root
-    applyCorner(shine, px(5))
-
-    if iconData.Motif == "speed" then
-        for index = 1, 3 do
-            local streak = Instance.new("Frame")
-            streak.Name = "SpeedStreak" .. tostring(index)
-            streak.AnchorPoint = Vector2.new(0.5, 0.5)
-            streak.Position = UDim2.fromScale(0.34 + (index * 0.11), 0.55 + ((index - 2) * 0.08))
-            streak.Size = UDim2.fromScale(0.24 - (index * 0.025), 0.045)
-            streak.BackgroundColor3 = COLORS.white
-            streak.BackgroundTransparency = 0.08
-            streak.BorderSizePixel = 0
-            streak.Rotation = -16
-            streak.ZIndex = zBase + 6
-            streak.Parent = root
-            applyCorner(streak, px(5))
-        end
-    end
-
-    return root
-end
 
 local function cloneDefinition(def)
     local copy = {}
@@ -856,13 +752,15 @@ local function createTile(entry)
     local glyphConstraint = nil
     local glyphMaxTextSize = tonumber(def.IconTextMaxSize) or 82
     local itemIconData = getItemIconData(def)
-    local assetId = nil
-    if def.IconShape ~= "potion_bottle" and not (type(itemIconData) == "table" and itemIconData.Kind == "PotionBottle") then
-        assetId = resolveAsset(def)
+    local assetId = resolveAsset(def)
+    if (not assetId) and type(itemIconData) == "table" then
+        if type(itemIconData.IconAssetId) == "string" and #itemIconData.IconAssetId > 0 then
+            assetId = itemIconData.IconAssetId
+        elseif type(itemIconData.AssetKey) == "string" and AssetCodes and type(AssetCodes.Get) == "function" then
+            assetId = AssetCodes.Get(itemIconData.AssetKey)
+        end
     end
-    if def.IconShape == "potion_bottle" or (type(itemIconData) == "table" and itemIconData.Kind == "PotionBottle") then
-        createPotionBottleIcon(iconFrame, itemIconData, accent)
-    elseif def.IconShape == "plus" then
+    if def.IconShape == "plus" then
         createPlusIcon(iconFrame, accent)
     elseif def.IconShape == "flag" then
         createFlagIcon(iconFrame, accent)

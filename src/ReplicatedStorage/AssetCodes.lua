@@ -30,7 +30,8 @@ AssetCodes.images = {
     KnightPreview = "",      -- static inventory/shop preview for the Knight skin
     IronKnightPreview = "",   -- static inventory/shop preview for the Iron Knight skin
     GoblinPreview = "",       -- static inventory/shop preview for the Goblin skin
-
+    --POTION icons
+    HealthPotion = "rbxassetid://100548032317989",
     --WEAPON icons
     --MELEE
     Melee = "rbxassetid://856575323",
