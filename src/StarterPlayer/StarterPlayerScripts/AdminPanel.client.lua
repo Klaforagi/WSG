@@ -193,8 +193,8 @@ addCorner(panelFrame, 10)
 addStroke(panelFrame, COLORS.BORDER, 2)
 -- Ensure the main panel keeps a good aspect ratio across screen sizes
 createInstance("UIAspectRatioConstraint", {
-    AspectRatio = 1.66,
-    AspectType = Enum.AspectType.FitWithinMaxSize,
+    AspectRatio = 1.5,
+    AspectType = Enum.AspectType.ScaleWithParentSize,
     DominantAxis = Enum.DominantAxis.Width,
     Parent = panelFrame,
 })
