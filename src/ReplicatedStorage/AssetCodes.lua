@@ -37,7 +37,11 @@ AssetCodes.images = {
     ["2xCoinsElixir"] = "rbxassetid://94023162242458",
     ["2xXPElixir"] = "rbxassetid://93623567142594",
     ["2xMasteryElixir"] = "rbxassetid://135725356152560",
-    SpeedElixir = "rbxassetid://100548032317989",
+    SpeedElixir = "rbxassetid://79419027714389",
+    StrengthElixir = "rbxassetid://135034291396159",
+    HealthElixir = "rbxassetid://132326360806365",
+    PowerElixir = "rbxassetid://135034291396159",
+    VitalityElixir = "rbxassetid://132326360806365",
     --WEAPON icons
     --MELEE
     Melee = "rbxassetid://856575323",

@@ -598,6 +598,35 @@ function HealthPotionService:GetOutgoingDamageFlat(player, _damageContext)
     return totalFlat
 end
 
+-- Public: set a flat outgoing damage modifier for a player (used by boosts)
+function HealthPotionService:SetOutgoingFlatModifier(player, modifierId, flatAdd, durationSeconds, source)
+    if not player or type(modifierId) ~= "string" then return false end
+    flatAdd = tonumber(flatAdd) or 0
+    durationSeconds = math.max(0, tonumber(durationSeconds) or 0)
+
+    if flatAdd == 0 or durationSeconds <= 0 then
+        return false, "invalid params"
+    end
+
+    local modifiers = activeOutgoingFlatModifiers[player]
+    if not modifiers then
+        modifiers = {}
+        activeOutgoingFlatModifiers[player] = modifiers
+    end
+
+    local existing = modifiers[modifierId]
+    local token = (existing and existing.token or 0) + 1
+    local expiresAt = getServerTime() + durationSeconds
+    modifiers[modifierId] = {
+        flat = flatAdd,
+        expiresAt = expiresAt,
+        token = token,
+        source = source,
+    }
+    scheduleOutgoingFlatExpiry(player, modifierId, token, durationSeconds)
+    return true
+end
+
 function HealthPotionService:ApplyOutgoingDamageModifiers(player, baseDamage, _damageContext)
     local damage = tonumber(baseDamage) or 0
     local multiplier = self:GetOutgoingDamageMultiplier(player)

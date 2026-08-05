@@ -27,7 +27,7 @@ BoostConfig.Boosts = {
         PriceRobux    = 80,
         StockPerRefresh = 1,
         RobuxProductId = PotionProductIds.CoinsElixirRobuxProductId,
-        DurationSeconds = 1800,  -- 30 minutes
+        DurationSeconds = 900,  -- 15 minutes
         Type          = BoostConfig.Type.Timed,
         Stackable     = false,
         InstantUse    = false,
@@ -48,7 +48,7 @@ BoostConfig.Boosts = {
         PriceRobux    = 19,
         StockPerRefresh = 1,
         RobuxProductId = PotionProductIds.XpElixirRobuxProductId,
-        DurationSeconds = 1800,  -- 30 minutes
+        DurationSeconds = 900,  -- 15 minutes
         Type          = BoostConfig.Type.Timed,
         Stackable     = false,
         InstantUse    = false,
@@ -69,7 +69,7 @@ BoostConfig.Boosts = {
         PriceRobux    = 19,
         StockPerRefresh = 1,
         RobuxProductId = PotionProductIds.XpElixirRobuxProductId,
-        DurationSeconds = 1800,  -- 30 minutes
+        DurationSeconds = 900,  -- 15 minutes
         Type          = BoostConfig.Type.Timed,
         Stackable     = false,
         InstantUse    = false,
@@ -101,6 +101,51 @@ BoostConfig.Boosts = {
         IconAssetId   = "",
         ShowInPotionsStall = true,
         SortOrder     = 4,
+    },
+    {
+        Id            = "power_elixir",
+        DisplayName   = "Power Elixir",
+        Category      = "Elixir",
+        Description   = "",
+        PriceCoins    = 120,
+        PriceRobux    = 12,
+        StockPerRefresh = 2,
+        RobuxProductId = PotionProductIds.SpeedElixirRobuxProductId,
+        DurationSeconds = 900,  -- 15 minutes
+        Type          = BoostConfig.Type.Timed,
+        Stackable     = false,
+        InstantUse    = false,
+        -- Flat outgoing damage added to melee hits while active
+        OutgoingFlatAdd = 3,
+        IconKey       = "PowerElixir",
+        IconGlyph     = "",
+        IconColor     = {255, 165, 0},
+        IconAssetId   = "",
+        ShowInPotionsStall = true,
+        SortOrder     = 5,
+    },
+    {
+        Id            = "vitality_elixir",
+        DisplayName   = "Vitality Elixir",
+        Category      = "Elixir",
+        Description   = "",
+        PriceCoins    = 120,
+        PriceRobux    = 12,
+        StockPerRefresh = 2,
+        RobuxProductId = PotionProductIds.SpeedElixirRobuxProductId,
+        DurationSeconds = 900,  -- 15 minutes
+        Type          = BoostConfig.Type.Timed,
+        Stackable     = false,
+        InstantUse    = false,
+        -- Periodic heal: amount per tick and tick interval (seconds)
+        HealthRegenPerTick = 5,
+        HealthRegenTickInterval = 5,
+        IconKey       = "VitalityElixir",
+        IconGlyph     = "",
+        IconColor     = {235, 75, 75},
+        IconAssetId   = "",
+        ShowInPotionsStall = true,
+        SortOrder     = 6,
     },
     {
         Id            = "quest_2x",

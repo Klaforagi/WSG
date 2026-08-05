@@ -112,6 +112,18 @@ local function getHumanoidStatService()
     return HumanoidStatService
 end
 
+local HealthPotionService
+local function getHealthPotionService()
+    if HealthPotionService then return HealthPotionService end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("HealthPotionService")
+        if mod and mod:IsA("ModuleScript") then
+            HealthPotionService = require(mod)
+        end
+    end)
+    return HealthPotionService
+end
+
 local MOVEMENT_SPEED_STAT = "MovementSpeed"
 
 local WeeklyQuestService
@@ -138,6 +150,8 @@ local BoostService = {}
 --     bonusClaimed = { [questId] = true },
 -- }
 local playerBoosts = {}
+-- Per-player background tasks for periodic effects (e.g., vitality regen)
+local playerHealTasks = {}
 
 ----------------------------------------------------------------------------
 -- Reroll cooldown tracking (server-authoritative, in-memory only)
@@ -478,6 +492,47 @@ function BoostService:ActivateOwnedBoost(player, boostId)
         end
     end
 
+    -- Apply flat outgoing damage modifiers via HealthPotionService (Power Elixir)
+    if def.OutgoingFlatAdd and tonumber(def.OutgoingFlatAdd) and tonumber(def.OutgoingFlatAdd) ~= 0 then
+        local hps = getHealthPotionService()
+        if hps and type(hps.SetOutgoingFlatModifier) == "function" then
+            pcall(function()
+                hps:SetOutgoingFlatModifier(player, def.ModifierId or def.Id, tonumber(def.OutgoingFlatAdd), tonumber(def.DurationSeconds) or 0, def.DisplayName)
+            end)
+        end
+    end
+
+    -- Start periodic health regen task for vitality elixir
+    if def.HealthRegenPerTick and tonumber(def.HealthRegenPerTick) and def.HealthRegenTickInterval and tonumber(def.HealthRegenTickInterval) then
+        local amount = math.max(0, math.floor(tonumber(def.HealthRegenPerTick) or 0))
+        local tick = math.max(0.1, tonumber(def.HealthRegenTickInterval) or 5)
+        local duration = math.max(0, tonumber(def.DurationSeconds) or 0)
+        if amount > 0 and duration > 0 then
+            if not playerHealTasks[player] then playerHealTasks[player] = {} end
+            local token = {}
+            playerHealTasks[player][def.Id] = token
+            task.spawn(function()
+                local expiresAt = os.time() + duration
+                while true do
+                    if not playerHealTasks[player] or playerHealTasks[player][def.Id] ~= token then break end
+                    if os.time() >= expiresAt then break end
+                    local character = player.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local missing = math.max(0, humanoid.MaxHealth - humanoid.Health)
+                        if missing > 0 then
+                            humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + amount)
+                        end
+                    end
+                    local remaining = expiresAt - os.time()
+                    if remaining <= 0 then break end
+                    task.wait(math.min(tick, remaining))
+                end
+                if playerHealTasks[player] then playerHealTasks[player][def.Id] = nil end
+            end)
+        end
+    end
+
     pushBoostState(player)
     markDirty(player, "boost_activate")
     return true, "Activated", self:GetPlayerBoostStates(player)
@@ -758,6 +813,9 @@ end
 ----------------------------------------------------------------------------
 function BoostService:ClearPlayer(player)
     playerBoosts[player] = nil
+    if playerHealTasks[player] then
+        playerHealTasks[player] = nil
+    end
 end
 
 ----------------------------------------------------------------------------

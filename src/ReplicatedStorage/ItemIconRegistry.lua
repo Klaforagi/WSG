@@ -99,6 +99,19 @@ register("coins_2x", doubleCoinsIcon)
 register("DoubleXP", doubleXPIcon)
 register("mastery_2x", doubleMasteryIcon)
 register("xp_2x", doubleXPIconBlue)
+local powerElixirIcon = {
+    Key = "PowerElixir",
+    AssetKey = "PowerElixir",
+}
+local vitalityElixirIcon = {
+    Key = "VitalityElixir",
+    AssetKey = "VitalityElixir",
+}
+
+register("PowerElixir", powerElixirIcon)
+register("power_elixir", powerElixirIcon)
+register("VitalityElixir", vitalityElixirIcon)
+register("vitality_elixir", vitalityElixirIcon)
 
 local function copyValue(value)
     if type(value) ~= "table" then
