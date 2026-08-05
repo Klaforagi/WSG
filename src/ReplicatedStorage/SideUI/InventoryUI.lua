@@ -3242,7 +3242,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                         Kind = "potion",
                         DisplayName = potionDef.DisplayName,
                         Category = normalizePotionItemCategory(potionDef.Category, POTION_CATEGORY_BATTLE),
-                        Description = potionDef.Description,
+                        Description = "",
                         DetailText = potionDef.DetailText,
                         IconKey = potionDef.IconKey,
                         IconShape = "potion_bottle",
@@ -3557,7 +3557,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local boostDetailIconImage = Instance.new("ImageLabel", boostDetailIconBg)
         boostDetailIconImage.Name = "IconImage"
         boostDetailIconImage.BackgroundTransparency = 1
-        boostDetailIconImage.Size = UDim2.new(0.45, 0, 0.45, 0)
+        boostDetailIconImage.Size = UDim2.new(0.9, 0, 0.9, 0)
         boostDetailIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
         boostDetailIconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
         boostDetailIconImage.ScaleType = Enum.ScaleType.Fit
@@ -3726,7 +3726,14 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             boostDetailName.Text = def.DisplayName or def.Id
             boostDetailName.TextColor3 = brightenColor(iconColor, 0.1)
-            boostDetailDesc.Text = def.Description or ""
+            -- Hide description for potions and elixirs
+            if def.Kind == "potion" or def.Category == POTION_CATEGORY_ELIXIR then
+                boostDetailDesc.Text = ""
+                boostDetailDesc.Visible = false
+            else
+                boostDetailDesc.Text = def.Description or ""
+                boostDetailDesc.Visible = true
+            end
 
             -- Duration
             if def.Kind == "potion" then

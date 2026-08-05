@@ -88,7 +88,7 @@ DailyRewardConfig.Rewards = {
         Amount      = 1,
         BoostId     = "coins_2x",
         DisplayName = "2x Coin Elixir",
-        Description = "A 2x coin elixir for 30 minutes.",
+        Description = "",
     },
     {
         Day         = 5,

@@ -32,6 +32,12 @@ AssetCodes.images = {
     GoblinPreview = "",       -- static inventory/shop preview for the Goblin skin
     --POTION icons
     HealthPotion = "rbxassetid://100548032317989",
+    SpeedPotion = "rbxassetid://112364730003039",
+    StrengthPotion = "rbxassetid://74649590699347",
+    ["2xCoinsElixir"] = "rbxassetid://94023162242458",
+    ["2xXPElixir"] = "rbxassetid://93623567142594",
+    ["2xMasteryElixir"] = "rbxassetid://135725356152560",
+    SpeedElixir = "rbxassetid://100548032317989",
     --WEAPON icons
     --MELEE
     Melee = "rbxassetid://856575323",

@@ -47,6 +47,15 @@ pcall(function()
     end
 end)
 
+-- AssetCodes (needed by getPotionIconImage)
+local AssetCodes = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("AssetCodes")
+    if mod and mod:IsA("ModuleScript") then
+        AssetCodes = require(mod)
+    end
+end)
+
 --------------------------------------------------------------------------------
 -- MENU LOCK CHECK
 -- MenuLockEnforcer.client.lua sets player:SetAttribute("MenuOpen", bool)
@@ -173,6 +182,35 @@ local function getPotionIconData(potionDef)
     return ItemIconRegistry.Get(potionDef.IconKey) or ItemIconRegistry.Get(potionDef.Id)
 end
 
+local function getPotionIconImage(potionDef)
+    if type(potionDef) ~= "table" then return nil end
+    -- direct asset on def
+    if type(potionDef.IconAssetId) == "string" and #potionDef.IconAssetId > 0 then
+        return potionDef.IconAssetId
+    end
+    -- check registry entry
+    local iconData = getPotionIconData(potionDef)
+    if type(iconData) == "table" then
+        if type(iconData.IconAssetId) == "string" and #iconData.IconAssetId > 0 then
+            return iconData.IconAssetId
+        end
+        if type(iconData.AssetKey) == "string" and AssetCodes and type(AssetCodes.Get) == "function" then
+            local asset = AssetCodes.Get(iconData.AssetKey)
+            if type(asset) == "string" and #asset > 0 then
+                return asset
+            end
+        end
+    end
+    -- fallback to def.IconKey via AssetCodes
+    if type(potionDef.IconKey) == "string" and AssetCodes and type(AssetCodes.Get) == "function" then
+        local asset = AssetCodes.Get(potionDef.IconKey)
+        if type(asset) == "string" and #asset > 0 then
+            return asset
+        end
+    end
+    return nil
+end
+
 -- Weapon cooldown lock state (driven by player attributes set by WeaponLockService)
 local weaponLocked     = false
 local weaponLockedTool = ""
@@ -268,92 +306,7 @@ task.defer(applyHotbarLayout)
 --------------------------------------------------------------------------------
 local equipSlot
 
-local function buildPotionIcon(parent)
-    local iconFrame = Instance.new("Frame")
-    iconFrame.Name = "PotionIcon"
-    iconFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    iconFrame.Position = UDim2.fromScale(0.5, 0.44)
-    iconFrame.Size = UDim2.fromScale(0.56, 0.56)
-    iconFrame.BackgroundTransparency = 1
-    iconFrame.ZIndex = 2
-    iconFrame.Parent = parent
-
-    local bottleColor = Color3.fromRGB(103, 186, 255)
-    local bottleDark = Color3.fromRGB(40, 92, 140)
-    local liquidColor = Color3.fromRGB(62, 156, 245)
-
-    local body = Instance.new("Frame")
-    body.Name = "Body"
-    body.AnchorPoint = Vector2.new(0.5, 1)
-    body.Position = UDim2.fromScale(0.5, 1)
-    body.Size = UDim2.fromScale(0.62, 0.72)
-    body.BackgroundColor3 = bottleColor
-    body.BorderSizePixel = 0
-    body.ZIndex = 2
-    body.Parent = iconFrame
-    Instance.new("UICorner", body).CornerRadius = UDim.new(0.22, 0)
-
-    local bodyStroke = Instance.new("UIStroke", body)
-    bodyStroke.Color = bottleDark
-    bodyStroke.Thickness = 1.2
-
-    local neck = Instance.new("Frame")
-    neck.Name = "Neck"
-    neck.AnchorPoint = Vector2.new(0.5, 1)
-    neck.Position = UDim2.fromScale(0.5, 0.32)
-    neck.Size = UDim2.fromScale(0.26, 0.24)
-    neck.BackgroundColor3 = bottleColor
-    neck.BorderSizePixel = 0
-    neck.ZIndex = 3
-    neck.Parent = iconFrame
-    Instance.new("UICorner", neck).CornerRadius = UDim.new(0.2, 0)
-
-    local cap = Instance.new("Frame")
-    cap.Name = "Cap"
-    cap.AnchorPoint = Vector2.new(0.5, 0)
-    cap.Position = UDim2.fromScale(0.5, 0.02)
-    cap.Size = UDim2.fromScale(0.32, 0.1)
-    cap.BackgroundColor3 = bottleDark
-    cap.BorderSizePixel = 0
-    cap.ZIndex = 4
-    cap.Parent = iconFrame
-    Instance.new("UICorner", cap).CornerRadius = UDim.new(0.25, 0)
-
-    local liquid = Instance.new("Frame")
-    liquid.Name = "Liquid"
-    liquid.AnchorPoint = Vector2.new(0.5, 1)
-    liquid.Position = UDim2.fromScale(0.5, 0.94)
-    liquid.Size = UDim2.fromScale(0.48, 0.32)
-    liquid.BackgroundColor3 = liquidColor
-    liquid.BorderSizePixel = 0
-    liquid.ZIndex = 3
-    liquid.Parent = iconFrame
-    Instance.new("UICorner", liquid).CornerRadius = UDim.new(0.2, 0)
-
-    local plusH = Instance.new("Frame")
-    plusH.Name = "PlusH"
-    plusH.AnchorPoint = Vector2.new(0.5, 0.5)
-    plusH.Position = UDim2.fromScale(0.5, 0.6)
-    plusH.Size = UDim2.fromScale(0.26, 0.08)
-    plusH.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    plusH.BorderSizePixel = 0
-    plusH.ZIndex = 4
-    plusH.Parent = iconFrame
-    Instance.new("UICorner", plusH).CornerRadius = UDim.new(1, 0)
-
-    local plusV = Instance.new("Frame")
-    plusV.Name = "PlusV"
-    plusV.AnchorPoint = Vector2.new(0.5, 0.5)
-    plusV.Position = UDim2.fromScale(0.5, 0.6)
-    plusV.Size = UDim2.fromScale(0.08, 0.26)
-    plusV.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-    plusV.BorderSizePixel = 0
-    plusV.ZIndex = 4
-    plusV.Parent = iconFrame
-    Instance.new("UICorner", plusV).CornerRadius = UDim.new(1, 0)
-
-    return iconFrame
-end
+-- Procedural potion icon generator removed: prefer uploaded asset images or glyphs.
 
 local function updatePotionIcon(iconFrame, potionDef)
     if not iconFrame then
@@ -367,40 +320,28 @@ local function updatePotionIcon(iconFrame, potionDef)
     local strokeColor = colorFromIconValue(iconData.StrokeColor, liquidColor:Lerp(Color3.new(0, 0, 0), 0.48))
     local capColor = colorFromIconValue(iconData.CapColor, strokeColor)
 
-    local body = iconFrame:FindFirstChild("Body")
-    local neck = iconFrame:FindFirstChild("Neck")
-    local cap = iconFrame:FindFirstChild("Cap")
-    local liquid = iconFrame:FindFirstChild("Liquid")
-    local plusH = iconFrame:FindFirstChild("PlusH")
-    local plusV = iconFrame:FindFirstChild("PlusV")
+    local iconImage = iconFrame:FindFirstChild("IconImage")
 
-    if body then
-        body.BackgroundColor3 = glassColor
-        local stroke = body:FindFirstChildOfClass("UIStroke")
-        if stroke then
-            stroke.Color = strokeColor
-        end
-    end
-    if neck then
-        neck.BackgroundColor3 = glassColor
-        local stroke = neck:FindFirstChildOfClass("UIStroke")
-        if stroke then
-            stroke.Color = strokeColor
-        end
-    end
-    if cap then
-        cap.BackgroundColor3 = capColor
-    end
-    if liquid then
-        liquid.BackgroundColor3 = liquidColor
+    -- Ensure a dedicated ImageLabel exists for potion icons
+    if not iconImage then
+        iconImage = Instance.new("ImageLabel")
+        iconImage.Name = "IconImage"
+        iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+        iconImage.Position = UDim2.fromScale(0.5, 0.5)
+        iconImage.Size = UDim2.fromScale(1.5, 1.5)
+        iconImage.BackgroundTransparency = 1
+        iconImage.ScaleType = Enum.ScaleType.Fit
+        iconImage.ZIndex = 3
+        iconImage.Parent = iconFrame
     end
 
-    local showHealthMotif = type(iconData) == "table" and iconData.Motif == "health"
-    if plusH then
-        plusH.Visible = showHealthMotif
-    end
-    if plusV then
-        plusV.Visible = showHealthMotif
+    local resolvedImage = getPotionIconImage(potionDef)
+    if type(resolvedImage) == "string" and #resolvedImage > 0 then
+        iconImage.Image = resolvedImage
+        iconImage.Visible = true
+    else
+        iconImage.Image = ""
+        iconImage.Visible = false
     end
 end
 
@@ -598,7 +539,15 @@ local function buildSlot(def)
     if def.utilityType == "bandage" then
         bandageIcon = buildBandageIcon(btn)
     elseif def.utilityType == "potion" then
-        potionIcon = buildPotionIcon(btn)
+        -- simple container for potion image/glyph
+        potionIcon = Instance.new("Frame")
+        potionIcon.Name = "PotionIcon"
+        potionIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+        potionIcon.Position = UDim2.fromScale(0.5, 0.44)
+        potionIcon.Size = UDim2.fromScale(0.56, 0.56)
+        potionIcon.BackgroundTransparency = 1
+        potionIcon.ZIndex = 2
+        potionIcon.Parent = btn
     end
 
     local countBadge = Instance.new("Frame")
@@ -715,8 +664,7 @@ local function getToolForSlot(idx)
     return scan(player.Character) or scan(backpack) or scan(starterGear)
 end
 
--- AssetCodes for weapon icons
-local AssetCodes = nil
+-- AssetCodes for weapon icons (already required above)
 pcall(function()
     local ac = ReplicatedStorage:FindFirstChild("AssetCodes")
     if ac and ac:IsA("ModuleScript") then AssetCodes = require(ac) end

@@ -390,7 +390,7 @@ local function buildStallEntries()
 				Id = potionDef.Id,
 				DisplayName = potionDef.DisplayName,
 				Category = normalizePotionCategory(potionDef.Category, CATEGORY_BATTLE),
-				Description = potionDef.Description,
+				Description = "",
 				DetailText = potionDef.DetailText,
 				DurationSeconds = potionDef.DurationSeconds,
 				CooldownSeconds = potionDef.CooldownSeconds,
@@ -425,7 +425,7 @@ local function buildStallEntries()
 				Kind = "boost",
 				Id = boostDef.Id,
 				DisplayName = boostDef.DisplayName,
-				Description = boostDef.Description,
+				Description = (boostDef.Category == CATEGORY_ELIXIR) and "" or boostDef.Description,
 				DurationSeconds = boostDef.DurationSeconds,
 				PriceCoins = boostDef.PriceCoins,
 				PriceRobux = boostDef.PriceRobux,
@@ -1334,7 +1334,7 @@ end
 		iconImage.BackgroundTransparency = 1
 		iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
 		iconImage.Position = UDim2.fromScale(0.5, 0.5)
-		iconImage.Size = UDim2.fromScale(0.74, 0.74)
+		iconImage.Size = UDim2.new(1, 0, 1, 0)
 		iconImage.ScaleType = Enum.ScaleType.Fit
 		iconImage.Image = getIconImage(entry, iconData) or ""
 		iconImage.Visible = iconImage.Image ~= ""
@@ -1395,25 +1395,29 @@ end
 		addTextLimit(typeBadge, 12, 13)
 		addTextOutline(typeBadge, 0.55, 0.8)
 
-		local desc = Instance.new("TextLabel")
-		desc.Name = "Description"
-		desc.BackgroundTransparency = 1
-		desc.Position = UDim2.new(0.26, 0, 0.32, 0)
-		desc.Size = UDim2.new(0.7, 0, 0.18, 0)
-		desc.Font = Enum.Font.GothamMedium
-		desc.Text = tostring(entry.Description or "")
-		desc.TextColor3 = DIM_TEXT
-		desc.TextSize = textPx(16, 15, 16)
-		desc.TextWrapped = true
-		desc.TextXAlignment = Enum.TextXAlignment.Left
-		desc.TextYAlignment = Enum.TextYAlignment.Top
-		desc.Parent = card
-		addTextLimit(desc, 15, 16)
+		-- Description text removed for potions and elixirs; keep only for boosts that are not elixirs
+		if entry.Kind == "boost" and entry.Category ~= CATEGORY_ELIXIR then
+			local desc = Instance.new("TextLabel")
+			desc.Name = "Description"
+			desc.BackgroundTransparency = 1
+			desc.Position = UDim2.new(0.26, 0, 0.32, 0)
+			desc.Size = UDim2.new(0.7, 0, 0.18, 0)
+			desc.Font = Enum.Font.GothamMedium
+			desc.Text = tostring(entry.Description or "")
+			desc.TextColor3 = DIM_TEXT
+			desc.TextSize = textPx(16, 15, 16)
+			desc.TextWrapped = true
+			desc.TextXAlignment = Enum.TextXAlignment.Left
+			desc.TextYAlignment = Enum.TextYAlignment.Top
+			desc.Parent = card
+			addTextLimit(desc, 15, 16)
+		end
 
 		local detailLabel = Instance.new("TextLabel")
 		detailLabel.Name = "DetailLabel"
 		detailLabel.BackgroundTransparency = 1
-		detailLabel.Position = UDim2.new(0.26, 0, 0.36, 0)
+		-- Unified position for detail label for potions and elixirs
+		detailLabel.Position = UDim2.new(0.26, 0, 0.32, 0)
 		detailLabel.Size = UDim2.new(0.7, 0, 0.18, 0)
 		detailLabel.Font = Enum.Font.GothamBold
 		detailLabel.TextColor3 = brightenColor(iconColor, 0.08)

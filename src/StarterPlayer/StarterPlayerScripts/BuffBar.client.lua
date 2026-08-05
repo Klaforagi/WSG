@@ -1156,7 +1156,7 @@ local function getPotionEffectDef(potionId)
                 Id = potionDef.Id,
                 Kind = "buff",
                 DisplayName = potionDef.DisplayName or potionDef.Id,
-                Description = potionDef.DetailText or potionDef.Description or "Potion effect active.",
+                Description = "",
                 IconKey = potionDef.IconKey,
                 IconGlyph = potionDef.IconGlyph,
                 IconColor = potionDef.IconColor,
