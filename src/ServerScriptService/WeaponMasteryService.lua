@@ -71,6 +71,18 @@ local function getGamepassService()
     return GamepassService
 end
 
+local BoostService
+local function getBoostService()
+    if BoostService then return BoostService end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("BoostService")
+        if mod and mod:IsA("ModuleScript") then
+            BoostService = require(mod)
+        end
+    end)
+    return BoostService
+end
+
 local function getMasteryBonusBreakdown(player)
     local breakdown = {
         vipOwned = false,
@@ -465,6 +477,10 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
 
     local bonusInfo = getMasteryBonusBreakdown(player)
     local masteryMultiplier = bonusInfo.multiplier
+    local boostSvc = getBoostService()
+    if boostSvc and type(boostSvc.GetMasteryMultiplier) == "function" then
+        masteryMultiplier = masteryMultiplier * math.max(1, tonumber(boostSvc:GetMasteryMultiplier(player)) or 1)
+    end
     local awardedXP = baseXP
 
     if statKey and statAmount > 0 then

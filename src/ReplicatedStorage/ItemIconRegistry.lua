@@ -64,6 +64,30 @@ local doubleXPIcon = {
     Motif = "xp_elixir",
 }
 
+local doubleMasteryIcon = {
+    Key = "DoubleMastery",
+    Kind = "PotionBottle",
+    Shape = "elixir",
+    IconColor = { 180, 120, 255 },
+    GlassColor = { 232, 220, 255 },
+    LiquidColor = { 168, 110, 240 },
+    StrokeColor = { 70, 40, 130 },
+    CapColor = { 82, 52, 138 },
+    Motif = "mastery_elixir",
+}
+
+local doubleXPIconBlue = {
+    Key = "DoubleXPBlue",
+    Kind = "PotionBottle",
+    Shape = "elixir",
+    IconColor = { 80, 165, 255 },
+    GlassColor = { 220, 240, 255 },
+    LiquidColor = { 60, 140, 255 },
+    StrokeColor = { 30, 70, 120 },
+    CapColor = { 40, 85, 140 },
+    Motif = "xp_elixir",
+}
+
 register("HealthPotion", healthPotionIcon)
 register("health_potion", healthPotionIcon)
 register("SpeedPotion", speedPotionIcon)
@@ -73,7 +97,8 @@ register("strength_potion", strengthPotionIcon)
 register("DoubleCoins", doubleCoinsIcon)
 register("coins_2x", doubleCoinsIcon)
 register("DoubleXP", doubleXPIcon)
-register("xp_2x", doubleXPIcon)
+register("mastery_2x", doubleMasteryIcon)
+register("xp_2x", doubleXPIconBlue)
 
 local function copyValue(value)
     if type(value) ~= "table" then

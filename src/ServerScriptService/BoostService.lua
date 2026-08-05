@@ -100,6 +100,20 @@ local function getQuestService()
     return QuestService
 end
 
+local HumanoidStatService
+local function getHumanoidStatService()
+    if HumanoidStatService then return HumanoidStatService end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("HumanoidStatService")
+        if mod and mod:IsA("ModuleScript") then
+            HumanoidStatService = require(mod)
+        end
+    end)
+    return HumanoidStatService
+end
+
+local MOVEMENT_SPEED_STAT = "MovementSpeed"
+
 local WeeklyQuestService
 local function getWeeklyQuestService()
     if WeeklyQuestService then return WeeklyQuestService end
@@ -450,6 +464,20 @@ function BoostService:ActivateOwnedBoost(player, boostId)
     print(("[BoostService] %s activated '%s' from inventory (remaining=%d)"):format(
         player.Name, boostId, pd.inventory[boostId]))
 
+    -- Apply additive stat modifiers server-side for boosts that define them
+    if def.AdditiveBonus and tonumber(def.AdditiveBonus) and tonumber(def.AdditiveBonus) ~= 0 then
+        local hss = getHumanoidStatService()
+        if hss and type(hss.SetModifier) == "function" then
+            pcall(function()
+                hss:SetModifier(player, MOVEMENT_SPEED_STAT, def.ModifierId or def.Id, {
+                    additive = tonumber(def.AdditiveBonus) or 0,
+                    duration = (tonumber(def.DurationSeconds) and tonumber(def.DurationSeconds) > 0) and tonumber(def.DurationSeconds) or nil,
+                    source = def.DisplayName,
+                })
+            end)
+        end
+    end
+
     pushBoostState(player)
     markDirty(player, "boost_activate")
     return true, "Activated", self:GetPlayerBoostStates(player)
@@ -675,6 +703,14 @@ end
 function BoostService:GetXPMultiplier(player)
     if self:HasActiveBoost(player, "xp_2x") then
         local def = getBoostConfig() and getBoostConfig().GetById("xp_2x")
+        return def and def.Multiplier or 2
+    end
+    return 1
+end
+
+function BoostService:GetMasteryMultiplier(player)
+    if self:HasActiveBoost(player, "mastery_2x") then
+        local def = getBoostConfig() and getBoostConfig().GetById("mastery_2x")
         return def and def.Multiplier or 2
     end
     return 1
