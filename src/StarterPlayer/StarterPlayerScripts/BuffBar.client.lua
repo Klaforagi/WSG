@@ -516,7 +516,25 @@ local function showTooltip(entryId)
     end
 
     local def = entry.def or {}
-    local description = tostring(def.Description or "")
+    local description = ""
+    if def.DetailText and tostring(def.DetailText) ~= "" then
+        description = tostring(def.DetailText)
+    elseif def.Description and tostring(def.Description) ~= "" then
+        description = tostring(def.Description)
+    else
+        -- fallback to duration text for timed effects
+        local dur = tonumber(def.DurationSeconds) or 0
+        if dur > 0 then
+            local mins = math.floor(dur / 60)
+            if mins >= 1 then
+                description = tostring(mins) .. " min"
+            else
+                description = tostring(dur) .. " sec"
+            end
+        else
+            description = ""
+        end
+    end
     activeTooltipEntryId = entryId
     tooltipTitle.Text = tostring(def.DisplayName or entry.id or "Status")
     tooltipTitle.TextColor3 = entry.accent or COLORS.gold
