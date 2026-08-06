@@ -426,6 +426,7 @@ local function buildStallEntries()
 				Id = boostDef.Id,
 				DisplayName = boostDef.DisplayName,
 				Description = (boostDef.Category == CATEGORY_ELIXIR) and "" or boostDef.Description,
+				DetailText = boostDef.DetailText,
 				DurationSeconds = boostDef.DurationSeconds,
 				PriceCoins = boostDef.PriceCoins,
 				PriceRobux = boostDef.PriceRobux,
