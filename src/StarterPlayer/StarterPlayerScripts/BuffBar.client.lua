@@ -334,17 +334,19 @@ local container = Instance.new("Frame")
 container.Name = "BuffBarContainer"
 container.AnchorPoint = Vector2.new(1, 1)
 container.BackgroundTransparency = 1
-container.Size = UDim2.new(0.22, 0, 0.35, 0)
-container.Position = UDim2.new(0.98, 0, 0.94, 0)
+container.Size = UDim2.new(0.21, 0, 0.35, 0)
+container.Position = UDim2.new(0.99, 0, 0.47, 0)
 container.Parent = screenGui
 
 local layout = Instance.new("UIListLayout")
 layout.FillDirection = Enum.FillDirection.Horizontal
 layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+layout.VerticalAlignment = Enum.VerticalAlignment.Top
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, TILE_GAP)
 layout.Parent = container
+-- enable layout wrapping behavior
+pcall(function() layout.Wraps = true end)
 
 local relayoutTiles
 local activeTooltipEntryId = nil
@@ -444,8 +446,8 @@ local function applyLayout()
     TOTAL_HEIGHT = TILE_SIZE + px(4) + TIMER_HEIGHT
 
     -- Use scale-based positioning/size requested by layout preferences
-    container.Position = UDim2.new(0.98, 0, 0.94, 0)
-    container.Size = UDim2.new(0.22, 0, 0.35, 0)
+    container.Position = UDim2.new(0.99, 0, 0.47, 0)
+    container.Size = UDim2.new(0.21, 0, 0.35, 0)
     layout.Padding = UDim.new(0, TILE_GAP)
     if relayoutTiles then
         relayoutTiles()
