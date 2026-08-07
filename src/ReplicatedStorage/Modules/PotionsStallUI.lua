@@ -1434,7 +1434,7 @@ end
 		local stockLabel = Instance.new("TextLabel")
 		stockLabel.Name = "StockLabel"
 		stockLabel.BackgroundColor3 = mixColor(baseBg, BLACK, 0.28)
-		stockLabel.Position = UDim2.new(0.26, 0, 0.52, 0)
+		stockLabel.Position = UDim2.new(0.26, 0, 0.54, 0)
 		stockLabel.Size = UDim2.new(0.7, 0, 0.2, 0)
 		stockLabel.Font = Enum.Font.GothamBlack
 		stockLabel.TextColor3 = WHITE
@@ -1464,6 +1464,23 @@ end
 		statusLabel.Visible = true
 		statusLabel.Parent = card
 		addTextLimit(statusLabel, 15, 35)
+
+		-- Lock StatusLabel size to scale values; prevent external code from switching to pixel offsets
+		local lockedStatusSize = UDim2.new(0.1, 0, 0.13, 0)
+		statusLabel.Size = lockedStatusSize
+		do
+			local warned = false
+			statusLabel:GetPropertyChangedSignal("Size"):Connect(function()
+				if statusLabel.Size ~= lockedStatusSize then
+					if not warned then
+						warned = true
+						warn("[PotionsStallUI] StatusLabel size overwritten to", tostring(statusLabel.Size))
+						warn(debug.traceback())
+					end
+					statusLabel.Size = lockedStatusSize
+				end
+			end)
+		end
 		local buttonRow = Instance.new("Frame")
 		buttonRow.Name = "ButtonRow"
 		buttonRow.BackgroundTransparency = 1
@@ -1656,7 +1673,16 @@ end
 	local unifiedGrid = Instance.new("Frame")
 	unifiedGrid.Name = "AllGrid"
 	unifiedGrid.BackgroundTransparency = 1
-	unifiedGrid.Size = UDim2.new(0.99, 0, 1.25, 0)
+	unifiedGrid.Size = UDim2.new(1, 0, 1.75, 0)
+	-- Lock the Y offset (fourth component) to 0 to prevent pixel-offset mutations
+	do
+		local lockedGridSize = UDim2.new(1, 0, 1.75, 0)
+		unifiedGrid:GetPropertyChangedSignal("Size"):Connect(function()
+			if unifiedGrid.Size ~= lockedGridSize then
+				unifiedGrid.Size = lockedGridSize
+			end
+		end)
+	end
 	unifiedGrid.LayoutOrder = 1
 	unifiedGrid.Parent = scroller
 
