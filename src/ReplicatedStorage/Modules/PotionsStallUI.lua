@@ -1430,41 +1430,40 @@ end
 		addTextLimit(detailLabel, 15, 16)
 		addTextOutline(detailLabel, 0.56, 0.9)
 
-		local statusLabel = Instance.new("TextLabel")
-		statusLabel.Name = "StatusLabel"
-		statusLabel.BackgroundColor3 = mixColor(baseBg, BLACK, 0.28)
-		statusLabel.Position = UDim2.new(0.26, 0, 0.52, 0)
-		statusLabel.Size = UDim2.new(0.7, 0, 0.2, 0)
-		statusLabel.Font = Enum.Font.GothamBlack
-		statusLabel.TextColor3 = WHITE
-		statusLabel.TextSize = textPx(16, 15, 16)
-		statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-		statusLabel.TextYAlignment = Enum.TextYAlignment.Center
-		statusLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		statusLabel.Parent = card
-		applyCorners(statusLabel, px(8))
-		local statusStroke = applyStroke(statusLabel, iconColor, 1, 0.42)
-		addTextLimit(statusLabel, 15, 16)
-		addTextOutline(statusLabel, 0.4, 1)
-
-		-- Per-player stock indicator (coin purchases only).
+		-- Large central label: repurpose as the StockLabel (keeps previous StatusLabel appearance)
 		local stockLabel = Instance.new("TextLabel")
 		stockLabel.Name = "StockLabel"
-		stockLabel.BackgroundTransparency = 1
-		stockLabel.Position = UDim2.new(0, readablePx(12, 12), 1, -readablePx(60, 60))
-		stockLabel.Size = UDim2.new(1, -readablePx(24, 24), 0, readablePx(20, 20))
-		stockLabel.Font = Enum.Font.GothamBold
-		stockLabel.Text = "Stock: --"
-		stockLabel.TextColor3 = ACCENT_GOLD
-		stockLabel.TextSize = textPx(14, 12, 18)
+		stockLabel.BackgroundColor3 = mixColor(baseBg, BLACK, 0.28)
+		stockLabel.Position = UDim2.new(0.26, 0, 0.52, 0)
+		stockLabel.Size = UDim2.new(0.7, 0, 0.2, 0)
+		stockLabel.Font = Enum.Font.GothamBlack
+		stockLabel.TextColor3 = WHITE
+		stockLabel.TextSize = textPx(16, 15, 16)
 		stockLabel.TextXAlignment = Enum.TextXAlignment.Center
 		stockLabel.TextYAlignment = Enum.TextYAlignment.Center
 		stockLabel.TextTruncate = Enum.TextTruncate.AtEnd
-		stockLabel.Visible = true
 		stockLabel.Parent = card
-		addTextLimit(stockLabel, 12, 16)
-		addTextOutline(stockLabel, 0.5, 0.9)
+		applyCorners(stockLabel, px(8))
+		local stockStroke = applyStroke(stockLabel, iconColor, 1, 0.42)
+		addTextLimit(stockLabel, 20, 35)
+		addTextOutline(stockLabel, 0.4, 1)
 
+		-- Small status label for boost/potion state (Owned / Active / Not Owned)
+		local statusLabel = Instance.new("TextLabel")
+		statusLabel.Name = "StatusLabel"
+		statusLabel.BackgroundTransparency = 1
+		statusLabel.Position = UDim2.new(0.88, 0, 0.05, 0)
+		statusLabel.Size = UDim2.new(0.1, 0, 0.13, 0)
+		statusLabel.Font = Enum.Font.GothamBold
+		statusLabel.Text = ""
+		statusLabel.TextColor3 = MUTED_TEXT
+		statusLabel.TextScaled = true
+		statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+		statusLabel.TextYAlignment = Enum.TextYAlignment.Center
+		statusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		statusLabel.Visible = true
+		statusLabel.Parent = card
+		addTextLimit(statusLabel, 15, 35)
 		local buttonRow = Instance.new("Frame")
 		buttonRow.Name = "ButtonRow"
 		buttonRow.BackgroundTransparency = 1
@@ -1641,9 +1640,9 @@ end
 			entry = entry,
 			card = card,
 			cardStroke = cardStroke,
-			statusLabel = statusLabel,
-			statusStroke = statusStroke,
 			stockLabel = stockLabel,
+			stockStroke = stockStroke,
+			statusLabel = statusLabel,
 			coinButton = coinButton,
 			coinButtonContent = coinButtonContent,
 			robuxButton = robuxButton,
@@ -1748,29 +1747,23 @@ end
 				if statusActive then
 					refs.statusLabel.Text = string.format("Active: %02d:%02d", math.floor(remaining / 60), remaining % 60)
 					refs.statusLabel.TextColor3 = ACCENT_GREEN
-					refs.statusStroke.Color = ACCENT_GREEN
 				elseif owned > 0 then
-					refs.statusLabel.Text = "Owned: " .. tostring(owned)
+					refs.statusLabel.Text = "x" .. tostring(owned)
 					refs.statusLabel.TextColor3 = WHITE
-					refs.statusStroke.Color = accent
 				else
-					refs.statusLabel.Text = "Not Owned"
+					refs.statusLabel.Text = "x0"
 					refs.statusLabel.TextColor3 = MUTED_TEXT
-					refs.statusStroke.Color = CARD_STROKE
 				end
 			else
 				if remaining > 0 then
 					refs.statusLabel.Text = string.format("Cooldown: %02d:%02d", math.floor(remaining / 60), remaining % 60)
 					refs.statusLabel.TextColor3 = ACCENT_BLUE
-					refs.statusStroke.Color = ACCENT_BLUE
 				elseif owned > 0 then
-					refs.statusLabel.Text = "Owned: " .. tostring(owned)
+					refs.statusLabel.Text = "x" .. tostring(owned)
 					refs.statusLabel.TextColor3 = WHITE
-					refs.statusStroke.Color = accent
 				else
-					refs.statusLabel.Text = "Not Owned"
+					refs.statusLabel.Text = "x0"
 					refs.statusLabel.TextColor3 = MUTED_TEXT
-					refs.statusStroke.Color = CARD_STROKE
 				end
 			end
 
