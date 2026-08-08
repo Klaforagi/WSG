@@ -361,12 +361,21 @@ local function applyPotionEffect(player, potionDef, humanoid)
         }
         scheduleOutgoingDamageExpiry(player, modifierId, token, durationSeconds)
 
+        local descText = string.format("%s: +%d%% damage", potionDef.DisplayName or "Strength", math.floor(((damageMultiplier - 1) * 100) + 0.5))
+        -- Notify listeners (clients) about the effect start with a human-readable description
+        effectStartedEvent:Fire(player, {
+            potionId = modifierId,
+            duration = durationSeconds,
+            expiresAt = expiresAt,
+            description = descText,
+            displayName = potionDef.DisplayName,
+        })
         return true, nil, {
             duration = durationSeconds,
             multiplier = damageMultiplier,
             damageMultiplier = damageMultiplier,
             modifierId = modifierId,
-            description = string.format("%s: +%d%% damage", potionDef.DisplayName or "Strength", math.floor(((damageMultiplier - 1) * 100) + 0.5)),
+            description = descText,
         }
     end
 
@@ -407,17 +416,20 @@ local function applyPotionEffect(player, potionDef, humanoid)
             end)
         end
 
+        local descText = string.format("%s: +%d flat damage (melee)", potionDef.DisplayName or "Strength", flatAdd)
         effectStartedEvent:Fire(player, {
             potionId = modifierId,
             duration = durationSeconds,
             expiresAt = expiresAt,
+            description = descText,
+            displayName = potionDef.DisplayName,
         })
 
         return true, nil, {
             duration = durationSeconds,
             flatAdd = flatAdd,
             modifierId = modifierId,
-            description = string.format("%s: +%d flat damage (melee)", potionDef.DisplayName or "Strength", flatAdd),
+            description = descText,
         }
     end
 

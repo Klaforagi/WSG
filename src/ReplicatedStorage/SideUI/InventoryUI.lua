@@ -3927,11 +3927,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 local targetBg = refs.baseBg or CARD_BG
                 if isSelected then
-                    targetBg = active and mixColor(refs.activeBg or CARD_EQUIPPED, GOLD, 0.14) or (refs.selectedBg or CARD_BG)
+                    -- keep selection tint for non-potions, but avoid aggressive selection overlay for potions
+                    if def.Kind == "potion" then
+                        targetBg = refs.baseBg or CARD_BG
+                    else
+                        targetBg = active and mixColor(refs.activeBg or CARD_EQUIPPED, GOLD, 0.14) or (refs.selectedBg or CARD_BG)
+                    end
                     setCardStroke(refs.cardStroke, GOLD, 2.5, 0)
                 elseif active then
-                    targetBg = refs.activeBg or CARD_EQUIPPED
-                    setCardStroke(refs.cardStroke, GREEN_GLOW, 2.0, 0.16)
+                    -- Do NOT apply the green/active background overlay for single-use potions.
+                    if def.Kind == "potion" then
+                        targetBg = refs.baseBg or CARD_BG
+                        setCardStroke(refs.cardStroke, refs.borderColor or CARD_STROKE, 1.8, 0.12)
+                    else
+                        targetBg = refs.activeBg or CARD_EQUIPPED
+                        setCardStroke(refs.cardStroke, GREEN_GLOW, 2.0, 0.16)
+                    end
                 elseif owned > 0 then
                     setCardStroke(refs.cardStroke, refs.borderColor or CARD_STROKE, 1.8, 0.12)
                 else
@@ -3939,8 +3950,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end
                 refs.card.BackgroundColor3 = targetBg
                 if refs.accentBar then
-                    refs.accentBar.BackgroundColor3 = active and GREEN_GLOW or (refs.accentColor or GOLD)
-                    refs.accentBar.BackgroundTransparency = active and 0 or 0.12
+                    if def.Kind == "potion" then
+                        refs.accentBar.BackgroundColor3 = refs.accentColor or GOLD
+                        refs.accentBar.BackgroundTransparency = 0.12
+                    else
+                        refs.accentBar.BackgroundColor3 = active and GREEN_GLOW or (refs.accentColor or GOLD)
+                        refs.accentBar.BackgroundTransparency = active and 0 or 0.12
+                    end
                 end
 
                 -- Active bar indicator
