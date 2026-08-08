@@ -57,10 +57,10 @@ local ATMOSPHERE_CACHE_PROPS = {
 }
 
 local METEOR_LIGHTING_TARGET = {
-    ClockTime = 22.75,
+    ClockTime = 3.3,
     Brightness = 1.25,
     Ambient = Color3.fromRGB(50, 58, 78),
-    OutdoorAmbient = Color3.fromRGB(66, 76, 100),
+    OutdoorAmbient = Color3.fromRGB(131, 146, 239),
     ColorShift_Top = Color3.fromRGB(34, 54, 92),
     ColorShift_Bottom = Color3.fromRGB(0, 0, 14),
     FogColor = Color3.fromRGB(18, 24, 42),
@@ -79,7 +79,7 @@ local METEOR_SKY_TARGET = {
 }
 
 local METEOR_ATMOSPHERE_TARGET = {
-    Density = 0.22,
+    Density = 0.4,
     Offset = 0.18,
     Color = Color3.fromRGB(86, 102, 132),
     Decay = Color3.fromRGB(28, 34, 58),
