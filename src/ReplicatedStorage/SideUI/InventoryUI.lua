@@ -3789,13 +3789,15 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             boostDetailName.Text = def.DisplayName or def.Id
             boostDetailName.TextColor3 = brightenColor(iconColor, 0.1)
-            -- Hide description for potions and elixirs
-            if def.Kind == "potion" or def.Category == POTION_CATEGORY_ELIXIR then
+            -- Only hide description for single-use potions; show descriptions for boosts/elixirs
+            if def.Kind == "potion" then
                 boostDetailDesc.Text = ""
                 boostDetailDesc.Visible = false
             else
-                boostDetailDesc.Text = def.Description or ""
-                boostDetailDesc.Visible = true
+                -- Prefer explicit Description, fall back to DetailText for clarity
+                local descText = def.Description or def.DetailText or ""
+                boostDetailDesc.Text = descText
+                boostDetailDesc.Visible = (type(descText) == "string" and #descText > 0)
             end
 
             -- Duration
