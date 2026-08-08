@@ -113,6 +113,11 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 	end
 
 	-- Apply team change
+	-- If the player is carrying a flag, request a server-side force-drop first
+	local forceDropBE = ReplicatedStorage:FindFirstChild("ForceDropFlagRequest")
+	if forceDropBE and forceDropBE:IsA("BindableEvent") then
+		pcall(function() forceDropBE:Fire(plr) end)
+	end
 	lastChangeTime[plr] = now
 	plr.Team = teamName == "Red" and redTeam or blueTeam
 	plr:SetAttribute("Team", teamName)

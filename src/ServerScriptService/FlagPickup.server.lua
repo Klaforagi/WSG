@@ -77,6 +77,18 @@ if not FlagStatus or not FlagStatus:IsA("RemoteEvent") then
     FlagStatus.Parent = ReplicatedStorage
 end
 
+-- BindableEvent for server-side requests to force-drop a player's flag
+local ForceDropFlagRequest = ReplicatedStorage:FindFirstChild("ForceDropFlagRequest")
+if ForceDropFlagRequest and not ForceDropFlagRequest:IsA("BindableEvent") then
+    ForceDropFlagRequest:Destroy()
+    ForceDropFlagRequest = nil
+end
+if not ForceDropFlagRequest then
+    ForceDropFlagRequest = Instance.new("BindableEvent")
+    ForceDropFlagRequest.Name = "ForceDropFlagRequest"
+    ForceDropFlagRequest.Parent = ReplicatedStorage
+end
+
 local FlagStatesFolder = ReplicatedStorage:FindFirstChild("FlagStates")
 if FlagStatesFolder and not FlagStatesFolder:IsA("Folder") then
     FlagStatesFolder:Destroy()
@@ -144,6 +156,7 @@ end
 
 local flags = {} -- map team -> {model=Model, pickupPart=BasePart, spawnCFrame=CFrame}
 local carrying = {} -- map player -> data {team, modelClone}
+local carrierTeamChangeConns = {} -- map player -> {propConn, attrConn}
 local captureDebounce = {}
 local lastCarrierPos = {} -- player -> Vector3 (tracked for disconnect safety)
 
@@ -308,10 +321,37 @@ for _, team in ipairs(FLAG_TEAM_ORDER) do
 end
 
 for _, playerInstance in ipairs(Players:GetPlayers()) do
-    playerInstance:GetPropertyChangedSignal("Team"):Connect(syncAllFlagStates)
+    playerInstance:GetPropertyChangedSignal("Team"):Connect(function()
+        syncAllFlagStates()
+        if carrying[playerInstance] then
+            if type(forceDropFlag) == "function" then
+                forceDropFlag(playerInstance, lastCarrierPos[playerInstance])
+            else
+                -- defer to next tick if function isn't defined yet
+                task.defer(function()
+                    if type(forceDropFlag) == "function" then
+                        forceDropFlag(playerInstance, lastCarrierPos[playerInstance])
+                    end
+                end)
+            end
+        end
+    end)
 end
 Players.PlayerAdded:Connect(function(playerInstance)
-    playerInstance:GetPropertyChangedSignal("Team"):Connect(syncAllFlagStates)
+    playerInstance:GetPropertyChangedSignal("Team"):Connect(function()
+        syncAllFlagStates()
+        if carrying[playerInstance] then
+            if type(forceDropFlag) == "function" then
+                forceDropFlag(playerInstance, lastCarrierPos[playerInstance])
+            else
+                task.defer(function()
+                    if type(forceDropFlag) == "function" then
+                        forceDropFlag(playerInstance, lastCarrierPos[playerInstance])
+                    end
+                end)
+            end
+        end
+    end)
     syncAllFlagStates()
 end)
 
@@ -618,6 +658,30 @@ local function pickUpFlag(team, model, player)
     end
 
     carrying[player] = {team = team, model = carried}
+    -- record the carrier's team at pickup so we can detect team switches
+    local rawCarrierTeamName = player and player.Team and player.Team.Name or nil
+    carrying[player].carrierTeamAtPickup = canonicalizeTeamName(rawCarrierTeamName)
+    -- listen for immediate team changes on this player so we can force-drop instantly
+    local function onTeamChanged()
+        local data = carrying[player]
+        if not data then return end
+        local currentTeam = player and player.Team and canonicalizeTeamName(player.Team.Name) or nil
+        if currentTeam and data.carrierTeamAtPickup and currentTeam ~= data.carrierTeamAtPickup then
+            warn("[FlagPickup] immediate carrier team change detected for", player.Name)
+            if type(forceDropFlag) == "function" then
+                forceDropFlag(player, lastCarrierPos[player])
+            else
+                task.defer(function()
+                    if type(forceDropFlag) == "function" then
+                        forceDropFlag(player, lastCarrierPos[player])
+                    end
+                end)
+            end
+        end
+    end
+    local propConn = player:GetPropertyChangedSignal("Team"):Connect(onTeamChanged)
+    local attrConn = player:GetAttributeChangedSignal("Team"):Connect(onTeamChanged)
+    carrierTeamChangeConns[player] = {propConn = propConn, attrConn = attrConn}
     player:SetAttribute("CarryingFlag", team)
     setFlagInstanceAttributes(carried, team, false, true, false, player, 0)
     syncFlagState(team)
@@ -648,6 +712,14 @@ local function pickUpFlag(team, model, player)
         end
         if carrying[player] and carrying[player].deathConn then
             pcall(function() carrying[player].deathConn:Disconnect() end)
+        end
+        -- disconnect immediate team-change listeners
+        if carrierTeamChangeConns[player] then
+            pcall(function()
+                if carrierTeamChangeConns[player].propConn then carrierTeamChangeConns[player].propConn:Disconnect() end
+                if carrierTeamChangeConns[player].attrConn then carrierTeamChangeConns[player].attrConn:Disconnect() end
+            end)
+            carrierTeamChangeConns[player] = nil
         end
         carrying[player] = nil
         pcall(function() player:SetAttribute("CarryingFlag", nil) end)
@@ -1138,6 +1210,14 @@ local function forceDropFlag(pl, lastPos)
     if carry.deathConn then
         pcall(function() carry.deathConn:Disconnect() end)
     end
+    -- disconnect immediate team-change listeners for this player
+    if carrierTeamChangeConns[pl] then
+        pcall(function()
+            if carrierTeamChangeConns[pl].propConn then carrierTeamChangeConns[pl].propConn:Disconnect() end
+            if carrierTeamChangeConns[pl].attrConn then carrierTeamChangeConns[pl].attrConn:Disconnect() end
+        end)
+        carrierTeamChangeConns[pl] = nil
+    end
     carrying[pl] = nil
     pcall(function() pl:SetAttribute("CarryingFlag", nil) end)
     clearFlagCarrySlow(pl)
@@ -1189,6 +1269,16 @@ local function forceDropFlag(pl, lastPos)
     end
 end
 
+-- Connect the bindable event so other server scripts can request an immediate force-drop
+if ForceDropFlagRequest and ForceDropFlagRequest:IsA("BindableEvent") then
+    ForceDropFlagRequest.Event:Connect(function(pl)
+        if type(pl) ~= "userdata" then return end
+        pcall(function()
+            forceDropFlag(pl, lastCarrierPos[pl])
+        end)
+    end)
+end
+
 -- Track last-known server position for each player carrying a flag,
 -- so we have a fallback if HRP is gone by the time PlayerRemoving fires.
 RunService.Heartbeat:Connect(function()
@@ -1232,6 +1322,15 @@ task.spawn(function()
                 warn("[FlagPickup] stale carrier detected:", tostring(pl), "– force dropping")
                 forceDropFlag(pl, lastCarrierPos[pl])
                 lastCarrierPos[pl] = nil
+            end
+            -- Also drop if the player switched teams since they picked up the flag
+            if data and data.carrierTeamAtPickup then
+                local currentTeamName = pl and pl.Team and canonicalizeTeamName(pl.Team.Name) or nil
+                if currentTeamName and currentTeamName ~= data.carrierTeamAtPickup then
+                    warn("[FlagPickup] carrier team changed for", tostring(pl), "– force dropping")
+                    forceDropFlag(pl, lastCarrierPos[pl])
+                    lastCarrierPos[pl] = nil
+                end
             end
         end
     end
