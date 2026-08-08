@@ -605,6 +605,8 @@ local AssetCodesGlobal = nil
 local ItemIconRegistryGlobal = nil
 local boostRemotes = nil
 local potionRemotes = nil
+local upgradeRemotes = nil
+local upgradeStates = nil
 
 local function safeRequireBoostConfig()
     local mod = ReplicatedStorage:FindFirstChild("BoostConfig")
@@ -635,6 +637,15 @@ end
 
 local function safeRequireItemIconRegistry()
     local mod = ReplicatedStorage:FindFirstChild("ItemIconRegistry")
+    if mod and mod:IsA("ModuleScript") then
+        local ok, result = pcall(function() return require(mod) end)
+        if ok and type(result) == "table" then return result end
+    end
+    return nil
+end
+
+local function safeRequireUpgradeConfig()
+    local mod = ReplicatedStorage:FindFirstChild("UpgradeConfig")
     if mod and mod:IsA("ModuleScript") then
         local ok, result = pcall(function() return require(mod) end)
         if ok and type(result) == "table" then return result end
@@ -908,6 +919,33 @@ local function ensureBoostRemotes()
     return boostRemotes
 end
 
+local function ensureUpgradeRemotes()
+    if upgradeRemotes then return upgradeRemotes end
+    local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes") or ReplicatedStorage:WaitForChild("Remotes", 10)
+    if not remotesFolder then return nil end
+    local upgradesFolder = remotesFolder:FindFirstChild("Upgrades") or remotesFolder:WaitForChild("Upgrades", 5)
+    if not upgradesFolder then return nil end
+    local getStatesRF = upgradesFolder:FindFirstChild("GetUpgradeStates")
+    local stateUpdatedRE = remotesFolder:FindFirstChild("UpgradeStateUpdated")
+    if not getStatesRF or not stateUpdatedRE then return nil end
+    upgradeRemotes = { getStates = getStatesRF, stateUpdated = stateUpdatedRE }
+
+    -- initialize cache and listen for updates
+    local ok, result = pcall(function() return getStatesRF:InvokeServer() end)
+    if ok and type(result) == "table" then
+        upgradeStates = result
+    else
+        upgradeStates = upgradeStates or {}
+    end
+    trackConn(stateUpdatedRE.OnClientEvent:Connect(function(states)
+        if type(states) == "table" then
+            upgradeStates = states
+        end
+    end))
+
+    return upgradeRemotes
+end
+
 --------------------------------------------------------------------------------
 -- InventoryUI.Create
 --------------------------------------------------------------------------------
@@ -922,6 +960,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     BoostConfig      = BoostConfig or safeRequireBoostConfig()
     PotionConfigGlobal = PotionConfigGlobal or safeRequirePotionConfig()
     AssetCodesGlobal = AssetCodesGlobal or safeRequireAssetCodes()
+    UpgradeConfig = UpgradeConfig or safeRequireUpgradeConfig()
 
     -- ──────────────────────────────────────────────────────────────────────
     -- Dimensions
@@ -2272,7 +2311,26 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local sizePct = tonumber(itemData.sizePercent) or 100
         local sizeMult = getSizeDamageMultiplierForCategory(sizePct, itemData.category or "Melee")
         local dmgWithSize = math.max(0, tonumber(baseDamage) or 0) * sizeMult
-        local rounded = math.floor(dmgWithSize * 10 + 0.5) / 10
+
+        -- Include Forge (upgrade) multiplier so the displayed damage reflects
+        -- the player's permanent weapon upgrades. Attempt to initialize
+        -- upgrade remotes/cache if not already present.
+        local upgradeMult = 1
+        if UpgradeConfig then
+            pcall(function()
+                ensureUpgradeRemotes()
+            end)
+            if upgradeStates and type(upgradeStates) == "table" then
+                local upId = (tostring(itemData.category or ""):lower() == "ranged") and UpgradeConfig.RANGED or UpgradeConfig.MELEE
+                local upLevel = tonumber(upgradeStates[upId]) or 0
+                if UpgradeConfig.GetDamageMultiplier then
+                    upgradeMult = tonumber(UpgradeConfig.GetDamageMultiplier(upLevel)) or 1
+                end
+            end
+        end
+
+        local dmgWithSizeAndForge = dmgWithSize * upgradeMult
+        local rounded = math.floor(dmgWithSizeAndForge * 10 + 0.5) / 10
         local dmgText
         if rounded == math.floor(rounded) then
             dmgText = tostring(math.floor(rounded))
