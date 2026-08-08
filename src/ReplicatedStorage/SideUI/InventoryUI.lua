@@ -2526,32 +2526,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- createWeaponCard(itemData)  –  compact square card for the grid
     ---------------------------------------------------------------------------
     local function buildCardFooter(card, rarity, rarityColor, borderC, equipped)
-        -- Rarity label (bottom of card)
-        local rarityPill = Instance.new("Frame", card)
-        rarityPill.Name = "RarityPill"
-        rarityPill.BackgroundColor3 = mixColor(card.BackgroundColor3 or Color3.new(0,0,0), Color3.fromRGB(8, 10, 18), 0.28)
-        rarityPill.BorderSizePixel = 0
-        rarityPill.Size = UDim2.new(0.76, 0, 0, INV_CARD.Line2Height + px(4))
-        rarityPill.AnchorPoint = Vector2.new(0.5, 1)
-        rarityPill.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
-        rarityPill.ZIndex = 3
-        Instance.new("UICorner", rarityPill).CornerRadius = UDim.new(0, px(7))
-        local rarityPillStroke = Instance.new("UIStroke", rarityPill)
-        rarityPillStroke.Color = rarityColor; rarityPillStroke.Thickness = 1; rarityPillStroke.Transparency = 0.42
-
-        local cardRarity = Instance.new("TextLabel", rarityPill)
-        cardRarity.Name = "RarityLabel"
-        cardRarity.BackgroundTransparency = 1
-        cardRarity.Font = Enum.Font.GothamBold
-        cardRarity.Text = rarity
-        cardRarity.TextColor3 = rarityColor
-        cardRarity.TextScaled = true
-        cardRarity.TextXAlignment = Enum.TextXAlignment.Center
-        constrainText(cardRarity, 8, INV_CARD.Line1TextSize)
-        cardRarity.Size = UDim2.new(1, -px(6), 1, 0)
-        cardRarity.Position = UDim2.new(0, px(3), 0, 0)
-        cardRarity.ZIndex = 4
-        addTextOutline(cardRarity, 0.3, 1)
+        -- Rarity label removed per UI update
 
         -- Equipped bar at bottom
         local eqBar = Instance.new("Frame", card)
@@ -2701,9 +2676,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierBg.Name = "SizeTierBg"
             tierBg.BackgroundTransparency = 1
             tierBg.BorderSizePixel = 0
-            tierBg.Size = UDim2.new(0.28, 0, 0.12, 0)
+            tierBg.Size = UDim2.new(0.35, 0, 0.15, 0)
             tierBg.AnchorPoint = Vector2.new(0, 1)
-            tierBg.Position = UDim2.new(0, px(4), 0.96, 0)
+            tierBg.Position = UDim2.new(0, 0, 0.99, 0)
             tierBg.ZIndex = 6
             tierBg.ClipsDescendants = false
             local corner = Instance.new("UICorner", tierBg)
@@ -2714,15 +2689,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             tierLabel.BackgroundTransparency = 1
             tierLabel.Font = Enum.Font.GothamBold
             tierLabel.TextScaled = true
-            tierLabel.Size = UDim2.new(1, -px(4), 1, 0)
+            tierLabel.Size = UDim2.new(1, 0, 1, 0)
             tierLabel.AnchorPoint = Vector2.new(0.5, 0.5)
             tierLabel.Position = UDim2.new(0.5, 0, 0.5, 0)
             tierLabel.TextXAlignment = Enum.TextXAlignment.Center
             tierLabel.TextYAlignment = Enum.TextYAlignment.Center
             tierLabel.Text = tier
             tierLabel.ZIndex = 7
-            local tSizeC = Instance.new("UITextSizeConstraint", tierLabel)
-            tSizeC.MinTextSize = 6; tSizeC.MaxTextSize = isNormalTier and 15 or 13
             if EnchantTextStyler then
                 EnchantTextStyler.ApplySize(tierLabel, tier, tier)
             end
@@ -2730,7 +2703,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 applyInventoryNormalSizeStyle(tierLabel, 0.08)
                 tierLabel.Text = "Normal"
             end
-            bindAutoFitText(tierLabel, tSizeC, {
+            bindAutoFitText(tierLabel, nil, {
                 minTextSize = 6,
                 maxTextSize = isNormalTier and 15 or 13,
                 paddingX = px(2),
@@ -2744,13 +2717,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         sizeLabel.BackgroundTransparency = 1
         sizeLabel.Font = Enum.Font.GothamBold
         sizeLabel.TextScaled = true
-        sizeLabel.Size = UDim2.new(0.45, 0, 0.12, 0)
+        sizeLabel.Size = UDim2.new(0.45, 0, 0.15, 0)
         sizeLabel.AnchorPoint = Vector2.new(1, 1)
-        sizeLabel.Position = UDim2.new(1, -px(4), 0.96, 0)
+        sizeLabel.Position = UDim2.new(0.99, 0, 0.99, 0)
         sizeLabel.TextXAlignment = Enum.TextXAlignment.Right
-        local pctConstraint = Instance.new("UITextSizeConstraint", sizeLabel)
-        pctConstraint.MinTextSize = 8
-        pctConstraint.MaxTextSize = isNormalTier and 16 or 14
+        -- UITextSizeConstraint removed per UI update
         local sizePercentText = tostring(math.floor(pct)) .. "%"
         if EnchantTextStyler then
             EnchantTextStyler.ApplySize(sizeLabel, tier, sizePercentText)
@@ -2760,7 +2731,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if isNormalTier then
             applyInventoryNormalSizeStyle(sizeLabel, 0.08)
         end
-        bindAutoFitText(sizeLabel, pctConstraint, {
+        bindAutoFitText(sizeLabel, nil, {
             minTextSize = 8,
             maxTextSize = isNormalTier and 16 or 14,
             paddingX = px(2),
