@@ -961,6 +961,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     PotionConfigGlobal = PotionConfigGlobal or safeRequirePotionConfig()
     AssetCodesGlobal = AssetCodesGlobal or safeRequireAssetCodes()
     UpgradeConfig = UpgradeConfig or safeRequireUpgradeConfig()
+    pcall(function() ensureUpgradeRemotes() end)
 
     -- ──────────────────────────────────────────────────────────────────────
     -- Dimensions
@@ -1721,6 +1722,46 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local masteryGems = {}
     local currentMasteryContext = { rarity = "Common", category = "Melee" }
 
+    local function getSizeDamageMultiplierForCategory(sizePercent, category)
+        local sp = tonumber(sizePercent) or 100
+        if tostring(category):lower() == "ranged" then
+            return math.clamp(sp / 100, 0.5, 3.0)
+        else
+            if sp <= 100 then
+                return math.clamp(sp / 100, 0.5, 1.0)
+            end
+            return math.clamp(1.0 + (sp - 100) / 200, 1.0, 1.5)
+        end
+    end
+
+    local function computeMasteryDisplayedDamage(level, rarity, category, sizePercent)
+        local lvl = tonumber(level) or 0
+        local r = rarity or "Common"
+        local c = category or "Melee"
+        local sp = tonumber(sizePercent) or 100
+        local base = 0
+        if WeaponMasteryConfig and type(WeaponMasteryConfig.GetDamageForLevel) == "function" then
+            local ok, val = pcall(function()
+                return WeaponMasteryConfig.GetDamageForLevel(lvl, r, c)
+            end)
+            base = (ok and tonumber(val)) or 0
+        else
+            local ok, def = pcall(function() return WeaponMasteryConfig and WeaponMasteryConfig.GetLevelDef and WeaponMasteryConfig.GetLevelDef(lvl, r, c) end)
+            if ok and type(def) == "table" then base = tonumber(def.Damage) or 0 end
+        end
+        local sizeMult = getSizeDamageMultiplierForCategory(sp, c)
+        local upgradeMult = 1
+        if UpgradeConfig and upgradeStates and type(upgradeStates) == "table" then
+            local upId = (tostring(c):lower() == "ranged") and UpgradeConfig.RANGED or UpgradeConfig.MELEE
+            local upLevel = tonumber(upgradeStates[upId]) or 0
+            if UpgradeConfig.GetDamageMultiplier then
+                local ok, val = pcall(function() return UpgradeConfig.GetDamageMultiplier(upLevel) end)
+                upgradeMult = (ok and tonumber(val)) or 1
+            end
+        end
+        return math.max(0, base) * sizeMult * upgradeMult
+    end
+
     -- Tooltip for stage gems
     local stageTooltip = nil
     local stageTooltipTitle = nil
@@ -1844,8 +1885,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- Show tooltip with level and damage using current context
             local def = WeaponMasteryConfig.GetLevelDef(i, currentMasteryContext.rarity or "Common", currentMasteryContext.category or "Melee")
             local title = "MASTERY " .. (def and def.RomanNumeral or tostring(i))
-            local dmg = def and def.Damage or 0
-            showStageTooltip(title, "Damage " .. tostring(dmg))
+            local ok, finalVal = pcall(function()
+                return computeMasteryDisplayedDamage(i, currentMasteryContext.rarity or "Common", currentMasteryContext.category or "Melee", currentMasteryContext.sizePercent)
+            end)
+            if not ok or type(finalVal) ~= "number" then
+                finalVal = (def and def.Damage) or 0
+            end
+            
+            local rounded = math.floor(finalVal * 10 + 0.5) / 10
+            local dmgText = (rounded == math.floor(rounded)) and tostring(math.floor(rounded)) or string.format("%.1f", rounded)
+            showStageTooltip(title, "Damage " .. dmgText)
         end)
         gemButton.MouseMoved:Connect(function()
             positionStageTooltip()
@@ -1855,10 +1904,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         end)
         gemButton.MouseButton1Down:Connect(function()
             -- also show on tap
-            local def = WeaponMasteryConfig.GetLevelDef(i, "Common", "Melee")
+            local def = WeaponMasteryConfig.GetLevelDef(i, currentMasteryContext.rarity or "Common", currentMasteryContext.category or "Melee")
             local title = "MASTERY " .. (def and def.RomanNumeral or tostring(i))
-            local dmg = def and def.Damage or 0
-            showStageTooltip(title, "Damage " .. tostring(dmg))
+            local ok, finalVal = pcall(function()
+                return computeMasteryDisplayedDamage(i, currentMasteryContext.rarity or "Common", currentMasteryContext.category or "Melee", currentMasteryContext.sizePercent)
+            end)
+            if not ok or type(finalVal) ~= "number" then
+                finalVal = (def and def.Damage) or 0
+            end
+            
+            local rounded = math.floor(finalVal * 10 + 0.5) / 10
+            local dmgText = (rounded == math.floor(rounded)) and tostring(math.floor(rounded)) or string.format("%.1f", rounded)
+            showStageTooltip(title, "Damage " .. dmgText)
         end)
     end
 
@@ -2280,6 +2337,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local progress = math.clamp(tonumber(mastery.progress) or 0, 0, 1)
         local nextLevelXP = math.max(0, tonumber(mastery.nextLevelXP) or 200)
         local baseDamage = math.max(0, tonumber(mastery.baseDamage or mastery.currentDamage or mastery.damage) or 0)
+        -- Prefer authoritative mastery damage from WeaponMasteryConfig for the
+        -- displayed level so it matches the per-level tooltip calculation.
+        if WeaponMasteryConfig and type(WeaponMasteryConfig.GetDamageForLevel) == "function" then
+            pcall(function()
+                local dmgFromCfg = WeaponMasteryConfig.GetDamageForLevel(level, itemData.rarity or "Common", itemData.category or "Melee")
+                if type(dmgFromCfg) == "number" and dmgFromCfg > 0 then
+                    baseDamage = math.max(0, tonumber(dmgFromCfg) or baseDamage)
+                end
+            end)
+        end
 
         masteryPanel.Visible = true
         masteryTitle.Text = "MASTERY " .. romanNumeral
@@ -2292,45 +2359,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             masteryBarFill.Size = UDim2.new(progress, 0, 1, 0)
         end
 
-        -- Apply size multiplier to mastery base damage using the game's
-        -- centralized size→damage curves (matches server logic for melee/ranged)
-        local function getSizeDamageMultiplierForCategory(sizePercent, category)
-            local sp = tonumber(sizePercent) or 100
-            if tostring(category):lower() == "ranged" then
-                -- Ranged: linear 1:1 with size, clamped 0.5x..3.0x
-                return math.clamp(sp / 100, 0.5, 3.0)
-            else
-                -- Melee: half-rate above 100% (200% => 1.5x). Below 100% linear.
-                if sp <= 100 then
-                    return math.clamp(sp / 100, 0.5, 1.0)
-                end
-                return math.clamp(1.0 + (sp - 100) / 200, 1.0, 1.5)
-            end
-        end
+        -- ensure current context has sizePercent for tooltip handlers
+        currentMasteryContext.sizePercent = itemData and itemData.sizePercent or 100
 
-        local sizePct = tonumber(itemData.sizePercent) or 100
-        local sizeMult = getSizeDamageMultiplierForCategory(sizePct, itemData.category or "Melee")
-        local dmgWithSize = math.max(0, tonumber(baseDamage) or 0) * sizeMult
-
-        -- Include Forge (upgrade) multiplier so the displayed damage reflects
-        -- the player's permanent weapon upgrades. Attempt to initialize
-        -- upgrade remotes/cache if not already present.
-        local upgradeMult = 1
-        if UpgradeConfig then
-            pcall(function()
-                ensureUpgradeRemotes()
-            end)
-            if upgradeStates and type(upgradeStates) == "table" then
-                local upId = (tostring(itemData.category or ""):lower() == "ranged") and UpgradeConfig.RANGED or UpgradeConfig.MELEE
-                local upLevel = tonumber(upgradeStates[upId]) or 0
-                if UpgradeConfig.GetDamageMultiplier then
-                    upgradeMult = tonumber(UpgradeConfig.GetDamageMultiplier(upLevel)) or 1
-                end
-            end
-        end
-
-        local dmgWithSizeAndForge = dmgWithSize * upgradeMult
-        local rounded = math.floor(dmgWithSizeAndForge * 10 + 0.5) / 10
+        local dmgFinal = computeMasteryDisplayedDamage(level, itemData.rarity or "Common", itemData.category or "Melee", currentMasteryContext.sizePercent)
+        local rounded = math.floor(dmgFinal * 10 + 0.5) / 10
         local dmgText
         if rounded == math.floor(rounded) then
             dmgText = tostring(math.floor(rounded))
@@ -5379,20 +5412,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 swS.Color = isRainbow and Color3.fromRGB(200,160,255) or effectColor
                 swS.Thickness = px(2); swS.Transparency = 0.3
 
-                local trailGlyph = Instance.new("TextLabel", iconArea)
-                trailGlyph.Text = "\u{2550}\u{2550}\u{2550}"
-                trailGlyph.Font = Enum.Font.GothamBold
-                trailGlyph.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
-                trailGlyph.TextScaled = true
-                trailGlyph.BackgroundTransparency = 1
-                trailGlyph.Size = UDim2.new(0.76, 0, 0.36, 0)
-                trailGlyph.AnchorPoint = Vector2.new(0.5, 1)
-                trailGlyph.Position = UDim2.new(0.5, 0, 0.93, 0)
-                trailGlyph.ZIndex = 4
+                swatch = Instance.new("TextLabel", iconArea)
+                swatch.Text = "\u{2550}\u{2550}\u{2550}"
+                swatch.Font = Enum.Font.GothamBold
+                swatch.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
+                swatch.TextScaled = true
+                swatch.BackgroundTransparency = 1
+                swatch.Size = UDim2.new(0.76, 0, 0.36, 0)
+                swatch.AnchorPoint = Vector2.new(0.5, 1)
+                swatch.Position = UDim2.new(0.5, 0, 0.93, 0)
+                swatch.ZIndex = 4
                 if isRainbow and def.TrailColorSequence then
-                    Instance.new("UIGradient", trailGlyph).Color = def.TrailColorSequence
+                    Instance.new("UIGradient", swatch).Color = def.TrailColorSequence
                 end
-                addTextOutline(trailGlyph, 0.24, 1.4)
+                addTextOutline(swatch, 0.24, 1.4)
 
                 -- Footer (rarity pill + equipped bar)
                 buildCardFooter(card, rarity, rarityColor, baseStrokeColor, false)
