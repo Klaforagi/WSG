@@ -66,7 +66,9 @@ end
 local function halveDamageTable(values)
     local result = {}
     for index, value in ipairs(values) do
-        result[index] = normalizeNumber((tonumber(value) or 0) / 2, DAMAGE_PRECISION_SCALE)
+        -- scale ranged damages relative to melee. Use 0.6x (40% reduction) instead
+        -- of the previous 0.5x to better match ranged balance.
+        result[index] = normalizeNumber((tonumber(value) or 0) * 0.6, DAMAGE_PRECISION_SCALE)
     end
     return result
 end

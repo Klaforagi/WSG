@@ -622,6 +622,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local velocity = initialVelocity
     local startTime = tick()
     local conn
+    local hitHumanoids = {} -- prevent double-hits between original ray and expanded box
     -- allow presets to request a visual flip for models whose forward faces backwards
     local visualFlip = (projCfg and projCfg.visual_flip) and true or false
     local lastCFrame
@@ -642,6 +643,74 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         -- apply gravity/bullet drop to vertical component of velocity
         velocity = velocity + Vector3.new(0, -pDrop * dt, 0)
         local nextPos = lastPos + velocity * dt
+
+        -- Expanded temporary hitbox: create a box about the projectile's segment
+        -- that only considers humanoid parts. This helps slightly-missed shots
+        -- still register if they intersect the larger box. Scale is 1.3x visual.
+        local ok, boxParts = pcall(function()
+            local centerPos = lastPos + (nextPos - lastPos) * 0.5
+            local boxCF = CFrame.new(centerPos)
+            local sizeVec = nil
+            if usingModel and visual and visual.PrimaryPart then
+                sizeVec = visual:GetExtentsSize()
+            elseif visual and visual:IsA("BasePart") then
+                sizeVec = visual.Size
+            else
+                sizeVec = Vector3.new(0.3, 0.3, 0.3)
+            end
+            local boxSize = sizeVec * 1.2
+            return Workspace:GetPartBoundsInBox(boxCF, boxSize)
+        end)
+        if ok and type(boxParts) == "table" then
+            local boxHit = false
+            for _, bp in ipairs(boxParts) do
+                if bp and bp:IsA("BasePart") then
+                    local candidateModel = bp:FindFirstAncestorOfClass("Model")
+                    if candidateModel then
+                        local hum = candidateModel:FindFirstChildOfClass("Humanoid")
+                        if hum and hum.Health > 0 and not hitHumanoids[hum] then
+                            if not shouldIgnoreHumanoidTarget(candidateModel, hum) then
+                                -- don't damage the shooter
+                                if player and Players:GetPlayerFromCharacter(candidateModel) == player then
+                                    -- skip
+                                else
+                                    -- use base projectile damage (no headshot detection for the box)
+                                    local boxDamage = pDamage
+                                    applyDamage(
+                                        player,
+                                        hum,
+                                        candidateModel,
+                                        boxDamage,
+                                        false,
+                                        bp,
+                                        bp.Position,
+                                        projCfg and projCfg._weaponInstanceId,
+                                        (projCfg and projCfg._weaponName) or toolName,
+                                        projCfg and projCfg._enchantName
+                                    )
+                                    hitHumanoids[hum] = true
+                                    boxHit = true
+                                    -- destroy projectile so it cannot hit others after box-only hit
+                                    pcall(function()
+                                        if conn then
+                                            conn:Disconnect()
+                                        end
+                                        if visual and visual.Parent then
+                                            visual:Destroy()
+                                        end
+                                    end)
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            if boxHit then
+                return
+            end
+        end
+
         local rayResult = raycastSkippingAccessories(lastPos, (nextPos - lastPos), params, player)
         if rayResult and rayResult.Instance then
             -- hit detected
@@ -655,11 +724,16 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             local parent = inst
             while parent and parent ~= Workspace do
                 local humanoid = parent:FindFirstChildOfClass("Humanoid")
-                if humanoid and humanoid.Health > 0 then
+                    if humanoid and humanoid.Health > 0 then
                     if shouldIgnoreHumanoidTarget(parent, humanoid) then
                         parent = parent.Parent
                         continue
                     end
+                        if hitHumanoids[humanoid] then
+                            -- already damaged by expanded hitbox for this projectile
+                            parent = parent.Parent
+                            continue
+                        end
                     local isHeadshot = false
                     -- robust headshot detection that handles accessories (hats/hair):
                     local headPart = parent:FindFirstChild("Head")
@@ -710,6 +784,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         (projCfg and projCfg._weaponName) or toolName,
                         projCfg and projCfg._enchantName
                     )
+                    hitHumanoids[humanoid] = true
                     -- play sniper headshot sound at victim head when appropriate
                     if isHeadshot then
                         local ok, _ = pcall(function()
