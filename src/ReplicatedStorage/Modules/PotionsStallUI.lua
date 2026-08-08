@@ -896,9 +896,9 @@ end
 
 	local balancePill = Instance.new("Frame")
 	balancePill.Name = "BalancePill"
-	balancePill.AnchorPoint = Vector2.new(1, 0)
-	balancePill.Position = UDim2.new(1, -px(54), 0, px(4))
-	balancePill.Size = UDim2.new(0, px(compact and 116 or 150), 0, px(40))
+	balancePill.AnchorPoint = Vector2.new(0, 0)
+	balancePill.Position = UDim2.new(0.79, 0, 0, 0)
+	balancePill.Size = UDim2.new(0.15, 0, 1, 0)
 	balancePill.BackgroundColor3 = CONTENT_BG
 	balancePill.BorderSizePixel = 0
 	balancePill.Parent = header
@@ -908,19 +908,23 @@ end
 	local balanceIcon = Instance.new("ImageLabel")
 	balanceIcon.Name = "CoinIcon"
 	balanceIcon.BackgroundTransparency = 1
-	balanceIcon.Position = UDim2.new(0, px(12), 0.5, -px(10))
-	balanceIcon.Size = UDim2.fromOffset(px(20), px(20))
+	balanceIcon.Position = UDim2.new(0.02, 0, 0.25, 0)
+	balanceIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
 	balanceIcon.Image = getAsset("Coin") or ""
 	balanceIcon.ScaleType = Enum.ScaleType.Fit
 	balanceIcon.Parent = balancePill
+	local balanceIconAspect = Instance.new("UIAspectRatioConstraint")
+	balanceIconAspect.AspectRatio = 1
+	balanceIconAspect.Parent = balanceIcon
 
 	local balanceLabel = Instance.new("TextLabel")
 	balanceLabel.BackgroundTransparency = 1
 	balanceLabel.Position = UDim2.new(0, px(38), 0, 0)
-	balanceLabel.Size = UDim2.new(1, -px(48), 1, 0)
+	balanceLabel.Size = UDim2.new(0.75, 0, 1, 0)
 	balanceLabel.Font = Enum.Font.GothamBlack
 	balanceLabel.TextColor3 = ACCENT_GOLD
 	balanceLabel.TextSize = textPx(18, 16, 18)
+	balanceLabel.TextScaled = true
 	balanceLabel.TextXAlignment = Enum.TextXAlignment.Left
 	balanceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	balanceLabel.Text = formatNumber(coinBalance)
@@ -959,9 +963,9 @@ end
 	local stockTimerPill = Instance.new("Frame")
 	stockTimerPill.Name = "StockTimerPill"
 	stockTimerPill.AnchorPoint = Vector2.new(0.5, 0)
-	stockTimerPill.Position = UDim2.new(0.5, 0, 0, px(78))
-	stockTimerPill.AutomaticSize = Enum.AutomaticSize.X
-	stockTimerPill.Size = UDim2.new(0, 0, 0, px(48))
+	stockTimerPill.Position = UDim2.new(0.5, 0, 0.1, 0)
+	stockTimerPill.AutomaticSize = Enum.AutomaticSize.None
+	stockTimerPill.Size = UDim2.new(0.45, 0, 0.05, 0)
 	stockTimerPill.BackgroundColor3 = CONTENT_BG
 	stockTimerPill.BorderSizePixel = 0
 	stockTimerPill.ZIndex = 5
@@ -977,13 +981,14 @@ end
 	stockTimerLabel = Instance.new("TextLabel")
 	stockTimerLabel.Name = "StockTimerLabel"
 	stockTimerLabel.BackgroundTransparency = 1
-	stockTimerLabel.AutomaticSize = Enum.AutomaticSize.X
-	stockTimerLabel.Size = UDim2.new(0, 0, 1, 0)
+	stockTimerLabel.AutomaticSize = Enum.AutomaticSize.None
+	stockTimerLabel.Size = UDim2.new(1, 0, 1, 0)
 	stockTimerLabel.Font = Enum.Font.GothamBold
 	stockTimerLabel.Text = "Stock Refreshes In: --:--"
 	stockTimerLabel.TextColor3 = ACCENT_GOLD
 	stockTimerLabel.TextSize = textPx(22, 18, 28)
 	stockTimerLabel.TextXAlignment = Enum.TextXAlignment.Center
+	stockTimerLabel.TextScaled = true
 	stockTimerLabel.ZIndex = 6
 	stockTimerLabel.Parent = stockTimerPill
 	addTextOutline(stockTimerLabel, 0.45, 1.4)

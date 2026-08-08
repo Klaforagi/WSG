@@ -922,10 +922,9 @@ function SkinsStallUI.Create(parent, options)
 	panel.Parent = root
 	applyCorners(panel, px(STYLE.PanelCornerRadius))
 	applyStroke(panel, COLORS.PanelStroke, 1.5, 0.18)
-	local panelConstraint = Instance.new("UISizeConstraint")
-	panelConstraint.MinSize = Vector2.new(760, 520)
-	panelConstraint.MaxSize = Vector2.new(math.max(820, math.floor(viewportSize.X * 0.92)), math.max(560, math.floor(viewportSize.Y * 0.92)))
-	panelConstraint.Parent = panel
+	local panelAspect = Instance.new("UIAspectRatioConstraint")
+	panelAspect.AspectRatio = 1.45
+	panelAspect.Parent = panel
 
 	local panelGradient = Instance.new("UIGradient")
 	panelGradient.Rotation = 90
@@ -2187,8 +2186,7 @@ function SkinsStallUI.Create(parent, options)
 		else
 			panel.Size = UDim2.fromScale(0.84, 0.86)
 		end
-		panelConstraint.MinSize = Vector2.new(math.min(760, math.floor(vp.X * 0.92)), math.min(520, math.floor(vp.Y * 0.86)))
-		panelConstraint.MaxSize = Vector2.new(math.max(820, math.floor(vp.X * 0.92)), math.max(560, math.floor(vp.Y * 0.92)))
+		-- size constraints removed in favor of fixed aspect ratio
 		local previewWidth = math.clamp(px(STYLE.RightPreviewPanelWidth), STYLE.RightPreviewMinWidth, STYLE.RightPreviewMaxWidth)
 		local panelWidth = panel.AbsoluteSize.X > 0 and panel.AbsoluteSize.X or math.floor(vp.X * 0.84)
 		if panelWidth < 920 then
