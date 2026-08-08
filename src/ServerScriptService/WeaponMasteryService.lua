@@ -749,7 +749,12 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     entry.lastUsedAt = os.time()
     local bonusInfo = getMasteryBonusBreakdown(player)
     local baseXP = normalizeXPValue(Config.XP.Hit or 0)
-    local xpAmount = normalizeXPValue(math.floor((baseXP * bonusInfo.multiplier) * 10) / 10)
+    local masteryMultiplier = bonusInfo.multiplier
+    local boostSvc = getBoostService()
+    if boostSvc and type(boostSvc.GetMasteryMultiplier) == "function" then
+        masteryMultiplier = masteryMultiplier * math.max(1, tonumber(boostSvc:GetMasteryMultiplier(player)) or 1)
+    end
+    local xpAmount = normalizeXPValue(math.floor((baseXP * masteryMultiplier) * 10) / 10)
 
     if xpAmount > 0 then
         local oldLevel = entry.level or 0
