@@ -67,6 +67,13 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 		return
 	end
 
+	-- Prevent switching teams while carrying a flag
+	local carryingFlag = plr:GetAttribute("CarryingFlag")
+	if carryingFlag and type(carryingFlag) == "string" and carryingFlag ~= "" then
+		changeResponse:FireClient(plr, false, "You cannot change teams while carrying a flag")
+		return
+	end
+
 	-- Validate input
 	if type(teamName) ~= "string" then return end
 	if teamName ~= "Blue" and teamName ~= "Red" then return end
@@ -157,6 +164,13 @@ returnToLobbyRequest.OnServerEvent:Connect(function(plr)
 	local blocked, reason = isTeamChangeBlocked(plr)
 	if blocked then
 		returnToLobbyResponse:FireClient(plr, false, reason)
+		return
+	end
+
+	-- Prevent leaving to lobby while carrying a flag
+	local carryingFlag2 = plr:GetAttribute("CarryingFlag")
+	if carryingFlag2 and type(carryingFlag2) == "string" and carryingFlag2 ~= "" then
+		returnToLobbyResponse:FireClient(plr, false, "You cannot return to lobby while carrying a flag")
 		return
 	end
 
