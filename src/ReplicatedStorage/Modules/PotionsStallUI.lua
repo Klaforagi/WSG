@@ -1419,15 +1419,16 @@ end
 		detailLabel.BackgroundTransparency = 1
 		-- Unified position for detail label for potions and elixirs
 		detailLabel.Position = UDim2.new(0.26, 0, 0.32, 0)
-		detailLabel.Size = UDim2.new(0.7, 0, 0.18, 0)
+		detailLabel.Size = UDim2.new(0.35, 0, 0.12, 0)
 		detailLabel.Font = Enum.Font.GothamBold
 		detailLabel.TextColor3 = brightenColor(iconColor, 0.08)
 		detailLabel.TextSize = textPx(16, 15, 16)
+		detailLabel.TextScaled = true
 		detailLabel.TextXAlignment = Enum.TextXAlignment.Left
 		detailLabel.TextTruncate = Enum.TextTruncate.AtEnd
 		detailLabel.Text = entry.DetailText or ((entry.DurationSeconds and entry.DurationSeconds > 0) and ("Duration: " .. formatDuration(entry.DurationSeconds)) or "")
 		detailLabel.Parent = card
-		addTextLimit(detailLabel, 15, 16)
+		addTextLimit(detailLabel, 8, 20)
 		addTextOutline(detailLabel, 0.56, 0.9)
 
 		-- Large central label: repurpose as the StockLabel (keeps previous StatusLabel appearance)
