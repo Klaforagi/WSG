@@ -20,7 +20,7 @@ local TITLE_GUI_NAME = "GlobalEliminationsTitleSurfaceGui"
 local LIST_GUI_NAME = "GlobalEliminationsListSurfaceGui"
 local TITLE_GUI_FACE = Enum.NormalId.Right
 local LIST_GUI_FACE = Enum.NormalId.Right
-local TITLE_TEXT = "Top Eliminations"
+local TITLE_TEXT = "TOP ELIMINATIONS"
 local VALUE_HEADER_TEXT = "ELIMS"
 local EMPTY_STATE_TEXT = "No saved elimination data yet."
 local MAX_ROWS = 50
@@ -193,7 +193,7 @@ local function ensureTitleGui(titlePart)
     root.Position = UDim2.new(0, TITLE_SIDE_MARGIN, 0, TITLE_SIDE_MARGIN)
     root.Size = UDim2.new(1, -(TITLE_SIDE_MARGIN * 2), 1, -(TITLE_SIDE_MARGIN * 2))
     ensureCorner(root, UDim.new(0, 0))
-    ensureStroke(root, PANEL_ACCENT, 3, 0.15)
+    ensureStroke(root, PANEL_ACCENT, 20, 0.15)
     ensurePadding(root, UDim.new(0, 24))
 
     local label = ensureChild(root, "TextLabel", "Title")
@@ -298,7 +298,7 @@ local function ensureListGui(listPart)
     scroll.ScrollingEnabled = true
     scroll.ScrollBarImageColor3 = PANEL_ACCENT
     scroll.ScrollBarImageTransparency = 1
-    scroll.ScrollBarThickness = 20
+    scroll.ScrollBarThickness = 0
     scroll.Size = UDim2.new(1, -(LIST_SIDE_MARGIN * 2), 1, -(SCROLL_TOP + SCROLL_BOTTOM_MARGIN))
 
     local padding = ensurePadding(scroll, UDim.new(0, 6))

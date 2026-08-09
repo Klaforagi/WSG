@@ -481,7 +481,7 @@ local function ensureTitleGui(titlePart)
     root.Position = UDim2.new(0, TITLE_SIDE_MARGIN, 0, TITLE_SIDE_MARGIN)
     root.Size = UDim2.new(1, -(TITLE_SIDE_MARGIN * 2), 1, -(TITLE_SIDE_MARGIN * 2))
     ensureCorner(root, UDim.new(0, 0))
-    ensureStroke(root, PANEL_ACCENT, 3, 0.15)
+    ensureStroke(root, PANEL_ACCENT, 20, 0.15)
     ensurePadding(root, UDim.new(0, 24))
 
     local label = ensureChild(root, "TextLabel", "Title")
@@ -489,7 +489,7 @@ local function ensureTitleGui(titlePart)
     label.BorderSizePixel = 0
     label.Size = UDim2.fromScale(1, 1)
     label.Font = Enum.Font.GothamBlack
-    label.Text = "Top Levels"
+    label.Text = "TOP LEVELS"
     label.TextColor3 = TITLE_TEXT_COLOR
     label.TextScaled = true
     label.TextStrokeColor3 = Color3.fromRGB(10, 28, 49)
@@ -592,7 +592,7 @@ local function ensureListGui(listPart)
     scroll.ScrollingEnabled = true
     scroll.ScrollBarImageColor3 = PANEL_ACCENT
     scroll.ScrollBarImageTransparency = 1
-    scroll.ScrollBarThickness = 6
+    scroll.ScrollBarThickness = 0
     scroll.VerticalScrollBarInset = Enum.ScrollBarInset.None
     scroll.Size = UDim2.new(1, -(LIST_SIDE_MARGIN * 2), 1, -(SCROLL_TOP + SCROLL_BOTTOM_MARGIN))
 

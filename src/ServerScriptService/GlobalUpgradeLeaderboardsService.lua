@@ -44,12 +44,12 @@ local PLAYER_COLUMN_WIDTH = 0.48
 local VALUE_COLUMN_WIDTH = 0.15
 
 local TITLE_PADDING = 8
-local TITLE_STROKE_THICKNESS = 2
+local TITLE_STROKE_THICKNESS = 9
 local PANEL_STROKE_THICKNESS = 2
 local ACCENT_BAR_HEIGHT = 4
 local SCROLL_PADDING = 3
 local SCROLL_SIDE_PADDING = 1
-local SCROLLBAR_THICKNESS = 4
+local SCROLLBAR_THICKNESS = 0
 local TITLE_ICON_SIZE = 26
 local TITLE_ICON_RIGHT = 8
 local TITLE_ICON_LEFT = 8
@@ -100,7 +100,7 @@ local BOARD_CONFIGS = {
         modelNames = { "LeaderboardMelee", "Leaderboard Melee" },
         titleGuiName = "GlobalMeleeUpgradeTitleSurfaceGui",
         listGuiName = "GlobalMeleeUpgradeListSurfaceGui",
-        titleText = "Top Melee",
+        titleText = "TOP MELEE",
         valueHeaderText = "LVL",
         emptyStateText = "No saved melee upgrade data yet.",
         upgradeId = UpgradeConfig.MELEE,
@@ -114,7 +114,7 @@ local BOARD_CONFIGS = {
         modelNames = { "Leaderboard Range", "LeaderboardRange" },
         titleGuiName = "GlobalRangedUpgradeTitleSurfaceGui",
         listGuiName = "GlobalRangedUpgradeListSurfaceGui",
-        titleText = "Top Range",
+        titleText = "TOP RANGE",
         valueHeaderText = "LVL",
         emptyStateText = "No saved range upgrade data yet.",
         upgradeId = UpgradeConfig.RANGED,
@@ -281,8 +281,9 @@ local function ensureTitleGui(board, titlePart)
     local label = ensureChild(root, "TextLabel", "Title")
     label.BackgroundTransparency = 1
     label.BorderSizePixel = 0
-    label.Position = UDim2.new(0, TITLE_ICON_SIZE + TITLE_ICON_LEFT + 8, 0, 0)
-    label.Size = UDim2.new(1, -((TITLE_ICON_SIZE + TITLE_ICON_LEFT + 8) + (TITLE_ICON_SIZE + TITLE_ICON_RIGHT + 8)), 1, 0)
+    label.AnchorPoint = Vector2.new(0.5, 0.5)
+    label.Position = UDim2.new(0.5, 0, 0.5, 0)
+    label.Size = UDim2.new(0.8, 0, 0.8, 0)
     label.Font = Enum.Font.GothamBlack
     label.Text = board.titleText
     label.TextColor3 = board.titleTextColor
@@ -291,27 +292,27 @@ local function ensureTitleGui(board, titlePart)
     label.TextStrokeTransparency = 0.45
     label.TextWrapped = true
     label.TextXAlignment = Enum.TextXAlignment.Center
-    ensureTextConstraint(label, 10, 24)
+    -- removed TextSizeConstraint to allow custom scaling
 
     local leftIcon = ensureChild(root, "ImageLabel", "TitleIconLeft")
     leftIcon.BackgroundTransparency = 1
     leftIcon.BorderSizePixel = 0
-    leftIcon.AnchorPoint = Vector2.new(0, 0.5)
-    leftIcon.Position = UDim2.new(0, TITLE_ICON_LEFT, 0.5, 0)
-    leftIcon.Size = UDim2.new(0, TITLE_ICON_SIZE, 0, TITLE_ICON_SIZE)
+    leftIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+    leftIcon.Position = UDim2.new(0.075, 0, 0.5, 0)
+    leftIcon.Size = UDim2.new(0.2, 0, 0.8, 0)
     leftIcon.Image = board.titleIcon or ""
-    leftIcon.ImageColor3 = board.titleTextColor
+    leftIcon.ImageColor3 = Color3.fromRGB(255, 234, 0)
     leftIcon.ScaleType = Enum.ScaleType.Fit
     leftIcon.Visible = type(board.titleIcon) == "string" and board.titleIcon ~= ""
 
     local rightIcon = ensureChild(root, "ImageLabel", "TitleIconRight")
     rightIcon.BackgroundTransparency = 1
     rightIcon.BorderSizePixel = 0
-    rightIcon.AnchorPoint = Vector2.new(1, 0.5)
-    rightIcon.Position = UDim2.new(1, -TITLE_ICON_RIGHT, 0.5, 0)
-    rightIcon.Size = UDim2.new(0, TITLE_ICON_SIZE, 0, TITLE_ICON_SIZE)
+    rightIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+    rightIcon.Position = UDim2.new(0.925, 0, 0.5, 0)
+    rightIcon.Size = UDim2.new(0.2, 0, 0.8, 0)
     rightIcon.Image = board.titleIcon or ""
-    rightIcon.ImageColor3 = board.titleTextColor
+    rightIcon.ImageColor3 = Color3.fromRGB(255, 234, 0)
     rightIcon.ScaleType = Enum.ScaleType.Fit
     rightIcon.Visible = type(board.titleIcon) == "string" and board.titleIcon ~= ""
 
