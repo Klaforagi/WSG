@@ -63,7 +63,7 @@ local RED_FILL    = Color3.fromRGB(220, 50, 50)
 local WHITE       = Color3.fromRGB(245, 245, 245)
 local fill = nil
 
-local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "AboveCharacter"
 local VALID_MY_HEALTH_DISPLAY_MODES = {
 	BottomLeft = true,
 	AboveCharacter = true,
@@ -189,11 +189,20 @@ containerAspect.DominantAxis = Enum.DominantAxis.Width
 containerAspect.Parent = container
 
 local function refreshLocalHealthDisplaySettings()
-	container.Visible = shouldShowBottomLeftHealth()
+	if container and container.Parent then
+		container.Visible = shouldShowBottomLeftHealth()
+	end
 end
 
 _G.RefreshLocalHealthDisplaySettings = refreshLocalHealthDisplaySettings
 refreshLocalHealthDisplaySettings()
+
+-- If the local player should not see the bottom-left health HUD, remove
+-- the created GUI entirely. The options UI no longer exposes a toggle.
+if not shouldShowBottomLeftHealth() then
+	pcall(function() screenGui:Destroy() end)
+	return
+end
 
 local containerCorner = Instance.new("UICorner")
 -- Use scale-based corner radius relative to the container height

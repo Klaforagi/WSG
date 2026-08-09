@@ -61,7 +61,7 @@ local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirect
 --------------------------------------------------------------------------------
 -- Default settings
 --------------------------------------------------------------------------------
-local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "AboveCharacter"
 local VALID_MY_HEALTH_DISPLAY_MODES = {
 	BottomLeft = true,
 	AboveCharacter = true,
@@ -1152,11 +1152,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	createSectionHeader(root, "UI", nextOrder())
 	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
 	createToggle(root, "Always Show XP Text", "AlwaysShowXPText", nextOrder())
-	createChoiceButtons(root, "My Health Display", "MyHealthDisplayMode", {
-		{ value = "BottomLeft", label = "Bottom Left" },
-		{ value = "AboveCharacter", label = "Above Character" },
-		{ value = "Both", label = "Both" },
-	}, nextOrder())
+	-- My Health Display option removed: enforce AboveCharacter-only HUD
 	createHealthBarsGroup(root, nextOrder())
 	createToggle(root, "Show Player Markers", "ShowPlayerMarkers", nextOrder())
 	createToggle(root, "Show Player Rings", "ShowPlayerRings", nextOrder())

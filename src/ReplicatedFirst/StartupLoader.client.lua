@@ -625,7 +625,7 @@ pcall(function()
 			ShowTeammateHealthBars = false,
 			ShowEnemyHealthBars = true,
 			ShowNPCHealthBars = true,
-			MyHealthDisplayMode = "BottomLeft",
+			MyHealthDisplayMode = "AboveCharacter",
 			ShowPlayerRings = true,
 			ShowPlayerMarkers = true,
 			AlwaysShowXPText = false,
@@ -638,7 +638,7 @@ pcall(function()
 			end
 		end
 		if settings.MyHealthDisplayMode ~= "AboveCharacter" and settings.MyHealthDisplayMode ~= "Both" then
-			settings.MyHealthDisplayMode = "BottomLeft"
+			settings.MyHealthDisplayMode = "AboveCharacter"
 		end
 		_G.PlayerSettings = settings
 		_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)

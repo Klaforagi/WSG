@@ -335,13 +335,13 @@ container.Name = "BuffBarContainer"
 container.AnchorPoint = Vector2.new(1, 1)
 container.BackgroundTransparency = 1
 container.Size = UDim2.new(0.21, 0, 0.35, 0)
-container.Position = UDim2.new(0.99, 0, 0.47, 0)
+container.Position = UDim2.new(0.237, 0, 0.99, 0)
 container.Parent = screenGui
 
 local layout = Instance.new("UIListLayout")
 layout.FillDirection = Enum.FillDirection.Horizontal
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-layout.VerticalAlignment = Enum.VerticalAlignment.Top
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, TILE_GAP)
 layout.Parent = container
@@ -446,7 +446,7 @@ local function applyLayout()
     TOTAL_HEIGHT = TILE_SIZE + px(4) + TIMER_HEIGHT
 
     -- Use scale-based positioning/size requested by layout preferences
-    container.Position = UDim2.new(0.99, 0, 0.47, 0)
+    container.Position = UDim2.new(0.244, 0, 0.99, 0)
     container.Size = UDim2.new(0.21, 0, 0.35, 0)
     layout.Padding = UDim.new(0, TILE_GAP)
     if relayoutTiles then
@@ -497,17 +497,41 @@ local function positionTooltip(entryId)
     local tooltipHeight = math.max(1, tooltip.AbsoluteSize.Y > 0 and tooltip.AbsoluteSize.Y or px(72))
     local targetPos = target.AbsolutePosition
     local targetSize = target.AbsoluteSize
+    -- Prefer using the mouse/touch location when available so the tooltip
+    -- appears near the user's cursor/tap. Fall back to positioning above
+    -- the tile, or below if there isn't enough space.
+    local uis = game:GetService("UserInputService")
+    local ok, mouseLoc = pcall(function() return uis:GetMouseLocation() end)
+    if ok and mouseLoc and type(mouseLoc.X) == "number" and type(mouseLoc.Y) == "number" then
+        local mx, my = mouseLoc.X, mouseLoc.Y
+        local x = math.clamp(mx - (tooltipWidth * 0.5), margin, math.max(margin, screenSize.X - tooltipWidth - margin))
+        local y = my + px(22) -- place further below the cursor for better visibility
+        if y + tooltipHeight > screenSize.Y - margin then
+            y = my - tooltipHeight - px(6) -- fallback above cursor with smaller gap
+        end
+        y = math.clamp(y, margin, math.max(margin, screenSize.Y - tooltipHeight - margin))
+        tooltip.Position = UDim2.fromOffset(x, y)
+        return
+    end
 
+    -- Center above the target by default
     local x = targetPos.X + (targetSize.X * 0.5) - (tooltipWidth * 0.5)
     x = math.clamp(x, margin, math.max(margin, screenSize.X - tooltipWidth - margin))
 
-    local bottomY = targetPos.Y + px(10)
-    if bottomY - tooltipHeight < margin then
-        bottomY = targetPos.Y + targetSize.Y + px(6) + tooltipHeight
+    local preferAbove = targetPos.Y - tooltipHeight - px(8)
+    local preferBelow = targetPos.Y + targetSize.Y + px(12)
+    local chosenY = nil
+    -- Prefer placing below the target when possible so tooltip appears lower
+    if (preferBelow + tooltipHeight) <= (screenSize.Y - margin) then
+        chosenY = preferBelow
+    elseif preferAbove >= margin then
+        chosenY = preferAbove
+    else
+        -- Clamp into view if neither fits perfectly
+        chosenY = math.clamp(preferBelow, margin, math.max(margin, screenSize.Y - tooltipHeight - margin))
     end
-    bottomY = math.clamp(bottomY, tooltipHeight + margin, math.max(tooltipHeight + margin, screenSize.Y - margin))
 
-    tooltip.Position = UDim2.fromOffset(x, bottomY)
+    tooltip.Position = UDim2.fromOffset(x, chosenY)
 end
 
 local function showTooltip(entryId)

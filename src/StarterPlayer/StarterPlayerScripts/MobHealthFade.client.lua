@@ -33,7 +33,7 @@ local BASE = {
 
 local localPlayer = Players.LocalPlayer
 
-local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "AboveCharacter"
 local VALID_MY_HEALTH_DISPLAY_MODES = {
 	BottomLeft = true,
 	AboveCharacter = true,
