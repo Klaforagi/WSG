@@ -204,7 +204,15 @@ local function normalizePlayerState(raw)
         for boostId, entry in pairs(raw.active) do
             local expiresAt = 0
             if type(entry) == "table" then
-                expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
+                -- Support persisted formats:
+                -- 1) { expiresAt = <absolute timestamp> } (legacy)
+                -- 2) { remaining = <seconds> } (paused while offline)
+                if entry.remaining ~= nil then
+                    local rem = math.max(0, math.floor(tonumber(entry.remaining) or 0))
+                    expiresAt = os.time() + rem
+                else
+                    expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
+                end
             end
             state.active[boostId] = { expiresAt = expiresAt }
         end
@@ -212,7 +220,12 @@ local function normalizePlayerState(raw)
         for boostId, entry in pairs(raw.timed) do
             local expiresAt = 0
             if type(entry) == "table" then
-                expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
+                if entry.remaining ~= nil then
+                    local rem = math.max(0, math.floor(tonumber(entry.remaining) or 0))
+                    expiresAt = os.time() + rem
+                else
+                    expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
+                end
             end
             state.active[boostId] = { expiresAt = expiresAt }
         end
@@ -261,7 +274,11 @@ local function serializePlayerState(pd)
             expiresAt = math.floor(tonumber(entry.expiresAt) or 0)
         end
         if expiresAt > now then
-            payload.active[boostId] = { expiresAt = expiresAt }
+            -- Persist remaining seconds instead of an absolute timestamp so the
+            -- boost timer is paused while the player is offline. On load we
+            -- convert remaining -> absolute expiresAt using current server time.
+            local remaining = expiresAt - now
+            payload.active[boostId] = { remaining = remaining }
         end
     end
 
