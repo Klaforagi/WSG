@@ -61,7 +61,8 @@ local function createBillboard(part, teamName, accentColor)
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name           = "TeamJoinBillboard"
 	billboard.Adornee        = part
-	billboard.StudsOffset    = Vector3.new(0, 10, 0)
+	billboard.StudsOffset    = Vector3.new(0, 0, 0)
+	billboard.StudsOffsetWorldSpace = Vector3.new(0, 7, 7)
 	billboard.AlwaysOnTop    = false
 	billboard.LightInfluence = 0
 	billboard.MaxDistance    = 200
