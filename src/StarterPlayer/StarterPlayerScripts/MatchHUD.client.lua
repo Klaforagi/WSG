@@ -55,16 +55,13 @@ screenGui.Parent = playerGui
 local root = Instance.new("Frame")
 root.Name = "ScoreboardRoot"
 root.AnchorPoint = Vector2.new(0.5, 0)
-root.Position = UDim2.new(0.5, 0, 0.006, 0)
-root.Size = UDim2.new(0.46, 0, 0.072, 0)
+root.Position = UDim2.new(0.5, 0, 0.01, 0)
+root.Size = UDim2.new(0.46, 0, 0.1, 0)
 root.BackgroundTransparency = 1
 root.ClipsDescendants = false
 root.Parent = screenGui
 
-local rootConstraint = Instance.new("UISizeConstraint")
-rootConstraint.MinSize = Vector2.new(440, 44)
-rootConstraint.MaxSize = Vector2.new(math.huge, 82)
-rootConstraint.Parent = root
+-- Removed UISizeConstraint to allow custom sizing via Size/Position
 
 -- Soft drop-shadow behind the entire scoreboard
 local barShadow = Instance.new("Frame")
