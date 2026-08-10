@@ -334,19 +334,19 @@ local container = Instance.new("Frame")
 container.Name = "BuffBarContainer"
 container.AnchorPoint = Vector2.new(1, 1)
 container.BackgroundTransparency = 1
-container.Size = UDim2.new(0.21, 0, 0.35, 0)
+container.Size = UDim2.new(0.21, 0, 0.18, 0)
 container.Position = UDim2.new(0.237, 0, 0.99, 0)
 container.Parent = screenGui
 
-local layout = Instance.new("UIListLayout")
-layout.FillDirection = Enum.FillDirection.Horizontal
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-layout.SortOrder = Enum.SortOrder.LayoutOrder
-layout.Padding = UDim.new(0, TILE_GAP)
-layout.Parent = container
--- enable layout wrapping behavior
-pcall(function() layout.Wraps = true end)
+local grid = Instance.new("UIGridLayout")
+grid.CellSize = UDim2.new(0, TILE_WIDTH, 0, TOTAL_HEIGHT)
+grid.FillDirection = Enum.FillDirection.Horizontal
+grid.StartCorner = Enum.StartCorner.BottomLeft
+grid.FillDirectionMaxCells = 5
+grid.VerticalAlignment = Enum.VerticalAlignment.Bottom
+grid.SortOrder = Enum.SortOrder.LayoutOrder
+grid.CellPadding = UDim2.new(0, TILE_GAP, 0, TILE_GAP)
+grid.Parent = container
 
 local relayoutTiles
 local activeTooltipEntryId = nil
@@ -447,8 +447,11 @@ local function applyLayout()
 
     -- Use scale-based positioning/size requested by layout preferences
     container.Position = UDim2.new(0.244, 0, 0.99, 0)
-    container.Size = UDim2.new(0.21, 0, 0.35, 0)
-    layout.Padding = UDim.new(0, TILE_GAP)
+    container.Size = UDim2.new(0.21, 0, 0.18, 0)
+    grid.CellPadding = UDim2.new(0, TILE_GAP, 0, TILE_GAP)
+    grid.CellSize = UDim2.new(0, TILE_WIDTH, 0, TOTAL_HEIGHT)
+    grid.FillDirectionMaxCells = 5
+    grid.VerticalAlignment = Enum.VerticalAlignment.Bottom
     if relayoutTiles then
         relayoutTiles()
     end
@@ -923,6 +926,7 @@ local function upsertEntry(id, def, options)
     local accent = colorFrom(definition.AccentColor or definition.IconColor, COLORS.gold)
     if not entry then
         entry = { id = id }
+        entry.addedAt = nowFor(timeKind)
         activeEntries[id] = entry
     end
 
@@ -931,7 +935,8 @@ local function upsertEntry(id, def, options)
     entry.expiresAt = expiresAt
     entry.timeKind = timeKind
     entry.fixedLabel = options.fixedLabel
-    entry.sortOrder = options.sortOrder or definition.SortOrder or 999
+    -- Prefer ordering by occurrence time (earlier buffs have smaller LayoutOrder)
+    entry.sortOrder = options.sortOrder or tonumber(entry.addedAt) or (definition.SortOrder or 999)
     entry.accent = accent
     entry.showTimer = options.showTimer
     if entry.showTimer == nil then
