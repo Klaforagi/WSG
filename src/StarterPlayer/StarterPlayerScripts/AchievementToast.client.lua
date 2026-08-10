@@ -213,11 +213,23 @@ local function showToast(title, icon, reward, ap, achId, category)
     clickLbl.Position           = UDim2.new(0, px(6), 1, -px(4))
     clickLbl.Parent             = toast
 
-    -- Click handler: navigate to the achievement in the Quests panel
+    -- Click handler: open Quests menu and navigate to the achievement/category
     toast.MouseButton1Click:Connect(function()
-        if type(_G.NavigateToAchievement) == "function" then
-            pcall(_G.NavigateToAchievement, achId, category)
+        local mc = _G.SideUI and _G.SideUI.MenuController
+        if mc and type(mc.OpenMenu) == "function" then
+            pcall(function() mc.OpenMenu("Quests") end)
+            -- Ensure the panel has time to build, then navigate
+            task.delay(0.06, function()
+                if type(_G.NavigateToAchievement) == "function" then
+                    pcall(_G.NavigateToAchievement, achId, category)
+                end
+            end)
+        else
+            if type(_G.NavigateToAchievement) == "function" then
+                pcall(_G.NavigateToAchievement, achId, category)
+            end
         end
+
         -- Dismiss the toast immediately on click
         if toast and toast.Parent then toast:Destroy() end
         isShowing = false
