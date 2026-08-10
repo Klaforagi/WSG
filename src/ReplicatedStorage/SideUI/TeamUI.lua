@@ -1226,6 +1226,19 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         if req and req.FireServer then pcall(function() req:FireServer("Red") end) end
     end)
 
+    lobbyBtn.MouseButton1Click:Connect(function()
+        -- Request server to return player to lobby (Neutral)
+        local remotes = ReplicatedStorage
+        local returnReq = remotes:FindFirstChild("ReturnToLobbyRequest") or remotes:FindFirstChild("ReturnToLobbyRequest")
+        if not returnReq then
+            -- Try waiting briefly if remote hasn't been created yet
+            pcall(function() returnReq = remotes:WaitForChild("ReturnToLobbyRequest", 5) end)
+        end
+        if returnReq and returnReq.FireServer then
+            pcall(function() returnReq:FireServer() end)
+        end
+    end)
+
     -- Initial build
     rebuildAll()
 
