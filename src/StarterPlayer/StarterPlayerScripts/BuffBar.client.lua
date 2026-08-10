@@ -478,6 +478,7 @@ end)
 
 local activeEntries = {}
 local tileRefs = {}
+local boostsInitialSyncDone = false
 
 local function getScreenSize()
     local cam = workspace.CurrentCamera
@@ -1287,6 +1288,11 @@ local function applyBoostStates(states)
                     local boostDef = BuffBarConfig.FromBoostDef(def)
                     if boostDef then
                         activeBoostIds[boostDef.Id] = true
+                        -- Play sound only for newly activated boosts after initial sync
+                        local wasActive = activeEntries[boostDef.Id] and activeEntries[boostDef.Id].kind == "boost"
+                        if not wasActive and boostsInitialSyncDone then
+                            pcall(function() playPotionSound() end)
+                        end
                         upsertEntry(boostDef.Id, boostDef, { kind = "boost", expiresAt = expiresAt, timeKind = "os" })
                     end
                 end
@@ -1299,6 +1305,9 @@ local function applyBoostStates(states)
             removeEntry(id)
         end
     end
+    -- Mark that we've processed the initial boost snapshot so subsequent
+    -- updates can play activation sounds normally.
+    boostsInitialSyncDone = true
 end
 
 task.spawn(function()

@@ -75,7 +75,7 @@ local function createBillboard(part, teamName, accentColor)
 	nameLabel.Size                   = UDim2.new(1, 0, 0.52, 0)
 	nameLabel.Position               = UDim2.new(0, 0, 0, 0)
 	nameLabel.BackgroundTransparency = 1
-	nameLabel.Font                   = Enum.Font.GothamBold
+	nameLabel.Font                   = Enum.Font.Bangers
 	nameLabel.TextScaled             = true
 	nameLabel.TextColor3             = accentColor
 	nameLabel.TextStrokeTransparency = 0.25
@@ -100,10 +100,10 @@ local function createBillboard(part, teamName, accentColor)
 	-- Status ("FULL" / "LOCKED" / hidden when joinable)
 	local statusLabel = Instance.new("TextLabel")
 	statusLabel.Name                   = "Status"
-	statusLabel.Size                   = UDim2.new(1, 0, 0.24, 0)
-	statusLabel.Position               = UDim2.new(0, 0, 0.78, 0)
+	statusLabel.Size                   = UDim2.new(1, 0, 0.35, 0)
+	statusLabel.Position               = UDim2.new(0, 0, 0.85, 0)
 	statusLabel.BackgroundTransparency = 1
-	statusLabel.Font                   = Enum.Font.GothamBold
+	statusLabel.Font                   = Enum.Font.Bangers
 	statusLabel.TextScaled             = true
 	statusLabel.TextColor3             = Color3.fromRGB(220, 100, 100)
 	statusLabel.TextStrokeTransparency = 0.5
@@ -199,7 +199,19 @@ local function updateJoinState()
 		local countLbl  = blueBillboard:FindFirstChild("Count",  true)
 		local statusLbl = blueBillboard:FindFirstChild("Status", true)
 		if countLbl  then countLbl.Text  = blueCount .. "/" .. MAX_TEAM_SIZE end
-		if statusLbl then statusLbl.Text = blueLocked and blueReason or "" end
+		if statusLbl then
+			if not blueLocked then
+				statusLbl.Text = "JOIN"
+				statusLbl.TextColor3 = Color3.fromRGB(55, 255, 0)
+			else
+				if blueReason == "FULL" then
+					statusLbl.Text = "FULL"
+				else
+					statusLbl.Text = blueReason or ""
+				end
+				statusLbl.TextColor3 = Color3.fromRGB(220, 100, 100)
+			end
+		end
 	end
 
 	if joinBlue then setGlowEnabled(joinBlue, not blueLocked) end
@@ -216,7 +228,19 @@ local function updateJoinState()
 		local countLbl  = redBillboard:FindFirstChild("Count",  true)
 		local statusLbl = redBillboard:FindFirstChild("Status", true)
 		if countLbl  then countLbl.Text  = redCount .. "/" .. MAX_TEAM_SIZE end
-		if statusLbl then statusLbl.Text = redLocked and redReason or "" end
+		if statusLbl then
+			if not redLocked then
+				statusLbl.Text = "JOIN"
+				statusLbl.TextColor3 = Color3.fromRGB(55, 255, 0)
+			else
+				if redReason == "FULL" then
+					statusLbl.Text = "FULL"
+				else
+					statusLbl.Text = redReason or ""
+				end
+				statusLbl.TextColor3 = Color3.fromRGB(220, 100, 100)
+			end
+		end
 	end
 
 	if joinRed then setGlowEnabled(joinRed, not redLocked) end
