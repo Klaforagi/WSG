@@ -44,8 +44,8 @@ local rootFrame = Instance.new("Frame")
 rootFrame.Name = "Root"
 rootFrame.BackgroundTransparency = 1
 rootFrame.AnchorPoint = Vector2.new(0.5, 0)
-rootFrame.Position = UDim2.new(0.5, 0, 0, 4)
-rootFrame.Size = UDim2.new(0, 400, 0, 80)
+rootFrame.Position = UDim2.new(0.5, 0, 0.05, 0)
+rootFrame.Size = UDim2.new(0.05, 0, 0.1, 0)
 rootFrame.Visible = false -- hidden until someone has kills
 rootFrame.Parent = screenGui
 
@@ -119,7 +119,7 @@ for i = 1, MAX_SLOTS do
     local countBg = Instance.new("Frame")
     countBg.Name = "CountBg"
     countBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    countBg.BackgroundTransparency = 0.35
+    countBg.BackgroundTransparency = 1
     countBg.BorderSizePixel = 0
     countBg.Parent = slot
 
@@ -135,19 +135,10 @@ for i = 1, MAX_SLOTS do
     countLabel.TextStrokeTransparency = 0.4
     countLabel.Font = Enum.Font.GothamBold
     countLabel.Text = ""
+    countLabel.TextScaled = true
     countLabel.Parent = countBg
 
-    local crown = Instance.new("TextLabel")
-    crown.Name = "Crown"
-    crown.BackgroundTransparency = 1
-    crown.Text = "👑"
-    crown.TextScaled = true
-    crown.Font = Enum.Font.GothamBold
-    crown.TextColor3 = Color3.fromRGB(255, 215, 0)
-    crown.Visible = false
-    crown.ZIndex = 3
-    crown.AnchorPoint = Vector2.new(0.5, 1)
-    crown.Parent = slot
+    local crown = nil
 
     slots[i] = {
         frame     = slot,
@@ -169,9 +160,11 @@ local function applySizeToSlot(s, px)
     s.countBg.Position = UDim2.new(0, 2, 1, -countH - 2)
     s.countLabel.TextSize = math.max(10, math.floor(countH * 0.75))
     local crownPx = math.floor(px * 0.5)
-    s.crown.Size = UDim2.new(0, crownPx, 0, crownPx)
-    -- place crown above the slot: AnchorPoint is (0.5, 1) so Y=0 offset -4 puts it just above the top edge
-    s.crown.Position = UDim2.new(0.5, 0, 0, -4)
+    if s.crown then
+        s.crown.Size = UDim2.new(0, crownPx, 0, crownPx)
+        -- place crown above the slot: AnchorPoint is (0.5, 1) so Y=0 offset -4 puts it just above the top edge
+        s.crown.Position = UDim2.new(0.5, 0, 0, -4)
+    end
 end
 
 ------------------------------------------------------------------------
@@ -299,7 +292,7 @@ local function updateHud()
             local s = slots[si]
             applySizeToSlot(s, slotPx)
             s.countLabel.Text = tostring(entry.kills)
-            s.crown.Visible = (i == 1)
+            if s.crown then s.crown.Visible = (i == 1) end
             local targetColor = getStrokeColorForPlayer(entry.player)
             TweenService:Create(s.stroke, TWEEN_FADE, { Color = targetColor }):Play()
             TweenService:Create(s.frame, TWEEN_MOVE, { Position = targetPos }):Play()
@@ -314,7 +307,7 @@ local function updateHud()
             applySizeToSlot(s, slotPx)
             s.portrait.Image = getThumbnail(uid)
             s.countLabel.Text = tostring(entry.kills)
-            s.crown.Visible = (i == 1)
+            if s.crown then s.crown.Visible = (i == 1) end
 
             s.stroke.Color = getStrokeColorForPlayer(entry.player)
 
