@@ -189,10 +189,13 @@ Players.PlayerRemoving:Connect(onPlayerRemoving)
 -- Subscribe to centralized stat events  (replaces ALL legacy hooks)
 --
 -- Daily quest track types:
---   MobKill      → zombies_eliminated
+--   MobKill      → mob_<name> (e.g. mob_goblin)
 --   Elimination  → players_eliminated
 --   MatchPlayed  → matches_played
---   DamageDealt  → damage_dealt
+--   MatchWon     → matches_won
+--   DamageDealt  → damage_melee / damage_ranged / damage_dealt
+--   FlagCapture  → flag_captures
+--   FlagReturn   → flag_returns
 --   CoinsEarned  → coins_earned
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
@@ -204,15 +207,34 @@ StatService:OnStatEvent(function(payload)
     if not player or not player:IsA("Player") then return end
 
     if action == Actions.MobKill then
-        QuestService:IncrementByType(player, "zombies_eliminated", 1)
+        -- Track specific mob kills by mob name (normalize to lowercase)
+        local mobName = payload.metadata and payload.metadata.mobName or nil
+        if type(mobName) == "string" and mobName ~= "" then
+            local key = ("mob_%s"):format(tostring(mobName):lower())
+            QuestService:IncrementByType(player, key, 1)
+        end
     elseif action == Actions.Elimination then
         QuestService:IncrementByType(player, "players_eliminated", 1)
     elseif action == Actions.MatchPlayed then
         QuestService:IncrementByType(player, "matches_played", 1)
+    elseif action == Actions.MatchWon then
+        QuestService:IncrementByType(player, "matches_won", 1)
     elseif action == Actions.DamageDealt then
-        QuestService:IncrementByType(player, "damage_dealt", amount)
+        -- Support melee/ranged damage distinction via metadata.damageType
+        local dmgType = payload.metadata and payload.metadata.damageType or nil
+        if dmgType == "melee" then
+            QuestService:IncrementByType(player, "damage_melee", amount)
+        elseif dmgType == "ranged" then
+            QuestService:IncrementByType(player, "damage_ranged", amount)
+        else
+            QuestService:IncrementByType(player, "damage_dealt", amount)
+        end
     elseif action == Actions.CoinsEarned then
         QuestService:IncrementByType(player, "coins_earned", amount)
+    elseif action == Actions.FlagCapture then
+        QuestService:IncrementByType(player, "flag_captures", 1)
+    elseif action == Actions.FlagReturn then
+        QuestService:IncrementByType(player, "flag_returns", 1)
     end
 end)
 

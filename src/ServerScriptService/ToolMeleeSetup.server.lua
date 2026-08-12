@@ -521,7 +521,7 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     humanoid:TakeDamage(damage)
     -- Track damage dealt for quest progress
     if StatService and StatService.RegisterDamageDealt then
-        pcall(function() StatService:RegisterDamageDealt(player, damage) end)
+        pcall(function() StatService:RegisterDamageDealt(player, damage, { damageType = "melee" }) end)
     end
     if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
         pcall(function() WeaponMasteryService:RegisterDamage(player, weaponInstanceId, damage) end)

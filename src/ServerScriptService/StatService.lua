@@ -295,12 +295,12 @@ end
 --------------------------------------------------------------------------------
 -- Registration: Damage Dealt  (any valid combat damage to players or mobs)
 --------------------------------------------------------------------------------
-function StatService:RegisterDamageDealt(player, amount)
+function StatService:RegisterDamageDealt(player, amount, metadata)
     if not player or not player:IsA("Player") then return end
     if not isTrackedTeamPlayer(player) then return end
     amount = tonumber(amount) or 0
     if amount <= 0 then return end
-    fireEvent(player, self.Actions.DamageDealt, amount)
+    fireEvent(player, self.Actions.DamageDealt, amount, metadata)
 end
 
 --------------------------------------------------------------------------------

@@ -13,11 +13,22 @@ local DailyQuestDefs = {}
 -- Track types used for server-side event routing
 --------------------------------------------------------------------------------
 DailyQuestDefs.TrackTypes = {
-    ZOMBIES_ELIMINATED = "zombies_eliminated",
+    -- Specific mob kills (uses mob name normalized to lowercase)
+    MOB_GOBLIN         = "mob_goblin",
+    MOB_ORC            = "mob_orc",
+    MOB_OGRE           = "mob_ogre",
+
     PLAYERS_ELIMINATED = "players_eliminated",
     MATCHES_PLAYED     = "matches_played",
+    MATCHES_WON        = "matches_won",
     COINS_EARNED       = "coins_earned",
-    DAMAGE_DEALT       = "damage_dealt",
+    -- Damage split by source
+    DAMAGE_MELEE       = "damage_melee",
+    DAMAGE_RANGED      = "damage_ranged",
+    DAMAGE_GENERIC     = "damage_dealt",
+    -- Objectives
+    FLAG_CAPTURES      = "flag_captures",
+    FLAG_RETURNS       = "flag_returns",
 }
 
 --------------------------------------------------------------------------------
@@ -30,37 +41,37 @@ DailyQuestDefs.TrackTypes = {
 DailyQuestDefs.Pool = {
     -- Monster Eliminations  (quick PvE combat)
     {
-        id        = "monster_hunter",
-        title     = "Monster Hunter",
-        desc      = "Eliminate 15 monsters",
-        goal      = 15,
+        id        = "goblin_hunter",
+        title     = "Goblin Hunter",
+        desc      = "Eliminate 20 goblins",
+        goal      = 20,
         reward    = 80,
-        trackType = "zombies_eliminated",
+        trackType = "mob_goblin",
     },
     {
-        id        = "monster_slayer",
-        title     = "Monster Slayer",
-        desc      = "Eliminate 25 monsters",
-        goal      = 25,
+        id        = "orc_raider",
+        title     = "Orc Raider",
+        desc      = "Eliminate 12 orcs",
+        goal      = 12,
         reward    = 110,
-        trackType = "zombies_eliminated",
+        trackType = "mob_orc",
+    },
+    {
+        id        = "ogre_slayer",
+        title     = "Ogre Slayer",
+        desc      = "Eliminate 3 ogres",
+        goal      = 3,
+        reward    = 150,
+        trackType = "mob_ogre",
     },
 
     -- Player Eliminations  (PvP combat)
     {
-        id        = "player_hunter",
-        title     = "Player Hunter",
-        desc      = "Eliminate 5 enemy players",
-        goal      = 5,
-        reward    = 100,
-        trackType = "players_eliminated",
-    },
-    {
-        id        = "headhunter",
-        title     = "Headhunter",
+        id        = "eliminator",
+        title     = "Eliminator",
         desc      = "Eliminate 10 enemy players",
         goal      = 10,
-        reward    = 140,
+        reward    = 125,
         trackType = "players_eliminated",
     },
 
@@ -70,52 +81,60 @@ DailyQuestDefs.Pool = {
         title     = "Battle Ready",
         desc      = "Play 3 matches",
         goal      = 3,
-        reward    = 80,
+        reward    = 100,
         trackType = "matches_played",
     },
     {
-        id        = "warpath",
-        title     = "Warpath",
-        desc      = "Play 5 matches",
-        goal      = 5,
+        id        = "victory",
+        title     = "Victory",
+        desc      = "Win 1 match",
+        goal      = 1,
         reward    = 110,
-        trackType = "matches_played",
-    },
-
-    -- Coins Earned  (smaller daily target)
-    {
-        id        = "coin_grab",
-        title     = "Coin Grab",
-        desc      = "Earn 75 coins",
-        goal      = 75,
-        reward    = 90,
-        trackType = "coins_earned",
-    },
-    {
-        id        = "coin_collector",
-        title     = "Coin Collector",
-        desc      = "Earn 150 coins",
-        goal      = 150,
-        reward    = 125,
-        trackType = "coins_earned",
+        trackType = "matches_won",
     },
 
     -- Damage Dealt  (combat output)
     {
-        id        = "heavy_hitter",
-        title     = "Heavy Hitter",
-        desc      = "Deal 1,000 total damage",
-        goal      = 1000,
+        id        = "damage_dealer",
+        title     = "Damage Dealer",
+        desc      = "Deal 3,000 total damage",
+        goal      = 3000,
         reward    = 90,
         trackType = "damage_dealt",
     },
     {
-        id        = "devastator",
-        title     = "Devastator",
-        desc      = "Deal 2,500 total damage",
-        goal      = 2500,
-        reward    = 125,
-        trackType = "damage_dealt",
+        id        = "frontline_damage",
+        title     = "Frontline Damage",
+        desc      = "Deal 1,500 Melee damage",
+        goal      = 1500,
+        reward    = 90,
+        trackType = "damage_melee",
+    },
+    {
+        id        = "sharpshooter",
+        title     = "Sharpshooter",
+        desc      = "Deal 1,500 Ranged damage",
+        goal      = 1500,
+        reward    = 90,
+        trackType = "damage_ranged",
+    },
+
+    -- Objective based
+    {
+        id        = "capture_the_flag",
+        title     = "Capture the Flag",
+        desc      = "Capture the flag 1 time",
+        goal      = 1,
+        reward    = 150,
+        trackType = "flag_captures",
+    },
+    {
+        id        = "flag_defender",
+        title     = "Flag Defender",
+        desc      = "Return the flag 3 times",
+        goal      = 3,
+        reward    = 100,
+        trackType = "flag_returns",
     },
 }
 

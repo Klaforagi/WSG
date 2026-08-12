@@ -439,7 +439,7 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
 
     -- Track damage dealt for quest progress
     if StatService and StatService.RegisterDamageDealt then
-        pcall(function() StatService:RegisterDamageDealt(player, damage) end)
+        pcall(function() StatService:RegisterDamageDealt(player, damage, { damageType = "ranged" }) end)
     end
     if WeaponMasteryService and type(weaponInstanceId) == "string" and weaponInstanceId ~= "" then
         pcall(function() WeaponMasteryService:RegisterDamage(player, weaponInstanceId, damage) end)

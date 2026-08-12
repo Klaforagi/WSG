@@ -327,7 +327,7 @@ local function applyAoEDamage(shooter, hitPosition)
         hum:TakeDamage(damage)
         -- Track damage dealt for quest progress
         if StatService and StatService.RegisterDamageDealt then
-            pcall(function() StatService:RegisterDamageDealt(shooter, damage) end)
+            pcall(function() StatService:RegisterDamageDealt(shooter, damage, { damageType = "ranged" }) end)
         end
 
         -- Kill credit (StatService events, coins, XP, KillFeed, AddScore) is
@@ -368,7 +368,7 @@ local function applyAoEDamage(shooter, hitPosition)
         model:TakeDamage(damage)
         -- Track damage dealt for quest progress
         if StatService and StatService.RegisterDamageDealt then
-            pcall(function() StatService:RegisterDamageDealt(shooter, damage) end)
+            pcall(function() StatService:RegisterDamageDealt(shooter, damage, { damageType = "ranged" }) end)
         end
 
         -- Kill credit handled centrally by KillTracker.server.lua via the
