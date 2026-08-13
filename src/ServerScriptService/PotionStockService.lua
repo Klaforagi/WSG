@@ -503,4 +503,30 @@ function PotionStockService:ClearPlayer(player)
     end
 end
 
+-- Expose persistence helpers for DataSaveCoordinator integration.
+function PotionStockService:GetPersistedData(player)
+    local usage = getPlayerUsage(player)
+    local copy = { cycle = usage.cycle, purchases = {} }
+    for k, v in pairs(usage.purchases or {}) do
+        copy.purchases[tostring(k)] = math.max(0, math.floor(tonumber(v) or 0))
+    end
+    return copy
+end
+
+function PotionStockService:ApplyPersistedData(player, data)
+    if not player then return end
+    local currentCycle = PotionStockService:GetCurrentCycle()
+    local usage = {
+        cycle = math.floor(tonumber((data and data.cycle) or currentCycle) or currentCycle),
+        purchases = {},
+    }
+    if type(data) == "table" and type(data.purchases) == "table" then
+        for id, cnt in pairs(data.purchases) do
+            usage.purchases[tostring(id)] = math.max(0, math.floor(tonumber(cnt) or 0))
+        end
+    end
+    playerStockUsage[player.UserId] = usage
+    return usage
+end
+
 return PotionStockService
