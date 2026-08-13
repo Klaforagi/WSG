@@ -4,6 +4,11 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local UserService = game:GetService("UserService")
 local Workspace = game:GetService("Workspace")
 
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local EmoteConfig = require(ReplicatedStorage:WaitForChild("SideUI"):WaitForChild("EmoteConfig"))
+local CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils"))
+
 local DataStoreConfig = require(ServerScriptService:WaitForChild("DataStoreConfig"))
 local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
@@ -181,6 +186,319 @@ local function getLeaderboardParts()
     end
 
     return titlePart, listPart
+end
+
+local PODIUM_MODEL_NAME = "Podium"
+local PODIUM_PARTS_BY_RANK = {
+    [1] = "1st",
+    [2] = "2nd",
+    [3] = "3rd",
+}
+
+local PODIUM_NAME_PARTS_BY_RANK = {
+    [1] = "1stName",
+    [2] = "2ndName",
+    [3] = "3rdName",
+}
+
+local PODIUM_EMOTES_BY_RANK = {
+    [1] = "headless",
+    [2] = "rat_dance",
+    [3] = "floss",
+}
+
+local PODIUM_NAME_TEXT_COLOR = Color3.fromRGB(245, 248, 252)
+local PODIUM_NAME_STROKE_COLOR = Color3.fromRGB(10, 14, 20)
+local PODIUM_RIG_TYPE = Enum.HumanoidRigType.R15
+local podiumStateByRank = {}
+
+local function getPodiumModel(leaderboardModel)
+    if not leaderboardModel or not leaderboardModel:IsA("Model") then
+        return nil
+    end
+
+    local podiumModel = leaderboardModel:FindFirstChild(PODIUM_MODEL_NAME)
+    if podiumModel and podiumModel:IsA("Model") then
+        return podiumModel
+    end
+
+    return nil
+end
+
+local function setPodiumRigPhysics(model)
+    for _, descendant in ipairs(model:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            descendant.CanCollide = false
+            descendant.CanTouch = false
+            descendant.CanQuery = false
+            descendant.Massless = true
+        end
+    end
+end
+
+local function placePodiumRig(model, podiumPart)
+    local _, size = model:GetBoundingBox()
+    local lift = (podiumPart.Size.Y * 0.5) + (size.Y * 0.5)
+    model:PivotTo(podiumPart.CFrame * CFrame.new(0, lift, 0))
+end
+
+local function getPodiumDisplayName(userId)
+    local okInfo, userInfos = pcall(function()
+        return UserService:GetUserInfosByUserIdsAsync({ userId })
+    end)
+    if okInfo and type(userInfos) == "table" then
+        local info = userInfos[1]
+        if type(info) == "table" then
+            local displayName = info.DisplayName
+            if type(displayName) == "string" and displayName ~= "" then
+                return displayName
+            end
+            local username = info.Username
+            if type(username) == "string" and username ~= "" then
+                return username
+            end
+        end
+    end
+
+    local okName, username = pcall(function()
+        return Players:GetNameFromUserIdAsync(userId)
+    end)
+    if okName and type(username) == "string" and username ~= "" then
+        return username
+    end
+
+    return "Unknown"
+end
+
+local function attachPodiumNameLabel(model, podiumPart, userId, rank)
+    if not model or not podiumPart or not podiumPart:IsA("BasePart") then
+        return
+    end
+
+    local podiumModel = podiumPart.Parent
+    local namePart = nil
+    if podiumModel and podiumModel:IsA("Model") then
+        local namePartName = PODIUM_NAME_PARTS_BY_RANK[rank]
+        if namePartName then
+            local candidate = podiumModel:FindFirstChild(namePartName)
+            if candidate and candidate:IsA("BasePart") then
+                namePart = candidate
+            end
+        end
+    end
+
+    local displayText = getPodiumDisplayName(userId)
+
+    if namePart then
+        local surfaceGui = ensureSurfaceGui(namePart, "PodiumNameSurfaceGui", 40, Enum.NormalId.Front)
+        surfaceGui.AlwaysOnTop = false
+        for _, c in ipairs(surfaceGui:GetChildren()) do
+            if c.Name ~= "Core" then pcall(function() c:Destroy() end) end
+        end
+
+        local label = ensureChild(surfaceGui, "TextLabel", "Name")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.fromScale(1, 1)
+        label.Font = Enum.Font.GothamBlack
+        label.Text = displayText
+        label.TextColor3 = TOP_RANK_COLORS[rank] or PODIUM_NAME_TEXT_COLOR
+        label.TextScaled = true
+        label.TextSize = 24
+        label.TextStrokeColor3 = PODIUM_NAME_STROKE_COLOR
+        label.TextStrokeTransparency = 0.25
+        label.TextWrapped = true
+        ensureTextConstraint(label, 12, 36)
+        return
+    end
+
+    local _, rigSize = model:GetBoundingBox()
+    local verticalOffset = (podiumPart.Size.Y * 0.5) + rigSize.Y + 0.9
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "PodiumNameLabel"
+    billboard.Adornee = podiumPart
+    billboard.AlwaysOnTop = false
+    billboard.LightInfluence = 0
+    billboard.MaxDistance = 250
+    billboard.Size = UDim2.new(4.6, 0, 0.85, 0)
+    billboard.StudsOffsetWorldSpace = Vector3.new(0, verticalOffset, 0)
+    billboard.Parent = model
+
+    local label = Instance.new("TextLabel")
+    label.Name = "Name"
+    label.BackgroundTransparency = 1
+    label.Size = UDim2.fromScale(1, 1)
+    label.Font = Enum.Font.GothamBlack
+    label.Text = displayText
+    label.TextColor3 = TOP_RANK_COLORS[rank] or PODIUM_NAME_TEXT_COLOR
+    label.TextScaled = true
+    label.TextSize = 30
+    label.TextStrokeColor3 = PODIUM_NAME_STROKE_COLOR
+    label.TextStrokeTransparency = 0.25
+    label.Parent = billboard
+
+    ensureTextConstraint(label, 12, 30)
+end
+
+local function getPodiumEmoteId(rank)
+    local emoteId = PODIUM_EMOTES_BY_RANK[rank]
+    if emoteId and EmoteConfig.GetById(emoteId) then
+        return emoteId
+    end
+
+    local allEmotes = EmoteConfig.GetAll()
+    if type(allEmotes) == "table" and #allEmotes > 0 then
+        local fallback = allEmotes[((rank - 1) % #allEmotes) + 1]
+        if type(fallback) == "table" then
+            return fallback.Id
+        end
+    end
+
+    return nil
+end
+
+local function playPodiumEmote(humanoid, rank)
+    if not humanoid then
+        return nil, nil
+    end
+
+    local emoteId = getPodiumEmoteId(rank)
+    local emoteDef = emoteId and EmoteConfig.GetById(emoteId)
+    if not emoteDef or type(emoteDef.AnimationId) ~= "string" or emoteDef.AnimationId == "" then
+        return nil, emoteId
+    end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = humanoid
+    end
+
+    local animation = Instance.new("Animation")
+    animation.AnimationId = emoteDef.AnimationId
+
+    local ok, track = pcall(function()
+        return animator:LoadAnimation(animation)
+    end)
+    animation:Destroy()
+
+    if not ok or not track then
+        warn(string.format("[GlobalEliminationsLeaderboard] Failed to load podium emote %s for rank %d", tostring(emoteId), rank))
+        return nil, emoteId
+    end
+
+    track.Priority = Enum.AnimationPriority.Action
+    track.Looped = emoteDef.Looped ~= false
+    pcall(function()
+        track:Play(0.25)
+    end)
+
+    return track, emoteId
+end
+
+local function destroyPodiumRank(rank)
+    local state = podiumStateByRank[rank]
+    if not state then
+        return
+    end
+
+    if state.track then
+        pcall(function()
+            state.track:Stop(0.15)
+        end)
+        pcall(function()
+            state.track:Destroy()
+        end)
+    end
+
+    if state.model and state.model.Parent then
+        state.model:Destroy()
+    end
+
+    podiumStateByRank[rank] = nil
+end
+
+local function rebuildPodiumRank(rank, entry, podiumPart, podiumModel)
+    destroyPodiumRank(rank)
+
+    local ok, rigOrErr, humanoid = pcall(function()
+        local description = Players:GetHumanoidDescriptionFromUserId(entry.userId)
+        local rig = Players:CreateHumanoidModelFromDescription(description, PODIUM_RIG_TYPE)
+        rig.Name = string.format("PodiumAvatar_%d", rank)
+        rig.Parent = podiumModel
+
+        pcall(function() CombatUtils.tagPodiumModel(rig) end)
+
+        setPodiumRigPhysics(rig)
+
+        local rigHumanoid = rig:FindFirstChildOfClass("Humanoid")
+        if rigHumanoid then
+            rigHumanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+            rigHumanoid.AutoRotate = false
+            rigHumanoid.BreakJointsOnDeath = false
+        end
+
+        local rootPart = rig:FindFirstChild("HumanoidRootPart")
+        if rootPart and rootPart:IsA("BasePart") then
+            rootPart.Anchored = true
+        end
+
+        attachPodiumNameLabel(rig, podiumPart, entry.userId, rank)
+        placePodiumRig(rig, podiumPart)
+        return rig, rigHumanoid
+    end)
+
+    if not ok or not rigOrErr then
+        warn(string.format("[GlobalEliminationsLeaderboard] Failed to build podium avatar for userId=%s rank=%d: %s", tostring(entry.userId), rank, tostring(rigOrErr)))
+        return
+    end
+
+    local track, emoteId = playPodiumEmote(humanoid, rank)
+    podiumStateByRank[rank] = {
+        userId = entry.userId,
+        part = podiumPart,
+        model = rigOrErr,
+        track = track,
+        emoteId = emoteId,
+    }
+end
+
+local function updatePodiumDisplay(leaderboardModel, entries)
+    local podiumModel = getPodiumModel(leaderboardModel)
+    if not podiumModel then
+        for rank = 1, 3 do
+            destroyPodiumRank(rank)
+        end
+        return
+    end
+
+    for rank = 1, 3 do
+        local entry = entries[rank]
+        local partName = PODIUM_PARTS_BY_RANK[rank]
+        local podiumPart = partName and podiumModel:FindFirstChild(partName)
+
+        if not entry or not podiumPart or not podiumPart:IsA("BasePart") then
+            destroyPodiumRank(rank)
+        else
+            local state = podiumStateByRank[rank]
+            local needsRebuild = (not state)
+                or (state.userId ~= entry.userId)
+                or (state.part ~= podiumPart)
+                or (not state.model)
+                or (state.model.Parent ~= podiumModel)
+
+            if needsRebuild then
+                rebuildPodiumRank(rank, entry, podiumPart, podiumModel)
+            else
+                placePodiumRig(state.model, podiumPart)
+                if state.track and state.track.IsPlaying ~= true then
+                    pcall(function()
+                        state.track:Play(0.15)
+                    end)
+                end
+            end
+        end
+    end
 end
 
 local function ensureTitleGui(titlePart)
@@ -544,15 +862,22 @@ local function getTopEntries()
 
     local page = pages:GetCurrentPage()
     local entries = {}
-    for rank, item in ipairs(page) do
-        local userId = tonumber(item.key)
-        local value = tonumber(item.value)
-        if userId and value then
-            table.insert(entries, {
-                rank = rank,
-                userId = userId,
-                value = clampValue(value),
-            })
+    local displayRank = 0
+    for _, item in ipairs(page) do
+        local keyStr = tostring(item.key or "")
+        -- Filter out keys that start with a negative sign (test/dev/fake entries)
+        if keyStr:sub(1,1) ~= "-" then
+            local userId = tonumber(item.key)
+            local value = tonumber(item.value)
+            -- Only include positive numeric userIds
+            if userId and userId > 0 and value then
+                displayRank = displayRank + 1
+                table.insert(entries, {
+                    rank = displayRank,
+                    userId = userId,
+                    value = clampValue(value),
+                })
+            end
         end
     end
     return entries
@@ -729,6 +1054,8 @@ function GlobalEliminationsLeaderboardService:RefreshDisplay()
             createEntryRow(scroll, entry)
         end
     end
+
+    updatePodiumDisplay(titlePart.Parent, entries)
 
     return true
 end

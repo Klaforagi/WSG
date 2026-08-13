@@ -51,6 +51,15 @@ local PODIUM_PARTS_BY_RANK = {
     [3] = "3rd",
 }
 
+-- Optional dedicated name parts created on the podium model. If present,
+-- the service will render the player's DisplayName onto these parts instead
+-- of the default floating label above the podium avatar.
+local PODIUM_NAME_PARTS_BY_RANK = {
+    [1] = "1stName",
+    [2] = "2ndName",
+    [3] = "3rdName",
+}
+
 local PODIUM_EMOTES_BY_RANK = {
     [1] = "headless",
     [2] = "rat_dance",
@@ -297,6 +306,46 @@ local function attachPodiumNameLabel(model, podiumPart, userId, rank)
         return
     end
 
+    -- Try to find a dedicated name part on the parent podium model first.
+    local podiumModel = podiumPart.Parent
+    local namePart = nil
+    if podiumModel and podiumModel:IsA("Model") then
+        local namePartName = PODIUM_NAME_PARTS_BY_RANK[rank]
+        if namePartName then
+            local candidate = podiumModel:FindFirstChild(namePartName)
+            if candidate and candidate:IsA("BasePart") then
+                namePart = candidate
+            end
+        end
+    end
+
+    local displayText = getPodiumDisplayName(userId)
+
+    if namePart then
+        -- Render as a SurfaceGui attached to the dedicated name part.
+        local surfaceGui = ensureSurfaceGui(namePart, "PodiumNameSurfaceGui", 40, Enum.NormalId.Front)
+        surfaceGui.AlwaysOnTop = false
+        -- Clear existing children so updates replace previous label
+        for _, c in ipairs(surfaceGui:GetChildren()) do
+            if c.Name ~= "Core" then pcall(function() c:Destroy() end) end
+        end
+
+        local label = ensureChild(surfaceGui, "TextLabel", "Name")
+        label.BackgroundTransparency = 1
+        label.Size = UDim2.fromScale(1, 1)
+        label.Font = Enum.Font.GothamBlack
+        label.Text = displayText
+        label.TextColor3 = TOP_RANK_COLORS[rank] or PODIUM_NAME_TEXT_COLOR
+        label.TextScaled = true
+        label.TextSize = 24
+        label.TextStrokeColor3 = PODIUM_NAME_STROKE_COLOR
+        label.TextStrokeTransparency = 0.25
+        label.TextWrapped = true
+        ensureTextConstraint(label, 12, 36)
+        return
+    end
+
+    -- Fallback to the original floating billboard above the podium avatar
     local _, rigSize = model:GetBoundingBox()
     local verticalOffset = (podiumPart.Size.Y * 0.5) + rigSize.Y + 0.9
 
@@ -315,7 +364,7 @@ local function attachPodiumNameLabel(model, podiumPart, userId, rank)
     label.BackgroundTransparency = 1
     label.Size = UDim2.fromScale(1, 1)
     label.Font = Enum.Font.GothamBlack
-    label.Text = getPodiumDisplayName(userId)
+    label.Text = displayText
     label.TextColor3 = TOP_RANK_COLORS[rank] or PODIUM_NAME_TEXT_COLOR
     label.TextScaled = true
     label.TextSize = 30
@@ -839,15 +888,22 @@ local function getTopEntries()
 
     local page = pages:GetCurrentPage()
     local entries = {}
-    for rank, item in ipairs(page) do
-        local userId = tonumber(item.key)
-        local level = tonumber(item.value)
-        if userId and level then
-            table.insert(entries, {
-                rank = rank,
-                userId = userId,
-                level = clampLevel(level),
-            })
+    local displayRank = 0
+    for _, item in ipairs(page) do
+        local keyStr = tostring(item.key or "")
+        -- Filter out keys that start with a negative sign (test/dev/fake entries)
+        if keyStr:sub(1,1) ~= "-" then
+            local userId = tonumber(item.key)
+            local level = tonumber(item.value)
+            -- Only include positive numeric userIds
+            if userId and userId > 0 and level then
+                displayRank = displayRank + 1
+                table.insert(entries, {
+                    rank = displayRank,
+                    userId = userId,
+                    level = clampLevel(level),
+                })
+            end
         end
     end
     return entries
