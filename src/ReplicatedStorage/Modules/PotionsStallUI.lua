@@ -150,7 +150,7 @@ local ACCENT_GREEN = Color3.fromRGB(98, 229, 95)
 local RED = Color3.fromRGB(208, 90, 76)
 local BUTTON_PRIMARY = Color3.fromRGB(67, 170, 108)
 local BUTTON_PRIMARY_DISABLED = Color3.fromRGB(63, 79, 80)
-local BUTTON_SECONDARY = Color3.fromRGB(235, 167, 58)
+local BUTTON_SECONDARY = Color3.fromRGB(235, 185, 57)
 local BUTTON_SECONDARY_DISABLED = Color3.fromRGB(104, 87, 55)
 
 local CATEGORY_BATTLE = "Battle"
@@ -874,19 +874,20 @@ end
 	header.Name = "Header"
 	header.BackgroundTransparency = 1
 	header.Position = UDim2.new(0, px(20), 0, px(14))
-	header.Size = UDim2.new(1, -px(40), 0, px(58))
+	header.Size = UDim2.new(0.98, 0, 0.1, 0)
 	header.Parent = panel
 
 	local title = Instance.new("TextLabel")
 	title.BackgroundTransparency = 1
-	title.Size = UDim2.new(1, -px(220), 1, 0)
+	title.Size = UDim2.new(0.2, 0, 0.9, 0)
+	title.Position = UDim2.new(0, 0, 0, 0)
 	title.Font = Enum.Font.FredokaOne
 	title.Text = "POTIONS"
 	title.TextColor3 = WHITE
 	title.TextSize = textPx(30, 24, 30)
+	title.TextScaled = true
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = header
-	addTextLimit(title, 24, 30)
 	local titleStroke = Instance.new("UIStroke")
 	titleStroke.Color = BLACK
 	titleStroke.Thickness = 1.6
@@ -897,8 +898,8 @@ end
 	local balancePill = Instance.new("Frame")
 	balancePill.Name = "BalancePill"
 	balancePill.AnchorPoint = Vector2.new(0, 0)
-	balancePill.Position = UDim2.new(0.79, 0, 0, 0)
-	balancePill.Size = UDim2.new(0.15, 0, 1, 0)
+	balancePill.Position = UDim2.new(0.77, 0, 0, 0)
+	balancePill.Size = UDim2.new(0.15, 0, 0.8, 0)
 	balancePill.BackgroundColor3 = CONTENT_BG
 	balancePill.BorderSizePixel = 0
 	balancePill.Parent = header
@@ -919,8 +920,8 @@ end
 
 	local balanceLabel = Instance.new("TextLabel")
 	balanceLabel.BackgroundTransparency = 1
-	balanceLabel.Position = UDim2.new(0, px(38), 0, 0)
-	balanceLabel.Size = UDim2.new(0.75, 0, 1, 0)
+	balanceLabel.Position = UDim2.new(0.3, 0, 0, 0)
+	balanceLabel.Size = UDim2.new(0.6, 0, 1, 0)
 	balanceLabel.Font = Enum.Font.GothamBlack
 	balanceLabel.TextColor3 = ACCENT_GOLD
 	balanceLabel.TextSize = textPx(18, 16, 18)
@@ -929,14 +930,14 @@ end
 	balanceLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	balanceLabel.Text = formatNumber(coinBalance)
 	balanceLabel.Parent = balancePill
-	addTextLimit(balanceLabel, 16, 18)
+	addTextLimit(balanceLabel, 8, 50)
 	addTextOutline(balanceLabel, 0.48, 1)
 
 	local closeButton = Instance.new("TextButton")
 	closeButton.Name = "CloseButton"
 	closeButton.AnchorPoint = Vector2.new(1, 0)
-	closeButton.Position = UDim2.new(1, 0, 0, px(4))
-	closeButton.Size = UDim2.new(0, px(44), 0, px(40))
+	closeButton.Position = UDim2.new(0.99, 0, 0, 0)
+	closeButton.Size = UDim2.new(0.06, 0, 0.8, 0)
 	closeButton.BackgroundColor3 = Color3.fromRGB(220, 87, 87)
 	closeButton.BorderSizePixel = 0
 	closeButton.Font = Enum.Font.GothamBlack
@@ -1002,6 +1003,7 @@ end
 	gridWrap.Name = "GridWrap"
 	gridWrap.BackgroundColor3 = CONTENT_BG
 	gridWrap.BorderSizePixel = 0
+	gridWrap.ClipsDescendants = true
 	gridWrap.Position = UDim2.new(0.02, 0, 0.12, 0)
 	gridWrap.Size = UDim2.new(0.96, 0, 0.85, 0)
 	gridWrap.Parent = panel
@@ -1154,14 +1156,15 @@ end
 		label.Name = "Value"
 		label.BackgroundTransparency = 1
 		label.AutomaticSize = Enum.AutomaticSize.X
-		label.Size = UDim2.new(0, 0, 1, 0)
+		label.Size = UDim2.new(0, 0, 0.75, 0)
 		label.Font = Enum.Font.GothamBlack
 		label.Text = ""
 		label.TextColor3 = WHITE
 		label.TextSize = textPx(15, 14, 15)
 		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextScaled = true
 		label.Parent = content
-		addTextLimit(label, 14, 15)
+		addTextOutline(label, 0.42, 1)
 		addTextOutline(label, 0.42, 1)
 
 		return {
@@ -1180,7 +1183,7 @@ end
 		parts.content.Visible = true
 		parts.icon.Visible = showIcon
 		parts.icon.Image = iconAsset or ""
-		parts.icon.ImageTransparency = transparency
+		parts.icon.ImageTransparency = 0
 		parts.label.Text = tostring(text or "")
 		parts.label.TextTransparency = transparency
 	end
@@ -1757,7 +1760,7 @@ end
 				if stockTracked then
 					refs.stockLabel.Visible = true
 					refs.stockLabel.Text = string.format("Stock: %d", stockInfo.remaining)
-					refs.stockLabel.TextColor3 = stockInfo.soldOut and RED or ACCENT_GOLD
+					refs.stockLabel.TextColor3 = stockInfo.soldOut and RED or ACCENT_GREEN
 				elseif getEntryPrice(entry) > 0 and isEntryPurchasable(entry) then
 					if stockState.valid then
 						if not missingCardWarnings[entry.Id] then
