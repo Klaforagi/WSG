@@ -1569,16 +1569,25 @@ titleLabel.ZIndex = 275
     styleCurrencyChip(headerCoinFrame, Color3.fromRGB(255, 215, 80), 96)
     headerCoinFrame.AutomaticSize = Enum.AutomaticSize.None
     headerCoinFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
+    headerCoinFrame.BackgroundTransparency = 1
+    local headerCoinFrameStroke = headerCoinFrame:FindFirstChildOfClass("UIStroke")
+    if headerCoinFrameStroke then
+        headerCoinFrameStroke.Transparency = 1
+    end
+    headerCoinFrame.ClipsDescendants = false
 
     local headerCoinIcon = Instance.new("ImageLabel")
     headerCoinIcon.Name = "CoinIcon"
     headerCoinIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
-    headerCoinIcon.Position = UDim2.new(0, 0, 0.5, 0)
+    headerCoinIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
     headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
     headerCoinIcon.BackgroundTransparency = 1
     headerCoinIcon.ScaleType = Enum.ScaleType.Fit
     headerCoinIcon.ZIndex = 277
     headerCoinIcon.Parent = headerCoinFrame
+    local headerCoinIconAspect = Instance.new("UIAspectRatioConstraint")
+    headerCoinIconAspect.AspectRatio = 1
+    headerCoinIconAspect.Parent = headerCoinIcon
     pcall(function()
         if AssetCodes and type(AssetCodes.Get) == "function" then
             local ci = AssetCodes.Get("Coin")
@@ -1588,8 +1597,8 @@ titleLabel.ZIndex = 275
 
     local headerCoinLabel = Instance.new("TextLabel")
     headerCoinLabel.Name = "CoinLabel"
-    headerCoinLabel.Size = UDim2.new(0.5, 0, 0.5, 0)
-    headerCoinLabel.Position = UDim2.new(0.4, 0, 0.25, 0)
+    headerCoinLabel.Size = UDim2.new(0.7, 0, 1, 0)
+    headerCoinLabel.Position = UDim2.new(0.3, 0, 0, 0)
     headerCoinLabel.BackgroundTransparency = 1
     headerCoinLabel.Font = Enum.Font.GothamBold
     headerCoinLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
@@ -1617,6 +1626,12 @@ titleLabel.ZIndex = 275
     styleCurrencyChip(headerKeyFrame, Color3.fromRGB(170, 100, 255), 72)
     headerKeyFrame.AutomaticSize = Enum.AutomaticSize.None
     headerKeyFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
+    headerKeyFrame.ClipsDescendants = false
+    headerKeyFrame.BackgroundTransparency = 1
+    local headerKeyFrameStroke = headerKeyFrame:FindFirstChildOfClass("UIStroke")
+    if headerKeyFrameStroke then
+        headerKeyFrameStroke.Transparency = 1
+    end
 
     local headerKeyIcon = nil
     local headerKeyIconConstraint = nil
@@ -1625,18 +1640,21 @@ titleLabel.ZIndex = 275
         headerKeyIcon = Instance.new("ImageLabel")
         headerKeyIcon.Name = "KeyIcon"
         headerKeyIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
-        headerKeyIcon.Position = UDim2.new(0, 0, 0.5, 0)
+        headerKeyIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerKeyIcon.BackgroundTransparency = 1
         headerKeyIcon.Image = keyImage
         headerKeyIcon.ScaleType = Enum.ScaleType.Fit
         headerKeyIcon.ZIndex = 277
         headerKeyIcon.Parent = headerKeyFrame
+        local headerKeyIconAspect = Instance.new("UIAspectRatioConstraint")
+        headerKeyIconAspect.AspectRatio = 1
+        headerKeyIconAspect.Parent = headerKeyIcon
     else
         headerKeyIcon = Instance.new("TextLabel")
         headerKeyIcon.Name = "KeyIcon"
         headerKeyIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
-        headerKeyIcon.Position = UDim2.new(0, 0, 0.5, 0)
+        headerKeyIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerKeyIcon.BackgroundTransparency = 1
         headerKeyIcon.Font = Enum.Font.GothamBold
@@ -1644,12 +1662,15 @@ titleLabel.ZIndex = 275
         headerKeyIcon.TextColor3 = Color3.fromRGB(170, 100, 255)
         headerKeyIcon.ZIndex = 277
         headerKeyIcon.Parent = headerKeyFrame
+        local headerKeyIconAspect = Instance.new("UIAspectRatioConstraint")
+        headerKeyIconAspect.AspectRatio = 1
+        headerKeyIconAspect.Parent = headerKeyIcon
     end
 
     local headerKeyLabel = Instance.new("TextLabel")
     headerKeyLabel.Name = "KeyLabel"
-    headerKeyLabel.Size = UDim2.new(0.6, 0, 0.6, 0)
-    headerKeyLabel.Position = UDim2.new(0.3, 0, 0.2, 0)
+    headerKeyLabel.Size = UDim2.new(0.7, 0, 1, 0)
+    headerKeyLabel.Position = UDim2.new(0.3, 0, 0, 0)
     headerKeyLabel.BackgroundTransparency = 1
     headerKeyLabel.Font = Enum.Font.GothamBold
     headerKeyLabel.TextColor3 = Color3.fromRGB(170, 100, 255)
@@ -1677,6 +1698,12 @@ titleLabel.ZIndex = 275
     styleCurrencyChip(headerSalvageFrame, SHARD_ACCENT, 98)
     headerSalvageFrame.AutomaticSize = Enum.AutomaticSize.None
     headerSalvageFrame.Size = UDim2.new(0.3, 0, 0.7, 0)
+    headerSalvageFrame.ClipsDescendants = false
+    headerSalvageFrame.BackgroundTransparency = 1
+    local headerSalvageFrameStroke = headerSalvageFrame:FindFirstChildOfClass("UIStroke")
+    if headerSalvageFrameStroke then
+        headerSalvageFrameStroke.Transparency = 1
+    end
     headerSalvageFrame.BackgroundColor3 = Color3.fromRGB(57, 33, 12)
     local headerSalvageGradient = headerSalvageFrame:FindFirstChildOfClass("UIGradient")
     if headerSalvageGradient then
@@ -1693,18 +1720,21 @@ titleLabel.ZIndex = 275
         headerSalvageIcon = Instance.new("ImageLabel")
         headerSalvageIcon.Name = "SalvageIcon"
         headerSalvageIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
-        headerSalvageIcon.Position = UDim2.new(0, 0, 0.5, 0)
+        headerSalvageIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
         headerSalvageIcon.Image = shardImage
         headerSalvageIcon.ScaleType = Enum.ScaleType.Fit
         headerSalvageIcon.ZIndex = 277
         headerSalvageIcon.Parent = headerSalvageFrame
+        local headerSalvageIconAspect = Instance.new("UIAspectRatioConstraint")
+        headerSalvageIconAspect.AspectRatio = 1
+        headerSalvageIconAspect.Parent = headerSalvageIcon
     else
         headerSalvageIcon = Instance.new("TextLabel")
         headerSalvageIcon.Name = "SalvageIcon"
         headerSalvageIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
-        headerSalvageIcon.Position = UDim2.new(0, 0, 0.5, 0)
+        headerSalvageIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
         headerSalvageIcon.Font = Enum.Font.GothamBold
@@ -1712,12 +1742,15 @@ titleLabel.ZIndex = 275
         headerSalvageIcon.TextColor3 = SHARD_ACCENT
         headerSalvageIcon.ZIndex = 277
         headerSalvageIcon.Parent = headerSalvageFrame
+        local headerSalvageIconAspect = Instance.new("UIAspectRatioConstraint")
+        headerSalvageIconAspect.AspectRatio = 1
+        headerSalvageIconAspect.Parent = headerSalvageIcon
     end
 
     local headerSalvageLabel = Instance.new("TextLabel")
     headerSalvageLabel.Name = "SalvageLabel"
-    headerSalvageLabel.Size = UDim2.new(0.6, 0, 0.6, 0)
-    headerSalvageLabel.Position = UDim2.new(0.3, 0, 0.2, 0)
+    headerSalvageLabel.Size = UDim2.new(0.7, 0, 1, 0)
+    headerSalvageLabel.Position = UDim2.new(0.3, 0, 0, 0)
     headerSalvageLabel.BackgroundTransparency = 1
     headerSalvageLabel.Font = Enum.Font.GothamBold
     headerSalvageLabel.TextColor3 = SHARD_ACCENT
@@ -1953,6 +1986,11 @@ local function updateHeaderCurrencyLayout()
 
     local function positionIcon(icon, scale)
         if not icon then return end
+        local p = icon.Parent
+        if p and p.Size and ((p.Size.X and p.Size.X.Scale and p.Size.X.Scale > 0) or (p.Size.Y and p.Size.Y.Scale and p.Size.Y.Scale > 0)) then
+            -- parent uses scale-based sizing; avoid overwriting scale values
+            return
+        end
         local actualScale = scale or 1
         local actualIconSize = math.max(14, math.floor(iconSize * actualScale))
         icon.Size = UDim2.new(0, actualIconSize, 0, actualIconSize)
@@ -1961,6 +1999,11 @@ local function updateHeaderCurrencyLayout()
 
     local function positionLabel(label)
         if not label then return end
+        local p = label.Parent
+        if p and p.Size and ((p.Size.X and p.Size.X.Scale and p.Size.X.Scale > 0) or (p.Size.Y and p.Size.Y.Scale and p.Size.Y.Scale > 0)) then
+            -- parent uses scale-based sizing; avoid overwriting scale values
+            return
+        end
         label.Size = UDim2.new(1, -(labelInset + iconInset), 1, -labelHeightInset)
         label.Position = UDim2.new(0, labelInset, 0, labelTop)
     end
