@@ -1778,28 +1778,9 @@ end
 				end
 			end
 
-			if entry.Kind == "boost" then
-				if statusActive then
-					refs.statusLabel.Text = string.format("Active: %02d:%02d", math.floor(remaining / 60), remaining % 60)
-					refs.statusLabel.TextColor3 = ACCENT_GREEN
-				elseif owned > 0 then
-					refs.statusLabel.Text = "x" .. tostring(owned)
-					refs.statusLabel.TextColor3 = WHITE
-				else
-					refs.statusLabel.Text = "x0"
-					refs.statusLabel.TextColor3 = MUTED_TEXT
-				end
-			else
-				if remaining > 0 then
-					refs.statusLabel.Text = string.format("Cooldown: %02d:%02d", math.floor(remaining / 60), remaining % 60)
-					refs.statusLabel.TextColor3 = ACCENT_BLUE
-				elseif owned > 0 then
-					refs.statusLabel.Text = "x" .. tostring(owned)
-					refs.statusLabel.TextColor3 = WHITE
-				else
-					refs.statusLabel.Text = "x0"
-					refs.statusLabel.TextColor3 = MUTED_TEXT
-				end
+			if refs.statusLabel then
+				refs.statusLabel.Text = "x" .. tostring(owned)
+				refs.statusLabel.TextColor3 = (owned > 0) and WHITE or MUTED_TEXT
 			end
 
 			local highlightColor = mixColor(accent, WHITE, 0.18)
