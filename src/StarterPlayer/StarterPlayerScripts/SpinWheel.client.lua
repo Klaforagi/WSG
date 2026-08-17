@@ -224,20 +224,40 @@ local function displayLocalSpinAnnouncement(chatAnnouncement)
 end
 
 local function playTickSound()
-    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-    local tickSound = soundsFolder and soundsFolder:FindFirstChild("Tick")
-    if not (tickSound and tickSound:IsA("Sound")) then
-        return
-    end
+	local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+	local tickSound = soundsFolder and soundsFolder:FindFirstChild("Tick")
+	if not (tickSound and tickSound:IsA("Sound")) then
+		return
+	end
 
-    local soundClone = tickSound:Clone()
-    soundClone.Parent = tickSound.Parent
-    soundClone:Play()
-    soundClone.Ended:Once(function()
-        pcall(function()
-            soundClone:Destroy()
-        end)
-    end)
+	local soundClone = tickSound:Clone()
+
+	local parentPart = nil
+	local model = Workspace:FindFirstChild("SpinTheWheel")
+	if model then
+		parentPart = model:FindFirstChild("Pointer", true)
+		if not (parentPart and parentPart:IsA("BasePart")) then
+			parentPart = model:FindFirstChild("WheelBase", true)
+		end
+	end
+
+	if parentPart and parentPart:IsA("BasePart") then
+		soundClone.Parent = parentPart
+		soundClone.RollOffMode = Enum.RollOffMode.LinearSquare
+		soundClone.MinDistance = 15
+		soundClone.MaxDistance = 125
+		soundClone.Volume = 2          -- raised this
+	else
+		soundClone.Parent = tickSound.Parent
+		soundClone.Volume = 2
+	end
+
+	soundClone:Play()
+	soundClone.Ended:Once(function()
+		pcall(function()
+			soundClone:Destroy()
+		end)
+	end)
 end
 
 local function playWheelSpinSound()
@@ -275,41 +295,43 @@ local function playWheelEndSound()
 end
 
 local function resolveWheelParts()
-    local model = Workspace:WaitForChild(SpinWheelConfig.ModelName, 30)
-    if not (model and model:IsA("Model")) then
-        warn("[SpinWheel] Missing wheel model", SpinWheelConfig.ModelName)
-        return nil
-    end
+	local modelName = (SpinWheelConfig and SpinWheelConfig.ModelName) or "SpinTheWheel"
+	local model = Workspace:WaitForChild(modelName, 30)
 
-    local partNames = SpinWheelConfig.PartNames
-    local promptPart = model:WaitForChild(partNames.PromptPart, 30)
-    local wheelBase = model:WaitForChild(partNames.WheelBase, 30)
-    local screenPart = model:WaitForChild(partNames.Screen, 30)
-    local pointer = model:FindFirstChild(partNames.Pointer)
+	if not (model and model:IsA("Model")) then
+		warn("[SpinWheel] Could not find model:", modelName)
+		return nil
+	end
 
-    if not (promptPart and promptPart:IsA("BasePart")) then
-        warn("[SpinWheel] Missing PromptPart")
-        return nil
-    end
-    if not (wheelBase and wheelBase:IsA("BasePart")) then
-        warn("[SpinWheel] Missing WheelBase")
-        return nil
-    end
-    if not (screenPart and screenPart:IsA("BasePart")) then
-        warn("[SpinWheel] Missing Screen")
-        return nil
-    end
-    if pointer and not pointer:IsA("BasePart") then
-        pointer = nil
-    end
+	local partNames = (SpinWheelConfig and SpinWheelConfig.PartNames) or {}
 
-    return {
-        model = model,
-        promptPart = promptPart,
-        wheelBase = wheelBase,
-        screenPart = screenPart,
-        pointer = pointer,
-    }
+	local promptPart = model:FindFirstChild(partNames.PromptPart or "PromptPart", true)
+	local wheelBase  = model:FindFirstChild(partNames.WheelBase or "WheelBase", true)
+	local screenPart = model:FindFirstChild(partNames.Screen or "Screen", true)
+	local pointer    = model:FindFirstChild(partNames.Pointer or "Pointer", true)
+
+	-- Force them to be BaseParts or nil
+	if promptPart and not promptPart:IsA("BasePart") then promptPart = nil end
+	if wheelBase  and not wheelBase:IsA("BasePart")  then wheelBase  = nil end
+	if screenPart and not screenPart:IsA("BasePart") then screenPart = nil end
+	if pointer    and not pointer:IsA("BasePart")    then pointer    = nil end
+
+	if not promptPart then warn("[SpinWheel] Missing PromptPart") end
+	if not wheelBase  then warn("[SpinWheel] Missing WheelBase")  end
+	if not screenPart then warn("[SpinWheel] Missing Screen")     end
+	if not pointer    then warn("[SpinWheel] Missing Pointer")    end
+
+	if not (promptPart and wheelBase and screenPart) then
+		return nil
+	end
+
+	return {
+		model = model,
+		promptPart = promptPart,
+		wheelBase = wheelBase,
+		screenPart = screenPart,
+		pointer = pointer, -- can still be nil, that's ok
+	}
 end
 
 local function extractWheelLightOrder(part)
@@ -384,8 +406,18 @@ local function resolveWheelLights(model)
 end
 
 local wheelParts = resolveWheelParts()
-if not wheelParts then
-    return
+-- Force find the pointer again (extra safety)
+if wheelParts then
+	local model = wheelParts.model
+	if model then
+		local forcedPointer = model:FindFirstChild("Pointer", true)
+		if forcedPointer and forcedPointer:IsA("BasePart") then
+			wheelParts.pointer = forcedPointer
+			warn("[SpinWheel] Forced Pointer found →", forcedPointer:GetFullName())
+		else
+			warn("[SpinWheel] Still cannot find a part named 'Pointer'")
+		end
+	end
 end
 
 local wheelLights = resolveWheelLights(wheelParts.model)
