@@ -1478,9 +1478,12 @@ headerBar.ZIndex = 270
 -- Title pill (matches Team menu title bar)
 local titlePill = Instance.new("Frame")
 titlePill.Name = "TitlePill"
-titlePill.Size = UDim2.new(0.4, 0, 0.9, 0)
+-- Fixed size/position requested: keep centered-ish but more to the left
+titlePill.Size = UDim2.new(0.35, 0, 0.9, 0)
 titlePill.AnchorPoint = Vector2.new(0.5, 0.5)
-titlePill.Position = UDim2.new(0.3, 0, 0.5, 0)
+titlePill.Position = UDim2.new(0.35, 0, 0.5, 0)
+-- mark as fixed so runtime layout doesn't overwrite these values
+titlePill:SetAttribute("FixedTitlePill", true)
 titlePill.BackgroundColor3 = Color3.fromRGB(22, 26, 48)
 titlePill.ZIndex = 10
 titlePill.Parent = headerBar
@@ -1515,6 +1518,7 @@ titleLabel.ZIndex = 275
     currencyRow.Position = UDim2.new(0.935, 0, 0.5, 0)
     currencyRow.ZIndex = 275
     currencyRow.Parent = headerBar
+    currencyRow.ClipsDescendants = true
 
     local currencyLayout = Instance.new("UIListLayout")
     currencyLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -1584,7 +1588,21 @@ titleLabel.ZIndex = 275
     headerCoinIcon.BackgroundTransparency = 1
     headerCoinIcon.ScaleType = Enum.ScaleType.Fit
     headerCoinIcon.ZIndex = 277
-    headerCoinIcon.Parent = headerCoinFrame
+    -- content container keeps icon and label tightly packed and auto-width
+    local headerCoinContent = Instance.new("Frame")
+    headerCoinContent.Name = "Content"
+    headerCoinContent.BackgroundTransparency = 1
+    headerCoinContent.AutomaticSize = Enum.AutomaticSize.X
+    headerCoinContent.Parent = headerCoinFrame
+    headerCoinContent.AnchorPoint = Vector2.new(0.5, 0.5)
+    headerCoinContent.Position = UDim2.new(0.5, 0, 0.5, 0)
+    local headerCoinContentLayout = Instance.new("UIListLayout")
+    headerCoinContentLayout.FillDirection = Enum.FillDirection.Horizontal
+    headerCoinContentLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    headerCoinContentLayout.Padding = UDim.new(1.5, 1)
+    headerCoinContentLayout.Parent = headerCoinContent
+
+    headerCoinIcon.Parent = headerCoinContent
     local headerCoinIconAspect = Instance.new("UIAspectRatioConstraint")
     headerCoinIconAspect.AspectRatio = 1
     headerCoinIconAspect.Parent = headerCoinIcon
@@ -1606,16 +1624,18 @@ titleLabel.ZIndex = 275
     headerCoinLabel.Text = "0"
     headerCoinLabel.TextScaled = true
     headerCoinLabel.ZIndex = 277
-    headerCoinLabel.Parent = headerCoinFrame
-
-    -- remove any explicit UITextSizeConstraint on the CoinLabel so runtime scaler controls sizing
-    do
-        local existingCoinConstraint = headerCoinLabel:FindFirstChildOfClass("UITextSizeConstraint")
-        if existingCoinConstraint then
-            existingCoinConstraint:Destroy()
-        end
+    headerCoinLabel.Parent = headerCoinContent
+    -- enforce uniform UITextSizeConstraint so values use consistent max size
+    local headerCoinLabelConstraint = headerCoinLabel:FindFirstChildOfClass("UITextSizeConstraint")
+    if headerCoinLabelConstraint then
+        headerCoinLabelConstraint.MinTextSize = 8
+        headerCoinLabelConstraint.MaxTextSize = 28
+    else
+        headerCoinLabelConstraint = Instance.new("UITextSizeConstraint")
+        headerCoinLabelConstraint.MinTextSize = 8
+        headerCoinLabelConstraint.MaxTextSize = 28
+        headerCoinLabelConstraint.Parent = headerCoinLabel
     end
-    local headerCoinLabelConstraint = nil
 
     -- Keys display (right side, LayoutOrder 2 = appears after coins)
     local headerKeyFrame = Instance.new("Frame")
@@ -1632,9 +1652,22 @@ titleLabel.ZIndex = 275
     if headerKeyFrameStroke then
         headerKeyFrameStroke.Transparency = 1
     end
-
     local headerKeyIcon = nil
     local headerKeyIconConstraint = nil
+    -- content container keeps icon and label tightly packed and auto-width
+    local headerKeyContent = Instance.new("Frame")
+    headerKeyContent.Name = "Content"
+    headerKeyContent.BackgroundTransparency = 1
+    headerKeyContent.AutomaticSize = Enum.AutomaticSize.X
+    headerKeyContent.Parent = headerKeyFrame
+    headerKeyContent.AnchorPoint = Vector2.new(0.5, 0.5)
+    headerKeyContent.Position = UDim2.new(0.5, 0, 0.5, 0)
+    local headerKeyContentLayout = Instance.new("UIListLayout")
+    headerKeyContentLayout.FillDirection = Enum.FillDirection.Horizontal
+    headerKeyContentLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    headerKeyContentLayout.Padding = UDim.new(1.5, 1)
+    headerKeyContentLayout.Parent = headerKeyContent
+
     local keyImage = getKeyCurrencyImage()
     if keyImage then
         headerKeyIcon = Instance.new("ImageLabel")
@@ -1646,7 +1679,7 @@ titleLabel.ZIndex = 275
         headerKeyIcon.Image = keyImage
         headerKeyIcon.ScaleType = Enum.ScaleType.Fit
         headerKeyIcon.ZIndex = 277
-        headerKeyIcon.Parent = headerKeyFrame
+        headerKeyIcon.Parent = headerKeyContent
         local headerKeyIconAspect = Instance.new("UIAspectRatioConstraint")
         headerKeyIconAspect.AspectRatio = 1
         headerKeyIconAspect.Parent = headerKeyIcon
@@ -1661,7 +1694,7 @@ titleLabel.ZIndex = 275
         headerKeyIcon.Text = "\u{1F511}"
         headerKeyIcon.TextColor3 = Color3.fromRGB(170, 100, 255)
         headerKeyIcon.ZIndex = 277
-        headerKeyIcon.Parent = headerKeyFrame
+        headerKeyIcon.Parent = headerKeyContent
         local headerKeyIconAspect = Instance.new("UIAspectRatioConstraint")
         headerKeyIconAspect.AspectRatio = 1
         headerKeyIconAspect.Parent = headerKeyIcon
@@ -1678,14 +1711,19 @@ titleLabel.ZIndex = 275
     headerKeyLabel.Text = "0"
     headerKeyLabel.TextScaled = true
     headerKeyLabel.ZIndex = 277
-    headerKeyLabel.Parent = headerKeyFrame
-    -- ensure scaled text and remove any explicit constraint so runtime scaler controls sizing
+    headerKeyLabel.Parent = headerKeyContent
+    -- enforce uniform UITextSizeConstraint so values use consistent max size
     headerKeyLabel.TextScaled = true
-    do
-        local existing = headerKeyLabel:FindFirstChildOfClass("UITextSizeConstraint")
-        if existing then existing:Destroy() end
+    local headerKeyLabelConstraint = headerKeyLabel:FindFirstChildOfClass("UITextSizeConstraint")
+    if headerKeyLabelConstraint then
+        headerKeyLabelConstraint.MinTextSize = 8
+        headerKeyLabelConstraint.MaxTextSize = 28
+    else
+        headerKeyLabelConstraint = Instance.new("UITextSizeConstraint")
+        headerKeyLabelConstraint.MinTextSize = 8
+        headerKeyLabelConstraint.MaxTextSize = 28
+        headerKeyLabelConstraint.Parent = headerKeyLabel
     end
-    local headerKeyLabelConstraint = nil
 
     -- Salvage display (header currency row, LayoutOrder 3 = after keys)
     local SHARD_ACCENT = Color3.fromRGB(255, 158, 74)
@@ -1716,6 +1754,20 @@ titleLabel.ZIndex = 275
     local shardImage = getShardCurrencyImage()
     local headerSalvageIcon = nil
     local headerSalvageIconConstraint = nil
+    -- content container for salvage chip
+    local headerSalvageContent = Instance.new("Frame")
+    headerSalvageContent.Name = "Content"
+    headerSalvageContent.BackgroundTransparency = 1
+    headerSalvageContent.AutomaticSize = Enum.AutomaticSize.X
+    headerSalvageContent.Parent = headerSalvageFrame
+    headerSalvageContent.AnchorPoint = Vector2.new(0.5, 0.5)
+    headerSalvageContent.Position = UDim2.new(0.5, 0, 0.5, 0)
+    local headerSalvageContentLayout = Instance.new("UIListLayout")
+    headerSalvageContentLayout.FillDirection = Enum.FillDirection.Horizontal
+    headerSalvageContentLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+    headerSalvageContentLayout.Padding = UDim.new(1.5, 1)
+    headerSalvageContentLayout.Parent = headerSalvageContent
+
     if shardImage then
         headerSalvageIcon = Instance.new("ImageLabel")
         headerSalvageIcon.Name = "SalvageIcon"
@@ -1726,7 +1778,7 @@ titleLabel.ZIndex = 275
         headerSalvageIcon.Image = shardImage
         headerSalvageIcon.ScaleType = Enum.ScaleType.Fit
         headerSalvageIcon.ZIndex = 277
-        headerSalvageIcon.Parent = headerSalvageFrame
+        headerSalvageIcon.Parent = headerSalvageContent
         local headerSalvageIconAspect = Instance.new("UIAspectRatioConstraint")
         headerSalvageIconAspect.AspectRatio = 1
         headerSalvageIconAspect.Parent = headerSalvageIcon
@@ -1741,7 +1793,7 @@ titleLabel.ZIndex = 275
         headerSalvageIcon.Text = "\u{25C6}"
         headerSalvageIcon.TextColor3 = SHARD_ACCENT
         headerSalvageIcon.ZIndex = 277
-        headerSalvageIcon.Parent = headerSalvageFrame
+        headerSalvageIcon.Parent = headerSalvageContent
         local headerSalvageIconAspect = Instance.new("UIAspectRatioConstraint")
         headerSalvageIconAspect.AspectRatio = 1
         headerSalvageIconAspect.Parent = headerSalvageIcon
@@ -1758,14 +1810,19 @@ titleLabel.ZIndex = 275
     headerSalvageLabel.Text = "0"
     headerSalvageLabel.TextScaled = true
     headerSalvageLabel.ZIndex = 277
-    headerSalvageLabel.Parent = headerSalvageFrame
-    -- ensure scaled text and remove any explicit constraint so runtime scaler controls sizing
+    headerSalvageLabel.Parent = headerSalvageContent
+    -- enforce uniform UITextSizeConstraint so values use consistent max size
     headerSalvageLabel.TextScaled = true
-    do
-        local existing = headerSalvageLabel:FindFirstChildOfClass("UITextSizeConstraint")
-        if existing then existing:Destroy() end
+    local headerSalvageLabelConstraint = headerSalvageLabel:FindFirstChildOfClass("UITextSizeConstraint")
+    if headerSalvageLabelConstraint then
+        headerSalvageLabelConstraint.MinTextSize = 8
+        headerSalvageLabelConstraint.MaxTextSize = 28
+    else
+        headerSalvageLabelConstraint = Instance.new("UITextSizeConstraint")
+        headerSalvageLabelConstraint.MinTextSize = 8
+        headerSalvageLabelConstraint.MaxTextSize = 28
+        headerSalvageLabelConstraint.Parent = headerSalvageLabel
     end
-    local headerSalvageLabelConstraint = nil
 
     if headerKeyIcon and headerKeyIcon:IsA("TextLabel") then
         local existing = headerKeyIcon:FindFirstChildOfClass("UITextSizeConstraint")
@@ -1827,17 +1884,58 @@ local function updateHeaderCurrencyLayout()
     local rightInset = closeInset + math.max(10, math.floor(headerHeight * 0.24))
 
     local maxRowWidth = math.max(162, math.floor(windowWidth * 0.255))
-    local chipWidth = math.max(50, math.floor((maxRowWidth - (chipGap * 2)) / 3))
-    local totalWidth = (chipWidth * 3) + (chipGap * 2)
 
-    -- keep currency row manual-sized; only update position and padding
+    -- clamp chipHeight to avoid extreme sizes on very large screens
+    chipHeight = math.min(chipHeight, math.floor(headerHeight * 0.9))
+
+    -- keep currency row manual-sized; compute a reasonable row width and split chips evenly
     currencyRow.AutomaticSize = Enum.AutomaticSize.None
+    local estimatedTotal = math.max(150, math.floor(windowWidth * 0.18))
+    local rowWidth = math.min(estimatedTotal, maxRowWidth)
+    currencyRow.Size = UDim2.new(0, rowWidth, 1, 0)
+
+    local chipW = math.max(50, math.floor((rowWidth - (chipGap * 2)) / 3))
+    if headerCoinFrame then headerCoinFrame.Size = UDim2.new(0, chipW, 0, chipHeight) end
+    if headerKeyFrame then headerKeyFrame.Size = UDim2.new(0, chipW, 0, chipHeight) end
+    if headerSalvageFrame then headerSalvageFrame.Size = UDim2.new(0, chipW, 0, chipHeight) end
+
+    -- scale padding and label sizes with chipHeight so the layout remains proportional
+    currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
+    currencyLayout.Padding = UDim.new(0, chipGap)
+
+    local contentPadding = math.max(6, math.floor(chipHeight * 0.12))
+    local coinLayout = headerCoinContent and headerCoinContent:FindFirstChildOfClass("UIListLayout")
+    local keyLayout = headerKeyContent and headerKeyContent:FindFirstChildOfClass("UIListLayout")
+    local salvageLayout = headerSalvageContent and headerSalvageContent:FindFirstChildOfClass("UIListLayout")
+    if coinLayout then coinLayout.Padding = UDim.new(1.5, 1) end
+    if keyLayout then keyLayout.Padding = UDim.new(1.5, 1) end
+    if salvageLayout then salvageLayout.Padding = UDim.new(1.5, 1) end
+
+    -- update UILabel size constraints to scale with chip height
+    local labelMax = math.max(20, math.floor(chipHeight * 0.6))
+    if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = labelMax end
+    if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = labelMax end
+    if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = labelMax end
+
+    -- icon sizes scale with chipHeight so they remain proportional
+    if headerCoinIcon and headerCoinIcon:IsA("GuiObject") then
+        headerCoinIcon.Size = UDim2.new(0, math.max(12, math.floor(chipHeight * 0.7)), 0, math.max(12, math.floor(chipHeight * 0.7)))
+        headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
+    end
+    if headerKeyIcon and headerKeyIcon:IsA("GuiObject") then
+        headerKeyIcon.Size = UDim2.new(0, math.max(12, math.floor(chipHeight * 0.7)), 0, math.max(12, math.floor(chipHeight * 0.7)))
+        headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
+    end
+    if headerSalvageIcon and headerSalvageIcon:IsA("GuiObject") then
+        headerSalvageIcon.Size = UDim2.new(0, math.max(12, math.floor(chipHeight * 0.7)), 0, math.max(12, math.floor(chipHeight * 0.7)))
+        headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
+    end
     currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
     currencyLayout.Padding = UDim.new(0, chipGap)
 
     local titleHeight = math.max(28, math.floor(headerHeight * 0.8))
     local leftInset = math.max(12, math.floor(headerHeight * 0.28))
-    local rightReserved = rightInset + totalWidth + math.max(8, math.floor(headerHeight * 0.24))
+    local rightReserved = rightInset + (rowWidth or 0) + math.max(8, math.floor(headerHeight * 0.24))
     local titleWidth = math.max(96, math.min(math.floor(windowWidth * 0.34), windowWidth - rightReserved - leftInset))
 
     -- Default title center (falls back to centered in window)
@@ -1954,8 +2052,29 @@ local function updateHeaderCurrencyLayout()
         titleCenter = math.max(leftInset + halfW2, titleCenter - sharedOffset)
     end
 
-    titlePill.Size = UDim2.new(0, titleWidth, 0, titleHeight)
-    titlePill.Position = UDim2.new(0, titleCenter, 0.5, 0)
+    local fixed = titlePill:GetAttribute("FixedTitlePill")
+    if not fixed then
+        titlePill.Size = UDim2.new(0, titleWidth, 0, titleHeight)
+        titlePill.Position = UDim2.new(0, titleCenter, 0.5, 0)
+    else
+        -- If Achievements or Team, center; if Shop or Inventory, move back to left.
+        if titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" or titleUpper == "TEAM" or titleUpper == "TEAMS" then
+            titlePill.Position = UDim2.new(0.5, 0, 0.5, 0)
+            -- ensure the label text is uppercase for Achievements to match other titles
+            if titleLabel and titleLabel:IsA("TextLabel") then
+                if titleUpper:find("ACHIEVE") then
+                    titleLabel.Text = "ACHIEVEMENTS"
+                elseif titleUpper:find("TEAM") then
+                    titleLabel.Text = "TEAM"
+                end
+            end
+        elseif titleUpper == "SHOP" or titleUpper == "INVENTORY" then
+            titlePill.Position = UDim2.new(0.35, 0, 0.5, 0)
+        else
+            -- default to the left-fixed position
+            titlePill.Position = UDim2.new(0.35, 0, 0.5, 0)
+        end
+    end
 
     -- Ensure the title text scales to fit the pill width/height using a constraint
     if titleLabel and titleLabel:IsA("TextLabel") then
@@ -1976,7 +2095,11 @@ local function updateHeaderCurrencyLayout()
     end
 
     local function sizeChip(frame, width)
-        -- keep chip manual-sized; do not enable AutomaticSize
+        -- keep chip manual-sized; do not enable AutomaticSize unless the
+        -- frame explicitly requests preservation of automatic sizing.
+        if frame:GetAttribute("PreserveAutomaticSize") then
+            return
+        end
         frame.AutomaticSize = Enum.AutomaticSize.None
     end
 

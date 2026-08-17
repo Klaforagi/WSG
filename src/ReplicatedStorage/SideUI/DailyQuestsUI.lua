@@ -2122,8 +2122,20 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     local showcaseFrame = Instance.new("Frame")
     showcaseFrame.Name                = "CategoryShowcase"
     showcaseFrame.BackgroundTransparency = 1
-    showcaseFrame.Size                = UDim2.new(0.41, 0, 1, 0)
-    showcaseFrame.Position            = UDim2.new(0, 0, 0, 0)
+    showcaseFrame.Size                = UDim2.new(0.41, 0, 0.95, 0)
+    showcaseFrame.Position            = UDim2.new(0, 0, 0.05, 0)
+    -- mark as fixed and guard so runtime layout won't overwrite these values
+    showcaseFrame:SetAttribute("FixedShowcase", true)
+    showcaseFrame:GetPropertyChangedSignal("Size"):Connect(function()
+        if showcaseFrame:GetAttribute("FixedShowcase") then
+            showcaseFrame.Size = UDim2.new(0.41, 0, 0.95, 0)
+        end
+    end)
+    showcaseFrame:GetPropertyChangedSignal("Position"):Connect(function()
+        if showcaseFrame:GetAttribute("FixedShowcase") then
+            showcaseFrame.Position = UDim2.new(0, 0, 0.05, 0)
+        end
+    end)
     showcaseFrame.ClipsDescendants    = true
     showcaseFrame.Parent              = hubRoot
 
