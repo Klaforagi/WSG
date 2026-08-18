@@ -146,6 +146,34 @@ local function getZoneParts()
     return zones
 end
 
+-- Create a default zone folder/part matching the MeteorShower fallback behavior
+local function getOrCreateZoneFolder()
+    local folder = workspace:FindFirstChild("GoldRushZones")
+    if folder then return folder end
+
+    warn("[GoldRush] Zone folder 'GoldRushZones' not found – creating default 200×200 fallback zone.")
+
+    folder = Instance.new("Folder")
+    folder.Name = "GoldRushZones"
+    folder.Parent = workspace
+
+    local centerPart = workspace:FindFirstChild("CenterPoint")
+    local centerPos = centerPart and centerPart.Position or Vector3.new(0, 0, 0)
+
+    local zone = Instance.new("Part")
+    zone.Name = "DefaultZone"
+    zone.Size = Vector3.new(200, 1, 200)
+    zone.Position = Vector3.new(centerPos.X, centerPos.Y + 5, centerPos.Z)
+    zone.Anchored = true
+    zone.CanCollide = false
+    zone.CanTouch = false
+    zone.CanQuery = false
+    zone.Transparency = 1
+    zone.Parent = folder
+
+    return folder
+end
+
 local function raycastToGround(position)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
@@ -161,20 +189,54 @@ end
 
 local function samplePickupPosition()
     local zones = getZoneParts()
-    if #zones > 0 then
-        local zone = zones[math.random(1, #zones)]
-        local size = zone.Size
-        local localOffset = Vector3.new(
-            (math.random() * 2 - 1) * size.X * 0.5,
-            size.Y * 0.5,
-            (math.random() * 2 - 1) * size.Z * 0.5
-        )
-        return raycastToGround(zone.CFrame:PointToWorldSpace(localOffset))
+    local attempts = 8
+    for i = 1, attempts do
+        if #zones > 0 then
+            local zone = zones[math.random(1, #zones)]
+            local size = zone.Size
+            local localOffset = Vector3.new(
+                (math.random() * 2 - 1) * (size.X * 0.5),
+                size.Y * 0.5,
+                (math.random() * 2 - 1) * (size.Z * 0.5)
+            )
+            local sampled = raycastToGround(zone.CFrame:PointToWorldSpace(localOffset))
+            if sampled and sampled.Y >= 0 and sampled.Y <= 10 then
+                return sampled
+            end
+        else
+            -- create a default zone folder like MeteorShower uses
+            local folder = getOrCreateZoneFolder()
+            local folderZones = {}
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA("BasePart") then
+                    table.insert(folderZones, child)
+                end
+            end
+            if #folderZones > 0 then
+                local zone = folderZones[math.random(1, #folderZones)]
+                local size = zone.Size
+                local localOffset = Vector3.new(
+                    (math.random() * 2 - 1) * (size.X * 0.5),
+                    size.Y * 0.5,
+                    (math.random() * 2 - 1) * (size.Z * 0.5)
+                )
+                local sampled = raycastToGround(zone.CFrame:PointToWorldSpace(localOffset))
+                if sampled and sampled.Y >= 0 and sampled.Y <= 10 then
+                    return sampled
+                end
+            else
+                local x = MAP_MIN_X + math.random() * (MAP_MAX_X - MAP_MIN_X)
+                local z = MAP_MIN_Z + math.random() * (MAP_MAX_Z - MAP_MIN_Z)
+                local sampled = raycastToGround(Vector3.new(x, 20, z))
+                if sampled and sampled.Y >= 0 and sampled.Y <= 10 then
+                    return sampled
+                end
+            end
+        end
     end
 
-    local x = MAP_MIN_X + math.random() * (MAP_MAX_X - MAP_MIN_X)
-    local z = MAP_MIN_Z + math.random() * (MAP_MAX_Z - MAP_MIN_Z)
-    return raycastToGround(Vector3.new(x, 20, z))
+    -- If all attempts failed, return nil so caller can skip spawning here
+    return nil
 end
 
 local function getPickupFolder()
@@ -218,12 +280,6 @@ local function spawnPickup(position)
     pickup.CanTouch = true
     pickup.CFrame = CFrame.new(position)
     pickup.Parent = getPickupFolder()
-
-    local light = Instance.new("PointLight")
-    light.Color = Color3.fromRGB(255, 210, 80)
-    light.Brightness = 1.8
-    light.Range = 12
-    light.Parent = pickup
 
     local sparkle = Instance.new("Sparkles")
     sparkle.SparkleColor = Color3.fromRGB(255, 230, 120)
@@ -284,7 +340,6 @@ local function spawnPickup(position)
             if not pickup or not pickup.Parent then return end
             local fadeInfo = TweenInfo.new(4, Enum.EasingStyle.Linear)
             TweenService:Create(pickup, fadeInfo, { Transparency = 1 }):Play()
-            if light then TweenService:Create(light, fadeInfo, { Brightness = 0 }):Play() end
         end)
     end
     Debris:AddItem(pickup, lifetime)
@@ -299,10 +354,18 @@ local function spawnWave()
     )
     count = math.min(count, tonumber(def.MaxPickupsPerWave) or 40)
 
-    for _ = 1, count do
-        spawnPickup(samplePickupPosition())
+    local spawned = 0
+    local attempts = 0
+    local maxAttempts = math.max(8, count * 3)
+    while spawned < count and attempts < maxAttempts do
+        attempts = attempts + 1
+        local pos = samplePickupPosition()
+        if pos then
+            spawnPickup(pos)
+            spawned = spawned + 1
+        end
     end
-    print(("[GoldRush] Spawned wave with %d pickups"):format(count))
+    print(("[GoldRush] Spawned wave with %d pickups (attempts=%d)"):format(spawned, attempts))
 end
 
 Players.PlayerAdded:Connect(function(player)
