@@ -211,21 +211,42 @@ playGameSound = function(soundName)
 end
 
 -- listen for MatchEnd
-local matchEndEvent = ReplicatedStorage:WaitForChild("MatchEnd")
-matchEndEvent.OnClientEvent:Connect(function(resultType, winner)
-    showEnd(resultType, winner)
-    if resultType == "sudden" then
-        pcall(function() playGameSound("SuddenDeath") end)
+local function waitForRemote(name, timeout)
+    local t = timeout or 5
+    local inst = ReplicatedStorage:FindFirstChild(name)
+    if inst then return inst end
+    local waited = 0
+    while waited < t do
+        task.wait(0.1)
+        waited = waited + 0.1
+        inst = ReplicatedStorage:FindFirstChild(name)
+        if inst then return inst end
     end
-end)
+    warn("MatchEnd client: remote '" .. name .. "' not found after " .. tostring(t) .. "s")
+    return ReplicatedStorage:FindFirstChild(name)
+end
+
+local matchEndEvent = waitForRemote("MatchEnd", 5)
+if matchEndEvent then
+    matchEndEvent.OnClientEvent:Connect(function(resultType, winner)
+        showEnd(resultType, winner)
+        if resultType == "sudden" then
+            pcall(function() playGameSound("SuddenDeath") end)
+        end
+    end)
+end
 
 -- listen for MatchStart to hide the end screen when a new match begins
-local matchStartEvent = ReplicatedStorage:WaitForChild("MatchStart")
-matchStartEvent.OnClientEvent:Connect(function()
-    hideEndScreen()
-end)
+local matchStartEvent = waitForRemote("MatchStart", 5)
+if matchStartEvent then
+    matchStartEvent.OnClientEvent:Connect(function()
+        hideEndScreen()
+    end)
+end
 
-local intermissionEvent = ReplicatedStorage:WaitForChild("IntermissionStart")
-intermissionEvent.OnClientEvent:Connect(function()
-    hideEndScreen()
-end)
+local intermissionEvent = waitForRemote("IntermissionStart", 5)
+if intermissionEvent then
+    intermissionEvent.OnClientEvent:Connect(function()
+        hideEndScreen()
+    end)
+end

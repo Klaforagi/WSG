@@ -159,11 +159,18 @@ end
 
 local function getJoinDisabledReason()
 	local matchState = ServerScriptService:GetAttribute("MatchState")
+	-- Disable joins during intermission, end-of-round, voting, and loading.
 	if matchState == "Intermission" then
 		return "INTERMISSION"
 	end
 	if matchState == "EndGame" then
 		return "CLOSED"
+	end
+	if matchState == "Voting" then
+		return "VOTING"
+	end
+	if matchState == "Loading" then
+		return "LOADING"
 	end
 	return nil
 end
