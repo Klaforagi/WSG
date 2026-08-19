@@ -51,6 +51,9 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 5
 screenGui.Parent = playerGui
 
+-- Hide by default; visibility is controlled by authoritative match events
+screenGui.Enabled = false
+
 -- Root positioning frame (transparent, allows center panel to extend beyond)
 local root = Instance.new("Frame")
 root.Name = "ScoreboardRoot"
@@ -667,6 +670,8 @@ end
 local function wireMatchStart(ev)
     ev.OnClientEvent:Connect(function(durationSeconds, startTick)
         beginTimer(durationSeconds, startTick, "Match")
+        -- show HUD when authoritative match starts
+        screenGui.Enabled = true
         -- initialize state
         blueScore = 0
         redScore = 0
@@ -683,6 +688,8 @@ end
 
 local function wireIntermissionStart(ev)
     ev.OnClientEvent:Connect(function(durationSeconds, startTick)
+        -- hide HUD during intermission
+        screenGui.Enabled = false
         beginTimer(durationSeconds, startTick, "Intermission")
     end)
 end
@@ -691,6 +698,8 @@ local function wireMatchEnd(ev)
     ev.OnClientEvent:Connect(function(resultType, winner)
         -- stop the local timer so it doesn't keep counting down
         running = false
+        -- hide HUD when match ends
+        screenGui.Enabled = false
         if resultType == "sudden" then
             timerLabel.Text = "SUDDEN"
         elseif resultType == "win" then
@@ -745,8 +754,10 @@ spawn(function()
     end
     if info.state == "Game" and type(info.matchStartTick) == "number" and type(info.matchDuration) == "number" then
         beginTimer(info.matchDuration, info.matchStartTick, "Match")
+        screenGui.Enabled = true
     elseif info.state == "Intermission" and type(info.intermissionStartTick) == "number" then
         beginTimer(info.intermissionDuration, info.intermissionStartTick, "Intermission")
+        screenGui.Enabled = false
     else
         refresh()
     end

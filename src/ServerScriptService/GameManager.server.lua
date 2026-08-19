@@ -279,23 +279,42 @@ function startMatch()
     end)
 end
 
----------------------------------------------------------------------
--- Boot: start first match once at least MIN_PLAYERS are playing
----------------------------------------------------------------------
-if MIN_PLAYERS <= 0 then
-    -- start immediately
-    startMatch()
-else
-    -- wait for enough players
-    local function checkStart()
-        if State ~= "Idle" then return end
-        local count = #Players:GetPlayers()
-        if count >= MIN_PLAYERS then
-            startMatch()
-        end
+-- (boot logic moved below to allow MapVoteService to control match starts)
+-- Allow external systems (e.g. MapVoteService) to request a match start
+local StartMatchBE = ServerScriptService:FindFirstChild("StartMatch")
+if not StartMatchBE then
+    StartMatchBE = Instance.new("BindableEvent")
+    StartMatchBE.Name = "StartMatch"
+    StartMatchBE.Parent = ServerScriptService
+end
+StartMatchBE.Event:Connect(function()
+    if State == "Game" or State == "SuddenDeath" then
+        print("[GameManager] StartMatch requested but game already in progress (state=", State, ")")
+        return
     end
-    Players.PlayerAdded:Connect(checkStart)
-    checkStart()
+    startMatch()
+end)
+
+-- If MapVoteService exists, defer auto-start to MapVote; otherwise keep existing boot logic
+local mapVoteModule = ServerScriptService:FindFirstChild("MapVoteService")
+if mapVoteModule then
+    print("[GameManager] MapVoteService detected; deferring match start to MapVoteService via StartMatch")
+else
+    if MIN_PLAYERS <= 0 then
+        -- start immediately
+        startMatch()
+    else
+        -- wait for enough players
+        local function checkStart()
+            if State ~= "Idle" then return end
+            local count = #Players:GetPlayers()
+            if count >= MIN_PLAYERS then
+                startMatch()
+            end
+        end
+        Players.PlayerAdded:Connect(checkStart)
+        checkStart()
+    end
 end
 
 -- Ensure players who join mid-match receive the current MatchStart info

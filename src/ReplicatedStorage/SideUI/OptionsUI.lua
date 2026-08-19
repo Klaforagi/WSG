@@ -216,9 +216,8 @@ local function ApplySettings(settings)
 	-- UI ─────────────────────────────────────────────────────────────────
 	-- Show Game State
 	pcall(function()
-		local gui = playerGui:FindFirstChild("GameStateDisplay")
-			or playerGui:FindFirstChild("GameStateGui")
-			or playerGui:FindFirstChild("MatchHUD")
+		-- Only toggle the dedicated game state display UI; do NOT force MatchHUD visibility
+		local gui = playerGui:FindFirstChild("GameStateDisplay") or playerGui:FindFirstChild("GameStateGui")
 		if gui then gui.Enabled = settings.ShowGameState end
 	end)
 
