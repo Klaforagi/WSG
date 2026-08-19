@@ -273,8 +273,12 @@ local function runLobbyCycle()
     local myGen = phaseGen + 1
     -- move to matchResults/Intermission
     setMatchState("Intermission")
-    -- perform cleanup for results
-    resetMatchForIntermission()
+        if MapVote and MapVote.DespawnCurrentMap then
+            pcall(function()
+                MapVote.DespawnCurrentMap()
+            end)
+        end
+        resetMatchForIntermission()
     intermissionStartTick = workspace:GetServerTimeNow()
     pcall(function() IntermissionStart:FireAllClients(MATCH_RESULTS_DURATION, intermissionStartTick) end)
 
@@ -318,7 +322,9 @@ local function runLobbyCycle()
                         local conn
                         conn = Players.PlayerAdded:Connect(function()
                             if conn then conn:Disconnect() end
-                            startMatch()
+                            if State == "Prematch" then
+                                startMatch()
+                            end
                         end)
                     else
                         startMatch()
@@ -326,30 +332,6 @@ local function runLobbyCycle()
                 end)
             end)
         end)
-    end)
-end
-
-function startIntermission()
-    if State ~= "EndGame" then return end
-
-    -- Legacy intermission path (used only when MapVoteService is absent)
-    local mapVoteModule = ServerScriptService:FindFirstChild("MapVoteService")
-    if mapVoteModule then
-        print("[GameManager] MapVoteService present; skipping legacy intermission path")
-        return
-    end
-
-    resetMatchForIntermission()
-    intermissionStartTick = workspace:GetServerTimeNow()
-    setMatchState("Intermission")
-    print("[GameManager] INTERMISSION —", INTERMISSION_DURATION, "s")
-    pcall(function() IntermissionStart:FireAllClients(INTERMISSION_DURATION, intermissionStartTick) end)
-
-    task.delay(INTERMISSION_DURATION, function()
-        if State ~= "Intermission" then return end
-
-        intermissionStartTick = nil
-        startMatch()   -- forward-declared below
     end)
 end
 
@@ -366,15 +348,9 @@ function endMatch(winnerTeam)
     registerMatchOutcome(winnerTeam)
 
     -- After endgame display, run the lobby cycle (matchResults -> voting -> loading -> prematch -> match)
-    task.delay(END_SCREEN_TIME, function()
-        if State ~= "EndGame" then return end
-        runLobbyCycle()
-        if MapVote and MapVote.DespawnCurrentMap then
-	        pcall(function()
-		        MapVote.DespawnCurrentMap()
-	        end)
-        end
-    end)
+    afterDelay(END_SCREEN_TIME, "EndGame", phaseGen, function()
+            runLobbyCycle()
+        end)
 end
 
 ---------------------------------------------------------------------
@@ -488,7 +464,7 @@ Players.PlayerAdded:Connect(function(pl)
         if EventScheduler then pcall(function() EventScheduler:SyncPlayer(pl) end) end
     elseif State == "Intermission" and intermissionStartTick then
         pcall(function()
-            IntermissionStart:FireClient(pl, INTERMISSION_DURATION, intermissionStartTick)
+            IntermissionStart:FireClient(pl, MATCH_RESULTS_DURATION, intermissionStartTick)
         end)
     end
 end)
