@@ -119,24 +119,33 @@ local function spawnMapByName(name)
         warn("[MapVote] Map template not found: " .. tostring(name))
         return nil
     end
-
-    -- remove any existing ActiveMap container
-    local existing = Workspace:FindFirstChild("ActiveMap")
+    -- remove any existing map with the same name at workspace root
+    local existing = Workspace:FindFirstChild(name)
     if existing then
-        -- keep for deletion during matchResults phase, but here we replace
-        existing:Destroy()
+        pcall(function() existing:Destroy() end)
     end
 
-    local container = Instance.new("Folder")
-    container.Name = "ActiveMap"
-    container.Parent = Workspace
-
+    -- Clone map template directly into workspace so other systems (MobSpawner, portals)
+    -- can find expected objects at top-level.
     local clone = template:Clone()
-    clone.Parent = container
-    currentMapInstance = container
+    clone.Parent = Workspace
+    clone.Name = name
+    currentMapInstance = clone
     currentMapName = name
-    print("[MapVote] Spawned map: " .. tostring(name))
-    return container
+    print("[MapVote] Spawned map in Workspace: " .. tostring(name))
+
+    -- Ensure players are placed into the neutral lobby/team for prematch
+    local Teams = game:GetService("Teams")
+    local neutral = Teams:FindFirstChild("Neutral")
+    for _, pl in ipairs(Players:GetPlayers()) do
+        pcall(function()
+            if neutral then pl.Team = neutral end
+            pl:SetAttribute("Team", nil)
+            pcall(function() pl:LoadCharacter() end)
+        end)
+    end
+
+    return clone
 end
 
 local function determineWinner()

@@ -8,7 +8,21 @@ local Teams = game:GetService("Teams")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
-local Map = workspace:WaitForChild("WSG")
+
+-- Helper to locate a spawn part (BlueSpawn/RedSpawn) in any map model under Workspace
+local function findSpawnPart(spawnName)
+	for _, candidate in ipairs(workspace:GetChildren()) do
+		if candidate:IsA("Model") or candidate:IsA("Folder") then
+			local p = candidate:FindFirstChild(spawnName)
+			if p and p:IsA("BasePart") then
+				return p
+			end
+		end
+	end
+	local top = workspace:FindFirstChild(spawnName)
+	if top and top:IsA("BasePart") then return top end
+	return nil
+end
 
 ---------------------------------------------------------------------------
 -- Remote events
@@ -139,7 +153,7 @@ changeRequest.OnServerEvent:Connect(function(plr, teamName)
 		if hrp then
 			task.wait(0.15) -- let other handlers settle, then override position
 			local spawnName = teamName == "Red" and "RedSpawn" or "BlueSpawn"
-			local spawnPart = Map:FindFirstChild(spawnName)
+			local spawnPart = findSpawnPart(spawnName)
 			if spawnPart and spawnPart:IsA("BasePart") then
 				hrp.CFrame = randomPointOnPart(spawnPart)
 			end

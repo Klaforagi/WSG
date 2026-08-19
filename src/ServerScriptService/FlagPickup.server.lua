@@ -1,5 +1,4 @@
 local Workspace = game:GetService("Workspace")
-local Map = Workspace:WaitForChild("WSG")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ServerStorage = game:GetService("ServerStorage")
@@ -254,7 +253,7 @@ end
 local function findStandInstance(team)
     for standName, standTeam in pairs(FLAG_STAND_TEAMS_BY_NAME) do
         if standTeam == team then
-            local standInstance = Map:FindFirstChild(standName, true) or Workspace:FindFirstChild(standName, true)
+            local standInstance = Workspace:FindFirstChild(standName, true)
             if standInstance and (standInstance:IsA("BasePart") or standInstance:IsA("Model")) then
                 return standInstance
             end
@@ -293,7 +292,7 @@ local function syncFlagState(team)
     local returnDeadline = (isDropped and flagInfo and tonumber(flagInfo.returnDeadline)) or 0
     local atBase = false
 
-    if flagInfo and flagInfo.model and flagInfo.model.Parent == Map and not isCarried and not isDropped then
+    if flagInfo and flagInfo.model and flagInfo.model.Parent and flagInfo.model.Parent.Parent == Workspace and not isCarried and not isDropped then
         atBase = true
     end
 
@@ -503,7 +502,7 @@ local function respawnFlag(team)
     local info = flags[team]
     if not info or not info.original then return end
     -- remove any existing flag models in the world (dropped or misplaced) to avoid duplicates
-    for _, child in ipairs(Map:GetChildren()) do
+    for _, child in ipairs(Workspace:GetChildren()) do
         if child and child:IsA("Model") then
             local childTeam = getFlagTeamFromModelName(child.Name)
             if childTeam == team then
@@ -514,7 +513,18 @@ local function respawnFlag(team)
 
     -- clone the canonical original (keep scripts intact for stand behavior)
     local spawnModel = info.original:Clone()
-    spawnModel.Parent = Map
+    -- Parent the flag model under the map model if available, else under Workspace
+    local parentMap = nil
+    for _, candidate in ipairs(Workspace:GetChildren()) do
+        if candidate:IsA("Model") then
+            -- heuristics: prefer map models that contain flag stands or flag placeholders
+            if candidate:FindFirstChild("BlueFlagStand") or candidate:FindFirstChild("RedFlagStand") then
+                parentMap = candidate
+                break
+            end
+        end
+    end
+    spawnModel.Parent = parentMap or Workspace
     -- ensure PrimaryPart exists so we can position the model correctly
     if not spawnModel.PrimaryPart then
         for _, d in ipairs(spawnModel:GetDescendants()) do
@@ -940,8 +950,8 @@ end
         setupFlagActionPrompt(team, model)
 end
 
--- initial scan for flags in Workspace.WSG
-for _, child in ipairs(Map:GetChildren()) do
+-- initial scan for flags in workspace map children
+for _, child in ipairs(Workspace:GetChildren()) do
     for _, name in ipairs(FLAG_NAMES) do
         if child.Name == name then
             -- ensure model has PrimaryPart set if possible
@@ -959,7 +969,7 @@ for _, child in ipairs(Map:GetChildren()) do
 end
 
 -- watch for flags added dynamically under the map folder
-Map.ChildAdded:Connect(function(child)
+Workspace.ChildAdded:Connect(function(child)
     for _, name in ipairs(FLAG_NAMES) do
         if child.Name == name then
             setupFlagModel(child)
@@ -1133,8 +1143,8 @@ local function destroyAllFlags()
         lastCarrierPos[pl] = nil
     end
 
-    -- 2) Remove any flag models currently in Map (dropped or leftover)
-    for _, child in ipairs(Map:GetChildren()) do
+    -- 2) Remove any flag models currently in maps under Workspace (dropped or leftover)
+    for _, child in ipairs(Workspace:GetChildren()) do
         local team = getFlagTeamFromModelName(child.Name)
         if team and child:IsA("Model") then
             child:Destroy()

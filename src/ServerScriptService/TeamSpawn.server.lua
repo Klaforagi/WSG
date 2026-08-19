@@ -19,7 +19,22 @@ local ServerScriptService = game:GetService("ServerScriptService")
 local Teams               = game:GetService("Teams")
 
 local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
-local Map              = workspace:WaitForChild("WSG")
+
+-- Helper to locate a spawn part (BlueSpawn/RedSpawn) in any map model under Workspace
+local function findSpawnPart(spawnName)
+	for _, candidate in ipairs(workspace:GetChildren()) do
+		if candidate:IsA("Model") or candidate:IsA("Folder") then
+			local p = candidate:FindFirstChild(spawnName)
+			if p and p:IsA("BasePart") then
+				return p
+			end
+		end
+	end
+	-- fallback: top-level part named spawnName
+	local top = workspace:FindFirstChild(spawnName)
+	if top and top:IsA("BasePart") then return top end
+	return nil
+end
 
 -----------------------------------------------------------------------
 -- Config
@@ -179,7 +194,7 @@ local function doAssignTeam(player, teamName, sendResponse)
 	if char and char.Parent then
 		local hrp = char:FindFirstChild("HumanoidRootPart")
 		local spawnName = teamName == "Red" and "RedSpawn" or "BlueSpawn"
-		local spawnPart = Map:FindFirstChild(spawnName)
+		local spawnPart = findSpawnPart(spawnName)
 		if hrp and spawnPart and spawnPart:IsA("BasePart") then
 			hrp.CFrame = randomPointOnPart(spawnPart)
 		else
@@ -247,7 +262,7 @@ Players.PlayerAdded:Connect(function(player)
 		elseif not hasSpawnedOnTeam then
 			hasSpawnedOnTeam = true
 			local spawnName = currentTeam == "Red" and "RedSpawn" or "BlueSpawn"
-			local spawnPart = Map:FindFirstChild(spawnName)
+			local spawnPart = findSpawnPart(spawnName)
 			if spawnPart and spawnPart:IsA("BasePart") then
 				hrp.CFrame = randomPointOnPart(spawnPart)
 			else

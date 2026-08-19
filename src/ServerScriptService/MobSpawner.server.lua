@@ -1,5 +1,5 @@
 local Workspace = game:GetService("Workspace")
-local Map = Workspace:WaitForChild("WSG")
+-- Map variable removed; we'll discover map models dynamically in findPortals()
 local ServerStorage = game:GetService("ServerStorage")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
@@ -228,26 +228,27 @@ rebuildWeightedPool()
 ---------------------------------------------------------------------------
 local function findPortals()
     local out = {}
-    for idx, groupName in ipairs(PORTAL_GROUP_NAMES) do
-        local group = Map:FindFirstChild(groupName)
-        if not group then
-            warn("[MobSpawner] Missing group: " .. groupName)
-            continue
-        end
-
-        local areaName = MOB_AREA_PREFIX .. tostring(idx)
-        local areaPart = Map:FindFirstChild(areaName)
-        if not areaPart then
-            warn("[MobSpawner] Missing area: " .. areaName)
-        end
-
-        for _, v in ipairs(group:GetDescendants()) do
-            if v:IsA("BasePart") and v.Name == PORTAL_PART_NAME then
-                table.insert(out, {
-                    portal = v,
-                    area = areaPart,
-                    groupName = groupName,
-                })
+    -- Search top-level Workspace children (map models) for portal groups and area parts
+    for _, candidate in ipairs(Workspace:GetChildren()) do
+        if candidate:IsA("Model") or candidate:IsA("Folder") then
+            for idx, groupName in ipairs(PORTAL_GROUP_NAMES) do
+                local group = candidate:FindFirstChild(groupName)
+                if group and group:IsA("Instance") then
+                    local areaName = MOB_AREA_PREFIX .. tostring(idx)
+                    local areaPart = candidate:FindFirstChild(areaName)
+                    if not areaPart then
+                        warn("[MobSpawner] Missing area '" .. areaName .. "' in map '" .. candidate.Name .. "'")
+                    end
+                    for _, v in ipairs(group:GetDescendants()) do
+                        if v:IsA("BasePart") and v.Name == PORTAL_PART_NAME then
+                            table.insert(out, {
+                                portal = v,
+                                area = areaPart,
+                                groupName = groupName,
+                            })
+                        end
+                    end
+                end
             end
         end
     end
