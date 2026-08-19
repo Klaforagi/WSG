@@ -101,7 +101,7 @@ local function showEnd(resultType, winner)
         pcall(function() playGameSound("SuddenDeath") end)
     elseif resultType == "win" and winner then
         title.Text = "⚔ " .. TeamDisplayNames.GetUpper(winner) .. " WIN! ⚔"
-        subtitle.Text = "Intermission starts soon..."
+        subtitle.Text = ""
         if winner == "Blue" then
             title.TextColor3 = Color3.fromRGB(65, 130, 255)
         elseif winner == "Red" then

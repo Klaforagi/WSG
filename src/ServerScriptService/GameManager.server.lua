@@ -16,8 +16,12 @@ local Teams = game:GetService("Teams")
 ---------------------------------------------------------------------
 -- Config
 ---------------------------------------------------------------------
-local MATCH_DURATION   = 15 * 60  -- round duration in seconds (900 s = 15 min)
-local END_SCREEN_TIME  = 8        -- seconds the winner screen stays up
+local MATCH_DURATION   = 5 * 60   -- round duration in seconds (5 minutes)
+local END_SCREEN_TIME  = 10       -- seconds the winner screen (endgame) stays up
+local MATCH_RESULTS_DURATION = 15 -- seconds for match results display (intermission)
+local VOTING_DURATION = 10        -- seconds for map voting
+local LOADING_DURATION = 2        -- seconds for loading/map spawn settling
+local PREMATCH_DURATION = 15      -- seconds for prematch team selection
 local INTERMISSION_DURATION = 60  -- seconds players wait in the lobby between rounds
 local MIN_PLAYERS      = 0        -- set >0 if you want a lobby phase
 
@@ -202,6 +206,13 @@ end
 function startIntermission()
     if State ~= "EndGame" then return end
 
+    -- Legacy intermission path (used only when MapVoteService is absent)
+    local mapVoteModule = ServerScriptService:FindFirstChild("MapVoteService")
+    if mapVoteModule then
+        print("[GameManager] MapVoteService present; skipping legacy intermission path")
+        return
+    end
+
     resetMatchForIntermission()
     intermissionStartTick = workspace:GetServerTimeNow()
     setMatchState("Intermission")
@@ -228,9 +239,90 @@ function endMatch(winnerTeam)
     pcall(function() MatchEndedBE:Fire(winnerTeam) end)
     registerMatchOutcome(winnerTeam)
 
+    -- After endgame display, proceed to matchResults -> voting cycle (MapVote-driven when available)
     task.delay(END_SCREEN_TIME, function()
         if State ~= "EndGame" then return end
-        startIntermission()
+        local mapVoteModuleInstance = ServerScriptService:FindFirstChild("MapVoteService")
+        if mapVoteModuleInstance then
+            -- Use GameManager-driven MapVote cycle
+            pcall(function()
+                local ok, mapVote = pcall(function() return require(mapVoteModuleInstance) end)
+                if ok and mapVote then
+                    -- perform matchResults cleanup and then start voting
+                    -- Despawn map first (if any)
+                    if mapVote.DespawnCurrentMap then
+                        pcall(function() mapVote.DespawnCurrentMap() end)
+                    end
+                    -- Reset flags / players / scores
+                    resetMatchForIntermission()
+
+                    -- Show match results (intermission) to clients
+                    intermissionStartTick = workspace:GetServerTimeNow()
+                    setMatchState("Intermission")
+                    pcall(function() IntermissionStart:FireAllClients(MATCH_RESULTS_DURATION, intermissionStartTick) end)
+
+                    -- After match results, run voting -> loading -> prematch -> match
+                    task.delay(MATCH_RESULTS_DURATION, function()
+                        -- Voting
+                        setMatchState("Voting")
+                        if mapVote.StartVoting then
+                            pcall(function() mapVote.StartVoting() end)
+                        end
+                        -- Inform clients via MapVote Phase remote (if present)
+                        local phaseRE = ReplicatedStorage:FindFirstChild("Remotes")
+                        and ReplicatedStorage.Remotes:FindFirstChild("MapVote")
+                        and ReplicatedStorage.Remotes.MapVote:FindFirstChild("Phase")
+                        if phaseRE and phaseRE:IsA("RemoteEvent") then
+                            pcall(function() phaseRE:FireAllClients({ phase = "voting", duration = VOTING_DURATION, currentMap = nil }) end)
+                        end
+
+                        task.delay(VOTING_DURATION, function()
+                            -- Stop voting and pick winner
+                            local winner
+                            if mapVote.StopVotingAndGetWinner then
+                                local ok2, res = pcall(function() return mapVote.StopVotingAndGetWinner() end)
+                                if ok2 then winner = res end
+                            end
+                            -- Spawn winner map if available
+                            if winner and mapVote.SpawnMap then
+                                pcall(function() mapVote.SpawnMap(winner) end)
+                            end
+
+                            -- Loading
+                            setMatchState("Loading")
+                            if phaseRE and phaseRE:IsA("RemoteEvent") then
+                                pcall(function() phaseRE:FireAllClients({ phase = "loading", duration = LOADING_DURATION, currentMap = winner }) end)
+                            end
+                            task.delay(LOADING_DURATION, function()
+                                -- Prematch
+                                setMatchState("Prematch")
+                                if phaseRE and phaseRE:IsA("RemoteEvent") then
+                                    pcall(function() phaseRE:FireAllClients({ phase = "prematch", duration = PREMATCH_DURATION, currentMap = winner }) end)
+                                end
+                                task.delay(PREMATCH_DURATION, function()
+                                    -- If no players, wait for a join
+                                    if #Players:GetPlayers() == 0 then
+                                        local conn
+                                        conn = Players.PlayerAdded:Connect(function()
+                                            conn:Disconnect()
+                                            startMatch()
+                                        end)
+                                    else
+                                        startMatch()
+                                    end
+                                end)
+                            end)
+                        end)
+                    end)
+                else
+                    -- Failed to require MapVote; fallback to legacy intermission
+                    startIntermission()
+                end
+            end)
+        else
+            -- No MapVote module; fallback to legacy intermission/startMatch loop
+            startIntermission()
+        end
     end)
 end
 
@@ -298,7 +390,70 @@ end)
 -- If MapVoteService exists, defer auto-start to MapVote; otherwise keep existing boot logic
 local mapVoteModule = ServerScriptService:FindFirstChild("MapVoteService")
 if mapVoteModule then
-    print("[GameManager] MapVoteService detected; deferring match start to MapVoteService via StartMatch")
+    print("[GameManager] MapVoteService detected; starting managed match cycle")
+    task.spawn(function()
+        -- run initial matchResults -> voting -> loading -> prematch -> match
+        pcall(function()
+            local ok, mapVote = pcall(function() return require(mapVoteModule) end)
+            if not ok or not mapVote then
+                print("[GameManager] Failed to require MapVoteService on boot; falling back to legacy start")
+                if MIN_PLAYERS <= 0 then startMatch() end
+                return
+            end
+
+            -- Despawn any existing map and reset state before showing match results
+            if mapVote.DespawnCurrentMap then pcall(function() mapVote.DespawnCurrentMap() end) end
+            resetMatchForIntermission()
+
+            -- Show match results (intermission)
+            intermissionStartTick = workspace:GetServerTimeNow()
+            setMatchState("Intermission")
+            pcall(function() IntermissionStart:FireAllClients(MATCH_RESULTS_DURATION, intermissionStartTick) end)
+
+            task.delay(MATCH_RESULTS_DURATION, function()
+                -- Voting
+                setMatchState("Voting")
+                if mapVote.StartVoting then pcall(function() mapVote.StartVoting() end) end
+                local phaseRE = ReplicatedStorage:FindFirstChild("Remotes")
+                and ReplicatedStorage.Remotes:FindFirstChild("MapVote")
+                and ReplicatedStorage.Remotes.MapVote:FindFirstChild("Phase")
+                if phaseRE and phaseRE:IsA("RemoteEvent") then
+                    pcall(function() phaseRE:FireAllClients({ phase = "voting", duration = VOTING_DURATION, currentMap = nil }) end)
+                end
+
+                task.delay(VOTING_DURATION, function()
+                    local winner
+                    if mapVote.StopVotingAndGetWinner then
+                        local ok2, res = pcall(function() return mapVote.StopVotingAndGetWinner() end)
+                        if ok2 then winner = res end
+                    end
+                    if winner and mapVote.SpawnMap then pcall(function() mapVote.SpawnMap(winner) end) end
+
+                    setMatchState("Loading")
+                    if phaseRE and phaseRE:IsA("RemoteEvent") then
+                        pcall(function() phaseRE:FireAllClients({ phase = "loading", duration = LOADING_DURATION, currentMap = winner }) end)
+                    end
+                    task.delay(LOADING_DURATION, function()
+                        setMatchState("Prematch")
+                        if phaseRE and phaseRE:IsA("RemoteEvent") then
+                            pcall(function() phaseRE:FireAllClients({ phase = "prematch", duration = PREMATCH_DURATION, currentMap = winner }) end)
+                        end
+                        task.delay(PREMATCH_DURATION, function()
+                            if #Players:GetPlayers() == 0 then
+                                local conn
+                                conn = Players.PlayerAdded:Connect(function()
+                                    conn:Disconnect()
+                                    startMatch()
+                                end)
+                            else
+                                startMatch()
+                            end
+                        end)
+                    end)
+                end)
+            end)
+        end)
+    end)
 else
     if MIN_PLAYERS <= 0 then
         -- start immediately

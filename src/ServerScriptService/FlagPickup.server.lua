@@ -596,7 +596,9 @@ local function returnDroppedFlag(team, player, allowDirectRespawn)
 
     local playerName = player and player.Name or nil
     local playerTeamName = player and player.Team and player.Team.Name or nil
+    print("[FlagPickup] -> FireAllClients returned", tostring(playerName), tostring(playerTeamName), tostring(team))
     FlagStatus:FireAllClients("returned", playerName, playerTeamName, team)
+    print("[FlagPickup] -> FireAllClients playSound Flag_return")
     FlagStatus:FireAllClients("playSound", "Flag_return")
 
     if player then
@@ -696,6 +698,7 @@ local function pickUpFlag(team, model, player)
     setFlagInstanceAttributes(carried, team, false, true, false, player, 0)
     syncFlagState(team)
     applyFlagCarrySlow(player)
+    print("[FlagPickup] -> FireAllClients pickup", player.Name, tostring(playerTeamName), tostring(team))
     FlagStatus:FireAllClients("pickup", player.Name, playerTeamName, team)
     local takenSoundName = "Flag_taken"
     if playerTeamName == "Blue" and team == "Red" then
@@ -703,6 +706,7 @@ local function pickUpFlag(team, model, player)
     elseif playerTeamName == "Red" and team == "Blue" then
         takenSoundName = "Flag_taken_red"
     end
+    print("[FlagPickup] -> FireAllClients playSound", tostring(takenSoundName))
     FlagStatus:FireAllClients("playSound", takenSoundName)
 
     local function onDied()
@@ -880,6 +884,7 @@ end
         if not model or not model:IsA("Model") then return end
         local team = getFlagTeamFromModelName(model.Name)
         if not team then return end
+        print(string.format("[FlagPickup] setupFlagModel called for '%s' (team=%s)", tostring(model:GetFullName()), tostring(team)))
         local pickupPart = findPickupPart(model)
         if not pickupPart then return end
         pickupPart.CanQuery = false
@@ -950,30 +955,37 @@ end
         setupFlagActionPrompt(team, model)
 end
 
--- initial scan for flags in workspace map children
-for _, child in ipairs(Workspace:GetChildren()) do
+-- initial scan: locate flags anywhere under Workspace
+for _, name in ipairs(FLAG_NAMES) do
+    local found = Workspace:FindFirstChild(name, true)
+    if found and found:IsA("Model") then
+        if not found.PrimaryPart then
+            for _, d in ipairs(found:GetDescendants()) do
+                if d:IsA("BasePart") then
+                    found.PrimaryPart = d
+                    break
+                end
+            end
+        end
+        setupFlagModel(found)
+    end
+end
+
+-- watch for maps/models added dynamically; scan their descendants for flag models
+Workspace.ChildAdded:Connect(function(child)
+    if not child or not child:IsA("Model") then return end
     for _, name in ipairs(FLAG_NAMES) do
-        if child.Name == name then
-            -- ensure model has PrimaryPart set if possible
-            if child:IsA("Model") and not child.PrimaryPart then
-                for _, d in ipairs(child:GetDescendants()) do
+        local found = child:FindFirstChild(name, true)
+        if found and found:IsA("Model") then
+            if not found.PrimaryPart then
+                for _, d in ipairs(found:GetDescendants()) do
                     if d:IsA("BasePart") then
-                        child.PrimaryPart = d
+                        found.PrimaryPart = d
                         break
                     end
                 end
             end
-            setupFlagModel(child)
-        end
-    end
-end
-
--- watch for flags added dynamically under the map folder
-Workspace.ChildAdded:Connect(function(child)
-    for _, name in ipairs(FLAG_NAMES) do
-        if child.Name == name then
-            setupFlagModel(child)
-            break
+            setupFlagModel(found)
         end
     end
 end)
@@ -1064,6 +1076,7 @@ local function captureFlagAtStand(pl, standTeam)
         StatService:RegisterFlagCapture(pl)
     end
 
+    print("[FlagPickup] -> FireAllClients captured", pl.Name, tostring(playerTeamName), tostring(flagTeam))
     FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)
     local captureSoundName = "Flag_capture"
     if playerTeamName == "Blue" and flagTeam == "Red" then
@@ -1071,11 +1084,14 @@ local function captureFlagAtStand(pl, standTeam)
     elseif playerTeamName == "Red" and flagTeam == "Blue" then
         captureSoundName = "Flag_capture_red"
     end
+    print("[FlagPickup] -> FireAllClients playSound", tostring(captureSoundName))
     FlagStatus:FireAllClients("playSound", captureSoundName)
 
     task.delay(5, function()
         respawnFlag(flagTeam)
+        print("[FlagPickup] -> FireAllClients returned (post-capture)", tostring(flagTeam))
         FlagStatus:FireAllClients("returned", nil, nil, flagTeam)
+        print("[FlagPickup] -> FireAllClients playSound Flag_return (post-capture)")
         FlagStatus:FireAllClients("playSound", "Flag_return")
     end)
 

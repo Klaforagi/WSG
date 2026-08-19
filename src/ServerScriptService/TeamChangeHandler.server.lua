@@ -58,6 +58,10 @@ local function isTeamChangeBlocked(player)
 	if player:GetAttribute(DEFEAT_LOCK_ATTR) == true then
 		return true, "You cannot change teams during Defeat"
 	end
+	-- Lock team joins until prematch phase to prevent early team assignment
+	if matchState ~= "Prematch" and matchState ~= "Game" and matchState ~= "SuddenDeath" then
+		return true, "You cannot change teams until prematch"
+	end
 	return false, nil
 end
 

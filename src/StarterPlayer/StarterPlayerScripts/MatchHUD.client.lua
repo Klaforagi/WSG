@@ -52,7 +52,7 @@ screenGui.DisplayOrder = 5
 screenGui.Parent = playerGui
 
 -- Hide by default; visibility is controlled by authoritative match events
-screenGui.Enabled = false
+screenGui.Enabled = true
 
 -- Root positioning frame (transparent, allows center panel to extend beyond)
 local root = Instance.new("Frame")
@@ -63,6 +63,91 @@ root.Size = UDim2.new(0.46, 0, 0.1, 0)
 root.BackgroundTransparency = 1
 root.ClipsDescendants = false
 root.Parent = screenGui
+-- ScoreboardRoot visibility controls whether the scoreboard is shown.
+root.Visible = false
+
+-- Phase timer frames (Match Results and Voting)
+local phaseContainer = Instance.new("Frame")
+phaseContainer.Name = "PhaseTimers"
+phaseContainer.AnchorPoint = Vector2.new(0.5, 0)
+phaseContainer.Position = UDim2.new(0.5, 0, 0.02, 0)
+phaseContainer.Size = UDim2.new(0.3, 0, 0, 36)
+phaseContainer.BackgroundTransparency = 1
+phaseContainer.Parent = screenGui
+
+local matchResultsFrame = Instance.new("Frame")
+matchResultsFrame.Name = "MatchResultsFrame"
+matchResultsFrame.Size = UDim2.new(1, 0, 1, 0)
+matchResultsFrame.BackgroundTransparency = 0.5
+matchResultsFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+matchResultsFrame.BorderSizePixel = 0
+matchResultsFrame.Visible = false
+matchResultsFrame.Parent = phaseContainer
+
+local matchResultsLabel = Instance.new("TextLabel")
+matchResultsLabel.Size = UDim2.new(1, 0, 1, 0)
+matchResultsLabel.BackgroundTransparency = 1
+matchResultsLabel.Font = Enum.Font.GothamBold
+matchResultsLabel.TextSize = 18
+matchResultsLabel.TextColor3 = Color3.fromRGB(255, 215, 80)
+matchResultsLabel.Text = ""
+matchResultsLabel.Parent = matchResultsFrame
+
+local votingFrame = Instance.new("Frame")
+votingFrame.Name = "VotingFrame"
+votingFrame.Size = UDim2.new(1, 0, 1, 0)
+votingFrame.BackgroundTransparency = 0.5
+votingFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+votingFrame.BorderSizePixel = 0
+votingFrame.Visible = false
+votingFrame.Parent = phaseContainer
+
+local votingLabel = Instance.new("TextLabel")
+votingLabel.Size = UDim2.new(1, 0, 1, 0)
+votingLabel.BackgroundTransparency = 1
+votingLabel.Font = Enum.Font.GothamBold
+votingLabel.TextSize = 18
+votingLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+votingLabel.Text = ""
+votingLabel.Parent = votingFrame
+
+-- Prematch frame (shown after voting, before match starts)
+local prematchFrame = Instance.new("Frame")
+prematchFrame.Name = "PrematchFrame"
+prematchFrame.Size = UDim2.new(1, 0, 1, 0)
+prematchFrame.BackgroundTransparency = 0.5
+prematchFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+prematchFrame.BorderSizePixel = 0
+prematchFrame.Visible = false
+prematchFrame.Parent = phaseContainer
+
+local prematchLabel = Instance.new("TextLabel")
+prematchLabel.Size = UDim2.new(1, 0, 1, 0)
+prematchLabel.BackgroundTransparency = 1
+prematchLabel.Font = Enum.Font.GothamBold
+prematchLabel.TextSize = 18
+prematchLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+prematchLabel.Text = ""
+prematchLabel.Parent = prematchFrame
+
+-- Endgame frame (shown immediately after match ends, before match results)
+local endgameFrame = Instance.new("Frame")
+endgameFrame.Name = "EndgameFrame"
+endgameFrame.Size = UDim2.new(1, 0, 1, 0)
+endgameFrame.BackgroundTransparency = 0.5
+endgameFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+endgameFrame.BorderSizePixel = 0
+endgameFrame.Visible = false
+endgameFrame.Parent = phaseContainer
+
+local endgameLabel = Instance.new("TextLabel")
+endgameLabel.Size = UDim2.new(1, 0, 1, 0)
+endgameLabel.BackgroundTransparency = 1
+endgameLabel.Font = Enum.Font.GothamBold
+endgameLabel.TextSize = 18
+endgameLabel.TextColor3 = Color3.fromRGB(200, 200, 255)
+endgameLabel.Text = ""
+endgameLabel.Parent = endgameFrame
 
 -- Removed UISizeConstraint to allow custom sizing via Size/Position
 
@@ -454,7 +539,7 @@ local plusBtn  = makePillBtn("+10s", 1, 0.98)
 --------------------------------------------------------------------------------
 -- REMOTE REFERENCES
 --------------------------------------------------------------------------------
-local FlagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
+local FlagStatus = ReplicatedStorage:WaitForChild("FlagStatus")
 local AdjustMatchTime = ReplicatedStorage:WaitForChild("AdjustMatchTime", 10)
 local IntermissionStart = ReplicatedStorage:FindFirstChild("IntermissionStart")
 
@@ -607,6 +692,98 @@ local function setCarriedFlag(teamName, flagTeamName, present)
     end
 end
 
+-- Wire MapVote Phase remote to display MatchResults and Voting timers
+local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+local function wirePhaseRE(phaseRE)
+    if not phaseRE or not phaseRE:IsA("RemoteEvent") then return end
+    phaseRE.OnClientEvent:Connect(function(payload)
+        if not payload or type(payload.phase) ~= "string" then return end
+        local phase = payload.phase
+        local duration = payload.duration or 0
+        if phase == "matchResults" then
+            matchResultsFrame.Visible = true
+            votingFrame.Visible = false
+            prematchFrame.Visible = false
+            local endsAt = tick() + duration
+            spawn(function()
+                while matchResultsFrame.Visible do
+                    local left = math.max(0, math.floor(endsAt - tick()))
+                    matchResultsLabel.Text = string.format("Match Results: %ds", left)
+                    if left <= 0 then break end
+                    task.wait(0.25)
+                end
+                matchResultsFrame.Visible = false
+            end)
+        elseif phase == "voting" then
+            votingFrame.Visible = true
+            matchResultsFrame.Visible = false
+            prematchFrame.Visible = false
+            local endsAt = tick() + duration
+            spawn(function()
+                while votingFrame.Visible do
+                    local left = math.max(0, math.floor(endsAt - tick()))
+                    votingLabel.Text = string.format("Voting: %ds", left)
+                    if left <= 0 then break end
+                    task.wait(0.25)
+                end
+                votingFrame.Visible = false
+            end)
+        elseif phase == "prematch" then
+            prematchFrame.Visible = true
+            matchResultsFrame.Visible = false
+            votingFrame.Visible = false
+            local endsAt = tick() + duration
+            spawn(function()
+                while prematchFrame.Visible do
+                    local left = math.max(0, math.floor(endsAt - tick()))
+                    prematchLabel.Text = string.format("Match begins in %ds", left)
+                    if left <= 0 then break end
+                    task.wait(0.25)
+                end
+                prematchFrame.Visible = false
+            end)
+        elseif phase == "endgame" then
+            -- keep scoreboard visible during endgame and show endgame timer
+            root.Visible = true
+            endgameFrame.Visible = true
+            matchResultsFrame.Visible = false
+            votingFrame.Visible = false
+            prematchFrame.Visible = false
+            local endsAt = tick() + duration
+            spawn(function()
+                while endgameFrame.Visible do
+                    local left = math.max(0, math.floor(endsAt - tick()))
+                    endgameLabel.Text = string.format("Endgame: %ds", left)
+                    if left <= 0 then break end
+                    task.wait(0.25)
+                end
+                endgameFrame.Visible = false
+            end)
+        else
+            matchResultsFrame.Visible = false
+            votingFrame.Visible = false
+            prematchFrame.Visible = false
+        end
+    end)
+end
+
+if remotesFolder then
+    local mv = remotesFolder:FindFirstChild("MapVote")
+    local ph = mv and mv:FindFirstChild("Phase")
+    if ph and ph:IsA("RemoteEvent") then wirePhaseRE(ph) end
+end
+ReplicatedStorage.ChildAdded:Connect(function(child)
+    if child.Name == "Remotes" and child:IsA("Folder") then
+        local mv = child:FindFirstChild("MapVote")
+        if mv and mv:IsA("Folder") then
+            local ph = mv:FindFirstChild("Phase")
+            if ph and ph:IsA("RemoteEvent") then
+                wirePhaseRE(ph)
+            end
+        end
+    end
+end)
+
 -- play the ticking sound from ReplicatedStorage.Sounds.Game.ClockTick
 local function playTickSound()
     local sounds = ReplicatedStorage:FindFirstChild("Sounds")
@@ -670,8 +847,8 @@ end
 local function wireMatchStart(ev)
     ev.OnClientEvent:Connect(function(durationSeconds, startTick)
         beginTimer(durationSeconds, startTick, "Match")
-        -- show HUD when authoritative match starts
-        screenGui.Enabled = true
+        -- show scoreboard root when authoritative match starts
+        root.Visible = true
         -- initialize state
         blueScore = 0
         redScore = 0
@@ -688,8 +865,8 @@ end
 
 local function wireIntermissionStart(ev)
     ev.OnClientEvent:Connect(function(durationSeconds, startTick)
-        -- hide HUD during intermission
-        screenGui.Enabled = false
+        -- hide scoreboard during intermission
+        root.Visible = false
         beginTimer(durationSeconds, startTick, "Intermission")
     end)
 end
@@ -698,8 +875,8 @@ local function wireMatchEnd(ev)
     ev.OnClientEvent:Connect(function(resultType, winner)
         -- stop the local timer so it doesn't keep counting down
         running = false
-        -- hide HUD when match ends
-        screenGui.Enabled = false
+        -- keep scoreboard visible during endgame display; MapVote will switch phases
+        root.Visible = true
         if resultType == "sudden" then
             timerLabel.Text = "SUDDEN"
         elseif resultType == "win" then
@@ -754,10 +931,10 @@ spawn(function()
     end
     if info.state == "Game" and type(info.matchStartTick) == "number" and type(info.matchDuration) == "number" then
         beginTimer(info.matchDuration, info.matchStartTick, "Match")
-        screenGui.Enabled = true
+        root.Visible = true
     elseif info.state == "Intermission" and type(info.intermissionStartTick) == "number" then
         beginTimer(info.intermissionDuration, info.intermissionStartTick, "Intermission")
-        screenGui.Enabled = false
+        root.Visible = false
     else
         refresh()
     end

@@ -229,6 +229,46 @@ ReplicatedStorage.ChildAdded:Connect(function(child)
     end
 end)
 
+-- Listen for MapVote Phase updates to reflect voting/prematch/matchResults states
+local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+local function wireMapVotePhase(phaseRE)
+    if not phaseRE or not phaseRE:IsA("RemoteEvent") then return end
+    phaseRE.OnClientEvent:Connect(function(payload)
+        if not payload or type(payload.phase) ~= "string" then return end
+        local phase = payload.phase
+        if phase == "matchResults" then
+            setState("Match Results")
+        elseif phase == "voting" then
+            setState("Map Voting")
+        elseif phase == "prematch" then
+            setState("Prematch")
+        elseif phase == "match" then
+            setState("Game")
+        elseif phase == "endgame" then
+            setState("EndGame")
+        else
+            -- leave other states to GameManager events
+        end
+    end)
+end
+
+if remotesFolder then
+    local mv = remotesFolder:FindFirstChild("MapVote")
+    local ph = mv and mv:FindFirstChild("Phase")
+    if ph and ph:IsA("RemoteEvent") then wireMapVotePhase(ph) end
+end
+ReplicatedStorage.ChildAdded:Connect(function(child)
+    if child.Name == "Remotes" and child:IsA("Folder") then
+        local mv = child:FindFirstChild("MapVote")
+        if mv and mv:IsA("Folder") then
+            local ph = mv:FindFirstChild("Phase")
+            if ph and ph:IsA("RemoteEvent") then
+                wireMapVotePhase(ph)
+            end
+        end
+    end
+end)
+
 -- Resync on startup by invoking server's GetMatchState (if available)
 spawn(function()
     local ok, fn = pcall(function() return ReplicatedStorage:WaitForChild("GetMatchState", 5) end)

@@ -944,7 +944,7 @@ Workspace.DescendantRemoving:Connect(function(descendant)
     end
 end)
 
-local flagStatus = ReplicatedStorage:FindFirstChild("FlagStatus")
+local flagStatus = ReplicatedStorage:WaitForChild("FlagStatus")
 if flagStatus and flagStatus:IsA("RemoteEvent") then
     flagStatus.OnClientEvent:Connect(function(eventType)
         if eventType == "pickup" or eventType == "returned" or eventType == "captured" then
