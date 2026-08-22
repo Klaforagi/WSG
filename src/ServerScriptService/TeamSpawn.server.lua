@@ -24,7 +24,7 @@ local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayName
 local function findSpawnPart(spawnName)
 	for _, candidate in ipairs(workspace:GetChildren()) do
 		if candidate:IsA("Model") or candidate:IsA("Folder") then
-			local p = candidate:FindFirstChild(spawnName)
+			local p = candidate:FindFirstChild(spawnName, true)
 			if p and p:IsA("BasePart") then
 				return p
 			end
@@ -280,12 +280,12 @@ Players.PlayerAdded:Connect(function(player)
 			end
 
 			local spawnName = currentTeam == "Red" and "RedSpawn" or "BlueSpawn"
-			local fallback  = Map:FindFirstChild(spawnName)
+			local fallbackPart = findSpawnPart(spawnName)
 
 			if #candidates > 0 then
 				hrp.CFrame = randomPointOnPart(candidates[math.random(1, #candidates)])
-			elseif fallback then
-				hrp.CFrame = randomPointOnPart(fallback)
+			elseif fallbackPart and fallbackPart:IsA("BasePart") then
+				hrp.CFrame = randomPointOnPart(fallbackPart)
 			else
 				warn("[TeamSpawn] No death or fallback spawn found for team: " .. currentTeam)
 			end

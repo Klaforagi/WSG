@@ -829,7 +829,8 @@ setupFlagModel = function(model, isDrop)
 		warn("[FlagPickup] no pickup part on", model:GetFullName())
 		return
 	end
-	pickupPart.CanQuery = false
+	-- Ensure the pickup part is queryable so clients can see ProximityPrompts
+	pcall(function() pickupPart.CanQuery = true end)
 	flags[team] = flags[team] or {}
 	flags[team].model = model
 	flags[team].pickupPart = pickupPart
