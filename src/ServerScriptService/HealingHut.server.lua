@@ -242,6 +242,17 @@ local function healCharacter(character)
 	end
 end
 
+local function getMapModel()
+	for _, candidate in ipairs(workspace:GetChildren()) do
+		if candidate:IsA("Model") or candidate:IsA("Folder") then
+			if candidate:FindFirstChild("BlueFlagStand", true) or candidate:FindFirstChild("RedFlagStand", true) then
+				return candidate
+			end
+		end
+	end
+	return nil
+end
+
 local function setupHealPart(part)
 	local template = part:Clone()
 	local respawnParent = part.Parent
@@ -265,10 +276,8 @@ local function setupHealPart(part)
 			if not humanoid or humanoid.Health <= 0 then
 				return
 			end
-
-			if humanoid.Health >= humanoid.MaxHealth then
-				return
-			end
+			-- Allow pickup even at full health so the hut can be claimed
+			-- (healing pulses will apply if health is not at max during the effect).
 
 			claimed = true
 			stopAnimation()
@@ -284,7 +293,14 @@ local function setupHealPart(part)
 
 				local newPart = template:Clone()
 				newPart.CFrame = respawnCFrame
-				newPart.Parent = respawnParent
+				-- choose a safe parent: prefer a detected map model, otherwise Workspace
+				local chosenParent = nil
+				if respawnParent and respawnParent.Parent then
+					chosenParent = respawnParent
+				else
+					chosenParent = getMapModel() or workspace
+				end
+				newPart.Parent = chosenParent
 				stopAnimation = startPickupAnimation(newPart)
 
 				setTransparencyRecursive(newPart, 1)
@@ -313,3 +329,20 @@ for _, descendant in ipairs(workspace:GetDescendants()) do
 		setupHealPart(descendant)
 	end
 end
+
+-- Watch for map/model spawns and individual parts added after startup.
+workspace.ChildAdded:Connect(function(child)
+	if child and (child:IsA("Model") or child:IsA("Folder")) then
+		for _, d in ipairs(child:GetDescendants()) do
+			if d:IsA("BasePart") and d.Name == HEAL_PART_NAME then
+				setupHealPart(d)
+			end
+		end
+	end
+end)
+
+workspace.DescendantAdded:Connect(function(desc)
+	if desc and desc:IsA("BasePart") and desc.Name == HEAL_PART_NAME then
+		setupHealPart(desc)
+	end
+end)
