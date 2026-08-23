@@ -680,9 +680,30 @@ pcall(function()
 				end
 			end
 			local SoundService = game:GetService("SoundService")
+			-- Apply SFX volume: update SoundService group and ReplicatedStorage sounds
 			local sfxGroup = SoundService:FindFirstChild("SFX")
 			if sfxGroup and sfxGroup:IsA("SoundGroup") then
-				sfxGroup.Volume = math.clamp(tonumber(settings.SFXVolume) or 1.0, 0, 1)
+				pcall(function() sfxGroup.Volume = math.clamp(tonumber(settings.SFXVolume) or 1.0, 0, 1) end)
+			end
+			if soundsRoot then
+				for _, obj in ipairs(soundsRoot:GetDescendants()) do
+					if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
+						-- Skip music sounds
+						if musicFolder and obj:IsDescendantOf(musicFolder) then
+							-- skip
+						else
+							pcall(function()
+								local sfx = math.clamp(tonumber(settings.SFXVolume) or 1.0, 0, 1)
+								local base = obj:GetAttribute("BaseVolume")
+								if base == nil then
+									base = obj.Volume or 1.0
+									obj:SetAttribute("BaseVolume", base)
+								end
+								obj.Volume = base * sfx
+							end)
+						end
+					end
+				end
 			end
 		end)
 	end

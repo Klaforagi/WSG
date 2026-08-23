@@ -200,10 +200,38 @@ local function ApplySettings(settings)
 	-- PLACEHOLDER: Create a SoundGroup called "SFX" and parent effect sounds
 	-- to it for this slider to take effect.
 	pcall(function()
+		-- Update SoundService group if present (keeps compatibility)
 		local sfxGroup = SoundService:FindFirstChild("SFX")
 		if sfxGroup and sfxGroup:IsA("SoundGroup") then
-			sfxGroup.Volume = settings.SFXVolume
+			pcall(function() sfxGroup.Volume = settings.SFXVolume end)
 		end
+
+		-- Also update per-Sound instances under ReplicatedStorage.Sounds
+		local rs = game:GetService("ReplicatedStorage")
+		local soundsRoot = rs:FindFirstChild("Sounds")
+		local musicFolder = soundsRoot and soundsRoot:FindFirstChild("Music")
+			if soundsRoot then
+				for _, obj in ipairs(soundsRoot:GetDescendants()) do
+					if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
+						-- Skip music sounds contained in the Music folder
+						local skip = false
+						if musicFolder and obj:IsDescendantOf(musicFolder) then
+							skip = true
+						end
+						if not skip then
+							pcall(function()
+								local sfx = tonumber(settings.SFXVolume) or 1.0
+								local base = obj:GetAttribute("BaseVolume")
+								if base == nil then
+									base = obj.Volume or 1.0
+									obj:SetAttribute("BaseVolume", base)
+								end
+								obj.Volume = base * sfx
+							end)
+						end
+					end
+				end
+			end
 	end)
 
 	-- Graphics handling removed from options UI (manage graphics elsewhere)
