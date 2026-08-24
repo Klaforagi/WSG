@@ -63,6 +63,8 @@ local bandageHealTick = getOrCreateRemote("RemoteEvent", "BandageHealTick")
 local bandageEnded    = getOrCreateRemote("RemoteEvent", "BandageEnded")
 -- Server -> Client: cooldown started { duration }
 local bandageCooldown = getOrCreateRemote("RemoteEvent", "BandageCooldown")
+-- Server -> Client: notify when a start request is rejected (reason string)
+local bandageRejected = getOrCreateRemote("RemoteEvent", "BandageRejected")
 
 --------------------------------------------------------------------------------
 -- PER-PLAYER STATE
@@ -276,9 +278,30 @@ local function healLoop(player)
         if healAmount > 0 then
             hum.Health = math.min(hum.Health + healAmount, hum.MaxHealth)
             state.totalHealed = state.totalHealed + healAmount
+            -- Notify the healer and the healed player so both see heal popups
             pcall(function()
-                bandageHealTick:FireClient(player, hum.Health, healAmount)
+                bandageHealTick:FireClient(player, hum.Health, healAmount, healTarget and healTarget.UserId)
             end)
+            if healTarget ~= player then
+                pcall(function()
+                    bandageHealTick:FireClient(healTarget, hum.Health, healAmount, healTarget and healTarget.UserId)
+                end)
+            end
+
+            -- Spawn PlusHeals VFX on the healed player (transient)
+            if PlusHealsTemplate then
+                local attachPart = getVFXAttachPart(healTarget)
+                if attachPart then
+                    pcall(function()
+                        local plusHeals = PlusHealsTemplate:Clone()
+                        plusHeals.Parent = attachPart
+                        if plusHeals:IsA("ParticleEmitter") then
+                            plusHeals.Enabled = true
+                        end
+                        Debris:AddItem(plusHeals, 2)
+                    end)
+                end
+            end
         end
     end
 
@@ -322,8 +345,29 @@ local function startBandage(player, targetUserId)
     if not hrp then return end
 
     if targetUserId ~= nil then
-        local targetId = math.floor(tonumber(targetUserId) or 0)
-        local candidate = targetId > 0 and Players:GetPlayerByUserId(targetId) or nil
+        local candidate = nil
+        -- Accept either a numeric userId or a player name string
+        if type(targetUserId) == "number" then
+            local targetId = math.floor(targetUserId)
+            if targetId > 0 then
+                candidate = Players:GetPlayerByUserId(targetId)
+            end
+        elseif type(targetUserId) == "string" then
+            -- try numeric string first
+            local targetId = math.floor(tonumber(targetUserId) or 0)
+            if targetId > 0 then
+                candidate = Players:GetPlayerByUserId(targetId)
+            end
+            if not candidate then
+                -- try matching by Name or DisplayName
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Name == targetUserId or p.DisplayName == targetUserId then
+                        candidate = p
+                        break
+                    end
+                end
+            end
+        end
         if not candidate or candidate == player then
             return false, "invalid_target"
         end
@@ -357,17 +401,7 @@ local function startBandage(player, targetUserId)
     end
 
     -- Play PlusHeals while the player is actively bandaging
-    if PlusHealsTemplate and not state.plusHealsVFX then
-        local attachPart = getVFXAttachPart(player)
-        if attachPart then
-            local plusHeals = PlusHealsTemplate:Clone()
-            plusHeals.Parent = attachPart
-            if plusHeals:IsA("ParticleEmitter") then
-                plusHeals.Enabled = true
-            end
-            state.plusHealsVFX = plusHeals
-        end
-    end
+    -- NOTE: VFX will be spawned on the healed target during actual heal ticks
 
     -- Monitor for damage during cast (health going DOWN = interrupt)
     local prevHealth = hum.Health
@@ -396,14 +430,23 @@ end
 --------------------------------------------------------------------------------
 requestBandage.OnServerEvent:Connect(function(player, targetUserId)
     local ok, reason = startBandage(player, targetUserId)
-    if ok == false and reason == "gamepass" then
+    if ok == false then
+        -- Log for server-side debugging
+        warn("[BandageService] startBandage rejected for", player and player.Name, "reason=", reason)
+        -- Inform client so they get immediate feedback
         pcall(function()
-            local catalogItem = ShopCatalog.GetById(BANDAGE_PASS_ITEM_ID)
-            local passId = catalogItem and math.floor(tonumber(catalogItem.GamePassId) or 0) or BANDAGE_PASS_ID
-            if passId > 0 then
-                MarketplaceService:PromptGamePassPurchase(player, passId)
-            end
+            bandageRejected:FireClient(player, reason)
         end)
+        -- Prompt for gamepass if applicable
+        if reason == "gamepass" then
+            pcall(function()
+                local catalogItem = ShopCatalog.GetById(BANDAGE_PASS_ITEM_ID)
+                local passId = catalogItem and math.floor(tonumber(catalogItem.GamePassId) or 0) or BANDAGE_PASS_ID
+                if passId > 0 then
+                    MarketplaceService:PromptGamePassPurchase(player, passId)
+                end
+            end)
+        end
     end
 end)
 

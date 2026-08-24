@@ -44,6 +44,7 @@ local bandageStarted  = ReplicatedStorage:WaitForChild("BandageStarted", 10)
 local bandageHealTick = ReplicatedStorage:WaitForChild("BandageHealTick", 10)
 local bandageEnded    = ReplicatedStorage:WaitForChild("BandageEnded", 10)
 local bandageCooldown = ReplicatedStorage:WaitForChild("BandageCooldown", 10)
+local bandageRejected = ReplicatedStorage:WaitForChild("BandageRejected", 10)
 
 if not requestBandage or not bandageStarted then
     warn("[BandageClient] Bandage remotes not found – bandage disabled")
@@ -261,7 +262,51 @@ statusLabel.Visible                = false
 --------------------------------------------------------------------------------
 -- HEAL POPUP
 --------------------------------------------------------------------------------
-local function showHealPopup(amount)
+local function showHealPopup(amount, targetPlayer)
+    -- If a target player is provided and has a character, try to position the popup near their head.
+    local cam = workspace.CurrentCamera
+    if targetPlayer and cam then
+        local char = targetPlayer.Character
+        local attachPart = char and (char:FindFirstChild("Head") or char:FindFirstChild("HumanoidRootPart"))
+        if attachPart then
+            local viewportPoint, onScreen = cam:WorldToViewportPoint(attachPart.Position)
+            if onScreen and cam.ViewportSize and cam.ViewportSize.X > 0 and cam.ViewportSize.Y > 0 then
+                local gui = Instance.new("ScreenGui")
+                gui.Name           = "HealPopup"
+                gui.ResetOnSpawn   = false
+                gui.IgnoreGuiInset = true
+                gui.DisplayOrder   = 20
+                gui.Parent         = playerGui
+
+                local label = Instance.new("TextLabel")
+                label.AnchorPoint            = Vector2.new(0.5, 0.5)
+                label.Position               = UDim2.new(viewportPoint.X / cam.ViewportSize.X, 0, viewportPoint.Y / cam.ViewportSize.Y, 0)
+                label.Size                   = UDim2.new(0, px(80), 0, px(24))
+                label.BackgroundTransparency = 1
+                label.Text                   = "+" .. tostring(math.floor(amount)) .. " HP"
+                label.Font                   = Enum.Font.GothamBold
+                label.TextScaled             = true
+                label.TextColor3             = GREEN
+                label.TextStrokeColor3       = Color3.new(0, 0, 0)
+                label.TextStrokeTransparency = 0.5
+                label.Parent                 = gui
+
+                -- Float upward and fade out
+                local tween = TweenService:Create(label, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+                    Position = label.Position + UDim2.new(0, 0, -0.04, 0),
+                    TextTransparency = 1,
+                    TextStrokeTransparency = 1,
+                })
+                tween:Play()
+                tween.Completed:Connect(function()
+                    gui:Destroy()
+                end)
+                return
+            end
+        end
+    end
+
+    -- Fallback: centered popup when no valid target position
     local gui = Instance.new("ScreenGui")
     gui.Name           = "HealPopup"
     gui.ResetOnSpawn   = false
@@ -282,7 +327,6 @@ local function showHealPopup(amount)
     label.TextStrokeTransparency = 0.5
     label.Parent                 = gui
 
-    -- Float upward and fade out
     local tween = TweenService:Create(label, TweenInfo.new(1.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         Position = label.Position + UDim2.new(0, 0, -0.04, 0),
         TextTransparency = 1,
@@ -427,7 +471,8 @@ local function refreshBandagePrompts()
 
                 prompt.Triggered:Connect(function()
                     if activeBandageTool and not isBandaging and not isCoolingDown then
-                        activateBandage(targetPlayer.UserId)
+                        -- Send player name (string) instead of numeric UserId to avoid studio/test negative IDs
+                        activateBandage(targetPlayer.Name)
                     end
                 end)
 
@@ -463,6 +508,7 @@ local function getNearestBandageTarget()
                 if distance <= maxRange and distance < closestDistance then
                     closestPlayer = other
                     closestDistance = distance
+                    print("[BandageAnim] candidate nearest=", other.Name, "distance=", distance)
                 end
             end
         end
@@ -570,7 +616,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 
     local targetPlayer = getNearestBandageTarget()
     if targetPlayer then
-        activateBandage(targetPlayer.UserId)
+        -- Use player Name to be robust when UserId may be a studio/test value
+        activateBandage(targetPlayer.Name)
     end
 end)
 
@@ -696,6 +743,21 @@ function activateBandage(targetUserId)
 
     print("[BandageAnim] requesting bandage from server")
 
+    -- Debug: log target info before sending to server
+    if targetUserId then
+        print("[BandageAnim] sending targetUserId=", targetUserId)
+    else
+        local near = getNearestBandageTarget()
+        if near then
+            local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+            local otherRoot = near.Character and near.Character:FindFirstChild("HumanoidRootPart")
+            local d = hrp and otherRoot and (otherRoot.Position - hrp.Position).Magnitude or nil
+            print("[BandageAnim] auto-target=", near.Name, "distance=", d)
+        else
+            print("[BandageAnim] no auto-target found")
+        end
+    end
+
     -- Request from server; targetUserId is only set when healing a teammate.
     requestBandage:FireServer(targetUserId)
 end
@@ -723,9 +785,20 @@ if bandageStarted then
 end
 
 if bandageHealTick then
-    bandageHealTick.OnClientEvent:Connect(function(newHealth, healAmount)
+    bandageHealTick.OnClientEvent:Connect(function(newHealth, healAmount, targetUserId)
         if healAmount and healAmount > 0 then
-            showHealPopup(healAmount)
+            local targetPlayer = nil
+            if type(targetUserId) == "number" then
+                targetPlayer = Players:GetPlayerByUserId(targetUserId)
+            elseif type(targetUserId) == "string" then
+                for _, p in ipairs(Players:GetPlayers()) do
+                    if p.Name == targetUserId or p.DisplayName == targetUserId then
+                        targetPlayer = p
+                        break
+                    end
+                end
+            end
+            showHealPopup(healAmount, targetPlayer)
         end
         -- Update the prev health ratchet for damage detection
         -- (handled internally via the HealthChanged connection)
@@ -759,6 +832,23 @@ end
 if bandageCooldown then
     bandageCooldown.OnClientEvent:Connect(function(duration)
         startClientCooldown(duration)
+    end)
+end
+
+if bandageRejected then
+    bandageRejected.OnClientEvent:Connect(function(reason)
+        local msg = "Bandage Failed"
+        if reason == "no_tool" then
+            msg = "No Bandage Tool"
+        elseif reason == "invalid_target" then
+            msg = "Invalid Target"
+        elseif reason == "out_of_range" then
+            msg = "Target Out Of Range"
+        elseif reason == "gamepass" then
+            msg = "Bandage Locked"
+        end
+        showStatusMessage(msg, RED)
+        print("[BandageAnim] BandageRejected received, reason=", reason)
     end)
 end
 
