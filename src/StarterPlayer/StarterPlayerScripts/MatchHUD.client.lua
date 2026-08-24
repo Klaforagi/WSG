@@ -407,7 +407,7 @@ local centerPanel = Instance.new("Frame")
 centerPanel.Name = "CenterPanel"
 centerPanel.AnchorPoint = Vector2.new(0.5, 0.5)
 centerPanel.Position = UDim2.new(0.5, 0, 0.5, 0)
-centerPanel.Size = UDim2.new(0.22, 0, 1.12, 0)
+centerPanel.Size = UDim2.new(0.22, 0, 0.8, 0)
 centerPanel.BackgroundColor3 = NAVY
 centerPanel.BackgroundTransparency = 0.02
 centerPanel.BorderSizePixel = 0
@@ -437,14 +437,24 @@ end
 local timerLabel = Instance.new("TextLabel")
 timerLabel.Name = "TimerText"
 timerLabel.Text = "01:00"
-timerLabel.Font = Enum.Font.GothamBlack
-timerLabel.TextScaled = true
+timerLabel.FontFace = Font.new(
+	"rbxasset://fonts/families/SourceSansPro.json",
+	Enum.FontWeight.Bold,
+	Enum.FontStyle.Normal
+)
+timerLabel.TextScaled = false
 timerLabel.TextColor3 = GOLD_TEXT
 timerLabel.BackgroundTransparency = 1
-timerLabel.Size = UDim2.new(0.88, 0, 0.56, 0)
-timerLabel.Position = UDim2.new(0.06, 0, 0.04, 0)
+timerLabel.Size = UDim2.new(0.88, 0, 0.8, 0)
+timerLabel.Position = UDim2.new(0.06, 0, 0.08, 0)
 timerLabel.ZIndex = 4
 timerLabel.Parent = centerPanel
+
+local sizeConstraint = Instance.new("UITextSizeConstraint")
+sizeConstraint.MinTextSize = 14
+sizeConstraint.MaxTextSize = 72
+sizeConstraint.Parent = timerLabel
+
 do
     local s = Instance.new("UIStroke")
     s.Color = Color3.fromRGB(120, 95, 10)
@@ -452,6 +462,29 @@ do
     s.Transparency = 0.15
     s.Parent = timerLabel
 end
+
+local function updateTimerTextSize()
+	local height = timerLabel.AbsoluteSize.Y
+	if height <= 0 then return end
+	local size = math.floor(height * 1)
+	size = math.clamp(size, 14, 72)
+	timerLabel.TextSize = size
+end
+
+local function setTimerDisplay(text)
+	if text == "SUDDEN" then
+		timerLabel.TextScaled = true
+		timerLabel.Text = "SUDDEN"
+	else
+		timerLabel.TextScaled = false
+		updateTimerTextSize()
+		timerLabel.Text = text
+	end
+end
+
+-- Set size once layout is ready, and again if the frame resizes
+task.defer(updateTimerTextSize)
+timerLabel:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateTimerTextSize)
 
 -- Helpers (must be declared before dev buttons reference them)
 local function formatTime(sec)
@@ -464,7 +497,7 @@ end
 local function refresh()
     blueCountLabel.Text = formatInt(blueScore)
     redCountLabel.Text = formatInt(redScore)
-    timerLabel.Text = formatTime(remaining)
+    setTimerDisplay(formatTime(remaining))
 end
 
 local function beginTimer(durationSeconds, startTick, mode)
@@ -495,7 +528,7 @@ local btnContainer = Instance.new("Frame")
 btnContainer.Name = "TimeAdjust"
 btnContainer.AnchorPoint = Vector2.new(0.5, 0)
 btnContainer.Size = UDim2.new(0.92, 0, 0.30, 0)
-btnContainer.Position = UDim2.new(0.5, 0, 0.64, 0)
+btnContainer.Position = UDim2.new(0.5, 0, 1.05, 0)
 btnContainer.BackgroundTransparency = 1
 btnContainer.ZIndex = 4
 btnContainer.Parent = centerPanel
@@ -878,9 +911,9 @@ local function wireMatchEnd(ev)
         -- keep scoreboard visible during endgame display; MapVote will switch phases
         root.Visible = true
         if resultType == "sudden" then
-            timerLabel.Text = "SUDDEN"
+           setTimerDisplay("SUDDEN")
         elseif resultType == "win" then
-            timerLabel.Text = "00:00"
+         setTimerDisplay("00:00")
         end
     end)
 end
