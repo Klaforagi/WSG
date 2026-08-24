@@ -13,6 +13,10 @@
         "$className": "Folder"
       }
       ,
+      "Maps": {
+        "$className": "Folder"
+      }
+      ,
       "VFX": {
         "$className": "Folder"
       }

@@ -512,6 +512,13 @@ local function ensureListGui(listPart)
     layout.Padding = UDim.new(0, 8)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
 
+    -- Ensure any pre-existing QuestTitle labels are text-scaled for consistent rendering
+    for _, desc in ipairs(root:GetDescendants()) do
+        if desc.Name == "QuestTitle" and desc:IsA("TextLabel") then
+            desc.TextScaled = true
+        end
+    end
+
     return surfaceGui, scroll
 end
 
@@ -539,8 +546,9 @@ local function setRowState(row, quest)
     local claimButton = row:FindFirstChild("ClaimButton", true)
 
     if titleLabel and titleLabel:IsA("TextLabel") then
-        titleLabel.Text = tostring(quest.desc or quest.title or "Daily Quest")
-        titleLabel.TextColor3 = claimed and MUTED or WHITE
+	    titleLabel.Text = tostring(quest.desc or quest.title or "Daily Quest")
+	    titleLabel.TextColor3 = claimed and MUTED or WHITE
+	    titleLabel.TextScaled = true
     end
     if progressLabel and progressLabel:IsA("TextLabel") then
         if claimed then
@@ -767,27 +775,62 @@ local function renderResetTimer()
     return true
 end
 
-applyQuestList = function(result)
-    latestQuests = {}
-    questIndexById = {}
-    pendingClaimsById = {}
-    for index, quest in ipairs(result) do
-        if type(quest) == "table" and type(quest.id) == "string" then
-            latestQuests[index] = {
-                id = quest.id,
-                title = quest.title,
-                desc = quest.desc,
-                progress = tonumber(quest.progress) or 0,
-                goal = tonumber(quest.goal) or 1,
-                reward = tonumber(quest.reward) or 0,
-                claimed = quest.claimed == true,
-            }
-            questIndexById[quest.id] = index
-        end
-    end
+local function questIdsChanged(newQuests)
+	if #newQuests ~= #latestQuests then
+		return true
+	end
+	for i, quest in ipairs(newQuests) do
+		local old = latestQuests[i]
+		if not old or old.id ~= quest.id then
+			return true
+		end
+	end
+	return false
+end
 
-    renderQuestBoard(latestQuests)
-    return true
+applyQuestList = function(result)
+	local newQuests = {}
+	local newIndexById = {}
+
+	for index, quest in ipairs(result) do
+		if type(quest) == "table" and type(quest.id) == "string" then
+			newQuests[index] = {
+				id = quest.id,
+				title = quest.title,
+				desc = quest.desc,
+				progress = tonumber(quest.progress) or 0,
+				goal = tonumber(quest.goal) or 1,
+				reward = tonumber(quest.reward) or 0,
+				claimed = quest.claimed == true,
+			}
+			newIndexById[quest.id] = index
+		end
+	end
+
+	local needsRebuild = questIdsChanged(newQuests)
+
+	latestQuests = newQuests
+	questIndexById = newIndexById
+	pendingClaimsById = {}
+
+	if needsRebuild then
+		-- Quest set changed → full rebuild
+		renderQuestBoard(latestQuests)
+	else
+		-- Same quests → just update existing rows
+		for _, quest in ipairs(latestQuests) do
+			local row = rowByQuestId[quest.id]
+			if row and row.Parent then
+				setRowState(row, quest)
+			else
+				-- Safety: a row is missing, rebuild once
+				renderQuestBoard(latestQuests)
+				break
+			end
+		end
+	end
+
+	return true
 end
 
 fetchQuests = function()
