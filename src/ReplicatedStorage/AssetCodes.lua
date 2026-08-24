@@ -81,6 +81,13 @@ AssetCodes.images = {
     Longbow = "rbxassetid://13303448470",
     Xbow = "rbxassetid://87445004842826",
 
+
+
+    -- MAP ICONS
+    thepit = "rbxassetid://123730386850830",
+    forest = "rbxassetid://103357261697578",
+    wintergate = "rbxassetid://83157095190860",
+
     -- Emote icons. Fill these with uploaded image IDs; empty values use UI fallback visuals.
     EmoteWave = "",
     EmoteDance = "",

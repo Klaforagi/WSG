@@ -19,7 +19,7 @@ local Teams = game:GetService("Teams")
 local MATCH_DURATION   = 5 * 60   -- round duration in seconds (5 minutes)
 local END_SCREEN_TIME  = 10       -- seconds the winner screen (endgame) stays up
 local MATCH_RESULTS_DURATION = 15 -- seconds for match results display (intermission)
-local VOTING_DURATION = 10        -- seconds for map voting
+local VOTING_DURATION = 15       -- seconds for map voting
 local LOADING_DURATION = 2        -- seconds for loading/map spawn settling
 local PREMATCH_DURATION = 15      -- seconds for prematch team selection
 local INTERMISSION_DURATION = 60  -- seconds players wait in the lobby between rounds
@@ -249,7 +249,6 @@ local function resetMatchForIntermission()
     setPlayersToNeutralLobby()
 end
 
--- Require MapVoteService once at startup if present
 local MapVote = nil
 local mapVoteModule = ServerScriptService:FindFirstChild("MapVoteService")
 if mapVoteModule then
@@ -260,6 +259,20 @@ if mapVoteModule then
     else
         warn("[GameManager] Failed to require MapVoteService:", tostring(mod))
     end
+end
+
+-- If the MapVote module exists but failed to require (race), try a short retry
+if mapVoteModule and not MapVote then
+    task.spawn(function()
+        task.wait(1)
+        local ok2, mod2 = pcall(function() return require(mapVoteModule) end)
+        if ok2 and mod2 then
+            MapVote = mod2
+            print("[GameManager] MapVoteService required on retry")
+        else
+            warn("[GameManager] MapVoteService still unavailable after retry:", tostring(mod2))
+        end
+    end)
 end
 
 local PhaseRE = nil

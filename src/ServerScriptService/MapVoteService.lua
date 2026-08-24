@@ -7,6 +7,7 @@ local MapVoteService = {}
 print("[MapVote] MapVoteService (vote-only) loaded")
 
 local mapsFolder = ReplicatedStorage:FindFirstChild("Maps")
+local currentOptions = nil -- list of map names shown this voting round
 
 local function ensureRemotes()
     local remotes = ReplicatedStorage:FindFirstChild("Remotes")
@@ -47,30 +48,70 @@ local currentMapName = nil
 
 local function broadcastVotes()
     local perMap = {}
-    for userId, mapName in pairs(userVote) do
-        perMap[mapName] = perMap[mapName] or {}
-        table.insert(perMap[mapName], userId)
+    -- ensure currentOptions exported, fall back to all maps
+    local options = currentOptions
+    if not options then
+        mapsFolder = mapsFolder or ReplicatedStorage:FindFirstChild("Maps")
+        options = {}
+        for _, m in ipairs(mapsFolder and mapsFolder:GetChildren() or {}) do table.insert(options, m.Name) end
     end
-    pcall(function() UpdateRE:FireAllClients({ mapVotes = perMap }) end)
+    -- init perMap with empty lists for each option
+    for _, name in ipairs(options) do
+        perMap[name] = perMap[name] or {}
+    end
+    for userId, voteData in pairs(userVote) do
+        -- voteData may be either a string (mapName) for legacy or a table {map=..., pos=...}
+        local mapName, pos
+        if type(voteData) == "table" then
+            mapName = voteData.map
+            pos = voteData.pos
+        else
+            mapName = voteData
+        end
+        if mapName and perMap[mapName] ~= nil then
+            table.insert(perMap[mapName], { userId = userId, pos = pos })
+        end
+    end
+    pcall(function() UpdateRE:FireAllClients({ mapVotes = perMap, mapOptions = options }) end)
 end
 
 function MapVoteService.StartVoting()
     userVote = {}
     votingActive = true
+    -- pick up to 3 random maps from Maps folder as the options for this round
+    mapsFolder = mapsFolder or ReplicatedStorage:FindFirstChild("Maps")
+    local mapChildren = mapsFolder and mapsFolder:GetChildren() or {}
+    local names = {}
+    for _, m in ipairs(mapChildren) do table.insert(names, m.Name) end
+    local options = {}
+    if #names <= 3 then
+        options = names
+    else
+        -- pick 3 unique random entries
+        local picked = {}
+        while #options < 3 do
+            local idx = math.random(1, #names)
+            local name = names[idx]
+            if not picked[name] then
+                picked[name] = true
+                table.insert(options, name)
+            end
+        end
+    end
+    currentOptions = options
     broadcastVotes()
-    print("[MapVote] StartVoting")
+    print("[MapVote] StartVoting options:", unpack(currentOptions or {}))
 end
 
 function MapVoteService.StopVotingAndGetWinner()
     votingActive = false
-    -- determine winner
-    mapsFolder = mapsFolder or ReplicatedStorage:FindFirstChild("Maps")
-    local mapChildren = mapsFolder and mapsFolder:GetChildren() or {}
-
+    -- determine winner among currentOptions
+    local options = currentOptions or {}
     local counts = {}
-    for _, map in ipairs(mapChildren) do counts[map.Name] = 0 end
+    for _, name in ipairs(options) do counts[name] = 0 end
     local totalVotes = 0
-    for _, mapName in pairs(userVote) do
+    for _, voteData in pairs(userVote) do
+        local mapName = type(voteData) == "table" and voteData.map or voteData
         if counts[mapName] ~= nil then
             counts[mapName] = counts[mapName] + 1
             totalVotes = totalVotes + 1
@@ -78,9 +119,17 @@ function MapVoteService.StopVotingAndGetWinner()
     end
 
     if totalVotes == 0 then
-        if #mapChildren == 0 then return nil end
-        local choice = mapChildren[math.random(1, #mapChildren)].Name
-        print("[MapVote] No votes - random choice ->", choice)
+        -- pick random from options (fallback)
+        if #options == 0 then
+            mapsFolder = mapsFolder or ReplicatedStorage:FindFirstChild("Maps")
+            local mapChildren = mapsFolder and mapsFolder:GetChildren() or {}
+            if #mapChildren == 0 then return nil end
+            local choice = mapChildren[math.random(1, #mapChildren)].Name
+            print("[MapVote] No votes - random choice ->", choice)
+            return choice
+        end
+        local choice = options[math.random(1, #options)]
+        print("[MapVote] No votes - random option choice ->", choice)
         return choice
     end
 
@@ -136,22 +185,36 @@ function MapVoteService.DespawnCurrentMap()
     end
 end
 
-CastVoteRE.OnServerEvent:Connect(function(player, mapName)
+CastVoteRE.OnServerEvent:Connect(function(player, mapName, posArg)
     if not votingActive then return end
-    mapsFolder = mapsFolder or ReplicatedStorage:FindFirstChild("Maps")
-    if not mapsFolder or not mapsFolder:FindFirstChild(mapName) then return end
-    userVote[player.UserId] = mapName
+    -- support optional position parameter (map click normalized pos) passed as second arg
+    local pos = nil
+    if posArg and type(posArg) == "table" then
+        pos = posArg
+    end
+    -- validate against currentOptions if set, otherwise allow any existing map
+    local valid = false
+    if currentOptions then
+        for _, name in ipairs(currentOptions) do if name == mapName then valid = true; break end end
+    else
+        mapsFolder = mapsFolder or ReplicatedStorage:FindFirstChild("Maps")
+        if mapsFolder and mapsFolder:FindFirstChild(mapName) then valid = true end
+    end
+    if not valid then return end
+    userVote[player.UserId] = { map = mapName, pos = pos }
     broadcastVotes()
 end)
 
 Players.PlayerAdded:Connect(function(player)
     -- send current vote snapshot and currentMap info
     local perMap = {}
-    for userId, mapName in pairs(userVote) do
+    for userId, voteData in pairs(userVote) do
+        local mapName, pos
+        if type(voteData) == "table" then mapName = voteData.map; pos = voteData.pos else mapName = voteData end
         perMap[mapName] = perMap[mapName] or {}
-        table.insert(perMap[mapName], userId)
+        table.insert(perMap[mapName], { userId = userId, pos = pos })
     end
-    pcall(function() UpdateRE:FireClient(player, { mapVotes = perMap, currentMap = currentMapName }) end)
+    pcall(function() UpdateRE:FireClient(player, { mapVotes = perMap, currentMap = currentMapName, mapOptions = currentOptions }) end)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
