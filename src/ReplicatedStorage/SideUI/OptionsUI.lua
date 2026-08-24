@@ -172,91 +172,39 @@ local function ApplySettings(settings)
 		local soundsRoot = rs:FindFirstChild("Sounds")
 		if soundsRoot then
 			local musicFolder = soundsRoot:FindFirstChild("Music")
-			if musicFolder then
-				-- Map slider 0..1 -> actual volume 0..0.2 so 100% = 0.2
-				local mapped = math.clamp(tonumber(settings.MusicVolume) or 0.5, 0, 1) * 0.2
-				-- Update volume for all music sounds
-				for _, obj in ipairs(musicFolder:GetDescendants()) do
-					if obj:IsA("Sound") then
-						pcall(function() obj.Volume = mapped end)
+				if musicFolder then
+					-- Map slider 0..1 -> actual volume 0..0.2 so 100% = 0.2
+					local mapped = math.clamp(tonumber(settings.MusicVolume) or 0.5, 0, 1) * 0.2
+					-- Update volume for all music sounds (do NOT change Playing state)
+					for _, obj in ipairs(musicFolder:GetDescendants()) do
+						if obj:IsA("Sound") then
+							pcall(function() obj.Volume = mapped end)
+						end
 					end
 				end
-				-- Only toggle playback for the main track we want playing by default
-				local mainTrack = musicFolder:FindFirstChild("Ancient Castle Halls")
-				if mainTrack and mainTrack:IsA("Sound") then
-					pcall(function()
-						if mapped > 0 then
-							if not mainTrack.Playing then mainTrack.Playing = true end
-						else
-							mainTrack.Playing = false
-						end
-					end)
-				end
-			end
 		end
 	end)
 
-	-- If a global rescale helper exists (added by startup), call it so runtime-created
-	-- sounds (weapons, spin ticks, etc.) are updated immediately.
+	-- SFX Volume – update SoundService group (fast) and leave full per-Sound
+	-- rescale to the global rescale helper which is invoked only on commit.
+	pcall(function()
+		local sfxGroup = SoundService:FindFirstChild("SFX")
+		if sfxGroup and sfxGroup:IsA("SoundGroup") then
+			pcall(function() sfxGroup.Volume = settings.SFXVolume end)
+		end
+	end)
+
+	-- Full per-Sound rescale (runtime-created sounds) — run on commits only
 	pcall(function()
 		if type(_G) == "table" and type(_G.RescaleAllSFX) == "function" then
 			pcall(_G.RescaleAllSFX)
 		end
 	end)
 
-	-- SFX Volume – SoundGroup "SFX" under SoundService
-	-- PLACEHOLDER: Create a SoundGroup called "SFX" and parent effect sounds
-	-- to it for this slider to take effect.
-	pcall(function()
-		-- Update SoundService group if present (keeps compatibility)
-		local sfxGroup = SoundService:FindFirstChild("SFX")
-		if sfxGroup and sfxGroup:IsA("SoundGroup") then
-			pcall(function() sfxGroup.Volume = settings.SFXVolume end)
-		end
-
-		-- Also update per-Sound instances under ReplicatedStorage.Sounds
-		local rs = game:GetService("ReplicatedStorage")
-		local soundsRoot = rs:FindFirstChild("Sounds")
-		local musicFolder = soundsRoot and soundsRoot:FindFirstChild("Music")
-			if soundsRoot then
-				for _, obj in ipairs(soundsRoot:GetDescendants()) do
-					if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
-						-- Skip music sounds contained in the Music folder
-						local skip = false
-						if musicFolder and obj:IsDescendantOf(musicFolder) then
-							skip = true
-						end
-						if not skip then
-							pcall(function()
-								local sfx = tonumber(settings.SFXVolume) or 1.0
-								local base = obj:GetAttribute("BaseVolume")
-								if base == nil then
-									base = obj.Volume or 1.0
-									obj:SetAttribute("BaseVolume", base)
-								end
-								obj.Volume = base * sfx
-							end)
-						end
-					end
-				end
-			end
-	end)
-
 	-- Graphics handling removed from options UI (manage graphics elsewhere)
 
-	-- GAMEPLAY ───────────────────────────────────────────────────────────
-	-- Camera & sprint values are exposed via _G.PlayerSettings for
-	-- CameraAndFacingLock.client.lua or other camera scripts to read.
+	-- GAMEPLAY / UI: expose settings globally for other client systems to read
 	_G.PlayerSettings = settings
-
-	-- UI ─────────────────────────────────────────────────────────────────
-	-- Show Game State
-	pcall(function()
-		-- Only toggle the dedicated game state display UI; do NOT force MatchHUD visibility
-		local gui = playerGui:FindFirstChild("GameStateDisplay") or playerGui:FindFirstChild("GameStateGui")
-		if gui then gui.Enabled = settings.ShowGameState end
-	end)
-
 	-- Player Highlights toggle – expose globally for TeamHighlight script
 	_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
 
@@ -264,18 +212,6 @@ local function ApplySettings(settings)
 	pcall(function()
 		if type(_G.RefreshXPTextVisibility) == "function" then
 			_G.RefreshXPTextVisibility()
-		end
-	end)
-
-	local myHealthDisplayMode = normalizeMyHealthDisplayMode(settings.MyHealthDisplayMode)
-	settings.MyHealthDisplayMode = myHealthDisplayMode
-	if _G.MyHealthDisplayMode ~= myHealthDisplayMode then
-		print(string.format("[HealthDisplay] My health display = %s", tostring(myHealthDisplayMode)))
-	end
-	_G.MyHealthDisplayMode = myHealthDisplayMode
-	pcall(function()
-		if type(_G.RefreshLocalHealthDisplaySettings) == "function" then
-			_G.RefreshLocalHealthDisplaySettings()
 		end
 	end)
 
@@ -324,16 +260,7 @@ local function ApplySettings(settings)
 		end
 	end)
 
-	-- Sync changed settings to server via lightweight RemoteEvent (no DataStore write)
-	pcall(function()
-		local rs = game:GetService("ReplicatedStorage")
-		local updateEV = rs:FindFirstChild("UpdatePlayerSetting")
-		if updateEV and updateEV:IsA("RemoteEvent") then
-			for key, value in pairs(settings) do
-				updateEV:FireServer(key, value)
-			end
-		end
-	end)
+	-- Server sync is done per-key via SyncSetting() to avoid sending whole tables.
 	-- UI Scale removed from options (control MainUI UIScale directly if needed)
 
 	-- Show Tooltips – PLACEHOLDER
@@ -362,6 +289,28 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	end
 
 	ensureSettings()
+
+	-- Helper: sync a single setting key to server (ignore dead/no-UI keys)
+	local DEAD_SETTINGS = {
+		CameraSensitivity = true,
+		InvertCamera = true,
+		SprintMode = true,
+		ShowTooltips = true,
+		ShowGameState = true,
+		ShowHelm = true,
+		MyHealthDisplayMode = true,
+	}
+
+	local function SyncSetting(key, value)
+		if DEAD_SETTINGS[key] then return end
+		pcall(function()
+			local rs = game:GetService("ReplicatedStorage")
+			local updateEV = rs:FindFirstChild("UpdatePlayerSetting")
+			if updateEV and updateEV:IsA("RemoteEvent") then
+				updateEV:FireServer(key, value)
+			end
+		end)
+	end
 
 	-- UI updater functions keyed by settingKey (for Reset Defaults)
 	local uiUpdaters = {}
@@ -520,6 +469,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 			PlayerSettings[settingKey] = not PlayerSettings[settingKey]
 			setVisual(PlayerSettings[settingKey])
 			ApplySettings(PlayerSettings)
+			SyncSetting(settingKey, PlayerSettings[settingKey])
 		end)
 
 		uiUpdaters[settingKey] = function(val) setVisual(val) end
@@ -655,7 +605,27 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 			rawVal = math.clamp(rawVal, min, max)
 			PlayerSettings[settingKey] = rawVal
 			updateVisual(rawVal)
-			ApplySettings(PlayerSettings)
+			-- Cheap local feedback while dragging: update music or SFX group only
+			pcall(function()
+				if settingKey == "MusicVolume" then
+					local rs = game:GetService("ReplicatedStorage")
+					local soundsRoot = rs:FindFirstChild("Sounds")
+					local musicFolder = soundsRoot and soundsRoot:FindFirstChild("Music")
+					if musicFolder then
+						local mapped = math.clamp(tonumber(rawVal) or 0.5, 0, 1) * 0.2
+						for _, obj in ipairs(musicFolder:GetDescendants()) do
+							if obj:IsA("Sound") then
+								pcall(function() obj.Volume = mapped end)
+							end
+						end
+					end
+				elseif settingKey == "SFXVolume" then
+					local sfxGroup = SoundService:FindFirstChild("SFX")
+					if sfxGroup and sfxGroup:IsA("SoundGroup") then
+						pcall(function() sfxGroup.Volume = rawVal end)
+					end
+				end
+			end)
 		end
 
 		hitArea.InputBegan:Connect(function(input)
@@ -677,7 +647,13 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		local c2 = UserInputService.InputEnded:Connect(function(input)
 			if input.UserInputType == Enum.UserInputType.MouseButton1
 				or input.UserInputType == Enum.UserInputType.Touch then
+				-- commit final value on release
+				local wasDragging = dragging
 				dragging = false
+				if wasDragging then
+					ApplySettings(PlayerSettings)
+					SyncSetting(settingKey, PlayerSettings[settingKey])
+				end
 			end
 		end)
 		trackConn(c2)
@@ -779,6 +755,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 				PlayerSettings[settingKey] = choiceValue
 				refreshHighlights()
 				ApplySettings(PlayerSettings)
+				SyncSetting(settingKey, choiceValue)
 			end)
 		end
 
@@ -926,6 +903,14 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 				end
 				refreshHighlights()
 				ApplySettings(PlayerSettings)
+				-- Sync only the changed keys
+				if option.id == "off" then
+					SyncSetting("ShowTeammateHealthBars", PlayerSettings.ShowTeammateHealthBars)
+					SyncSetting("ShowEnemyHealthBars", PlayerSettings.ShowEnemyHealthBars)
+					SyncSetting("ShowNPCHealthBars", PlayerSettings.ShowNPCHealthBars)
+				else
+					SyncSetting(option.key, PlayerSettings[option.key])
+				end
 			end)
 		end
 
