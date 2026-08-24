@@ -209,6 +209,9 @@ local function refreshOverheadUISettings()
 				if billboard:GetAttribute("OriginalMaxDistance") == nil then
 					billboard:SetAttribute("OriginalMaxDistance", billboard.MaxDistance)
 				end
+				if billboard:GetAttribute("OriginalStudsOffset") == nil then
+					billboard:SetAttribute("OriginalStudsOffset", billboard.StudsOffset)
+				end
 			end)
 		end
 	end
@@ -274,6 +277,9 @@ Workspace.DescendantAdded:Connect(function(inst)
             if inst:GetAttribute("OriginalMaxDistance") == nil then
                 inst:SetAttribute("OriginalMaxDistance", inst.MaxDistance)
             end
+			if inst:GetAttribute("OriginalStudsOffset") == nil then
+				inst:SetAttribute("OriginalStudsOffset", inst.StudsOffset)
+			end
         end)
     end
 end)
@@ -296,23 +302,58 @@ RunService.Heartbeat:Connect(function()
 			local part = billboard.Parent
 			if part and part:IsA("BasePart") then
 				local dist = (part.Position - playerPos).Magnitude
-				local markerMode = shouldUseMarkerForPlayerBillboard(billboard, dist)
-				local markerMode = shouldUseMarkerForPlayerBillboard(billboard, dist)
-				if markerMode then
-					-- Marker should take over: disable healthplate and restore original MaxDistance
-					pcall(function()
-						local orig = billboard:GetAttribute("OriginalMaxDistance")
-						if orig then billboard.MaxDistance = orig end
-					end)
-					billboard.Enabled = false
-					continue
+				local ownerType = getOwnerType(billboard)
+				-- For NPCs, only show the healthplate when within the same proximity players use
+				if ownerType == "NPC" then
+					if dist > MARKER_HIDE_DISTANCE then
+						pcall(function()
+							local orig = billboard:GetAttribute("OriginalMaxDistance")
+							if orig then billboard.MaxDistance = orig end
+							local origStuds = billboard:GetAttribute("OriginalStudsOffset")
+							if origStuds then billboard.StudsOffset = origStuds end
+						end)
+						billboard.Enabled = false
+						continue
+					else
+						pcall(function()
+							billboard.MaxDistance = 10000
+							local origStuds = billboard:GetAttribute("OriginalStudsOffset")
+							if origStuds then
+								billboard.StudsOffset = origStuds + Vector3.new(0, 1, 0)
+							else
+								billboard:SetAttribute("OriginalStudsOffset", billboard.StudsOffset)
+								billboard.StudsOffset = billboard.StudsOffset + Vector3.new(0, 1, 0)
+							end
+						end)
+						billboard.Enabled = true
+						applyAlpha(billboard, 1)
+					end
 				else
-					-- Healthplate should show: force a large MaxDistance so camera zoom won't hide it
-					pcall(function()
-						billboard.MaxDistance = 10000
-					end)
-					billboard.Enabled = true
-					applyAlpha(billboard, 1)
+					-- Player-owned billboards: use existing marker/healthplate handoff logic
+					local markerMode = shouldUseMarkerForPlayerBillboard(billboard, dist)
+					if markerMode then
+						pcall(function()
+							local orig = billboard:GetAttribute("OriginalMaxDistance")
+							if orig then billboard.MaxDistance = orig end
+							local origStuds = billboard:GetAttribute("OriginalStudsOffset")
+							if origStuds then billboard.StudsOffset = origStuds end
+						end)
+						billboard.Enabled = false
+						continue
+					else
+						pcall(function()
+							billboard.MaxDistance = 10000
+							local origStuds = billboard:GetAttribute("OriginalStudsOffset")
+							if origStuds then
+								billboard.StudsOffset = origStuds + Vector3.new(0, 1, 0)
+							else
+								billboard:SetAttribute("OriginalStudsOffset", billboard.StudsOffset)
+								billboard.StudsOffset = billboard.StudsOffset + Vector3.new(0, 1, 0)
+							end
+						end)
+						billboard.Enabled = true
+						applyAlpha(billboard, 1)
+					end
 				end
 			end
 		end
