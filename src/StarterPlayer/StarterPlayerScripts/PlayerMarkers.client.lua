@@ -15,7 +15,7 @@ local localPlayer = Players.LocalPlayer
 
 local MARKER_NAME = "PlayerMarkerGui"
 local OVERHEAD_NAME = "MobOverheadHealth"
-local TEAMMATE_FADE_DISTANCE = 55
+local MARKER_HIDE_DISTANCE = 50
 local ENEMY_MAX_DISTANCE = 85
 local TEAMMATE_FAR_ALPHA = 0.50
 local TEAMMATE_MAX_DISTANCE = 100000
@@ -68,27 +68,12 @@ local function getTeamColor(player)
 end
 
 local function isOverheadNameVisible(player)
+	-- Reliable check: the shared overhead BillboardGui's Enabled property
 	local attachPart = getAttachPart(player and player.Character)
-	if not attachPart then
-		return false
-	end
-
+	if not attachPart then return false end
 	local overhead = attachPart:FindFirstChild(OVERHEAD_NAME)
-	if not overhead or not overhead:IsA("BillboardGui") or overhead.Enabled ~= true then
-		return false
-	end
-
-	local bg = overhead:FindFirstChild("Background")
-	local nameLabel = bg and bg:FindFirstChild("NameLabel")
-	if not nameLabel or not nameLabel:IsA("TextLabel") then
-		return false
-	end
-
-	if nameLabel.Visible == false then
-		return false
-	end
-
-	return (nameLabel.TextTransparency <= 0.001)
+	if not overhead or not overhead:IsA("BillboardGui") then return false end
+	return overhead.Enabled == true
 end
 
 local function ensureMarkerForPlayer(player)
@@ -190,13 +175,21 @@ local function refreshMarker(player)
 	marker.BackgroundColor3 = getTeamColor(player)
 	local teammate = isTeammate(player)
 	local showMarkers = (_G.ShowPlayerMarkers ~= false)
-	local carryingFlag = player:GetAttribute("CarryingFlag")
 	if not showMarkers then
 		gui.Enabled = false
 		return
 	end
 
-	if isOverheadNameVisible(player) then
+	-- Hide if dead
+	local humanoid = player.Character and player.Character:FindFirstChildWhichIsA("Humanoid")
+	if humanoid and (humanoid.Health <= 0 or humanoid:GetState() == Enum.HumanoidStateType.Dead) then
+		gui.Enabled = false
+		return
+	end
+
+	-- Hide if carrying a flag
+	local carryingFlag = player:GetAttribute("CarryingFlag")
+	if type(carryingFlag) == "string" and carryingFlag ~= "" then
 		gui.Enabled = false
 		return
 	end
@@ -204,27 +197,31 @@ local function refreshMarker(player)
 	local myCharacter = localPlayer.Character
 	local myRoot = getCharacterRoot(myCharacter)
 	local theirRoot = getCharacterRoot(player.Character)
-
 	if not myRoot or not theirRoot then
 		gui.Enabled = false
 		return
 	end
 
-	local dist = (theirRoot.Position - myRoot.Position).Magnitude
-	local hasFlag = (type(carryingFlag) == "string" and carryingFlag ~= "")
-	local useMarkerMode = (not isOverheadNameVisible(player)) and (not hasFlag)
-
-	if teammate then
-		gui.Enabled = useMarkerMode
-		gui.AlwaysOnTop = true
-		gui.MaxDistance = TEAMMATE_MAX_DISTANCE
-		marker.BackgroundTransparency = (dist > TEAMMATE_FADE_DISTANCE) and (1 - TEAMMATE_FAR_ALPHA) or 0
+	-- If the shared overhead health/nameplate exists and is enabled, hide the marker.
+	local overhead = attachPart:FindFirstChild(OVERHEAD_NAME)
+	if overhead and overhead:IsA("BillboardGui") and overhead.Enabled == true then
+		gui.Enabled = false
 		return
 	end
 
+	-- Otherwise show the marker. Teammates are visible far away and through walls.
+	if teammate then
+		gui.Enabled = true
+		gui.AlwaysOnTop = true
+		gui.MaxDistance = TEAMMATE_MAX_DISTANCE
+		marker.BackgroundTransparency = 0
+		return
+	end
+
+	-- Enemies: visible (but not through walls) with limited MaxDistance.
 	gui.AlwaysOnTop = false
 	gui.MaxDistance = ENEMY_MAX_DISTANCE
-	gui.Enabled = useMarkerMode and (dist <= ENEMY_MAX_DISTANCE)
+	gui.Enabled = true
 	marker.BackgroundTransparency = 0
 end
 

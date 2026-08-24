@@ -15,7 +15,7 @@ local DEFAULT_NAME_POSITION = UDim2.new(0, 0, 0, 1)
 local DEFAULT_NAME_SIZE = UDim2.new(1, 0, 0, 16)
 local LOCAL_NAME_ONLY_POSITION = UDim2.new(0, 0, 0, 22)
 local LOCAL_NAME_ONLY_SIZE = UDim2.new(1, 0, 0, 18)
-local MARKER_SWAP_DISTANCE = 55
+local MARKER_HIDE_DISTANCE = 50
 
 -- Base (fully-visible) transparencies for each element.
 -- Must stay in sync with buildBillboard in MobOverheadHealth.server.lua.
@@ -122,7 +122,8 @@ local function shouldUseMarkerForPlayerBillboard(billboard, dist)
 	if _G.ShowPlayerMarkers == false then
 		return false
 	end
-	if dist <= MARKER_SWAP_DISTANCE then
+	-- Use character-to-character distance for the hand-off
+	if dist <= MARKER_HIDE_DISTANCE then
 		return false
 	end
 	local targetPlayer = getBillboardPlayer(billboard)
@@ -203,6 +204,12 @@ local function refreshOverheadUISettings()
 	for _, billboard in ipairs(Workspace:GetDescendants()) do
 		if billboard:IsA("BillboardGui") and billboard.Name == BILLBOARD_NAME then
 			applyBillboardSettings(billboard)
+			-- remember original MaxDistance so we can restore it later
+			pcall(function()
+				if billboard:GetAttribute("OriginalMaxDistance") == nil then
+					billboard:SetAttribute("OriginalMaxDistance", billboard.MaxDistance)
+				end
+			end)
 		end
 	end
 end
@@ -260,6 +267,17 @@ Workspace.DescendantAdded:Connect(function(inst)
 	end
 end)
 
+-- When new billboards appear, store their original MaxDistance to restore later
+Workspace.DescendantAdded:Connect(function(inst)
+    if inst:IsA("BillboardGui") and inst.Name == BILLBOARD_NAME then
+        pcall(function()
+            if inst:GetAttribute("OriginalMaxDistance") == nil then
+                inst:SetAttribute("OriginalMaxDistance", inst.MaxDistance)
+            end
+        end)
+    end
+end)
+
 refreshOverheadUISettings()
 
 RunService.Heartbeat:Connect(function()
@@ -279,11 +297,23 @@ RunService.Heartbeat:Connect(function()
 			if part and part:IsA("BasePart") then
 				local dist = (part.Position - playerPos).Magnitude
 				local markerMode = shouldUseMarkerForPlayerBillboard(billboard, dist)
-				billboard.Enabled = not markerMode
+				local markerMode = shouldUseMarkerForPlayerBillboard(billboard, dist)
 				if markerMode then
+					-- Marker should take over: disable healthplate and restore original MaxDistance
+					pcall(function()
+						local orig = billboard:GetAttribute("OriginalMaxDistance")
+						if orig then billboard.MaxDistance = orig end
+					end)
+					billboard.Enabled = false
 					continue
+				else
+					-- Healthplate should show: force a large MaxDistance so camera zoom won't hide it
+					pcall(function()
+						billboard.MaxDistance = 10000
+					end)
+					billboard.Enabled = true
+					applyAlpha(billboard, 1)
 				end
-				applyAlpha(billboard, 1)
 			end
 		end
 	end
