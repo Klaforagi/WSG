@@ -705,6 +705,93 @@ pcall(function()
 					end
 				end
 			end
+
+			-- Runtime handling: scale any existing sounds in Workspace and watch for new ones
+			local function getSFXValue()
+				local s = 1.0
+				if type(_G) == "table" and _G.PlayerSettings and tonumber(_G.PlayerSettings.SFXVolume) then
+					s = math.clamp(tonumber(_G.PlayerSettings.SFXVolume) or 1.0, 0, 1)
+				end
+				return s
+			end
+
+			local function isMusicSound(sound)
+				if not sound or not sound:IsA("Sound") then return false end
+				local rsSounds = ReplicatedStorage:FindFirstChild("Sounds")
+				if not rsSounds then return false end
+				local mf = rsSounds:FindFirstChild("Music")
+				if mf and sound:IsDescendantOf(mf) then return true end
+				return false
+			end
+
+			local function applySFXToSound(sound)
+				if not sound or not sound:IsA("Sound") then return end
+				if isMusicSound(sound) then return end
+				pcall(function()
+					local base = sound:GetAttribute("BaseVolume")
+					if base == nil then
+						base = sound.Volume or 1.0
+						sound:SetAttribute("BaseVolume", base)
+					end
+					local sfx = getSFXValue()
+					sound.Volume = base * sfx
+				end)
+			end
+
+			-- Initial pass: workspace sounds
+			pcall(function()
+				for _, obj in ipairs(workspace:GetDescendants()) do
+					if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
+						applySFXToSound(obj)
+					end
+				end
+			end)
+
+			-- Watch for new sounds under Workspace and ReplicatedStorage
+			workspace.DescendantAdded:Connect(function(desc)
+				if desc and type(desc.IsA) == "function" and desc:IsA("Sound") then
+					applySFXToSound(desc)
+				end
+			end)
+			ReplicatedStorage.DescendantAdded:Connect(function(desc)
+				if desc and type(desc.IsA) == "function" and desc:IsA("Sound") then
+					applySFXToSound(desc)
+				end
+			end)
+
+			-- Expose a global rescale helper for OptionsUI to call when slider changes
+			_G = _G or {}
+			_G.RescaleAllSFX = function()
+				pcall(function()
+					local sfx = getSFXValue()
+					local rsSounds = ReplicatedStorage:FindFirstChild("Sounds")
+					local mf = rsSounds and rsSounds:FindFirstChild("Music")
+					for _, obj in ipairs(ReplicatedStorage:GetDescendants()) do
+						if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
+							if not (mf and obj:IsDescendantOf(mf)) then
+								local base = obj:GetAttribute("BaseVolume")
+								if base == nil then
+									base = obj.Volume or 1.0
+									obj:SetAttribute("BaseVolume", base)
+								end
+								obj.Volume = base * sfx
+							end
+						end
+					end
+					for _, obj in ipairs(workspace:GetDescendants()) do
+						if obj and type(obj.IsA) == "function" and obj:IsA("Sound") then
+							if not (mf and obj:IsDescendantOf(mf)) then
+								local base = obj:GetAttribute("BaseVolume")
+								if base == nil then
+									base = obj.Volume or 1.0
+									obj:SetAttribute("BaseVolume", base)
+								end
+								obj.Volume = base * sfx
+							end
+						end
+					end
+				end)
+			end
 		end)
 	end
 end)

@@ -196,6 +196,14 @@ local function ApplySettings(settings)
 		end
 	end)
 
+	-- If a global rescale helper exists (added by startup), call it so runtime-created
+	-- sounds (weapons, spin ticks, etc.) are updated immediately.
+	pcall(function()
+		if type(_G) == "table" and type(_G.RescaleAllSFX) == "function" then
+			pcall(_G.RescaleAllSFX)
+		end
+	end)
+
 	-- SFX Volume – SoundGroup "SFX" under SoundService
 	-- PLACEHOLDER: Create a SoundGroup called "SFX" and parent effect sounds
 	-- to it for this slider to take effect.
