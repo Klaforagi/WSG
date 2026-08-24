@@ -265,7 +265,9 @@ local function healLoop(player)
                 return
             end
             local targetDistance = (targetRoot.Position - hrp.Position).Magnitude
-            if targetDistance > targetRange then
+            local activeMultiplier = tonumber(BandageConfig.ActiveTargetRangeMultiplier) or 3
+            local maxCastRange = (targetRange or 8) * activeMultiplier
+            if targetDistance > maxCastRange then
                 stopBandage(player, "interrupted")
                 return
             end

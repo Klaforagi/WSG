@@ -14,5 +14,8 @@ BandageConfig.TargetRange   = 8       -- studs for teammate bandage prompt/use
 
 -- Movement interrupt threshold (studs from start position)
 BandageConfig.MoveThreshold = 1.5
+-- Multiplier applied to TargetRange while a bandage is active so the healed
+-- player can move further before the cast is interrupted. Default 3x.
+BandageConfig.ActiveTargetRangeMultiplier = 3
 
 return BandageConfig
