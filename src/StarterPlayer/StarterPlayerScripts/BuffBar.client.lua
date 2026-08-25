@@ -318,7 +318,8 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "BuffBarGui"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 245
+-- Put buff tooltip UI above everything else so it always renders on top
+screenGui.DisplayOrder = 9999
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
@@ -880,9 +881,18 @@ local function createTile(entry)
     end)
     iconFrame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.Touch then
+            -- Show tooltip immediately on touch and keep it visible while the
+            -- touch is held. Hide when the touch ends (InputEnded).
             showTooltip(entry.id)
-            task.delay(2.5, function()
-                hideTooltip(entry.id)
+            local conn
+            conn = UserInputService.InputEnded:Connect(function(endInput)
+                if endInput.UserInputType == Enum.UserInputType.Touch then
+                    if conn then
+                        conn:Disconnect()
+                        conn = nil
+                    end
+                    hideTooltip(entry.id)
+                end
             end)
         end
     end)

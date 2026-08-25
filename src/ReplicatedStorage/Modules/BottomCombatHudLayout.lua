@@ -12,9 +12,13 @@ local HOTBAR_NAME = "HotbarButtonsContainer"
 local XP_FRAME_NAME = "XPBarFrame"
 
 local BAR_WIDTH_SCALE = 0.34
-local MAX_WIDTH = 720
-local DESKTOP_MIN_WIDTH = 420
-local TOUCH_MIN_WIDTH = 320
+local MAX_WIDTH = 560          -- PC fullscreen cap
+local DESKTOP_MIN_WIDTH = 380
+local TOUCH_MIN_WIDTH = 360    -- phone floor
+local MAX_SLOT_SIZE = 64
+local MIN_SLOT_SIZE = 42
+local MAX_XP_HEIGHT = 44
+local MIN_XP_HEIGHT = 32
 
 local state = nil
 
@@ -48,9 +52,10 @@ local function computeMetrics()
 	local touchEnabled = UserInputService.TouchEnabled
 
 	local xpHeight = touchEnabled
-		and math.max(30, math.floor(viewportY * 0.031))
-		or math.max(36, math.floor(viewportY * 0.034))
-	local xpTrackHeight = touchEnabled
+			and math.max(30, math.floor(viewportY * 0.031))
+			or math.max(36, math.floor(viewportY * 0.034))
+		xpHeight = math.clamp(xpHeight, MIN_XP_HEIGHT, MAX_XP_HEIGHT)
+		local xpTrackHeight = touchEnabled
 		and math.max(11, math.floor(viewportY * 0.014))
 		or 16
 	local xpLabelSize = touchEnabled
@@ -68,8 +73,7 @@ local function computeMetrics()
 	local hotbarGap = touchEnabled and math.max(4, math.floor(6 * uiScale)) or math.max(4, math.floor(8 * uiScale))
 	local dashGap = touchEnabled and math.max(8, math.floor(10 * uiScale)) or math.max(10, math.floor(12 * uiScale))
 	local maxSlotSize = math.floor((rootWidth - (hotbarGap * 3) - (dashGap * 2)) / 5.96)
-	local minSlotSize = 30
-	local slotSize = math.max(minSlotSize, math.min(baseSlotSize, maxSlotSize))
+	local slotSize = math.clamp(math.min(baseSlotSize, maxSlotSize), MIN_SLOT_SIZE, MAX_SLOT_SIZE)
 	local dashButtonSize = math.max(30, math.floor(slotSize * 0.98))
 	local hotbarWidth = (slotSize * 4) + (hotbarGap * 3)
 	local rowHeight = math.max(slotSize, dashButtonSize)
@@ -105,17 +109,15 @@ local function applyLayout()
 
 	root.AnchorPoint = Vector2.new(0.5, 1)
 	root.Position = UDim2.new(0.5, 0, 0.98, 0)
-	root.Size = UDim2.new(0.4, 0, 0.2, 0)
+	root.Size = UDim2.fromOffset(metrics.RootWidth, metrics.RootHeight)
 
 	xpFrame.AnchorPoint = Vector2.new(0.5, 1)
 	xpFrame.Position = UDim2.new(0.5, 0, 1, 0)
-	xpFrame.Size = UDim2.new(1, 0, 0.25, 0)
+	xpFrame.Size = UDim2.new(1, 0, 0, metrics.XPHeight)
 
-	-- HotbarDashRow removed; dash button will be parented directly under Root
-
-		hotbar.AnchorPoint = Vector2.new(0.5, 0.5)
-		hotbar.Position = UDim2.new(0.5, 0, 0.47, 0)
-		hotbar.Size = UDim2.new(0.6, 0, 0.45, 0)
+	hotbar.AnchorPoint = Vector2.new(0.5, 1)
+	hotbar.Position = UDim2.new(0.5, 0, 1, -(metrics.XPHeight + metrics.RowGap))
+	hotbar.Size = UDim2.fromOffset(metrics.HotbarWidth, metrics.SlotSize)
 
 	local dashFrame = root:FindFirstChild("DashButtonFrame")
 	if dashFrame and dashFrame:IsA("GuiObject") then
