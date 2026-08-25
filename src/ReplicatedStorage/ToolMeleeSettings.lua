@@ -73,7 +73,11 @@ local giantAndKingSwingAnimationConfig = {
 }
 
 local SPEAR_WEAPON_TAG = "Spear"
-local SPEAR_SWING_ANIMATION_ID = "74251114610007"
+-- Spear animation ids (single-hand for normal sizes, 2H for Giant/King sizes)
+local SPEAR_SWING_ANIM_1 = "122194479756230"
+local SPEAR_SWING_ANIM_2 = "96614186344783"
+local SPEAR_2H_ANIM_1 = "134296812786961"
+local SPEAR_2H_ANIM_2 = "102533072628257"
 
 local defaultSwingAnimationConfigsBySizeTier = {
     Giant = giantAndKingSwingAnimationConfig,
@@ -139,15 +143,20 @@ end
 local spearAttackConfig = {
     weaponTags            = { [SPEAR_WEAPON_TAG] = true },
     usesCombo             = false,
-    useSizeTierAnimations = false,
+    -- Allow spears to use size-tier animations so Giant/King spears can
+    -- use distinct 2-handed animations while normal-sized spears use
+    -- the single-hand animations.
+    useSizeTierAnimations = true,
     ignoreSizeHitboxScale = true,
     cd                    = 0.8,
     hitboxDelay           = 0.35,
     hitboxActive          = 0.2,
     hitboxSize            = Vector3.new(5, 10, 6),
     hitboxOffset          = Vector3.new(0, 0, 4.8),
-    swing_anim_id         = SPEAR_SWING_ANIMATION_ID,
-    swing_anim_ids        = { SPEAR_SWING_ANIMATION_ID },
+    swing_anim_id         = SPEAR_SWING_ANIM_1,
+    swing_anim_ids        = { SPEAR_SWING_ANIM_1, SPEAR_SWING_ANIM_2 },
+    -- Randomize swing selection each attack when true
+    randomize_swing       = true,
 }
 
 --------------------------------------------------------------------------------
@@ -390,13 +399,23 @@ function module.getPreset(toolType, sizePercentOrTier)
     local sizeTier = resolveSizeTier(sizePercentOrTier)
     local sizeTierCfg = sizeTier and defaultSwingAnimationConfigsBySizeTier[sizeTier] or nil
     local useSizeTierAnimations = weaponOverride.useSizeTierAnimations ~= false
-    if hasWeaponTag(weaponOverride, SPEAR_WEAPON_TAG) then
-        useSizeTierAnimations = false
-    end
     if useSizeTierAnimations and sizeTierCfg then
         weapon = mergeTables(weapon, sizeTierCfg)
     end
     weapon = mergeTables(weapon, weaponOverride)
+
+    -- For spears override animation ids per-size-tier so Giant/King use the
+    -- dedicated 2-handed animations while smaller sizes use the single-hand
+    -- spear animations. This keeps other weapon types unchanged.
+    if hasWeaponTag(weaponOverride, SPEAR_WEAPON_TAG) then
+        if sizeTier == "Giant" or sizeTier == "King" then
+            weapon.swing_anim_id = SPEAR_2H_ANIM_1
+            weapon.swing_anim_ids = { SPEAR_2H_ANIM_1, SPEAR_2H_ANIM_2 }
+        else
+            weapon.swing_anim_id = SPEAR_SWING_ANIM_1
+            weapon.swing_anim_ids = { SPEAR_SWING_ANIM_1, SPEAR_SWING_ANIM_2 }
+        end
+    end
 
     local rarity = weapon.rarity
     local defaults = rarityDefaults[rarity] or rarityDefaults.Common

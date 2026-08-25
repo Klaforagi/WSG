@@ -418,10 +418,15 @@ local function playLocalCfgAnimation(cfg, toolName, scaledCd, baseCdOverride)
             if id and tostring(id) ~= "" then table.insert(validIds, tostring(id)) end
         end
         if #validIds > 0 then
-            local key = toolName or "_default"
-            local idx = swingCycleIndex[key] or 1
-            animId = validIds[((idx - 1) % #validIds) + 1]
-            swingCycleIndex[key] = idx + 1
+            if cfg.randomize_swing == true then
+                -- pick a random animation each attack
+                animId = validIds[math.random(1, #validIds)]
+            else
+                local key = toolName or "_default"
+                local idx = swingCycleIndex[key] or 1
+                animId = validIds[((idx - 1) % #validIds) + 1]
+                swingCycleIndex[key] = idx + 1
+            end
         end
     end
     -- fall back to single swing_anim_id
