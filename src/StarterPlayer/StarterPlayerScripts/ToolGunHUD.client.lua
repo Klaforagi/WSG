@@ -287,34 +287,32 @@ local function tryFire(tool)
     else
         origin = activeCamera.CFrame.Position
     end
-    local mx, my
-    local rayOrigin
-    local rayDirection
-    if UserInputService.TouchEnabled then
-        -- Mobile has no mouse cursor; in locked-facing gameplay the effective
-        -- crosshair is camera center, so use the camera look vector directly.
-        rayOrigin = activeCamera.CFrame.Position
-        rayDirection = activeCamera.CFrame.LookVector.Unit
 
-        -- Guard against near-ground shots when mobile camera pitch is slightly
-        -- lower than expected (common on some device aspect ratios).
-        if rayDirection.Y < -0.12 then
-            rayDirection = Vector3.new(rayDirection.X, -0.04, rayDirection.Z).Unit
-        end
-    else
-        local mouse = player:GetMouse()
-        if mouse and mouse.X and mouse.Y then
-            mx = mouse.X
-            my = mouse.Y
-        else
-            local mpos = UserInputService:GetMouseLocation()
-            mx = mpos.X
-            my = mpos.Y
-        end
-        local mouseRay = activeCamera:ScreenPointToRay(mx, my)
-        rayOrigin = mouseRay.Origin
-        rayDirection = mouseRay.Direction.Unit
-    end
+	local rayOrigin
+	    local rayDirection
+
+	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+		-- Mobile: fire through the same point the crosshair uses (screen center)
+		local viewport = activeCamera.ViewportSize
+		local centerRay = activeCamera:ViewportPointToRay(viewport.X * 0.5, viewport.Y * 0.5)
+		rayOrigin = centerRay.Origin
+		rayDirection = centerRay.Direction.Unit
+	else
+		local mouse = player:GetMouse()
+		local mx, my
+		if mouse and mouse.X and mouse.Y then
+			mx = mouse.X
+			my = mouse.Y
+		else
+			local mpos = UserInputService:GetMouseLocation()
+			mx = mpos.X
+			my = mpos.Y
+		end
+		local mouseRay = activeCamera:ScreenPointToRay(mx, my)
+		rayOrigin = mouseRay.Origin
+		rayDirection = mouseRay.Direction.Unit
+	end
+
     fireEvent:FireServer(rayOrigin, rayDirection, origin, tool.Name)
     -- Failsafe: if no ACK within 0.35s, clear the in-flight flag so the gun does not get stuck
     local myToken = fireToken
@@ -531,26 +529,62 @@ local function attachTool(tool)
         shotInFlight = false
     end
 
-    local mouseConns = {}
-    local function clearMouseConns()
-        for _, c in ipairs(mouseConns) do c:Disconnect() end
-        mouseConns = {}
+	local mouseConns = {}
+        local fireTouchId = nil
+
+        local function clearMouseConns()
+            for _, c in ipairs(mouseConns) do
+                c:Disconnect()
+            end
+            mouseConns = {}
+            fireTouchId = nil
+        end
+
+        local function isRightSideTouch(input)
+            local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+            return input.Position.X >= (viewport.X * 0.5)
+        end
+
+        tool.Equipped:Connect(function()
+            clearMouseConns()
+
+            if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+                table.insert(mouseConns, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                    if input.UserInputType ~= Enum.UserInputType.Touch then
+                        return
+                    end
+                    if fireTouchId ~= nil then
+                        return
+                    end
+                    if not isRightSideTouch(input) then
+                        return
+                    end
+                    fireTouchId = input
+                    startFiring()
+                end))
+
+                table.insert(mouseConns, UserInputService.InputEnded:Connect(function(input)
+                    if input ~= fireTouchId then
+                        return
+                    end
+                    fireTouchId = nil
+                    stopFiring()
+                end))
+            else
+                table.insert(mouseConns, mouse.Button1Down:Connect(startFiring))
+                table.insert(mouseConns, mouse.Button1Up:Connect(stopFiring))
+            end
+
+            onEquippedTool()
+        end)
+
+        tool.Unequipped:Connect(function()
+            clearMouseConns()
+            stopFiring()
+            onUnequippedTool()
+        end)
+
     end
-
-    tool.Equipped:Connect(function()
-        clearMouseConns() -- prevent duplicates if Equipped fires twice
-        table.insert(mouseConns, mouse.Button1Down:Connect(startFiring))
-        table.insert(mouseConns, mouse.Button1Up:Connect(stopFiring))
-        onEquippedTool()
-    end)
-
-    tool.Unequipped:Connect(function()
-        clearMouseConns()
-        stopFiring()
-        onUnequippedTool()
-    end)
-
-end
 
 local scannedContainers = {} -- prevent duplicate ChildAdded on same container
 local function scanContainer(container)

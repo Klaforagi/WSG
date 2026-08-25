@@ -836,13 +836,46 @@ local function attachMelee(tool)
         end)
     end
 
-    tool.Equipped:Connect(function()
-        -- Always start fresh at Attack1 on equip
-        resetCombo()
-        isSwinging     = false
-        lastAttackTime = 0
-        table.insert(mouseConns, mouse.Button1Down:Connect(executeAttack))
-    end)
+    local fireTouchId = nil
+
+        local function isRightSideTouch(input)
+            local viewport = workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize or Vector2.new(1920, 1080)
+            return input.Position.X >= (viewport.X * 0.5)
+        end
+
+        tool.Equipped:Connect(function()
+            resetCombo()
+            isSwinging = false
+            lastAttackTime = 0
+            fireTouchId = nil
+
+            if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+                table.insert(mouseConns, UserInputService.InputBegan:Connect(function(input, gameProcessed)
+                    if gameProcessed then
+                        return
+                    end
+                    if input.UserInputType ~= Enum.UserInputType.Touch then
+                        return
+                    end
+                    if fireTouchId ~= nil then
+                        return
+                    end
+                    if not isRightSideTouch(input) then
+                        return
+                    end
+                    fireTouchId = input
+                    executeAttack()
+                end))
+
+			    table.insert(mouseConns, UserInputService.InputEnded:Connect(function(input)
+				    if input == fireTouchId then
+				    	fireTouchId = nil
+				    end
+			    end))
+		    else
+			    table.insert(mouseConns, mouse.Button1Down:Connect(executeAttack))
+		    end
+	    end)
 
     tool.Unequipped:Connect(function()
         -- Full reset on unequip / death / weapon switch
@@ -851,6 +884,7 @@ local function attachMelee(tool)
         lastAttackTime = 0
         for _, c in ipairs(mouseConns) do c:Disconnect() end
         mouseConns = {}
+        fireTouchId = nil
     end)
 end
 

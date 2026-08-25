@@ -471,7 +471,7 @@ rootStroke.Transparency = 0.2
 
 local headerLabel = ensureChild(root, "TextLabel", "Header")
 headerLabel.BackgroundTransparency = 1
-headerLabel.Size = UDim2.new(1, -16, 0.4, 0)
+headerLabel.Size = UDim2.new(1, -16, 0.5, 0)
 headerLabel.Position = UDim2.new(0, 8, 0, 6)
 headerLabel.Font = Enum.Font.GothamBlack
 headerLabel.TextColor3 = Color3.fromRGB(255, 208, 64)
@@ -481,8 +481,8 @@ headerLabel.Text = SpinWheelConfig.Labels.LoadingHeader
 
 local bodyLabel = ensureChild(root, "TextLabel", "Body")
 bodyLabel.BackgroundTransparency = 1
-bodyLabel.Size = UDim2.new(1, -16, 0.46, 0)
-bodyLabel.Position = UDim2.new(0, 8, 0.42, 0)
+bodyLabel.Size = UDim2.new(1, -16, 0.5, 0)
+bodyLabel.Position = UDim2.new(0, 8, 0.5, 0)
 bodyLabel.Font = Enum.Font.GothamBold
 bodyLabel.TextColor3 = Color3.fromRGB(235, 239, 244)
 bodyLabel.TextScaled = true
@@ -1046,7 +1046,7 @@ local function updatePromptState()
         return
     end
 
-    prompt.ObjectText = string.format("%s %d", SpinWheelConfig.Labels.PromptObjectPrefix, getWheelSpinsCount())
+    prompt.ObjectText = SpinWheelConfig.Labels.PromptObjectPrefix
     prompt.Enabled = not requestInFlight and not isSpinning and not spinSequenceLocked and not purchaseModalOpen and not isCrateRewardSequenceActive()
 end
 
@@ -1076,12 +1076,12 @@ local function updateScreen()
     elseif secondsRemaining <= 0 then
         headerLabel.Text = SpinWheelConfig.Labels.ReadyHeader
         headerLabel.TextColor3 = Color3.fromRGB(123, 255, 94)
-        bodyLabel.Text = string.format("%s\n%s %d", SpinWheelConfig.Labels.ReadyBody, SpinWheelConfig.Labels.PromptObjectPrefix, wheelSpinsCount)
+        bodyLabel.Text = SpinWheelConfig.Labels.ReadyBody
         bodyLabel.TextColor3 = Color3.fromRGB(235, 239, 244)
     else
         headerLabel.Text = SpinWheelConfig.Labels.CooldownHeader
         headerLabel.TextColor3 = Color3.fromRGB(255, 208, 64)
-        bodyLabel.Text = string.format("%s\n%s %d", formatCountdown(secondsRemaining), SpinWheelConfig.Labels.PromptObjectPrefix, wheelSpinsCount)
+        bodyLabel.Text = formatCountdown(secondsRemaining)
         bodyLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
     end
 

@@ -1485,6 +1485,7 @@ titlePill.Position = UDim2.new(0.35, 0, 0.5, 0)
 -- mark as fixed so runtime layout doesn't overwrite these values
 titlePill:SetAttribute("FixedTitlePill", true)
 titlePill.BackgroundColor3 = Color3.fromRGB(22, 26, 48)
+titlePill.BackgroundTransparency = 1
 titlePill.ZIndex = 10
 titlePill.Parent = headerBar
 local titlePillCorner = Instance.new("UICorner")
@@ -1493,7 +1494,7 @@ titlePillCorner.Parent = titlePill
 local titlePillStroke = Instance.new("UIStroke")
 titlePillStroke.Color = Color3.fromRGB(180, 150, 50)
 titlePillStroke.Thickness = 1.5
-titlePillStroke.Transparency = 0.25
+titlePillStroke.Transparency = 1
 titlePillStroke.Parent = titlePill
 
 local titleLabel = Instance.new("TextLabel")
@@ -1511,14 +1512,14 @@ titleLabel.ZIndex = 275
 -- Right-side currency row (Coins + Keys + Salvage)
     local currencyRow = Instance.new("Frame")
     currencyRow.Name = "CurrencyRow"
+    currencyRow.ClipsDescendants = false
     currencyRow.BackgroundTransparency = 1
-    -- Fixed width as fraction of header and full height of header
-    currencyRow.Size = UDim2.new(0.3, 0, 1, 0)
+    currencyRow.AutomaticSize = Enum.AutomaticSize.X
+    currencyRow.Size = UDim2.new(0, 0, 1, 0)
     currencyRow.AnchorPoint = Vector2.new(1, 0.5)
     currencyRow.Position = UDim2.new(0.935, 0, 0.5, 0)
     currencyRow.ZIndex = 275
     currencyRow.Parent = headerBar
-    currencyRow.ClipsDescendants = true
 
     local currencyLayout = Instance.new("UIListLayout")
     currencyLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -1869,287 +1870,130 @@ closeBtnStroke.Parent = closeBtn
 local contentFrame, modalStatusOverlay, prewarmContainer
 
 local function updateHeaderCurrencyLayout()
-    local windowWidth = window.AbsoluteSize.X
-    local headerHeight = headerBar.AbsoluteSize.Y
-    if windowWidth <= 0 or headerHeight <= 0 then return end
+	local windowWidth = window.AbsoluteSize.X
+	local headerHeight = headerBar.AbsoluteSize.Y
+	if windowWidth <= 0 or headerHeight <= 0 then
+		return
+	end
 
-    local chipHeight = math.max(22, math.floor(headerHeight * 0.62))
-    local chipGap = math.max(4, math.floor(chipHeight * 0.22))
-    local iconSize = math.max(14, math.floor(chipHeight * 0.7))
-    local iconInset = math.max(4, math.floor(chipHeight * 0.24))
-    local labelInset = iconInset + iconSize + math.max(4, math.floor(chipHeight * 0.18))
-    local labelTop = math.max(1, math.floor(chipHeight * 0.08))
-    local labelHeightInset = math.max(2, math.floor(chipHeight * 0.12))
-    local closeInset = closeBtn.AbsoluteSize.X > 0 and closeBtn.AbsoluteSize.X or math.floor(headerHeight * 0.85)
-    local rightInset = closeInset + math.max(10, math.floor(headerHeight * 0.24))
+	local chipHeight = math.clamp(math.floor(headerHeight * 0.64), 24, 44)
 
-    local maxRowWidth = math.max(162, math.floor(windowWidth * 0.255))
+    local compact = windowWidth < 900
+    local chipGap = compact
+	    and math.clamp(math.floor(chipHeight * 0.18), 6, 10)
+	    or math.clamp(math.floor(chipHeight * 0.28), 10, 16)
 
-    -- clamp chipHeight to avoid extreme sizes on very large screens
-    chipHeight = math.min(chipHeight, math.floor(headerHeight * 0.9))
+    local iconSize = compact
+	    and math.clamp(math.floor(chipHeight * 0.64), 16, 26)
+	    or math.clamp(math.floor(chipHeight * 0.72), 18, 32)
 
-    -- keep currency row manual-sized; compute a reasonable row width and split chips evenly
-    currencyRow.AutomaticSize = Enum.AutomaticSize.None
-    local estimatedTotal = math.max(150, math.floor(windowWidth * 0.18))
-    local rowWidth = math.min(estimatedTotal, maxRowWidth)
-    currencyRow.Size = UDim2.new(0, rowWidth, 1, 0)
+    local textSize = compact
+	    and math.clamp(math.floor(chipHeight * 0.40), 13, 20)
+	    or math.clamp(math.floor(chipHeight * 0.48), 16, 26)
 
-    local chipW = math.max(50, math.floor((rowWidth - (chipGap * 2)) / 3))
-    if headerCoinFrame then headerCoinFrame.Size = UDim2.new(0, chipW, 0, chipHeight) end
-    if headerKeyFrame then headerKeyFrame.Size = UDim2.new(0, chipW, 0, chipHeight) end
-    if headerSalvageFrame then headerSalvageFrame.Size = UDim2.new(0, chipW, 0, chipHeight) end
+    local padX = compact
+	    and math.clamp(math.floor(chipHeight * 0.10), 3, 7)
+	    or math.clamp(math.floor(chipHeight * 0.18), 6, 12)
 
-    -- scale padding and label sizes with chipHeight so the layout remains proportional
-    currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
-    currencyLayout.Padding = UDim.new(0, chipGap)
+    local iconTextGap = compact
+	    and math.clamp(math.floor(chipHeight * 0.08), 2, 5)
+	    or math.clamp(math.floor(chipHeight * 0.14), 4, 8)
 
-    local contentPadding = math.max(6, math.floor(chipHeight * 0.12))
-    local coinLayout = headerCoinContent and headerCoinContent:FindFirstChildOfClass("UIListLayout")
-    local keyLayout = headerKeyContent and headerKeyContent:FindFirstChildOfClass("UIListLayout")
-    local salvageLayout = headerSalvageContent and headerSalvageContent:FindFirstChildOfClass("UIListLayout")
-    if coinLayout then coinLayout.Padding = UDim.new(1.5, 1) end
-    if keyLayout then keyLayout.Padding = UDim.new(1.5, 1) end
-    if salvageLayout then salvageLayout.Padding = UDim.new(1.5, 1) end
+	local closeInset = (closeBtn and closeBtn.AbsoluteSize.X > 0)
+		and closeBtn.AbsoluteSize.X
+		or math.floor(headerHeight * 0.85)
+	local rightInset = closeInset + math.max(10, math.floor(headerHeight * 0.2))
 
-    -- update UILabel size constraints to scale with chip height
-    local labelMax = math.max(20, math.floor(chipHeight * 0.6))
-    if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = labelMax end
-    if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = labelMax end
-    if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = labelMax end
+	currencyRow.ClipsDescendants = false
+	currencyRow.AutomaticSize = Enum.AutomaticSize.X
+	currencyRow.Size = UDim2.new(0, 0, 0, headerHeight)
+	currencyRow.AnchorPoint = Vector2.new(1, 0.5)
+	currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
+	currencyLayout.Padding = UDim.new(0, chipGap)
+	currencyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	currencyLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-    -- icon sizes scale with chipHeight so they remain proportional
-    if headerCoinIcon and headerCoinIcon:IsA("GuiObject") then
-        headerCoinIcon.Size = UDim2.new(0, math.max(12, math.floor(chipHeight * 0.7)), 0, math.max(12, math.floor(chipHeight * 0.7)))
-        headerCoinIcon.AnchorPoint = Vector2.new(0, 0.5)
-    end
-    if headerKeyIcon and headerKeyIcon:IsA("GuiObject") then
-        headerKeyIcon.Size = UDim2.new(0, math.max(12, math.floor(chipHeight * 0.7)), 0, math.max(12, math.floor(chipHeight * 0.7)))
-        headerKeyIcon.AnchorPoint = Vector2.new(0, 0.5)
-    end
-    if headerSalvageIcon and headerSalvageIcon:IsA("GuiObject") then
-        headerSalvageIcon.Size = UDim2.new(0, math.max(12, math.floor(chipHeight * 0.7)), 0, math.max(12, math.floor(chipHeight * 0.7)))
-        headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
-    end
-    currencyRow.Position = UDim2.new(1, -rightInset, 0.5, 0)
-    currencyLayout.Padding = UDim.new(0, chipGap)
+	local function layoutChip(frame, content, icon, label)
+		if not frame then
+			return
+		end
 
-    local titleHeight = math.max(28, math.floor(headerHeight * 0.8))
-    local leftInset = math.max(12, math.floor(headerHeight * 0.28))
-    local rightReserved = rightInset + (rowWidth or 0) + math.max(8, math.floor(headerHeight * 0.24))
-    local titleWidth = math.max(96, math.min(math.floor(windowWidth * 0.34), windowWidth - rightReserved - leftInset))
+		frame.AutomaticSize = Enum.AutomaticSize.X
+		frame.Size = UDim2.new(0, 0, 0, chipHeight)
+		frame.BackgroundTransparency = 1
 
-    -- Default title center (falls back to centered in window)
-    local titleCenter = math.max(leftInset + math.floor(titleWidth * 0.5), math.min(math.floor(windowWidth * 0.5), windowWidth - rightReserved - math.floor(titleWidth * 0.5)))
+		if content then
+			content.AutomaticSize = Enum.AutomaticSize.X
+			content.Size = UDim2.new(0, 0, 1, 0)
+			content.Position = UDim2.new(0, 0, 0.5, 0)
+			content.AnchorPoint = Vector2.new(0, 0.5)
 
-    -- For Inventory / Shop / Achievements, center the header over the modal's
-    -- main content center (e.g. Inventory grid / Shop root / Quests root).
-    local titleUpper = (titleLabel and tostring(titleLabel.Text) or ""):upper()
-    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" then
-        local function tryGetContentCenter()
-            if not contentFrame then return nil end
-            -- Try known root names used by those modules
-            local candidates = { "InventoryUI", "ShopRoot", "QuestsRoot", "AchievHubRoot" }
-            for _, name in ipairs(candidates) do
-                local rootChild = contentFrame:FindFirstChild(name, true) or contentFrame:FindFirstChild(name)
-                if rootChild and rootChild:IsA("GuiObject") and rootChild.AbsoluteSize.X > 0 then
-                    -- Prefer a center grid if present (Inventory -> WeaponArea -> GridScroll)
-                    if name == "InventoryUI" then
-                        local weaponArea = rootChild:FindFirstChild("WeaponArea", true)
-                        if weaponArea and weaponArea:IsA("GuiObject") then
-                            local grid = weaponArea:FindFirstChild("GridScroll", true)
-                            if grid and grid:IsA("GuiObject") and grid.AbsoluteSize.X > 0 then
-                                return grid.AbsolutePosition.X + (grid.AbsoluteSize.X * 0.5)
-                            end
-                        end
-                    end
-                    -- Fallback: use root child's center
-                    return rootChild.AbsolutePosition.X + (rootChild.AbsoluteSize.X * 0.5)
-                end
-            end
+			local layout = content:FindFirstChildOfClass("UIListLayout")
+			if layout then
+				layout.FillDirection = Enum.FillDirection.Horizontal
+				layout.VerticalAlignment = Enum.VerticalAlignment.Center
+				layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+				layout.Padding = UDim.new(0, iconTextGap)
+			end
 
-            -- Fallback: pick the largest child in the contentFrame and use its center
-            local bestChild, bestW
-            for _, child in ipairs(contentFrame:GetChildren()) do
-                if child:IsA("GuiObject") and child.AbsoluteSize and child.AbsoluteSize.X and child.AbsoluteSize.X > 0 then
-                    local w = child.AbsoluteSize.X
-                    if (not bestW) or w > bestW then
-                        bestW = w
-                        bestChild = child
-                    end
-                end
-            end
-            if bestChild and bestW then
-                return bestChild.AbsolutePosition.X + (bestChild.AbsoluteSize.X * 0.5)
-            end
-            return nil
-        end
-        -- debug prints removed
-        local absCenter = tryGetContentCenter()
-        -- If Inventory should align like Shop, prefer a shop-like center (largest child)
-        if titleUpper == "INVENTORY" then
-            -- try a shop-like center: ignore InventoryUI grid special-casing
-            local function tryGetShopLikeCenter()
-                if not contentFrame then return nil end
-                -- prefer any explicit ShopRoot or QuestsRoot/AchievHubRoot
-                local candidates2 = { "ShopRoot", "QuestsRoot", "AchievHubRoot", "InventoryUI" }
-                for _, name in ipairs(candidates2) do
-                    local rootChild = contentFrame:FindFirstChild(name, true) or contentFrame:FindFirstChild(name)
-                    if rootChild and rootChild:IsA("GuiObject") and rootChild.AbsoluteSize.X > 0 then
-                        return rootChild.AbsolutePosition.X + (rootChild.AbsoluteSize.X * 0.5)
-                    end
-                end
-                -- fallback to largest child
-                local bestChild, bestW
-                for _, child in ipairs(contentFrame:GetChildren()) do
-                    if child:IsA("GuiObject") and child.AbsoluteSize and child.AbsoluteSize.X and child.AbsoluteSize.X > 0 then
-                        local w = child.AbsoluteSize.X
-                        if (not bestW) or w > bestW then
-                            bestW = w
-                            bestChild = child
-                        end
-                    end
-                end
-                if bestChild and bestW then
-                    return bestChild.AbsolutePosition.X + (bestChild.AbsoluteSize.X * 0.5)
-                end
-                return nil
-            end
-            local shopLike = tryGetShopLikeCenter()
-            if shopLike then absCenter = shopLike end
-        end
-        if absCenter and window and window.AbsolutePosition then
-            local localCenter = math.floor(absCenter - window.AbsolutePosition.X)
-            -- debug prints removed
-            -- Prefer true center over content; only shift if it would overlap currency chips
-            local halfW = math.floor(titleWidth * 0.5)
-            local desiredCenter = localCenter
-            local titleLeft = desiredCenter - halfW
-            local titleRight = desiredCenter + halfW
-            local currencyLeftLocal
-            if currencyRow and currencyRow.Parent and currencyRow.AbsoluteSize and currencyRow.AbsoluteSize.X > 0 then
-                currencyLeftLocal = math.floor(currencyRow.AbsolutePosition.X - window.AbsolutePosition.X)
-            else
-                currencyLeftLocal = math.floor(windowWidth - rightReserved)
-            end
-            local margin = math.max(6, math.floor(headerHeight * 0.12))
-            if titleRight + margin > currencyLeftLocal then
-                -- shift left so titleRight + margin == currencyLeftLocal
-                desiredCenter = currencyLeftLocal - margin - halfW
-            end
-            -- enforce left-side inset
-            local minCenter = leftInset + halfW
-            desiredCenter = math.max(minCenter, desiredCenter)
-            titleCenter = math.floor(desiredCenter)
-            -- debug prints removed
-        end
-    end
+			local padding = content:FindFirstChildOfClass("UIPadding")
+			if not padding then
+				padding = Instance.new("UIPadding")
+				padding.Parent = content
+			end
+			padding.PaddingLeft = UDim.new(0, padX)
+			padding.PaddingRight = UDim.new(0, padX)
+			padding.PaddingTop = UDim.new(0, 0)
+			padding.PaddingBottom = UDim.new(0, 0)
+		end
 
-    -- For Shop and Inventory, apply a larger consistent left nudge so the
-    -- title visually lines up with the center content used by Inventory.
-    local halfW2 = math.floor(titleWidth * 0.5)
-    if titleUpper == "SHOP" or titleUpper == "INVENTORY" then
-        local sharedOffset = math.max(40, math.floor(windowWidth * 0.12))
-        titleCenter = math.max(leftInset + halfW2, titleCenter - sharedOffset)
-    end
+		if icon then
+			icon.Size = UDim2.fromOffset(iconSize, iconSize)
+			icon.Position = UDim2.new(0, 0, 0.5, 0)
+			icon.AnchorPoint = Vector2.new(0, 0.5)
+		end
 
-    local fixed = titlePill:GetAttribute("FixedTitlePill")
-    if not fixed then
-        titlePill.Size = UDim2.new(0, titleWidth, 0, titleHeight)
-        titlePill.Position = UDim2.new(0, titleCenter, 0.5, 0)
-    else
-        -- If Achievements or Team, center; if Shop or Inventory, move back to left.
-        if titleUpper == "ACHIEVEMENTS" or titleUpper == "ACHIEVES" or titleUpper == "ACHIEVEMENT" or titleUpper == "TEAM" or titleUpper == "TEAMS" then
-            titlePill.Position = UDim2.new(0.5, 0, 0.5, 0)
-            -- ensure the label text is uppercase for Achievements to match other titles
-            if titleLabel and titleLabel:IsA("TextLabel") then
-                if titleUpper:find("ACHIEVE") then
-                    titleLabel.Text = "ACHIEVEMENTS"
-                elseif titleUpper:find("TEAM") then
-                    titleLabel.Text = "TEAM"
-                end
-            end
-        elseif titleUpper == "SHOP" or titleUpper == "INVENTORY" then
-            titlePill.Position = UDim2.new(0.35, 0, 0.5, 0)
-        else
-            -- default to the left-fixed position
-            titlePill.Position = UDim2.new(0.35, 0, 0.5, 0)
-        end
-    end
+		if label then
+			label.TextScaled = false
+			label.TextSize = textSize
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.TextYAlignment = Enum.TextYAlignment.Center
+			label.AutomaticSize = Enum.AutomaticSize.X
+			label.Size = UDim2.new(0, 0, 1, 0)
 
-    -- Ensure the title text scales to fit the pill width/height using a constraint
-    if titleLabel and titleLabel:IsA("TextLabel") then
-        local existing = titleLabel:FindFirstChildOfClass("UITextSizeConstraint")
-        local defaultBase = 16
-        local base = defaultBase
-        if existing then
-            base = existing:GetAttribute("BaseMaxTextSize") or titleLabel:GetAttribute("BaseMaxTextSize") or defaultBase
-            existing.MinTextSize = 12
-            existing.MaxTextSize = math.max(base, math.floor(titleHeight * 0.9))
-        else
-            base = titleLabel:GetAttribute("BaseMaxTextSize") or defaultBase
-            local c = Instance.new("UITextSizeConstraint")
-            c.MinTextSize = 12
-            c.MaxTextSize = math.max(base, math.floor(titleHeight * 0.9))
-            c.Parent = titleLabel
-        end
-    end
+			local constraint = label:FindFirstChildOfClass("UITextSizeConstraint")
+			if constraint then
+				constraint.MinTextSize = textSize
+				constraint.MaxTextSize = textSize
+			end
+		end
+	end
 
-    local function sizeChip(frame, width)
-        -- keep chip manual-sized; do not enable AutomaticSize unless the
-        -- frame explicitly requests preservation of automatic sizing.
-        if frame:GetAttribute("PreserveAutomaticSize") then
-            return
-        end
-        frame.AutomaticSize = Enum.AutomaticSize.None
-    end
+		layoutChip(headerCoinFrame, headerCoinContent, headerCoinIcon, headerCoinLabel)
+	layoutChip(headerKeyFrame, headerKeyContent, headerKeyIcon, headerKeyLabel)
+	layoutChip(headerSalvageFrame, headerSalvageContent, headerSalvageIcon, headerSalvageLabel)
 
-    sizeChip(headerCoinFrame, chipWidth)
-    sizeChip(headerKeyFrame, chipWidth)
-    sizeChip(headerSalvageFrame, chipWidth)
+	-- Keep the title from overlapping the currency row
+	task.defer(function()
+		if not titlePill or not titlePill.Parent or not currencyRow or not currencyRow.Parent then
+			return
+		end
+		local headerWidth = headerBar.AbsoluteSize.X
+		local currencyWidth = currencyRow.AbsoluteSize.X
+		if headerWidth <= 0 then
+			return
+		end
 
-    local function positionIcon(icon, scale)
-        if not icon then return end
-        local p = icon.Parent
-        if p and p.Size and ((p.Size.X and p.Size.X.Scale and p.Size.X.Scale > 0) or (p.Size.Y and p.Size.Y.Scale and p.Size.Y.Scale > 0)) then
-            -- parent uses scale-based sizing; avoid overwriting scale values
-            return
-        end
-        local actualScale = scale or 1
-        local actualIconSize = math.max(14, math.floor(iconSize * actualScale))
-        icon.Size = UDim2.new(0, actualIconSize, 0, actualIconSize)
-        icon.Position = UDim2.new(0, iconInset, 0.5, 0)
-    end
+		local gap = math.max(10, math.floor(headerHeight * 0.16))
+		local currencyLeft = headerWidth - rightInset - currencyWidth
+		local maxTitleRight = currencyLeft - gap
+		local titleWidth = math.max(80, maxTitleRight - math.floor(headerWidth * 0.04))
+		titleWidth = math.min(titleWidth, math.floor(headerWidth * 0.42))
 
-    local function positionLabel(label)
-        if not label then return end
-        local p = label.Parent
-        if p and p.Size and ((p.Size.X and p.Size.X.Scale and p.Size.X.Scale > 0) or (p.Size.Y and p.Size.Y.Scale and p.Size.Y.Scale > 0)) then
-            -- parent uses scale-based sizing; avoid overwriting scale values
-            return
-        end
-        label.Size = UDim2.new(1, -(labelInset + iconInset), 1, -labelHeightInset)
-        label.Position = UDim2.new(0, labelInset, 0, labelTop)
-    end
-
-    positionIcon(headerCoinIcon)
-    positionIcon(headerKeyIcon)
-    positionIcon(headerSalvageIcon, 1.25)
-    positionLabel(headerCoinLabel)
-    positionLabel(headerKeyLabel)
-    positionLabel(headerSalvageLabel)
-
-    local maxLabelSize = math.max(11, math.floor(chipHeight * 0.5))
-    if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = maxLabelSize end
-    if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = maxLabelSize end
-    if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = maxLabelSize end
-    if headerKeyIconConstraint then
-        local base = headerKeyIconConstraint:GetAttribute("BaseMaxTextSize") or headerKeyIcon:GetAttribute("BaseMaxTextSize") or 12
-        headerKeyIconConstraint.MaxTextSize = math.max(base, math.floor(chipHeight * 0.62))
-    end
-    if headerSalvageIconConstraint then
-        local base = headerSalvageIconConstraint:GetAttribute("BaseMaxTextSize") or headerSalvageIcon:GetAttribute("BaseMaxTextSize") or 12
-        headerSalvageIconConstraint.MaxTextSize = math.max(base, math.floor(chipHeight * 0.62))
-    end
+		titlePill.AnchorPoint = Vector2.new(0, 0.5)
+		titlePill.Size = UDim2.new(0, titleWidth, 0.9, 0)
+		titlePill.Position = UDim2.new(0, math.floor(headerWidth * 0.02), 0.5, 0)
+	end)
 end
 
 local function updateModalWindowLayout()
@@ -2221,12 +2065,6 @@ local function updateModalWindowLayout()
         end
     end
 
-    -- Reduce header currency label sizes for tighter header spacing on these modals
-    if titleUpper == "INVENTORY" or titleUpper == "SHOP" or titleUpper == "ACHIEVEMENTS" or titleUpper == "TEAM" then
-        if headerCoinLabelConstraint then headerCoinLabelConstraint.MaxTextSize = math.max(9, math.floor(headerCoinLabelConstraint.MaxTextSize * 0.8)) end
-        if headerKeyLabelConstraint then headerKeyLabelConstraint.MaxTextSize = math.max(9, math.floor(headerKeyLabelConstraint.MaxTextSize * 0.8)) end
-        if headerSalvageLabelConstraint then headerSalvageLabelConstraint.MaxTextSize = math.max(9, math.floor(headerSalvageLabelConstraint.MaxTextSize * 0.8)) end
-    end
     if modalStatusOverlay and contentFrame then
         modalStatusOverlay.Position = contentFrame.Position
         modalStatusOverlay.Size = contentFrame.Size
@@ -3295,15 +3133,10 @@ local function registerPrewarmedModalMenu(name, mod, label, createOptions)
 end
 
 -- Register every modal page
-if shopModule then registerModalMenu("Shop", shopModule, "SHOP") end
-if invModule then registerModalMenu("Inventory", invModule, "INVENTORY") end
-if optionsModule then registerModalMenu("Options", optionsModule, "OPTIONS") end
-if questsModule then registerModalMenu("Quests", questsModule, "Achievements", { achievementsOnly = true, initialTabId = "achiev" }) end
-if teamModule then registerModalMenu("Team", teamModule, "TEAMS") end
 if shopModule then registerPrewarmedModalMenu("Shop", shopModule, "SHOP") end
 if invModule then registerPrewarmedModalMenu("Inventory", invModule, "INVENTORY") end
 if optionsModule then registerPrewarmedModalMenu("Options", optionsModule, "OPTIONS") end
-if questsModule then registerPrewarmedModalMenu("Quests", questsModule, "Achievements", { achievementsOnly = true, initialTabId = "achiev" }) end
+if questsModule then registerPrewarmedModalMenu("Quests", questsModule, "ACHIEVEMENTS", { achievementsOnly = true, initialTabId = "achiev" }) end
 if teamModule then registerPrewarmedModalMenu("Team", teamModule, "TEAMS") end
 startMenuWarmup()
 -- Legacy helper kept for any external code that may still reference it

@@ -33,15 +33,18 @@ local WHITE        = Color3.fromRGB(235, 235, 240)
 local GRAY         = Color3.fromRGB(140, 140, 155)
 
 local COLUMNS = {
-    { key = "Level",        label = "Level",          width = 0.07 },
-    { key = "Name",         label = "Player",         width = 0.27 },
+    { key = "Level",        label = "Lvl",          width = 0.07 },
+    { key = "Avatar",       label = "",               width = 0.08 },
+    { key = "Name",         label = "Player",         width = 0.20 },
     { key = "Score",        label = "Score",          width = 0.10 },
-    { key = "Eliminations", label = "Eliminations",   width = 0.14 },
+    { key = "Eliminations", label = "Elims",   width = 0.14 },
     { key = "Deaths",       label = "Deaths",         width = 0.10 },
-    { key = "FlagCaptures", label = "Flag Captures",  width = 0.16 },
-    { key = "FlagReturns",  label = "Flag Returns",   width = 0.16 },
+    { key = "FlagCaptures", label = "Captures",  width = 0.16 },
+    { key = "FlagReturns",  label = "Returns",   width = 0.15 },
 }
 
+local HEADER_TEXT_SIZE = 14
+local STAT_TEXT_SIZE = 16
 local AVATAR_SIZE        = 46
 local ROW_HEIGHT         = 56
 local TEAM_HEADER_HEIGHT = 46
@@ -197,23 +200,22 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
 
     for i, col in ipairs(COLUMNS) do
         local xOff = 0
-        for j = 1, i - 1 do xOff = xOff + COLUMNS[j].width end
+        for j = 1, i - 1 do
+            xOff = xOff + COLUMNS[j].width
+        end
+
         local lbl = Instance.new("TextLabel")
         lbl.Name = "ColH_" .. col.key
         lbl.BackgroundTransparency = 1
         lbl.Font = Enum.Font.GothamBold
-        lbl.TextScaled = true
-        lbl.TextSize = 16
+        lbl.TextScaled = false
+        lbl.TextSize = 14
+        lbl.TextWrapped = true
         lbl.TextColor3 = GRAY
         lbl.Text = col.label
         lbl.TextXAlignment = (col.key == "Name") and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
-        if col.key == "Name" then
-            lbl.Position = UDim2.new(xOff, px(AVATAR_SIZE + 12), 0, 0)
-            lbl.Size = UDim2.new(col.width, -px(AVATAR_SIZE + 12), 1, 0)
-        else
-            lbl.Position = UDim2.new(xOff, 0, 0, 0)
-            lbl.Size = UDim2.new(col.width, 0, 1, 0)
-        end
+        lbl.Position = UDim2.new(xOff, 0, 0, 0)
+        lbl.Size = UDim2.new(col.width, 0, 1, 0)
         lbl.Parent = colHeaderRow
     end
 
@@ -233,7 +235,7 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
     contentLayout.Padding = UDim.new(0, px(10))
     contentLayout.Parent = contentScroll
 
-    -- Footer (change team)
+    -- Footer
     local footer = Instance.new("Frame")
     footer.Name = "ChangeTeamFooter"
     footer.Size = UDim2.new(1, 0, 0, px(80))
@@ -241,70 +243,35 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
     footer.BackgroundTransparency = 1
     footer.Parent = teamStatsContainer
 
-    local changeTeamBtn = Instance.new("TextButton")
-    changeTeamBtn.Name = "ChangeTeamBtn"
-    changeTeamBtn.Size = UDim2.new(0, px(220), 0, px(44))
-    changeTeamBtn.Position = UDim2.new(0.5, 0, 0, px(8))
-    changeTeamBtn.AnchorPoint = Vector2.new(0.5, 0)
-    changeTeamBtn.BackgroundColor3 = NAVY_LIGHT
-    changeTeamBtn.BackgroundTransparency = 0.05
-    changeTeamBtn.Font = Enum.Font.GothamBold
-    changeTeamBtn.Text = "CHANGE TEAM"
-    changeTeamBtn.TextScaled = true
-    changeTeamBtn.TextSize = 16
-    changeTeamBtn.TextColor3 = GOLD
-    changeTeamBtn.Parent = footer
-    Instance.new("UICorner", changeTeamBtn).CornerRadius = UDim.new(0, px(8))
-
-    local teamPicker = Instance.new("Frame")
-    teamPicker.Name = "TeamPicker"
-    teamPicker.Size = UDim2.new(1, 0, 0, px(40))
-    teamPicker.Position = UDim2.new(0, 0, 0, px(56))
-    teamPicker.BackgroundTransparency = 1
-    teamPicker.Visible = false
-    teamPicker.Parent = footer
-
-    local pickerLayout = Instance.new("UIListLayout")
-    pickerLayout.FillDirection = Enum.FillDirection.Horizontal
-    pickerLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    pickerLayout.Padding = UDim.new(0, px(12))
-    pickerLayout.Parent = teamPicker
-
-    local function makeTeamButton(name, accentColor, bgColor)
-        local btn = Instance.new("TextButton")
-        btn.Name = "Join" .. name .. "Btn"
-        btn.Size = UDim2.new(0, px(200), 0, px(40))
-        btn.BackgroundColor3 = bgColor
-        btn.BackgroundTransparency = 0.12
-        btn.Font = Enum.Font.GothamBold
-        btn.Text = "JOIN " .. string.upper(name) .. " TEAM"
-        btn.TextScaled = true
-        btn.TextSize = 15
-        btn.TextColor3 = WHITE
-        btn.Parent = teamPicker
-        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, px(8))
-        return btn
-    end
-
-    local joinBlueBtn = makeTeamButton("Blue", BLUE_ACCENT, BLUE_BG)
-    local joinRedBtn  = makeTeamButton("Red", RED_ACCENT, RED_BG)
-
     local lobbyBtn = Instance.new("TextButton")
     lobbyBtn.Name = "LobbyBtn"
-    lobbyBtn.Size = UDim2.new(0, px(140), 0, px(40))
-    lobbyBtn.BackgroundColor3 = Color3.fromRGB(38, 40, 55)
-    lobbyBtn.BackgroundTransparency = 0.12
+    lobbyBtn.Size = UDim2.new(0, px(220), 0, px(44))
+    lobbyBtn.Position = UDim2.new(0.5, 0, 0.5, 0)
+    lobbyBtn.AnchorPoint = Vector2.new(0.5, 0.5)
+    lobbyBtn.BackgroundColor3 = NAVY_LIGHT
+    lobbyBtn.BackgroundTransparency = 0.05
     lobbyBtn.Font = Enum.Font.GothamBold
-    lobbyBtn.Text = "LOBBY"
-    lobbyBtn.TextScaled = true
-    lobbyBtn.TextSize = 15
+    lobbyBtn.Text = "GO TO LOBBY"
+    lobbyBtn.TextScaled = false
+    lobbyBtn.TextSize = 16
     lobbyBtn.TextColor3 = GOLD
-    lobbyBtn.Parent = teamPicker
+    lobbyBtn.Parent = footer
     Instance.new("UICorner", lobbyBtn).CornerRadius = UDim.new(0, px(8))
 
-    local function setFooterVisible(open)
-        teamPicker.Visible = open
-    end
+    lobbyBtn.MouseButton1Click:Connect(function()
+        local remotes = ReplicatedStorage
+        local returnReq = remotes:FindFirstChild("ReturnToLobbyRequest")
+        if not returnReq then
+            pcall(function()
+                returnReq = remotes:WaitForChild("ReturnToLobbyRequest", 5)
+            end)
+        end
+        if returnReq and returnReq.FireServer then
+            pcall(function()
+                returnReq:FireServer()
+            end)
+        end
+    end)
 
     -- Data / rows
     local playerRows = {}
@@ -384,47 +351,56 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         for i, col in ipairs(COLUMNS) do
             local xOff = 0
             for j = 1, i - 1 do xOff = xOff + COLUMNS[j].width end
-            if col.key == "Name" then
-                local avatarImg = Instance.new("ImageLabel")
-                avatarImg.Name = "Avatar"
-                avatarImg.Size = UDim2.new(0, px(AVATAR_SIZE), 0, px(AVATAR_SIZE))
-                avatarImg.Position = UDim2.new(xOff, px(8), 0.5, 0)
-                avatarImg.AnchorPoint = Vector2.new(0, 0.5)
-                avatarImg.BackgroundTransparency = 0.25
-                avatarImg.Parent = row
-                Instance.new("UICorner", avatarImg).CornerRadius = UDim.new(1, 0)
-                fetchAvatar(plr.UserId, function(url) if avatarImg and avatarImg.Parent then avatarImg.Image = url end end)
+        if col.key == "Avatar" then
+            local avatarImg = Instance.new("ImageLabel")
+            avatarImg.Name = "Avatar"
+            avatarImg.Size = UDim2.new(0, px(AVATAR_SIZE), 0, px(AVATAR_SIZE))
+            avatarImg.Position = UDim2.new(xOff + col.width * 0.5, 0, 0.5, 0)
+            avatarImg.AnchorPoint = Vector2.new(0.5, 0.5)
+            avatarImg.BackgroundTransparency = 0.25
+            avatarImg.Parent = row
+            Instance.new("UICorner", avatarImg).CornerRadius = UDim.new(1, 0)
+            fetchAvatar(plr.UserId, function(url)
+                if avatarImg and avatarImg.Parent then
+                    avatarImg.Image = url
+                end
+            end)
+            cells["Avatar"] = avatarImg
 
-                local nameLabel = Instance.new("TextLabel")
-                nameLabel.Name = "CellName"
-                nameLabel.BackgroundTransparency = 1
-                nameLabel.Position = UDim2.new(0.125, 0, 0.2, 0)
-                nameLabel.Size = UDim2.new(0.22, 0, 0.65, 0)
-                nameLabel.Font = Enum.Font.GothamBold
-                nameLabel.TextScaled = true
-                nameLabel.TextSize = 16
-                nameLabel.TextColor3 = isLocal and GOLD or WHITE
-                nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-                nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-                nameLabel.Text = plr.DisplayName
-                nameLabel.Parent = row
-                cells["Name"] = nameLabel
-            else
-                local cell = Instance.new("TextLabel")
-                cell.Name = "Cell_" .. col.key
-                cell.BackgroundTransparency = 1
-                cell.Position = UDim2.new(xOff, 0, 0, 0)
-                cell.Size = UDim2.new(col.width, 0, 1, 0)
-                cell.Font = (col.key == "Score") and Enum.Font.GothamBlack or Enum.Font.GothamBold
-                cell.TextScaled = true
-                cell.TextSize = 16
-                cell.TextColor3 = (col.key == "Score") and GOLD or WHITE
-                cell.TextXAlignment = Enum.TextXAlignment.Center
-                cell.Text = tostring(getPlayerStat(plr, col.key))
-                cell.Parent = row
-                cells[col.key] = cell
-            end
+        elseif col.key == "Name" then
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Name = "CellName"
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Position = UDim2.new(xOff, px(4), 0, 0)
+            nameLabel.Size = UDim2.new(col.width, -px(8), 1, 0)
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextScaled = false
+            nameLabel.TextSize = 16
+            nameLabel.TextColor3 = isLocal and GOLD or WHITE
+            nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+            nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+            nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+            nameLabel.Text = plr.DisplayName
+            nameLabel.Parent = row
+            cells["Name"] = nameLabel
+
+        else
+            local cell = Instance.new("TextLabel")
+            cell.Name = "Cell_" .. col.key
+            cell.BackgroundTransparency = 1
+            cell.Position = UDim2.new(xOff, 0, 0, 0)
+            cell.Size = UDim2.new(col.width, 0, 1, 0)
+            cell.Font = (col.key == "Score") and Enum.Font.GothamBlack or Enum.Font.GothamBold
+            cell.TextScaled = false
+            cell.TextSize = 16
+            cell.TextColor3 = (col.key == "Score") and GOLD or WHITE
+            cell.TextXAlignment = Enum.TextXAlignment.Center
+            cell.TextYAlignment = Enum.TextYAlignment.Center
+            cell.Text = tostring(getPlayerStat(plr, col.key))
+            cell.Parent = row
+            cells[col.key] = cell
         end
+    end
 
         -- Click overlay
         local clickOverlay = Instance.new("TextButton")
@@ -1096,8 +1072,8 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         local info = playerRows[plr]
         if not info then return end
         for _, col in ipairs(COLUMNS) do
-            if col.key ~= "Name" and info.cells[col.key] then
-                info.cells[col.key].Text = tostring(getPlayerStat(plr, col.key))
+            if col.key ~= "Name" and col.key ~= "Avatar" and info.cells[col.key] then
+	            info.cells[col.key].Text = tostring(getPlayerStat(plr, col.key))
             end
         end
         updateSectionCounts()
@@ -1198,46 +1174,10 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         activeTab = tabName
         updateTabVisuals()
     end
+    updateTabVisuals()
 
     teamStatsTabBtn.MouseButton1Click:Connect(function() selectTab("TeamStats") end)
     careerTabBtn.MouseButton1Click:Connect(function() selectTab("Career") end)
-
-    -- Footer interactions
-    local changeTeamOpen = false
-    changeTeamBtn.MouseButton1Click:Connect(function()
-        changeTeamOpen = not changeTeamOpen
-        setFooterVisible(changeTeamOpen)
-    end)
-
-    -- Team change remotes
-    local function getChangeRemotes()
-        local changeTeamRequest  = ReplicatedStorage:FindFirstChild("ChangeTeamRequest") or ReplicatedStorage:WaitForChild("ChangeTeamRequest", 5)
-        local changeTeamResponse = ReplicatedStorage:FindFirstChild("ChangeTeamResponse") or ReplicatedStorage:WaitForChild("ChangeTeamResponse", 5)
-        return changeTeamRequest, changeTeamResponse
-    end
-    joinBlueBtn.MouseButton1Click:Connect(function()
-        if Players.LocalPlayer.Team and Players.LocalPlayer.Team.Name == "Blue" then return end
-        local req = getChangeRemotes()
-        if req and req.FireServer then pcall(function() req:FireServer("Blue") end) end
-    end)
-    joinRedBtn.MouseButton1Click:Connect(function()
-        if Players.LocalPlayer.Team and Players.LocalPlayer.Team.Name == "Red" then return end
-        local req = getChangeRemotes()
-        if req and req.FireServer then pcall(function() req:FireServer("Red") end) end
-    end)
-
-    lobbyBtn.MouseButton1Click:Connect(function()
-        -- Request server to return player to lobby (Neutral)
-        local remotes = ReplicatedStorage
-        local returnReq = remotes:FindFirstChild("ReturnToLobbyRequest") or remotes:FindFirstChild("ReturnToLobbyRequest")
-        if not returnReq then
-            -- Try waiting briefly if remote hasn't been created yet
-            pcall(function() returnReq = remotes:WaitForChild("ReturnToLobbyRequest", 5) end)
-        end
-        if returnReq and returnReq.FireServer then
-            pcall(function() returnReq:FireServer() end)
-        end
-    end)
 
     -- Initial build
     rebuildAll()
