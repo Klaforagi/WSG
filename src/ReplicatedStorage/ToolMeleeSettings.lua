@@ -74,10 +74,10 @@ local giantAndKingSwingAnimationConfig = {
 
 local SPEAR_WEAPON_TAG = "Spear"
 -- Spear animation ids (single-hand for normal sizes, 2H for Giant/King sizes)
-local SPEAR_SWING_ANIM_1 = "122194479756230"
-local SPEAR_SWING_ANIM_2 = "96614186344783"
-local SPEAR_2H_ANIM_1 = "134296812786961"
-local SPEAR_2H_ANIM_2 = "102533072628257"
+local SPEAR_SWING_ANIM_1 = "71250434915079"
+local SPEAR_SWING_ANIM_2 = "112415897748972"
+local SPEAR_2H_ANIM_1 = "111108531312466"
+local SPEAR_2H_ANIM_2 = "108555764460680"
 
 local defaultSwingAnimationConfigsBySizeTier = {
     Giant = giantAndKingSwingAnimationConfig,
@@ -147,12 +147,15 @@ local spearAttackConfig = {
     -- use distinct 2-handed animations while normal-sized spears use
     -- the single-hand animations.
     useSizeTierAnimations = true,
-    ignoreSizeHitboxScale = true,
+    -- Allow the spear hitbox to scale with weapon size like other weapons
+    ignoreSizeHitboxScale = false,
     cd                    = 0.8,
     hitboxDelay           = 0.35,
     hitboxActive          = 0.2,
-    hitboxSize            = Vector3.new(5, 10, 6),
-    hitboxOffset          = Vector3.new(0, 0, 4.8),
+    -- Narrower in X, slightly longer in Z for reach, and moved forward
+    -- Narrower X (3.5) but revert Z range to baseline (6) and keep forward offset
+    hitboxSize            = Vector3.new(3.5, 10, 3),
+    hitboxOffset          = Vector3.new(0, 0, 10),
     swing_anim_id         = SPEAR_SWING_ANIM_1,
     swing_anim_ids        = { SPEAR_SWING_ANIM_1, SPEAR_SWING_ANIM_2 },
     -- Randomize swing selection each attack when true
@@ -176,7 +179,7 @@ local rarityDefaults = {
         damage       = getNilMasteryDamage("Common"),
         cd           = 0.6,
         movement_speed_penalty = -3,
-        knockback    = 2,
+        knockback    = 0,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
         showHitbox   = false,
@@ -188,7 +191,7 @@ local rarityDefaults = {
         damage       = getNilMasteryDamage("Uncommon"),
         cd           = 0.6,
         movement_speed_penalty = -3,
-        knockback    = 2,
+        knockback    = 1,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
         showHitbox   = false,
@@ -200,7 +203,7 @@ local rarityDefaults = {
         damage       = getNilMasteryDamage("Rare"),
         cd           = 0.6,
         movement_speed_penalty = -3,
-        knockback    = 2,
+        knockback    = 1,
         hitboxDelay  = 0.35,
         hitboxActive = 0.2,
         showHitbox   = false,
@@ -295,6 +298,7 @@ local presetOverrides = {
         rarity          = "Rare",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
+        knockback       = 5,
     }),
     ["lil crusher"] = {
         rarity          = "Rare",
@@ -312,6 +316,11 @@ local presetOverrides = {
         rarity          = "Uncommon",
         swing_sound     = "SwordSwing",
         hit_sound       = "SwordHit",
+        knockback       = 3,
+        -- Wooden spear uses a slightly smaller hitbox (80% of spear baseline)
+        hitboxSize      = Vector3.new(2.8, 8, 4.8),
+        -- Move the wooden spear hitbox forward; use Z=5 as requested
+        hitboxOffset    = Vector3.new(0, 0, 5),
     }),
     ["axe"] = {
         rarity          = "Uncommon",

@@ -988,6 +988,17 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             local baseBoxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
             local boxSize = baseBoxSize * hitboxScale
             local offset  = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
+            -- For spears, bias the hitbox forward as weapon size increases so
+            -- larger spears hit closer to the tip. This adds up to an extra
+            -- 25% of the box length at 200% size (clamped).
+            if MeleeCfg and type(MeleeCfg.hasWeaponTag) == "function" and MeleeCfg.hasWeaponTag(cfg, "Spear") then
+                local extraFrac = 0
+                if type(sizePercent) == "number" and sizePercent > 100 then
+                    extraFrac = math.clamp((sizePercent - 100) / 100, 0, 1)
+                end
+                local extraForward = boxSize.Z * 0.5 * extraFrac
+                offset = Vector3.new(offset.X, offset.Y, offset.Z + extraForward)
+            end
 
             local rightV = curHrp.CFrame.RightVector
             local upV    = curHrp.CFrame.UpVector
