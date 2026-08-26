@@ -745,7 +745,10 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     -- WEAPON LOCK CHECK: reject swings from a different weapon while locked
     if WeaponLockService.IsLocked(player) then
         local lockedTool = WeaponLockService.GetLockedTool(player)
-        if lockedTool ~= toolName then return end
+        if lockedTool ~= toolName then
+            print(string.format("[MeleeReject] %s rejected: weapon locked (lockedTool=%s)", player.Name or "<unknown>", tostring(lockedTool)))
+            return
+        end
     end
 
     -- resolve config (rarity defaults merged with weapon overrides)
@@ -867,7 +870,10 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     if not lastSwing[player] then lastSwing[player] = {} end
     local last       = lastSwing[player][toolName] or 0
     local prevStepCd = lastSwing[player][toolName .. "_cd"] or cd
-    if now - last < prevStepCd * 0.85 then return end
+    if now - last < prevStepCd * 0.85 then
+        print(string.format("[MeleeReject] %s rejected: rate-limit (now-last=%.3f < prevCd*0.85=%.3f) tool=%s size=%d%%", player.Name or "<unknown>", now - last, prevStepCd * 0.85, toolName or "<unknown>", sizePercent or 0))
+        return
+    end
     if last > 0 and (now - last) < prevStepCd * 1.5 then
         lastSwing[player][toolName] = last + prevStepCd
     else
