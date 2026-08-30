@@ -254,6 +254,76 @@ local function clearExpiredBoosts(player)
     end
 end
 
+-- Apply server-side effects for an active boost entry using the remaining time
+local function applyActiveBoostEffects(player, boostId, entry)
+    if not player or type(boostId) ~= "string" or type(entry) ~= "table" then return end
+    local config = getBoostConfig()
+    if not config then return end
+    local def = config.GetById(boostId)
+    if not def then return end
+
+    local now = os.time()
+    local expiresAt = tonumber(entry.expiresAt) or 0
+    local remaining = math.max(0, expiresAt - now)
+    if remaining <= 0 then return end
+
+    -- Additive stat modifier (e.g., movement speed)
+    if def.AdditiveBonus and tonumber(def.AdditiveBonus) and tonumber(def.AdditiveBonus) ~= 0 then
+        local hss = getHumanoidStatService()
+        if hss and type(hss.SetModifier) == "function" then
+            pcall(function()
+                hss:SetModifier(player, MOVEMENT_SPEED_STAT, def.ModifierId or def.Id, {
+                    additive = tonumber(def.AdditiveBonus) or 0,
+                    duration = remaining,
+                    source = def.DisplayName,
+                })
+            end)
+        end
+    end
+
+    -- Outgoing flat damage modifier (Power Elixir style)
+    if def.OutgoingFlatAdd and tonumber(def.OutgoingFlatAdd) and tonumber(def.OutgoingFlatAdd) ~= 0 then
+        local hps = getHealthPotionService()
+        if hps and type(hps.SetOutgoingFlatModifier) == "function" then
+            pcall(function()
+                hps:SetOutgoingFlatModifier(player, def.ModifierId or def.Id, tonumber(def.OutgoingFlatAdd), remaining, def.DisplayName)
+            end)
+        end
+    end
+
+    -- Periodic health regen task (vitality)
+    if def.HealthRegenPerTick and tonumber(def.HealthRegenPerTick) and def.HealthRegenTickInterval and tonumber(def.HealthRegenTickInterval) then
+        local amount = math.max(0, math.floor(tonumber(def.HealthRegenPerTick) or 0))
+        local tick = math.max(0.1, tonumber(def.HealthRegenTickInterval) or 5)
+        if amount > 0 and remaining > 0 then
+            if not playerHealTasks[player] then playerHealTasks[player] = {} end
+            -- avoid duplicate task
+            if playerHealTasks[player][def.Id] then return end
+            local token = {}
+            playerHealTasks[player][def.Id] = token
+            task.spawn(function()
+                local expiresAtLocal = os.time() + remaining
+                while true do
+                    if not playerHealTasks[player] or playerHealTasks[player][def.Id] ~= token then break end
+                    if os.time() >= expiresAtLocal then break end
+                    local character = player.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                    if humanoid and humanoid.Health > 0 then
+                        local missing = math.max(0, humanoid.MaxHealth - humanoid.Health)
+                        if missing > 0 then
+                            humanoid.Health = math.min(humanoid.MaxHealth, humanoid.Health + amount)
+                        end
+                    end
+                    local rem = expiresAtLocal - os.time()
+                    if rem <= 0 then break end
+                    task.wait(math.min(tick, rem))
+                end
+                if playerHealTasks[player] then playerHealTasks[player][def.Id] = nil end
+            end)
+        end
+    end
+end
+
 local function serializePlayerState(pd)
     local payload = {
         inventory = {},
@@ -351,7 +421,17 @@ function BoostService:LoadProfileForPlayer(player)
     end
 
     clearExpiredBoosts(player)
-    pushBoostState(player)
+        pushBoostState(player)
+        -- Re-apply any active boost effects server-side so the player's gameplay
+        -- state matches the UI after rejoin/load (modifiers, regen tasks, etc.).
+        local pd = playerBoosts[player]
+        if pd and type(pd.active) == "table" then
+            for boostId, entry in pairs(pd.active) do
+                if type(entry) == "table" and (entry.expiresAt or 0) > os.time() then
+                    pcall(function() applyActiveBoostEffects(player, boostId, entry) end)
+                end
+            end
+        end
     if not success then
         return {
             status = "failed",
