@@ -42,6 +42,7 @@ local ScoreUpdate = ensureRemote("ScoreUpdate")
 local MatchStart  = ensureRemote("MatchStart")
 local MatchEnd    = ensureRemote("MatchEnd")
 local IntermissionStart = ensureRemote("IntermissionStart")
+local MatchResults = ensureRemote("MatchResults")
 local AdjustMatchTime = ensureRemote("AdjustMatchTime")
 
 -- Centralized stat service (single source of truth for all stats & events)
@@ -90,6 +91,7 @@ local matchStartTick = nil
 local intermissionStartTick = nil
 local phaseGen = 0
 local phaseStartTick = nil
+local lastMatchResultsPayload = nil
 
 local STATE_DURATION = {
     Intermission = MATCH_RESULTS_DURATION,
@@ -286,6 +288,28 @@ local function runLobbyCycle()
     local myGen = phaseGen + 1
     -- move to matchResults/Intermission
     setMatchState("Intermission")
+        -- If we have a stored match results payload from the previous endMatch,
+        -- emit it now so clients show the MatchResults UI during Intermission.
+        if lastMatchResultsPayload then
+            pcall(function()
+                MatchResults:FireAllClients(lastMatchResultsPayload)
+            end)
+            -- Attempt to increment career MVP stat for the selected player (ensure profile loaded)
+            local mvpId = lastMatchResultsPayload.mvpUserId
+            if mvpId and mvpId > 0 then
+                local pl = Players:GetPlayerByUserId(mvpId)
+                if pl then
+                    local ok, CareerStatsService = pcall(function() return require(ServerScriptService:WaitForChild("CareerStatsService")) end)
+                    if ok and CareerStatsService and type(CareerStatsService.LoadForPlayer) == "function" then
+                        pcall(function()
+                            CareerStatsService:LoadForPlayer(pl)
+                            CareerStatsService:IncrementStat(pl, "MVPs", 1)
+                        end)
+                    end
+                end
+            end
+            lastMatchResultsPayload = nil
+        end
         if MapVote and MapVote.DespawnCurrentMap then
             pcall(function()
                 MapVote.DespawnCurrentMap()
@@ -359,6 +383,75 @@ function endMatch(winnerTeam)
     pcall(function() MatchEnd:FireAllClients("win", winnerTeam) end)
     pcall(function() MatchEndedBE:Fire(winnerTeam) end)
     registerMatchOutcome(winnerTeam)
+
+    -- Build match results payload and compute MVP (only from winning team)
+    local playersSummary = {}
+    for _, pl in ipairs(Players:GetPlayers()) do
+        local entry = {
+            userId = pl.UserId,
+            name = pl.Name,
+            displayName = (pcall(function() return pl.DisplayName end) and pl.DisplayName) or pl.Name,
+            team = (pl.Team and pl.Team.Name) or "Neutral",
+            level = tonumber(pl:GetAttribute("Level")) or 0,
+            score = (StatService and StatService:GetStat(pl, "Score")) or tonumber(pl:GetAttribute("Score")) or 0,
+            eliminations = (StatService and StatService:GetStat(pl, "Eliminations")) or tonumber(pl:GetAttribute("Eliminations")) or 0,
+            deaths = (StatService and StatService:GetStat(pl, "Deaths")) or tonumber(pl:GetAttribute("Deaths")) or 0,
+            captures = (StatService and StatService:GetStat(pl, "FlagCaptures")) or tonumber(pl:GetAttribute("FlagCaptures")) or 0,
+            returns = (StatService and StatService:GetStat(pl, "FlagReturns")) or tonumber(pl:GetAttribute("FlagReturns")) or 0,
+        }
+        table.insert(playersSummary, entry)
+    end
+
+    -- Filter to winning team
+    local contenders = {}
+    for _, e in ipairs(playersSummary) do
+        if e.team == winnerTeam then table.insert(contenders, e) end
+    end
+
+    local mvpEntry = nil
+    if #contenders > 0 then
+        local ties = contenders
+        -- 1) Highest Score
+        local function filterMax(list, key, chooseMin)
+            local best = nil
+            for _, v in ipairs(list) do
+                local val = tonumber(v[key]) or 0
+                if best == nil then best = val end
+                if chooseMin then
+                    if val < best then best = val end
+                else
+                    if val > best then best = val end
+                end
+            end
+            local out = {}
+            for _, v in ipairs(list) do
+                local val = tonumber(v[key]) or 0
+                if val == best then table.insert(out, v) end
+            end
+            return out
+        end
+
+        ties = filterMax(ties, "score")
+        if #ties > 1 then ties = filterMax(ties, "eliminations") end
+        if #ties > 1 then ties = filterMax(ties, "captures") end
+        if #ties > 1 then ties = filterMax(ties, "deaths", true) end
+        if #ties > 1 then ties = filterMax(ties, "returns") end
+        if #ties > 1 then
+            math.randomseed(tick() + #ties)
+            mvpEntry = ties[ math.random(1, #ties) ]
+        else
+            mvpEntry = ties[1]
+        end
+    end
+
+    local mvpUserId = mvpEntry and mvpEntry.userId or nil
+    -- Store payload to be emitted at Intermission (so clients see it when matchResults/intermission state begins)
+    lastMatchResultsPayload = {
+        winner = winnerTeam,
+        score = { Blue = teamScores.Blue, Red = teamScores.Red },
+        players = playersSummary,
+        mvpUserId = mvpUserId,
+    }
 
     -- After endgame display, run the lobby cycle (matchResults -> voting -> loading -> prematch -> match)
     afterDelay(END_SCREEN_TIME, "EndGame", phaseGen, function()

@@ -1038,6 +1038,7 @@ function TeamUI.Create(parent, _coinApi, _inventoryApi)
         local progressionSection = buildCareerSection(careerContainer, "Progression", {
             { key = "MatchesPlayed", label = "Matches Played" },
             { key = "Wins", label = "Wins" },
+            { key = "MVPs", label = "MVPs" },
             { key = "TotalXP", label = "Total XP" },
             { key = "TotalCoinsEarned", label = "Total Coins Earned" },
             { key = "AchievementPoints", label = "Achievement Points" },

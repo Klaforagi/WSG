@@ -53,6 +53,7 @@ local STAT_DEFAULTS = {
     TotalPlaytimeSeconds   = 0,
     AchievementsCompleted  = 0,
     QuestsCompleted        = 0,
+    MVPs                   = 0,
 }
 
 --- List of all stat keys for safe iteration
