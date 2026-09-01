@@ -3,10 +3,13 @@
 
         When a weapon is equipped the mouse locks to center, the camera
         shifts over the right shoulder, and the character auto-rotates
-        to face where the camera looks. Everything uses the built-in
-        Roblox camera. This script defers disabling the weapon camera
-        briefly when a tool is unequipped so quick swaps between weapons
-        do NOT cause the camera to snap back to default and then return.
+        to face where the camera looks. Zooming all the way in keeps this
+        custom camera (mouse lock + facing) but eases CameraOffset to 0
+        so the view is centered first-person. Zooming out restores the
+        shoulder offset. Everything uses the built-in Roblox camera.
+        This script defers disabling the weapon camera briefly when a
+        tool is unequipped so quick swaps between weapons do NOT cause
+        the camera to snap back to default and then return.
 
         Implementation notes:
         - `ApplyWeaponCamera()` enables the lock immediately.
@@ -30,7 +33,14 @@ local camera = workspace.CurrentCamera
 -- X = right, Y = up, Z = forward (negative = back)
 -- move the camera up 2 studs on the Y axis when equipping weapons
 local SHOULDER_OFFSET = Vector3.new(4, 2, 0)
+local CENTER_OFFSET = Vector3.new(0, 0, 0)
 local UNEQUIP_DELAY = 0.06 -- seconds: short delay to avoid camera flicker on swaps
+-- Tight hysteresis: enter only at min zoom, leave after one scroll notch.
+local ZOOM_IN_SLACK = 0.2
+local ZOOM_OUT_SLACK = 0.4
+local OFFSET_BLEND_SPEED = 14 -- higher = faster ease between shoulder and center
+local VISIBILITY_BIND = "WeaponCamAvatarVisible"
+local VISIBILITY_PRIORITY = Enum.RenderPriority.Camera.Value + 2
 
 -- ── state ──────────────────────────────────────────────────────
 local active                = false   -- is the lock currently on?
@@ -41,6 +51,7 @@ local prevCameraOffset      = nil
 local prevAutoRotate        = nil
 local renderConn            = nil
 local unequipVersion        = 0      -- bump to cancel pending delayed checks
+local firstPersonZoom       = false  -- fully zoomed in; use centered offset
 local ApplyDefaultCamera
 local HasEquippedWeapon
 
@@ -75,6 +86,122 @@ local function getHumanoid()
     return char and char:FindFirstChildOfClass("Humanoid")
 end
 
+local function getOrbitZoom()
+    local cam = workspace.CurrentCamera or camera
+    if not cam then
+        return math.huge
+    end
+    camera = cam
+    -- Offset is camera-local XY, so distance along LookVector is the orbit zoom.
+    local delta = cam.CFrame.Position - cam.Focus.Position
+    return math.abs(delta:Dot(cam.CFrame.LookVector))
+end
+
+local function updateFirstPersonZoom()
+    local minZoom = tonumber(player.CameraMinZoomDistance) or 0.5
+    local zoom = getOrbitZoom()
+    if firstPersonZoom then
+        if zoom > minZoom + ZOOM_OUT_SLACK then
+            firstPersonZoom = false
+        end
+    elseif zoom <= minZoom + ZOOM_IN_SLACK then
+        firstPersonZoom = true
+    end
+    return firstPersonZoom
+end
+
+local RIGHT_ARM_PARTS = {
+    RightUpperArm = true,
+    RightLowerArm = true,
+    RightHand = true,
+    ["Right Arm"] = true,
+}
+
+local RIGHT_ARM_ATTACHMENTS = {
+    RightGripAttachment = true,
+    RightShoulderAttachment = true,
+    RightCollarAttachment = true,
+    RightWristAttachment = true,
+}
+
+local function accessoryIsOnRightArm(accessory)
+    local handle = accessory and accessory:FindFirstChild("Handle")
+    if not handle then
+        return false
+    end
+    for _, child in ipairs(handle:GetChildren()) do
+        if child:IsA("Attachment") and RIGHT_ARM_ATTACHMENTS[child.Name] then
+            return true
+        end
+        if child:IsA("Weld") or child:IsA("WeldConstraint") or child:IsA("Motor6D") then
+            local p0, p1 = child.Part0, child.Part1
+            if (p0 and RIGHT_ARM_PARTS[p0.Name]) or (p1 and RIGHT_ARM_PARTS[p1.Name]) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function keepAvatarVisible()
+    local char = player.Character
+    if not char then
+        return
+    end
+
+    local hideBody = firstPersonZoom
+    local rightArmAccessories = {}
+    if hideBody then
+        for _, child in ipairs(char:GetChildren()) do
+            if (child:IsA("Accessory") or child:IsA("Hat") or child:IsA("Accoutrement"))
+                and accessoryIsOnRightArm(child) then
+                rightArmAccessories[child] = true
+            end
+        end
+    end
+
+    for _, inst in ipairs(char:GetDescendants()) do
+        if inst:GetAttribute("PlayerHealthRing") == true then
+            continue
+        end
+        if not (inst:IsA("BasePart") or inst:IsA("Decal") or inst:IsA("Texture")) then
+            continue
+        end
+
+        local keep = not hideBody
+        if hideBody then
+            local current = inst
+            while current and current ~= char do
+                if current:IsA("Tool") then
+                    keep = true
+                    break
+                end
+                if current:IsA("BasePart") and RIGHT_ARM_PARTS[current.Name] then
+                    keep = true
+                    break
+                end
+                if rightArmAccessories[current] then
+                    keep = true
+                    break
+                end
+                current = current.Parent
+            end
+        end
+
+        local goal = keep and 0 or 1
+        if inst.LocalTransparencyModifier ~= goal then
+            inst.LocalTransparencyModifier = goal
+        end
+    end
+end
+
+local function desiredCameraOffset()
+    if updateFirstPersonZoom() then
+        return CENTER_OFFSET
+    end
+    return SHOULDER_OFFSET
+end
+
 local function shouldSuspendWeaponCamera()
     local char = player.Character
     if not char then return true end
@@ -102,12 +229,17 @@ local function ApplyWeaponCamera()
     if hum then
         prevCameraOffset = hum.CameraOffset
         prevAutoRotate   = hum.AutoRotate
-        hum.CameraOffset = SHOULDER_OFFSET
+        hum.CameraOffset = desiredCameraOffset()
         hum.AutoRotate   = false
     end
 
+    pcall(function()
+        RunService:UnbindFromRenderStep(VISIBILITY_BIND)
+    end)
+    RunService:BindToRenderStep(VISIBILITY_BIND, VISIBILITY_PRIORITY, keepAvatarVisible)
+
     -- each frame: enforce settings + force character to face camera direction
-    renderConn = RunService.RenderStepped:Connect(function()
+    renderConn = RunService.RenderStepped:Connect(function(dt)
         if not active then return end -- guard against stale frame loops
         if shouldSuspendWeaponCamera() or not HasEquippedWeapon() then
             ApplyDefaultCamera()
@@ -121,8 +253,13 @@ local function ApplyWeaponCamera()
 
         local hum2 = getHumanoid()
         if hum2 then
-            if hum2.CameraOffset ~= SHOULDER_OFFSET then
-                hum2.CameraOffset = SHOULDER_OFFSET
+            local goal = desiredCameraOffset()
+            local current = hum2.CameraOffset
+            if (current - goal).Magnitude > 0.01 then
+                local alpha = 1 - math.exp(-OFFSET_BLEND_SPEED * math.max(dt, 0))
+                hum2.CameraOffset = current:Lerp(goal, math.clamp(alpha, 0, 1))
+            elseif current ~= goal then
+                hum2.CameraOffset = goal
             end
             if hum2.AutoRotate then
                 hum2.AutoRotate = false
@@ -154,6 +291,9 @@ ApplyDefaultCamera = function()
         renderConn:Disconnect()
         renderConn = nil
     end
+    pcall(function()
+        RunService:UnbindFromRenderStep(VISIBILITY_BIND)
+    end)
 
     -- force-restore mouse (do it twice with a defer to beat any Roblox re-lock)
     local function restoreMouse()
@@ -258,6 +398,7 @@ end
 local function onCharacter(char)
     -- reset state on respawn
     equipped = {}
+    firstPersonZoom = false
     if active then ApplyDefaultCamera() end
 
     local hum = char:FindFirstChildOfClass("Humanoid")
