@@ -6,6 +6,7 @@ local PODIUM_NAMES = {
     PodiumAvatar_1 = true,
     PodiumAvatar_2 = true,
     PodiumAvatar_3 = true,
+    MVP_Avatar = true,
 }
 
 local function isPodiumAvatar(model)

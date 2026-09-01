@@ -45,6 +45,396 @@ local IntermissionStart = ensureRemote("IntermissionStart")
 local MatchResults = ensureRemote("MatchResults")
 local AdjustMatchTime = ensureRemote("AdjustMatchTime")
 
+-- MVP display: a dancing avatar of the last match MVP, standing on Workspace.MVPblock.
+-- Built when MatchResults fire; the previous rig is destroyed only once a replacement is ready.
+local MVP_MODEL_NAME = "MVP_Avatar"
+local MVP_SCALE = 1.5
+local MVP_GOLD = Color3.fromRGB(255, 214, 70)
+local MVP_GOLD_LIGHT = Color3.fromRGB(255, 240, 170)
+local MVP_GOLD_WARM = Color3.fromRGB(255, 196, 48)
+local MVP_WHITE = Color3.fromRGB(245, 245, 252)
+local MVP_NAVY = Color3.fromRGB(10, 12, 26)
+local currentMVP = {
+    model = nil,
+    track = nil,
+    userId = nil,
+}
+
+local EmoteConfig
+pcall(function()
+    local sideui = ReplicatedStorage:WaitForChild("SideUI", 10)
+    if sideui then
+        local mod = sideui:WaitForChild("EmoteConfig", 5)
+        if mod then
+            EmoteConfig = require(mod)
+        end
+    end
+end)
+
+local CombatUtils
+pcall(function()
+    CombatUtils = require(ServerScriptService:WaitForChild("CombatUtils", 5))
+end)
+
+local function findMVPSpawnPart()
+    local direct = workspace:FindFirstChild("MVPblock")
+    if direct and direct:IsA("BasePart") then
+        return direct
+    end
+
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if obj:IsA("BasePart") and string.lower(obj.Name) == "mvpblock" then
+            return obj
+        end
+    end
+    return nil
+end
+
+local function stopAndDestroyCurrentMVP()
+    if currentMVP.track then
+        pcall(function() currentMVP.track:Stop(0.15) end)
+        pcall(function() currentMVP.track:Destroy() end)
+        currentMVP.track = nil
+    end
+    if currentMVP.model then
+        pcall(function() currentMVP.model:Destroy() end)
+        currentMVP.model = nil
+    end
+    for _, child in ipairs(workspace:GetChildren()) do
+        if child.Name == MVP_MODEL_NAME and child:IsA("Model") then
+            pcall(function() child:Destroy() end)
+        end
+    end
+    currentMVP.userId = nil
+end
+
+-- Dances live in EmoteConfig (animation ids). AssetCodes only has empty icon slots.
+-- Treat Looped ~= false as a dance so entries that omit Looped (rat dance, floss, etc.) are included.
+local function pickMVPDanceDef()
+    if not (EmoteConfig and type(EmoteConfig.GetAll) == "function") then
+        return nil
+    end
+
+    local candidates = {}
+    for _, emote in ipairs(EmoteConfig.GetAll() or {}) do
+        if type(emote) == "table"
+            and type(emote.AnimationId) == "string"
+            and emote.AnimationId ~= ""
+            and emote.Looped ~= false then
+            table.insert(candidates, emote)
+        end
+    end
+    if #candidates == 0 then
+        return nil
+    end
+    return candidates[math.random(1, #candidates)]
+end
+
+-- Prefer the live in-game look (skins). Fall back to the Roblox avatar, then a blank description.
+local function resolveMVPDescription(userId)
+    local player = Players:GetPlayerByUserId(userId)
+    if player and player.Character then
+        local humanoid = player.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then
+            local ok, desc = pcall(function()
+                return humanoid:GetAppliedDescription()
+            end)
+            if ok and desc then
+                return desc
+            end
+        end
+    end
+
+    local ok2, desc2 = pcall(function()
+        return Players:GetHumanoidDescriptionFromUserId(userId)
+    end)
+    if ok2 and desc2 then
+        return desc2
+    end
+
+    warn("[GameManager] Could not resolve HumanoidDescription for", userId, "-", tostring(desc2))
+    return Instance.new("HumanoidDescription")
+end
+
+local function scaleMVPRig(rig, humanoid)
+    if type(rig.ScaleTo) == "function" then
+        local ok = pcall(function()
+            rig:ScaleTo(MVP_SCALE)
+        end)
+        if ok then
+            return
+        end
+    end
+
+    -- Fallback for engines without Model:ScaleTo — 1.5x the current body NumberValues.
+    pcall(function()
+        humanoid.AutomaticScalingEnabled = true
+    end)
+    for _, name in ipairs({ "BodyWidthScale", "BodyHeightScale", "BodyDepthScale", "HeadScale" }) do
+        local nv = humanoid:FindFirstChild(name)
+        if not (nv and nv:IsA("NumberValue")) then
+            nv = Instance.new("NumberValue")
+            nv.Name = name
+            nv.Value = 1
+            nv.Parent = humanoid
+        end
+        nv.Value = (tonumber(nv.Value) or 1) * MVP_SCALE
+    end
+    task.wait()
+end
+
+local function placeMVPRig(model, spawnPart)
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    local root = model:FindFirstChild("HumanoidRootPart")
+    local lift
+    if humanoid and root and root:IsA("BasePart") then
+        lift = (spawnPart.Size.Y * 0.5) + humanoid.HipHeight + (root.Size.Y * 0.5)
+    else
+        local _, size = model:GetBoundingBox()
+        lift = (spawnPart.Size.Y * 0.5) + (size.Y * 0.5)
+    end
+    model:PivotTo(spawnPart.CFrame * CFrame.new(0, lift, 0))
+end
+
+local function resolveMVPDisplayName(userId)
+    local player = Players:GetPlayerByUserId(userId)
+    if player then
+        local displayName = player.DisplayName
+        if type(displayName) == "string" and displayName ~= "" then
+            return displayName
+        end
+        return player.Name
+    end
+
+    local ok, username = pcall(function()
+        return Players:GetNameFromUserIdAsync(userId)
+    end)
+    if ok and type(username) == "string" and username ~= "" then
+        return username
+    end
+    return "Unknown"
+end
+
+local function attachMVPLabel(rig, userId)
+    local head = rig:FindFirstChild("Head")
+    local adornee = (head and head:IsA("BasePart") and head) or rig:FindFirstChild("HumanoidRootPart")
+    if not (adornee and adornee:IsA("BasePart")) then
+        return
+    end
+
+    local headLift = 0.9
+    if head and head:IsA("BasePart") then
+        headLift = (head.Size.Y * 0.5) + 0.85
+    end
+
+    local billboard = Instance.new("BillboardGui")
+    billboard.Name = "MVPLabel"
+    billboard.Adornee = adornee
+    billboard.AlwaysOnTop = true
+    billboard.LightInfluence = 0
+    billboard.MaxDistance = 220
+    billboard.Size = UDim2.new(6.2, 0, 1.85, 0)
+    billboard.StudsOffsetWorldSpace = Vector3.new(0, headLift, 0)
+    billboard.ResetOnSpawn = false
+    billboard.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    billboard.Parent = rig
+
+    local plate = Instance.new("Frame")
+    plate.Name = "Plate"
+    plate.BackgroundColor3 = MVP_NAVY
+    plate.BackgroundTransparency = 0.28
+    plate.BorderSizePixel = 0
+    plate.Size = UDim2.fromScale(1, 1)
+    plate.Parent = billboard
+
+    local plateCorner = Instance.new("UICorner")
+    plateCorner.CornerRadius = UDim.new(0, 10)
+    plateCorner.Parent = plate
+
+    local plateStroke = Instance.new("UIStroke")
+    plateStroke.Color = MVP_GOLD
+    plateStroke.Thickness = 1.6
+    plateStroke.Transparency = 0.12
+    plateStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    plateStroke.Parent = plate
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingLeft = UDim.new(0.06, 0)
+    pad.PaddingRight = UDim.new(0.06, 0)
+    pad.PaddingTop = UDim.new(0.08, 0)
+    pad.PaddingBottom = UDim.new(0.08, 0)
+    pad.Parent = plate
+
+    local title = Instance.new("TextLabel")
+    title.Name = "Title"
+    title.BackgroundTransparency = 1
+    title.BorderSizePixel = 0
+    title.Size = UDim2.new(1, 0, 0.55, 0)
+    title.Position = UDim2.fromScale(0, 0)
+    title.Font = Enum.Font.GothamBlack
+    title.Text = "◆  MVP  ◆"
+    title.TextColor3 = Color3.new(1, 1, 1)
+    title.TextScaled = true
+    title.TextStrokeColor3 = Color3.fromRGB(48, 32, 4)
+    title.TextStrokeTransparency = 0.2
+    title.Parent = plate
+
+    local titleSize = Instance.new("UITextSizeConstraint")
+    titleSize.MinTextSize = 16
+    titleSize.MaxTextSize = 32
+    titleSize.Parent = title
+
+    local shine = Instance.new("UIGradient")
+    shine.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, MVP_GOLD_LIGHT),
+        ColorSequenceKeypoint.new(0.45, MVP_GOLD_WARM),
+        ColorSequenceKeypoint.new(1, MVP_GOLD_LIGHT),
+    })
+    shine.Rotation = 0
+    shine.Parent = title
+
+    local divider = Instance.new("Frame")
+    divider.Name = "Divider"
+    divider.AnchorPoint = Vector2.new(0.5, 0.5)
+    divider.BackgroundColor3 = MVP_GOLD
+    divider.BackgroundTransparency = 0.35
+    divider.BorderSizePixel = 0
+    divider.Position = UDim2.new(0.5, 0, 0.58, 0)
+    divider.Size = UDim2.new(0.42, 0, 0, 2)
+    divider.Parent = plate
+
+    local nameLabel = Instance.new("TextLabel")
+    nameLabel.Name = "PlayerName"
+    nameLabel.BackgroundTransparency = 1
+    nameLabel.BorderSizePixel = 0
+    nameLabel.Size = UDim2.new(1, 0, 0.36, 0)
+    nameLabel.Position = UDim2.fromScale(0, 0.64)
+    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Text = resolveMVPDisplayName(userId)
+    nameLabel.TextColor3 = MVP_WHITE
+    nameLabel.TextScaled = true
+    nameLabel.TextStrokeColor3 = MVP_NAVY
+    nameLabel.TextStrokeTransparency = 0.25
+    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLabel.Parent = plate
+
+    local nameSize = Instance.new("UITextSizeConstraint")
+    nameSize.MinTextSize = 12
+    nameSize.MaxTextSize = 20
+    nameSize.Parent = nameLabel
+end
+
+local function playMVPDance(rig, humanoid)
+    local emoteDef = pickMVPDanceDef()
+    if not emoteDef then
+        warn("[GameManager] No dance animations found in EmoteConfig for MVP rig")
+        return nil
+    end
+
+    local animator = humanoid:FindFirstChildOfClass("Animator")
+    if not animator then
+        animator = Instance.new("Animator")
+        animator.Parent = humanoid
+    end
+
+    local animation = Instance.new("Animation")
+    animation.Name = "MVPDance"
+    animation.AnimationId = emoteDef.AnimationId
+    animation.Parent = rig
+
+    local ok, track = pcall(function()
+        return animator:LoadAnimation(animation)
+    end)
+    if not ok or not track then
+        warn("[GameManager] Failed to load MVP dance", emoteDef.Id, track)
+        return nil
+    end
+
+    track.Priority = Enum.AnimationPriority.Action
+    track.Looped = emoteDef.Looped ~= false
+    pcall(function()
+        track:Play(0.25)
+    end)
+    return track
+end
+
+local function spawnMVPAvatar(userId, preparedDescription)
+    if type(userId) ~= "number" or userId <= 0 then
+        return
+    end
+
+    local spawnPart = findMVPSpawnPart()
+    if not spawnPart then
+        warn("[GameManager] MVP spawn part not found in workspace (expected a BasePart named 'MVPblock')")
+        return
+    end
+
+    local desc = preparedDescription or resolveMVPDescription(userId)
+    local ok, rigOrErr = pcall(function()
+        return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+    end)
+    if not ok or typeof(rigOrErr) ~= "Instance" then
+        warn("[GameManager] Failed to create MVP rig for user", userId, rigOrErr)
+        return
+    end
+
+    local rig = rigOrErr
+    local humanoid = rig:FindFirstChildOfClass("Humanoid")
+    if not humanoid then
+        pcall(function() rig:Destroy() end)
+        warn("[GameManager] MVP rig missing Humanoid for user", userId)
+        return
+    end
+
+    -- Replacement is ready: only now tear down the previous MVP.
+    stopAndDestroyCurrentMVP()
+
+    rig.Name = MVP_MODEL_NAME
+    rig.Parent = workspace
+
+    if CombatUtils and type(CombatUtils.tagPodiumModel) == "function" then
+        pcall(function() CombatUtils.tagPodiumModel(rig) end)
+    end
+
+    for _, part in ipairs(rig:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanCollide = false
+            part.CanTouch = false
+            part.CanQuery = false
+            part.Massless = true
+        end
+    end
+
+    local root = rig:FindFirstChild("HumanoidRootPart")
+    if root and root:IsA("BasePart") then
+        root.Anchored = true
+    end
+
+    humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+    humanoid.NameDisplayDistance = 0
+    humanoid.HealthDisplayDistance = 0
+    humanoid.AutoRotate = false
+    humanoid.BreakJointsOnDeath = false
+    humanoid.WalkSpeed = 0
+    humanoid.JumpPower = 0
+    humanoid.JumpHeight = 0
+
+    pcall(function()
+        scaleMVPRig(rig, humanoid)
+    end)
+    pcall(function()
+        placeMVPRig(rig, spawnPart)
+    end)
+    pcall(function()
+        attachMVPLabel(rig, userId)
+    end)
+
+    currentMVP.model = rig
+    currentMVP.userId = userId
+    currentMVP.track = playMVPDance(rig, humanoid)
+    print(string.format("[GameManager] Spawned MVP avatar for userId=%s", tostring(userId)))
+end
+
 -- Centralized stat service (single source of truth for all stats & events)
 local StatService
 pcall(function()
@@ -307,6 +697,11 @@ local function runLobbyCycle()
                         end)
                     end
                 end
+                -- Capture appearance before lobby reset; build the rig without blocking intermission.
+                local mvpDescription = resolveMVPDescription(mvpId)
+                task.spawn(function()
+                    spawnMVPAvatar(mvpId, mvpDescription)
+                end)
             end
             lastMatchResultsPayload = nil
         end
