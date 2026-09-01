@@ -408,14 +408,6 @@ local function updateButtonAvailability()
         return
     end
 
-    -- Block if airborne
-    local ok, stateType = pcall(function() return humanoid:GetState() end)
-    if ok and (stateType == Enum.HumanoidStateType.Freefall or stateType == Enum.HumanoidStateType.Jumping
-        or humanoid.FloorMaterial == Enum.Material.Air) then
-        setButtonBlocked()
-        return
-    end
-
     -- Block if carrying flag
     if player:GetAttribute("CarryingFlag") then
         setButtonBlocked()
@@ -527,7 +519,6 @@ local function playDashEffects(targetPlayer, effectId)
         trailColorSeq = ColorSequence.new(solidColor, solidColor)
         log("[Dash] Using", (def and def.DisplayName or "Default Trail"), "visuals")
     end
-    local duration = DashConfig.Duration
 
     -- Cleanup stale transient dash VFX before spawning fresh ones.
     for _, child in ipairs(rootPart:GetChildren()) do
@@ -568,7 +559,7 @@ local function playDashEffects(targetPlayer, effectId)
         NumberSequenceKeypoint.new(0, isRainbow and 0.2 or (isDarkTrail and 0.1 or 0.3)),
         NumberSequenceKeypoint.new(1, 1),
     })
-    trail.Lifetime = isRainbow and (DashConfig.TrailLifetime * 1.15) or DashConfig.TrailLifetime
+    trail.Lifetime = DashConfig.TrailLifetime
     trail.MinLength = 0.05
     trail.FaceCamera = true
     trail.LightEmission = isRainbow and 0.7 or (isDarkTrail and 0.08 or 0.6)
@@ -578,9 +569,9 @@ local function playDashEffects(targetPlayer, effectId)
     })
     trail.Parent = rootPart
 
-    Debris:AddItem(trail, duration + DashConfig.TrailLifetime + 0.1)
-    Debris:AddItem(trailAttach0, duration + DashConfig.TrailLifetime + 0.15)
-    Debris:AddItem(trailAttach1, duration + DashConfig.TrailLifetime + 0.15)
+    Debris:AddItem(trail, DashConfig.TrailLifetime)
+    Debris:AddItem(trailAttach0, DashConfig.TrailLifetime + 0.05)
+    Debris:AddItem(trailAttach1, DashConfig.TrailLifetime + 0.05)
 
     -------------------------------------------------------
     -- 2) Speed-streak particles
@@ -615,56 +606,6 @@ local function playDashEffects(targetPlayer, effectId)
 
     Debris:AddItem(particles, 1)
     Debris:AddItem(particleAttach, 1.05)
-
-    -------------------------------------------------------
-    -- 3) Afterimage ghost
-    -------------------------------------------------------
-    task.spawn(function()
-        local ghostModel = Instance.new("Model")
-        ghostModel.Name = "_DashGhost_" .. tostring(targetPlayer.UserId)
-
-        -- For rainbow, cycle ghost part colors through the palette
-        local ghostColors = (isRainbow and def.GhostColors) or nil
-        local ghostIdx = 0
-
-        for _, part in ipairs(char:GetDescendants()) do
-            if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
-                local ghost = part:Clone()
-                -- Strip scripts, welds, attachments to keep it clean
-                for _, child in ipairs(ghost:GetChildren()) do
-                    if not child:IsA("SpecialMesh") and not child:IsA("MeshPart")
-                       and not child:IsA("DataModelMesh") then
-                        pcall(function() child:Destroy() end)
-                    end
-                end
-                ghost.Anchored = true
-                ghost.CanCollide = false
-                ghost.CanQuery = false
-                ghost.CanTouch = false
-                ghost.CastShadow = false
-                ghost.Transparency = isRainbow and (DashConfig.GhostTransparency - 0.05) or DashConfig.GhostTransparency
-                ghost.Material = Enum.Material.Neon
-                if ghostColors then
-                    ghostIdx = ghostIdx + 1
-                    ghost.Color = ghostColors[((ghostIdx - 1) % #ghostColors) + 1]
-                else
-                    ghost.Color = solidColor
-                end
-                ghost.Parent = ghostModel
-            end
-        end
-
-        ghostModel.Parent = workspace
-        Debris:AddItem(ghostModel, DashConfig.GhostFadeDuration + 0.1)
-
-        -- Fade out
-        local fadeInfo = TweenInfo.new(DashConfig.GhostFadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-        for _, part in ipairs(ghostModel:GetDescendants()) do
-            if part:IsA("BasePart") then
-                TweenService:Create(part, fadeInfo, { Transparency = 1 }):Play()
-            end
-        end
-    end)
 end
 
 --------------------------------------------------------------------------------
@@ -728,14 +669,6 @@ local function requestDashAction()
     if not char then return end
     local humanoid = char:FindFirstChildOfClass("Humanoid")
     if not humanoid or humanoid.Health <= 0 then return end
-
-    -- Client-side: disallow dash while airborne (jumping/freefall) or if carrying flag
-    local ok, stateType = pcall(function() return humanoid:GetState() end)
-    if ok and (stateType == Enum.HumanoidStateType.Freefall or stateType == Enum.HumanoidStateType.Jumping
-        or humanoid.FloorMaterial == Enum.Material.Air) then
-        log("dash blocked client-side: not grounded or airborne")
-        return
-    end
 
     if player:GetAttribute("CarryingFlag") then
         log("dash blocked client-side: carrying flag")
@@ -863,10 +796,7 @@ player:GetAttributeChangedSignal("CarryingFlag"):Connect(function()
     updateButtonAvailability()
 end)
 
--- Hook humanoid state changes per-character to reflect airborne / grounded state
--- (setupCharacter defined below)
 local function setupCharacter(char)
-    -- small delay to allow humanoid to exist
     task.defer(function()
         if humanoidStateConn then
             pcall(function() humanoidStateConn:Disconnect() end)
@@ -876,31 +806,13 @@ local function setupCharacter(char)
             pcall(function() humanoidFloorConn:Disconnect() end)
             humanoidFloorConn = nil
         end
-        -- stop previous Heartbeat connection
         if availabilityConn then
             pcall(function() availabilityConn:Disconnect() end)
             availabilityConn = nil
         end
 
         if not char then return end
-        local humanoid = char:FindFirstChildOfClass("Humanoid")
-        if humanoid then
-            humanoidStateConn = humanoid.StateChanged:Connect(function(_, newState)
-                updateButtonAvailability()
-            end)
-            if humanoid.GetPropertyChangedSignal then
-                humanoidFloorConn = humanoid:GetPropertyChangedSignal("FloorMaterial"):Connect(function()
-                    updateButtonAvailability()
-                end)
-            end
-        end
         updateButtonAvailability()
-
-        -- Start a Heartbeat connection to update availability each frame
-        availabilityConn = RunService.Heartbeat:Connect(function()
-            if not char or char ~= player.Character then return end
-            updateButtonAvailability()
-        end)
     end)
 end
 

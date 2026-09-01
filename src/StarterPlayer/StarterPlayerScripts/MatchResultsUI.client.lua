@@ -44,7 +44,8 @@ local PLAYER_ROW_GAP = 6
 local MAP_DISPLAY_NAMES = {
 	thepit = "The Pit",
 	forest = "Forest",
-	wintergate = "Winter Gate",
+	wintergate = "Frozen Lake",
+	frozenlake = "Frozen Lake",
 }
 
 local COLS = {

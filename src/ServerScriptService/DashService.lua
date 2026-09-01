@@ -14,6 +14,7 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
+local TweenService      = game:GetService("TweenService")
 
 local DEBUG = false
 
@@ -73,6 +74,8 @@ end
 
 --------------------------------------------------------------------------------
 -- Core dash execution (called after validation)
+-- Straight-ahead burst (same in air and on ground), then a short ease back
+-- to WalkSpeed so leftover dash speed does not snap off.
 --------------------------------------------------------------------------------
 local function executeDash(player, humanoid, rootPart)
     local cfg = getConfig()
@@ -81,7 +84,6 @@ local function executeDash(player, humanoid, rootPart)
     local state = playerState[player]
     state.isDashing = true
 
-    -- Direction: character's look vector, flattened to XZ
     local lookVector = rootPart.CFrame.LookVector
     local flatDir = Vector3.new(lookVector.X, 0, lookVector.Z)
     if flatDir.Magnitude < 0.01 then
@@ -89,7 +91,6 @@ local function executeDash(player, humanoid, rootPart)
     end
     flatDir = flatDir.Unit
 
-    -- Wall check
     local distance = clampDistanceToWall(rootPart, flatDir, cfg.Distance)
     if distance < 1 then
         state.isDashing = false
@@ -98,49 +99,71 @@ local function executeDash(player, humanoid, rootPart)
     end
 
     local duration = cfg.Duration
-    local speed = distance / duration -- studs/s
+    local speed = distance / duration
+    local maxForce = tonumber(cfg.MaxForce) or 1e6
+    local dashVelocity = flatDir * speed
     player:SetAttribute("IsDashing", true)
 
-    -- Apply velocity via LinearVelocity (modern, clean, no lingering objects after removal)
     local attachment = Instance.new("Attachment")
     attachment.Name = "_DashAttachment"
     attachment.Parent = rootPart
 
+    -- Hold a straight horizontal line for the burst (no gravity drop mid-dash).
     local linVel = Instance.new("LinearVelocity")
     linVel.Name = "_DashLinearVelocity"
     linVel.Attachment0 = attachment
-    linVel.VectorVelocity = flatDir * speed + Vector3.new(0, cfg.VerticalDamp * speed, 0)
-    linVel.MaxForce = 100000
     linVel.RelativeTo = Enum.ActuatorRelativeTo.World
+    linVel.VectorVelocity = dashVelocity
+    linVel.MaxForce = maxForce
     linVel.Parent = rootPart
-
-    -- Brief jump lock so dash feels crisp
-    local prevJumpPower = humanoid.JumpPower
-    local prevJumpHeight = humanoid.JumpHeight
-    humanoid.JumpPower = 0
-    humanoid.JumpHeight = 0
 
     log(player.Name, "dashing", distance, "studs over", duration, "s")
 
-    -- Wait for dash duration then clean up
-    task.delay(duration, function()
-        -- Clean up velocity objects
+    local function finishDashCleanup()
         if linVel and linVel.Parent then linVel:Destroy() end
         if attachment and attachment.Parent then attachment:Destroy() end
-
-        -- Restore jump
-        pcall(function()
-            if humanoid and humanoid.Parent then
-                humanoid.JumpPower = prevJumpPower
-                humanoid.JumpHeight = prevJumpHeight
-            end
-        end)
-
         if state then
             state.isDashing = false
         end
         player:SetAttribute("IsDashing", false)
         log(player.Name, "dash complete")
+    end
+
+    task.delay(duration, function()
+        if not (linVel and linVel.Parent) then
+            finishDashCleanup()
+            return
+        end
+
+        local walkSpeed = 16
+        if humanoid and humanoid.Parent then
+            walkSpeed = tonumber(humanoid.WalkSpeed) or 16
+        end
+        local endVel = flatDir * walkSpeed
+
+        -- Release vertical lock so gravity returns, then ease leftover dash speed off.
+        pcall(function()
+            linVel.ForceLimitMode = Enum.ForceLimitMode.PerAxis
+            linVel.MaxAxesForce = Vector3.new(maxForce, 0, maxForce)
+        end)
+
+        local decelTime = math.max(0.05, tonumber(cfg.DecelDuration) or 0.2)
+        local tween = TweenService:Create(
+            linVel,
+            TweenInfo.new(decelTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+            { VectorVelocity = endVel }
+        )
+
+        local finished = false
+        local function onDecelDone()
+            if finished then return end
+            finished = true
+            finishDashCleanup()
+        end
+
+        tween.Completed:Connect(onDecelDone)
+        tween:Play()
+        task.delay(decelTime + 0.05, onDecelDone)
     end)
 
     return true, "ok"
@@ -189,14 +212,6 @@ function DashService:TryDash(player)
     end
     if humanoid.Health <= 0 then
         return false, "dead"
-    end
-
-    -- Disallow dashing while airborne (jumping/freefall) — require being on the ground
-    local ok, stateType = pcall(function() return humanoid:GetState() end)
-    if ok and (stateType == Enum.HumanoidStateType.Freefall or stateType == Enum.HumanoidStateType.Jumping
-        or humanoid.FloorMaterial == Enum.Material.Air) then
-        log(player.Name, "rejected: not grounded or airborne")
-        return false, "not_grounded"
     end
 
     -- Disallow dashing while carrying the flag

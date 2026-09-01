@@ -8,17 +8,19 @@
 local DashConfig = {}
 
 -- Movement
-DashConfig.Distance     = 22      -- studs to travel
-DashConfig.Duration     = 0.18    -- seconds the dash lasts
-DashConfig.Cooldown     = 8      -- seconds between dashes
+DashConfig.Distance     = 22      -- studs to travel (same on ground and in air)
+DashConfig.Duration     = 0.2     -- seconds the dash lasts
+DashConfig.DecelDuration = 0.2    -- seconds to ease extra dash speed down to WalkSpeed
+DashConfig.Cooldown     = 8       -- seconds between dashes
 
 -- Physics
-DashConfig.VerticalDamp = 0.05    -- small upward nudge to stay grounded over bumps
+DashConfig.VerticalDamp = 0       -- no vertical boost; dash is a flat XZ burst
 DashConfig.WallRayExtra = 3       -- extra studs for wall-detection raycast
+DashConfig.MaxForce     = 1e6     -- high enough to fully override existing velocity
 
 -- Visual effects
 DashConfig.EffectEnabled    = true
-DashConfig.TrailLifetime    = 0.25   -- seconds the trail stays visible
+DashConfig.TrailLifetime    = 0.35   -- seconds the trail stays visible from dash start
 DashConfig.ParticleCount    = 18     -- speed-streak particles emitted per dash
 DashConfig.GhostTransparency = 0.7  -- afterimage starting transparency
 DashConfig.GhostFadeDuration = 0.35 -- seconds for afterimage to vanish
