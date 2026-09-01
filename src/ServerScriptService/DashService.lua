@@ -74,8 +74,9 @@ end
 
 --------------------------------------------------------------------------------
 -- Core dash execution (called after validation)
--- Straight-ahead burst (same in air and on ground), then a short ease back
--- to WalkSpeed so leftover dash speed does not snap off.
+-- Burst in the player's move direction (same in air and on ground), then a
+-- short ease back to WalkSpeed so leftover dash speed does not snap off.
+-- Standing still falls back to facing direction.
 --------------------------------------------------------------------------------
 local function executeDash(player, humanoid, rootPart)
     local cfg = getConfig()
@@ -84,8 +85,12 @@ local function executeDash(player, humanoid, rootPart)
     local state = playerState[player]
     state.isDashing = true
 
-    local lookVector = rootPart.CFrame.LookVector
-    local flatDir = Vector3.new(lookVector.X, 0, lookVector.Z)
+    local move = humanoid.MoveDirection
+    local flatDir = Vector3.new(move.X, 0, move.Z)
+    if flatDir.Magnitude < 0.1 then
+        local lookVector = rootPart.CFrame.LookVector
+        flatDir = Vector3.new(lookVector.X, 0, lookVector.Z)
+    end
     if flatDir.Magnitude < 0.01 then
         flatDir = Vector3.new(0, 0, -1)
     end
