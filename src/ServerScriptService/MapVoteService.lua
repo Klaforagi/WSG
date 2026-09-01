@@ -176,6 +176,10 @@ function MapVoteService.SpawnMap(name)
     return clone
 end
 
+function MapVoteService.GetCurrentMapName()
+    return currentMapName
+end
+
 function MapVoteService.DespawnCurrentMap()
     if currentMapInstance then
         pcall(function() currentMapInstance:Destroy() end)

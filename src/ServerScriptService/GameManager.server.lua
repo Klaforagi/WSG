@@ -12,6 +12,7 @@ local Players         = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 local Teams = game:GetService("Teams")
+local TweenService = game:GetService("TweenService")
 
 ---------------------------------------------------------------------
 -- Config
@@ -22,6 +23,7 @@ local MATCH_RESULTS_DURATION = 15 -- seconds for match results display (intermis
 local VOTING_DURATION = 15       -- seconds for map voting
 local LOADING_DURATION = 2        -- seconds for loading/map spawn settling
 local PREMATCH_DURATION = 15      -- seconds for prematch team selection
+local BARRIER_FADE_TIME = 1       -- seconds to fade barriers before they are destroyed
 local INTERMISSION_DURATION = 60  -- seconds players wait in the lobby between rounds
 local MIN_PLAYERS      = 0        -- set >0 if you want a lobby phase
 
@@ -560,6 +562,76 @@ local function afterDelay(seconds, expectedState, capturedGen, callback)
 end
 
 ---------------------------------------------------------------------
+-- Barriers (named "Barrier" or attribute IsBarrier)
+---------------------------------------------------------------------
+local function isBarrierObject(obj)
+    if not obj then
+        return false
+    end
+    if obj.Name == "Barrier" then
+        return true
+    end
+    local ok, val = pcall(function()
+        return obj:GetAttribute("IsBarrier")
+    end)
+    return ok and val == true
+end
+
+local function collectBarriers()
+    local barriers = {}
+    for _, obj in ipairs(workspace:GetDescendants()) do
+        if isBarrierObject(obj) then
+            local ancestorIsBarrier = false
+            local parent = obj.Parent
+            while parent and parent ~= workspace do
+                if isBarrierObject(parent) then
+                    ancestorIsBarrier = true
+                    break
+                end
+                parent = parent.Parent
+            end
+            if not ancestorIsBarrier then
+                table.insert(barriers, obj)
+            end
+        end
+    end
+    return barriers
+end
+
+local function fadeBarriers(duration)
+    duration = duration or BARRIER_FADE_TIME
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    for _, obj in ipairs(collectBarriers()) do
+        local parts = {}
+        if obj:IsA("BasePart") then
+            table.insert(parts, obj)
+        end
+        for _, desc in ipairs(obj:GetDescendants()) do
+            table.insert(parts, desc)
+        end
+        for _, inst in ipairs(parts) do
+            if inst:IsA("BasePart") then
+                pcall(function()
+                    TweenService:Create(inst, tweenInfo, { Transparency = 1 }):Play()
+                end)
+            elseif inst:IsA("Decal") or inst:IsA("Texture") then
+                pcall(function()
+                    TweenService:Create(inst, tweenInfo, { Transparency = 1 }):Play()
+                end)
+            end
+        end
+    end
+end
+
+local function destroyBarriers()
+    for _, obj in ipairs(collectBarriers()) do
+        pcall(function()
+            obj:Destroy()
+        end)
+    end
+end
+
+---------------------------------------------------------------------
 -- Score handler  (called by the BindableEvent from any script)
 ---------------------------------------------------------------------
 local function onAddScore(teamName, delta)
@@ -748,6 +820,10 @@ local function runLobbyCycle()
                 end
                 local genPrematch = phaseGen
 
+                afterDelay(math.max(0, PREMATCH_DURATION - BARRIER_FADE_TIME), "Prematch", genPrematch, function()
+                    fadeBarriers(BARRIER_FADE_TIME)
+                end)
+
                 afterDelay(PREMATCH_DURATION, "Prematch", genPrematch, function()
                     -- If no players, wait for a join to start match
                     if #Players:GetPlayers() == 0 then
@@ -840,12 +916,19 @@ function endMatch(winnerTeam)
     end
 
     local mvpUserId = mvpEntry and mvpEntry.userId or nil
+    local mapName = nil
+    if MapVote and type(MapVote.GetCurrentMapName) == "function" then
+        pcall(function()
+            mapName = MapVote.GetCurrentMapName()
+        end)
+    end
     -- Store payload to be emitted at Intermission (so clients see it when matchResults/intermission state begins)
     lastMatchResultsPayload = {
         winner = winnerTeam,
         score = { Blue = teamScores.Blue, Red = teamScores.Red },
         players = playersSummary,
         mvpUserId = mvpUserId,
+        mapName = mapName,
     }
 
     -- After endgame display, run the lobby cycle (matchResults -> voting -> loading -> prematch -> match)
@@ -867,22 +950,8 @@ function startMatch()
     teamScores.Red = 0
     intermissionStartTick = nil
     setMatchState("Game")
-    -- Destroy any Barrier parts/models at the moment the match actually starts.
-    -- Barriers remain during Prematch but should be removed for active Game play.
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        local isBarrier = false
-        pcall(function()
-            if obj.Name == "Barrier" then isBarrier = true end
-            local ga = obj.GetAttribute
-            if type(ga) == "function" then
-                local ok, val = pcall(function() return obj:GetAttribute("IsBarrier") end)
-                if ok and val == true then isBarrier = true end
-            end
-        end)
-        if isBarrier then
-            pcall(function() obj:Destroy() end)
-        end
-    end
+    -- Fade starts 1s before match start during Prematch; destroy once Game begins.
+    destroyBarriers()
     matchStartTick = workspace:GetServerTimeNow()
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
