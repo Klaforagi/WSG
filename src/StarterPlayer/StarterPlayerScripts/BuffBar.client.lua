@@ -8,6 +8,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
+local TextService = game:GetService("TextService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -354,7 +355,7 @@ local activeTooltipEntryId = nil
 
 local tooltip = Instance.new("Frame")
 tooltip.Name = "BuffTooltip"
-tooltip.AnchorPoint = Vector2.new(0, 1)
+tooltip.AnchorPoint = Vector2.new(0, 0)
 tooltip.BackgroundColor3 = COLORS.navy
 tooltip.BackgroundTransparency = 0.03
 tooltip.BorderSizePixel = 0
@@ -400,7 +401,9 @@ tooltipTitle.TextColor3 = COLORS.gold
 tooltipTitle.TextSize = math.max(13, px(15))
 tooltipTitle.TextXAlignment = Enum.TextXAlignment.Left
 tooltipTitle.TextYAlignment = Enum.TextYAlignment.Center
-tooltipTitle.TextTruncate = Enum.TextTruncate.AtEnd
+tooltipTitle.TextTruncate = Enum.TextTruncate.None
+tooltipTitle.TextWrapped = true
+tooltipTitle.AutomaticSize = Enum.AutomaticSize.Y
 tooltipTitle.ZIndex = tooltip.ZIndex + 1
 tooltipTitle.LayoutOrder = 1
 tooltipTitle.Parent = tooltip
@@ -421,10 +424,57 @@ tooltipDescription.ZIndex = tooltip.ZIndex + 1
 tooltipDescription.LayoutOrder = 2
 tooltipDescription.Parent = tooltip
 
+local function measureText(text, textSize, font, maxWidth)
+    local ok, bounds = pcall(function()
+        return TextService:GetTextSize(tostring(text or ""), textSize, font, Vector2.new(maxWidth, 4000))
+    end)
+    if ok and typeof(bounds) == "Vector2" then
+        return bounds
+    end
+    local len = string.len(tostring(text or ""))
+    return Vector2.new(math.min(maxWidth, math.max(1, len * textSize * 0.55)), math.max(textSize, math.ceil(len * textSize * 0.55 / math.max(1, maxWidth)) * textSize))
+end
+
+local function sizeTooltipToText()
+    local titleText = tooltipTitle.Text or ""
+    local bodyText = tooltipDescription.Visible and (tooltipDescription.Text or "") or ""
+    local titleSize = math.max(13, px(15))
+    local bodySize = math.max(11, px(12))
+    local padX = TOOLTIP_PADDING * 2
+    local minW = px(200)
+    local maxW = px(380)
+
+    local unconstrainedTitle = measureText(titleText, titleSize, tooltipTitle.Font, 4000)
+    local width = math.clamp(math.max(unconstrainedTitle.X + padX + px(8), minW), minW, maxW)
+    local innerW = math.max(1, width - padX)
+
+    local titleBounds = measureText(titleText, titleSize, tooltipTitle.Font, innerW)
+    local titleH = math.max(px(18), titleBounds.Y + px(2))
+    tooltipTitle.TextSize = titleSize
+    tooltipTitle.Size = UDim2.new(1, 0, 0, titleH)
+
+    local bodyH = 0
+    if bodyText ~= "" then
+        local bodyBounds = measureText(bodyText, bodySize, tooltipDescription.Font, innerW)
+        bodyH = math.max(px(16), bodyBounds.Y + px(4))
+        tooltipDescription.TextSize = bodySize
+        tooltipDescription.AutomaticSize = Enum.AutomaticSize.None
+        tooltipDescription.Size = UDim2.new(1, 0, 0, bodyH)
+    else
+        tooltipDescription.Size = UDim2.new(1, 0, 0, 0)
+    end
+
+    local height = TOOLTIP_PADDING * 2 + titleH
+    if bodyH > 0 then
+        height += px(3) + bodyH
+    end
+    tooltip.AutomaticSize = Enum.AutomaticSize.None
+    tooltip.Size = UDim2.fromOffset(width, height)
+end
+
 local function refreshTooltipLayout()
     TOOLTIP_WIDTH = px(250)
     TOOLTIP_PADDING = px(10)
-    tooltip.Size = UDim2.new(0, TOOLTIP_WIDTH, 0, px(72))
     tooltipCorner.CornerRadius = UDim.new(0, px(8))
     tooltipStroke.Thickness = math.max(1, px(1))
     tooltipPadding.PaddingTop = UDim.new(0, TOOLTIP_PADDING)
@@ -432,10 +482,15 @@ local function refreshTooltipLayout()
     tooltipPadding.PaddingLeft = UDim.new(0, TOOLTIP_PADDING)
     tooltipPadding.PaddingRight = UDim.new(0, TOOLTIP_PADDING)
     tooltipLayout.Padding = UDim.new(0, px(3))
-    tooltipTitle.Size = UDim2.new(1, 0, 0, px(20))
     tooltipTitle.TextSize = math.max(13, px(15))
-    tooltipDescription.Size = UDim2.new(1, 0, 0, px(36))
     tooltipDescription.TextSize = math.max(11, px(12))
+    if tooltip.Visible then
+        sizeTooltipToText()
+    else
+        tooltip.Size = UDim2.new(0, TOOLTIP_WIDTH, 0, px(72))
+        tooltipTitle.Size = UDim2.new(1, 0, 0, px(20))
+        tooltipDescription.Size = UDim2.new(1, 0, 0, px(36))
+    end
 end
 
 local function applyLayout()
@@ -489,10 +544,8 @@ local function getScreenSize()
     return Vector2.new(1920, 1080)
 end
 
-local function positionTooltip(entryId)
-    local refs = entryId and tileRefs[entryId]
-    local target = refs and (refs.iconFrame or refs.wrapper)
-    if not target or not target.Parent or not tooltip.Visible then
+local function positionTooltip(_entryId)
+    if not tooltip.Visible then
         return
     end
 
@@ -500,43 +553,18 @@ local function positionTooltip(entryId)
     local margin = px(8)
     local tooltipWidth = math.max(1, tooltip.AbsoluteSize.X > 0 and tooltip.AbsoluteSize.X or TOOLTIP_WIDTH)
     local tooltipHeight = math.max(1, tooltip.AbsoluteSize.Y > 0 and tooltip.AbsoluteSize.Y or px(72))
-    local targetPos = target.AbsolutePosition
-    local targetSize = target.AbsoluteSize
-    -- Prefer using the mouse/touch location when available so the tooltip
-    -- appears near the user's cursor/tap. Fall back to positioning above
-    -- the tile, or below if there isn't enough space.
-    local uis = game:GetService("UserInputService")
-    local ok, mouseLoc = pcall(function() return uis:GetMouseLocation() end)
-    if ok and mouseLoc and type(mouseLoc.X) == "number" and type(mouseLoc.Y) == "number" then
-        local mx, my = mouseLoc.X, mouseLoc.Y
-        local x = math.clamp(mx - (tooltipWidth * 0.5), margin, math.max(margin, screenSize.X - tooltipWidth - margin))
-        local y = my + px(22) -- place further below the cursor for better visibility
-        if y + tooltipHeight > screenSize.Y - margin then
-            y = my - tooltipHeight - px(6) -- fallback above cursor with smaller gap
-        end
-        y = math.clamp(y, margin, math.max(margin, screenSize.Y - tooltipHeight - margin))
-        tooltip.Position = UDim2.fromOffset(x, y)
-        return
+    local mouse = UserInputService:GetMouseLocation()
+    local x = mouse.X + px(16)
+    local y = mouse.Y + px(18)
+    if x + tooltipWidth > screenSize.X - margin then
+        x = mouse.X - tooltipWidth - px(8)
     end
-
-    -- Center above the target by default
-    local x = targetPos.X + (targetSize.X * 0.5) - (tooltipWidth * 0.5)
+    if y + tooltipHeight > screenSize.Y - margin then
+        y = mouse.Y - tooltipHeight - px(8)
+    end
     x = math.clamp(x, margin, math.max(margin, screenSize.X - tooltipWidth - margin))
-
-    local preferAbove = targetPos.Y - tooltipHeight - px(8)
-    local preferBelow = targetPos.Y + targetSize.Y + px(12)
-    local chosenY = nil
-    -- Prefer placing below the target when possible so tooltip appears lower
-    if (preferBelow + tooltipHeight) <= (screenSize.Y - margin) then
-        chosenY = preferBelow
-    elseif preferAbove >= margin then
-        chosenY = preferAbove
-    else
-        -- Clamp into view if neither fits perfectly
-        chosenY = math.clamp(preferBelow, margin, math.max(margin, screenSize.Y - tooltipHeight - margin))
-    end
-
-    tooltip.Position = UDim2.fromOffset(x, chosenY)
+    y = math.clamp(y, margin, math.max(margin, screenSize.Y - tooltipHeight - margin))
+    tooltip.Position = UDim2.fromOffset(x, y)
 end
 
 local function showTooltip(entryId)
@@ -574,7 +602,11 @@ local function showTooltip(entryId)
     tooltipDescription.Visible = description ~= ""
     tooltip.Visible = true
     tooltip.Parent = screenGui
-    task.defer(positionTooltip, entryId)
+    sizeTooltipToText()
+    task.defer(function()
+        sizeTooltipToText()
+        positionTooltip(entryId)
+    end)
 end
 
 local function hideTooltip(entryId)

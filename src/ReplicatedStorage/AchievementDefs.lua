@@ -42,7 +42,7 @@ end
 --   reward = number
 --------------------------------------------------------------------------------
 
-local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII" }
+local ROMAN = { "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X" }
 
 AchievementDefs.Achievements = {
     ---------------------------------------------------------------------------
@@ -67,38 +67,11 @@ AchievementDefs.Achievements = {
         staged      = true,
         stat        = "playerElims",
         titleFormat = "Player Slayer %s",
-        descFormat  = "Eliminate %d enemy players.",
-        thresholds  = { 10, 25, 50, 100, 250 },
-        rewards     = { 25, 35, 50, 75, 100 },
-        achievementPoints = { 5, 10, 15, 20, 25 },
+        descFormat  = "Eliminate %d players.",
+        thresholds  = { 10, 50, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000 },
+        rewards     = { 25, 35, 50, 75, 100, 125, 150, 200, 250, 350 },
+        achievementPoints = { 5, 10, 15, 20, 25, 30, 35, 40, 50, 75 },
         icon        = "🗡",
-        hidden      = false,
-    },
-    {
-        -- Renamed from "First Blood" → "First Strike"
-        id          = "first_strike",
-        category    = "Combat",
-        staged      = false,
-        stat        = "totalElims",
-        target      = 1,
-        reward      = 10,
-        achievementPoints = 5,
-        title       = "First Strike",
-        desc        = "Get your first elimination.",
-        icon        = "⚔",
-        hidden      = false,
-    },
-    {
-        id          = "flagbreaker",
-        category    = "Combat",
-        staged      = true,
-        stat        = "flagCarrierElims",
-        titleFormat = "Flagbreaker %s",
-        descFormat  = "Eliminate %d enemy flag carriers.",
-        thresholds  = { 5, 15, 30, 60, 100 },
-        rewards     = { 25, 35, 50, 75, 100 },
-        achievementPoints = { 5, 10, 15, 20, 25 },
-        icon        = "⚔",
         hidden      = false,
     },
     {
@@ -112,45 +85,6 @@ AchievementDefs.Achievements = {
         rewards     = { 20, 35, 50, 75, 100 },
         achievementPoints = { 5, 10, 15, 20, 25 },
         icon        = "💥",
-        hidden      = false,
-    },
-    {
-        id          = "unstoppable",
-        category    = "Combat",
-        staged      = true,
-        stat        = "bestElimStreak",
-        titleFormat = "Unstoppable %s",
-        descFormat  = "Get a %d-elimination streak without dying.",
-        thresholds  = { 3, 5, 7, 10, 15 },
-        rewards     = { 25, 40, 60, 80, 120 },
-        achievementPoints = { 10, 15, 20, 25, 30 },
-        icon        = "🔥",
-        hidden      = false,
-    },
-    {
-        id          = "double_trouble",
-        category    = "Combat",
-        staged      = false,
-        stat        = "doubleElims",
-        target      = 1,
-        reward      = 30,
-        achievementPoints = 10,
-        title       = "Double Trouble",
-        desc        = "Eliminate 2 enemies within 10 seconds.",
-        icon        = "⚔",
-        hidden      = false,
-    },
-    {
-        id          = "triple_threat",
-        category    = "Combat",
-        staged      = false,
-        stat        = "tripleElims",
-        target      = 1,
-        reward      = 50,
-        achievementPoints = 15,
-        title       = "Triple Threat",
-        desc        = "Eliminate 3 enemies within 15 seconds.",
-        icon        = "⚔",
         hidden      = false,
     },
 
@@ -572,9 +506,8 @@ for _, def in ipairs(AchievementDefs.Achievements) do
     AchievementDefs.ById[def.id] = def
 end
 
--- Migration alias: old "first_blood" → new "first_strike"
+-- Migration aliases for renamed ids (deleted achievements are dropped on merge)
 AchievementDefs.IdAliases = {
-    first_blood   = "first_strike",
     zombie_hunter = "monster_hunter",
     flag_capturer = "capture_artist",
     flag_returner = "banner_guardian",

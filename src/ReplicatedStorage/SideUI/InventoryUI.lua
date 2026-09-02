@@ -13,6 +13,8 @@ local Players            = game:GetService("Players")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local RunService         = game:GetService("RunService")
 local TweenService       = game:GetService("TweenService")
+local UserInputService   = game:GetService("UserInputService")
+local GuiService         = game:GetService("GuiService")
 
 local UITheme = require(script.Parent.UITheme)
 local ModulesFolder = ReplicatedStorage:WaitForChild("Modules")
@@ -1766,7 +1768,70 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local stageTooltip = nil
     local stageTooltipTitle = nil
     local stageTooltipBody = nil
+    local function getMasteryTooltipHost()
+        if parent then
+            local sg = parent:FindFirstAncestorOfClass("ScreenGui")
+            if sg then
+                return sg
+            end
+        end
+        local lp = Players.LocalPlayer
+        local pg = lp and lp:FindFirstChild("PlayerGui")
+        return pg and (pg:FindFirstChild("MainUI") or pg:FindFirstChildOfClass("ScreenGui"))
+    end
+
+    local function positionGuiAtMouse(guiObject, offsetX, offsetY)
+        if not guiObject or not guiObject.Parent then
+            return
+        end
+        local host = guiObject.Parent
+        local mouse = UserInputService:GetMouseLocation()
+        local origin = Vector2.zero
+        local bounds
+        if host:IsA("GuiObject") then
+            origin = host.AbsolutePosition
+            bounds = host.AbsoluteSize
+            local screenGui = host:FindFirstAncestorOfClass("ScreenGui")
+            if not (screenGui and screenGui.IgnoreGuiInset) then
+                mouse = mouse - GuiService:GetGuiInset()
+            end
+        else
+            if host:IsA("ScreenGui") and not host.IgnoreGuiInset then
+                mouse = mouse - GuiService:GetGuiInset()
+            end
+            local cam = workspace.CurrentCamera
+            bounds = (cam and cam.ViewportSize) or Vector2.new(1920, 1080)
+            if host:IsA("ScreenGui") and not host.IgnoreGuiInset then
+                local inset = GuiService:GetGuiInset()
+                bounds = Vector2.new(bounds.X, math.max(1, bounds.Y - inset.Y))
+            end
+        end
+        local localMouse = mouse - origin
+        local tipW = math.max(guiObject.AbsoluteSize.X, 1)
+        local tipH = math.max(guiObject.AbsoluteSize.Y, 1)
+        local pad = px(8)
+        local x = localMouse.X + (offsetX or px(16))
+        local y = localMouse.Y + (offsetY or px(18))
+        if x + tipW > bounds.X - pad then
+            x = localMouse.X - tipW - px(8)
+        end
+        if y + tipH > bounds.Y - pad then
+            y = localMouse.Y - tipH - px(8)
+        end
+        x = math.clamp(x, pad, math.max(pad, bounds.X - tipW - pad))
+        y = math.clamp(y, pad, math.max(pad, bounds.Y - tipH - pad))
+        guiObject.AnchorPoint = Vector2.new(0, 0)
+        guiObject.Position = UDim2.fromOffset(x, y)
+    end
+
     local function ensureStageTooltip()
+        local host = getMasteryTooltipHost() or detailsPanel
+        if stageTooltip and stageTooltip.Parent and stageTooltip.Parent ~= host then
+            stageTooltip:Destroy()
+            stageTooltip = nil
+            stageTooltipTitle = nil
+            stageTooltipBody = nil
+        end
         if stageTooltip and stageTooltip.Parent then return end
         stageTooltip = Instance.new("Frame")
         stageTooltip.Name = "StageTooltip"
@@ -1775,8 +1840,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         stageTooltip.BorderSizePixel = 0
         stageTooltip.Size = UDim2.new(0, px(240), 0, px(64))
         stageTooltip.Visible = false
-        stageTooltip.ZIndex = masteryPanel.ZIndex + 50
-        stageTooltip.Parent = detailsPanel
+        stageTooltip.Active = false
+        stageTooltip.AnchorPoint = Vector2.new(0, 0)
+        stageTooltip.ZIndex = 960
+        stageTooltip.Parent = host
 
         local corner = Instance.new("UICorner", stageTooltip)
         corner.CornerRadius = UDim.new(0, px(8))
@@ -1792,6 +1859,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         stageTooltipTitle.TextScaled = true
         stageTooltipTitle.Size = UDim2.new(1, -px(12), 0, px(28))
         stageTooltipTitle.Position = UDim2.new(0, px(6), 0, px(4))
+        stageTooltipTitle.ZIndex = stageTooltip.ZIndex + 1
 
         stageTooltipBody = Instance.new("TextLabel", stageTooltip)
         stageTooltipBody.Name = "Body"
@@ -1802,28 +1870,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         stageTooltipBody.TextWrapped = true
         stageTooltipBody.Size = UDim2.new(1, -px(12), 0, px(28))
         stageTooltipBody.Position = UDim2.new(0, px(6), 0, px(32))
+        stageTooltipBody.ZIndex = stageTooltip.ZIndex + 1
     end
 
     local function positionStageTooltip()
         if not stageTooltip or not stageTooltip.Visible then return end
-        local rootPos = detailsPanel.AbsolutePosition
-        local rootSize = detailsPanel.AbsoluteSize
-        if rootSize.X <= 0 or rootSize.Y <= 0 then return end
-        local mouse = game:GetService("UserInputService"):GetMouseLocation()
-        local tipW = math.max(stageTooltip.AbsoluteSize.X, px(220))
-        local tipH = math.max(stageTooltip.AbsoluteSize.Y, px(64))
-        local pad = px(6)
-        local x = mouse.X - rootPos.X + px(12)
-        local y = mouse.Y - rootPos.Y + px(12)
-        if x + tipW > rootSize.X - pad then
-            x = mouse.X - rootPos.X - tipW - px(12)
-        end
-        if y + tipH > rootSize.Y - pad then
-            y = mouse.Y - rootPos.Y - tipH - px(10)
-        end
-        x = math.clamp(x, pad, math.max(pad, rootSize.X - tipW - pad))
-        y = math.clamp(y, pad, math.max(pad, rootSize.Y - tipH - pad))
-        stageTooltip.Position = UDim2.new(0, x, 0, y)
+        positionGuiAtMouse(stageTooltip, px(16), px(18))
     end
 
     local function showStageTooltip(title, body)
@@ -5347,7 +5399,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end
 
             -- ── Create trail cards ──────────────────────────────────────
-            for i_ef, def in ipairs(allTrailDefs) do
+            local function createEffectCard(i_ef, def)
                 local effectId    = def.Id
                 local displayName = def.DisplayName or effectId
                 local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
@@ -5387,7 +5439,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     Instance.new("UIGradient", accentBar).Color = def.TrailColorSequence
                 end
 
-                -- Name label at top (matching weapon card layout)
                 local cardName = Instance.new("TextLabel", card)
                 cardName.Name = "NameLabel"
                 cardName.BackgroundTransparency = 1
@@ -5402,7 +5453,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardName.ZIndex = 3
                 addTextOutline(cardName, 0.18, 1.35)
 
-                -- Icon area (centered square, matching weapon card layout)
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
                 iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, effectColor, isRainbow and 0.08 or 0.24)
@@ -5413,7 +5463,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
                 addIconWellHighlight(iconArea, accentColor)
 
-                -- Color swatch inside icon area
                 local swatch = Instance.new("Frame", iconArea)
                 swatch.Name = "ColorSwatch"
                 swatch.Size = UDim2.new(0.68, 0, 0, px(9))
@@ -5430,22 +5479,21 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 swS.Color = isRainbow and Color3.fromRGB(200,160,255) or effectColor
                 swS.Thickness = px(2); swS.Transparency = 0.3
 
-                swatch = Instance.new("TextLabel", iconArea)
-                swatch.Text = "\u{2550}\u{2550}\u{2550}"
-                swatch.Font = Enum.Font.GothamBold
-                swatch.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
-                swatch.TextScaled = true
-                swatch.BackgroundTransparency = 1
-                swatch.Size = UDim2.new(0.76, 0, 0.36, 0)
-                swatch.AnchorPoint = Vector2.new(0.5, 1)
-                swatch.Position = UDim2.new(0.5, 0, 0.93, 0)
-                swatch.ZIndex = 4
+                local swatchGlyph = Instance.new("TextLabel", iconArea)
+                swatchGlyph.Text = "\u{2550}\u{2550}\u{2550}"
+                swatchGlyph.Font = Enum.Font.GothamBold
+                swatchGlyph.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
+                swatchGlyph.TextScaled = true
+                swatchGlyph.BackgroundTransparency = 1
+                swatchGlyph.Size = UDim2.new(0.76, 0, 0.36, 0)
+                swatchGlyph.AnchorPoint = Vector2.new(0.5, 1)
+                swatchGlyph.Position = UDim2.new(0.5, 0, 0.93, 0)
+                swatchGlyph.ZIndex = 4
                 if isRainbow and def.TrailColorSequence then
-                    Instance.new("UIGradient", swatch).Color = def.TrailColorSequence
+                    Instance.new("UIGradient", swatchGlyph).Color = def.TrailColorSequence
                 end
-                addTextOutline(swatch, 0.24, 1.4)
+                addTextOutline(swatchGlyph, 0.24, 1.4)
 
-                -- Footer (rarity pill + equipped bar)
                 buildCardFooter(card, rarity, rarityColor, baseStrokeColor, false)
 
                 effectCards[effectId] = {
@@ -5463,12 +5511,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     baseStrokeTransparency = baseStrokeTransparency,
                 }
 
-                -- Click to select
                 card.MouseButton1Click:Connect(function()
                     setSelectedEffect(effectId)
                 end)
 
-                -- Hover effect
                 if not game:GetService("UserInputService").TouchEnabled then
                     card.MouseEnter:Connect(function()
                         if selectedEffectId ~= effectId then
@@ -5485,6 +5531,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                         end
                     end)
                 end
+            end
+
+            for i_ef, def in ipairs(allTrailDefs) do
+                createEffectCard(i_ef, def)
             end
 
             -- ── Fetch data from server ──────────────────────────────────

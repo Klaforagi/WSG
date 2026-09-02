@@ -12,6 +12,7 @@ local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TextService       = game:GetService("TextService")
 local UserInputService  = game:GetService("UserInputService")
+local GuiService        = game:GetService("GuiService")
 
 local UITheme = require(script.Parent.UITheme)
 local LeftPanelStyle = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("LeftPanelStyle"))
@@ -41,7 +42,13 @@ end
 local ACH_MOBILE_TEXT_SCALE = UserInputService.TouchEnabled and 0.84 or 1
 
 local function achTextPx(base, minText)
-    local scaled = math.floor(px(base) * ACH_MOBILE_TEXT_SCALE)
+    local cam = workspace.CurrentCamera
+    local screenY = 1080
+    if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
+        screenY = cam.ViewportSize.Y
+    end
+    -- Scale from 900p so 1080+ screens get larger type instead of staying tiny.
+    local scaled = math.floor(base * (screenY / 900) * ACH_MOBILE_TEXT_SCALE)
     if minText then
         return math.max(minText, scaled)
     end
@@ -522,6 +529,51 @@ local function getTooltipHostGui()
     return playerGui:FindFirstChild("SideUIModal") or playerGui:FindFirstChildOfClass("ScreenGui")
 end
 
+local function positionGuiAtMouse(guiObject, offsetX, offsetY)
+    if not guiObject or not guiObject.Parent then
+        return
+    end
+    local parent = guiObject.Parent
+    local mouse = UserInputService:GetMouseLocation()
+    local origin = Vector2.zero
+    local bounds
+    if parent:IsA("GuiObject") then
+        origin = parent.AbsolutePosition
+        bounds = parent.AbsoluteSize
+        local screenGui = parent:FindFirstAncestorOfClass("ScreenGui")
+        if not (screenGui and screenGui.IgnoreGuiInset) then
+            mouse = mouse - GuiService:GetGuiInset()
+        end
+    else
+        if parent:IsA("ScreenGui") and not parent.IgnoreGuiInset then
+            mouse = mouse - GuiService:GetGuiInset()
+        end
+        local cam = workspace.CurrentCamera
+        bounds = (cam and cam.ViewportSize) or Vector2.new(1920, 1080)
+        if parent:IsA("ScreenGui") and not parent.IgnoreGuiInset then
+            local inset = GuiService:GetGuiInset()
+            bounds = Vector2.new(bounds.X, math.max(1, bounds.Y - inset.Y))
+        end
+    end
+
+    local localMouse = mouse - origin
+    local tipW = math.max(guiObject.AbsoluteSize.X, 1)
+    local tipH = math.max(guiObject.AbsoluteSize.Y, 1)
+    local pad = px(8)
+    local x = localMouse.X + (offsetX or px(16))
+    local y = localMouse.Y + (offsetY or px(18))
+    if x + tipW > bounds.X - pad then
+        x = localMouse.X - tipW - px(8)
+    end
+    if y + tipH > bounds.Y - pad then
+        y = localMouse.Y - tipH - px(8)
+    end
+    x = math.clamp(x, pad, math.max(pad, bounds.X - tipW - pad))
+    y = math.clamp(y, pad, math.max(pad, bounds.Y - tipH - pad))
+    guiObject.AnchorPoint = Vector2.new(0, 0)
+    guiObject.Position = UDim2.fromOffset(x, y)
+end
+
 local function ensureRerollTooltip()
     local hostGui = getTooltipHostGui()
     if not hostGui then
@@ -632,48 +684,14 @@ local function showRerollTooltipForButton(button, tooltipText)
     local tooltipW = math.max(px(120), textSize.X + px(20))
     local tooltipH = math.max(px(30), textSize.Y + px(12))
 
-    local layerAbsPos = rerollTooltipLayer.AbsolutePosition
-    local layerAbsSize = rerollTooltipLayer.AbsoluteSize
-    local btnAbsPos = button.AbsolutePosition
-    local btnAbsSize = button.AbsoluteSize
-    local margin = px(8)
-    local verticalPad = px(6)
-
-    -- Position from the hovered button center in screen space, then convert to tooltip-layer space.
-    local screenX = btnAbsPos.X + math.floor((btnAbsSize.X - tooltipW) / 2)
-    local screenY = btnAbsPos.Y - tooltipH - verticalPad
-
-    local x = screenX - layerAbsPos.X
-    local y = screenY - layerAbsPos.Y
-
-    if x + tooltipW > layerAbsSize.X - margin then
-        x = layerAbsSize.X - tooltipW - margin
-    end
-    if x < margin then
-        x = margin
-    end
-
-    -- Prefer above the button; if there isn't room, flip below while preserving bounds.
-    if y < margin then
-        y = (btnAbsPos.Y + btnAbsSize.Y + verticalPad) - layerAbsPos.Y
-    end
-    if y + tooltipH > layerAbsSize.Y - margin then
-        y = layerAbsSize.Y - tooltipH - margin
-    end
-    if y < margin then
-        y = margin
-    end
-
     rerollTooltipPanel.Size = UDim2.new(0, tooltipW, 0, tooltipH)
-    rerollTooltipPanel.Position = UDim2.new(0, x, 0, y)
     rerollTooltipLayer.Visible = true
     rerollTooltipPanel.Visible = true
+    positionGuiAtMouse(rerollTooltipPanel, px(16), px(18))
 
     if DEBUG_REROLL_TOOLTIP then
-        print(string.format("[QuestRerollTooltip] button AbsolutePosition=(%d, %d)", btnAbsPos.X, btnAbsPos.Y))
-        print(string.format("[QuestRerollTooltip] button AbsoluteSize=(%d, %d)", btnAbsSize.X, btnAbsSize.Y))
         print(string.format("[QuestRerollTooltip] tooltip parent=%s", tostring(rerollTooltipPanel.Parent and rerollTooltipPanel.Parent:GetFullName() or "nil")))
-        print(string.format("[QuestRerollTooltip] positioned from button coords (not mouse)"))
+        print(string.format("[QuestRerollTooltip] positioned at mouse"))
         print(string.format("[QuestRerollTooltip] tooltip final Position=%s", tostring(rerollTooltipPanel.Position)))
         print(string.format("[QuestRerollTooltip] tooltip AbsolutePosition=(%d, %d)", rerollTooltipPanel.AbsolutePosition.X, rerollTooltipPanel.AbsolutePosition.Y))
     end
@@ -2024,7 +2042,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     local achClaimed           = {}
     local achCards             = {}
     local achCardStrokes       = {}
-    local achAchievedOnLabels  = {}
     local achStageGemRows      = {}
     local achStageGemWidgets   = {}
     local achStageGemPulses    = {}
@@ -2297,6 +2314,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
     local stageTooltipBody
 
     local function ensureStageTooltip()
+        local host = getTooltipHostGui() or root
+        if stageTooltip and stageTooltip.Parent and stageTooltip.Parent ~= host then
+            stageTooltip:Destroy()
+            stageTooltip = nil
+            stageTooltipTitle = nil
+            stageTooltipBody = nil
+        end
         if stageTooltip and stageTooltip.Parent then
             return
         end
@@ -2306,11 +2330,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         stageTooltip.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
         stageTooltip.BackgroundTransparency = 0.03
         stageTooltip.BorderSizePixel = 0
-        stageTooltip.Size = UDim2.new(0, px(260), 0, px(74))
+        stageTooltip.Size = UDim2.new(0, px(300), 0, px(74))
         stageTooltip.AutomaticSize = Enum.AutomaticSize.Y
         stageTooltip.Visible = false
-        stageTooltip.ZIndex = 340
-        stageTooltip.Parent = root
+        stageTooltip.Active = false
+        stageTooltip.AnchorPoint = Vector2.new(0, 0)
+        stageTooltip.ZIndex = 960
+        stageTooltip.Parent = host
 
         local tipCorner = Instance.new("UICorner")
         tipCorner.CornerRadius = UDim.new(0, px(8))
@@ -2342,10 +2368,12 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         stageTooltipTitle.Font = Enum.Font.GothamBold
         stageTooltipTitle.Text = ""
         stageTooltipTitle.TextColor3 = GOLD
-        stageTooltipTitle.TextSize = achTextPx(14, 11)
+        stageTooltipTitle.TextSize = achTextPx(15, 12)
         stageTooltipTitle.TextXAlignment = Enum.TextXAlignment.Left
-        stageTooltipTitle.TextTruncate = Enum.TextTruncate.AtEnd
-        stageTooltipTitle.Size = UDim2.new(1, 0, 0, px(18))
+        stageTooltipTitle.TextWrapped = true
+        stageTooltipTitle.TextTruncate = Enum.TextTruncate.None
+        stageTooltipTitle.AutomaticSize = Enum.AutomaticSize.Y
+        stageTooltipTitle.Size = UDim2.new(1, 0, 0, 0)
         stageTooltipTitle.ZIndex = stageTooltip.ZIndex + 1
         stageTooltipTitle.LayoutOrder = 1
         stageTooltipTitle.Parent = stageTooltip
@@ -2369,27 +2397,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
 
     local function positionStageTooltip()
         if not stageTooltip or not stageTooltip.Visible then return end
-        local rootPos = root.AbsolutePosition
-        local rootSize = root.AbsoluteSize
-        if rootSize.X <= 0 or rootSize.Y <= 0 then return end
-
-        local mouse = UserInputService:GetMouseLocation()
-        local tipW = math.max(stageTooltip.AbsoluteSize.X, px(260))
-        local tipH = math.max(stageTooltip.AbsoluteSize.Y, px(74))
-        local pad = px(6)
-        local x = mouse.X - rootPos.X + px(12)
-        local y = mouse.Y - rootPos.Y + px(12)
-
-        if x + tipW > rootSize.X - pad then
-            x = mouse.X - rootPos.X - tipW - px(12)
-        end
-        if y + tipH > rootSize.Y - pad then
-            y = mouse.Y - rootPos.Y - tipH - px(10)
-        end
-
-        x = math.clamp(x, pad, math.max(pad, rootSize.X - tipW - pad))
-        y = math.clamp(y, pad, math.max(pad, rootSize.Y - tipH - pad))
-        stageTooltip.Position = UDim2.new(0, x, 0, y)
+        positionGuiAtMouse(stageTooltip, px(16), px(18))
     end
 
     local function getStageTooltipLines(stage)
@@ -2400,14 +2408,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
 
         if stage and stage.completed then
             local completedDate = formatAchievedOn(stage.completedDate)
-            local title = string.format("Stage %d Complete", stageNumber)
-            if displayName and displayName ~= "" then
-                title = title .. " - " .. displayName
-            end
             if completedDate then
-                return title, requirement .. "\nCompleted: " .. completedDate
+                return titleBase, requirement .. "\nCompleted: " .. completedDate
             end
-            return title, requirement .. "\nCompleted"
+            return titleBase, requirement .. "\nCompleted"
         end
 
         local target = tonumber(stage and stage.requirementAmount) or 0
@@ -2512,11 +2516,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
         layout.VerticalAlignment = Enum.VerticalAlignment.Center
         layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, px(7))
+        layout.Padding = UDim.new(0, (#ach.stages > 7) and px(4) or px(7))
         layout.Parent = row
 
         achStageGemWidgets[row] = {}
-        local gemSize = (#ach.stages > 5) and px(13) or px(15)
+        local gemSize = (#ach.stages > 8) and px(11) or ((#ach.stages > 5) and px(13) or px(15))
         gemSize = math.clamp(gemSize, 10, 18)
 
         for stageIndex, stage in ipairs(ach.stages) do
@@ -2597,7 +2601,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         local card = Instance.new("Frame")
         card.Name             = "Ach_" .. ach.id
         card.BackgroundColor3 = ROW_BG
-        card.Size             = UDim2.new(1, -px(6), 0, hasStageGems and px(158) or px(136))
+        card.Size             = UDim2.new(1, -px(6), 0, hasStageGems and px(156) or px(134))
         card.LayoutOrder      = layoutOrder
         card.Parent           = parentFrame
         achCards[ach.id]      = card
@@ -2634,18 +2638,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         accentCr.Parent = accentBar
         accentBar.Parent = card
 
-        -- Icon glyph
-        local iconLabel = Instance.new("TextLabel")
-        iconLabel.Name                = "AchIcon"
-        iconLabel.BackgroundTransparency = 1
-        iconLabel.Font                = Enum.Font.GothamBold
-        iconLabel.Text                = ach.icon or "\u{2605}"
-        iconLabel.TextSize            = achTextPx(22, 15)
-        iconLabel.TextColor3          = GOLD
-        iconLabel.Size                = UDim2.new(0, px(32), 0, px(32))
-        iconLabel.Position            = UDim2.new(0, 0, 0, 0)
-        iconLabel.Parent              = card
-
         -- Title
         local titleLbl = Instance.new("TextLabel")
         titleLbl.Name               = "Title"
@@ -2653,10 +2645,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         titleLbl.Font               = Enum.Font.GothamBold
         titleLbl.Text               = ach.title
         titleLbl.TextColor3         = WHITE
-        titleLbl.TextSize           = achTextPx(16, 12)
+        titleLbl.TextSize           = achTextPx(22, 16)
         titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-        titleLbl.Size               = UDim2.new(0.50, 0, 0, px(22))
-        titleLbl.Position           = UDim2.new(0, px(38), 0, 0)
+        titleLbl.Size               = UDim2.new(0.58, 0, 0, px(26))
+        titleLbl.Position           = UDim2.new(0, 0, 0, 0)
         titleLbl.Parent             = card
 
         -- Reward badge (shows coins + AP)
@@ -2691,7 +2683,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         amtLbl.Font                = Enum.Font.GothamBold
         amtLbl.Text                = "+" .. FormatInt(ach.reward)
         amtLbl.TextColor3          = GOLD
-        amtLbl.TextSize            = achTextPx(12, 9)
+        amtLbl.TextSize            = achTextPx(14, 11)
         amtLbl.TextXAlignment      = Enum.TextXAlignment.Right
         amtLbl.Size                = UDim2.new(1, -px(28), 0, px(22))
         amtLbl.AnchorPoint         = Vector2.new(1, 0)
@@ -2707,7 +2699,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             apIconSmall.Font                = Enum.Font.GothamBold
             apIconSmall.Text                = "\u{2B50}"
             apIconSmall.TextColor3          = GOLD
-            apIconSmall.TextSize            = achTextPx(11, 8)
+            apIconSmall.TextSize            = achTextPx(13, 10)
             apIconSmall.Size                = UDim2.new(0, px(16), 0, px(22))
             apIconSmall.Position            = UDim2.new(0, px(8), 0, px(22))
             apIconSmall.Parent              = rewardBadge
@@ -2718,7 +2710,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             apAmtLbl.Font                = Enum.Font.GothamBold
             apAmtLbl.Text                = "+" .. FormatInt(achAP) .. " AP"
             apAmtLbl.TextColor3          = Color3.fromRGB(220, 200, 100)
-            apAmtLbl.TextSize            = achTextPx(11, 8)
+            apAmtLbl.TextSize            = achTextPx(13, 10)
             apAmtLbl.TextXAlignment      = Enum.TextXAlignment.Right
             apAmtLbl.Size                = UDim2.new(1, -px(28), 0, px(22))
             apAmtLbl.AnchorPoint         = Vector2.new(1, 0)
@@ -2732,17 +2724,17 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         descLbl.BackgroundTransparency = 1
         descLbl.Font               = Enum.Font.GothamMedium
         descLbl.Text               = ach.desc
-        descLbl.TextColor3         = DIM_TEXT
-        descLbl.TextSize           = achTextPx(11, 9)
+        descLbl.TextColor3         = Color3.fromRGB(228, 232, 242)
+        descLbl.TextSize           = achTextPx(16, 13)
         descLbl.TextXAlignment     = Enum.TextXAlignment.Left
         descLbl.TextWrapped        = true
-        descLbl.Size               = UDim2.new(0.7, 0, 0, px(18))
-        descLbl.Position           = UDim2.new(0, px(38), 0, px(26))
+        descLbl.Size               = UDim2.new(0.7, 0, 0, px(26))
+        descLbl.Position           = UDim2.new(0, 0, 0, px(32))
         descLbl.Parent             = card
 
         -- Progress bar
-        local barY = px(52)
-        local barH = px(16)
+        local barY = px(66)
+        local barH = px(18)
         local track = Instance.new("Frame")
         track.Name             = "BarTrack"
         track.BackgroundColor3 = BAR_BG
@@ -2795,7 +2787,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         progText.Font               = Enum.Font.GothamBold
         progText.Text               = FormatProgress(ach.progress, ach.target)
         progText.TextColor3         = WHITE
-        progText.TextSize           = achTextPx(13, 10)
+        progText.TextSize           = achTextPx(16, 13)
         progText.Size               = UDim2.new(1, 0, 1, 0)
         progText.Parent             = track
 
@@ -2808,34 +2800,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
 
         achProgressTexts[ach.id] = progText
 
-        -- Achieved on date
-        local achievedOnLbl = Instance.new("TextLabel")
-        achievedOnLbl.Name                = "AchievedOn"
-        achievedOnLbl.BackgroundTransparency = 1
-        achievedOnLbl.Font                = Enum.Font.Gotham
-        achievedOnLbl.Text                = ""
-        achievedOnLbl.TextColor3          = DIM_TEXT
-        achievedOnLbl.TextSize            = achTextPx(11, 8)
-        achievedOnLbl.TextXAlignment      = Enum.TextXAlignment.Left
-        achievedOnLbl.TextTransparency    = 0.1
-        achievedOnLbl.Visible             = false
-        achievedOnLbl.Size                = UDim2.new(0.55, 0, 0, px(14))
-        achievedOnLbl.Position            = UDim2.new(0, 0, 0, barY + barH + px(6))
-        achievedOnLbl.Parent              = card
-        achAchievedOnLabels[ach.id]       = achievedOnLbl
-
-        local function updateAchievedOnLabel(isCompleted, achievedOn)
-            local formattedDate = formatAchievedOn(achievedOn)
-            if isCompleted and formattedDate then
-                achievedOnLbl.Text = "Achieved On: " .. formattedDate
-                achievedOnLbl.Visible = true
-            else
-                achievedOnLbl.Text = ""
-                achievedOnLbl.Visible = false
-            end
-        end
-
-        local stageGemRow = buildStageGemRow(card, ach, barY + barH + px(26))
+        local stageGemRow = buildStageGemRow(card, ach, barY + barH + px(10))
         if stageGemRow then
             achStageGemRows[ach.id] = stageGemRow
         else
@@ -2849,7 +2814,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         btn.Name            = "StatusBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
-        btn.TextSize        = achTextPx(14, 10)
+        btn.TextSize        = achTextPx(16, 12)
         btn.Size            = UDim2.new(0, btnW2, 0, btnH2)
         btn.AnchorPoint     = Vector2.new(1, 0)
         btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
@@ -2887,7 +2852,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         local function updateAchBtnState(progress, goal, claimed, completed)
             local isClaimable = (not claimed) and (completed or (goal > 0 and progress >= goal))
             if claimed then
-                btn.Text = "\u{2714} COMPLETED"; btn.BackgroundColor3 = BTN_CLAIMED
+                btn.Text = "COMPLETED"; btn.BackgroundColor3 = BTN_CLAIMED
                 btn.TextColor3 = GREEN_GLOW; btn.Active = false
                 btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.5
             elseif isClaimable then
@@ -2928,7 +2893,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                 achClaimed[ach.id] = true
                 if achData then achData.claimed = true end
                 updateAchBtnState(prog, goal, true, true)
-                updateAchievedOnLabel(true, achData and achData.achievedOn)
                 if ClaimSound then ClaimSound.Play() end
 
                 -- Gold flash animation on card
@@ -2957,7 +2921,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         end))
 
         updateAchBtnState(ach.progress, ach.target, ach.claimed, ach.completed == true)
-        updateAchievedOnLabel(ach.completed == true, ach.achievedOn)
 
         return card
     end
@@ -3111,7 +3074,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             local histCard = Instance.new("Frame")
             histCard.Name             = "HistEntry_" .. tostring(i)
             histCard.BackgroundColor3 = ROW_CLAIMED_BG
-            histCard.Size             = UDim2.new(1, -px(6), 0, px(88))
+            histCard.Size             = UDim2.new(1, -px(6), 0, px(98))
             histCard.LayoutOrder      = 10 + i
             histCard.Parent           = contentPanel
 
@@ -3152,10 +3115,10 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hTitle.TextColor3 = WHITE
             hTitle.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
             hTitle.TextStrokeTransparency = 0.35
-            hTitle.TextSize  = achTextPx(17, 13)
+            hTitle.TextSize  = achTextPx(20, 15)
             hTitle.TextXAlignment = Enum.TextXAlignment.Left
             hTitle.TextTruncate = Enum.TextTruncate.AtEnd
-            hTitle.Size      = UDim2.new(1, -px(170), 0, px(22))
+            hTitle.Size      = UDim2.new(1, -px(170), 0, px(26))
             hTitle.Position  = UDim2.new(0, px(38), 0, 0)
             hTitle.Parent    = histCard
 
@@ -3167,11 +3130,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hMeta.Font      = Enum.Font.Gotham
             hMeta.Text      = dateStr
             hMeta.TextColor3 = Color3.fromRGB(180, 190, 205)
-            hMeta.TextSize  = achTextPx(12, 10)
+            hMeta.TextSize  = achTextPx(14, 11)
             hMeta.TextXAlignment = Enum.TextXAlignment.Left
             hMeta.TextTruncate = Enum.TextTruncate.AtEnd
-            hMeta.Size      = UDim2.new(1, -px(170), 0, px(16))
-            hMeta.Position  = UDim2.new(0, px(38), 0, px(26))
+            hMeta.Size      = UDim2.new(1, -px(170), 0, px(18))
+            hMeta.Position  = UDim2.new(0, px(38), 0, px(28))
             hMeta.Parent    = histCard
 
             -- Desc
@@ -3180,14 +3143,14 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hDesc.BackgroundTransparency = 1
             hDesc.Font      = Enum.Font.GothamMedium
             hDesc.Text      = entry.desc or ""
-            hDesc.TextColor3 = Color3.fromRGB(210, 218, 230)
+            hDesc.TextColor3 = Color3.fromRGB(228, 232, 242)
             hDesc.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
             hDesc.TextStrokeTransparency = 0.68
-            hDesc.TextSize  = achTextPx(12, 10)
+            hDesc.TextSize  = achTextPx(14, 11)
             hDesc.TextXAlignment = Enum.TextXAlignment.Left
             hDesc.TextWrapped = true
-            hDesc.Size      = UDim2.new(1, -px(170), 0, px(28))
-            hDesc.Position  = UDim2.new(0, px(38), 0, px(44))
+            hDesc.Size      = UDim2.new(1, -px(170), 0, px(32))
+            hDesc.Position  = UDim2.new(0, px(38), 0, px(48))
             hDesc.Parent    = histCard
 
             -- Reward on the right (coins + AP)
@@ -3208,7 +3171,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hReward.TextColor3 = GOLD
             hReward.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
             hReward.TextStrokeTransparency = 0.35
-            hReward.TextSize  = achTextPx(14, 11)
+            hReward.TextSize  = achTextPx(16, 13)
             hReward.TextXAlignment = Enum.TextXAlignment.Right
             hReward.TextYAlignment = Enum.TextYAlignment.Center
             hReward.AnchorPoint = Vector2.new(1, 0.5)
@@ -3671,24 +3634,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                                     if aLbl then aLbl.Text = FormatInt(a.reward or 0) end
                                 end
                             end
-                            local achievedOnLabel = achAchievedOnLabels[a.id]
-                            if achievedOnLabel and achievedOnLabel.Parent then
-                                local achievedDate = formatAchievedOn(a.achievedOn)
-                                if a.completed and achievedDate then
-                                    achievedOnLabel.Text = "Achieved On: " .. achievedDate
-                                    achievedOnLabel.Visible = true
-                                else
-                                    achievedOnLabel.Text = ""
-                                    achievedOnLabel.Visible = false
-                                end
-                            end
                             updateStageGemRow(achStageGemRows[a.id], a)
                             local claimB = achClaimButtons[a.id]
                             if claimB then
                                 local bS = claimB:FindFirstChildOfClass("UIStroke")
                                 local isClaimable = (not a.claimed) and (a.completed == true or (a.target > 0 and a.progress >= a.target))
                                 if a.claimed then
-                                    claimB.Text = "\u{2714} COMPLETED"; claimB.BackgroundColor3 = BTN_CLAIMED
+                                    claimB.Text = "COMPLETED"; claimB.BackgroundColor3 = BTN_CLAIMED
                                     claimB.TextColor3 = GREEN_GLOW; claimB.Active = false
                                     if bS then bS.Color = GREEN_GLOW; bS.Transparency = 0.5 end
                                 elseif isClaimable then
@@ -3831,14 +3783,6 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             if txt and txt.Parent then
                 txt.Text = FormatProgress(math.min(newProgress, goal), goal)
             end
-            local aOnLbl = achAchievedOnLabels[achId]
-            if aOnLbl and aOnLbl.Parent then
-                local ld = achievementDataById[achId]
-                local ad = ld and formatAchievedOn(ld.achievedOn)
-                local ic = (ld and ld.completed == true) or newProgress >= goal
-                if ic and ad then aOnLbl.Text = "Achieved On: " .. ad; aOnLbl.Visible = true
-                else aOnLbl.Text = ""; aOnLbl.Visible = false end
-            end
             updateStageGemRow(achStageGemRows[achId], achData)
             local claimBtn2 = achClaimButtons[achId]
             if claimBtn2 and claimBtn2.Parent then
@@ -3846,7 +3790,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
                 local isComplete2 = (achData and achData.completed == true) or newProgress >= goal
                 local isClaimable = (not achClaimed[achId]) and isComplete2
                 if achClaimed[achId] then
-                    claimBtn2.Text = "\u{2714} COMPLETED"; claimBtn2.BackgroundColor3 = BTN_CLAIMED
+                    claimBtn2.Text = "COMPLETED"; claimBtn2.BackgroundColor3 = BTN_CLAIMED
                     claimBtn2.TextColor3 = GREEN_GLOW; claimBtn2.Active = false
                     if bStroke then bStroke.Color = GREEN_GLOW; bStroke.Transparency = 0.5 end
                 elseif isClaimable then
