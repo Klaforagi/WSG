@@ -421,16 +421,17 @@ end
 -- Hover (desktop only)
 if not UserInputService.TouchEnabled then
     btn.MouseEnter:Connect(function()
-        if not isCoolingDown then
-            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = getTeamTintHoverFill(currentTeamColor) }):Play()
-            TweenService:Create(btnStroke, TweenInfo.new(0.12), { Color = GOLD }):Play()
+        if isCoolingDown or player:GetAttribute("CarryingFlag") then
+            return
         end
+        TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = getTeamTintHoverFill(currentTeamColor) }):Play()
+        TweenService:Create(btnStroke, TweenInfo.new(0.12), { Color = GOLD }):Play()
     end)
     btn.MouseLeave:Connect(function()
-        if not isCoolingDown then
-            TweenService:Create(btn, TweenInfo.new(0.12), { BackgroundColor3 = getTeamTintFill(currentTeamColor) }):Play()
-            TweenService:Create(btnStroke, TweenInfo.new(0.12), { Color = GOLD_DIM }):Play()
+        if isCoolingDown then
+            return
         end
+        updateButtonAvailability()
     end)
 end
 

@@ -362,6 +362,21 @@ task.spawn(function()
         end
         print("[AchievementServiceInit] CurrencyService.AddCoins wrapped for coin tracking")
 
+        local _prevAddKeys = CurrencyService.AddKeys
+        function CurrencyService:AddKeys(player, amount, source)
+            local result = _prevAddKeys(self, player, amount, source)
+            local gained = math.floor(tonumber(amount) or 0)
+            if gained > 0 and typeof(player) == "Instance" and player:IsA("Player") then
+                if source ~= "achievement" then
+                    task.spawn(function()
+                        AchievementService:IncrementStat(player, "keysCollected", gained)
+                    end)
+                end
+            end
+            return result
+        end
+        print("[AchievementServiceInit] CurrencyService.AddKeys wrapped for Locksmith tracking")
+
         -----------------------------------------------------------------------
         -- Hook: Coins spent  (wrap CurrencyService.SetCoins)
         -- All coin purchases flow through SetCoins (called directly by

@@ -104,8 +104,10 @@ local function showEnd(resultType, winner)
         subtitle.Text = ""
         if winner == "Blue" then
             title.TextColor3 = Color3.fromRGB(65, 130, 255)
+            pcall(function() playGameSound("KnightsWin") end)
         elseif winner == "Red" then
             title.TextColor3 = Color3.fromRGB(255, 75, 75)
+            pcall(function() playGameSound("BarbariansWin") end)
         else
             title.TextColor3 = GOLD_TEXT
         end
@@ -162,6 +164,42 @@ local function showEnd(resultType, winner)
     end)
 end
 
+local function isMusicSound(sound)
+    if not sound or not sound:IsA("Sound") then
+        return false
+    end
+    if sound.SoundGroup and string.lower(sound.SoundGroup.Name) == "music" then
+        return true
+    end
+    local sounds = ReplicatedStorage:FindFirstChild("Sounds")
+    local musicFolder = sounds and sounds:FindFirstChild("Music")
+    if musicFolder and sound:IsDescendantOf(musicFolder) then
+        return true
+    end
+    return false
+end
+
+local function stopPlayingSfx(exceptSound)
+    local function stopIn(container)
+        if not container then
+            return
+        end
+        for _, inst in ipairs(container:GetDescendants()) do
+            if inst:IsA("Sound") and inst ~= exceptSound and inst.IsPlaying and not isMusicSound(inst) then
+                pcall(function()
+                    inst:Stop()
+                end)
+            end
+        end
+    end
+
+    stopIn(workspace.CurrentCamera)
+    stopIn(playerGui)
+    stopIn(game:GetService("SoundService"))
+    stopIn(player.Character)
+    stopIn(workspace)
+end
+
 -- play a sound from ReplicatedStorage.Sounds.Game (search recursively)
 playGameSound = function(soundName)
     if not soundName then return end
@@ -202,6 +240,9 @@ playGameSound = function(soundName)
     local parent = cam or playerGui
     local snd = soundInst:Clone()
     snd.Parent = parent
+    if soundName == "KnightsWin" or soundName == "BarbariansWin" then
+        stopPlayingSfx(snd)
+    end
     snd:Play()
     task.delay((snd.TimeLength or 2) + 0.2, function()
         if snd and snd.Parent then snd:Destroy() end
@@ -241,6 +282,12 @@ local matchStartEvent = waitForRemote("MatchStart", 5)
 if matchStartEvent then
     matchStartEvent.OnClientEvent:Connect(function()
         hideEndScreen()
+        local teamName = player.Team and player.Team.Name
+        if teamName == "Blue" then
+            pcall(function() playGameSound("KnightsStart") end)
+        elseif teamName == "Red" then
+            pcall(function() playGameSound("BarbariansStart") end)
+        end
     end)
 end
 

@@ -373,41 +373,56 @@ local function cleanupConnections()
 end
 
 --------------------------------------------------------------------------------
--- Coin icon widget – gold circular coin built from Frames (no asset id needed)
+-- Currency icon – uses the same Coin/Key images as the HUD
 --------------------------------------------------------------------------------
-local function makeCoinIcon(parentFrame, size)
+local AssetCodes
+pcall(function()
+    AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes", 5))
+end)
+
+local function getCurrencyImage(kind)
+    if not (AssetCodes and type(AssetCodes.Get) == "function") then
+        return nil
+    end
+    local assetName = (kind == "keys") and "Key" or "Coin"
+    local img
+    pcall(function()
+        img = AssetCodes.Get(assetName)
+    end)
+    if type(img) == "string" and img ~= "" then
+        return img
+    end
+    return nil
+end
+
+local function makeCurrencyIcon(parentFrame, size, kind)
+    kind = kind or "coins"
+    local img = getCurrencyImage(kind)
+    if img then
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "CurrencyIcon"
+        icon.BackgroundTransparency = 1
+        icon.Size = UDim2.new(0, size, 0, size)
+        icon.Image = img
+        icon.ScaleType = Enum.ScaleType.Fit
+        icon.Parent = parentFrame
+        return icon
+    end
+
     local coin = Instance.new("Frame")
-    coin.Name            = "CoinIcon"
-    coin.Size            = UDim2.new(0, size, 0, size)
-    coin.BackgroundColor3 = Color3.fromRGB(255, 200, 28)
+    coin.Name = "CoinIcon"
+    coin.Size = UDim2.new(0, size, 0, size)
+    coin.BackgroundColor3 = kind == "keys" and Color3.fromRGB(170, 100, 255) or Color3.fromRGB(255, 200, 28)
     coin.BorderSizePixel = 0
-
     local cr = Instance.new("UICorner")
-    cr.CornerRadius = UDim.new(0.5, 0)   -- perfect circle
+    cr.CornerRadius = UDim.new(0.5, 0)
     cr.Parent = coin
-
-    local stroke = Instance.new("UIStroke")
-    stroke.Color             = Color3.fromRGB(172, 125, 10)
-    stroke.Thickness         = math.max(1, math.floor(size * 0.1))
-    stroke.ApplyStrokeMode   = Enum.ApplyStrokeMode.Border
-    stroke.Parent            = coin
-
-    -- Specular highlight (small bright dot, top-left)
-    local hl = Instance.new("Frame")
-    hl.Name                  = "Highlight"
-    local hlS                = math.max(2, math.floor(size * 0.28))
-    hl.Size                  = UDim2.new(0, hlS, 0, hlS)
-    hl.Position              = UDim2.new(0, math.floor(size * 0.22), 0, math.floor(size * 0.16))
-    hl.BackgroundColor3      = Color3.fromRGB(255, 245, 185)
-    hl.BackgroundTransparency = 0.3
-    hl.BorderSizePixel       = 0
-    local hlcr = Instance.new("UICorner")
-    hlcr.CornerRadius = UDim.new(0.5, 0)
-    hlcr.Parent = hl
-    hl.Parent = coin
-
     coin.Parent = parentFrame
     return coin
+end
+
+local function makeCoinIcon(parentFrame, size)
+    return makeCurrencyIcon(parentFrame, size, "coins")
 end
 
 local function makeOutlinedButtonLabel(button, name)
@@ -2671,9 +2686,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         badgeStroke.Transparency = 0.55
         badgeStroke.Parent      = rewardBadge
 
-        -- Coin reward line
+        -- Coin/key reward line
         local coinSize = px(16)
-        local coinIcon = makeCoinIcon(rewardBadge, coinSize)
+        local coinIcon = makeCurrencyIcon(rewardBadge, coinSize, ach.rewardKind)
         coinIcon.AnchorPoint = Vector2.new(0, 0.5)
         coinIcon.Position    = UDim2.new(0, px(8), 0, px(11))
 

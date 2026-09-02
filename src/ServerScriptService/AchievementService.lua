@@ -134,8 +134,12 @@ local STAT_KEYS = {
     "eventQuestsCompleted",
     "meleeUpgradeLevel",      -- set by UpgradeServiceInit when melee level changes
     "rangedUpgradeLevel",     -- set by UpgradeServiceInit when ranged level changes
+    "playerLevel",            -- set by XPService when player level changes
     "totalRobuxSpent",        -- incremented by CoinShopReceipt on Robux purchases
     "salvageEarnedFromRecycling", -- incremented by SalvageService on salvage action
+    "commonChestRolls",   -- wired: Common/Golden weapon chest opens in CrateServiceInit
+    "spinWheelSpins",     -- wired: successful spins in SpinWheelService
+    "keysCollected",      -- wired: CurrencyService.AddKeys wrapper in AchievementServiceInit
     "achievementsCompleted", -- internal: auto-updated by this service
     "categoriesWithCompletion", -- internal: auto-updated by this service
 }
@@ -281,7 +285,7 @@ local function archiveCompletion(data, def, stageIndex, achievedOn)
         stageIndex  = def.staged and stageIndex or nil,
         achievedOn  = achievedOn,
         desc        = AchievementDefs.GetStageDesc(def, stageIndex),
-        reward      = AchievementDefs.GetStageReward(def, stageIndex),
+        reward      = select(1, AchievementDefs.GetStageCurrencyReward(def, stageIndex)),
         ap          = AchievementDefs.GetStageAP(def, stageIndex),
     }
     table.insert(data.completedHistory, 1, entry) -- newest first
@@ -318,12 +322,16 @@ local function grantReward(player, data, def, stageIndex)
     if ach.claimed then return false end  -- already rewarded
     if not ach.completed then return false end -- must be completed first
 
-    -- Grant coins
-    local coinReward = AchievementDefs.GetStageReward(def, stageIndex)
-    if coinReward > 0 then
+    -- Grant coins or keys
+    local currencyAmount, currencyKind = AchievementDefs.GetStageCurrencyReward(def, stageIndex)
+    if currencyAmount > 0 then
         local cs = getCurrencyService()
-        if cs and cs.AddCoins then
-            cs:AddCoins(player, coinReward, "achievement")
+        if currencyKind == "keys" then
+            if cs and cs.AddKeys then
+                cs:AddKeys(player, currencyAmount, "achievement")
+            end
+        elseif cs and cs.AddCoins then
+            cs:AddCoins(player, currencyAmount, "achievement")
         end
     end
 
@@ -341,8 +349,8 @@ local function grantReward(player, data, def, stageIndex)
     archiveCompletion(data, def, stageIndex, ach.achievedOn)
     recalcMetaStats(data)
 
-    print(string.format("[AchievementClaim] %s claimed: %s (coins=%d, AP=%d)",
-        player.Name, AchievementDefs.GetStageTitle(def, stageIndex), coinReward, apReward))
+    print(string.format("[AchievementClaim] %s claimed: %s (%s=%d, AP=%d)",
+        player.Name, AchievementDefs.GetStageTitle(def, stageIndex), currencyKind or "coins", currencyAmount or 0, apReward))
 
     return true
 end
@@ -377,7 +385,7 @@ local function tryAdvanceStage(player, data, def)
     -- Check if stat already meets the next stage threshold (carry-over)
     -- Mark as completed (claimable) but do NOT grant reward or archive
     local statVal = data.stats[def.stat] or 0
-    local nextTarget = AchievementDefs.GetStageTarget(def, ach.stageIndex)
+    local nextTarget = AchievementDefs.GetRawTarget(def, ach.stageIndex)
     if statVal >= nextTarget then
         ach.completed = true
         ach.achievedOn = os.time()
@@ -412,7 +420,7 @@ pushProgress = function(player, def, data)
 
     local target   = AchievementDefs.GetStageTarget(def, si)
     local statVal  = data.stats[def.stat] or 0
-    local progress = math.min(statVal, target)
+    local progress = math.min(AchievementDefs.GetDisplayStat(def, statVal), target)
 
     pcall(function()
         ev:FireClient(player, def.id, progress, ach.completed, ach.achievedOn, ach.claimed == true, si)
@@ -446,6 +454,13 @@ function AchievementService:LoadForPlayer(player)
         #(data.completedHistory or {}),
         tostring(data.achievementDataVersion)))
 
+    -- XP often loads before this section. Seed Warrior Rank from the live
+    -- Level attribute so progress is not stuck at 0 after a race.
+    local liveLevel = math.floor(tonumber(player:GetAttribute("Level")) or 0)
+    if liveLevel > (tonumber(data.stats.playerLevel) or 0) then
+        data.stats.playerLevel = liveLevel
+    end
+
     -- Retroactively evaluate stat thresholds for all achievements
     -- Mark completed if threshold met, but do NOT auto-grant or auto-advance.
     -- Completed-but-unclaimed achievements remain claimable.
@@ -456,7 +471,7 @@ function AchievementService:LoadForPlayer(player)
 
         local statVal = data.stats[def.stat] or 0
         local si = ach.stageIndex
-        local target = AchievementDefs.GetStageTarget(def, si)
+        local target = AchievementDefs.GetRawTarget(def, si)
 
         if statVal >= target and not ach.completed then
             ach.completed = true
@@ -574,7 +589,7 @@ function AchievementService:_evaluateStatAchievements(player, data, statKey)
         if ach.maxedOut then continue end
 
         local si = ach.stageIndex
-        local target = AchievementDefs.GetStageTarget(def, si)
+        local target = AchievementDefs.GetRawTarget(def, si)
 
         if not ach.completed and currentValue >= target then
             ach.completed = true
@@ -668,14 +683,21 @@ local function buildStageSnapshots(data, def, ach)
 
         local isCompleted = ach.maxedOut or completedDate ~= nil or stageIndex < activeStage
         local isCurrent = (not isCompleted) and stageIndex == activeStage and not ach.maxedOut
-        local stageProgress = math.min(statVal, target)
+        local stageProgress = math.min(AchievementDefs.GetDisplayStat(def, statVal), target)
 
         table.insert(stages, {
             stageNumber       = stageIndex,
             requirementAmount = target,
             requirementText   = AchievementDefs.GetStageDesc(def, stageIndex),
             displayName       = AchievementDefs.GetStageTitle(def, stageIndex),
-            rewardText        = string.format("+%d coins, +%d AP", AchievementDefs.GetStageReward(def, stageIndex), AchievementDefs.GetStageAP(def, stageIndex)),
+            rewardText        = (function()
+                local amount, kind = AchievementDefs.GetStageCurrencyReward(def, stageIndex)
+                local label = "coins"
+                if kind == "keys" then
+                    label = amount == 1 and "key" or "keys"
+                end
+                return string.format("+%d %s, +%d AP", amount, label, AchievementDefs.GetStageAP(def, stageIndex))
+            end)(),
             completed         = isCompleted,
             current           = isCurrent,
             completedDate     = type(completedDate) == "number" and completedDate or nil,
@@ -706,7 +728,7 @@ function AchievementService:GetAchievementsForPlayer(player)
 
         local target   = AchievementDefs.GetStageTarget(def, si)
         local statVal  = data.stats[def.stat] or 0
-        local progress = math.min(statVal, target)
+        local progress = math.min(AchievementDefs.GetDisplayStat(def, statVal), target)
 
         table.insert(out, {
             id         = def.id,
@@ -714,7 +736,8 @@ function AchievementService:GetAchievementsForPlayer(player)
             desc       = AchievementDefs.GetStageDesc(def, si),
             icon       = def.icon,
             target     = target,
-            reward     = AchievementDefs.GetStageReward(def, si),
+            reward     = select(1, AchievementDefs.GetStageCurrencyReward(def, si)),
+            rewardKind = select(2, AchievementDefs.GetStageCurrencyReward(def, si)),
             ap         = AchievementDefs.GetStageAP(def, si),
             progress   = progress,
             completed  = ach.completed or ach.maxedOut,

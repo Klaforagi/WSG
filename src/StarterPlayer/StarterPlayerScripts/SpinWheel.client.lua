@@ -1046,7 +1046,7 @@ local function updatePromptState()
         return
     end
 
-    prompt.ObjectText = SpinWheelConfig.Labels.PromptObjectPrefix
+    prompt.ObjectText = string.format("%s %d", SpinWheelConfig.Labels.PromptObjectPrefix, getWheelSpinsCount())
     prompt.Enabled = not requestInFlight and not isSpinning and not spinSequenceLocked and not purchaseModalOpen and not isCrateRewardSequenceActive()
 end
 

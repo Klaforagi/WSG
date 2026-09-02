@@ -9,6 +9,7 @@ local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 -- Require server modules
+local CrateConfig           = require(ReplicatedStorage:WaitForChild("CrateConfig"))
 local CrateService          = require(ServerScriptService:WaitForChild("CrateService"))
 local WeaponInstanceService = require(ServerScriptService:WaitForChild("WeaponInstanceService"))
 local WeaponMasteryService  = require(ServerScriptService:WaitForChild("WeaponMasteryService"))
@@ -165,6 +166,13 @@ openCrateRF.OnServerInvoke = function(player, crateId)
         -- Track purchase for achievements (currency was deducted)
         if AchievementService then
             pcall(function() AchievementService:IncrementStat(player, "totalPurchases", 1) end)
+            local resolvedId = type(result) == "table" and result.crateType or crateId
+            if CrateConfig and type(CrateConfig.ResolveCrateId) == "function" then
+                resolvedId = CrateConfig.ResolveCrateId(resolvedId)
+            end
+            if resolvedId == "WeaponCrate" or resolvedId == "PremiumWeaponCrate" then
+                pcall(function() AchievementService:IncrementStat(player, "commonChestRolls", 1) end)
+            end
         end
         -- The reward weapon is granted immediately for modern crate rolls, so
         -- push the latest snapshot now as well. Keep/Salvage still resolve the

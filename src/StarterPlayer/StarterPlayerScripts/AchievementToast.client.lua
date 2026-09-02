@@ -106,7 +106,7 @@ local function playAchievementSound()
     end)
 end
 
-local function showToast(title, icon, reward, ap, achId, category)
+local function showToast(title, icon, reward, ap, achId, category, rewardKind)
     -- Toast frame (TextButton so the whole card is clickable)
     local toast = Instance.new("TextButton")
     toast.Name                = "Toast"
@@ -181,9 +181,15 @@ local function showToast(title, icon, reward, ap, achId, category)
     titleLbl.Position           = UDim2.new(0, px(62), 0, px(31))
     titleLbl.Parent             = toast
 
-    -- Reward text (coins + AP)
+    -- Reward text (coins/keys + AP)
     local rewardParts = {}
-    if (reward or 0) > 0 then table.insert(rewardParts, "+" .. tostring(reward) .. " coins") end
+    if (reward or 0) > 0 then
+        local currencyLabel = "coins"
+        if rewardKind == "keys" then
+            currencyLabel = reward == 1 and "key" or "keys"
+        end
+        table.insert(rewardParts, "+" .. tostring(reward) .. " " .. currencyLabel)
+    end
     if (ap or 0) > 0 then table.insert(rewardParts, "+" .. tostring(ap) .. " AP") end
     local rewardStr = #rewardParts > 0 and table.concat(rewardParts, "  |  ") or ""
 
@@ -263,7 +269,7 @@ local function showToast(title, icon, reward, ap, achId, category)
                 if #toastQueue > 0 then
                     local next = table.remove(toastQueue, 1)
                     isShowing = true
-                    showToast(next.title, next.icon, next.reward, next.ap, next.achId, next.category)
+                    showToast(next.title, next.icon, next.reward, next.ap, next.achId, next.category, next.rewardKind)
                 end
             end)
         end
@@ -287,6 +293,7 @@ _G.ShowAchievementToast = function(achievementId, stageIndex)
     local title  = achievementId
     local icon   = "★"
     local reward = 0
+    local rewardKind = "coins"
     local ap     = 0
     local category = nil
     if def then
@@ -294,20 +301,28 @@ _G.ShowAchievementToast = function(achievementId, stageIndex)
         category = def.category
         if def.staged then
             title = AchievementDefs.GetStageTitle and AchievementDefs.GetStageTitle(def, si) or (def.titleFormat and string.format(def.titleFormat, "I") or achievementId)
-            reward = AchievementDefs.GetStageReward and AchievementDefs.GetStageReward(def, si) or (def.rewards and def.rewards[si] or 0)
+            if AchievementDefs.GetStageCurrencyReward then
+                reward, rewardKind = AchievementDefs.GetStageCurrencyReward(def, si)
+            else
+                reward = AchievementDefs.GetStageReward and AchievementDefs.GetStageReward(def, si) or (def.rewards and def.rewards[si] or 0)
+            end
             ap = AchievementDefs.GetStageAP and AchievementDefs.GetStageAP(def, si) or 0
         else
             title = def.title or achievementId
-            reward = def.reward or 0
+            if AchievementDefs.GetStageCurrencyReward then
+                reward, rewardKind = AchievementDefs.GetStageCurrencyReward(def, 1)
+            else
+                reward = def.reward or 0
+            end
             ap = tonumber(def.achievementPoints) or 0
         end
     end
 
     if isShowing then
-        table.insert(toastQueue, { title = title, icon = icon, reward = reward, ap = ap, achId = achievementId, category = category })
+        table.insert(toastQueue, { title = title, icon = icon, reward = reward, ap = ap, achId = achievementId, category = category, rewardKind = rewardKind })
     else
         isShowing = true
-        showToast(title, icon, reward, ap, achievementId, category)
+        showToast(title, icon, reward, ap, achievementId, category, rewardKind)
     end
 end
 

@@ -591,6 +591,20 @@ function CrateService:FinalizeCrateSalvage(player)
     cs:AddSalvage(player, salvageValue)
     local newBalance = cs:GetSalvage(player)
 
+    -- Crate salvage is dismantling the rolled weapon, not a Robux shard grant.
+    task.spawn(function()
+        local AchievementService
+        pcall(function()
+            local mod = ServerScriptService:FindFirstChild("AchievementService")
+            if mod and mod:IsA("ModuleScript") then
+                AchievementService = require(mod)
+            end
+        end)
+        if AchievementService and type(AchievementService.IncrementStat) == "function" then
+            AchievementService:IncrementStat(player, "salvageEarnedFromRecycling", salvageValue)
+        end
+    end)
+
     PendingRewards[player] = nil
 
     print(string.format("[CrateReward] Finalized salvage payout: %d for %s (%s) from %s",

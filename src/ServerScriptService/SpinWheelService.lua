@@ -613,6 +613,19 @@ function SpinWheelService:RequestSpin(player)
     pd.lastReward = buildRewardState(slice, rewardResult.rewardType, rewardResult.rewardText, rewardResult.rewardAmount, rewardResult.crateType)
     pd.totalSpins += 1
 
+    task.spawn(function()
+        local AchievementService
+        pcall(function()
+            local mod = ServerScriptService:FindFirstChild("AchievementService")
+            if mod and mod:IsA("ModuleScript") then
+                AchievementService = require(mod)
+            end
+        end)
+        if AchievementService and type(AchievementService.IncrementStat) == "function" then
+            AchievementService:IncrementStat(player, "spinWheelSpins", 1)
+        end
+    end)
+
     markDirty(player, spinSource == "free" and "spin_wheel_free" or "spin_wheel_paid", { force = true })
 
     local updatedState = self:GetState(player)

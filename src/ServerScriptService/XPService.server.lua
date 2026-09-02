@@ -36,6 +36,43 @@ local function getGamepassService()
     return GamepassService
 end
 
+local AchievementService
+local function getAchievementService()
+    if AchievementService then return AchievementService end
+    pcall(function()
+        local mod = ServerScriptService:FindFirstChild("AchievementService")
+        if mod and mod:IsA("ModuleScript") then
+            AchievementService = require(mod)
+        end
+    end)
+    return AchievementService
+end
+
+local function syncPlayerLevelAchievement(player, level, retryIfUnloaded)
+    local numericLevel = math.max(1, math.floor(tonumber(level) or 1))
+    local function apply()
+        if not (player and player.Parent) then
+            return false
+        end
+        local achSvc = getAchievementService()
+        if not achSvc or type(achSvc.SetStat) ~= "function" then
+            return false
+        end
+        local ok = pcall(function()
+            achSvc:SetStat(player, "playerLevel", numericLevel)
+        end)
+        return ok == true
+    end
+
+    apply()
+    if retryIfUnloaded then
+        task.spawn(function()
+            task.wait(1.5)
+            apply()
+        end)
+    end
+end
+
 -- DataStore
 local DS = DataStoreService:GetDataStore("WSG_XP_v1")
 
@@ -105,6 +142,7 @@ local function applyXPEntry(player, entry)
     end)
 
     updateLeaderstats(player, entry.Level)
+    syncPlayerLevelAchievement(player, entry.Level, true)
     pcall(function()
         XP_Update:FireClient(player, { playerUserId = player.UserId, newLevel = entry.Level, xp = entry.XP, xpToNext = xpToNext, delta = 0, reason = "Init" })
     end)
@@ -340,6 +378,7 @@ local function AwardXP(player, reason, amountOverride, metadata)
 
     -- keep leaderboard in sync
     updateLeaderstats(player, entry.Level)
+    syncPlayerLevelAchievement(player, entry.Level)
 
     -- notify the client with structured payload
     local payload = {

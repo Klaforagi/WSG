@@ -289,6 +289,16 @@ local function syncAllFlagStates()
 	end
 end
 
+local function freezeDroppedFlagReturns()
+	for team, info in pairs(flags) do
+		if info and info.dropped == true then
+			info._dropVersion = (info._dropVersion or 0) + 1
+			info.returnDeadline = 0
+			syncFlagState(team)
+		end
+	end
+end
+
 for _, team in ipairs(FLAG_TEAM_ORDER) do
 	getFlagStateObject(team)
 end
@@ -507,6 +517,9 @@ local function awardFlagReturnRewards(player)
 end
 
 local function returnDroppedFlag(team, player, allowDirectRespawn)
+	if not areFlagsInteractive() then
+		return false
+	end
 	local flagInfo = flags[team]
 	if not flagInfo then
 		return false
@@ -1078,6 +1091,9 @@ local function captureFlagAtStand(pl, standTeam)
 	FlagStatus:FireAllClients("playSound", captureSoundName)
 
 	task.delay(5, function()
+		if not areFlagsInteractive() then
+			return
+		end
 		respawnFlag(flagTeam)
 		FlagStatus:FireAllClients("returned", nil, nil, flagTeam)
 		FlagStatus:FireAllClients("playSound", "Flag_return")
@@ -1284,6 +1300,12 @@ RunService.Heartbeat:Connect(function()
 		if hrp then
 			lastCarrierPos[pl] = hrp.Position
 		end
+	end
+end)
+
+ServerScriptService:GetAttributeChangedSignal("MatchState"):Connect(function()
+	if not areFlagsInteractive() then
+		freezeDroppedFlagReturns()
 	end
 end)
 

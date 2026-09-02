@@ -17,6 +17,7 @@
 
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local Players            = game:GetService("Players")
+local ServerScriptService = game:GetService("ServerScriptService")
 
 local EventConfig = require(ReplicatedStorage:WaitForChild("EventConfig"))
 
@@ -175,6 +176,11 @@ local function startActiveEvent(eventId, durationSeconds, source)
         return false, "Unknown event: " .. tostring(eventId)
     end
 
+    local matchState = ServerScriptService:GetAttribute("MatchState")
+    if matchState == "EndGame" or matchState == "Intermission" or matchState == "Voting" or matchState == "Loading" then
+        return false, "events disabled during " .. tostring(matchState)
+    end
+
     if _activeIdx then
         endActiveEvent("replaced by " .. tostring(eventId))
     end
@@ -313,9 +319,7 @@ end
 
 --- Call at match end or reset.  Stops the scheduler and clears state.
 function EventScheduler:StopMatch()
-    _running      = false
-    _activeIdx    = nil
-    _eventEndTime = nil
+    _running = false
     cancelManualThread()
 
     if _thread then
@@ -323,9 +327,12 @@ function EventScheduler:StopMatch()
         _thread = nil
     end
 
-    -- Broadcast inactive so any lingering client UI cleans up
-    broadcast(false, nil)
-    notifyServer(false, nil)
+    if _activeIdx then
+        endActiveEvent("match ended")
+    else
+        broadcast(false, nil)
+        notifyServer(false, nil)
+    end
 end
 
 --- Register a server-side callback for event state changes.

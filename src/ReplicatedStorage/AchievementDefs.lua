@@ -55,6 +55,29 @@ local function copyStages(src, count)
     return out
 end
 
+-- Stage V and X pay keys instead of coins.
+local function copyCoinRewards(count)
+    local out = copyStages(STAGE_COIN_REWARDS, count)
+    if count >= 5 then
+        out[5] = 0
+    end
+    if count >= 10 then
+        out[10] = 0
+    end
+    return out
+end
+
+local function copyKeyRewards(count)
+    local out = {}
+    if count >= 5 then
+        out[5] = 1
+    end
+    if count >= 10 then
+        out[10] = 10
+    end
+    return out
+end
+
 AchievementDefs.Achievements = {
     ---------------------------------------------------------------------------
     -- COMBAT
@@ -67,7 +90,8 @@ AchievementDefs.Achievements = {
         titleFormat = "Goblin Hunter %s",
         descFormat  = "Eliminate %d goblins.",
         thresholds  = { 10, 50, 125, 250, 500, 1000, 2500, 5000, 10000, 25000 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 10),
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
         achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "💀",
         hidden      = false,
@@ -80,7 +104,8 @@ AchievementDefs.Achievements = {
         titleFormat = "Orc Raider %s",
         descFormat  = "Eliminate %d orcs.",
         thresholds  = { 5, 25, 75, 125, 250, 500, 1000, 2500, 5000, 10000 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 10),
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
         achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "💀",
         hidden      = false,
@@ -93,7 +118,8 @@ AchievementDefs.Achievements = {
         titleFormat = "Ogre Slayer %s",
         descFormat  = "Eliminate %d ogres.",
         thresholds  = { 1, 5, 15, 25, 50, 100, 200, 500, 1000, 2500 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 10),
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
         achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "💀",
         hidden      = false,
@@ -106,7 +132,8 @@ AchievementDefs.Achievements = {
         titleFormat = "Eliminator %s",
         descFormat  = "Eliminate %d players.",
         thresholds  = { 10, 50, 250, 500, 1000, 2500, 5000, 10000, 25000, 50000 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 10),
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
         achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "🗡",
         hidden      = false,
@@ -119,7 +146,8 @@ AchievementDefs.Achievements = {
         titleFormat = "Swordsman %s",
         descFormat  = "Deal %d damage with melee weapons.",
         thresholds  = { 1000, 5000, 15000, 30000, 60000, 100000, 200000, 300000, 500000, 1000000 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 10),
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
         achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "⚔",
         hidden      = false,
@@ -132,7 +160,8 @@ AchievementDefs.Achievements = {
         titleFormat = "Archer %s",
         descFormat  = "Deal %d damage with ranged weapons.",
         thresholds  = { 1000, 5000, 15000, 30000, 60000, 100000, 200000, 300000, 500000, 1000000 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 10),
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
         achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "🏹",
         hidden      = false,
@@ -142,68 +171,73 @@ AchievementDefs.Achievements = {
     -- ECONOMY
     ---------------------------------------------------------------------------
     {
-        id          = "coin_collector",
+        id          = "busy_earning",
         category    = "Economy",
         staged      = true,
         stat        = "totalCoinsEarned",
-        titleFormat = "Coin Collector %s",
+        titleFormat = "Busy Earning %s",
         descFormat  = "Earn %d total coins over time.",
-        thresholds  = { 100, 250, 500, 1000, 2500 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
+        thresholds  = { 1000, 2000, 5000, 10000, 20000, 50000, 100000, 250000, 500000, 1000000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "💰",
         hidden      = false,
     },
     {
-        id          = "first_purchase",
-        category    = "Economy",
-        staged      = false,
-        stat        = "totalPurchases",
-        target      = 1,
-        reward      = STAGE_COIN_REWARDS[1],
-        achievementPoints = STAGE_AP_REWARDS[1],
-        title       = "First Purchase",
-        desc        = "Buy your first item from the shop.",
-        icon        = "🛒",
-        hidden      = false,
-    },
-    {
-        id          = "big_spender",
-        category    = "Economy",
-        staged      = true,
-        stat        = "totalCoinsSpent",
-        titleFormat = "Big Spender %s",
-        descFormat  = "Spend %d total coins in the shop.",
-        thresholds  = { 250, 500, 1000, 2500, 5000 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "💸",
-        hidden      = false,
-    },
-    {
-        id          = "collector",
-        category    = "Economy",
-        staged      = true,
-        stat        = "itemsOwned",
-        titleFormat = "Collector %s",
-        descFormat  = "Own %d unlockable items.",
-        thresholds  = { 5, 10, 15, 25, 40 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "🎒",
-        hidden      = false,
-    },
-    {
-        id          = "salvage_specialist",
+        id          = "blacksmith",
         category    = "Economy",
         staged      = true,
         stat        = "salvageEarnedFromRecycling",
-        titleFormat = "Dismantle Specialist %s",
+        titleFormat = "Blacksmith %s",
         descFormat  = "Earn %d Shards by dismantling items.",
-        thresholds  = { 100, 500, 1500, 5000 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 4),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 4),
+        thresholds  = { 100, 200, 300, 500, 1000, 2000, 3000, 4000, 5000, 10000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "◆",
+        hidden      = false,
+    },
+    {
+        id          = "weapon_supplier",
+        category    = "Economy",
+        staged      = true,
+        stat        = "commonChestRolls",
+        titleFormat = "Weapon Supplier %s",
+        descFormat  = "Roll from a weapon chest %d times.",
+        thresholds  = { 5, 25, 50, 75, 100, 150, 250, 500, 1000, 2000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
+        icon        = "📦",
+        hidden      = false,
+    },
+    {
+        id          = "wheel_of_fortune",
+        category    = "Economy",
+        staged      = true,
+        stat        = "spinWheelSpins",
+        titleFormat = "Wheel of Fortune %s",
+        descFormat  = "Spin the wheel %d times.",
+        thresholds  = { 3, 10, 20, 30, 50, 75, 100, 250, 500, 1000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
+        icon        = "🎡",
+        hidden      = false,
+    },
+    {
+        id          = "locksmith",
+        category    = "Economy",
+        staged      = true,
+        stat        = "keysCollected",
+        titleFormat = "Locksmith %s",
+        descFormat  = "Collect %d keys.",
+        thresholds  = { 3, 5, 10, 25, 50, 75, 100, 250, 500, 1000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
+        icon        = "🔑",
         hidden      = false,
     },
 
@@ -217,48 +251,24 @@ AchievementDefs.Achievements = {
         stat        = "flagCaptures",
         titleFormat = "Capture Artist %s",
         descFormat  = "Capture the flag %d times.",
-        thresholds  = { 3, 10, 25, 50, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
+        thresholds  = { 1, 5, 10, 25, 50, 100, 200, 500, 1000, 2000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "🚩",
         hidden      = false,
     },
     {
-        id          = "banner_guardian",
+        id          = "flag_defender",
         category    = "Objectives",
         staged      = true,
         stat        = "flagReturns",
-        titleFormat = "Banner Guardian %s",
+        titleFormat = "Flag Defender %s",
         descFormat  = "Return the flag %d times.",
-        thresholds  = { 3, 10, 25, 50, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "🚩",
-        hidden      = false,
-    },
-    {
-        id          = "first_capture",
-        category    = "Objectives",
-        staged      = false,
-        stat        = "flagCaptures",
-        target      = 1,
-        reward      = STAGE_COIN_REWARDS[1],
-        achievementPoints = STAGE_AP_REWARDS[1],
-        title       = "First Capture",
-        desc        = "Capture the flag for the first time.",
-        icon        = "🚩",
-        hidden      = false,
-    },
-    {
-        id          = "first_return",
-        category    = "Objectives",
-        staged      = false,
-        stat        = "flagReturns",
-        target      = 1,
-        reward      = STAGE_COIN_REWARDS[1],
-        achievementPoints = STAGE_AP_REWARDS[1],
-        title       = "First Return",
-        desc        = "Return your team's flag for the first time.",
+        thresholds  = { 1, 5, 10, 25, 50, 100, 200, 500, 1000, 2000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "🚩",
         hidden      = false,
     },
@@ -267,12 +277,28 @@ AchievementDefs.Achievements = {
         category    = "Objectives",
         staged      = true,
         stat        = "flagCarryTime",
+        statScale   = 60, -- stored in seconds, displayed/thresholded in minutes
         titleFormat = "Flag Bearer %s",
-        descFormat  = "Carry the enemy flag for %d total seconds.",
-        thresholds  = { 120, 300, 600, 1200, 2400 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
+        descFormat  = "Carry the enemy flag for %d total minutes.",
+        thresholds  = { 5, 30, 60, 120, 240, 360, 480, 720, 1440, 2880 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "🤲",
+        hidden      = false,
+    },
+    {
+        id          = "victorious",
+        category    = "Objectives",
+        staged      = true,
+        stat        = "matchWins",
+        titleFormat = "Victorious %s",
+        descFormat  = "Win %d games.",
+        thresholds  = { 1, 3, 5, 10, 20, 35, 50, 100, 250, 500 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
+        icon        = "🏆",
         hidden      = false,
     },
 
@@ -280,120 +306,73 @@ AchievementDefs.Achievements = {
     -- PROGRESSION
     ---------------------------------------------------------------------------
     {
-        id          = "dedicated_fighter",
-        category    = "Progression",
-        staged      = true,
-        stat        = "matchesPlayed",
-        titleFormat = "Dedicated Fighter %s",
-        descFormat  = "Play %d matches.",
-        thresholds  = { 5, 15, 30, 60, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "🏟",
-        hidden      = false,
-    },
-    {
-        id          = "loyal_soldier",
-        category    = "Progression",
-        staged      = true,
-        stat        = "consecutiveLogins",
-        titleFormat = "Loyal Soldier %s",
-        descFormat  = "Log in for %d consecutive days.",
-        thresholds  = { 7, 14, 30, 60, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "📅",
-        hidden      = false,
-    },
-    {
-        id          = "first_victory",
-        category    = "Progression",
-        staged      = false,
-        stat        = "matchWins",
-        target      = 1,
-        reward      = STAGE_COIN_REWARDS[1],
-        achievementPoints = STAGE_AP_REWARDS[1],
-        title       = "First Victory",
-        desc        = "Get your first match win.",
-        icon        = "🏆",
-        hidden      = false,
-    },
-    {
-        id          = "battle_victor",
-        category    = "Progression",
-        staged      = true,
-        stat        = "matchWins",
-        titleFormat = "Battle Victor %s",
-        descFormat  = "Win %d matches.",
-        thresholds  = { 5, 15, 30, 60, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "🏆",
-        hidden      = false,
-    },
-    {
-        id          = "battle_tested",
-        category    = "Progression",
-        staged      = true,
-        stat        = "matchMinutes",
-        titleFormat = "Battle Tested %s",
-        descFormat  = "Spend %d total minutes in matches.",
-        thresholds  = { 60, 180, 360, 720, 1440 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "⏱",
-        hidden      = false,
-    },
-    {
-        id          = "daily_devotion",
+        id          = "daily_errand",
         category    = "Progression",
         staged      = true,
         stat        = "dailyQuestsCompleted",
-        titleFormat = "Daily Devotion %s",
+        titleFormat = "Daily Errand %s",
         descFormat  = "Complete %d daily quests.",
-        thresholds  = { 10, 25, 50, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 4),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 4),
+        thresholds  = { 3, 6, 9, 15, 25, 50, 100, 200, 500, 1000 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "📋",
         hidden      = false,
     },
     {
-        id          = "weekly_warrior",
+        id          = "weekly_contract",
         category    = "Progression",
         staged      = true,
         stat        = "weeklyQuestsCompleted",
-        titleFormat = "Weekly Warrior %s",
+        titleFormat = "Weekly Contract %s",
         descFormat  = "Complete %d weekly quests.",
-        thresholds  = { 5, 15, 30, 60 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 4),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 4),
+        thresholds  = { 3, 6, 9, 15, 24, 30, 50, 75, 100, 200 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
         icon        = "📅",
         hidden      = false,
     },
     {
-        id          = "event_challenger",
+        id          = "swordsman_training",
         category    = "Progression",
         staged      = true,
-        stat        = "eventQuestsCompleted",
-        titleFormat = "Event Challenger %s",
-        descFormat  = "Complete %d event quests.",
-        thresholds  = { 5, 15, 30, 50 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 4),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 4),
-        icon        = "🎉",
+        stat        = "meleeUpgradeLevel",
+        titleFormat = "Swordsman Training %s",
+        descFormat  = "Reach Melee Upgrade Level %d.",
+        thresholds  = { 5, 10, 15, 25, 35, 50, 75, 100, 250, 500 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
+        icon        = "⚔",
         hidden      = false,
     },
     {
-        id          = "welcome_to_the_front",
+        id          = "archer_training",
         category    = "Progression",
-        staged      = false,
-        stat        = "matchesPlayed",
-        target      = 1,
-        reward      = STAGE_COIN_REWARDS[1],
-        achievementPoints = STAGE_AP_REWARDS[1],
-        title       = "Welcome to the Front",
-        desc        = "Complete your first match.",
-        icon        = "👋",
+        staged      = true,
+        stat        = "rangedUpgradeLevel",
+        titleFormat = "Archer Training %s",
+        descFormat  = "Reach Ranged Upgrade Level %d.",
+        thresholds  = { 5, 10, 15, 25, 35, 50, 75, 100, 250, 500 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
+        icon        = "🎯",
+        hidden      = false,
+    },
+    {
+        id          = "warrior_rank",
+        category    = "Progression",
+        staged      = true,
+        stat        = "playerLevel",
+        titleFormat = "Warrior Rank %s",
+        descFormat  = "Reach level %d.",
+        thresholds  = { 10, 20, 30, 40, 50, 60, 70, 80, 90, 100 },
+        rewards     = copyCoinRewards(10),
+        keyRewards  = copyKeyRewards(10),
+        achievementPoints = copyStages(STAGE_AP_REWARDS, 10),
+        icon        = "⭐",
         hidden      = false,
     },
 
@@ -421,7 +400,8 @@ AchievementDefs.Achievements = {
         titleFormat = "Overachiever %s",
         descFormat  = "Complete %d achievements.",
         thresholds  = { 10, 20, 35, 50, 75 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
+        rewards     = copyCoinRewards(5),
+        keyRewards  = copyKeyRewards(5),
         achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
         icon        = "⭐",
         hidden      = false,
@@ -441,55 +421,6 @@ AchievementDefs.Achievements = {
     },
 
     ---------------------------------------------------------------------------
-    -- PROGRESSION (continued) — Upgrade Milestones
-    ---------------------------------------------------------------------------
-    {
-        id          = "close_quarters",
-        category    = "Progression",
-        staged      = true,
-        stat        = "meleeUpgradeLevel",
-        titleFormat = "Close Quarters %s",
-        descFormat  = "Reach Melee Upgrade Level %d.",
-        thresholds  = { 5, 10, 25, 50, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "⚔",
-        hidden      = false,
-    },
-    {
-        id          = "deadeye",
-        category    = "Progression",
-        staged      = true,
-        stat        = "rangedUpgradeLevel",
-        titleFormat = "Deadeye %s",
-        descFormat  = "Reach Ranged Upgrade Level %d.",
-        thresholds  = { 5, 10, 25, 50, 100 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "🎯",
-        hidden      = false,
-    },
-
-    ---------------------------------------------------------------------------
-    -- ECONOMY (continued) — Robux Spending Milestones
-    ---------------------------------------------------------------------------
-    {
-        id          = "robux_spender",
-        category    = "Economy",
-        staged      = true,
-        stat        = "totalRobuxSpent",
-        titleFormat = "%s",
-        descFormat  = "Spend %d Robux in the shop.",
-        thresholds  = { 50, 250, 500, 1000, 2500 },
-        rewards     = copyStages(STAGE_COIN_REWARDS, 5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "💎",
-        hidden      = false,
-        -- Custom stage titles (not roman numerals)
-        stageTitles = { "First Purchase", "Supporter", "Big Spender", "Premium Supporter", "Shop Patron" },
-    },
-
-    ---------------------------------------------------------------------------
     -- EVENTS  (placeholder category — no active achievements yet)
     ---------------------------------------------------------------------------
 }
@@ -506,7 +437,7 @@ end
 --------------------------------------------------------------------------------
 function AchievementDefs.GetStageTitle(def, stageIndex)
     if not def.staged then return def.title end
-    -- Support custom per-stage titles (e.g. Robux spending milestones)
+    -- Support custom per-stage titles when provided
     if def.stageTitles and def.stageTitles[stageIndex] then
         return def.stageTitles[stageIndex]
     end
@@ -524,9 +455,51 @@ function AchievementDefs.GetStageTarget(def, stageIndex)
     return def.thresholds[stageIndex] or 0
 end
 
+function AchievementDefs.GetStatScale(def)
+    local scale = tonumber(def and def.statScale) or 1
+    if scale < 1 then
+        return 1
+    end
+    return scale
+end
+
+function AchievementDefs.GetRawTarget(def, stageIndex)
+    return (AchievementDefs.GetStageTarget(def, stageIndex) or 0) * AchievementDefs.GetStatScale(def)
+end
+
+function AchievementDefs.GetDisplayStat(def, rawValue)
+    local scale = AchievementDefs.GetStatScale(def)
+    return math.floor((tonumber(rawValue) or 0) / scale)
+end
+
 function AchievementDefs.GetStageReward(def, stageIndex)
     if not def.staged then return def.reward end
     return def.rewards[stageIndex] or 0
+end
+
+function AchievementDefs.GetStageKeyReward(def, stageIndex)
+    if not def then
+        return 0
+    end
+    local keys = def.keyRewards
+    if type(keys) == "number" then
+        return math.max(0, math.floor(keys))
+    end
+    if type(keys) ~= "table" then
+        return tonumber(def.keyReward) or 0
+    end
+    if not def.staged then
+        return tonumber(keys[1] or keys) or 0
+    end
+    return tonumber(keys[stageIndex]) or 0
+end
+
+function AchievementDefs.GetStageCurrencyReward(def, stageIndex)
+    local keyAmount = AchievementDefs.GetStageKeyReward(def, stageIndex)
+    if keyAmount > 0 then
+        return keyAmount, "keys"
+    end
+    return tonumber(AchievementDefs.GetStageReward(def, stageIndex)) or 0, "coins"
 end
 
 function AchievementDefs.GetStageAP(def, stageIndex)
@@ -558,10 +531,17 @@ end
 
 -- Migration aliases for renamed ids (deleted achievements are dropped on merge)
 AchievementDefs.IdAliases = {
-    player_slayer = "eliminator",
-    flag_capturer = "capture_artist",
-    flag_returner = "banner_guardian",
-    safe_hands    = "flag_bearer",
+    player_slayer        = "eliminator",
+    flag_capturer        = "capture_artist",
+    banner_guardian      = "flag_defender",
+    flag_returner        = "flag_defender",
+    safe_hands           = "flag_bearer",
+    coin_collector       = "busy_earning",
+    salvage_specialist   = "blacksmith",
+    daily_devotion       = "daily_errand",
+    weekly_warrior       = "weekly_contract",
+    close_quarters       = "swordsman_training",
+    deadeye              = "archer_training",
 }
 
 --- Resolve an id that may be an old alias to the canonical id
