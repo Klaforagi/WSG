@@ -1985,7 +1985,7 @@ local function updateHeaderCurrencyLayout()
 	layoutChip(headerKeyFrame, headerKeyContent, headerKeyIcon, headerKeyLabel)
 	-- Shard art has extra padding vs coins/keys, so the glyph reads smaller at
 	-- the same slot size. Keep the chip layout but draw the icon larger.
-	layoutChip(headerSalvageFrame, headerSalvageContent, headerSalvageIcon, headerSalvageLabel, math.floor(iconSize * 1.28))
+	layoutChip(headerSalvageFrame, headerSalvageContent, headerSalvageIcon, headerSalvageLabel, math.floor(iconSize * 1.15))
 
 	-- Keep the title from overlapping the currency row
 	task.defer(function()

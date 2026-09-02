@@ -56,6 +56,8 @@ local MVP_GOLD_LIGHT = Color3.fromRGB(255, 240, 170)
 local MVP_GOLD_WARM = Color3.fromRGB(255, 196, 48)
 local MVP_WHITE = Color3.fromRGB(245, 245, 252)
 local MVP_NAVY = Color3.fromRGB(10, 12, 26)
+local MVP_LIGHT_KNIGHTS = Color3.fromRGB(0, 110, 254)
+local MVP_LIGHT_BARBARIANS = Color3.fromRGB(254, 88, 88)
 local currentMVP = {
     model = nil,
     track = nil,
@@ -90,6 +92,45 @@ local function findMVPSpawnPart()
         end
     end
     return nil
+end
+
+local function findMVPBlockRoot()
+    local direct = workspace:FindFirstChild("MVPblock")
+    if direct then
+        return direct
+    end
+    return findMVPSpawnPart()
+end
+
+local function colorForMVPTeam(teamKey)
+    if teamKey == "Red" then
+        return MVP_LIGHT_BARBARIANS
+    end
+    return MVP_LIGHT_KNIGHTS
+end
+
+local function applyMVPBlockLights(teamKey)
+    local root = findMVPBlockRoot()
+    if not root then
+        return
+    end
+
+    local color = colorForMVPTeam(teamKey)
+    local function paint(inst)
+        if inst.Name ~= "Light" then
+            return
+        end
+        if inst:IsA("BasePart") then
+            inst.Color = color
+        elseif inst:IsA("Light") then
+            inst.Color = color
+        end
+    end
+
+    paint(root)
+    for _, desc in ipairs(root:GetDescendants()) do
+        paint(desc)
+    end
 end
 
 local function stopAndDestroyCurrentMVP()
@@ -360,7 +401,7 @@ local function playMVPDance(rig, humanoid)
     return track
 end
 
-local function spawnMVPAvatar(userId, preparedDescription)
+local function spawnMVPAvatar(userId, preparedDescription, teamKey)
     if type(userId) ~= "number" or userId <= 0 then
         return
     end
@@ -434,7 +475,8 @@ local function spawnMVPAvatar(userId, preparedDescription)
     currentMVP.model = rig
     currentMVP.userId = userId
     currentMVP.track = playMVPDance(rig, humanoid)
-    print(string.format("[GameManager] Spawned MVP avatar for userId=%s", tostring(userId)))
+    applyMVPBlockLights(teamKey)
+    print(string.format("[GameManager] Spawned MVP avatar for userId=%s team=%s", tostring(userId), tostring(teamKey)))
 end
 
 -- Centralized stat service (single source of truth for all stats & events)
@@ -771,8 +813,15 @@ local function runLobbyCycle()
                 end
                 -- Capture appearance before lobby reset; build the rig without blocking intermission.
                 local mvpDescription = resolveMVPDescription(mvpId)
+                local mvpTeam = lastMatchResultsPayload.winner
+                for _, entry in ipairs(lastMatchResultsPayload.players or {}) do
+                    if entry.userId == mvpId then
+                        mvpTeam = entry.team or mvpTeam
+                        break
+                    end
+                end
                 task.spawn(function()
-                    spawnMVPAvatar(mvpId, mvpDescription)
+                    spawnMVPAvatar(mvpId, mvpDescription, mvpTeam)
                 end)
             end
             lastMatchResultsPayload = nil
