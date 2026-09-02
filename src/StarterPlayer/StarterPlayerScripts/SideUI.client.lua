@@ -1770,23 +1770,34 @@ titleLabel.ZIndex = 275
     headerSalvageContentLayout.Parent = headerSalvageContent
 
     if shardImage then
-        headerSalvageIcon = Instance.new("ImageLabel")
+        -- Wrapper is what layoutChip sizes. Inner image is oversized because
+        -- the shard asset has more transparent padding than coins/keys.
+        headerSalvageIcon = Instance.new("Frame")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
+        headerSalvageIcon.Size = UDim2.new(0.82, 0, 0.82, 0)
         headerSalvageIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
-        headerSalvageIcon.Image = shardImage
-        headerSalvageIcon.ScaleType = Enum.ScaleType.Fit
+        headerSalvageIcon.ClipsDescendants = false
         headerSalvageIcon.ZIndex = 277
         headerSalvageIcon.Parent = headerSalvageContent
         local headerSalvageIconAspect = Instance.new("UIAspectRatioConstraint")
         headerSalvageIconAspect.AspectRatio = 1
         headerSalvageIconAspect.Parent = headerSalvageIcon
+        local shardImg = Instance.new("ImageLabel")
+        shardImg.Name = "Image"
+        shardImg.BackgroundTransparency = 1
+        shardImg.AnchorPoint = Vector2.new(0.5, 0.5)
+        shardImg.Position = UDim2.new(0.5, 0, 0.5, 0)
+        shardImg.Size = UDim2.new(1.9, 0, 1.9, 0)
+        shardImg.Image = shardImage
+        shardImg.ScaleType = Enum.ScaleType.Fit
+        shardImg.ZIndex = 277
+        shardImg.Parent = headerSalvageIcon
     else
         headerSalvageIcon = Instance.new("TextLabel")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
+        headerSalvageIcon.Size = UDim2.new(0.82, 0, 0.82, 0)
         headerSalvageIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
@@ -1846,7 +1857,7 @@ closeBtn.Name = "Close"
 closeBtn.Text = "X"
 closeBtn.Font = Enum.Font.GothamBlack
 closeBtn.TextScaled = true
-closeBtn.Size = UDim2.new(0.05, 0, 0.072, 0)
+closeBtn.Size = UDim2.new(0.058, 0, 0.084, 0)
 closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeYY
 closeBtn.AnchorPoint = Vector2.new(1, 0)
 closeBtn.Position = UDim2.new(1, 0, 0, 0)
@@ -1913,7 +1924,7 @@ local function updateHeaderCurrencyLayout()
 	currencyLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
 	currencyLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 
-	local function layoutChip(frame, content, icon, label)
+	local function layoutChip(frame, content, icon, label, iconSizeOverride)
 		if not frame then
 			return
 		end
@@ -1948,7 +1959,8 @@ local function updateHeaderCurrencyLayout()
 		end
 
 		if icon then
-			icon.Size = UDim2.fromOffset(iconSize, iconSize)
+			local size = math.max(1, math.floor(tonumber(iconSizeOverride) or iconSize))
+			icon.Size = UDim2.fromOffset(size, size)
 			icon.Position = UDim2.new(0, 0, 0.5, 0)
 			icon.AnchorPoint = Vector2.new(0, 0.5)
 		end
@@ -1971,7 +1983,9 @@ local function updateHeaderCurrencyLayout()
 
 		layoutChip(headerCoinFrame, headerCoinContent, headerCoinIcon, headerCoinLabel)
 	layoutChip(headerKeyFrame, headerKeyContent, headerKeyIcon, headerKeyLabel)
-	layoutChip(headerSalvageFrame, headerSalvageContent, headerSalvageIcon, headerSalvageLabel)
+	-- Shard art has extra padding vs coins/keys, so the glyph reads smaller at
+	-- the same slot size. Keep the chip layout but draw the icon larger.
+	layoutChip(headerSalvageFrame, headerSalvageContent, headerSalvageIcon, headerSalvageLabel, math.floor(iconSize * 1.28))
 
 	-- Keep the title from overlapping the currency row
 	task.defer(function()
@@ -2028,7 +2042,7 @@ local function updateModalWindowLayout()
     local windowHeight = safeClamp(desiredHeight, minHeight, maxHeight)
     local headerHeight = safeClamp(math.floor(windowHeight * 0.1), 44, 76)
     local contentTop = headerHeight + math.max(6, math.floor(windowHeight * 0.015))
-    local closeSize = math.max(22, math.floor(headerHeight * 0.52))
+    local closeSize = math.max(26, math.floor(headerHeight * 0.60))
 
     local scaleX = (viewportX > 0) and (windowWidth / viewportX) or 0.75
     local scaleY = (viewportY > 0) and (windowHeight / viewportY) or 0.75

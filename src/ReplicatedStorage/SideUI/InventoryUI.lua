@@ -4121,15 +4121,20 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 addTextOutline(cardName, 0.18, 1.35)
                 constrainText(cardName, 10, math.max(12, INV_CARD.NameTextSize))
 
-                -- Icon area (centered square, matching weapon card layout)
+                -- Icon well scales with the card so PC/large screens keep the
+                -- same filled look as mobile instead of a tiny fixed px(88) square.
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
                 iconArea.BackgroundColor3 = accentPanelColor(iconColor, 0.22)
-                iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
-                iconArea.AnchorPoint = Vector2.new(0.5, 0)
-                iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
+                iconArea.Size = UDim2.new(0.72, 0, 0.72, 0)
+                iconArea.AnchorPoint = Vector2.new(0.5, 0.5)
+                iconArea.Position = UDim2.new(0.5, 0, 0.47, 0)
                 iconArea.BorderSizePixel = 0
                 Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
+                local iconAspect = Instance.new("UIAspectRatioConstraint")
+                iconAspect.AspectRatio = 1
+                iconAspect.DominantAxis = Enum.DominantAxis.Width
+                iconAspect.Parent = iconArea
                 addIconWellHighlight(iconArea, iconColor)
 
                 -- Icon image centered in icon area
