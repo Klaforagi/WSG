@@ -1772,7 +1772,7 @@ titleLabel.ZIndex = 275
     if shardImage then
         headerSalvageIcon = Instance.new("ImageLabel")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+        headerSalvageIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
         headerSalvageIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
@@ -1786,7 +1786,7 @@ titleLabel.ZIndex = 275
     else
         headerSalvageIcon = Instance.new("TextLabel")
         headerSalvageIcon.Name = "SalvageIcon"
-        headerSalvageIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+        headerSalvageIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
         headerSalvageIcon.Position = UDim2.new(-0.075, 0, 0.5, 0)
         headerSalvageIcon.AnchorPoint = Vector2.new(0, 0.5)
         headerSalvageIcon.BackgroundTransparency = 1
@@ -1846,7 +1846,7 @@ closeBtn.Name = "Close"
 closeBtn.Text = "X"
 closeBtn.Font = Enum.Font.GothamBlack
 closeBtn.TextScaled = true
-closeBtn.Size = UDim2.new(0.07, 0, 0.1, 0)
+closeBtn.Size = UDim2.new(0.05, 0, 0.072, 0)
 closeBtn.SizeConstraint = Enum.SizeConstraint.RelativeYY
 closeBtn.AnchorPoint = Vector2.new(1, 0)
 closeBtn.Position = UDim2.new(1, 0, 0, 0)
@@ -2028,7 +2028,7 @@ local function updateModalWindowLayout()
     local windowHeight = safeClamp(desiredHeight, minHeight, maxHeight)
     local headerHeight = safeClamp(math.floor(windowHeight * 0.1), 44, 76)
     local contentTop = headerHeight + math.max(6, math.floor(windowHeight * 0.015))
-    local closeSize = math.max(36, math.floor(headerHeight * 0.84))
+    local closeSize = math.max(22, math.floor(headerHeight * 0.52))
 
     local scaleX = (viewportX > 0) and (windowWidth / viewportX) or 0.75
     local scaleY = (viewportY > 0) and (windowHeight / viewportY) or 0.75

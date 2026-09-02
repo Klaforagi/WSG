@@ -797,19 +797,40 @@ local POTION_CATEGORY_SECTIONS = {
         Id = "Battle",
         Category = POTION_CATEGORY_BATTLE,
         Header = "POTIONS",
-        Subtitle = "Equip these to slot 4 and use them during battle.",
         EmptyText = "No potions owned yet.",
         Accent = Color3.fromRGB(239, 111, 91),
     },
     {
         Id = "Elixir",
         Category = POTION_CATEGORY_ELIXIR,
-        Header = "ELXIRS",
-        Subtitle = "Activate these for longer-lasting buffs.",
-        EmptyText = "No elxirs owned yet.",
+        Header = "BOOSTS",
+        EmptyText = "No boosts owned yet.",
         Accent = Color3.fromRGB(190, 139, 255),
     },
 }
+
+local POTION_CARD_SHORT_NAMES = {
+    health_potion = "Health",
+    speed_potion = "Speed",
+    strength_potion = "Strength",
+    coins_2x = "Wealth",
+    mastery_2x = "Mastery",
+    xp_2x = "Wisdom",
+    speed_elixir = "Swiftness",
+    power_elixir = "Power",
+    vitality_elixir = "Vitality",
+}
+
+local function getPotionCardTitle(def)
+    if type(def) ~= "table" then
+        return "Potion"
+    end
+    local shortName = POTION_CARD_SHORT_NAMES[def.Id]
+    if type(shortName) == "string" and shortName ~= "" then
+        return shortName
+    end
+    return def.DisplayName or def.Id or "Potion"
+end
 
 local function normalizePotionItemCategory(category, fallback)
     if category == POTION_CATEGORY_ELIXIR then
@@ -3468,7 +3489,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             header.Name = "SectionHeader"
             header.BackgroundColor3 = accentPanelColor(accent, 0.34)
             header.BorderSizePixel = 0
-            header.Size = UDim2.new(1, 0, 0, px(54))
+            header.Size = UDim2.new(1, 0, 0, px(36))
             header.LayoutOrder = 1
             header.Parent = sectionFrame
             Instance.new("UICorner", header).CornerRadius = UDim.new(0, px(10))
@@ -3492,23 +3513,12 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             headerTitle.Text = tostring(sectionDef.Header or sectionDef.Category or "POTIONS")
             headerTitle.TextColor3 = WHITE
             headerTitle.TextXAlignment = Enum.TextXAlignment.Left
+            headerTitle.TextYAlignment = Enum.TextYAlignment.Center
             headerTitle.TextTruncate = Enum.TextTruncate.AtEnd
-            headerTitle.Position = UDim2.new(0, px(16), 0, px(7))
-            headerTitle.Size = UDim2.new(1, -px(28), 0, px(22))
+            headerTitle.Position = UDim2.new(0, px(16), 0, 0)
+            headerTitle.Size = UDim2.new(1, -px(28), 1, 0)
             addTextOutline(headerTitle, 0.22, 1.2)
             constrainText(headerTitle, 12, math.max(16, math.floor(px(19))))
-
-            local subtitle = Instance.new("TextLabel", header)
-            subtitle.Name = "Subtitle"
-            subtitle.BackgroundTransparency = 1
-            subtitle.Font = Enum.Font.GothamMedium
-            subtitle.Text = tostring(sectionDef.Subtitle or "")
-            subtitle.TextColor3 = DIM_TEXT
-            subtitle.TextXAlignment = Enum.TextXAlignment.Left
-            subtitle.TextTruncate = Enum.TextTruncate.AtEnd
-            constrainText(subtitle, 9, math.max(12, math.floor(px(12))))
-            subtitle.Position = UDim2.new(0, px(16), 0, px(30))
-            subtitle.Size = UDim2.new(1, -px(28), 0, px(18))
 
             local grid = Instance.new("Frame")
             grid.Name = tostring(sectionDef.Id or sectionDef.Category) .. "Grid"
@@ -3694,10 +3704,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailName.Font = Enum.Font.GothamBold
         boostDetailName.TextColor3 = WHITE
         boostDetailName.TextXAlignment = Enum.TextXAlignment.Center
-        boostDetailName.Size = UDim2.new(1, 0, 0, px(34))
-        boostDetailName.Position = UDim2.new(0, 0, 0, px(178))
-        boostDetailName.TextTruncate = Enum.TextTruncate.AtEnd
-        constrainText(boostDetailName, 12, math.max(20, math.floor(px(26))))
+        boostDetailName.Size = UDim2.new(1, -px(12), 0, px(44))
+        boostDetailName.Position = UDim2.new(0, px(6), 0, px(178))
+        boostDetailName.TextTruncate = Enum.TextTruncate.None
+        boostDetailName.TextWrapped = true
+        constrainText(boostDetailName, 11, math.max(16, math.floor(px(22))))
 
         -- Description
         local boostDetailDesc = Instance.new("TextLabel", boostDetailContent)
@@ -3708,7 +3719,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailDesc.TextWrapped = true
         boostDetailDesc.Size = UDim2.new(1, 0, 0, px(44))
-        boostDetailDesc.Position = UDim2.new(0, 0, 0, px(214))
+        boostDetailDesc.Position = UDim2.new(0, 0, 0, px(226))
         constrainText(boostDetailDesc, 9, math.max(14, math.floor(px(17))))
 
         -- Duration label
@@ -3719,7 +3730,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailDuration.TextColor3 = DIM_TEXT
         boostDetailDuration.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailDuration.Size = UDim2.new(1, 0, 0, px(24))
-        boostDetailDuration.Position = UDim2.new(0, 0, 0, px(262))
+        boostDetailDuration.Position = UDim2.new(0, 0, 0, px(274))
         constrainText(boostDetailDuration, 10, math.max(14, math.floor(px(17))))
 
         -- Owned count
@@ -3730,7 +3741,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailOwned.TextColor3 = WHITE
         boostDetailOwned.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailOwned.Size = UDim2.new(1, 0, 0, px(26))
-        boostDetailOwned.Position = UDim2.new(0, 0, 0, px(290))
+        boostDetailOwned.Position = UDim2.new(0, 0, 0, px(302))
         constrainText(boostDetailOwned, 10, math.max(16, math.floor(px(19))))
 
         -- Status label (Ready / Active / Not Owned)
@@ -3741,7 +3752,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailStatus.TextColor3 = DIM_TEXT
         boostDetailStatus.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailStatus.Size = UDim2.new(1, 0, 0, px(26))
-        boostDetailStatus.Position = UDim2.new(0, 0, 0, px(320))
+        boostDetailStatus.Position = UDim2.new(0, 0, 0, px(332))
         constrainText(boostDetailStatus, 10, math.max(16, math.floor(px(18))))
 
         -- Remaining time label (visible only when active)
@@ -3752,7 +3763,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         boostDetailTimer.TextColor3 = GREEN_GLOW
         boostDetailTimer.TextXAlignment = Enum.TextXAlignment.Center
         boostDetailTimer.Size = UDim2.new(1, 0, 0, px(24))
-        boostDetailTimer.Position = UDim2.new(0, 0, 0, px(350))
+        boostDetailTimer.Position = UDim2.new(0, 0, 0, px(362))
         constrainText(boostDetailTimer, 9, math.max(14, math.floor(px(18))))
         boostDetailTimer.Visible = false
 
@@ -3979,22 +3990,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 local targetBg = refs.baseBg or CARD_BG
                 if isSelected then
-                    -- keep selection tint for non-potions, but avoid aggressive selection overlay for potions
-                    if def.Kind == "potion" then
-                        targetBg = refs.baseBg or CARD_BG
-                    else
-                        targetBg = active and mixColor(refs.activeBg or CARD_EQUIPPED, GOLD, 0.14) or (refs.selectedBg or CARD_BG)
-                    end
+                    targetBg = refs.baseBg or CARD_BG
                     setCardStroke(refs.cardStroke, GOLD, 2.5, 0)
                 elseif active then
-                    -- Do NOT apply the green/active background overlay for single-use potions.
-                    if def.Kind == "potion" then
-                        targetBg = refs.baseBg or CARD_BG
-                        setCardStroke(refs.cardStroke, refs.borderColor or CARD_STROKE, 1.8, 0.12)
-                    else
-                        targetBg = refs.activeBg or CARD_EQUIPPED
-                        setCardStroke(refs.cardStroke, GREEN_GLOW, 2.0, 0.16)
-                    end
+                    targetBg = refs.baseBg or CARD_BG
+                    setCardStroke(refs.cardStroke, refs.borderColor or CARD_STROKE, 1.8, 0.12)
                 elseif owned > 0 then
                     setCardStroke(refs.cardStroke, refs.borderColor or CARD_STROKE, 1.8, 0.12)
                 else
@@ -4002,13 +4002,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end
                 refs.card.BackgroundColor3 = targetBg
                 if refs.accentBar then
-                    if def.Kind == "potion" then
-                        refs.accentBar.BackgroundColor3 = refs.accentColor or GOLD
-                        refs.accentBar.BackgroundTransparency = 0.12
-                    else
-                        refs.accentBar.BackgroundColor3 = active and GREEN_GLOW or (refs.accentColor or GOLD)
-                        refs.accentBar.BackgroundTransparency = active and 0 or 0.12
-                    end
+                    refs.accentBar.BackgroundColor3 = refs.accentColor or GOLD
+                    refs.accentBar.BackgroundTransparency = 0.12
                 end
 
                 -- Active bar indicator
@@ -4115,15 +4110,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardName.Name = "NameLabel"
                 cardName.BackgroundTransparency = 1
                 cardName.Font = Enum.Font.GothamBold
-                cardName.Text = def.DisplayName or def.Id
+                cardName.Text = getPotionCardTitle(def)
                 cardName.TextColor3 = WHITE
                 cardName.TextSize = INV_CARD.NameTextSize
-                cardName.TextTruncate = Enum.TextTruncate.AtEnd
+                cardName.TextTruncate = Enum.TextTruncate.None
                 cardName.TextXAlignment = Enum.TextXAlignment.Center
                 cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
                 cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
                 cardName.ZIndex = 3
                 addTextOutline(cardName, 0.18, 1.35)
+                constrainText(cardName, 10, math.max(12, INV_CARD.NameTextSize))
 
                 -- Icon area (centered square, matching weapon card layout)
                 local iconArea = Instance.new("Frame", card)
@@ -4254,9 +4250,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end)
                 card.MouseLeave:Connect(function()
                     if selectedBoostId ~= def.Id then
-                        local _, isActive = getBoostState(def.Id)
                         local refs = boostCards[def.Id]
-                        local targetBg = refs and (isActive and refs.activeBg or refs.baseBg) or baseBg
+                        local targetBg = refs and refs.baseBg or baseBg
                         TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
                     end
                 end)
@@ -4321,7 +4316,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             end)
             if ok and success then
                 ingestStates(states); refreshBoostCards()
-                showToast(boostsPage, "Boost activated!", GREEN_GLOW, 2.2)
             else
                 if ok and type(states) == "table" then ingestStates(states) end
                 refreshBoostCards()
