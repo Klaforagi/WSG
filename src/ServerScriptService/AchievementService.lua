@@ -106,9 +106,14 @@ end
 local STAT_KEYS = {
     "totalElims",
     "zombieElims",
+    "goblinElims",
+    "orcElims",
+    "ogreElims",
     "playerElims",
     "flagCarrierElims",     -- wired: checked on Elimination when victim has CarryingFlag
-    "totalDamage",          -- TODO: wire DamageDealt stat events
+    "totalDamage",          -- wired: DamageDealt in AchievementServiceInit
+    "meleeDamage",          -- wired: DamageDealt metadata.damageType == melee
+    "rangedDamage",         -- wired: DamageDealt metadata.damageType == ranged
     "bestElimStreak",       -- wired: set by streak tracker in AchievementServiceInit
     "doubleElims",          -- wired: multi-elim detection in AchievementServiceInit
     "tripleElims",          -- wired: multi-elim detection in AchievementServiceInit

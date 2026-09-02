@@ -145,13 +145,13 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 --
 -- Mapping:
 --   Elimination  → totalElims + playerElims + streak/multi-kill/flag-carrier
---   MobKill      → totalElims + zombieElims
+--   MobKill      → totalElims + zombieElims + goblinElims/orcElims/ogreElims
 --   Death        → streak reset + multi-kill window reset
 --   FlagCapture  → flagCaptures
 --   FlagReturn   → flagReturns
 --   MatchPlayed  → matchesPlayed
 --   MatchWon     → matchWins
---   DamageDealt  → totalDamage
+--   DamageDealt  → totalDamage + meleeDamage / rangedDamage
 --
 -- Stats not yet wired (TODO in future phases):
 --   totalPurchases
@@ -174,6 +174,29 @@ local recentElims = {} -- [Player] = { clock1, clock2, ... }
 
 local DOUBLE_KILL_WINDOW = 10  -- seconds (matches Double Trouble description)
 local TRIPLE_KILL_WINDOW = 15  -- seconds (matches Triple Threat description)
+
+local function getMonsterAchievementStatKey(metadata)
+    if type(metadata) ~= "table" then
+        return nil
+    end
+
+    local mobName = metadata.mobType or metadata.mobName
+    if type(mobName) ~= "string" or mobName == "" then
+        return nil
+    end
+
+    local lowered = string.lower(mobName)
+    if string.find(lowered, "goblin", 1, true) then
+        return "goblinElims"
+    end
+    if string.find(lowered, "orc", 1, true) then
+        return "orcElims"
+    end
+    if string.find(lowered, "ogre", 1, true) then
+        return "ogreElims"
+    end
+    return nil
+end
 
 -- Cleanup tracking state when players leave
 Players.PlayerRemoving:Connect(function(player)
@@ -260,6 +283,10 @@ StatService:OnStatEvent(function(payload)
     elseif action == Actions.MobKill then
         AchievementService:IncrementStat(player, "totalElims", 1)
         AchievementService:IncrementStat(player, "zombieElims", 1)
+        local monsterStatKey = getMonsterAchievementStatKey(payload.metadata)
+        if monsterStatKey then
+            AchievementService:IncrementStat(player, monsterStatKey, 1)
+        end
     elseif action == Actions.FlagCapture then
         AchievementService:IncrementStat(player, "flagCaptures", 1)
     elseif action == Actions.FlagReturn then
@@ -279,6 +306,12 @@ StatService:OnStatEvent(function(payload)
         local amount = tonumber(payload.amount) or 0
         if amount > 0 then
             AchievementService:IncrementStat(player, "totalDamage", amount)
+            local dmgType = payload.metadata and payload.metadata.damageType or nil
+            if dmgType == "melee" then
+                AchievementService:IncrementStat(player, "meleeDamage", amount)
+            elseif dmgType == "ranged" then
+                AchievementService:IncrementStat(player, "rangedDamage", amount)
+            end
         end
     end
 end)

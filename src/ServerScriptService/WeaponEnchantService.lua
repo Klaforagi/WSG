@@ -479,6 +479,28 @@ local function applyDamageOutputModifiers(attackerPlayer, damage)
     return damage
 end
 
+local function inferWeaponDamageType(attackerPlayer, options)
+    if type(options) == "table" then
+        local explicit = options.damageType
+        if explicit == "melee" or explicit == "ranged" then
+            return explicit
+        end
+    end
+    local character = attackerPlayer and attackerPlayer.Character
+    local tool = character and character:FindFirstChildOfClass("Tool")
+    local category = tool and (tool:GetAttribute("WeaponCategory") or tool:GetAttribute("HotbarCategory"))
+    if type(category) == "string" then
+        local lowered = string.lower(category)
+        if lowered == "melee" then
+            return "melee"
+        end
+        if lowered == "ranged" then
+            return "ranged"
+        end
+    end
+    return nil
+end
+
 -- Apply flat enchant damage to a humanoid.
 -- Does not scale from melee or ranged upgrades.
 -- Also sends a proc popup to the attacker's client.
@@ -505,7 +527,11 @@ local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantNa
         targetHumanoid:TakeDamage(damage)
     end)
     if StatService and StatService.RegisterDamageDealt and attackerPlayer then
-        pcall(function() StatService:RegisterDamageDealt(attackerPlayer, damage) end)
+        pcall(function()
+            StatService:RegisterDamageDealt(attackerPlayer, damage, {
+                damageType = inferWeaponDamageType(attackerPlayer, options),
+            })
+        end)
     end
     -- Send popup to attacker
     if enchantName and attackerPlayer then

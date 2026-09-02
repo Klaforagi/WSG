@@ -127,7 +127,7 @@ local function isTrackedTeamPlayer(player)
     if not player or not player:IsA("Player") then return false end
     local team = player.Team
     if not team then return false end
-    return team.Name ~= "Neutral"
+    return team.Name == "Blue" or team.Name == "Red"
 end
 
 --- Increment a stat and sync the attribute to the player instance.
