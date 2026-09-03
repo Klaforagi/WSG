@@ -1015,7 +1015,7 @@ function startMatch()
         while State == "Game" do
             local now = workspace:GetServerTimeNow()
             local remaining = MATCH_DURATION - (now - matchStartTick)
-            if remaining <= 1 then
+            if remaining <= 0 then
                 if teamScores.Blue == teamScores.Red then
                     setMatchState("SuddenDeath")
                     print("[GameManager] SUDDEN DEATH — scores tied at", teamScores.Blue)

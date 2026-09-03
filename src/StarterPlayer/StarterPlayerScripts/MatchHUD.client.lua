@@ -842,15 +842,9 @@ spawn(function()
             local now = workspace:GetServerTimeNow()
             local elapsed = now - matchStartTick
             local floorRemaining = math.floor(matchDuration - elapsed)
-            local newRemaining
-            if timerMode == "Match" then
-                -- clamp at 1 while a live match is running; the server decides when to resolve to 0.
-                newRemaining = math.max(1, floorRemaining)
-            else
-                newRemaining = math.max(0, floorRemaining)
-            end
+            local newRemaining = math.max(0, floorRemaining)
             -- play tick once when the integer remaining strictly decreases
-            if timerMode == "Match" and newRemaining > 0 and newRemaining <= 9 then
+            if timerMode == "Match" and newRemaining >= 0 and newRemaining <= 9 then
                 if lastIntegerRemaining ~= nil and newRemaining < lastIntegerRemaining then
                     pcall(playTickSound)
                 end

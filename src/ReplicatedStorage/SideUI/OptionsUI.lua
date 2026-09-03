@@ -165,23 +165,24 @@ local function ApplySettings(settings)
 	-- Music Volume – SoundGroup "Music" under SoundService
 	-- (Master volume removed; tune SoundService groups directly if needed)
 
-	-- Music Volume – update any Sound instances placed under
-	-- ReplicatedStorage.Sounds.Music so the slider takes immediate effect.
+	-- Music Volume – MusicController owns the active track so faded lobby/in-game
+	-- songs are not brought back by the slider.
 	pcall(function()
+		-- Map slider 0..1 -> actual volume 0..0.2 so 100% = 0.2
+		local mapped = math.clamp(tonumber(settings.MusicVolume) or 0.5, 0, 1) * 0.2
+		if type(_G) == "table" and type(_G.ApplyMusicVolume) == "function" then
+			_G.ApplyMusicVolume(mapped)
+			return
+		end
 		local rs = game:GetService("ReplicatedStorage")
 		local soundsRoot = rs:FindFirstChild("Sounds")
-		if soundsRoot then
-			local musicFolder = soundsRoot:FindFirstChild("Music")
-				if musicFolder then
-					-- Map slider 0..1 -> actual volume 0..0.2 so 100% = 0.2
-					local mapped = math.clamp(tonumber(settings.MusicVolume) or 0.5, 0, 1) * 0.2
-					-- Update volume for all music sounds (do NOT change Playing state)
-					for _, obj in ipairs(musicFolder:GetDescendants()) do
-						if obj:IsA("Sound") then
-							pcall(function() obj.Volume = mapped end)
-						end
-					end
+		local musicFolder = soundsRoot and soundsRoot:FindFirstChild("Music")
+		if musicFolder then
+			for _, obj in ipairs(musicFolder:GetDescendants()) do
+				if obj:IsA("Sound") then
+					pcall(function() obj.Volume = mapped end)
 				end
+			end
 		end
 	end)
 
@@ -608,14 +609,18 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 			-- Cheap local feedback while dragging: update music or SFX group only
 			pcall(function()
 				if settingKey == "MusicVolume" then
-					local rs = game:GetService("ReplicatedStorage")
-					local soundsRoot = rs:FindFirstChild("Sounds")
-					local musicFolder = soundsRoot and soundsRoot:FindFirstChild("Music")
-					if musicFolder then
-						local mapped = math.clamp(tonumber(rawVal) or 0.5, 0, 1) * 0.2
-						for _, obj in ipairs(musicFolder:GetDescendants()) do
-							if obj:IsA("Sound") then
-								pcall(function() obj.Volume = mapped end)
+					local mapped = math.clamp(tonumber(rawVal) or 0.5, 0, 1) * 0.2
+					if type(_G) == "table" and type(_G.ApplyMusicVolume) == "function" then
+						_G.ApplyMusicVolume(mapped)
+					else
+						local rs = game:GetService("ReplicatedStorage")
+						local soundsRoot = rs:FindFirstChild("Sounds")
+						local musicFolder = soundsRoot and soundsRoot:FindFirstChild("Music")
+						if musicFolder then
+							for _, obj in ipairs(musicFolder:GetDescendants()) do
+								if obj:IsA("Sound") then
+									pcall(function() obj.Volume = mapped end)
+								end
 							end
 						end
 					end

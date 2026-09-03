@@ -166,12 +166,14 @@ function MapVoteService.SpawnMap(name)
         pcall(function() currentMapInstance:Destroy() end)
         currentMapInstance = nil
         currentMapName = nil
+        pcall(function() Workspace:SetAttribute("CurrentMap", nil) end)
     end
     local clone = template:Clone()
     clone.Name = name
     clone.Parent = Workspace
     currentMapInstance = clone
     currentMapName = name
+    pcall(function() Workspace:SetAttribute("CurrentMap", name) end)
     print("[MapVote] Spawned map ->", name)
     return clone
 end
@@ -185,6 +187,7 @@ function MapVoteService.DespawnCurrentMap()
         pcall(function() currentMapInstance:Destroy() end)
         currentMapInstance = nil
         currentMapName = nil
+        pcall(function() Workspace:SetAttribute("CurrentMap", nil) end)
         print("[MapVote] Despawned current map")
     end
 end
