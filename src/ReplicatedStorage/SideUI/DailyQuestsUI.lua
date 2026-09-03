@@ -2522,16 +2522,23 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         row.Name = "StageGemRow"
         row.BackgroundTransparency = 1
         row.Size = UDim2.new(0.58, 0, 0, px(26))
-        row.Position = UDim2.new(0, 0, 0, rowY)
+        if typeof(rowY) == "number" then
+            row.Position = UDim2.new(0, 0, 0, rowY)
+        end
+        row.LayoutOrder = 4
         row.ZIndex = 12
         row.Parent = card
+
+        local gemPad = Instance.new("UIPadding")
+        gemPad.PaddingLeft = UDim.new(0, px(8))
+        gemPad.Parent = row
 
         local layout = Instance.new("UIListLayout")
         layout.FillDirection = Enum.FillDirection.Horizontal
         layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
         layout.VerticalAlignment = Enum.VerticalAlignment.Center
         layout.SortOrder = Enum.SortOrder.LayoutOrder
-        layout.Padding = UDim.new(0, (#ach.stages > 7) and px(4) or px(7))
+        layout.Padding = UDim.new(0, (#ach.stages > 7) and px(6) or px(10))
         layout.Parent = row
 
         achStageGemWidgets[row] = {}
@@ -2639,6 +2646,30 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         pad.PaddingBottom = UDim.new(0, px(12))
         pad.Parent        = card
 
+        local body = Instance.new("Frame")
+        body.Name = "Body"
+        body.BackgroundTransparency = 1
+        body.Size = UDim2.new(1, 0, 0, 0)
+        body.AutomaticSize = Enum.AutomaticSize.Y
+        body.Parent = card
+
+        local bodyLayout = Instance.new("UIListLayout")
+        bodyLayout.FillDirection = Enum.FillDirection.Vertical
+        bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        bodyLayout.Padding = UDim.new(0, px(6))
+        bodyLayout.Parent = body
+
+        local function relayoutCard()
+            local contentH = bodyLayout.AbsoluteContentSize.Y
+            if contentH <= 0 then
+                contentH = body.AbsoluteSize.Y
+            end
+            local h = contentH + pad.PaddingTop.Offset + pad.PaddingBottom.Offset
+            card.Size = UDim2.new(1, -px(6), 0, math.max(px(110), h))
+        end
+        trackConn(bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(relayoutCard))
+        trackConn(body:GetPropertyChangedSignal("AbsoluteSize"):Connect(relayoutCard))
+
         -- Left accent bar
         local accentBar = Instance.new("Frame")
         accentBar.Name                = "StateAccent"
@@ -2653,6 +2684,13 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         accentCr.Parent = accentBar
         accentBar.Parent = card
 
+        local titleRow = Instance.new("Frame")
+        titleRow.Name = "TitleRow"
+        titleRow.BackgroundTransparency = 1
+        titleRow.Size = UDim2.new(1, 0, 0, px(46))
+        titleRow.LayoutOrder = 1
+        titleRow.Parent = body
+
         -- Title
         local titleLbl = Instance.new("TextLabel")
         titleLbl.Name               = "Title"
@@ -2662,19 +2700,23 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         titleLbl.TextColor3         = WHITE
         titleLbl.TextSize           = achTextPx(22, 16)
         titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-        titleLbl.Size               = UDim2.new(0.58, 0, 0, px(26))
-        titleLbl.Position           = UDim2.new(0, 0, 0, 0)
-        titleLbl.Parent             = card
+        titleLbl.TextTruncate       = Enum.TextTruncate.AtEnd
+        local btnW2 = px(130)
+        local btnH2 = px(34)
 
-        -- Reward badge (shows coins + AP)
+        titleLbl.Size               = UDim2.new(1, -(btnW2 + px(8)), 0, px(26))
+        titleLbl.Position           = UDim2.new(0, 0, 0, 0)
+        titleLbl.Parent             = titleRow
+
+        -- Reward badge (shows coins + AP) — same width as the Claim button below
         local rewardBadge = Instance.new("Frame")
         rewardBadge.Name              = "RewardBadge"
         rewardBadge.BackgroundColor3  = Color3.fromRGB(36, 33, 18)
         rewardBadge.BackgroundTransparency = 0.3
-        rewardBadge.Size              = UDim2.new(0, px(100), 0, px(46))
+        rewardBadge.Size              = UDim2.new(0, btnW2, 0, px(46))
         rewardBadge.AnchorPoint       = Vector2.new(1, 0)
         rewardBadge.Position          = UDim2.new(1, 0, 0, -px(2))
-        rewardBadge.Parent            = card
+        rewardBadge.Parent            = titleRow
 
         local badgeCr = Instance.new("UICorner")
         badgeCr.CornerRadius = UDim.new(0, px(8))
@@ -2733,7 +2775,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             apAmtLbl.Parent              = rewardBadge
         end
 
-        -- Description
+        -- Description wraps and grows the card instead of clipping.
         local descLbl = Instance.new("TextLabel")
         descLbl.Name               = "Desc"
         descLbl.BackgroundTransparency = 1
@@ -2742,20 +2784,30 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         descLbl.TextColor3         = Color3.fromRGB(228, 232, 242)
         descLbl.TextSize           = achTextPx(16, 13)
         descLbl.TextXAlignment     = Enum.TextXAlignment.Left
+        descLbl.TextYAlignment     = Enum.TextYAlignment.Top
         descLbl.TextWrapped        = true
-        descLbl.Size               = UDim2.new(0.7, 0, 0, px(26))
-        descLbl.Position           = UDim2.new(0, 0, 0, px(32))
-        descLbl.Parent             = card
+        descLbl.TextTruncate       = Enum.TextTruncate.None
+        descLbl.AutomaticSize      = Enum.AutomaticSize.Y
+        descLbl.Size               = UDim2.new(1, 0, 0, px(18))
+        descLbl.LayoutOrder        = 2
+        descLbl.Parent             = body
 
         -- Progress bar
-        local barY = px(66)
         local barH = px(18)
+        local barRow = Instance.new("Frame")
+        barRow.Name = "BarRow"
+        barRow.BackgroundTransparency = 1
+        barRow.Size = UDim2.new(1, 0, 0, btnH2)
+        barRow.LayoutOrder = 3
+        barRow.Parent = body
+
         local track = Instance.new("Frame")
         track.Name             = "BarTrack"
         track.BackgroundColor3 = BAR_BG
         track.Size             = UDim2.new(0.55, 0, 0, barH)
-        track.Position         = UDim2.new(0, 0, 0, barY)
-        track.Parent           = card
+        track.AnchorPoint      = Vector2.new(0, 0.5)
+        track.Position         = UDim2.new(0, 0, 0.5, 0)
+        track.Parent           = barRow
 
         local trackCorner = Instance.new("UICorner")
         trackCorner.CornerRadius = UDim.new(0, px(6))
@@ -2815,7 +2867,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
 
         achProgressTexts[ach.id] = progText
 
-        local stageGemRow = buildStageGemRow(card, ach, barY + barH + px(10))
+        local stageGemRow = buildStageGemRow(body, ach)
         if stageGemRow then
             achStageGemRows[ach.id] = stageGemRow
         else
@@ -2823,18 +2875,16 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         end
 
         -- Status indicator (replaces old Claim button — rewards are auto-granted)
-        local btnW2 = px(130)
-        local btnH2 = px(34)
         local btn = Instance.new("TextButton")
         btn.Name            = "StatusBtn"
         btn.AutoButtonColor = false
         btn.Font            = Enum.Font.GothamBold
         btn.TextSize        = achTextPx(16, 12)
         btn.Size            = UDim2.new(0, btnW2, 0, btnH2)
-        btn.AnchorPoint     = Vector2.new(1, 0)
-        btn.Position        = UDim2.new(1, 0, 0, barY - px(2))
+        btn.AnchorPoint     = Vector2.new(1, 0.5)
+        btn.Position        = UDim2.new(1, 0, 0.5, 0)
         btn.Active          = false
-        btn.Parent          = card
+        btn.Parent          = barRow
 
         local btnCorner = Instance.new("UICorner")
         btnCorner.CornerRadius = UDim.new(0, px(10))
@@ -2866,16 +2916,18 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
 
         local function updateAchBtnState(progress, goal, claimed, completed)
             local isClaimable = (not claimed) and (completed or (goal > 0 and progress >= goal))
+            btn.Text = claimed and "COMPLETED" or "Claim"
+            btn.Font = Enum.Font.GothamBold
+            btn.TextSize = achTextPx(16, 12)
             if claimed then
-                btn.Text = "COMPLETED"; btn.BackgroundColor3 = BTN_CLAIMED
+                btn.BackgroundColor3 = BTN_CLAIMED
                 btn.TextColor3 = GREEN_GLOW; btn.Active = false
                 btnStroke.Color = GREEN_GLOW; btnStroke.Transparency = 0.5
             elseif isClaimable then
-                btn.Text = "\u{2B50} CLAIM"; btn.BackgroundColor3 = BTN_CLAIM
+                btn.BackgroundColor3 = BTN_CLAIM
                 btn.TextColor3 = WHITE; btn.Active = true
                 btnStroke.Color = Color3.fromRGB(7, 71, 0); btnStroke.Transparency = 0.05; btnStroke.Thickness = 1.6
             else
-                btn.Text = FormatProgress(progress, goal)
                 btn.BackgroundColor3 = BTN_LOCKED; btn.TextColor3 = DIM_TEXT; btn.Active = false
                 btnStroke.Color = Color3.fromRGB(36, 15, 77); btnStroke.Transparency = 0.4
             end
@@ -2936,6 +2988,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         end))
 
         updateAchBtnState(ach.progress, ach.target, ach.claimed, ach.completed == true)
+        task.defer(relayoutCard)
 
         return card
     end
