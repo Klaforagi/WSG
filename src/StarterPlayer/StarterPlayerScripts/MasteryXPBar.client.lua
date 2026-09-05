@@ -87,6 +87,8 @@ txt.TextScaled = true
 txt.TextColor3 = Color3.fromRGB(240, 240, 240)
 txt.TextXAlignment = Enum.TextXAlignment.Left
 txt.Text = "Mastery"
+txt.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+txt.TextStrokeTransparency = 0
 txt.Parent = container
 local txtConstraint = Instance.new("UITextSizeConstraint")
 txtConstraint.MaxTextSize = 22
@@ -105,6 +107,8 @@ xpText.TextColor3 = Color3.fromRGB(200, 200, 200)
 xpText.TextXAlignment = Enum.TextXAlignment.Right
 xpText.Text = "+0 XP"
 xpText.Parent = container
+xpText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+xpText.TextStrokeTransparency = 0
 local xpConstraint = Instance.new("UITextSizeConstraint")
 xpConstraint.MaxTextSize = 18
 xpConstraint.MinTextSize = 10
@@ -142,8 +146,8 @@ local function startHideCountdown()
         TweenService:Create(container, fadeInfo, {BackgroundTransparency = 1}):Play()
         TweenService:Create(barBack, fadeInfo, {BackgroundTransparency = 1}):Play()
         TweenService:Create(barFill, fadeInfo, {BackgroundTransparency = 1}):Play()
-        TweenService:Create(txt, fadeInfo, {TextTransparency = 1}):Play()
-        TweenService:Create(xpText, fadeInfo, {TextTransparency = 1}):Play()
+        TweenService:Create(txt, fadeInfo, {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
+        TweenService:Create(xpText, fadeInfo, {TextTransparency = 1, TextStrokeTransparency = 1}):Play()
         task.wait(FADE_OUT_TIME + 0.05)
         if token.cancel then return end
         container.Visible = false
@@ -152,7 +156,9 @@ local function startHideCountdown()
         barBack.BackgroundTransparency = 0
         barFill.BackgroundTransparency = 0
         txt.TextTransparency = 0
+        txt.TextStrokeTransparency = 0
         xpText.TextTransparency = 0
+        xpText.TextStrokeTransparency = 0
         hideTask = nil
     end)
 end
@@ -178,8 +184,10 @@ local function showForXP(payload, meta)
         container.BackgroundTransparency = 1
         barBack.BackgroundTransparency = 0
         barFill.BackgroundTransparency = 0
-        txt.TextTransparency = 0
-        xpText.TextTransparency = 0
+            txt.TextTransparency = 0
+            txt.TextStrokeTransparency = 0
+            xpText.TextTransparency = 0
+            xpText.TextStrokeTransparency = 0
     end
 
     -- tween fill to progress fraction

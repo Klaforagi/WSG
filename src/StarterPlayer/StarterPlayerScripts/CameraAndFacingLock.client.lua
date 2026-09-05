@@ -110,32 +110,42 @@ local function updateFirstPersonZoom()
     return firstPersonZoom
 end
 
-local RIGHT_ARM_PARTS = {
+-- Visible arm parts while zoomed first-person. Include both sides so
+-- the player can see left and right arms when fully zoomed in.
+local VISIBLE_ARM_PARTS = {
     RightUpperArm = true,
     RightLowerArm = true,
     RightHand = true,
     ["Right Arm"] = true,
+    LeftUpperArm = true,
+    LeftLowerArm = true,
+    LeftHand = true,
+    ["Left Arm"] = true,
 }
 
-local RIGHT_ARM_ATTACHMENTS = {
+local VISIBLE_ARM_ATTACHMENTS = {
     RightGripAttachment = true,
     RightShoulderAttachment = true,
     RightCollarAttachment = true,
     RightWristAttachment = true,
+    LeftGripAttachment = true,
+    LeftShoulderAttachment = true,
+    LeftCollarAttachment = true,
+    LeftWristAttachment = true,
 }
 
-local function accessoryIsOnRightArm(accessory)
+local function accessoryIsOnVisibleArm(accessory)
     local handle = accessory and accessory:FindFirstChild("Handle")
     if not handle then
         return false
     end
     for _, child in ipairs(handle:GetChildren()) do
-        if child:IsA("Attachment") and RIGHT_ARM_ATTACHMENTS[child.Name] then
+        if child:IsA("Attachment") and VISIBLE_ARM_ATTACHMENTS[child.Name] then
             return true
         end
         if child:IsA("Weld") or child:IsA("WeldConstraint") or child:IsA("Motor6D") then
             local p0, p1 = child.Part0, child.Part1
-            if (p0 and RIGHT_ARM_PARTS[p0.Name]) or (p1 and RIGHT_ARM_PARTS[p1.Name]) then
+            if (p0 and VISIBLE_ARM_PARTS[p0.Name]) or (p1 and VISIBLE_ARM_PARTS[p1.Name]) then
                 return true
             end
         end
@@ -150,12 +160,12 @@ local function keepAvatarVisible()
     end
 
     local hideBody = firstPersonZoom
-    local rightArmAccessories = {}
+    local visibleArmAccessories = {}
     if hideBody then
         for _, child in ipairs(char:GetChildren()) do
             if (child:IsA("Accessory") or child:IsA("Hat") or child:IsA("Accoutrement"))
-                and accessoryIsOnRightArm(child) then
-                rightArmAccessories[child] = true
+                and accessoryIsOnVisibleArm(child) then
+                visibleArmAccessories[child] = true
             end
         end
     end
@@ -176,11 +186,11 @@ local function keepAvatarVisible()
                     keep = true
                     break
                 end
-                if current:IsA("BasePart") and RIGHT_ARM_PARTS[current.Name] then
+                if current:IsA("BasePart") and VISIBLE_ARM_PARTS[current.Name] then
                     keep = true
                     break
                 end
-                if rightArmAccessories[current] then
+                if visibleArmAccessories[current] then
                     keep = true
                     break
                 end

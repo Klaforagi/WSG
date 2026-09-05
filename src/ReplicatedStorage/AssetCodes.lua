@@ -86,9 +86,9 @@ AssetCodes.images = {
     -- MAP ICONS
     thepit = "rbxassetid://123730386850830",
     forest = "rbxassetid://103357261697578",
-    ["Frozen Lake"] = "rbxassetid://83157095190860",
-    frozenlake = "rbxassetid://83157095190860",
-    wintergate = "rbxassetid://83157095190860",
+    ["Frozen Lake"] = "rbxassetid://103449125404264",
+    frozenlake = "rbxassetid://103449125404264",
+    wintergate = "rbxassetid://103449125404264",
 
     -- Emote icons. Fill these with uploaded image IDs; empty values use UI fallback visuals.
     EmoteWave = "",
