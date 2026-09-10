@@ -271,9 +271,10 @@ local function getTemplate(folder, toolName)
     end
     local template = categoryFolder:FindFirstChild(toolName)
     if not template then
-        -- Legacy name fallback: map renamed tools (e.g. Shortbow -> Bow)
+        -- Legacy name fallback for renamed templates
         local legacyMap = {
             Shortbow = "Bow",
+            Longbow = "Bow",
         }
         local tryName = legacyMap[toolName]
         if tryName then
@@ -364,6 +365,30 @@ pcall(function()
     end
 end)
 
+local AssetCodes = nil
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("AssetCodes")
+    if mod and mod:IsA("ModuleScript") then
+        AssetCodes = require(mod)
+    end
+end)
+
+local function applyToolIcon(tool, toolName, enchantName)
+    if not tool then return end
+    local icon = nil
+    if AssetCodes and type(AssetCodes.GetWeaponIcon) == "function" then
+        icon = AssetCodes.GetWeaponIcon(toolName, enchantName)
+    elseif AssetCodes and type(AssetCodes.Get) == "function" then
+        icon = AssetCodes.Get(toolName)
+    end
+    if type(icon) == "string" and icon ~= "" then
+        pcall(function()
+            tool.TextureId = icon
+            tool:SetAttribute("Icon", icon)
+        end)
+    end
+end
+
 -- ENCHANT SYSTEM — lazy-load WeaponEnchantService for enchant visual application
 local WeaponEnchantService = nil
 pcall(function()
@@ -440,9 +465,15 @@ end
 --- ENCHANT SYSTEM — Look up the player's weapon instance enchant data and apply visuals.
 --- Called after applyWeaponScale so enchant emitters are created on the already-scaled weapon.
 local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
-    if not WeaponEnchantService or not WeaponInstanceService_scale then return end
+    if not WeaponEnchantService or not WeaponInstanceService_scale then
+        applyToolIcon(toolClone, toolName, nil)
+        return
+    end
     local inv = WeaponInstanceService_scale:GetInventory(player)
-    if not inv then return end
+    if not inv then
+        applyToolIcon(toolClone, toolName, nil)
+        return
+    end
     local bestInstance = nil
     if instanceId and inv[instanceId] then
         bestInstance = inv[instanceId]
@@ -454,9 +485,31 @@ local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
             end
         end
     end
-    if bestInstance and type(bestInstance.enchantName) == "string" and bestInstance.enchantName ~= "" then
-        WeaponEnchantService.ApplyEnchantFromInstance(toolClone, bestInstance)
+    local enchantName = bestInstance and bestInstance.enchantName or nil
+    if bestInstance then
+        local hasEnchant = type(bestInstance.enchantName) == "string" and bestInstance.enchantName ~= ""
+        local requiresEnchant = false
+        pcall(function()
+            local enchantConfig = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
+            if enchantConfig and enchantConfig:IsA("ModuleScript") then
+                local cfg = require(enchantConfig)
+                requiresEnchant = type(cfg.RequiresEnchant) == "function" and cfg.RequiresEnchant(toolName)
+            end
+        end)
+
+        if hasEnchant or requiresEnchant then
+            local beforeEnchant = bestInstance.enchantName
+            WeaponEnchantService.ApplyEnchantFromInstance(toolClone, bestInstance)
+            enchantName = bestInstance.enchantName
+            if bestInstance.enchantName ~= beforeEnchant and WeaponInstanceService_scale.SaveForPlayer then
+                pcall(function()
+                    WeaponInstanceService_scale:SaveForPlayer(player)
+                end)
+            end
+        end
     end
+
+    applyToolIcon(toolClone, toolName, enchantName)
 end
 
 local function resolveWeaponInstanceId(player, toolName, instanceId)
@@ -631,11 +684,7 @@ local PRICES = {
     Dagger  = 30,
     Sword   = 30,
     Spear   = 30,
-    -- Ranged
-    Slingshot = 0,
-    Shortbow  = 20,
-    Longbow   = 30,
-    Xbow      = 40,
+    -- Crate ranged weapons are owned via WeaponInstanceService, not this table.
 }
 
 -- Lazy-load CurrencyService (same pattern the rest of the codebase uses)

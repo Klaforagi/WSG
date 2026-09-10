@@ -46,12 +46,13 @@ CrateConfig.RarityOrder = { "Legendary", "Epic", "Rare", "Uncommon", "Common" }
 -- ┌────────────┬────────────────┬────────────────┐
 -- │ Rarity     │ Melee          │ Ranged         │
 -- ├────────────┼────────────────┼────────────────┤
--- │ Common     │ Wooden Sword   │ Slingshot      │
--- │ Rare       │ Dagger         │ Shortbow       │
--- │ Epic       │ Sword          │ Longbow        │
--- │ Legendary  │ Spear          │ Xbow           │
+-- │ Common     │ Wooden Sword   │ Slingshot, Bow │
+-- │ Uncommon   │ Stone Hammer   │ Pixel / Elderwood Bow │
+-- │ Rare       │ Flanged Mace   │ Ironwood / Skeletal Bow │
+-- │ Epic       │ Spiked Mace    │ Ethereal Bow   │
+-- │ Legendary  │ Punisher       │ Golden Bow     │
 -- └────────────┴────────────────┴────────────────┘
--- (updated: removed Dagger/Sword/Spear; new melee list below)
+-- Starter Sword / Starter Slingshot are granted on join, not crate drops.
 --
 -- >>> TO REASSIGN WEAPONS: move entries between the rarity keys below. <<<
 -- >>> Pools are auto-built from this table – no pool edits needed.     <<<
@@ -63,30 +64,34 @@ CrateConfig.WeaponsByRarity = {
         { weapon = "Bat",          category = "Melee"  },
         { weapon = "Plunger",      category = "Melee"  },
         { weapon = "Slingshot",    category = "Ranged" },
+        { weapon = "Bow",          category = "Ranged" },
     },
     Uncommon = {
         { weapon = "Stone Hammer", category = "Melee" },
         { weapon = "Wooden Spear", category = "Melee" },
         { weapon = "Axe",          category = "Melee" },
+        { weapon = "Pixel Bow",     category = "Ranged" },
+        { weapon = "Elderwood Bow", category = "Ranged" },
     },
     Rare      = {
         { weapon = "Flanged Mace", category = "Melee" },
         { weapon = "Shortsword",   category = "Melee" },
         { weapon = "Spear",        category = "Melee" },
         { weapon = "Lil Crusher",  category = "Melee" },
-        { weapon = "Shortbow", category = "Ranged" },
+        { weapon = "Ironwood Bow", category = "Ranged" },
+        { weapon = "Skeletal Bow", category = "Ranged" },
     },
     Epic      = {
         { weapon = "Spiked Mace", category = "Melee" },
         { weapon = "Crusher",     category = "Melee" },
         { weapon = "Ethereal Sword", category = "Melee" },
-        { weapon = "Longbow", category = "Ranged" },
+        { weapon = "Ethereal Bow", category = "Ranged" },
     },
     Legendary = {
         { weapon = "Punisher", category = "Melee" },
         { weapon = "Kingsblade", category = "Melee" },
         { weapon = "Doom Sword", category = "Melee" },
-        { weapon = "Xbow",  category = "Ranged" },
+        { weapon = "Golden Bow", category = "Ranged" },
     },
 }
 

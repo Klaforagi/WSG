@@ -303,7 +303,25 @@ local function ensureAutoAttachments(tool)
     return attachment0, attachment1
 end
 
+local function findTipAttachment(root)
+    return findAttachmentByExactName(root, { "Tip" })
+end
+
 local function ensureProjectileAttachments(projectile)
+    local tip = findTipAttachment(projectile)
+    if tip and tip.Parent and tip.Parent:IsA("BasePart") then
+        local hostPart = tip.Parent
+        local attachment1 = hostPart:FindFirstChild(AUTO_PROJECTILE_ATTACHMENT1_NAME)
+        if not attachment1 or not attachment1:IsA("Attachment") then
+            attachment1 = Instance.new("Attachment")
+            attachment1.Name = AUTO_PROJECTILE_ATTACHMENT1_NAME
+            attachment1.Parent = hostPart
+        end
+        -- Small offset from Tip so the ribbon has width while still originating at Tip.
+        attachment1.CFrame = tip.CFrame * CFrame.new(0, 0.08, 0)
+        return tip, attachment1
+    end
+
     local hostPart = chooseProjectilePart(projectile)
     if not hostPart then return nil, nil end
 
@@ -453,6 +471,23 @@ function WeaponTrailService.ApplyToProjectile(projectile, options)
     configureProjectileTrailDefaults(trail, options)
     WeaponTrailService.ApplyProjectileEnchantTrail(projectile, getProjectileEnchantName(options))
     return trail
+end
+
+function WeaponTrailService.SetProjectileTrailEnabled(projectile, enabled)
+    if not projectile then return false end
+
+    local trail = projectile:FindFirstChild(PROJECTILE_TRAIL_NAME, true)
+    if not trail or not trail:IsA("Trail") then
+        trail = projectile:FindFirstChild(TRAIL_NAME, true)
+    end
+    if not trail or not trail:IsA("Trail") then
+        return false
+    end
+
+    pcall(function()
+        trail.Enabled = enabled == true
+    end)
+    return true
 end
 
 function WeaponTrailService.PulseTrail(tool, activeDuration)

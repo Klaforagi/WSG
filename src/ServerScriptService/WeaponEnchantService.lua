@@ -4,8 +4,9 @@
 -- Responsible for:
 --   • Setting enchant attributes on Tool instances
 --   • Cloning manual enchant visual assets from ReplicatedStorage.Enchants
---     and parenting them under Handle.EnchantBlock
---   • Recoloring the existing SwordTrail
+--     and parenting them under Handle.EnchantBlock (melee) or projectile
+--     EnchantBlock (ranged)
+--   • Recoloring the existing SwordTrail / projectile AmmoTrail
 --   • Spawning short hit-burst particles at confirmed hit locations
 --
 -- Enchant visuals are cloned from ReplicatedStorage.Enchants, NOT generated
@@ -26,6 +27,29 @@ local Debris            = game:GetService("Debris")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local WeaponEnchantConfig = require(ReplicatedStorage:WaitForChild("WeaponEnchantConfig"))
+
+local AssetCodes
+pcall(function()
+    local module = ReplicatedStorage:FindFirstChild("AssetCodes")
+    if module and module:IsA("ModuleScript") then
+        AssetCodes = require(module)
+    end
+end)
+
+local function applyWeaponIcon(tool, enchantName)
+    if not tool or not AssetCodes or type(AssetCodes.GetWeaponIcon) ~= "function" then
+        return
+    end
+    local weaponName = tool:GetAttribute("WeaponName") or tool.Name
+    local icon = AssetCodes.GetWeaponIcon(weaponName, enchantName)
+    if type(icon) ~= "string" or icon == "" then
+        return
+    end
+    pcall(function()
+        tool.TextureId = icon
+        tool:SetAttribute("Icon", icon)
+    end)
+end
 
 local StatService
 pcall(function()
@@ -69,6 +93,108 @@ local function getAssetNames(enchantName)
     return { enchantName }
 end
 
+local function isRangedWeapon(tool)
+    if not tool then return false end
+    if tool:GetAttribute("IsRanged") == true then
+        return true
+    end
+
+    local category = tool:GetAttribute("WeaponCategory") or tool:GetAttribute("HotbarCategory")
+    if type(category) == "string" and string.lower(category) == "ranged" then
+        return true
+    end
+
+    return false
+end
+
+local function findEnchantBlocks(root)
+    local blocks = {}
+    if not root then return blocks end
+
+    local handle = root:FindFirstChild("Handle")
+    if handle then
+        local handleBlock = handle:FindFirstChild("EnchantBlock")
+        if handleBlock then
+            table.insert(blocks, handleBlock)
+        end
+    end
+
+    if root.Name == "EnchantBlock" then
+        table.insert(blocks, root)
+    end
+
+    if root.GetDescendants then
+        for _, descendant in ipairs(root:GetDescendants()) do
+            if descendant.Name == "EnchantBlock" then
+                local alreadyListed = false
+                for _, existing in ipairs(blocks) do
+                    if existing == descendant then
+                        alreadyListed = true
+                        break
+                    end
+                end
+                if not alreadyListed then
+                    table.insert(blocks, descendant)
+                end
+            end
+        end
+    end
+
+    return blocks
+end
+
+local function clearEnchantClonesFromBlock(enchantBlock)
+    if not enchantBlock then return end
+    for _, child in ipairs(enchantBlock:GetChildren()) do
+        if child.Name:sub(1, #ENCHANT_EFFECT_PREFIX) == ENCHANT_EFFECT_PREFIX then
+            pcall(function() child:Destroy() end)
+        end
+    end
+end
+
+local PROJECTILE_ENCHANT_EMITTER_RATE = 20
+
+local function setParticleEmitterRates(root, rate)
+    if not root or type(rate) ~= "number" then return end
+
+    local function apply(instance)
+        if instance and instance:IsA("ParticleEmitter") then
+            pcall(function()
+                instance.Rate = rate
+            end)
+        end
+    end
+
+    apply(root)
+    if root.GetDescendants then
+        for _, descendant in ipairs(root:GetDescendants()) do
+            apply(descendant)
+        end
+    end
+end
+
+local function cloneEnchantAssetsIntoBlock(enchantBlock, enchantName, emitterRate)
+    if not enchantBlock or not EnchantsFolder then return 0 end
+
+    local clonedCount = 0
+    local assetNames = getAssetNames(enchantName)
+    for _, assetName in ipairs(assetNames) do
+        local assetTemplate = EnchantsFolder:FindFirstChild(assetName)
+        if assetTemplate then
+            local clone = assetTemplate:Clone()
+            clone.Name = ENCHANT_EFFECT_PREFIX .. assetName
+            if type(emitterRate) == "number" then
+                setParticleEmitterRates(clone, emitterRate)
+            end
+            clone.Parent = enchantBlock
+            clonedCount += 1
+        else
+            warn("[WeaponEnchantService] Asset '" .. assetName .. "' not found in ReplicatedStorage.Enchants")
+        end
+    end
+    return clonedCount
+end
+
 --------------------------------------------------------------------------------
 -- CLEAR ENCHANT VISUALS
 -- Removes all enchant-owned cloned visuals from Handle.EnchantBlock.
@@ -79,18 +205,9 @@ end
 function WeaponEnchantService.ClearEnchantVisuals(tool)
     if not tool then return end
 
-    local handle = tool:FindFirstChild("Handle")
-
-    -- Clean up active enchant effect clones from EnchantBlock
-    if handle then
-        local enchantBlock = handle:FindFirstChild("EnchantBlock")
-        if enchantBlock then
-            for _, child in ipairs(enchantBlock:GetChildren()) do
-                if child.Name:sub(1, #ENCHANT_EFFECT_PREFIX) == ENCHANT_EFFECT_PREFIX then
-                    pcall(function() child:Destroy() end)
-                end
-            end
-        end
+    -- Clean up active enchant effect clones from EnchantBlock(s)
+    for _, enchantBlock in ipairs(findEnchantBlocks(tool)) do
+        clearEnchantClonesFromBlock(enchantBlock)
     end
 
     -- Clean up any legacy code-generated enchant instances anywhere in the tool
@@ -134,6 +251,13 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
         return
     end
 
+    -- Ranged weapons keep enchant attributes for shot projectiles, but do not
+    -- show melee-style Handle.EnchantBlock effects on the held weapon.
+    if isRangedWeapon(tool) then
+        WeaponEnchantService.ClearEnchantVisuals(tool)
+        return
+    end
+
     local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
     if not enchantData then
         warn("[WeaponEnchantService] Unknown enchant '" .. tostring(enchantName) .. "', skipping visuals")
@@ -146,8 +270,8 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
         return
     end
 
-    local enchantBlock = handle:FindFirstChild("EnchantBlock")
-    if not enchantBlock then
+    local enchantBlocks = findEnchantBlocks(tool)
+    if #enchantBlocks == 0 then
         warn("[WeaponEnchantService] Handle.EnchantBlock not found on tool '" .. tool.Name .. "', skipping visuals")
         return
     end
@@ -161,16 +285,8 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
     WeaponEnchantService.ClearEnchantVisuals(tool)
 
     -- Clone the correct asset(s) into EnchantBlock
-    local assetNames = getAssetNames(enchantName)
-    for _, assetName in ipairs(assetNames) do
-        local assetTemplate = EnchantsFolder:FindFirstChild(assetName)
-        if assetTemplate then
-            local clone = assetTemplate:Clone()
-            clone.Name = ENCHANT_EFFECT_PREFIX .. assetName
-            clone.Parent = enchantBlock
-        else
-            warn("[WeaponEnchantService] Asset '" .. assetName .. "' not found in ReplicatedStorage.Enchants")
-        end
+    for _, enchantBlock in ipairs(enchantBlocks) do
+        cloneEnchantAssetsIntoBlock(enchantBlock, enchantName)
     end
 
     local trailColorSequence = WeaponEnchantConfig.GetTrailColorSequenceForEnchant(enchantName)
@@ -216,6 +332,7 @@ function WeaponEnchantService.RollAndAssignEnchant(tool, instanceData)
                 math.floor(c.G * 255 + 0.5),
                 math.floor(c.B * 255 + 0.5)))
         end
+        applyWeaponIcon(tool, enchantName)
     else
         tool:SetAttribute("HasEnchant", false)
         tool:SetAttribute("EnchantName", "")
@@ -238,6 +355,14 @@ end
 --------------------------------------------------------------------------------
 function WeaponEnchantService.ApplyEnchantFromInstance(tool, instanceData)
     if not tool or not instanceData then return end
+
+    local weaponName = instanceData.weaponName or tool:GetAttribute("WeaponName") or tool.Name
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.EnsureEnchantName) == "function" then
+        local ensured = WeaponEnchantConfig.EnsureEnchantName(weaponName, instanceData.enchantName)
+        if ensured and ensured ~= instanceData.enchantName then
+            instanceData.enchantName = ensured
+        end
+    end
 
     local enchantName = instanceData.enchantName
     if type(enchantName) ~= "string" or enchantName == "" then
@@ -262,7 +387,47 @@ function WeaponEnchantService.ApplyEnchantFromInstance(tool, instanceData)
         math.floor(c.G * 255 + 0.5),
         math.floor(c.B * 255 + 0.5)))
 
+    applyWeaponIcon(tool, enchantName)
     WeaponEnchantService.ApplyEnchantVisuals(tool)
+end
+
+--------------------------------------------------------------------------------
+-- APPLY ENCHANT VISUALS TO PROJECTILE
+-- Ranged weapons show their enchant on each shot's EnchantBlock instead of
+-- the held weapon. Safe to call on a Part or Model.
+--------------------------------------------------------------------------------
+function WeaponEnchantService.ApplyEnchantVisualsToProjectile(projectile, enchantName)
+    if not projectile then return false end
+    if type(enchantName) ~= "string" or enchantName == "" then return false end
+
+    local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
+    if not enchantData then
+        warn("[WeaponEnchantService] Unknown enchant '" .. tostring(enchantName) .. "' on projectile, skipping visuals")
+        return false
+    end
+
+    local enchantBlocks = findEnchantBlocks(projectile)
+    if #enchantBlocks == 0 then
+        warn("[WeaponEnchantService] EnchantBlock not found on projectile '" .. tostring(projectile.Name) .. "', skipping visuals")
+        return false
+    end
+
+    if not EnchantsFolder then
+        warn("[WeaponEnchantService] ReplicatedStorage.Enchants folder missing, cannot apply projectile visuals")
+        return false
+    end
+
+    for _, enchantBlock in ipairs(enchantBlocks) do
+        clearEnchantClonesFromBlock(enchantBlock)
+        cloneEnchantAssetsIntoBlock(enchantBlock, enchantName, PROJECTILE_ENCHANT_EMITTER_RATE)
+    end
+
+    pcall(function()
+        projectile:SetAttribute("HasEnchant", true)
+        projectile:SetAttribute("EnchantName", enchantName)
+    end)
+
+    return true
 end
 
 --------------------------------------------------------------------------------

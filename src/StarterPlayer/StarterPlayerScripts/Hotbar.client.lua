@@ -83,7 +83,7 @@ end
 --------------------------------------------------------------------------------
 local SLOT_DEFS = {
     { index = 1, key = Enum.KeyCode.One,   category = "Melee",   toolName = "Sword",      label = "1" },
-    { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Slingshot",   label = "2" },
+    { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Starter Slingshot", label = "2" },
     { index = 3, key = Enum.KeyCode.Three, category = "Utility", toolName = "Bandage",     label = "3", isUtility = true, utilityType = "bandage" },
     { index = 4, key = Enum.KeyCode.Four,  category = "Extra",   toolName = "",            label = "4", isUtility = true, utilityType = "potion" },
 }
@@ -675,10 +675,16 @@ local function getToolIcon(tool)
     -- 1) Check for an explicit Icon attribute
     local attr = tool:GetAttribute("Icon")
     if type(attr) == "string" and #attr > 0 then return attr end
-    -- 2) Check AssetCodes by tool name (e.g. "Shortbow" -> Shortbow icon)
-    if AssetCodes and type(AssetCodes.Get) == "function" then
-        local acIcon = AssetCodes.Get(tool.Name)
-        if type(acIcon) == "string" and #acIcon > 0 then return acIcon end
+    -- 2) Check AssetCodes by tool name (Ethereal Bow uses the enchant variant)
+    if AssetCodes then
+        local enchantName = tool:GetAttribute("EnchantName")
+        if type(AssetCodes.GetWeaponIcon) == "function" then
+            local acIcon = AssetCodes.GetWeaponIcon(tool.Name, enchantName)
+            if type(acIcon) == "string" and #acIcon > 0 then return acIcon end
+        elseif type(AssetCodes.Get) == "function" then
+            local acIcon = AssetCodes.Get(tool.Name)
+            if type(acIcon) == "string" and #acIcon > 0 then return acIcon end
+        end
     end
     -- 3) Fall back to tool TextureId
     local ok, tex = pcall(function() return tool.TextureId end)

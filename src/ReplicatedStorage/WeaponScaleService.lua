@@ -335,15 +335,48 @@ function WeaponScaleService.BindGripAlignment(tool)
     return true
 end
 
--- Collect BaseParts that are the Handle or descendants of the Handle
-local function collectHandleParts(handle)
+-- Collect every BasePart on the tool so multi-part bows/weapons scale together.
+-- Handle descendants AND sibling parts welded under the Tool are included.
+local function collectToolParts(tool, handle)
     local parts = {}
-    if not handle then return parts end
-    parts[#parts+1] = handle
-    for _, obj in ipairs(handle:GetDescendants()) do
-        if obj:IsA("BasePart") then parts[#parts+1] = obj end
+    local seen = {}
+    local function add(part)
+        if part and part:IsA("BasePart") and not seen[part] then
+            seen[part] = true
+            parts[#parts + 1] = part
+        end
+    end
+
+    add(handle)
+    if tool and tool.GetDescendants then
+        for _, obj in ipairs(tool:GetDescendants()) do
+            add(obj)
+        end
     end
     return parts
+end
+
+local function convertWeldConstraints(tool)
+    if not tool or not tool.GetDescendants then return end
+    for _, wc in ipairs(tool:GetDescendants()) do
+        if wc and wc:IsA("WeldConstraint") then
+            local p0 = wc.Part0
+            local p1 = wc.Part1
+            if p0 and p1 then
+                local weld = Instance.new("Weld")
+                weld.Name = (wc.Name ~= "" and wc.Name) or "Weld_from_WeldConstraint"
+                weld.Part0 = p0
+                weld.Part1 = p1
+                local ok, c0 = pcall(function()
+                    return p0.CFrame:ToObjectSpace(p1.CFrame)
+                end)
+                weld.C0 = (ok and c0) or CFrame.new()
+                weld.C1 = CFrame.new()
+                weld.Parent = p0
+            end
+            wc:Destroy()
+        end
+    end
 end
 
 -- Collect weld-like joints under the tool
@@ -368,6 +401,8 @@ function WeaponScaleService.CacheOriginals(tool)
         return nil
     end
 
+    convertWeldConstraints(tool)
+
     local entry = {
         tool = tool,
         handle = handle,
@@ -390,8 +425,8 @@ function WeaponScaleService.CacheOriginals(tool)
     end
     entry.originalToolGrip = tool.Grip
 
-    -- Parts: handle + descendants of handle
-    local parts = collectHandleParts(handle)
+    -- Parts: every BasePart on the tool (Handle, siblings, nested meshes)
+    local parts = collectToolParts(tool, handle)
     for _, part in ipairs(parts) do
         if part and part:IsA("BasePart") then
             local mesh = part:FindFirstChildOfClass("SpecialMesh")
@@ -425,13 +460,16 @@ function WeaponScaleService.CacheOriginals(tool)
         end
     end
 
-    -- Weld-like joints inside the tool
+    -- Weld-like joints inside the tool (ignore joints that reach outside the tool)
     local welds = collectWelds(tool)
     for _, w in ipairs(welds) do
         local p0 = w.Part0
         local p1 = w.Part1
         local inside0 = p0 and entry.parts[p0]
         local inside1 = p1 and entry.parts[p1]
+        if not inside0 and not inside1 then
+            continue
+        end
         entry.welds[w] = {
             C0 = w.C0,
             C1 = w.C1,

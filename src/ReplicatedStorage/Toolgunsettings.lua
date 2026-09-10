@@ -134,44 +134,77 @@ local rarityDefaults = {
 
 --------------------------------------------------------------------------------
 -- WEAPON PRESETS
+--
+-- Keys match the tool name (or the suffix when tools use a "Tool" prefix),
+-- lowercased: "Pixel Bow" / "ToolPixel Bow" -> "pixel bow".
+--
+-- projectile_name is cloned from ServerStorage.Projectiles. Expected names:
+--   Pebble, Arrow, Pixel Arrow, Elderwood Arrow, Ironwood Arrow,
+--   Skeletal Arrow, Ethereal Arrow, Golden Arrow
+-- Shots spawn from Handle.Fire and line the projectile's Tip up with Fire.
+-- Enchant visuals clone onto the projectile EnchantBlock, not the held weapon.
 --------------------------------------------------------------------------------
 
+local slingshotAudio = {
+    shoot_sound = "Slingshot_Shoot",
+    hit_sound = "Slingshot_Hit",
+}
+
+local bowAudio = {
+    shoot_sound = "BowShoot",
+    hit_sound = "BowHit",
+    -- If arrows spawn backwards, set visual_flip = true.
+    -- If they spawn on their side/upright wrong, set visual_rotation = {90, 0, 0}
+    -- (degrees around X, Y, Z in look space). Example: {0, 180, 0} or {90, 0, 0}.
+}
+
 local presets = {
-    ["starter slingshot"] = {
+    -- Common
+    ["starter slingshot"] = mergeTables(slingshotAudio, {
         rarity = "Common",
         projectile_name = "Pebble",
-        shoot_sound = "Slingshot_Shoot",
-        hit_sound = "Slingshot_Hit",
-    },
-
-    slingshot = {
+    }),
+    slingshot = mergeTables(slingshotAudio, {
         rarity = "Common",
         projectile_name = "Pebble",
-        shoot_sound = "Slingshot_Shoot",
-        hit_sound = "Slingshot_Hit",
-    },
+    }),
+    bow = mergeTables(bowAudio, {
+        rarity = "Common",
+        projectile_name = "Arrow",
+    }),
 
-    shortbow = {
+    -- Uncommon
+    ["pixel bow"] = mergeTables(bowAudio, {
+        rarity = "Uncommon",
+        projectile_name = "Pixel Arrow",
+    }),
+    ["elderwood bow"] = mergeTables(bowAudio, {
+        rarity = "Uncommon",
+        projectile_name = "Elderwood Arrow",
+    }),
+
+    -- Rare
+    ["ironwood bow"] = mergeTables(bowAudio, {
         rarity = "Rare",
-        projectile_name = "Arrow",
-        shoot_sound = "BowShoot",
-        hit_sound = "BowHit",
-    },
+        projectile_name = "Ironwood Arrow",
+    }),
+    ["skeletal bow"] = mergeTables(bowAudio, {
+        rarity = "Rare",
+        projectile_name = "Skeletal Arrow",
+    }),
 
-    longbow = {
+    -- Epic
+    -- Always enchanted; mesh tint + icon come from the rolled enchant.
+    ["ethereal bow"] = mergeTables(bowAudio, {
         rarity = "Epic",
-        projectile_name = "Arrow",
-        shoot_sound = "BowShoot",
-        hit_sound = "BowHit",
-    },
+        projectile_name = "Ethereal Arrow",
+    }),
 
-    xbow = {
+    -- Legendary
+    ["golden bow"] = mergeTables(bowAudio, {
         rarity = "Legendary",
-        projectile_name = "Bolt",
-        visual_flip = true,
-        shoot_sound = "BowShoot",
-        hit_sound = "BowHit",
-    },
+        projectile_name = "Golden Arrow",
+    }),
 }
 
 local module = {}
@@ -191,8 +224,64 @@ end
 module.presets = presets
 module.rarityDefaults = rarityDefaults
 
-local ServerStorage = game:GetService("ServerStorage")
-local projectilesFolder = ServerStorage:FindFirstChild("Projectiles")
+local function isAttachmentNamed(instance, name)
+    return instance and instance:IsA("Attachment") and instance.Name == name
+end
+
+function module.findNamedAttachment(root, name)
+    if not root or type(name) ~= "string" or name == "" then
+        return nil
+    end
+
+    local direct = root:FindFirstChild(name)
+    if isAttachmentNamed(direct, name) then
+        return direct
+    end
+
+    if root.GetDescendants then
+        for _, descendant in ipairs(root:GetDescendants()) do
+            if isAttachmentNamed(descendant, name) then
+                return descendant
+            end
+        end
+    end
+
+    return nil
+end
+
+-- Fire lives under Handle (the whole mesh on 1-part weapons, or the welded
+-- handle on multi-part weapons). Search Handle first, then the rest of the tool.
+function module.getFireAttachment(tool)
+    if not tool then return nil end
+
+    local handle = tool:FindFirstChild("Handle")
+    if handle then
+        local fire = handle:FindFirstChild("Fire")
+        if isAttachmentNamed(fire, "Fire") then
+            return fire
+        end
+        local nestedFire = module.findNamedAttachment(handle, "Fire")
+        if nestedFire then
+            return nestedFire
+        end
+    end
+
+    return module.findNamedAttachment(tool, "Fire")
+end
+
+function module.getFireOrigin(tool, fallback)
+    local fire = module.getFireAttachment(tool)
+    if fire then
+        return fire.WorldPosition
+    end
+
+    local handle = tool and tool:FindFirstChild("Handle")
+    if handle and handle:IsA("BasePart") then
+        return handle.Position
+    end
+
+    return fallback
+end
 
 -- Return a projectile Instance for the given tool type's preset.
 -- If the preset contains `projectile_name` and a matching object exists
@@ -202,6 +291,8 @@ function module.getProjectileForPreset(toolType)
     local preset = module.getPreset(toolType)
     if not preset then return nil end
 
+    local ServerStorage = game:GetService("ServerStorage")
+    local projectilesFolder = ServerStorage:FindFirstChild("Projectiles")
     if preset.projectile_name and projectilesFolder then
         local stored = projectilesFolder:FindFirstChild(tostring(preset.projectile_name))
         if stored then

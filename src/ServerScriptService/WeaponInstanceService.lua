@@ -11,7 +11,16 @@
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService      = game:GetService("HttpService")
 local Players          = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+
+local WeaponEnchantConfig
+pcall(function()
+    local module = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
+    if module and module:IsA("ModuleScript") then
+        WeaponEnchantConfig = require(module)
+    end
+end)
 
 local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 
@@ -205,6 +214,10 @@ function WeaponInstanceService:CreateInstance(player, weaponName, rarity, catego
 
     local id = generateId()
     allIds[id] = true
+
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.EnsureEnchantName) == "function" then
+        enchantName = WeaponEnchantConfig.EnsureEnchantName(weaponName, enchantName) or enchantName
+    end
 
     local instanceData = {
         instanceId  = id,

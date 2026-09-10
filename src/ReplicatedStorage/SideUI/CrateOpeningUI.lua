@@ -216,10 +216,14 @@ local function rollVisualSizeForCrate(crateDef)
     return sizePercent, sizeTier
 end
 
-local function rollVisualEnchant(rarityName)
+local function rollVisualEnchant(rarityName, weaponName, category)
     if WeaponEnchantConfig and type(WeaponEnchantConfig.RollEnchant) == "function" then
         local ok, enchantName = pcall(function()
-            return WeaponEnchantConfig.RollEnchant(rarityName)
+            return WeaponEnchantConfig.RollEnchant({
+                rarity = rarityName,
+                weaponName = weaponName,
+                category = category,
+            })
         end)
         if ok then return enchantName or "" end
     end
@@ -304,7 +308,14 @@ local function buildStrip(crateDef, resultData)
             if ok then sizeTier = result end
         end
         if enchantName == nil then
-            enchantName = rollVisualEnchant(rarity)
+            local category = nil
+            for _, entry in ipairs(pool) do
+                if entry.weapon == weapon then
+                    category = entry.category
+                    break
+                end
+            end
+            enchantName = rollVisualEnchant(rarity, weapon, category)
         end
 
         return {
@@ -1194,8 +1205,13 @@ function CrateOpeningUI.Init(playerGui)
         thumb.ZIndex = 8
         thumb.Parent = card
         pcall(function()
-            if AssetCodes and type(AssetCodes.Get) == "function" then
-                local img = AssetCodes.Get(data.weapon)
+            if AssetCodes then
+                local img
+                if type(AssetCodes.GetWeaponIcon) == "function" then
+                    img = AssetCodes.GetWeaponIcon(data.weapon, data.enchantName)
+                elseif type(AssetCodes.Get) == "function" then
+                    img = AssetCodes.Get(data.weapon)
+                end
                 if img and #img > 0 then thumb.Image = img end
             end
         end)
@@ -1488,8 +1504,13 @@ function CrateOpeningUI.Init(playerGui)
             -- Set weapon image
             resultImage.Image = ""
             pcall(function()
-                if AssetCodes and type(AssetCodes.Get) == "function" then
-                    local img = AssetCodes.Get(resultData.weaponName)
+                if AssetCodes then
+                    local img
+                    if type(AssetCodes.GetWeaponIcon) == "function" then
+                        img = AssetCodes.GetWeaponIcon(resultData.weaponName, resultData.enchantName)
+                    elseif type(AssetCodes.Get) == "function" then
+                        img = AssetCodes.Get(resultData.weaponName)
+                    end
                     if img and #img > 0 then resultImage.Image = img end
                 end
             end)

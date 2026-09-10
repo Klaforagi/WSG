@@ -95,12 +95,14 @@ local function playFireSound(toolName)
             template = toolgunFolder:FindFirstChild("Sniper_shoot") or toolgunFolder:FindFirstChild("Sniper_Shoot")
         elseif lower:find("pistol") then
             template = toolgunFolder:FindFirstChild("Pistol_shoot") or toolgunFolder:FindFirstChild("Pistol_Shoot")
-        elseif lower:find("shortbow") or lower:find("bow") then
-            -- prefer Shortbow detection but fall back to legacy 'Bow' asset names
-            template = toolgunFolder:FindFirstChild("Shortbow_shoot") or toolgunFolder:FindFirstChild("Shortbow_Shoot")
-            if not template then
-                template = toolgunFolder:FindFirstChild("Bow_shoot") or toolgunFolder:FindFirstChild("Bow_Shoot")
-            end
+        elseif lower:find("slingshot") then
+            template = toolgunFolder:FindFirstChild("Slingshot_Shoot") or toolgunFolder:FindFirstChild("Slingshot_shoot")
+        elseif lower:find("bow") then
+            template = toolgunFolder:FindFirstChild("BowShoot")
+                or toolgunFolder:FindFirstChild("Bow_shoot")
+                or toolgunFolder:FindFirstChild("Bow_Shoot")
+                or toolgunFolder:FindFirstChild("Shortbow_shoot")
+                or toolgunFolder:FindFirstChild("Shortbow_Shoot")
         end
     end
 
@@ -282,10 +284,16 @@ local function tryFire(tool)
     end
 
     local origin
-    if tool:FindFirstChild("Handle") and tool.Handle:IsA("BasePart") then
-        origin = tool.Handle.Position
-    else
-        origin = activeCamera.CFrame.Position
+    if TOOLCFG_MODULE and type(TOOLCFG_MODULE.getFireOrigin) == "function" then
+        origin = TOOLCFG_MODULE.getFireOrigin(tool, nil)
+    end
+    if typeof(origin) ~= "Vector3" then
+        local handle = tool:FindFirstChild("Handle")
+        if handle and handle:IsA("BasePart") then
+            origin = handle.Position
+        else
+            origin = activeCamera.CFrame.Position
+        end
     end
 
 	local rayOrigin

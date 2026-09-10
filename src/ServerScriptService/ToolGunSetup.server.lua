@@ -43,6 +43,14 @@ pcall(function()
     end
 end)
 
+local WeaponEnchantConfig
+pcall(function()
+    local mod = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
+    if mod and mod:IsA("ModuleScript") then
+        WeaponEnchantConfig = require(mod)
+    end
+end)
+
 local PotionService
 pcall(function()
     local mod = ServerScriptService:FindFirstChild("HealthPotionService")
@@ -86,18 +94,7 @@ end
 
 -- Default: tracers are disabled unless a preset explicitly enables them
 local SHOW_TRACER = false
-
-local TEAM_TRACER_COLORS = {
-    Blue = Color3.fromRGB(65, 105, 225), -- royal blue
-    Red  = Color3.fromRGB(255, 75, 75),
-}
 local DEFAULT_TRACER_COLOR = Color3.fromRGB(255, 200, 100)
-local function getTracerColor(player)
-    if player and player.Team then
-        return TEAM_TRACER_COLORS[player.Team.Name] or DEFAULT_TRACER_COLOR
-    end
-    return DEFAULT_TRACER_COLOR
-end
 
 -- Minimal server-side recoil: nudge the character's right arm up then back down
 local function playServerRecoil(player)
@@ -286,13 +283,249 @@ local function scaleVec3(v, factor)
     return Vector3.new(v.X * factor, v.Y * factor, v.Z * factor)
 end
 
---- Scale all BasePart sizes in a cloned projectile Model by factor.
---- Must be called BEFORE parenting / positioning the clone.
-local function scaleProjectileModel(model, factor)
-    if math.abs(factor - 1.0) < 0.001 then return end -- no-op at 100%
-    for _, d in ipairs(model:GetDescendants()) do
-        if d:IsA("BasePart") then
-            pcall(function() d.Size = scaleVec3(d.Size, factor) end)
+local function scaleCFrameTranslation(cf, factor)
+    local rot = CFrame.new(cf.Position):Inverse() * cf
+    return CFrame.new(cf.Position * factor) * rot
+end
+
+local function convertWeldConstraints(root)
+    if not root or not root.GetDescendants then return end
+    for _, wc in ipairs(root:GetDescendants()) do
+        if wc and wc:IsA("WeldConstraint") then
+            local p0 = wc.Part0
+            local p1 = wc.Part1
+            if p0 and p1 then
+                local weld = Instance.new("Weld")
+                weld.Name = wc.Name ~= "" and wc.Name or "Weld_from_WeldConstraint"
+                weld.Part0 = p0
+                weld.Part1 = p1
+                local ok, c0 = pcall(function()
+                    return p0.CFrame:ToObjectSpace(p1.CFrame)
+                end)
+                weld.C0 = (ok and c0) or CFrame.new()
+                weld.C1 = CFrame.new()
+                weld.Parent = p0
+            end
+            wc:Destroy()
+        end
+    end
+end
+
+local function applyProjectilePhysicsFlags(root)
+    local function flagPart(part)
+        part.CanCollide = false
+        part.Anchored = true
+        pcall(function() part.CanTouch = false end)
+        pcall(function() part.CanQuery = false end)
+        pcall(function() part.Massless = true end)
+    end
+
+    if root:IsA("BasePart") then
+        flagPart(root)
+    end
+    if not root.GetDescendants then return end
+    for _, descendant in ipairs(root:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            flagPart(descendant)
+        end
+    end
+end
+
+local function getVisualPrimary(visual)
+    if not visual then return nil end
+    if visual:IsA("BasePart") then
+        return visual
+    end
+    if visual:IsA("Model") then
+        local primary = visual.PrimaryPart
+        if primary and primary:IsA("BasePart") then
+            return primary
+        end
+        for _, descendant in ipairs(visual:GetDescendants()) do
+            if descendant:IsA("BasePart") then
+                visual.PrimaryPart = descendant
+                return descendant
+            end
+        end
+    end
+    return nil
+end
+
+local function findNamedAttachment(root, name)
+    if ToolgunModule and type(ToolgunModule.findNamedAttachment) == "function" then
+        return ToolgunModule.findNamedAttachment(root, name)
+    end
+    if not root or type(name) ~= "string" then return nil end
+    local direct = root:FindFirstChild(name)
+    if direct and direct:IsA("Attachment") then
+        return direct
+    end
+    if root.GetDescendants then
+        for _, descendant in ipairs(root:GetDescendants()) do
+            if descendant:IsA("Attachment") and descendant.Name == name then
+                return descendant
+            end
+        end
+    end
+    return nil
+end
+
+-- Tip POSITION in primary-part space. Rotation is ignored so a rotated Tip
+-- attachment cannot swing the whole projectile off to the side of Fire.
+local function getTipLocalPosition(visual, primary)
+    local tip = findNamedAttachment(visual, "Tip")
+    if not tip or not primary or not primary:IsA("BasePart") then
+        return Vector3.zero
+    end
+    if tip.Parent == primary then
+        return tip.Position
+    end
+    if tip.WorldPosition then
+        return primary.CFrame:PointToObjectSpace(tip.WorldPosition)
+    end
+    return Vector3.zero
+end
+
+local function getVisualRotationCFrame(projCfg)
+    local r = projCfg and (projCfg.visual_rotation or projCfg.visual_rotation_degrees)
+    if typeof(r) == "Vector3" then
+        return CFrame.Angles(math.rad(r.X), math.rad(r.Y), math.rad(r.Z))
+    end
+    if type(r) == "table" then
+        return CFrame.Angles(
+            math.rad(tonumber(r[1] or r.X) or 0),
+            math.rad(tonumber(r[2] or r.Y) or 0),
+            math.rad(tonumber(r[3] or r.Z) or 0)
+        )
+    end
+    return CFrame.new()
+end
+
+local function getLookCFrame(position, direction, visualFlip)
+    if not direction or direction.Magnitude <= 0.001 then
+        return CFrame.new(position)
+    end
+    if visualFlip then
+        return CFrame.lookAt(position, position - direction.Unit)
+    end
+    return CFrame.lookAt(position, position + direction.Unit)
+end
+
+-- Place Tip at `position` and aim along `direction`. Optional extra rotation
+-- is applied in look-space (visual_rotation degrees on the weapon preset).
+local function getAlignedPrimaryCFrame(position, direction, visualFlip, tipLocalPos, extraRotation)
+    local lookCFrame = getLookCFrame(position, direction, visualFlip)
+    if extraRotation then
+        lookCFrame = lookCFrame * extraRotation
+    end
+    local localPos = tipLocalPos or Vector3.zero
+    return lookCFrame * CFrame.new(-localPos)
+end
+
+local function setVisualPrimaryCFrame(visual, usingModel, cf)
+    local primary = nil
+    if usingModel and visual and visual:IsA("Model") then
+        primary = visual.PrimaryPart
+    elseif visual and visual:IsA("BasePart") then
+        primary = visual
+    end
+    if not primary or not primary:IsA("BasePart") then
+        return
+    end
+
+    if visual:IsA("Model") then
+        pcall(function()
+            visual.WorldPivot = primary.CFrame
+            visual:PivotTo(cf)
+        end)
+        if (primary.CFrame.Position - cf.Position).Magnitude > 0.05 then
+            local delta = cf * primary.CFrame:Inverse()
+            for _, descendant in ipairs(visual:GetDescendants()) do
+                if descendant:IsA("BasePart") then
+                    descendant.CFrame = delta * descendant.CFrame
+                end
+            end
+        end
+    else
+        visual.CFrame = cf
+    end
+end
+
+--- Scale all BasePart sizes, attachment offsets, and weld translations
+--- on a cloned projectile. Must be called BEFORE parenting / positioning.
+local function scaleProjectileInstance(visual, factor)
+    if not visual or math.abs(factor - 1.0) < 0.001 then return end
+    convertWeldConstraints(visual)
+
+    local function scaleDescendant(descendant)
+        if descendant:IsA("BasePart") then
+            pcall(function() descendant.Size = scaleVec3(descendant.Size, factor) end)
+        elseif descendant:IsA("Attachment") then
+            pcall(function() descendant.Position = descendant.Position * factor end)
+        elseif descendant:IsA("Weld") or descendant:IsA("ManualWeld") or descendant:IsA("Motor6D") then
+            pcall(function() descendant.C0 = scaleCFrameTranslation(descendant.C0, factor) end)
+            pcall(function() descendant.C1 = scaleCFrameTranslation(descendant.C1, factor) end)
+        elseif descendant:IsA("SpecialMesh") then
+            pcall(function() descendant.Scale = descendant.Scale * factor end)
+        end
+    end
+
+    if visual:IsA("BasePart") then
+        pcall(function() visual.Size = scaleVec3(visual.Size, factor) end)
+    end
+    if visual.GetDescendants then
+        for _, descendant in ipairs(visual:GetDescendants()) do
+            scaleDescendant(descendant)
+        end
+    end
+
+    local primary = getVisualPrimary(visual)
+    if primary and visual.GetDescendants then
+        for _, descendant in ipairs(visual:GetDescendants()) do
+            if descendant:IsA("BasePart") and descendant ~= primary then
+                local rel = primary.CFrame:ToObjectSpace(descendant.CFrame)
+                pcall(function()
+                    descendant.CFrame = primary.CFrame * scaleCFrameTranslation(rel, factor)
+                end)
+            end
+        end
+    end
+end
+
+local function getToolDisplayName(toolName)
+    if type(toolName) ~= "string" then return toolName end
+    return toolName:match("^Tool(.+)") or toolName
+end
+
+local function applyEtherealProjectileColor(visual, toolName, enchantName)
+    if not visual or type(enchantName) ~= "string" or enchantName == "" then
+        return
+    end
+
+    local weaponName = getToolDisplayName(toolName)
+    local isEthereal = type(weaponName) == "string" and string.find(string.lower(weaponName), "ethereal", 1, true) ~= nil
+    if not isEthereal then
+        return
+    end
+
+    local color = nil
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.GetEtherealPartColor) == "function" then
+        color = WeaponEnchantConfig.GetEtherealPartColor(enchantName)
+    end
+    if not color then
+        return
+    end
+
+    local function paint(part)
+        if part and part:IsA("BasePart") and part.Name ~= "EnchantBlock" then
+            pcall(function() part.Color = color end)
+        end
+    end
+
+    paint(visual)
+    if visual.GetDescendants then
+        for _, descendant in ipairs(visual:GetDescendants()) do
+            paint(descendant)
         end
     end
 end
@@ -495,27 +728,15 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     -- Try to obtain a preset projectile (Part or Model) from Toolgunsettings
     local visual = nil
     local usingModel = false
-    -- determine if this projectile should be randomized (slingshot/pebble)
     local presetKey = nil
     if toolName then
         local s = tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$")
         if s then presetKey = s:lower() end
     end
-    local isSlingshot = false
-    if presetKey == "slingshot" then isSlingshot = true end
-    if projCfg and projCfg.projectile_name and tostring(projCfg.projectile_name):lower() == "pebble" then isSlingshot = true end
-    if ToolgunModule and ToolgunModule.getProjectileForPreset then
-        -- derive preset key from toolName (accepts both "ToolShortbow" and "Shortbow")
-        local presetKey = nil
-        if toolName then
-            local s = tostring(toolName):match("^Tool(.+)") or tostring(toolName):match("^(.+)$")
-            if s then presetKey = s:lower() end
-        end
-        if presetKey then
-            local ok, proj = pcall(function() return ToolgunModule.getProjectileForPreset(presetKey) end)
-            if ok and proj then
-                visual = proj
-            end
+    if ToolgunModule and ToolgunModule.getProjectileForPreset and presetKey then
+        local ok, proj = pcall(function() return ToolgunModule.getProjectileForPreset(presetKey) end)
+        if ok and proj then
+            visual = proj
         end
     end
 
@@ -523,81 +744,49 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     if not visual then
         visual = Instance.new("Part")
         visual.Name = "Bullet"
-        visual.Size = pSize  -- already scaled by caller
-        visual.Material = Enum.Material.Neon
-        if isSlingshot then
-            visual.Color = BrickColor.Random().Color
-        else
-            visual.Color = getTracerColor(player)
-        end
-        -- keep same behavior as previous implementation
-        visual.CanCollide = false
-        visual.Anchored = true
-        visual.CFrame = CFrame.new(origin)
-        visual.Parent = Workspace
+        visual.Size = pSize
+        visual.Material = Enum.Material.SmoothPlastic
+        visual.Color = Color3.fromRGB(180, 180, 180)
+    elseif visual:IsA("Model") then
+        usingModel = true
+        scaleProjectileInstance(visual, modelVisualScale)
+        getVisualPrimary(visual)
+    elseif visual:IsA("BasePart") then
+        scaleProjectileInstance(visual, modelVisualScale)
     else
-        -- If the template is a Model, prepare it for script-driven movement
-        if visual:IsA("Model") then
-            usingModel = true
-            -- Scale each part of the cloned model before positioning.
-            scaleProjectileModel(visual, modelVisualScale)
-            -- ensure model has a PrimaryPart; pick first BasePart if not
-            local primary = visual.PrimaryPart
-            if not primary then
-                for _, d in ipairs(visual:GetDescendants()) do
-                    if d:IsA("BasePart") then
-                        primary = d
-                        break
-                    end
-                end
-                if primary then visual.PrimaryPart = primary end
-            end
-            -- make all parts non-collidable and anchored so we can move the model via CFrame
-            for _, d in ipairs(visual:GetDescendants()) do
-                if d:IsA("BasePart") then
-                    d.CanCollide = false
-                    d.Anchored = true
-                    if isSlingshot then
-                        pcall(function() d.Color = BrickColor.Random().Color end)
-                    end
-                end
-            end
-            visual:SetPrimaryPartCFrame(CFrame.new(origin))
-            visual.Parent = Workspace
-        elseif visual:IsA("BasePart") then
-            -- Scale the cloned part before positioning.
-            pcall(function() visual.Size = scaleVec3(visual.Size, modelVisualScale) end)
-            visual.CanCollide = false
-            visual.Anchored = true
-            visual.CFrame = CFrame.new(origin)
-            if isSlingshot then
-                pcall(function() visual.Color = BrickColor.Random().Color end)
-            else
-                pcall(function() visual.Color = getTracerColor(player) end)
-            end
-            visual.Parent = Workspace
-        else
-            -- unknown type: fallback to simple part
-            local part = Instance.new("Part")
-            part.Name = "Bullet"
-            part.Size = pSize
-            part.Material = Enum.Material.Neon
-            if isSlingshot then
-                part.Color = BrickColor.Random().Color
-            else
-                part.Color = getTracerColor(player)
-            end
-            part.CanCollide = false
-            part.Anchored = true
-            part.CFrame = CFrame.new(origin)
-            part.Parent = Workspace
-            visual = part
-        end
+        local part = Instance.new("Part")
+        part.Name = "Bullet"
+        part.Size = pSize
+        part.Material = Enum.Material.SmoothPlastic
+        part.Color = Color3.fromRGB(180, 180, 180)
+        visual = part
+        usingModel = false
     end
 
+    applyProjectilePhysicsFlags(visual)
+    visual.Parent = Workspace
+    params.FilterDescendantsInstances = {player.Character, visual}
+
+    local enchantName = projCfg and projCfg._enchantName
+    if WeaponEnchantService and type(enchantName) == "string" and enchantName ~= "" then
+        pcall(function()
+            WeaponEnchantService.ApplyEnchantVisualsToProjectile(visual, enchantName)
+        end)
+    end
+    applyEtherealProjectileColor(visual, (projCfg and projCfg._weaponName) or toolName, enchantName)
+
+    local visualFlip = (projCfg and projCfg.visual_flip) and true or false
+    local extraRotation = getVisualRotationCFrame(projCfg)
+    local aimUnit = (initialVelocity and initialVelocity.Magnitude > 0.001) and initialVelocity.Unit or Vector3.new(0, 0, -1)
+    local primary = getVisualPrimary(visual)
+    local tipLocalPos = getTipLocalPosition(visual, primary)
+    local lastCFrame = getLookCFrame(origin, aimUnit, visualFlip)
+    pcall(function()
+        setVisualPrimaryCFrame(visual, usingModel, getAlignedPrimaryCFrame(origin, aimUnit, visualFlip, tipLocalPos, extraRotation))
+    end)
+
     if WeaponTrailService and visual then
-        local trailColor = getTracerColor(player)
-        local enchantName = projCfg and projCfg._enchantName
+        local trailColor = DEFAULT_TRACER_COLOR
         if visual:IsA("BasePart") then
             trailColor = visual.Color
         elseif visual:IsA("Model") and visual.PrimaryPart then
@@ -623,18 +812,6 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local startTime = tick()
     local conn
     local hitHumanoids = {} -- prevent double-hits between original ray and expanded box
-    -- allow presets to request a visual flip for models whose forward faces backwards
-    local visualFlip = (projCfg and projCfg.visual_flip) and true or false
-    local lastCFrame
-    if visualFlip then
-        lastCFrame = CFrame.new(origin, origin - initialVelocity.Unit)
-    else
-        lastCFrame = CFrame.new(origin, origin + initialVelocity.Unit)
-    end
-    -- orient model immediately if it's a Model primary part exists
-    if usingModel and visual and visual.PrimaryPart then
-        pcall(function() visual:SetPrimaryPartCFrame(lastCFrame) end)
-    end
     conn = RunService.Heartbeat:Connect(function(dt)
         if not visual.Parent then
             conn:Disconnect()
@@ -665,7 +842,13 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             local boxHit = false
             for _, bp in ipairs(boxParts) do
                 if bp and bp:IsA("BasePart") then
+                    if visual and (bp == visual or bp:IsDescendantOf(visual)) then
+                        continue
+                    end
                     local candidateModel = bp:FindFirstAncestorOfClass("Model")
+                    if candidateModel and visual and candidateModel == visual then
+                        continue
+                    end
                     if candidateModel then
                         local hum = candidateModel:FindFirstChildOfClass("Humanoid")
                         if hum and hum.Health > 0 and not hitHumanoids[hum] then
@@ -896,34 +1079,10 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         hitPart = hitInstance
                     end
 
-                    -- Compute tipOffset: the Tip Attachment's CFrame relative to PrimaryPart.
-                    -- Works even when the Tip lives on a non-primary descendant part.
-                    local tip = findTipAttachment(visual, primary)
-                    local tipOffset = nil
-                    if tip then
-                        if tip.Parent == primary then
-                            tipOffset = tip.CFrame
-                        else
-                            -- tip is on another part; bridge via world CFrames
-                            local tipWorld = tip.Parent.CFrame * tip.CFrame
-                            tipOffset = primary.CFrame:Inverse() * tipWorld
-                        end
-                    end
-
-                    -- Position model so Tip.WorldPosition == hitPos, rotation == rot
-                    if tipOffset and rot then
-                        local newPrimary = CFrame.new(hitPos) * rot * tipOffset:Inverse()
-                        visual:SetPrimaryPartCFrame(newPrimary)
-                    elseif tipOffset then
-                        local newPrimary = CFrame.new(hitPos) * tipOffset:Inverse()
-                        visual:SetPrimaryPartCFrame(newPrimary)
-                    else
-                        if rot then
-                            visual:SetPrimaryPartCFrame(CFrame.new(hitPos) * rot)
-                        else
-                            visual:SetPrimaryPartCFrame(CFrame.new(hitPos))
-                        end
-                    end
+                    -- Place Tip at the hit, keeping the in-flight look rotation.
+                    local stickLook = rot and (CFrame.new(hitPos) * rot) or CFrame.new(hitPos)
+                    local stickCFrame = stickLook * CFrame.new(-tipLocalPos)
+                    setVisualPrimaryCFrame(visual, usingModel, stickCFrame)
 
                     -- Weld to hitPart (moves with it) or anchor in world space
                     if hitPart then
@@ -1110,23 +1269,11 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             return
         end
 
-        if usingModel and visual:IsA("Model") and visual.PrimaryPart then
-            if lastCFrame then
-                local rot = lastCFrame - lastCFrame.Position
-                visual:SetPrimaryPartCFrame(CFrame.new(nextPos) * rot)
-            else
-                visual:SetPrimaryPartCFrame(CFrame.new(nextPos, nextPos + velocity.Unit))
-            end
-            lastCFrame = visual.PrimaryPart and visual.PrimaryPart.CFrame or lastCFrame
-        elseif visual and visual:IsA("BasePart") then
-            if lastCFrame then
-                local rot = lastCFrame - lastCFrame.Position
-                visual.CFrame = CFrame.new(nextPos) * rot
-            else
-                visual.CFrame = CFrame.new(nextPos, nextPos + velocity.Unit)
-            end
-            lastCFrame = visual.CFrame
-        end
+        local moveDir = (velocity.Magnitude > 0.001) and velocity.Unit or Vector3.new(0, 0, -1)
+        lastCFrame = getLookCFrame(nextPos, moveDir, visualFlip)
+        pcall(function()
+            setVisualPrimaryCFrame(visual, usingModel, getAlignedPrimaryCFrame(nextPos, moveDir, visualFlip, tipLocalPos, extraRotation))
+        end)
         lastPos = nextPos
 
         if (lastPos - origin).Magnitude > pRange or tick() - startTime > pLifetime then
@@ -1229,6 +1376,20 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     if (gunOrigin - hrp.Position).Magnitude > 60 then return end
     if (camOrigin - hrp.Position).Magnitude > 120 then return end
 
+    -- Server-authoritative muzzle: Handle.Fire, then Handle, then the client origin.
+    local fireOrigin = gunOrigin
+    if ToolgunModule and type(ToolgunModule.getFireOrigin) == "function" then
+        fireOrigin = ToolgunModule.getFireOrigin(equippedTool, gunOrigin) or gunOrigin
+    else
+        local fireAttachment = findNamedAttachment(equippedTool, "Fire")
+        if fireAttachment then
+            fireOrigin = fireAttachment.WorldPosition
+        end
+    end
+    if typeof(fireOrigin) ~= "Vector3" then
+        fireOrigin = gunOrigin
+    end
+
     -- perform a server-side hitscan from the camera ray first so shots go where the player's cursor is
     local params = RaycastParams.new()
     params.FilterDescendantsInstances = {player.Character}
@@ -1248,15 +1409,15 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     end
 
     -- Aim direction from muzzle to the aimPoint (fixes parallax)
-    local aimDir = (aimPoint - gunOrigin)
+    local aimDir = (aimPoint - fireOrigin)
     if aimDir.Magnitude <= 0.001 then
         aimDir = hrp.CFrame.LookVector
     else
         aimDir = aimDir.Unit
     end
 
-    -- muzzle obstruction check along the computed aimDir from gunOrigin
-    local gunObstruction = raycastSkippingAccessories(gunOrigin, aimDir * tRANGE, params, player)
+    -- muzzle obstruction check along the computed aimDir from Fire
+    local gunObstruction = raycastSkippingAccessories(fireOrigin, aimDir * tRANGE, params, player)
     if gunObstruction and gunObstruction.Instance then
         local showTracerForTool = (tCfg and tCfg.showTracer ~= nil) and tCfg.showTracer or SHOW_TRACER
         if showTracerForTool then
@@ -1264,14 +1425,14 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
                 local hitPos = gunObstruction.Position
                 local beam = Instance.new("Part")
                 beam.Name = "ToolGunServerTracer"
-                local dir = (hitPos - gunOrigin)
+                local dir = (hitPos - fireOrigin)
                 local len = dir.Magnitude
                 beam.Size = Vector3.new(0.15, 0.15, math.max(len, 0.1))
-                beam.CFrame = CFrame.new(gunOrigin + dir/2, hitPos)
+                beam.CFrame = CFrame.new(fireOrigin + dir/2, hitPos)
                 beam.Anchored = true
                 beam.CanCollide = false
                 beam.Material = Enum.Material.Neon
-                beam.Color = getTracerColor(player)
+                beam.Color = DEFAULT_TRACER_COLOR
                 beam.Parent = Workspace
                 game:GetService("Debris"):AddItem(beam, 0.22)
             end)()
@@ -1281,12 +1442,12 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
 
     -- Notify the client immediately so hold-to-fire pacing is driven by ACK, not a local timer.
     pcall(function()
-        if fireAck then fireAck:FireClient(player, gunOrigin, aimPoint, toolName) end
+        if fireAck then fireAck:FireClient(player, fireOrigin, aimPoint, toolName) end
     end)
 
     -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts
     local initVel = aimDir * tBULLETSPEED
-    spawnProjectile(player, gunOrigin, initVel, scaledCfg, toolName)
+    spawnProjectile(player, fireOrigin, initVel, scaledCfg, toolName)
 
     -- Apply a brief movement slow while firing ranged weapons.
     do

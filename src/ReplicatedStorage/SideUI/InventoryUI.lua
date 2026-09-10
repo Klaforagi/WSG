@@ -2649,8 +2649,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         detailImage.Image = ""
         pcall(function()
-            if AssetCodes and type(AssetCodes.Get) == "function" then
-                local img = AssetCodes.Get(tostring(itemData.name))
+            if AssetCodes then
+                local img
+                if type(AssetCodes.GetWeaponIcon) == "function" then
+                    img = AssetCodes.GetWeaponIcon(tostring(itemData.name), itemData.enchantName)
+                elseif type(AssetCodes.Get) == "function" then
+                    img = AssetCodes.Get(tostring(itemData.name))
+                end
                 if img and #img > 0 then detailImage.Image = img end
             end
         end)
@@ -2804,8 +2809,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         thumb.ScaleType = Enum.ScaleType.Fit
         thumb.Image = ""
         pcall(function()
-            if AssetCodes and type(AssetCodes.Get) == "function" then
-                local img = AssetCodes.Get(tostring(itemData.name))
+            if AssetCodes then
+                local img
+                if type(AssetCodes.GetWeaponIcon) == "function" then
+                    img = AssetCodes.GetWeaponIcon(tostring(itemData.name), itemData.enchantName)
+                elseif type(AssetCodes.Get) == "function" then
+                    img = AssetCodes.Get(tostring(itemData.name))
+                end
                 if img and #img > 0 then thumb.Image = img end
             end
         end)

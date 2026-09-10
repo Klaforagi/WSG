@@ -304,6 +304,9 @@ function AdminService:GrantWeapon(adminPlayer, targetUserId, weaponName, sizePer
         end
         return { success = false, error = "Invalid enchant: " .. tostring(enchantName) .. ". Valid enchants: " .. table.concat(validNames, ", ") }
     end
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.EnsureEnchantName) == "function" then
+        validatedEnchant = WeaponEnchantConfig.EnsureEnchantName(weaponName, validatedEnchant) or validatedEnchant or ""
+    end
 
     -- 6. Determine category and rarity
     local category = weaponInfo.category

@@ -1,11 +1,29 @@
 -- EtherealSwordHandleColorizer.server.lua
--- Sets the Handle BrickColor for Ethereal Sword based on its enchant when equipped.
+-- Tints Ethereal Sword / Ethereal Bow parts from their enchant, using the
+-- shared EtherealPartColors in WeaponEnchantConfig.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local TARGET_KEYWORD = "ethereal" -- case-insensitive match for tool name
 
-local ENCHANT_TO_COLOR = {
+local WeaponEnchantConfig
+pcall(function()
+    local module = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
+    if module and module:IsA("ModuleScript") then
+        WeaponEnchantConfig = require(module)
+    end
+end)
+
+local AssetCodes
+pcall(function()
+    local module = ReplicatedStorage:FindFirstChild("AssetCodes")
+    if module and module:IsA("ModuleScript") then
+        AssetCodes = require(module)
+    end
+end)
+
+local FALLBACK_ENCHANT_TO_COLOR = {
     Lifesteal = Color3.fromRGB(255, 0, 4),   -- red
     Fiery     = Color3.fromRGB(255, 111, 0), -- orange
     Shock     = Color3.fromRGB(255, 213, 0), -- yellow
@@ -14,47 +32,110 @@ local ENCHANT_TO_COLOR = {
     Void      = Color3.fromRGB(162, 0, 255), -- purple
 }
 
+local function getEnchantColor(enchantName)
+    if WeaponEnchantConfig and type(WeaponEnchantConfig.GetEtherealPartColor) == "function" then
+        local color = WeaponEnchantConfig.GetEtherealPartColor(enchantName)
+        if color then
+            return color
+        end
+    end
+    return FALLBACK_ENCHANT_TO_COLOR[enchantName]
+end
+
 local function isTargetTool(tool)
     if not tool or not tool.Name then return false end
     local n = tostring(tool.Name):lower()
-    return string.find(n, TARGET_KEYWORD, 1, true) ~= nil
+    return n == "ethereal sword" or n == "ethereal bow" or string.find(n, TARGET_KEYWORD, 1, true) ~= nil
 end
 
-local originalHandleColors = setmetatable({}, { __mode = "k" })
+local originalPartColors = setmetatable({}, { __mode = "k" })
 
-local function setHandleColor(handle, color3)
-    if not handle or not handle:IsA("BasePart") then return end
+local function setPartColor(part, color3)
+    if not part or not part:IsA("BasePart") then return end
     pcall(function()
         -- Set Color3 directly to preserve exact color values (avoids BrickColor palette snapping)
-        handle.Color = color3
+        part.Color = color3
+    end)
+end
+
+local function rememberOriginalColor(tool, part)
+    if not tool or not part then return end
+    local stored = originalPartColors[tool]
+    if not stored then
+        stored = {}
+        originalPartColors[tool] = stored
+    end
+    if stored[part] == nil then
+        stored[part] = part.Color
+    end
+end
+
+local function restoreOriginalColors(tool)
+    local stored = originalPartColors[tool]
+    if not stored then return end
+    for part, color in pairs(stored) do
+        if part and part.Parent then
+            setPartColor(part, color)
+        end
+    end
+end
+
+local function collectTintParts(tool)
+    local parts = {}
+    local handle = tool and tool:FindFirstChild("Handle")
+    if handle and handle:IsA("BasePart") then
+        table.insert(parts, handle)
+    end
+
+    -- Ethereal Bow can be several welded meshes; tint those too.
+    local toolName = tool and string.lower(tostring(tool.Name or ""))
+    if toolName and string.find(toolName, "ethereal bow", 1, true) and tool.GetDescendants then
+        for _, descendant in ipairs(tool:GetDescendants()) do
+            if descendant:IsA("BasePart") and descendant.Name ~= "EnchantBlock" and descendant ~= handle then
+                table.insert(parts, descendant)
+            end
+        end
+    end
+
+    return parts
+end
+
+local function applyEtherealIcon(tool, enchantName)
+    if not tool or not AssetCodes or type(AssetCodes.GetWeaponIcon) ~= "function" then
+        return
+    end
+    local icon = AssetCodes.GetWeaponIcon(tool.Name, enchantName)
+    if type(icon) ~= "string" or icon == "" then
+        return
+    end
+    pcall(function()
+        tool.TextureId = icon
+        tool:SetAttribute("Icon", icon)
     end)
 end
 
 local function applyHandleColorForEnchant(tool)
     if not tool then return end
+    if not isTargetTool(tool) then return end
     local hasEnchant = tool:GetAttribute("HasEnchant")
     local enchantName = tool:GetAttribute("EnchantName")
     if not hasEnchant or not enchantName or enchantName == "" then
-        -- restore original color if we have it saved
-        local handle = tool:FindFirstChild("Handle")
-        local orig = originalHandleColors[tool]
-        if handle and orig then
-            setHandleColor(handle, orig)
-        end
+        restoreOriginalColors(tool)
         return
     end
 
-    local handle = tool:FindFirstChild("Handle")
-    if handle and handle:IsA("BasePart") then
-        local color3 = ENCHANT_TO_COLOR[enchantName]
-        if color3 then
-            -- save original color once
-            if not originalHandleColors[tool] then
-                originalHandleColors[tool] = handle.Color
-            end
-            setHandleColor(handle, color3)
-        end
+    local color3 = getEnchantColor(enchantName)
+    if not color3 then
+        restoreOriginalColors(tool)
+        return
     end
+
+    for _, part in ipairs(collectTintParts(tool)) do
+        rememberOriginalColor(tool, part)
+        setPartColor(part, color3)
+    end
+
+    applyEtherealIcon(tool, enchantName)
 end
 
 local function onToolEquipped(tool)
@@ -65,6 +146,7 @@ end
 
 local function attachToTool(tool)
     if not tool or not tool:IsA("Tool") then return end
+    if not isTargetTool(tool) then return end
     if tool:GetAttribute("_HandleColorizerAttached") then return end
     tool:SetAttribute("_HandleColorizerAttached", true)
 
@@ -86,11 +168,8 @@ local function attachToTool(tool)
         end)
     end
 
-    -- Also react if enchant attributes are already present when the tool appears in a character
-    if tool.Parent and tool.Parent:IsA("Model") and tool.Parent:FindFirstChildOfClass("Humanoid") then
-        -- tool is already in a character
-        onToolEquipped(tool)
-    end
+    -- Tint immediately so backpack / StarterGear copies match the enchant too.
+    applyHandleColorForEnchant(tool)
 end
 
 local function monitorPlayer(player)

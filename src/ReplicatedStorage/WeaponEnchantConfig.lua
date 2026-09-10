@@ -21,6 +21,22 @@ local WeaponEnchantConfig = {}
 -- TODO: revert to 0.20 after testing
 WeaponEnchantConfig.ENCHANT_CHANCE = 0.20
 
+-- Weapons that always roll an enchant, even if the crate chance fails.
+WeaponEnchantConfig.GuaranteedEnchantWeapons = {
+    ["Ethereal Bow"] = true,
+}
+
+-- Handle / mesh tint used by Ethereal Sword and Ethereal Bow.
+-- Kept separate from aura/trail colors so the weapon body matches the sword.
+WeaponEnchantConfig.EtherealPartColors = {
+    Lifesteal = Color3.fromRGB(255, 0, 4),   -- red
+    Fiery     = Color3.fromRGB(255, 111, 0), -- orange
+    Shock     = Color3.fromRGB(255, 213, 0), -- yellow
+    Toxic     = Color3.fromRGB(98, 255, 0),  -- green
+    Icy       = Color3.fromRGB(0, 166, 255), -- blue
+    Void      = Color3.fromRGB(162, 0, 255), -- purple
+}
+
 --------------------------------------------------------------------------------
 -- ENCHANT DEFINITIONS
 -- Each enchant has:
@@ -206,21 +222,160 @@ local function resolveEnchantChance(context)
     return math.clamp(chance, 0, 1)
 end
 
---------------------------------------------------------------------------------
--- RollEnchant() -> enchantName (string) or nil
--- 20% chance to receive an enchant; on success picks one uniformly at random.
---------------------------------------------------------------------------------
-function WeaponEnchantConfig.RollEnchant(context)
-    local rarityName = resolveRarityName(context)
-    if rarityName and string.lower(rarityName) == "common" then
+local function resolveWeaponName(context)
+    if type(context) ~= "table" then
         return nil
     end
 
-    if math.random() > resolveEnchantChance(context) then
+    local weaponName = context.weaponName or context.weapon or context.toolName
+    if type(weaponName) ~= "string" then
+        return nil
+    end
+
+    local trimmed = weaponName:match("^%s*(.-)%s*$")
+    if not trimmed or trimmed == "" then
+        return nil
+    end
+
+    return trimmed
+end
+
+local Toolgunsettings
+local function getToolgunsettings()
+    if Toolgunsettings ~= nil then
+        return Toolgunsettings
+    end
+
+    local ok, module = pcall(function()
+        local scriptModule = script.Parent and script.Parent:FindFirstChild("Toolgunsettings")
+        if scriptModule and scriptModule:IsA("ModuleScript") then
+            return require(scriptModule)
+        end
+        return nil
+    end)
+    Toolgunsettings = (ok and module) or false
+    return Toolgunsettings
+end
+
+local function isRangedWeapon(context, weaponName)
+    if type(context) == "table" then
+        local category = context.category or context.weaponCategory or context.weaponType
+        if type(category) == "string" and string.lower(category) == "ranged" then
+            return true
+        end
+    end
+
+    if type(weaponName) ~= "string" or weaponName == "" then
+        return false
+    end
+
+    local settings = getToolgunsettings()
+    if settings and type(settings.getPreset) == "function" then
+        local ok, preset = pcall(function()
+            return settings.getPreset(weaponName)
+        end)
+        if ok and type(preset) == "table" then
+            return true
+        end
+    end
+
+    return false
+end
+
+function WeaponEnchantConfig.RequiresEnchant(weaponName)
+    if type(weaponName) ~= "string" or weaponName == "" then
+        return false
+    end
+
+    if WeaponEnchantConfig.GuaranteedEnchantWeapons[weaponName] then
+        return true
+    end
+
+    local lowerName = string.lower(weaponName)
+    for name, enabled in pairs(WeaponEnchantConfig.GuaranteedEnchantWeapons) do
+        if enabled and type(name) == "string" and string.lower(name) == lowerName then
+            return true
+        end
+    end
+
+    return false
+end
+
+function WeaponEnchantConfig.GetEtherealPartColor(enchantName)
+    if type(enchantName) ~= "string" or enchantName == "" then
+        return nil
+    end
+
+    local trimmed = enchantName:match("^%s*(.-)%s*$")
+    if not trimmed or trimmed == "" then
+        return nil
+    end
+
+    local direct = WeaponEnchantConfig.EtherealPartColors[trimmed]
+    if direct then
+        return direct
+    end
+
+    local lowerName = string.lower(trimmed)
+    for name, color in pairs(WeaponEnchantConfig.EtherealPartColors) do
+        if type(name) == "string" and string.lower(name) == lowerName then
+            return color
+        end
+    end
+
+    return nil
+end
+
+local function pickRandomEnchantName()
+    local list = WeaponEnchantConfig.Enchants
+    if type(list) ~= "table" or #list == 0 then
+        return nil
+    end
+    return list[math.random(1, #list)].name
+end
+
+--------------------------------------------------------------------------------
+-- RollEnchant() -> enchantName (string) or nil
+-- 20% chance to receive an enchant; on success picks one uniformly at random.
+-- Common melee cannot roll enchants. Common ranged can.
+-- Weapons in GuaranteedEnchantWeapons always receive one.
+--------------------------------------------------------------------------------
+function WeaponEnchantConfig.RollEnchant(context)
+    local weaponName = resolveWeaponName(context)
+    local guaranteed = WeaponEnchantConfig.RequiresEnchant(weaponName)
+        or (type(context) == "table" and context.guaranteedEnchant == true)
+
+    local rarityName = resolveRarityName(context)
+    if not guaranteed and rarityName and string.lower(rarityName) == "common" then
+        if not isRangedWeapon(context, weaponName) then
+            return nil
+        end
+    end
+
+    if not guaranteed and math.random() > resolveEnchantChance(context) then
         return nil -- no enchant this roll
     end
-    local list = WeaponEnchantConfig.Enchants
-    return list[math.random(1, #list)].name
+
+    return pickRandomEnchantName()
+end
+
+-- Keep a valid enchant for guaranteed weapons; otherwise return the original.
+function WeaponEnchantConfig.EnsureEnchantName(weaponName, enchantName)
+    if type(enchantName) == "string" then
+        local trimmed = enchantName:match("^%s*(.-)%s*$")
+        if trimmed and trimmed ~= "" and trimmed ~= "None" and WeaponEnchantConfig.GetEnchantData(trimmed) then
+            return trimmed
+        end
+    end
+
+    if WeaponEnchantConfig.RequiresEnchant(weaponName) then
+        return WeaponEnchantConfig.RollEnchant({
+            weaponName = weaponName,
+            guaranteedEnchant = true,
+        })
+    end
+
+    return nil
 end
 
 --------------------------------------------------------------------------------
