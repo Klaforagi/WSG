@@ -570,9 +570,20 @@ local function playDashEffects(targetPlayer, effectId)
     })
     trail.Parent = rootPart
 
-    Debris:AddItem(trail, DashConfig.TrailLifetime)
-    Debris:AddItem(trailAttach0, DashConfig.TrailLifetime + 0.05)
-    Debris:AddItem(trailAttach1, DashConfig.TrailLifetime + 0.05)
+    -- Stop emitting when the dash burst ends, but keep the Trail instance
+    -- alive so already-drawn segments can fade out over Lifetime.
+    local fadeDelay = DashConfig.Duration or 0.2
+    local destroyDelay = fadeDelay + (DashConfig.TrailLifetime or 0.45)
+    task.delay(fadeDelay, function()
+        if trail and trail.Parent then
+            pcall(function()
+                trail.Enabled = false
+            end)
+        end
+    end)
+    Debris:AddItem(trail, destroyDelay)
+    Debris:AddItem(trailAttach0, destroyDelay + 0.05)
+    Debris:AddItem(trailAttach1, destroyDelay + 0.05)
 
     -------------------------------------------------------
     -- 2) Speed-streak particles

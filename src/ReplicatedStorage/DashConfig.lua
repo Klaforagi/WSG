@@ -20,7 +20,7 @@ DashConfig.MaxForce     = 1e6     -- high enough to fully override existing velo
 
 -- Visual effects
 DashConfig.EffectEnabled    = true
-DashConfig.TrailLifetime    = 0.35   -- seconds the trail stays visible from dash start
+DashConfig.TrailLifetime    = 0.8    -- seconds each trail segment takes to fade after being drawn
 DashConfig.ParticleCount    = 18     -- speed-streak particles emitted per dash
 DashConfig.GhostTransparency = 0.7  -- afterimage starting transparency
 DashConfig.GhostFadeDuration = 0.35 -- seconds for afterimage to vanish
