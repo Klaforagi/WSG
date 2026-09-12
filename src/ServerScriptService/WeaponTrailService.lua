@@ -307,7 +307,8 @@ local function findTipAttachment(root)
     return findAttachmentByExactName(root, { "Tip" })
 end
 
-local function ensureProjectileAttachments(projectile)
+local function ensureProjectileAttachments(projectile, scale)
+    local widthScale = math.clamp(tonumber(scale) or 1, 0.25, 5)
     local tip = findTipAttachment(projectile)
     if tip and tip.Parent and tip.Parent:IsA("BasePart") then
         local hostPart = tip.Parent
@@ -317,8 +318,9 @@ local function ensureProjectileAttachments(projectile)
             attachment1.Name = AUTO_PROJECTILE_ATTACHMENT1_NAME
             attachment1.Parent = hostPart
         end
-        -- Small offset from Tip so the ribbon has width while still originating at Tip.
-        attachment1.CFrame = tip.CFrame * CFrame.new(0, 0.08, 0)
+        -- Offset from Tip sets ribbon width; grows with projectile size.
+        local trailWidth = 0.18 * widthScale
+        attachment1.CFrame = tip.CFrame * CFrame.new(0, trailWidth, 0)
         return tip, attachment1
     end
 
@@ -394,6 +396,8 @@ end
 local function configureProjectileTrailDefaults(trail, options)
     local color = options and options.Color or Color3.fromRGB(255, 220, 140)
     local lifetime = options and options.Lifetime or 0.22
+    local scale = math.clamp(tonumber(options and options.Scale) or 1, 0.25, 5)
+    local width = 1.15 * scale
 
     trail.Enabled = true
     trail.Color = ColorSequence.new({
@@ -405,12 +409,12 @@ local function configureProjectileTrailDefaults(trail, options)
         NumberSequenceKeypoint.new(0.6, 0.55),
         NumberSequenceKeypoint.new(1, 1),
     })
-    trail.Lifetime = math.max(lifetime, 0.08)
+    trail.Lifetime = math.max(lifetime, 0.08) * math.clamp(0.9 + 0.12 * scale, 0.9, 1.35)
     trail.MinLength = 0
     trail.WidthScale = NumberSequence.new({
-        NumberSequenceKeypoint.new(0, 0.65),
-        NumberSequenceKeypoint.new(0.65, 0.35),
-        NumberSequenceKeypoint.new(1, 0.05),
+        NumberSequenceKeypoint.new(0, 1.05 * width),
+        NumberSequenceKeypoint.new(0.65, 0.55 * width),
+        NumberSequenceKeypoint.new(1, 0.08 * width),
     })
     trail.FaceCamera = true
     trail.LightEmission = 0.45
@@ -453,7 +457,7 @@ end
 function WeaponTrailService.ApplyToProjectile(projectile, options)
     if not projectile then return nil end
 
-    local attachment0, attachment1 = ensureProjectileAttachments(projectile)
+    local attachment0, attachment1 = ensureProjectileAttachments(projectile, options and options.Scale)
     if not attachment0 or not attachment1 then return nil end
 
     local trail = projectile:FindFirstChild(PROJECTILE_TRAIL_NAME, true)

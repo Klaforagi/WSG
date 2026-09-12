@@ -398,6 +398,30 @@ local function getVisualRotationCFrame(projCfg)
             math.rad(tonumber(r[3] or r.Z) or 0)
         )
     end
+    return nil
+end
+
+-- Studio arrow meshes are usually authored along +Y (they look flat in Studio).
+-- CFrame.lookAt aims the part's -Z, so those arrows fly pointing world-up unless
+-- we map the longest shaft axis onto look.
+local function getShaftLookCorrection(primary)
+    if not primary or not primary:IsA("BasePart") then
+        return CFrame.new()
+    end
+
+    local size = primary.Size
+    local longest = math.max(size.X, size.Y, size.Z)
+    local shortest = math.min(size.X, size.Y, size.Z)
+    if longest < 0.05 or longest < shortest * 1.25 then
+        return CFrame.new()
+    end
+
+    if size.Y >= size.X and size.Y >= size.Z then
+        return CFrame.Angles(-math.pi / 2, 0, 0)
+    end
+    if size.X >= size.Y and size.X >= size.Z then
+        return CFrame.Angles(0, math.pi / 2, 0)
+    end
     return CFrame.new()
 end
 
@@ -768,10 +792,25 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     params.FilterDescendantsInstances = {player.Character, visual}
 
     local enchantName = projCfg and projCfg._enchantName
-    if WeaponEnchantService and type(enchantName) == "string" and enchantName ~= "" then
-        pcall(function()
-            WeaponEnchantService.ApplyEnchantVisualsToProjectile(visual, enchantName)
+    if type(enchantName) == "string" then
+        enchantName = enchantName:match("^%s*(.-)%s*$")
+        if enchantName == "" or string.lower(enchantName) == "none" then
+            enchantName = nil
+        end
+    else
+        enchantName = nil
+    end
+    if WeaponEnchantService and enchantName then
+        local applied = false
+        local applyOk, applyResult = pcall(function()
+            return WeaponEnchantService.ApplyEnchantVisualsToProjectile(visual, enchantName)
         end)
+        applied = applyOk and applyResult == true
+        if not applyOk then
+            warn("[ToolGun] Failed to apply projectile enchant visuals:", applyResult)
+        elseif not applied then
+            warn("[ToolGun] Projectile enchant visuals did not apply for", tostring(enchantName), "on", tostring(visual and visual.Name))
+        end
     end
     applyEtherealProjectileColor(visual, (projCfg and projCfg._weaponName) or toolName, enchantName)
 
@@ -779,6 +818,9 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local extraRotation = getVisualRotationCFrame(projCfg)
     local aimUnit = (initialVelocity and initialVelocity.Magnitude > 0.001) and initialVelocity.Unit or Vector3.new(0, 0, -1)
     local primary = getVisualPrimary(visual)
+    if extraRotation == nil then
+        extraRotation = getShaftLookCorrection(primary)
+    end
     local tipLocalPos = getTipLocalPosition(visual, primary)
     local lastCFrame = getLookCFrame(origin, aimUnit, visualFlip)
     pcall(function()
@@ -803,6 +845,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                 Color = trailColor,
                 Lifetime = math.clamp(pLifetime * 0.08, 0.18, 0.35),
                 EnchantName = enchantName,
+                Scale = modelVisualScale,
             })
         end)
     end

@@ -72,10 +72,15 @@ local LEGACY_NAMES = {
     "EnchantPointLight",
 }
 
--- Folder containing manually built enchant visual assets
-local EnchantsFolder = ReplicatedStorage:FindFirstChild("Enchants")
-if not EnchantsFolder then
+-- Folder containing manually built enchant visual assets. Resolved at use-time
+-- so a late-created ReplicatedStorage.Enchants folder still works.
+local function getEnchantsFolder()
+    local folder = ReplicatedStorage:FindFirstChild("Enchants")
+    if folder then
+        return folder
+    end
     warn("[WeaponEnchantService] ReplicatedStorage.Enchants folder not found — enchant visuals will not apply")
+    return nil
 end
 
 -- Roblox built-in soft-glow particle texture (used only by SpawnHitEffect)
@@ -107,40 +112,131 @@ local function isRangedWeapon(tool)
     return false
 end
 
+local function isEnchantBlockName(name)
+    return type(name) == "string" and string.lower(name) == "enchantblock"
+end
+
+local function asEnchantHost(instance)
+    if not instance then return nil end
+    if instance:IsA("BasePart") then
+        return instance
+    end
+    if instance:IsA("Attachment") and instance.Parent and instance.Parent:IsA("BasePart") then
+        return instance.Parent
+    end
+    if instance.FindFirstChildWhichIsA then
+        local part = instance:FindFirstChildWhichIsA("BasePart", true)
+        if part then
+            return part
+        end
+    end
+    return nil
+end
+
 local function findEnchantBlocks(root)
     local blocks = {}
+    local seen = {}
+    local function add(instance)
+        local host = asEnchantHost(instance)
+        if host and not seen[host] then
+            seen[host] = true
+            table.insert(blocks, host)
+        end
+    end
+
     if not root then return blocks end
+
+    if isEnchantBlockName(root.Name) then
+        add(root)
+    end
 
     local handle = root:FindFirstChild("Handle")
     if handle then
         local handleBlock = handle:FindFirstChild("EnchantBlock")
         if handleBlock then
-            table.insert(blocks, handleBlock)
+            add(handleBlock)
         end
-    end
-
-    if root.Name == "EnchantBlock" then
-        table.insert(blocks, root)
     end
 
     if root.GetDescendants then
         for _, descendant in ipairs(root:GetDescendants()) do
-            if descendant.Name == "EnchantBlock" then
-                local alreadyListed = false
-                for _, existing in ipairs(blocks) do
-                    if existing == descendant then
-                        alreadyListed = true
-                        break
-                    end
-                end
-                if not alreadyListed then
-                    table.insert(blocks, descendant)
-                end
+            if isEnchantBlockName(descendant.Name) then
+                add(descendant)
             end
         end
     end
 
     return blocks
+end
+
+local function getProjectileHostPart(projectile)
+    if not projectile then return nil end
+    if projectile:IsA("BasePart") then
+        return projectile
+    end
+    if projectile:IsA("Model") then
+        if projectile.PrimaryPart and projectile.PrimaryPart:IsA("BasePart") then
+            return projectile.PrimaryPart
+        end
+        local named = projectile:FindFirstChild(projectile.Name)
+        if named and named:IsA("BasePart") then
+            return named
+        end
+        return projectile:FindFirstChildWhichIsA("BasePart", true)
+    end
+    return projectile:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function ensureProjectileEnchantBlocks(projectile)
+    local blocks = findEnchantBlocks(projectile)
+    if #blocks > 0 then
+        return blocks
+    end
+
+    local host = getProjectileHostPart(projectile)
+    if not host then
+        return {}
+    end
+
+    local block = Instance.new("Part")
+    block.Name = "EnchantBlock"
+    block.Size = Vector3.new(0.25, 0.25, 0.25)
+    block.Transparency = 1
+    block.CanCollide = false
+    block.Massless = true
+    block.Anchored = host.Anchored
+    block.CastShadow = false
+    pcall(function() block.CanTouch = false end)
+    pcall(function() block.CanQuery = false end)
+
+    local tip = host:FindFirstChild("Tip")
+    if not (tip and tip:IsA("Attachment")) and projectile.FindFirstChild then
+        tip = projectile:FindFirstChild("Tip", true)
+        if tip and not tip:IsA("Attachment") then
+            tip = nil
+        end
+    end
+    if tip and tip:IsA("Attachment") then
+        block.CFrame = tip.WorldCFrame
+    else
+        block.CFrame = host.CFrame
+    end
+
+    if projectile:IsA("Model") then
+        block.Parent = projectile
+    else
+        block.Parent = host.Parent or projectile
+    end
+
+    local weld = Instance.new("Weld")
+    weld.Name = "EnchantBlockWeld"
+    weld.Part0 = host
+    weld.Part1 = block
+    weld.C0 = host.CFrame:ToObjectSpace(block.CFrame)
+    weld.C1 = CFrame.new()
+    weld.Parent = host
+
+    return { block }
 end
 
 local function clearEnchantClonesFromBlock(enchantBlock)
@@ -154,13 +250,25 @@ end
 
 local PROJECTILE_ENCHANT_EMITTER_RATE = 20
 
-local function setParticleEmitterRates(root, rate)
-    if not root or type(rate) ~= "number" then return end
+local function configureProjectileEnchantEffects(root, rate)
+    if not root then return end
 
     local function apply(instance)
-        if instance and instance:IsA("ParticleEmitter") then
+        if instance:IsA("ParticleEmitter") then
             pcall(function()
-                instance.Rate = rate
+                instance.Enabled = true
+                instance.LockedToPart = true
+                if type(rate) == "number" then
+                    instance.Rate = rate
+                end
+            end)
+        elseif instance:IsA("Beam") or instance:IsA("Trail") then
+            pcall(function()
+                instance.Enabled = true
+            end)
+        elseif instance:IsA("PointLight") or instance:IsA("SurfaceLight") or instance:IsA("SpotLight") then
+            pcall(function()
+                instance.Enabled = true
             end)
         end
     end
@@ -173,20 +281,57 @@ local function setParticleEmitterRates(root, rate)
     end
 end
 
+-- Particle emitters only render when they have a BasePart ancestor. Melee
+-- assets are often an Attachment; folders/models must be unpacked onto the block.
+local function parentEnchantCloneToBlock(clone, enchantBlock)
+    if not clone or not enchantBlock then
+        return
+    end
+
+    if clone:IsA("BasePart")
+        or clone:IsA("Attachment")
+        or clone:IsA("ParticleEmitter")
+        or clone:IsA("Beam")
+        or clone:IsA("Trail")
+        or clone:IsA("PointLight")
+        or clone:IsA("SurfaceLight")
+        or clone:IsA("SpotLight")
+    then
+        clone.Parent = enchantBlock
+        return
+    end
+
+    for _, child in ipairs(clone:GetChildren()) do
+        child.Parent = enchantBlock
+    end
+    clone:Destroy()
+end
+
 local function cloneEnchantAssetsIntoBlock(enchantBlock, enchantName, emitterRate)
-    if not enchantBlock or not EnchantsFolder then return 0 end
+    local enchantsFolder = getEnchantsFolder()
+    if not enchantBlock or not enchantsFolder then return 0 end
 
     local clonedCount = 0
     local assetNames = getAssetNames(enchantName)
     for _, assetName in ipairs(assetNames) do
-        local assetTemplate = EnchantsFolder:FindFirstChild(assetName)
+        local assetTemplate = enchantsFolder:FindFirstChild(assetName)
+        if not assetTemplate then
+            for _, child in ipairs(enchantsFolder:GetChildren()) do
+                if string.lower(child.Name) == string.lower(assetName) then
+                    assetTemplate = child
+                    break
+                end
+            end
+        end
         if assetTemplate then
             local clone = assetTemplate:Clone()
             clone.Name = ENCHANT_EFFECT_PREFIX .. assetName
             if type(emitterRate) == "number" then
-                setParticleEmitterRates(clone, emitterRate)
+                parentEnchantCloneToBlock(clone, enchantBlock)
+                configureProjectileEnchantEffects(enchantBlock, emitterRate)
+            else
+                clone.Parent = enchantBlock
             end
-            clone.Parent = enchantBlock
             clonedCount += 1
         else
             warn("[WeaponEnchantService] Asset '" .. assetName .. "' not found in ReplicatedStorage.Enchants")
@@ -276,7 +421,7 @@ function WeaponEnchantService.ApplyEnchantVisuals(tool)
         return
     end
 
-    if not EnchantsFolder then
+    if not getEnchantsFolder() then
         warn("[WeaponEnchantService] ReplicatedStorage.Enchants folder missing, cannot apply visuals")
         return
     end
@@ -398,7 +543,12 @@ end
 --------------------------------------------------------------------------------
 function WeaponEnchantService.ApplyEnchantVisualsToProjectile(projectile, enchantName)
     if not projectile then return false end
-    if type(enchantName) ~= "string" or enchantName == "" then return false end
+    if type(enchantName) == "string" then
+        enchantName = enchantName:match("^%s*(.-)%s*$")
+    end
+    if type(enchantName) ~= "string" or enchantName == "" or string.lower(enchantName) == "none" then
+        return false
+    end
 
     local enchantData = WeaponEnchantConfig.GetEnchantData(enchantName)
     if not enchantData then
@@ -406,20 +556,27 @@ function WeaponEnchantService.ApplyEnchantVisualsToProjectile(projectile, enchan
         return false
     end
 
-    local enchantBlocks = findEnchantBlocks(projectile)
+    if not getEnchantsFolder() then
+        warn("[WeaponEnchantService] ReplicatedStorage.Enchants folder missing, cannot apply projectile visuals")
+        return false
+    end
+
+    local enchantBlocks = ensureProjectileEnchantBlocks(projectile)
     if #enchantBlocks == 0 then
         warn("[WeaponEnchantService] EnchantBlock not found on projectile '" .. tostring(projectile.Name) .. "', skipping visuals")
         return false
     end
 
-    if not EnchantsFolder then
-        warn("[WeaponEnchantService] ReplicatedStorage.Enchants folder missing, cannot apply projectile visuals")
-        return false
-    end
-
+    local cloned = 0
     for _, enchantBlock in ipairs(enchantBlocks) do
         clearEnchantClonesFromBlock(enchantBlock)
-        cloneEnchantAssetsIntoBlock(enchantBlock, enchantName, PROJECTILE_ENCHANT_EMITTER_RATE)
+        cloned += cloneEnchantAssetsIntoBlock(enchantBlock, enchantName, PROJECTILE_ENCHANT_EMITTER_RATE)
+        configureProjectileEnchantEffects(enchantBlock, PROJECTILE_ENCHANT_EMITTER_RATE)
+    end
+
+    if cloned <= 0 then
+        warn("[WeaponEnchantService] No enchant assets cloned onto projectile '" .. tostring(projectile.Name) .. "'")
+        return false
     end
 
     pcall(function()
