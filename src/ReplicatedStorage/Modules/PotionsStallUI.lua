@@ -96,6 +96,46 @@ local function formatNumber(value)
 	return sign .. text
 end
 
+-- Compact coin display: under 10,000 keeps commas (9,862).
+-- 19,647 -> 19.6k, 19,651 -> 19.7k, 152,304 -> 152k.
+local function formatCompactCount(value)
+	local n = math.floor(tonumber(value) or 0)
+	if n < 0 then
+		return "-" .. formatCompactCount(-n)
+	end
+	if n < 10000 then
+		return formatNumber(n)
+	end
+
+	local function tryUnit(scale, suffix)
+		local scaled = n / scale
+		if scaled >= 100 then
+			local rounded = math.floor(scaled + 0.5)
+			if rounded >= 1000 then
+				return nil
+			end
+			return tostring(rounded) .. suffix
+		end
+		local rounded = math.floor(scaled * 10 + 0.5) / 10
+		if rounded >= 100 then
+			local asInt = math.floor(rounded + 0.5)
+			if asInt >= 1000 then
+				return nil
+			end
+			return tostring(asInt) .. suffix
+		end
+		return string.format("%.1f%s", rounded, suffix)
+	end
+
+	if n >= 1000000000 then
+		return tryUnit(1000000000, "B") or "1.0T"
+	end
+	if n >= 1000000 then
+		return tryUnit(1000000, "M") or tryUnit(1000000000, "B") or "1.0B"
+	end
+	return tryUnit(1000, "k") or tryUnit(1000000, "M") or formatNumber(n)
+end
+
 local function formatDuration(seconds)
 	seconds = math.max(0, math.floor(tonumber(seconds) or 0))
 	if seconds <= 0 then
@@ -152,6 +192,11 @@ local BUTTON_PRIMARY = Color3.fromRGB(67, 170, 108)
 local BUTTON_PRIMARY_DISABLED = Color3.fromRGB(63, 79, 80)
 local BUTTON_SECONDARY = Color3.fromRGB(235, 185, 57)
 local BUTTON_SECONDARY_DISABLED = Color3.fromRGB(104, 87, 55)
+local SOLD_OUT_GRAY = Color3.fromRGB(132, 138, 148)
+local SOLD_OUT_BG = Color3.fromRGB(52, 56, 64)
+local SOLD_OUT_BG_DARK = Color3.fromRGB(38, 41, 48)
+local SOLD_OUT_STROKE = Color3.fromRGB(96, 102, 112)
+local SOLD_OUT_TEXT = Color3.fromRGB(168, 174, 184)
 
 local CATEGORY_BATTLE = "Battle"
 local CATEGORY_ELIXIR = "Elixir"
@@ -909,14 +954,13 @@ end
 	local balanceIcon = Instance.new("ImageLabel")
 	balanceIcon.Name = "CoinIcon"
 	balanceIcon.BackgroundTransparency = 1
-	balanceIcon.Position = UDim2.new(0.04, 0, 0.08, 0)
-	balanceIcon.Size = UDim2.new(0.4, 0, 0.84, 0)
+	balanceIcon.Position = UDim2.new(0.02, 0, 0.25, 0)
+	balanceIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
 	balanceIcon.Image = getAsset("Coin") or ""
 	balanceIcon.ScaleType = Enum.ScaleType.Fit
 	balanceIcon.Parent = balancePill
 	local balanceIconAspect = Instance.new("UIAspectRatioConstraint")
 	balanceIconAspect.AspectRatio = 1
-	balanceIconAspect.DominantAxis = Enum.DominantAxis.Height
 	balanceIconAspect.Parent = balanceIcon
 
 	local balanceLabel = Instance.new("TextLabel")
@@ -929,7 +973,7 @@ end
 	balanceLabel.TextScaled = true
 	balanceLabel.TextXAlignment = Enum.TextXAlignment.Left
 	balanceLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	balanceLabel.Text = formatNumber(coinBalance)
+	balanceLabel.Text = formatCompactCount(coinBalance)
 	balanceLabel.Parent = balancePill
 	addTextLimit(balanceLabel, 8, 50)
 	addTextOutline(balanceLabel, 0.48, 1)
@@ -1107,7 +1151,7 @@ end
 	end
 
 	local function updateBalanceLabel()
-		balanceLabel.Text = formatNumber(coinBalance)
+		balanceLabel.Text = formatCompactCount(coinBalance)
 	end
 
 	local function createButton(parentFrame, name, label, color)
@@ -1337,7 +1381,7 @@ end
 		iconFrame.Size = UDim2.new(0.23, 0, 0.7, 0)
 		iconFrame.Parent = card
 		applyCorners(iconFrame, px(12))
-		applyStroke(iconFrame, iconColor, 1.2, 0.2)
+		local iconFrameStroke = applyStroke(iconFrame, iconColor, 1.2, 0.2)
 
 		local iconImage = Instance.new("ImageLabel")
 		iconImage.Name = "IconImage"
@@ -1401,7 +1445,7 @@ end
 		typeBadge.TextSize = textPx(13, 12, 13)
 		typeBadge.Parent = card
 		applyCorners(typeBadge, px(7))
-		applyStroke(typeBadge, iconColor, 1, 0.44)
+		local typeBadgeStroke = applyStroke(typeBadge, iconColor, 1, 0.44)
 		addTextLimit(typeBadge, 12, 13)
 		addTextOutline(typeBadge, 0.55, 0.8)
 
@@ -1667,6 +1711,15 @@ end
 			entry = entry,
 			card = card,
 			cardStroke = cardStroke,
+			cardGradient = cardGradient,
+			iconFrame = iconFrame,
+			iconFrameStroke = iconFrameStroke,
+			iconImage = iconImage,
+			iconGlyph = iconGlyph,
+			typeBadge = typeBadge,
+			typeBadgeStroke = typeBadgeStroke,
+			detailLabel = detailLabel,
+			nameLabel = nameLabel,
 			stockLabel = stockLabel,
 			stockStroke = stockStroke,
 			statusLabel = statusLabel,
@@ -1746,10 +1799,12 @@ end
 			local coinEnabled = isEntryPurchasable(entry) and canAffordCoins and inStock
 			local robuxEnabled = isEntryRobuxPurchasable(entry) and getEntryRobuxProductId(entry) > 0
 
+			local soldOut = stockTracked and stockInfo.soldOut == true
+
 			syncPriceButtonContent(refs.coinButtonContent, formatNumber(coinPrice), COIN_ICON_ASSET, coinEnabled)
-			setPurchaseButtonState(refs.coinButton, coinEnabled, BUTTON_SECONDARY)
-			refs.coinButton:SetAttribute("SoldOut", stockTracked and stockInfo.soldOut == true)
-			if stockTracked and stockInfo.soldOut then
+			setPurchaseButtonState(refs.coinButton, coinEnabled, soldOut and SOLD_OUT_GRAY or BUTTON_SECONDARY)
+			refs.coinButton:SetAttribute("SoldOut", soldOut)
+			if soldOut then
 				refs.coinButton.Active = false
 				refs.coinButton.Selectable = false
 			end
@@ -1761,7 +1816,7 @@ end
 				if stockTracked then
 					refs.stockLabel.Visible = true
 					refs.stockLabel.Text = string.format("Stock: %d", stockInfo.remaining)
-					refs.stockLabel.TextColor3 = stockInfo.soldOut and RED or ACCENT_GREEN
+					refs.stockLabel.TextColor3 = soldOut and SOLD_OUT_TEXT or ACCENT_GREEN
 				elseif getEntryPrice(entry) > 0 and isEntryPurchasable(entry) then
 					if stockState.valid then
 						if not missingCardWarnings[entry.Id] then
@@ -1781,21 +1836,105 @@ end
 
 			if refs.statusLabel then
 				refs.statusLabel.Text = "x" .. tostring(owned)
-				refs.statusLabel.TextColor3 = (owned > 0) and WHITE or MUTED_TEXT
+				refs.statusLabel.TextColor3 = soldOut and SOLD_OUT_TEXT or ((owned > 0) and WHITE or MUTED_TEXT)
 			end
 
-			local highlightColor = mixColor(accent, WHITE, 0.18)
-			local highlightActive = false
-			if entry.Kind == "boost" and statusActive then
-				highlightColor = ACCENT_GREEN
-				highlightActive = true
-			elseif entry.Kind == "potion" and remaining > 0 then
-				highlightColor = ACCENT_BLUE
-				highlightActive = true
-			end
+			if soldOut then
+				refs.card.BackgroundColor3 = SOLD_OUT_BG
+				if refs.cardGradient then
+					refs.cardGradient.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, SOLD_OUT_BG),
+						ColorSequenceKeypoint.new(1, SOLD_OUT_BG_DARK),
+					})
+				end
+				refs.cardStroke.Color = SOLD_OUT_STROKE
+				refs.cardStroke.Transparency = 0.28
+				if refs.iconFrame then
+					refs.iconFrame.BackgroundColor3 = mixColor(SOLD_OUT_BG_DARK, SOLD_OUT_GRAY, 0.22)
+				end
+				if refs.iconFrameStroke then
+					refs.iconFrameStroke.Color = SOLD_OUT_STROKE
+				end
+				if refs.iconImage then
+					refs.iconImage.ImageColor3 = Color3.fromRGB(150, 152, 156)
+					refs.iconImage.ImageTransparency = 0.18
+				end
+				if refs.iconGlyph then
+					refs.iconGlyph.TextColor3 = SOLD_OUT_GRAY
+				end
+				if refs.typeBadge then
+					refs.typeBadge.BackgroundColor3 = mixColor(SOLD_OUT_BG, BLACK, 0.18)
+					refs.typeBadge.TextColor3 = SOLD_OUT_TEXT
+				end
+				if refs.typeBadgeStroke then
+					refs.typeBadgeStroke.Color = SOLD_OUT_STROKE
+				end
+				if refs.detailLabel then
+					refs.detailLabel.TextColor3 = SOLD_OUT_TEXT
+				end
+				if refs.nameLabel then
+					refs.nameLabel.TextColor3 = SOLD_OUT_TEXT
+				end
+				if refs.stockLabel then
+					refs.stockLabel.BackgroundColor3 = mixColor(SOLD_OUT_BG, BLACK, 0.2)
+				end
+				if refs.stockStroke then
+					refs.stockStroke.Color = SOLD_OUT_STROKE
+				end
+			else
+				refs.card.BackgroundColor3 = refs.baseBg
+				if refs.cardGradient then
+					refs.cardGradient.Color = ColorSequence.new({
+						ColorSequenceKeypoint.new(0, brightenColor(refs.baseBg, 0.06)),
+						ColorSequenceKeypoint.new(1, CARD_BG_DARK),
+					})
+				end
+				if refs.iconFrame then
+					refs.iconFrame.BackgroundColor3 = mixColor(CARD_BG_DARK, accent, 0.34)
+				end
+				if refs.iconFrameStroke then
+					refs.iconFrameStroke.Color = accent
+				end
+				if refs.iconImage then
+					refs.iconImage.ImageColor3 = WHITE
+					refs.iconImage.ImageTransparency = 0
+				end
+				if refs.iconGlyph then
+					refs.iconGlyph.TextColor3 = accent
+				end
+				if refs.typeBadge then
+					refs.typeBadge.BackgroundColor3 = mixColor(refs.baseBg, BLACK, 0.24)
+					refs.typeBadge.TextColor3 = mixColor(accent, WHITE, 0.2)
+				end
+				if refs.typeBadgeStroke then
+					refs.typeBadgeStroke.Color = accent
+				end
+				if refs.detailLabel then
+					refs.detailLabel.TextColor3 = brightenColor(accent, 0.08)
+				end
+				if refs.nameLabel then
+					refs.nameLabel.TextColor3 = WHITE
+				end
+				if refs.stockLabel then
+					refs.stockLabel.BackgroundColor3 = mixColor(refs.baseBg, BLACK, 0.28)
+				end
+				if refs.stockStroke then
+					refs.stockStroke.Color = accent
+				end
 
-			refs.cardStroke.Color = highlightColor
-			refs.cardStroke.Transparency = highlightActive and 0.08 or 0.22
+				local highlightColor = mixColor(accent, WHITE, 0.18)
+				local highlightActive = false
+				if entry.Kind == "boost" and statusActive then
+					highlightColor = ACCENT_GREEN
+					highlightActive = true
+				elseif entry.Kind == "potion" and remaining > 0 then
+					highlightColor = ACCENT_BLUE
+					highlightActive = true
+				end
+
+				refs.cardStroke.Color = highlightColor
+				refs.cardStroke.Transparency = highlightActive and 0.08 or 0.22
+			end
 		end
 	end
 
