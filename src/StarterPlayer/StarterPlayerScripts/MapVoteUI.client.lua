@@ -38,24 +38,73 @@ rootStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 
 local title = Instance.new("TextLabel")
 title.Parent = root
-title.Size = UDim2.new(1, 0, 0.14, 0)
-title.Position = UDim2.new(0, 0, 0, 6)
+title.Size = UDim2.new(0.62, 0, 0.14, 0)
+title.Position = UDim2.new(0.02, 0, 0, 6)
 title.BackgroundTransparency = 1
 title.Font = Enum.Font.GothamBold
 title.Text = "Vote for the next map"
 title.TextScaled = true
+title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(255, 220, 120)
 
 local timerLabel = Instance.new("TextLabel")
 timerLabel.Parent = root
-timerLabel.Size = UDim2.new(0.28, 0, 0.12, 0)
+timerLabel.Size = UDim2.new(0.22, 0, 0.12, 0)
 timerLabel.AnchorPoint = Vector2.new(1, 0)
-timerLabel.Position = UDim2.new(0.98, 0, 0.02, 0)
+timerLabel.Position = UDim2.new(0.9, 0, 0.02, 0)
 timerLabel.BackgroundTransparency = 1
 timerLabel.Font = Enum.Font.Gotham
 timerLabel.TextScaled = true
 timerLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
 timerLabel.Text = ""
+
+local closeBtn = Instance.new("TextButton")
+closeBtn.Name = "CloseBtn"
+closeBtn.Parent = root
+closeBtn.AnchorPoint = Vector2.new(1, 0)
+closeBtn.Size = UDim2.new(0.055, 0, 0.16, 0)
+closeBtn.Position = UDim2.new(0.985, 0, 0.02, 0)
+closeBtn.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
+closeBtn.BorderSizePixel = 0
+closeBtn.Font = Enum.Font.GothamBlack
+closeBtn.Text = "X"
+closeBtn.TextColor3 = Color3.fromRGB(254, 214, 56)
+closeBtn.TextScaled = true
+closeBtn.AutoButtonColor = false
+closeBtn.ZIndex = 20
+
+local closeAspect = Instance.new("UIAspectRatioConstraint")
+closeAspect.AspectRatio = 1
+closeAspect.Parent = closeBtn
+local closeCorner = Instance.new("UICorner")
+closeCorner.CornerRadius = UDim.new(0, 6)
+closeCorner.Parent = closeBtn
+local closeStroke = Instance.new("UIStroke")
+closeStroke.Color = Color3.fromRGB(254, 214, 56)
+closeStroke.Thickness = 1.2
+closeStroke.Transparency = 0.4
+closeStroke.Parent = closeBtn
+local closePad = Instance.new("UIPadding")
+closePad.PaddingTop = UDim.new(0.12, 0)
+closePad.PaddingBottom = UDim.new(0.12, 0)
+closePad.PaddingLeft = UDim.new(0.12, 0)
+closePad.PaddingRight = UDim.new(0.12, 0)
+closePad.Parent = closeBtn
+
+local voteUiDismissed = false
+
+closeBtn.MouseEnter:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(55, 30, 38)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+end)
+closeBtn.MouseLeave:Connect(function()
+    closeBtn.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
+    closeBtn.TextColor3 = Color3.fromRGB(254, 214, 56)
+end)
+closeBtn.Activated:Connect(function()
+    voteUiDismissed = true
+    root.Visible = false
+end)
 
 local optionsFrame = Instance.new("Frame")
 optionsFrame.Parent = root
@@ -268,11 +317,12 @@ if PhaseRE then
         local phase = payload.phase
         local duration = payload.duration or 0
         if phase == "voting" then
+            voteUiDismissed = false
             root.Visible = true
             -- start countdown
             local endsAt = tick() + duration
             spawn(function()
-                while root.Visible do
+                while true do
                     local left = math.max(0, math.floor(endsAt - tick()))
                     timerLabel.Text = string.format("Voting: %ds", left)
                     if left <= 0 then break end
@@ -280,6 +330,7 @@ if PhaseRE then
                 end
             end)
         else
+            voteUiDismissed = false
             root.Visible = false
         end
     end)

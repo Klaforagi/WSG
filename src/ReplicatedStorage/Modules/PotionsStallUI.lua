@@ -909,13 +909,14 @@ end
 	local balanceIcon = Instance.new("ImageLabel")
 	balanceIcon.Name = "CoinIcon"
 	balanceIcon.BackgroundTransparency = 1
-	balanceIcon.Position = UDim2.new(0.02, 0, 0.25, 0)
-	balanceIcon.Size = UDim2.new(0.5, 0, 0.5, 0)
+	balanceIcon.Position = UDim2.new(0.04, 0, 0.08, 0)
+	balanceIcon.Size = UDim2.new(0.4, 0, 0.84, 0)
 	balanceIcon.Image = getAsset("Coin") or ""
 	balanceIcon.ScaleType = Enum.ScaleType.Fit
 	balanceIcon.Parent = balancePill
 	local balanceIconAspect = Instance.new("UIAspectRatioConstraint")
 	balanceIconAspect.AspectRatio = 1
+	balanceIconAspect.DominantAxis = Enum.DominantAxis.Height
 	balanceIconAspect.Parent = balanceIcon
 
 	local balanceLabel = Instance.new("TextLabel")
@@ -1148,7 +1149,7 @@ end
 		local icon = Instance.new("ImageLabel")
 		icon.Name = "Icon"
 		icon.BackgroundTransparency = 1
-		icon.Size = UDim2.fromOffset(readablePx(16, 16), readablePx(16, 16))
+		icon.Size = UDim2.fromOffset(readablePx(28, 28), readablePx(28, 28))
 		icon.ScaleType = Enum.ScaleType.Fit
 		icon.Parent = content
 
