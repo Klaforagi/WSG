@@ -1267,6 +1267,10 @@ local function applyPotionEffect(payload)
     if type(payload) ~= "table" or type(payload.potionId) ~= "string" then
         return
     end
+    local sourceUserId = tonumber(payload.sourceUserId)
+    if sourceUserId and sourceUserId ~= player.UserId then
+        return
+    end
 
     local def = getPotionEffectDef(payload.potionId)
     if not def then

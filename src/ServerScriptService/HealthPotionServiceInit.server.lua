@@ -190,6 +190,10 @@ HealthPotionService:GetEffectStartedEvent():Connect(function(player, payload)
         return
     end
     pcall(function()
+        if type(payload) ~= "table" then
+            payload = {}
+        end
+        payload.sourceUserId = player.UserId
         -- Broadcast to all clients so potion sound and effects can play globally
         potionEffectStartedRE:FireAllClients(payload)
     end)
