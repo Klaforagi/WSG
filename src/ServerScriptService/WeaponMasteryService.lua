@@ -143,6 +143,30 @@ local function normalizeXPValue(xp)
     return math.round(xp * XP_PRECISION_SCALE) / XP_PRECISION_SCALE
 end
 
+local function applyMasteryXP(entry, baseXP, multiplier, rarity)
+    if not entry then
+        return 0
+    end
+    if (entry.level or 0) >= (Config.MaxLevel or 10) then
+        return 0
+    end
+    baseXP = normalizeXPValue(baseXP)
+    if baseXP <= 0 then
+        return 0
+    end
+    local awardedXP = normalizeXPValue(math.floor((baseXP * math.max(1, tonumber(multiplier) or 1)) * 10) / 10)
+    local maxXP = (Config.GetMaxXP and Config.GetMaxXP(rarity)) or 0
+    if maxXP > 0 then
+        awardedXP = math.min(awardedXP, math.max(0, maxXP - (entry.xp or 0)))
+    end
+    if awardedXP <= 0 then
+        return 0
+    end
+    entry.xp = normalizeXPValue((entry.xp or 0) + awardedXP)
+    entry.level = Config.GetLevelForXP(entry.xp, rarity)
+    return awardedXP
+end
+
 local function isTrackedTeamPlayer(player)
     if not player or not player:IsA("Player") then return false end
     local team = player.Team
@@ -220,6 +244,10 @@ local function normalizeEntry(entry, weaponName, meta)
     entry.rarity = resolved.rarity
     entry.category = resolved.category
     entry.xp = normalizeXPValue(entry.xp)
+    local maxXP = Config.GetMaxXP and Config.GetMaxXP(entry.rarity) or 0
+    if maxXP > 0 and entry.xp > maxXP then
+        entry.xp = maxXP
+    end
     entry.level = Config.GetLevelForXP(entry.xp, entry.rarity)
     entry.eliminations = math.max(0, math.floor(tonumber(entry.eliminations) or 0))
     entry.mobKills = math.max(0, math.floor(tonumber(entry.mobKills) or 0))
@@ -481,15 +509,13 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     if boostSvc and type(boostSvc.GetMasteryMultiplier) == "function" then
         masteryMultiplier = masteryMultiplier * math.max(1, tonumber(boostSvc:GetMasteryMultiplier(player)) or 1)
     end
-    local awardedXP = baseXP
+    local awardedXP = 0
 
     if statKey and statAmount > 0 then
         entry[statKey] = math.max(0, math.floor(tonumber(entry[statKey]) or 0)) + statAmount
     end
     if baseXP > 0 then
-        awardedXP = normalizeXPValue(math.floor((baseXP * masteryMultiplier) * 10) / 10)
-        entry.xp = normalizeXPValue((entry.xp or 0) + awardedXP)
-        entry.level = Config.GetLevelForXP(entry.xp, (meta and meta.rarity) or entry.rarity, (meta and meta.category) or entry.category)
+        awardedXP = applyMasteryXP(entry, baseXP, masteryMultiplier, (meta and meta.rarity) or entry.rarity)
     end
     entry.lastUsedAt = os.time()
 
@@ -515,16 +541,18 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
 
     markDirty(player)
 
-    local updateMeta = meta or {}
-    updateMeta.deltaXP = awardedXP
-    updateMeta.leveledUp = (entry.level or 0) > oldLevel
-    updateMeta.oldLevel = oldLevel
-    if updateMeta.leveledUp then
-        updateMeta.newLevel = entry.level
+    if awardedXP > 0 then
+        local updateMeta = meta or {}
+        updateMeta.deltaXP = awardedXP
+        updateMeta.leveledUp = (entry.level or 0) > oldLevel
+        updateMeta.oldLevel = oldLevel
+        if updateMeta.leveledUp then
+            updateMeta.newLevel = entry.level
+        end
+        updateMeta.rarity = meta and meta.rarity or entry.rarity
+        updateMeta.category = meta and meta.category or entry.category
+        fireUpdated(player, instanceId, weaponName, updateMeta)
     end
-    updateMeta.rarity = meta and meta.rarity or entry.rarity
-    updateMeta.category = meta and meta.category or entry.category
-    fireUpdated(player, instanceId, weaponName, updateMeta)
     return WeaponMasteryService:GetMasteryPayloadForWeaponName(player, weaponName)
 end
 
@@ -754,12 +782,10 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
     if boostSvc and type(boostSvc.GetMasteryMultiplier) == "function" then
         masteryMultiplier = masteryMultiplier * math.max(1, tonumber(boostSvc:GetMasteryMultiplier(player)) or 1)
     end
-    local xpAmount = normalizeXPValue(math.floor((baseXP * masteryMultiplier) * 10) / 10)
+    local oldLevel = entry.level or 0
+    local xpAmount = applyMasteryXP(entry, baseXP, masteryMultiplier, (meta and meta.rarity) or entry.rarity)
 
     if xpAmount > 0 then
-        local oldLevel = entry.level or 0
-        entry.xp = normalizeXPValue((entry.xp or 0) + xpAmount)
-        entry.level = Config.GetLevelForXP(entry.xp, (meta and meta.rarity) or entry.rarity, (meta and meta.category) or entry.category)
         print(string.format(
             "[WeaponMastery] %s/%s hit gain: baseXP=%.1f, VIP=%s(+%.1f), MasteryPass=%s(+%.1f), multiplier=%.1f, awardedXP=%.1f",
             tostring(player.Name),

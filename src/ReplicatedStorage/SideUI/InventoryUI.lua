@@ -1728,16 +1728,22 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     local masteryStageRow = Instance.new("Frame", masteryPanel)
     masteryStageRow.Name = "StageGemRow"
     masteryStageRow.BackgroundTransparency = 1
-    masteryStageRow.Size = UDim2.new(0.94, 0, 0.25, 0)
-    masteryStageRow.Position = UDim2.new(0.03, 0, 0.15, 0)
+    masteryStageRow.Size = UDim2.new(0.94, 0, 0.32, 0)
+    masteryStageRow.Position = UDim2.new(0.03, 0, 0.16, 0)
     masteryStageRow.ZIndex = masteryPanel.ZIndex + 1
+
+    local gemRowPad = Instance.new("UIPadding")
+    gemRowPad.PaddingTop = UDim.new(0.08, 0)
+    gemRowPad.PaddingBottom = UDim.new(0.08, 0)
+    gemRowPad.Parent = masteryStageRow
 
     local stageGrid = Instance.new("UIGridLayout")
     stageGrid.FillDirection = Enum.FillDirection.Horizontal
     stageGrid.FillDirectionMaxCells = 5
-    stageGrid.CellPadding = UDim2.new(0.17, 0, 0.25, 0)
-    stageGrid.CellSize = UDim2.new(0.06, 0, 0.35, 0)
-    stageGrid.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    -- padY leaves a small gap between the two rows after 45° diamond overflow.
+    stageGrid.CellPadding = UDim2.new(0.09, 0, 0.20, 0)
+    stageGrid.CellSize = UDim2.new(0.12, 0, 0.32, 0)
+    stageGrid.HorizontalAlignment = Enum.HorizontalAlignment.Center
     stageGrid.VerticalAlignment = Enum.VerticalAlignment.Center
     stageGrid.SortOrder = Enum.SortOrder.LayoutOrder
     stageGrid.Parent = masteryStageRow
@@ -1928,13 +1934,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         diamond.BorderSizePixel = 0
         diamond.AnchorPoint = Vector2.new(0.5, 0.5)
         diamond.Position = UDim2.new(0.5, 0, 0.5, 0)
-        diamond.Size = UDim2.new(0, 2, 0, 2)
+        diamond.Size = UDim2.new(1, 0, 1, 0)
         diamond.Rotation = 45
         diamond.ZIndex = gemButton.ZIndex + 1
         diamond.Parent = gemButton
 
+        local gemAspect = Instance.new("UIAspectRatioConstraint")
+        gemAspect.AspectRatio = 1
+        gemAspect.DominantAxis = Enum.DominantAxis.Height
+        gemAspect.Parent = diamond
+
         local gemCorner = Instance.new("UICorner")
-        gemCorner.CornerRadius = UDim.new(0, 1)
+        gemCorner.CornerRadius = UDim.new(0, 2)
         gemCorner.Parent = diamond
 
         local gemStroke = Instance.new("UIStroke")
@@ -2424,8 +2435,10 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         masteryPanel.Visible = true
         masteryTitle.Text = "MASTERY " .. romanNumeral
 
-        if mastery.maxed == true then
-            masteryXP.Text = formatMasteryXP(xp) .. " XP TOTAL"
+        local maxLevel = (WeaponMasteryConfig and WeaponMasteryConfig.MaxLevel) or 10
+        local isMaxed = mastery.maxed == true or level >= maxLevel
+        if isMaxed then
+            masteryXP.Text = "MAXED"
             masteryBarFill.Size = UDim2.new(1, 0, 1, 0)
         else
             masteryXP.Text = formatMasteryXP(xp) .. " / " .. formatMasteryXP(nextLevelXP) .. " XP"

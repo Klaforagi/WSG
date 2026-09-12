@@ -238,7 +238,16 @@ function WeaponMasteryConfig.GetLevelForXP(xp, rarity)
             break
         end
     end
-    return level
+    return math.clamp(level, 0, WeaponMasteryConfig.MaxLevel)
+end
+
+function WeaponMasteryConfig.GetMaxXP(rarity)
+    local progression = getRarityData(rarity)
+    local xpTable = progression and progression.xp
+    if type(xpTable) ~= "table" or #xpTable == 0 then
+        return 0
+    end
+    return normalizeNumber(xpTable[#xpTable] or 0, XP_PRECISION_SCALE)
 end
 
 function WeaponMasteryConfig.GetNextLevelDef(level, rarity, category)
