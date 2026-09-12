@@ -180,7 +180,6 @@ local function ensureEvent(name)
     return ev
 end
 local KillFeedEvent = ensureEvent("KillFeed")
-local HeadshotEvent = ensureEvent("Headshot")
 local KILL_POINTS = 10
 
 -- BindableEvent for score awards (listened to by GameManager)
@@ -623,9 +622,22 @@ local function raycastSkippingAccessories(origin, direction, rayParams, attacker
     return nil
 end
 
+-- Same integer roll melee uses on attacks 1-2: ceil(base * 0.7) through ceil(base * 1.0).
+local RANGED_DAMAGE_ROLL_MIN = 0.7
+local RANGED_DAMAGE_ROLL_MAX = 1.0
+
+local function rollUniformIntegerDamage(baseDamage, minRoll, maxRoll)
+    local minDamage = math.ceil(baseDamage * minRoll)
+    local maxDamage = math.ceil(baseDamage * maxRoll)
+    if maxDamage < minDamage then
+        maxDamage = minDamage
+    end
+    return math.random(minDamage, maxDamage)
+end
+
 -- Unified damage helper: tags humanoid, deals damage, fires hitmarker,
 -- and fires kill credit immediately if the target dies.
-local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hitPart, hitPos, weaponInstanceId, weaponName, enchantName)
+local function applyDamage(player, humanoid, victimModel, damage, hitPart, hitPos, weaponInstanceId, weaponName, enchantName)
     -- Podium avatars are fully immune to damage and should be ignored by combat
     if CombatUtils and (CombatUtils.isPodiumAvatar(victimModel) or CombatUtils.isPodiumPart(hitPart)) then
         if _G.DEBUG_COMBAT then
@@ -649,12 +661,12 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
             damage = damage * mult
         end
     end
+    damage = rollUniformIntegerDamage(damage, RANGED_DAMAGE_ROLL_MIN, RANGED_DAMAGE_ROLL_MAX)
     damage = applyOutgoingDamageModifiers(player, damage, {
         source = "ranged",
         weaponName = weaponName,
         weaponInstanceId = weaponInstanceId,
         victimModel = victimModel,
-        isHeadshot = isHeadshot == true,
     })
     damage = math.max(0, math.round(damage))
     pcall(function()
@@ -684,7 +696,8 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
                 victimModel,
                 humanoid,
                 enchantName,
-                hitPos
+                hitPos,
+                { damageType = "ranged" }
             ) == true
         end)
         if procSucceeded and hitPos then
@@ -702,20 +715,8 @@ local function applyDamage(player, humanoid, victimModel, damage, isHeadshot, hi
         pcall(function() WeaponMasteryService:RegisterDamage(player, weaponInstanceId, damage) end)
     end
     pcall(function()
-        if fireHit then fireHit:FireClient(player, damage, isHeadshot == true, hitPart, hitPos) end
+        if fireHit then fireHit:FireClient(player, damage, hitPart, hitPos) end
     end)
-    -- if this was a headshot, increment a simple per-player headshot counter and notify the shooter
-    if isHeadshot then
-        pcall(function()
-            if player and player.SetAttribute then
-                local n = player:GetAttribute("headshotCount") or 0
-                player:SetAttribute("headshotCount", n + 1)
-            end
-            if HeadshotEvent then
-                HeadshotEvent:FireClient(player, victimModel and victimModel.Name or "Unknown")
-            end
-        end)
-    end
     -- Kill credit (StatService events, coins, XP, KillFeed, AddScore) is handled
     -- centrally by KillTracker.server.lua via the Humanoid.Died hook. Weapons only
     -- need to TAG the humanoid (already done above via lastDamager* attributes).
@@ -900,14 +901,12 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                                 if player and Players:GetPlayerFromCharacter(candidateModel) == player then
                                     -- skip
                                 else
-                                    -- use base projectile damage (no headshot detection for the box)
                                     local boxDamage = pDamage
                                     applyDamage(
                                         player,
                                         hum,
                                         candidateModel,
                                         boxDamage,
-                                        false,
                                         bp,
                                         bp.Position,
                                         projCfg and projCfg._weaponInstanceId,
@@ -960,50 +959,11 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                             parent = parent.Parent
                             continue
                         end
-                    local isHeadshot = false
-                    -- robust headshot detection that handles accessories (hats/hair):
-                    local headPart = parent:FindFirstChild("Head")
-                    if headPart then
-                        -- 1) direct hit on the Head part
-                        if inst == headPart then
-                            isHeadshot = true
-                        -- 2) hit part name contains 'head' (e.g. HeadMesh)
-                        elseif inst.Name and tostring(inst.Name):lower():find("head") then
-                            isHeadshot = true
-                        -- 3) hit part is a descendant of Head (face decals etc.)
-                        elseif inst:IsDescendantOf(headPart) then
-                            isHeadshot = true
-                        -- 4) hit part belongs to an Accessory attached near the Head
-                        elseif inst:FindFirstAncestorWhichIsA("Accessory") then
-                            local acc = inst:FindFirstAncestorWhichIsA("Accessory")
-                            local handle = acc:FindFirstChild("Handle")
-                            if handle and handle:IsA("BasePart") then
-                                if (handle.Position - headPart.Position).Magnitude <= 3 then
-                                    isHeadshot = true
-                                end
-                            end
-                        end
-                        -- 5) fallback: hit position within generous radius of Head center
-                        if not isHeadshot then
-                            local hitPos = rayResult.Position
-                            if hitPos and headPart.Position then
-                                if (hitPos - headPart.Position).Magnitude <= 2 then
-                                    isHeadshot = true
-                                end
-                            end
-                        end
-                    end
-                    local finalDamage = pDamage
-                    if isHeadshot then
-                        local mult = (projCfg and projCfg.headshot_multiplier) or 1
-                        finalDamage = pDamage * mult
-                    end
                     applyDamage(
                         player,
                         humanoid,
                         parent,
-                        finalDamage,
-                        isHeadshot,
+                        pDamage,
                         inst,
                         rayResult.Position,
                         projCfg and projCfg._weaponInstanceId,
@@ -1011,41 +971,6 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                         projCfg and projCfg._enchantName
                     )
                     hitHumanoids[humanoid] = true
-                    -- play sniper headshot sound at victim head when appropriate
-                    if isHeadshot then
-                        local ok, _ = pcall(function()
-                            -- determine if this was a sniper by toolName or preset key
-                            local isSniper = false
-                            if toolName and tostring(toolName):lower():find("sniper") then
-                                isSniper = true
-                            else
-                                -- try to detect from projCfg name hints
-                                if projCfg and projCfg.bulletspeed and projCfg.bulletspeed > 1500 then
-                                    isSniper = true
-                                end
-                            end
-                            if isSniper then
-                                local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-                                if soundsFolder then
-                                    local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
-                                    if toolgunFolder then
-                                        local template = toolgunFolder:FindFirstChild("Sniper_headshot") or toolgunFolder:FindFirstChild("Sniper_Headshot")
-                                        if template and template:IsA("Sound") then
-                                            local s = template:Clone()
-                                            -- parent to the hit part if possible so it originates from the head
-                                            if inst and inst:IsA("BasePart") then
-                                                s.Parent = inst
-                                            else
-                                                s.Parent = Workspace
-                                            end
-                                            s:Play()
-                                            game:GetService("Debris"):AddItem(s, 4)
-                                        end
-                                    end
-                                end
-                            end
-                        end)
-                    end
                     break
                 end
                 parent = parent.Parent
@@ -1372,7 +1297,7 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     end
 
     -- Scaled damage is baked into the projectile config so applyDamage
-    -- sees it as the base damage (upgrade / headshot multipliers still apply there).
+    -- sees it as the base damage (upgrade multipliers still apply there).
     local scaledDamage = tDAMAGE * sizeDamageMult
 
     -- Compute scaled projectile size.

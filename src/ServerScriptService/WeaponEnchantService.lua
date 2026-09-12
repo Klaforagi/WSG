@@ -830,6 +830,10 @@ local function applyFlatDamage(targetHumanoid, damage, attackerPlayer, enchantNa
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     if damage <= 0 then return end
     local skipLastDamagerTag = type(options) == "table" and options.SkipLastDamagerTag == true
+    if inferWeaponDamageType(attackerPlayer, options) == "ranged" then
+        local rangedMult = tonumber(WeaponEnchantConfig.RangedProcDamageMultiplier) or 0.25
+        damage = damage * rangedMult
+    end
     damage = applyDamageOutputModifiers(attackerPlayer, damage)
     damage = math.round(damage)
     pcall(function()
@@ -967,7 +971,7 @@ local function resolveMovementSubjectFromHumanoid(targetHumanoid)
     return player or targetHumanoid
 end
 
-local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, tickInterval, attackerPlayer)
+local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, tickInterval, attackerPlayer, damageOptions)
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     tickDamage   = tickDamage   or 2
     tickInterval = tickInterval or 1
@@ -1012,7 +1016,7 @@ local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, t
 
     state.remaining = duration
 
-    applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDamage), attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
+    applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDamage), attackerPlayer, "Icy", damageOptions or DOT_DAMAGE_OPTIONS)
 
     state.tickThread = task.spawn(function()
         while state.remaining >= tickInterval do
@@ -1020,7 +1024,7 @@ local function applyIcySlow(targetHumanoid, slowPercent, duration, tickDamage, t
             if not icyState[targetHumanoid] then break end
             if not targetHumanoid or not targetHumanoid.Parent or targetHumanoid.Health <= 0 then break end
             state.remaining = state.remaining - tickInterval
-            applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDamage), attackerPlayer, "Icy", DOT_DAMAGE_OPTIONS)
+            applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDamage), attackerPlayer, "Icy", damageOptions or DOT_DAMAGE_OPTIONS)
         end
     end)
 
@@ -1188,7 +1192,7 @@ local function removePoisonParticles(attachment)
     end
 end
 
-local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
+local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg, damageOptions)
     if not targetHumanoid or targetHumanoid.Health <= 0 then return end
     local tickDmg       = cfg.TickDamage      or 7
     local tickInterval  = cfg.TickInterval     or 2
@@ -1220,7 +1224,7 @@ local function applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
                 break
             end
             state.remaining = state.remaining - tickInterval
-            applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDmg), attackerPlayer, "Toxic", DOT_DAMAGE_OPTIONS)
+            applyFlatDamage(targetHumanoid, rollEnchantDamage(tickDmg), attackerPlayer, "Toxic", damageOptions or DOT_DAMAGE_OPTIONS)
         end
         -- Cleanup visuals then state
         state.running = false
@@ -1237,7 +1241,7 @@ end
 ---------------------------------------------------------------------------
 function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
                                               targetModel, targetHumanoid,
-                                              enchantName, hitPos)
+                                              enchantName, hitPos, options)
     if not enchantName or enchantName == "" then return false end
     if not isValidTarget(attackerPlayer, targetModel, targetHumanoid) then return false end
 
@@ -1248,8 +1252,21 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
     local chance = cfg.ProcChance or 0
     if math.random() > chance then return false end
 
+    local damageType = inferWeaponDamageType(attackerPlayer, options)
+    local function withDamageType(base)
+        local merged = {}
+        if type(base) == "table" then
+            for key, value in pairs(base) do
+                merged[key] = value
+            end
+        end
+        merged.damageType = damageType
+        return merged
+    end
+
     local targetRoot = getRoot(targetModel)
-    local primaryDamageOptions = hitPos and { PopupPosition = hitPos } or nil
+    local primaryDamageOptions = withDamageType(hitPos and { PopupPosition = hitPos } or nil)
+    local dotDamageOptions = withDamageType(DOT_DAMAGE_OPTIONS)
 
     -- Play proc sound
     playProcSound(enchantName, targetRoot)
@@ -1267,7 +1284,8 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
             cfg.SlowDuration or 4,
             cfg.TickDamage or 2,
             cfg.TickInterval or 1,
-            attackerPlayer
+            attackerPlayer,
+            dotDamageOptions
         )
 
     ---------- SHOCK ----------
@@ -1301,7 +1319,7 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
             local next = findNextChainTarget(attackerPlayer, currentPos, chainRange, seen)
             if not next then break end
 
-            applyFlatDamage(next.humanoid, cfg.ChainDamage or 8, attackerPlayer, enchantName)
+            applyFlatDamage(next.humanoid, cfg.ChainDamage or 8, attackerPlayer, enchantName, primaryDamageOptions)
             playProcSound(enchantName, next.root)
             ShockChainVFX:FireAllClients(currentModel, next.model)
 
@@ -1312,7 +1330,7 @@ function WeaponEnchantService.TryProcEnchant(attackerPlayer, attackerHumanoid,
 
     ---------- TOXIC ----------
     elseif enchantName == "Toxic" then
-        applyToxicDoT(attackerPlayer, targetHumanoid, cfg)
+        applyToxicDoT(attackerPlayer, targetHumanoid, cfg, dotDamageOptions)
 
     ---------- LIFESTEAL ----------
     elseif enchantName == "Lifesteal" then

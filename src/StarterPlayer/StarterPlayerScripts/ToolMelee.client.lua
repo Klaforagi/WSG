@@ -35,7 +35,7 @@ end)
 local swingEvent = ReplicatedStorage:WaitForChild("MeleeSwing")
 local meleeSwingVisualEvent = ReplicatedStorage:WaitForChild("MeleeSwingVisual")
 
--- remote for hit feedback (server → client: damage, isHeadshot, hitPart, hitPos)
+-- remote for hit feedback (server → client: damage, hitPart, hitPos)
 local meleeHitEvent = ReplicatedStorage:WaitForChild("MeleeHit")
 
 --------------------------------------------------------------------------------
@@ -130,7 +130,7 @@ end
 --------------------------------------------------------------------------------
 -- Hit feedback GUI (floating damage number – same style as ranged)
 --------------------------------------------------------------------------------
-local function showDamagePopup(damage, isHeadshot, hitPart, hitPos)
+local function showDamagePopup(damage, hitPart, hitPos)
     local parentPart, anchor
     if hitPart and typeof(hitPart) == "Instance" and hitPart:IsA("BasePart") then
         parentPart = hitPart
@@ -161,7 +161,7 @@ local function showDamagePopup(damage, isHeadshot, hitPart, hitPos)
     label.Text = tostring(math.floor(damage))
     label.Font = Enum.Font.GothamBold
     label.TextSize = 24
-    label.TextColor3 = isHeadshot and Color3.fromRGB(255, 75, 75) or Color3.fromRGB(255, 255, 255)
+    label.TextColor3 = Color3.fromRGB(255, 255, 255)
     label.TextStrokeTransparency = 0.5
     label.Parent = gui
 
@@ -896,10 +896,10 @@ end
 --------------------------------------------------------------------------------
 -- Hit feedback from server
 --------------------------------------------------------------------------------
-meleeHitEvent.OnClientEvent:Connect(function(damage, isHeadshot, hitPart, hitPos)
+meleeHitEvent.OnClientEvent:Connect(function(damage, hitPart, hitPos)
     playMeleeSound("hit") -- generic fallback; server can send tool-specific later
     spawn(function()
-        showDamagePopup(damage, isHeadshot, hitPart, hitPos)
+        showDamagePopup(damage, hitPart, hitPos)
     end)
 end)
 

@@ -364,12 +364,12 @@ end)
 
 -- Hit event handling: reuse logic from ToolGun.client.lua
 if fireHit and fireHit:IsA("RemoteEvent") then
-    fireHit.OnClientEvent:Connect(function(damage, isHeadshot, hitPart, hitPos)
+    fireHit.OnClientEvent:Connect(function(damage, hitPart, hitPos)
         playHitSound()
-        local color = isHeadshot and Color3.fromRGB(243, 255, 16) or Color3.fromRGB(243, 255, 16)
+        local color = Color3.fromRGB(243, 255, 16)
         if screenGui.Enabled then
             hitLabel.TextColor3 = color
-            local hitSize = isHeadshot and 28 or 16
+            local hitSize = 16
             hitLabel.TextSize = hitSize
             hitLabel.TextStrokeTransparency = 0
             hitLabel.Visible = true
@@ -391,7 +391,7 @@ if fireHit and fireHit:IsA("RemoteEvent") then
             temp.BackgroundTransparency = 1
             temp.Text = "X"
             temp.Font = Enum.Font.GothamBold
-            local tempSize = isHeadshot and 28 or 16
+            local tempSize = 16
             temp.TextSize = tempSize
             temp.TextColor3 = color
             temp.TextTransparency = 0
@@ -437,7 +437,7 @@ if fireHit and fireHit:IsA("RemoteEvent") then
             label.Text = tostring(math.floor(damage))
             label.Font = Enum.Font.GothamBold
             label.TextSize = 24
-            label.TextColor3 = isHeadshot and Color3.fromRGB(255,75,75) or Color3.fromRGB(255,255,255)
+            label.TextColor3 = Color3.fromRGB(255,255,255)
             label.TextStrokeTransparency = 0.5
             label.Parent = gui
 

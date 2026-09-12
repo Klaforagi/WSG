@@ -58,7 +58,7 @@ end
 local rarityDefaults = {
     Common = {
         damage = getNilMasteryDamage("Common"),
-        cd = 0.4,
+        cd = 0.5,
         movement_speed_penalty = -4,
         bulletspeed = 150,
         range = 450,
@@ -68,12 +68,11 @@ local rarityDefaults = {
         projectile_size = {0.3, 0.3, 0.3},
         bulletdrop = 55,
         showTracer = false,
-        headshot_multiplier = 1.15,
     },
 
     Uncommon = {
         damage = getNilMasteryDamage("Uncommon"),
-        cd = 0.4,
+        cd = 0.5,
         movement_speed_penalty = -4,
         bulletspeed = 175,
         range = 650,
@@ -83,12 +82,11 @@ local rarityDefaults = {
         projectile_size = {0.25, 0.25, 0.8},
         bulletdrop = 50,
         showTracer = false,
-        headshot_multiplier = 1.15,
     },
 
     Rare = {
         damage = getNilMasteryDamage("Rare"),
-        cd = 0.4,
+        cd = 0.5,
         movement_speed_penalty = -4,
         bulletspeed = 225,
         range = 1000,
@@ -98,12 +96,11 @@ local rarityDefaults = {
         projectile_size = {0.2, 0.2, 2.0},
         bulletdrop = 45,
         showTracer = false,
-        headshot_multiplier = 1.2,
     },
 
     Epic = {
         damage = getNilMasteryDamage("Epic"),
-        cd = 0.4,
+        cd = 0.5,
         movement_speed_penalty = -4,
         bulletspeed = 275,
         range = 1500,
@@ -113,12 +110,11 @@ local rarityDefaults = {
         projectile_size = {0.2, 0.2, 2.0},
         bulletdrop = 35,
         showTracer = false,
-        headshot_multiplier = 1.25,
     },
 
     Legendary = {
         damage = getNilMasteryDamage("Legendary"),
-        cd = 0.4,
+        cd = 0.5,
         movement_speed_penalty = -4,
         bulletspeed = 325,
         range = 2000,
@@ -128,7 +124,6 @@ local rarityDefaults = {
         projectile_size = {0.2, 0.2, 2.0},
         bulletdrop = 25,
         showTracer = false,
-        headshot_multiplier = 1.3,
     },
 }
 

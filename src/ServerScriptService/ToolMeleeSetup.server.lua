@@ -115,7 +115,6 @@ local swingEvent    = ensureEvent("MeleeSwing")   -- client → server
 local meleeHit      = ensureEvent("MeleeHit")      -- server → client (damage popup)
 local meleeSwingVisual = ensureEvent("MeleeSwingVisual") -- server → clients (observer swing playback)
 local KillFeedEvent = ensureEvent("KillFeed")
-local HeadshotEvent = ensureEvent("Headshot")
 
 -- Score bindable (shared with ToolGunSetup / GameManager)
 local AddScore = ServerScriptService:FindFirstChild("AddScore")
@@ -528,32 +527,12 @@ local function applyMeleeDamage(player, humanoid, victimModel, damage, hitPart, 
     end
     -- send hit feedback to the attacker
     pcall(function()
-        meleeHit:FireClient(player, damage, false, hitPart, hitPos)
+        meleeHit:FireClient(player, damage, hitPart, hitPos)
     end)
     -- Kill credit (StatService events, coins, XP, KillFeed, AddScore, enchant
     -- cleanup, dummy ragdoll) is handled centrally by KillTracker.server.lua
     -- via the Humanoid.Died hook. Weapons only need to TAG the humanoid
     -- (already done above via lastDamager* attributes).
-end
-
----------------------------------------------------------------------------
--- Headshot detection (reused from ToolGunSetup logic)
----------------------------------------------------------------------------
-local function checkHeadshot(inst, victimModel, hitPos)
-    local headPart = victimModel:FindFirstChild("Head")
-    if not headPart then return false end
-    if inst == headPart then return true end
-    if inst.Name and tostring(inst.Name):lower():find("head") then return true end
-    if inst:IsDescendantOf(headPart) then return true end
-    if inst:FindFirstAncestorWhichIsA("Accessory") then
-        local acc = inst:FindFirstAncestorWhichIsA("Accessory")
-        local handle = acc:FindFirstChild("Handle")
-        if handle and handle:IsA("BasePart") and (handle.Position - headPart.Position).Magnitude <= 3 then
-            return true
-        end
-    end
-    if hitPos and (hitPos - headPart.Position).Magnitude <= 2 then return true end
-    return false
 end
 
 ---------------------------------------------------------------------------
@@ -1120,7 +1099,8 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
                             procSucceeded = WeaponEnchantService.TryProcEnchant(
                                 player, hum,
                                 hit.model, hit.humanoid,
-                                pn, hit.hitPos
+                                pn, hit.hitPos,
+                                { damageType = "melee" }
                             ) == true
                         end)
                         if procSucceeded then

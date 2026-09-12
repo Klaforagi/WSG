@@ -125,7 +125,10 @@ end
 -- PROC CONFIG  –  Flat enchant proc tuning (server-side gameplay effects)
 -- All damage here is FLAT — does NOT scale from weapon damage, size, rarity,
 -- upgrades, combo step, or swing speed.
+-- Ranged enchant procs deal 75% less (25% of these values).
 --------------------------------------------------------------------------------
+WeaponEnchantConfig.RangedProcDamageMultiplier = 0.25
+
 WeaponEnchantConfig.ProcConfig = {
     Fiery = {
         ProcChance = 0.28,
