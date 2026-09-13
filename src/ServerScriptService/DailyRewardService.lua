@@ -238,6 +238,9 @@ end
 
 function DailyRewardService:ClaimReward(player)
     if not player then return false, "invalid player" end
+    if profilesLoaded[player] ~= true then
+        return false, "Loading"
+    end
     if claimLocks[player] then return false, "Claim in progress" end
     claimLocks[player] = true
 

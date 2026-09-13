@@ -1255,7 +1255,6 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
 end
 
 fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOrigin, toolName)
-    print("[ToolGun.server] OnServerEvent from", player and player.Name, "tool:", toolName)
     -- basic validation of types
     if typeof(camOrigin) ~= "Vector3" or typeof(camDirection) ~= "Vector3" or typeof(gunOrigin) ~= "Vector3" then return end
     if not player or not player.Character then return end

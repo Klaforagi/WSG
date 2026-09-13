@@ -172,10 +172,6 @@ local function onPlayerAdded(player)
     end)
 end
 
-local function onPlayerRemoving(player)
-    pcall(function() QuestService:ClearPlayer(player) end)
-end
-
 -- Handle players already in-game (e.g. late script init)
 registerQuestSection()
 for _, p in ipairs(Players:GetPlayers()) do
@@ -183,7 +179,6 @@ for _, p in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerAdded:Connect(onPlayerAdded)
-Players.PlayerRemoving:Connect(onPlayerRemoving)
 
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events  (replaces ALL legacy hooks)

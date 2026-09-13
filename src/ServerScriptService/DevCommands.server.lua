@@ -88,9 +88,8 @@ do
 end
 
 local devAdjustments = {} -- [player] = cumulative additive adjustment
--- Set to true to allow any player to use forwarded dev commands (useful for Play testing).
--- Remember to set this to false for production servers if you want to restrict to devs only.
-local ALLOW_DEV_COMMANDS_FOR_ALL = true
+-- Set true only for local Play testing. Live servers must keep this false.
+local ALLOW_DEV_COMMANDS_FOR_ALL = false
 
 local function applyAdjustment(player, delta)
     if not player then return end

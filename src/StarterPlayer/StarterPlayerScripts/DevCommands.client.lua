@@ -4,6 +4,15 @@ local TextChatService = game:GetService("TextChatService")
 
 local player = Players.LocalPlayer
 
+local DevUserIds
+pcall(function()
+	DevUserIds = require(ReplicatedStorage:WaitForChild("DevUserIds", 5))
+end)
+local RunService = game:GetService("RunService")
+if not (RunService:IsStudio() or (DevUserIds and DevUserIds.IsDev and DevUserIds.IsDev(player))) then
+	return
+end
+
 local function findEvent()
     local ev = ReplicatedStorage:FindFirstChild("DevCommandEvent")
     if ev and ev:IsA("RemoteEvent") then return ev end

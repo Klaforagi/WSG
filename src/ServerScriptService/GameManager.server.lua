@@ -625,11 +625,13 @@ local function onAddScore(teamName, delta)
     if not teamScores[teamName] then return end
 
     if State == "SuddenDeath" then
-        -- first point wins immediately
         teamScores[teamName] = teamScores[teamName] + delta
         broadcastScore(teamName, delta, false)
-        -- end the match with this team as winner
-        endMatch(teamName)   -- forward-declared below
+        local blue = teamScores.Blue or 0
+        local red = teamScores.Red or 0
+        if math.abs(blue - red) >= 5 then
+            endMatch((blue > red) and "Blue" or "Red")
+        end
         return
     end
 

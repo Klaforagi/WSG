@@ -100,6 +100,7 @@ local chosenRanged = {}  -- [player] = toolName override (nil = use default)
 local chosenMelee = {}   -- [player] = toolName override for melee
 local chosenInstanceId = {} -- [player] = { Melee = id, Ranged = id }
 local loadoutSectionRegistered = false
+local canClientRequestTool -- defined after playerOwnsWeapon
 
 local function buildLoadoutData(player)
     local ids = chosenInstanceId[player]
@@ -422,10 +423,13 @@ local function applyWeaponScale(player, toolClone, toolName, instanceId)
     local inv = WeaponInstanceService_scale:GetInventory(player)
     if not inv then return end
     local bestInstance = nil
-    -- Prefer the specific instanceId if provided
-    if instanceId and inv[instanceId] then
-        bestInstance = inv[instanceId]
-    else
+    if type(instanceId) == "string" and instanceId ~= "" then
+        local rec = inv[instanceId]
+        if type(rec) == "table" and rec.weaponName == toolName then
+            bestInstance = rec
+        end
+    end
+    if not bestInstance then
         for _, data in pairs(inv) do
             if type(data) == "table" and data.weaponName == toolName then
                 bestInstance = data
@@ -475,9 +479,13 @@ local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
         return
     end
     local bestInstance = nil
-    if instanceId and inv[instanceId] then
-        bestInstance = inv[instanceId]
-    else
+    if type(instanceId) == "string" and instanceId ~= "" then
+        local rec = inv[instanceId]
+        if type(rec) == "table" and rec.weaponName == toolName then
+            bestInstance = rec
+        end
+    end
+    if not bestInstance then
         for _, data in pairs(inv) do
             if type(data) == "table" and data.weaponName == toolName then
                 bestInstance = data
@@ -513,12 +521,15 @@ local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
 end
 
 local function resolveWeaponInstanceId(player, toolName, instanceId)
-    if type(instanceId) == "string" and instanceId ~= "" then
-        return instanceId
-    end
     if not WeaponInstanceService_scale then return nil end
     local inv = WeaponInstanceService_scale:GetInventory(player)
     if type(inv) ~= "table" then return nil end
+    if type(instanceId) == "string" and instanceId ~= "" then
+        local rec = inv[instanceId]
+        if type(rec) == "table" and rec.weaponName == toolName then
+            return instanceId
+        end
+    end
     for id, data in pairs(inv) do
         if type(id) == "string" and type(data) == "table" and data.weaponName == toolName then
             return id
@@ -647,6 +658,10 @@ end
 local requestToolCopy = getOrCreateRemoteFunction("RequestToolCopy")
 
 requestToolCopy.OnServerInvoke = function(player, folder, toolName)
+    if not canClientRequestTool(player, folder, toolName) then
+        warn("[Loadout] RequestToolCopy rejected for", player and player.Name, folder, toolName)
+        return false
+    end
     grantTool(player, folder, toolName)
     ensureBackpackFromStarterGear(player)
     return true
@@ -717,19 +732,56 @@ pcall(function()
 end)
 
 -- Check whether a player owns a weapon (legacy StarterGear OR crate instance)
+local STARTER_WEAPONS = {
+    ["Starter Sword"] = true,
+    ["Starter Slingshot"] = true,
+}
+
 local function playerOwnsWeapon(player, toolName)
     -- Legacy check: tool exists in StarterGear
     local sg = player:FindFirstChild("StarterGear")
     if sg and sg:FindFirstChild(toolName) then return true end
-    -- Free starters always allowed
-    local price = PRICES[toolName]
-    if price == 0 then return true end
+    if STARTER_WEAPONS[toolName] then return true end
     -- Crate instance check
     if WeaponInstanceService then
         local count = WeaponInstanceService:CountWeapon(player, toolName)
         if count > 0 then return true end
     end
     return false
+end
+
+local CLIENT_GRANT_FOLDERS = {
+    Melee = true,
+    Ranged = true,
+    Special = true,
+    Utility = true,
+}
+
+canClientRequestTool = function(player, folder, toolName)
+    if not player or type(folder) ~= "string" or type(toolName) ~= "string" then
+        return false
+    end
+    if folder == "" or toolName == "" then
+        return false
+    end
+    if folder == "Dev" then
+        local ok, DevUserIds = pcall(function()
+            return require(ReplicatedStorage:FindFirstChild("DevUserIds"))
+        end)
+        return ok and type(DevUserIds) == "table" and type(DevUserIds.IsDev) == "function" and DevUserIds.IsDev(player) == true
+    end
+    if not CLIENT_GRANT_FOLDERS[folder] then
+        return false
+    end
+    for _, entry in ipairs(DEFAULT_LOADOUT) do
+        if entry.folder == folder and entry.toolName == toolName then
+            return true
+        end
+    end
+    if SPECIAL_TOOL and folder == SPECIAL_TOOL.folder and toolName == SPECIAL_TOOL.toolName then
+        return unlockState[player] == true
+    end
+    return playerOwnsWeapon(player, toolName)
 end
 
 -- Returns: success (bool), newBalance (number)
@@ -777,6 +829,9 @@ forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
     if player:GetAttribute("ToolsLocked") == true or player:GetAttribute("DefeatLockActive") == true then
         return
     end
+    if type(toolName) ~= "string" or toolName == "" then
+        return
+    end
 
     local bp = player:FindFirstChildOfClass("Backpack")
     local char = player.Character
@@ -784,6 +839,10 @@ forceEquipRemote.OnServerEvent:Connect(function(player, folder, toolName)
 
     local tool = bp:FindFirstChild(toolName)
     if not tool then
+        if not canClientRequestTool(player, folder, toolName) then
+            warn("[Loadout] ForceEquipTool grant rejected for", player and player.Name, folder, toolName)
+            return
+        end
         grantTool(player, folder, toolName)
         ensureBackpackFromStarterGear(player)
         tool = bp:FindFirstChild(toolName)

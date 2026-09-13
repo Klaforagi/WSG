@@ -254,6 +254,10 @@ local function collectSectionSnapshots(profile, player, sectionFilter)
         end
 
         local definition = registeredSections[sectionName]
+        local sectionStatus = profile.SectionStatus[sectionName]
+        if sectionStatus ~= "existing" and sectionStatus ~= "new" then
+            continue
+        end
         if definition and definition.GetSaveData then
             local currentData = definition.GetSaveData(player, profile)
             local lastGoodData = profile.LastSavedData[sectionName] or profile.LastLoadedData[sectionName]

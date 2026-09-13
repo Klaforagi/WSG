@@ -23,7 +23,7 @@ SpinWheelConfig.PromptMaxActivationDistance = 10
 SpinWheelConfig.PromptKeyboardKeyCode = Enum.KeyCode.E
 SpinWheelConfig.RotationAxis = "Z"
 SpinWheelConfig.RotationDirection = -1
-SpinWheelConfig.TestPurchaseBypass = true
+SpinWheelConfig.TestPurchaseBypass = false
 SpinWheelConfig.LandingPaddingDegrees = 1
 SpinWheelConfig.FinalTickMuteAngle = 6
 

@@ -300,10 +300,13 @@ local function AwardXP(player, reason, amountOverride, metadata)
     end
 
     local entry = data[player.UserId]
-    if not entry then
-        warn("[XPService] No cached data for", player.Name, "— loading now")
-        entry = loadPlayer(player.UserId)
+    if type(entry) == "table" and type(entry.data) == "table" and type(entry.status) == "string" then
+        entry = entry.data
         data[player.UserId] = entry
+    end
+    if type(entry) ~= "table" or type(entry.XP) ~= "number" then
+        warn("[XPService] AwardXP skipped; XP profile not loaded for", player.Name)
+        return false
     end
 
     local reasonKey = reason or ""

@@ -642,6 +642,9 @@ function HealthPotionService:GetSaveData(player)
 	if not player then
 		return nil
 	end
+	if loadedPlayers[player] ~= true or not playerData[player] then
+		return nil
+	end
 	return DataStoreOps.DeepCopy(getSavedState(player, playerData[player]))
 end
 

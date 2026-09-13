@@ -467,6 +467,9 @@ function CurrencyService:GetSaveData(player)
     if not player then
         return nil
     end
+    if balances[player] == nil and keyBalances[player] == nil and salvageBalances[player] == nil then
+        return nil
+    end
     return {
         coins = self:GetCoins(player),
         keys = self:GetKeys(player),

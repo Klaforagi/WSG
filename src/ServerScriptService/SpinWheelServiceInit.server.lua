@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local RunService = game:GetService("RunService")
 
 local DataSaveCoordinator = require(ServerScriptService:WaitForChild("DataSaveCoordinator"))
 local SpinWheelService = require(ServerScriptService:WaitForChild("SpinWheelService"))
@@ -114,6 +115,13 @@ end
 buyPackRF.OnServerInvoke = function(player, packIndex)
     if not player then
         return false, "Invalid player", {}
+    end
+    -- Packs are Robux products. The client remote must never grant spins in a live server.
+    if not RunService:IsStudio() then
+        return false, "Robux purchase required", {
+            reasonCode = "robux_required",
+            state = SpinWheelService:GetState(player),
+        }
     end
     return SpinWheelService:GrantSpinPack(player, packIndex)
 end

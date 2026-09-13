@@ -66,6 +66,7 @@ local function serializeWeeklyData(data)
 
     local saveData = {
         weekKey = data.weekKey,
+        lastBoardResetKey = data.lastBoardResetKey,
         quests = {},
     }
     if type(data.quests) == "table" then
@@ -309,6 +310,7 @@ function WeeklyQuestService:LoadPlayer(player)
             playerWeekly[player] = {
                 weekKey = week,
                 quests  = stored.quests,
+                lastBoardResetKey = stored.lastBoardResetKey,
                 dirty   = false,
             }
             return {
@@ -432,6 +434,11 @@ function WeeklyQuestService:ResetAllQuests(player)
         return false, "Weekly quests unavailable", {}
     end
 
+    local week = currentWeekKey()
+    if data.lastBoardResetKey == week then
+        return false, "Already reset this week", self:GetWeeklyQuests(player)
+    end
+
     local previousQuestIds = {}
     for _, quest in ipairs(data.quests) do
         if type(quest.defId) == "string" then
@@ -445,6 +452,7 @@ function WeeklyQuestService:ResetAllQuests(player)
     end
 
     data.quests = newQuests
+    data.lastBoardResetKey = week
     markDirty(player)
     DataSaveCoordinator:RequestImmediateSave(player, "weekly_quest_reset", { sections = { "WeeklyQuest" }, force = true })
 

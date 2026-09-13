@@ -237,6 +237,7 @@ function QuestService:SaveProfileForPlayer(player, currentData, oldData)
         day        = pd.day,
         questOrder = pd.questOrder,
         quests     = questsSave,
+        lastBoardResetKey = pd.lastBoardResetKey,
     }
 
     local success, _, err = DataStoreOps.Update(ds, key, "DailyQuest/" .. key, function(storedPayload)
@@ -334,6 +335,7 @@ function QuestService:LoadProfileForPlayer(player)
                 day        = today,
                 questOrder = stored.questOrder,
                 quests     = quests,
+                lastBoardResetKey = stored.lastBoardResetKey,
                 dirty      = false,
             }
 
@@ -526,6 +528,11 @@ function QuestService:ResetAllQuests(player)
         return false, "Quest data unavailable", {}
     end
 
+    local today = todayKey()
+    if pd.lastBoardResetKey == today then
+        return false, "Already reset today", self:GetQuestsForPlayer(player)
+    end
+
     local previousOrder = table.clone(pd.questOrder)
     local newOrder = assignQuestOrder(previousOrder)
     if #newOrder < DAILY_QUEST_COUNT then
@@ -534,6 +541,7 @@ function QuestService:ResetAllQuests(player)
 
     pd.questOrder = newOrder
     pd.quests = buildQuestState(newOrder)
+    pd.lastBoardResetKey = today
     markDirty(player)
 
     local coordinator = getSaveCoordinator()

@@ -31,6 +31,20 @@ local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidSt
 local MOVEMENT_SPEED_STAT = "MovementSpeed"
 local FLAG_CARRY_SPEED_MODIFIER_ID = "flag_carry"
 local FLAG_CARRY_SPEED_PENALTY = -1
+local FLAG_INTERACT_RANGE = 16
+
+local function playerInFlagRange(player, model)
+	local character = player and player.Character
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		return false
+	end
+	local part = model and (model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart"))
+	if not part then
+		return false
+	end
+	return (hrp.Position - part.Position).Magnitude <= FLAG_INTERACT_RANGE
+end
 
 local function applyFlagCarrySlow(player)
 	if not player then
@@ -570,6 +584,9 @@ local function pickUpFlag(team, model, player)
 	if carrying[player] then
 		return false
 	end
+	if not playerInFlagRange(player, model) then
+		return false
+	end
 
 	local playerTeamName = canonicalizeTeamName(player.Team and player.Team.Name or nil)
 
@@ -615,6 +632,8 @@ local function pickUpFlag(team, model, player)
 	local template = flags[team].pickupTemplate or flags[team].original
 	local carried = makeCarryClone(template, character)
 	if not carried then
+		warn("[FlagPickup] carry clone failed; respawning", team, "flag")
+		respawnFlag(team)
 		return false
 	end
 
@@ -763,6 +782,9 @@ local function setupFlagActionPrompt(team, model)
 		local character = player.Character
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 		if not humanoid or humanoid.Health <= 0 then
+			return
+		end
+		if not playerInFlagRange(player, model) then
 			return
 		end
 
