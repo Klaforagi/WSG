@@ -593,6 +593,7 @@ end
 
 		local potionState = {
 			potions = {},
+			equippedPotionIds = {},
 			equippedPotionId = nil,
 			cooldownEndsAt = 0,
 			serverTime = 0,
@@ -835,9 +836,22 @@ end
 			if type(state) ~= "table" then
 				return
 			end
+			local equippedPotionIds = {}
+			local seen = {}
+			if type(state.equippedPotionIds) == "table" then
+				for _, potionId in ipairs(state.equippedPotionIds) do
+					if type(potionId) == "string" and potionId ~= "" and not seen[potionId] then
+						seen[potionId] = true
+						table.insert(equippedPotionIds, potionId)
+					end
+				end
+			elseif type(state.equippedPotionId) == "string" and state.equippedPotionId ~= "" then
+				table.insert(equippedPotionIds, state.equippedPotionId)
+			end
 			potionState = {
 				potions = type(state.potions) == "table" and state.potions or {},
-				equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
+				equippedPotionIds = equippedPotionIds,
+				equippedPotionId = equippedPotionIds[1],
 				cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
 				serverTime = tonumber(state.serverTime) or 0,
 			}

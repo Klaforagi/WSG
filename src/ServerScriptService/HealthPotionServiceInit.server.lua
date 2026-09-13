@@ -207,8 +207,8 @@ setPotionEquippedRF.OnServerInvoke = function(player, shouldEquip, potionId)
     return HealthPotionService:SetEquipped(player, shouldEquip == true, potionId)
 end
 
-useEquippedPotionRF.OnServerInvoke = function(player)
-    return HealthPotionService:UseEquippedPotion(player)
+useEquippedPotionRF.OnServerInvoke = function(player, potionId)
+    return HealthPotionService:UseEquippedPotion(player, potionId)
 end
 
 purchasePotionRF.OnServerInvoke = function(player, potionId)

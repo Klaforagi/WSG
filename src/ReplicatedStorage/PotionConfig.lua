@@ -4,6 +4,8 @@ local PotionProductIds = require(ReplicatedStorage:WaitForChild("PotionProductId
 
 local PotionConfig = {}
 
+PotionConfig.FirstPotionHotbarSlot = 4
+PotionConfig.MaxEquippedPotions = 3
 PotionConfig.SharedHotbarSlot = 4
 
 local orderedPotions = {
@@ -22,7 +24,6 @@ local orderedPotions = {
         IconGlyph = "",
         BadgeText = "",
         IconColor = { 245, 86, 86 },
-        HotbarSlot = 4,
         HotbarLabel = "Health",
         EffectType = "Heal",
         HealAmount = 40,
@@ -45,7 +46,6 @@ local orderedPotions = {
         IconGlyph = "",
         BadgeText = "",
         IconColor = { 92, 229, 132 },
-        HotbarSlot = 4,
         HotbarLabel = "Speed",
         EffectType = "MovementSpeed",
         AdditiveBonus = 6,
@@ -70,7 +70,6 @@ local orderedPotions = {
         IconGlyph = "",
         BadgeText = "",
         IconColor = { 255, 140, 0 },
-        HotbarSlot = 4,
         HotbarLabel = "Strength",
         EffectType = "OutgoingDamageFlat",
         FlatDamageAdd = 5,
@@ -92,6 +91,14 @@ PotionConfig.Potions = orderedPotions
 
 function PotionConfig.GetById(potionId)
     return potionsById[potionId]
+end
+
+function PotionConfig.GetMaxEquippedPotions()
+    return math.max(1, math.floor(tonumber(PotionConfig.MaxEquippedPotions) or 3))
+end
+
+function PotionConfig.GetFirstPotionHotbarSlot()
+    return math.max(1, math.floor(tonumber(PotionConfig.FirstPotionHotbarSlot) or 4))
 end
 
 function PotionConfig.GetOrderedPotions()

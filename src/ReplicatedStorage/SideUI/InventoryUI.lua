@@ -3213,6 +3213,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local potionState = {
             isLoaded = false,
             potions = {},
+            equippedPotionIds = {},
             equippedPotionId = nil,
             cooldownEndsAt = 0,
             serverTime = 0,
@@ -3294,16 +3295,34 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local function ingestPotionState(state)
             if type(state) ~= "table" then return end
+            local equippedPotionIds = {}
+            local seen = {}
+            if type(state.equippedPotionIds) == "table" then
+                for _, potionId in ipairs(state.equippedPotionIds) do
+                    if type(potionId) == "string" and potionId ~= "" and not seen[potionId] then
+                        seen[potionId] = true
+                        table.insert(equippedPotionIds, potionId)
+                    end
+                end
+            elseif type(state.equippedPotionId) == "string" and state.equippedPotionId ~= "" then
+                table.insert(equippedPotionIds, state.equippedPotionId)
+            end
             potionState = {
                 isLoaded = state.isLoaded == true,
                 potions = type(state.potions) == "table" and state.potions or {},
-                equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
+                equippedPotionIds = equippedPotionIds,
+                equippedPotionId = equippedPotionIds[1],
                 cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
                 serverTime = tonumber(state.serverTime) or 0,
             }
-            if potionState.equippedPotionId and getPotionCount(potionState.equippedPotionId) <= 0 then
-                potionState.equippedPotionId = nil
+            local compactIds = {}
+            for _, potionId in ipairs(potionState.equippedPotionIds) do
+                if getPotionCount(potionId) > 0 then
+                    table.insert(compactIds, potionId)
+                end
             end
+            potionState.equippedPotionIds = compactIds
+            potionState.equippedPotionId = compactIds[1]
         end
 
         if remotes and remotes.getStates then
@@ -3659,11 +3678,23 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         -- ── Helpers ─────────────────────────────────────────────────────
 
+        local function getEquippedPotionSlot(potionId)
+            if type(potionId) ~= "string" or potionId == "" then
+                return nil
+            end
+            for index, equippedId in ipairs(potionState.equippedPotionIds or {}) do
+                if equippedId == potionId then
+                    return index + 3
+                end
+            end
+            return nil
+        end
+
         local function getBoostState(boostId)
             local boostDef = entryById[boostId]
             if boostDef and boostDef.Kind == "potion" then
                 local owned = getPotionCount(boostId)
-                local equipped = potionState.equippedPotionId == boostId and owned > 0
+                local equipped = getEquippedPotionSlot(boostId) ~= nil and owned > 0
                 local remaining = math.max(0, (tonumber(potionState.cooldownEndsAt) or 0) - workspace:GetServerTimeNow())
                 return owned, equipped, remaining
             end
@@ -3737,7 +3768,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             -- Duration
             if def.Kind == "potion" then
-                boostDetailDuration.Text = def.DetailText or "Equip to slot 4"
+                boostDetailDuration.Text = def.DetailText or "Equip to hotbar"
             else
                 local durSec = def.DurationSeconds or 0
                 if durSec > 0 then
@@ -3772,8 +3803,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     boostActivateStroke.Color = CARD_STROKE
                     boostActivateStroke.Transparency = 0.45
                 elseif active then
+                    local slotNumber = getEquippedPotionSlot(def.Id)
                     if remaining <= 0 then
-                        boostDetailStatus.Text = "Equipped to Slot 4"
+                        boostDetailStatus.Text = slotNumber and ("Equipped to Slot " .. tostring(slotNumber)) or "Equipped"
                         boostDetailStatus.TextColor3 = WHITE
                     end
                     boostActivateBtn.Text = "UNEQUIP"
@@ -3783,14 +3815,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
                     boostActivateStroke.Transparency = 0.15
                 else
-                    boostDetailStatus.Text = remaining > 0 and "Shared Cooldown Active" or "Ready to Equip"
+                    local equippedCount = #(potionState.equippedPotionIds or {})
+                    local hotbarFull = equippedCount >= 3
+                    boostDetailStatus.Text = hotbarFull and "All potion slots full" or (remaining > 0 and "Shared Cooldown Active" or "Ready to Equip")
                     boostDetailStatus.TextColor3 = remaining > 0 and Color3.fromRGB(160, 215, 255) or WHITE
-                    boostActivateBtn.Text = "EQUIP"
-                    boostActivateBtn.Active = true
-                    boostActivateBtn.BackgroundColor3 = BTN_BG
-                    boostActivateBtn.TextColor3 = WHITE
+                    boostActivateBtn.Text = hotbarFull and "HOTBAR FULL" or "EQUIP"
+                    boostActivateBtn.Active = not hotbarFull
+                    boostActivateBtn.BackgroundColor3 = hotbarFull and DISABLED_BG or BTN_BG
+                    boostActivateBtn.TextColor3 = hotbarFull and DIM_TEXT or WHITE
                     boostActivateStroke.Color = Color3.fromRGB(0, 0, 0)
-                    boostActivateStroke.Transparency = 0.15
+                    boostActivateStroke.Transparency = hotbarFull and 0.45 or 0.15
                 end
             elseif active then
                 boostDetailStatus.Text = "\u{2714} ACTIVE"
@@ -4178,9 +4212,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end)
                 if ok and type(state) == "table" then ingestPotionState(state) end
                 refreshBoostCards()
-                if ok and success then
-                    showToast(boostsPage, shouldEquip and ((def.DisplayName or "Potion") .. " equipped!") or "Potion unequipped!", Color3.fromRGB(103, 186, 255), 2.2)
-                else
+                updateBoostDetailsPanel()
+                if not (ok and success) then
                     showToast(boostsPage, tostring((ok and message) or "Equip failed"), RED_TEXT, 2.2)
                 end
                 return

@@ -1,6 +1,7 @@
 --------------------------------------------------------------------------------
 -- Hotbar.client.lua
--- 4-slot hotbar: Melee / Ranged / Bandage / Slot 4
+-- Hotbar: Melee / Ranged / Bandage + up to 3 potion slots (4-6).
+-- Potion slots appear only while a potion is equipped and compact left on unequip.
 -- Builds the entire UI at runtime — no Studio ScreenGui required.
 -- Equip is INSTANT — always delegates to server ForceEquipTool.
 --------------------------------------------------------------------------------
@@ -86,7 +87,12 @@ local SLOT_DEFS = {
     { index = 2, key = Enum.KeyCode.Two,   category = "Ranged",  toolName = "Starter Slingshot", label = "2" },
     { index = 3, key = Enum.KeyCode.Three, category = "Utility", toolName = "Bandage",     label = "3", isUtility = true, utilityType = "bandage" },
     { index = 4, key = Enum.KeyCode.Four,  category = "Extra",   toolName = "",            label = "4", isUtility = true, utilityType = "potion" },
+    { index = 5, key = Enum.KeyCode.Five,  category = "Extra",   toolName = "",            label = "5", isUtility = true, utilityType = "potion" },
+    { index = 6, key = Enum.KeyCode.Six,   category = "Extra",   toolName = "",            label = "6", isUtility = true, utilityType = "potion" },
 }
+
+local FIRST_POTION_SLOT = 4
+local MAX_POTION_SLOTS = 3
 
 local SLOT_COUNT = #SLOT_DEFS
 
@@ -124,6 +130,7 @@ local slotTools       = {}
 local potionState     = {
     isLoaded = false,
     potions = {},
+    equippedPotionIds = {},
     equippedPotionId = nil,
     count = 0,
     equipped = false,
@@ -133,6 +140,43 @@ local potionState     = {
 local potionCooldownMarker = 0
 -- current cached team tint (Color3 or nil)
 local currentTeamColor = nil
+
+local function parseEquippedPotionIds(state)
+    local ids = {}
+    local seen = {}
+    if type(state) == "table" and type(state.equippedPotionIds) == "table" then
+        for _, potionId in ipairs(state.equippedPotionIds) do
+            if type(potionId) == "string" and potionId ~= "" and not seen[potionId] then
+                seen[potionId] = true
+                table.insert(ids, potionId)
+            end
+        end
+    end
+    if #ids == 0 and type(state) == "table" and type(state.equippedPotionId) == "string" and state.equippedPotionId ~= "" then
+        table.insert(ids, state.equippedPotionId)
+    end
+    return ids
+end
+
+local function getPotionCountForId(potionId)
+    if type(potionId) ~= "string" or potionId == "" then
+        return 0
+    end
+    local potions = type(potionState.potions) == "table" and potionState.potions or {}
+    local entry = potions[potionId]
+    return math.max(0, math.floor(tonumber(type(entry) == "table" and entry.count or 0) or 0))
+end
+
+local function getPotionIdForSlot(idx)
+    if idx < FIRST_POTION_SLOT or idx >= FIRST_POTION_SLOT + MAX_POTION_SLOTS then
+        return nil
+    end
+    return (potionState.equippedPotionIds or {})[idx - FIRST_POTION_SLOT + 1]
+end
+
+local function getVisibleHotbarSlotCount()
+    return 3 + math.clamp(#(potionState.equippedPotionIds or {}), 0, MAX_POTION_SLOTS)
+end
 
 local function getPotionDefinition(potionId)
     if type(potionId) ~= "string" or potionId == "" then
@@ -276,7 +320,10 @@ layout.Padding             = UDim.new(GAP_SCALE, 0)
 layout.Parent              = container
 
 local function applyHotbarLayout()
-    local metrics = BottomCombatHudLayout.Apply(playerGui)
+    local metrics = BottomCombatHudLayout.SetVisibleSlotCount(getVisibleHotbarSlotCount())
+    if not metrics then
+        metrics = BottomCombatHudLayout.Apply(playerGui)
+    end
     layout.Padding = UDim.new(0, metrics.HotbarGap)
 end
 
@@ -450,6 +497,7 @@ local function buildSlot(def)
     btn.BackgroundTransparency  = 0.15
     btn.AutoButtonColor         = false
     btn.Text                    = ""
+    btn.Visible                 = def.utilityType ~= "potion"
     btn.Parent                  = container
 
     local corner = Instance.new("UICorner", btn)
@@ -696,6 +744,7 @@ end
 -- REFRESH UI
 --------------------------------------------------------------------------------
 local function refreshSlots()
+    applyHotbarLayout()
     for idx = 1, SLOT_COUNT do
         local ui  = slotUI[idx]
         local def = SLOT_DEFS[idx]
@@ -735,7 +784,10 @@ local function refreshSlots()
                 ui.countBadge.Visible = false
             end
         elseif utilityType == "potion" then
-            local hasEquippedPotion = potionState.equipped == true and (tonumber(potionState.count) or 0) > 0
+            local potionId = getPotionIdForSlot(idx)
+            local potionCount = getPotionCountForId(potionId)
+            local hasEquippedPotion = type(potionId) == "string" and potionCount > 0
+            ui.btn.Visible = hasEquippedPotion
             ui.thumb.Visible = false
             if ui.bandageIcon then
                 ui.bandageIcon.Visible = false
@@ -743,12 +795,15 @@ local function refreshSlots()
             if ui.potionIcon then
                 ui.potionIcon.Visible = hasEquippedPotion
                 if hasEquippedPotion then
-                    updatePotionIcon(ui.potionIcon, getPotionDefinition(potionState.equippedPotionId))
+                    updatePotionIcon(ui.potionIcon, getPotionDefinition(potionId))
                 end
             end
             if ui.countBadge and ui.countLabel then
-                ui.countLabel.Text = tostring(math.max(0, math.floor(tonumber(potionState.count) or 0)))
-                ui.countBadge.Visible = hasEquippedPotion and math.max(0, math.floor(tonumber(potionState.count) or 0)) > 0
+                ui.countLabel.Text = tostring(potionCount)
+                ui.countBadge.Visible = hasEquippedPotion and potionCount > 0
+            end
+            if not hasEquippedPotion then
+                continue
             end
         else
             local icon = getToolIcon(tool)
@@ -785,9 +840,11 @@ local function refreshSlots()
                         ui.nameLabel.TextColor3 = COLOR_TEXT
                         ui.nameLabel.Text       = "Heal"
                     elseif utilityType == "potion" then
-                        local equippedPotionDef = getPotionDefinition(potionState.equippedPotionId)
+                        local potionId = getPotionIdForSlot(idx)
+                        local equippedPotionDef = getPotionDefinition(potionId)
                         local potionAccent = getPotionAccentColor(equippedPotionDef)
-                        local hasEquippedPotion = potionState.equipped == true and (tonumber(potionState.count) or 0) > 0
+                        local potionCount = getPotionCountForId(potionId)
+                        local hasEquippedPotion = type(potionId) == "string" and potionCount > 0
                         local isPotionCoolingDown = hasEquippedPotion and (tonumber(potionState.cooldownRemaining) or 0) > 0
                         if hasEquippedPotion then
                             ui.btn.BackgroundColor3 = isPotionCoolingDown and Color3.fromRGB(14, 28, 44) or bgColor
@@ -852,16 +909,17 @@ local function ensurePotionRemotes()
 end
 
 local function clearPotionCooldownVisuals()
-    local ui = slotUI[4]
-    if not ui then
-        return
-    end
-    if ui.cooldownOverlay then
-        ui.cooldownOverlay.Size = UDim2.fromScale(1, 0)
-    end
-    if ui.cooldownCountdown then
-        ui.cooldownCountdown.Text = ""
-        ui.cooldownCountdown.Visible = false
+    for idx = FIRST_POTION_SLOT, FIRST_POTION_SLOT + MAX_POTION_SLOTS - 1 do
+        local ui = slotUI[idx]
+        if ui then
+            if ui.cooldownOverlay then
+                ui.cooldownOverlay.Size = UDim2.fromScale(1, 0)
+            end
+            if ui.cooldownCountdown then
+                ui.cooldownCountdown.Text = ""
+                ui.cooldownCountdown.Visible = false
+            end
+        end
     end
     potionCooldownMarker = 0
 end
@@ -869,7 +927,7 @@ end
 local function syncPotionCooldownVisuals()
     local remaining = math.max(0, tonumber(potionState.cooldownRemaining) or 0)
     local cooldownEndsAt = tonumber(potionState.cooldownEndsAt) or 0
-    local hasEquippedPotion = potionState.equipped == true and math.max(0, math.floor(tonumber(potionState.count) or 0)) > 0
+    local hasEquippedPotion = #(potionState.equippedPotionIds or {}) > 0
     if not hasEquippedPotion or remaining <= 0 then
         clearPotionCooldownVisuals()
         return
@@ -880,11 +938,15 @@ local function syncPotionCooldownVisuals()
     end
 
     potionCooldownMarker = cooldownEndsAt
-    if _G.HotbarCooldown and _G.HotbarCooldown.start then
-        _G.HotbarCooldown.start(4, remaining)
-    end
-    if _G.HotbarCooldown and _G.HotbarCooldown.startCountdown then
-        _G.HotbarCooldown.startCountdown(4, remaining)
+    for idx = FIRST_POTION_SLOT, FIRST_POTION_SLOT + MAX_POTION_SLOTS - 1 do
+        if getPotionIdForSlot(idx) then
+            if _G.HotbarCooldown and _G.HotbarCooldown.start then
+                _G.HotbarCooldown.start(idx, remaining)
+            end
+            if _G.HotbarCooldown and _G.HotbarCooldown.startCountdown then
+                _G.HotbarCooldown.startCountdown(idx, remaining)
+            end
+        end
     end
 end
 
@@ -893,22 +955,35 @@ local function ingestPotionState(state)
         return
     end
 
+    local potions = type(state.potions) == "table" and state.potions or {}
+    local equippedPotionIds = parseEquippedPotionIds(state)
+    local compactIds = {}
+    for _, potionId in ipairs(equippedPotionIds) do
+        local entry = potions[potionId]
+        local count = math.max(0, math.floor(tonumber(type(entry) == "table" and entry.count or 0) or 0))
+        if count > 0 then
+            table.insert(compactIds, potionId)
+        end
+    end
+    local firstCount = 0
+    if compactIds[1] then
+        local entry = potions[compactIds[1]]
+        firstCount = math.max(0, math.floor(tonumber(type(entry) == "table" and entry.count or 0) or 0))
+    end
+
     potionState = {
         isLoaded = state.isLoaded == true,
-        potions = type(state.potions) == "table" and state.potions or {},
-        equippedPotionId = type(state.equippedPotionId) == "string" and state.equippedPotionId or nil,
-        count = math.max(0, math.floor(tonumber(state.count) or 0)),
-        equipped = state.equipped == true,
+        potions = potions,
+        equippedPotionIds = compactIds,
+        equippedPotionId = compactIds[1],
+        count = firstCount,
+        equipped = #compactIds > 0,
         cooldownEndsAt = tonumber(state.cooldownEndsAt) or 0,
         cooldownRemaining = math.max(0, tonumber(state.cooldownRemaining) or 0),
         serverTime = tonumber(state.serverTime) or 0,
     }
 
-    if potionState.count <= 0 then
-        potionState.equipped = false
-        potionState.equippedPotionId = nil
-    end
-
+    applyHotbarLayout()
     syncPotionCooldownVisuals()
     task.defer(refreshSlots)
 end
@@ -987,8 +1062,9 @@ equipSlot = function(idx)
                 forceEquipRemote:FireServer(def.category, tool.Name)
             end
         elseif def.utilityType == "potion" then
-            local hasEquippedPotion = potionState.equipped == true and math.max(0, math.floor(tonumber(potionState.count) or 0)) > 0
-            if not hasEquippedPotion then
+            local potionId = getPotionIdForSlot(idx)
+            local potionCount = getPotionCountForId(potionId)
+            if type(potionId) ~= "string" or potionCount <= 0 then
                 refreshSlots()
                 return
             end
@@ -1002,7 +1078,7 @@ equipSlot = function(idx)
             end
 
             local ok, success, _, payload = pcall(function()
-                return remotes.usePotion:InvokeServer()
+                return remotes.usePotion:InvokeServer(potionId)
             end)
             if ok and success and type(payload) == "table" then
                 ingestPotionState(payload.state)

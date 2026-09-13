@@ -19,8 +19,11 @@ local MAX_SLOT_SIZE = 64
 local MIN_SLOT_SIZE = 42
 local MAX_XP_HEIGHT = 44
 local MIN_XP_HEIGHT = 32
+local MIN_HOTBAR_SLOTS = 3
+local MAX_HOTBAR_SLOTS = 6
 
 local state = nil
+local visibleSlotCount = MIN_HOTBAR_SLOTS
 
 local function getViewportSize()
 	local cam = workspace.CurrentCamera
@@ -72,10 +75,11 @@ local function computeMetrics()
 	local baseSlotSize = touchEnabled and math.floor(84 * uiScale) or math.floor(96 * uiScale)
 	local hotbarGap = touchEnabled and math.max(4, math.floor(6 * uiScale)) or math.max(4, math.floor(8 * uiScale))
 	local dashGap = touchEnabled and math.max(8, math.floor(10 * uiScale)) or math.max(10, math.floor(12 * uiScale))
-	local maxSlotSize = math.floor((rootWidth - (hotbarGap * 3) - (dashGap * 2)) / 5.96)
+	local slotCount = math.clamp(visibleSlotCount, MIN_HOTBAR_SLOTS, MAX_HOTBAR_SLOTS)
+	local maxSlotSize = math.floor((rootWidth - (hotbarGap * (MAX_HOTBAR_SLOTS - 1)) - (dashGap * 2)) / (MAX_HOTBAR_SLOTS + 1.96))
 	local slotSize = math.clamp(math.min(baseSlotSize, maxSlotSize), MIN_SLOT_SIZE, MAX_SLOT_SIZE)
 	local dashButtonSize = math.max(30, math.floor(slotSize * 0.98))
-	local hotbarWidth = (slotSize * 4) + (hotbarGap * 3)
+	local hotbarWidth = (slotSize * slotCount) + (hotbarGap * math.max(0, slotCount - 1))
 	local rowHeight = math.max(slotSize, dashButtonSize)
 	local rowGap = touchEnabled and math.max(8, math.floor(viewportY * 0.008)) or math.max(8, math.floor(viewportY * 0.009))
 	local bottomPad = touchEnabled and math.max(6, math.floor(viewportY * 0.006)) or 2
@@ -93,6 +97,7 @@ local function computeMetrics()
 		SlotSize = slotSize,
 		HotbarGap = hotbarGap,
 		HotbarWidth = hotbarWidth,
+		HotbarSlotCount = slotCount,
 		DashButtonSize = dashButtonSize,
 	}
 end
@@ -206,6 +211,22 @@ function Layout.Apply(playerGui)
 	end
 	state.Metrics = applyLayout()
 	return state.Metrics
+end
+
+function Layout.SetVisibleSlotCount(count)
+	local nextCount = math.clamp(math.floor(tonumber(count) or MIN_HOTBAR_SLOTS), MIN_HOTBAR_SLOTS, MAX_HOTBAR_SLOTS)
+	if visibleSlotCount == nextCount then
+		if state then
+			return state.Metrics or computeMetrics()
+		end
+		return computeMetrics()
+	end
+	visibleSlotCount = nextCount
+	if state then
+		state.Metrics = applyLayout()
+		return state.Metrics
+	end
+	return computeMetrics()
 end
 
 return Layout
