@@ -275,7 +275,7 @@ end)
 --------------------------------------------------------------------------------
 -- Button Click
 --------------------------------------------------------------------------------
-local function openDailyRewardsPanel()
+local function openDailyRewardsPanel(sameGroup)
     if not DailyRewardsUI then
         return
     end
@@ -299,22 +299,23 @@ local function openDailyRewardsPanel()
             })
         end
     end
-    DailyRewardsUI.Open()
+    DailyRewardsUI.Open(sameGroup)
 end
 
 if MenuController then
     MenuController.RegisterMenu("DailyRewards", {
-        open = function()
-            openDailyRewardsPanel()
+        group = "modal",
+        open = function(sameGroup)
+            openDailyRewardsPanel(sameGroup)
         end,
         close = function()
             if DailyRewardsUI then
-                DailyRewardsUI.Close()
+                DailyRewardsUI.Close(false)
             end
         end,
-        closeInstant = function()
+        closeInstant = function(sameGroup)
             if DailyRewardsUI then
-                DailyRewardsUI.Close()
+                DailyRewardsUI.Close(sameGroup)
             end
         end,
         isOpen = function()

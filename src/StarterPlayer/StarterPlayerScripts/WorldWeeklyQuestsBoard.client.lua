@@ -529,14 +529,6 @@ local function clearQuestRows(scroll)
 	end
 end
 
-local function formatProgressText(quest, progress, goal)
-	local displayUnit = quest.displayUnit
-	if type(displayUnit) == "string" and displayUnit ~= "" then
-		return string.format("%d/%d %s", progress, goal, displayUnit)
-	end
-	return string.format("%d/%d", progress, goal)
-end
-
 local function setRowState(row, quest)
 	local progress = math.clamp(tonumber(quest.progress) or 0, 0, tonumber(quest.goal) or 0)
 	local goal = math.max(1, tonumber(quest.goal) or 1)
@@ -561,7 +553,7 @@ local function setRowState(row, quest)
 			progressLabel.Text = "CLAIMED"
 			progressLabel.TextColor3 = CLAIMED
 		else
-			progressLabel.Text = formatProgressText(quest, progress, goal)
+			progressLabel.Text = string.format("%d/%d", progress, goal)
 			progressLabel.TextColor3 = complete and WHITE or MUTED
 		end
 	end
@@ -815,7 +807,6 @@ applyQuestList = function(result)
 				goal = tonumber(quest.goal) or 1,
 				reward = tonumber(quest.reward) or 0,
 				claimed = quest.claimed == true,
-				displayUnit = quest.displayUnit,
 			}
 			newPositionByIndex[questIndex] = position
 		end

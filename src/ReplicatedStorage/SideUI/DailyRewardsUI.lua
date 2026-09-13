@@ -25,7 +25,6 @@ local overlay
 local window
 local windowScale
 local claimButton
-local claimHint
 local featuredIcon
 local featuredDayLabel
 local featuredName
@@ -222,15 +221,12 @@ local function refreshFeatured()
 	if status == "claimable" then
 		featuredStatus.Text = "READY TO CLAIM"
 		featuredStatus.TextColor3 = GOLD
-		claimHint.Text = "Claim now to keep your streak alive."
 	elseif status == "claimed" then
 		featuredStatus.Text = "CLAIMED"
 		featuredStatus.TextColor3 = Color3.fromRGB(90, 220, 130)
-		claimHint.Text = "This reward is already yours."
 	else
 		featuredStatus.Text = "LOCKED"
 		featuredStatus.TextColor3 = DIM
-		claimHint.Text = "Claim today's reward to reach this day."
 	end
 
 	if canClaim then
@@ -342,11 +338,14 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 
 	overlay = Instance.new("Frame")
 	overlay.Name = "Overlay"
-	overlay.Size = UDim2.fromScale(1, 1)
-	overlay.BackgroundColor3 = Color3.fromRGB(6, 8, 16)
-	overlay.BackgroundTransparency = 0.42
+	overlay.Size = UDim2.new(1.1, 0, 1.1, 0)
+	overlay.Position = UDim2.new(0.5, 0, 0.5, 0)
+	overlay.AnchorPoint = Vector2.new(0.5, 0.5)
+	overlay.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+	overlay.BackgroundTransparency = 0.5
 	overlay.BorderSizePixel = 0
 	overlay.Active = false
+	overlay.Visible = false
 	overlay.ZIndex = 1
 	overlay.Parent = screenGui
 
@@ -421,7 +420,12 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 		closeBtn.TextColor3 = GOLD
 	end)
 	closeBtn.Activated:Connect(function()
-		DailyRewardsUI.Close()
+		local mc = _G.SideUI and _G.SideUI.MenuController
+		if mc and mc.CloseMenu then
+			mc.CloseMenu("DailyRewards")
+		else
+			DailyRewardsUI.Close(false)
+		end
 	end)
 
 	timerLabel = Instance.new("TextLabel")
@@ -441,7 +445,7 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	timerLabel.TextXAlignment = Enum.TextXAlignment.Right
 	timerLabel.ZIndex = 3
 	timerLabel.Parent = window
-	constrainText(timerLabel, 11, 18)
+	constrainText(timerLabel, 16, 26)
 	updateTimerLabel()
 	timerToken += 1
 	local thisTimer = timerToken
@@ -561,30 +565,16 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	featuredName.Name = "RewardName"
 	featuredName.BackgroundTransparency = 1
 	featuredName.Position = UDim2.fromScale(0.34, 0.38)
-	featuredName.Size = UDim2.new(0.64, 0, 0.28, 0)
+	featuredName.Size = UDim2.new(0.64, 0, 0.52, 0)
 	featuredName.Font = Enum.Font.GothamBlack
 	featuredName.Text = "100 Coins"
 	featuredName.TextColor3 = WHITE
 	featuredName.TextScaled = true
 	featuredName.TextXAlignment = Enum.TextXAlignment.Left
+	featuredName.TextYAlignment = Enum.TextYAlignment.Top
 	featuredName.ZIndex = 5
 	featuredName.Parent = featured
 	constrainText(featuredName, 16, 30)
-
-	claimHint = Instance.new("TextLabel")
-	claimHint.Name = "Hint"
-	claimHint.BackgroundTransparency = 1
-	claimHint.Position = UDim2.fromScale(0.34, 0.7)
-	claimHint.Size = UDim2.new(0.64, 0, 0.24, 0)
-	claimHint.Font = Enum.Font.Gotham
-	claimHint.Text = "Claim now to keep your streak alive."
-	claimHint.TextColor3 = DIM
-	claimHint.TextScaled = true
-	claimHint.TextWrapped = true
-	claimHint.TextXAlignment = Enum.TextXAlignment.Left
-	claimHint.ZIndex = 5
-	claimHint.Parent = featured
-	constrainText(claimHint, 10, 16)
 
 	local track = Instance.new("Frame")
 	track.Name = "Track"
@@ -709,7 +699,28 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	return DailyRewardsUI
 end
 
-function DailyRewardsUI.Open()
+local function showSharedOverlay()
+	local sideUI = _G.SideUI
+	if sideUI and sideUI.SetSharedModalOverlay then
+		sideUI.SetSharedModalOverlay(true, true)
+	end
+end
+
+local function hideSharedOverlay()
+	local sideUI = _G.SideUI
+	if sideUI and sideUI.SetSharedModalOverlay then
+		sideUI.SetSharedModalOverlay(false)
+	end
+end
+
+local function restoreSharedWindow()
+	local sideUI = _G.SideUI
+	if sideUI and sideUI.RestoreSharedModalWindow then
+		sideUI.RestoreSharedModalWindow()
+	end
+end
+
+function DailyRewardsUI.Open(sameGroup)
 	if not screenGui or not window then
 		return
 	end
@@ -720,18 +731,32 @@ function DailyRewardsUI.Open()
 	end
 	isOpen = true
 	screenGui.Enabled = true
-	windowScale.Scale = 0.94
-	overlay.BackgroundTransparency = 1
-	TweenService:Create(overlay, TweenInfo.new(0.16), { BackgroundTransparency = 0.42 }):Play()
-	TweenService:Create(windowScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	if overlay then
+		overlay.Visible = false
+	end
+	showSharedOverlay()
+	if sameGroup then
+		windowScale.Scale = 1
+	else
+		windowScale.Scale = 0.94
+		TweenService:Create(windowScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
+	end
 end
 
-function DailyRewardsUI.Close()
+function DailyRewardsUI.Close(sameGroup)
 	if not screenGui then
 		return
 	end
 	isOpen = false
 	screenGui.Enabled = false
+	if overlay then
+		overlay.Visible = false
+	end
+	if sameGroup then
+		restoreSharedWindow()
+	else
+		hideSharedOverlay()
+	end
 end
 
 function DailyRewardsUI.IsOpen()

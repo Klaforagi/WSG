@@ -2470,6 +2470,7 @@ local function tweenWindowIn(done)
     if isAnimating then return end
     isAnimating = true
     modalOverlay.Visible = true
+    window.Visible = true
     -- start above the viewport and tween to center
     window.Position = UDim2.new(0.5, 0, -0.35, 0)
     local suc, t = pcall(function() return TweenService:Create(window, TWEEN_IN_INFO, {Position = UDim2.new(0.5, 0, 0.5, 0)}) end)
@@ -2884,6 +2885,7 @@ local function registerModalMenu(name, mod, label, createOptions)
             if sameGroup then
                 -- Switching within the modal group: overlay already visible, just swap content
                 modalOverlay.Visible = true
+                window.Visible = true
                 window.Position = UDim2.new(0.5, 0, 0.5, 0)
             else
                 tweenWindowIn()
@@ -3081,6 +3083,7 @@ local function registerPrewarmedModalMenu(name, mod, label, createOptions)
             isAnimating = false
             if sameGroup then
                 modalOverlay.Visible = true
+                window.Visible = true
                 window.Position = UDim2.new(0.5, 0, 0.5, 0)
             else
                 tweenWindowIn()
@@ -3385,6 +3388,24 @@ _G.SideUI.OpenPage = OpenPage
 _G.SideUI.OpenOptions = toggleOptionsMenu
 _G.SideUI.SetTitle = function(text) titleLabel.Text = text end
 _G.SideUI.MenuController = MenuController  -- expose for other scripts
+_G.SideUI.SetSharedModalOverlay = function(visible, hideShopWindow)
+	if visible then
+		modalOverlay.Visible = true
+		window.Visible = hideShopWindow ~= true
+		if hideShopWindow then
+			window.Position = UDim2.new(0.5, 0, 0.5, 0)
+		end
+	elseif currentModule == nil then
+		modalOverlay.Visible = false
+		window.Visible = true
+		window.Position = UDim2.new(0.5, 0, 0.5, 0)
+	end
+end
+_G.SideUI.RestoreSharedModalWindow = function()
+	window.Visible = true
+	window.Position = UDim2.new(0.5, 0, 0.5, 0)
+	modalOverlay.Visible = true
+end
 
 -- default handlers (can be overridden by assigning to script.OnShop/script.OnMenuButton)
 -- Assign to the forward-declared scriptHandlers table (line ~106) so click closures above see these

@@ -4,9 +4,10 @@
 -- StatService event pipeline:
 --   • Matches Played  → StatService MatchPlayed event
 --   • Matches Won     → StatService MatchWon event
---   • Time Played     → 60-second heartbeat during active matches (kept as-is)
---   • Zombies Elim.   → StatService MobKill event
+--   • Mob kills       → StatService MobKill event
 --   • Players Elim.   → StatService Elimination event
+--   • Damage dealt    → StatService DamageDealt event
+--   • Flag capture/return → StatService FlagCapture / FlagReturn
 --------------------------------------------------------------------------------
 
 local Players             = game:GetService("Players")
@@ -153,14 +154,7 @@ Players.PlayerAdded:Connect(onPlayerAdded)
 
 --------------------------------------------------------------------------------
 -- Subscribe to centralized stat events
---
--- Weekly quest track types:
---   MatchWon     → matches_won
---   FlagCapture  → flag_captures
---   FlagReturn   → flag_returns
---   MatchPlayed  → matches_played
---   CoinsEarned  → coins_earned
---   (time_played is handled by the 60-second heartbeat below)
+-- Weekly quests mirror daily track types, so they listen to the same actions.
 --------------------------------------------------------------------------------
 local Actions = StatService.Actions
 
@@ -170,35 +164,33 @@ StatService:OnStatEvent(function(payload)
     local amount = payload.amount or 1
     if not player or not player:IsA("Player") then return end
 
-    if action == Actions.MatchWon then
+    if action == Actions.MobKill then
+        local mobName = payload.metadata and payload.metadata.mobName or nil
+        if type(mobName) == "string" and mobName ~= "" then
+            local key = ("mob_%s"):format(tostring(mobName):lower())
+            WeeklyQuestService:IncrementByType(player, key, 1)
+        end
+    elseif action == Actions.Elimination then
+        WeeklyQuestService:IncrementByType(player, "players_eliminated", 1)
+    elseif action == Actions.MatchPlayed then
+        WeeklyQuestService:IncrementByType(player, "matches_played", 1)
+    elseif action == Actions.MatchWon then
         WeeklyQuestService:IncrementByType(player, "matches_won", 1)
+    elseif action == Actions.DamageDealt then
+        local dmgType = payload.metadata and payload.metadata.damageType or nil
+        if dmgType == "melee" then
+            WeeklyQuestService:IncrementByType(player, "damage_melee", amount)
+        elseif dmgType == "ranged" then
+            WeeklyQuestService:IncrementByType(player, "damage_ranged", amount)
+        else
+            WeeklyQuestService:IncrementByType(player, "damage_dealt", amount)
+        end
+    elseif action == Actions.CoinsEarned then
+        WeeklyQuestService:IncrementByType(player, "coins_earned", amount)
     elseif action == Actions.FlagCapture then
         WeeklyQuestService:IncrementByType(player, "flag_captures", 1)
     elseif action == Actions.FlagReturn then
         WeeklyQuestService:IncrementByType(player, "flag_returns", 1)
-    elseif action == Actions.MatchPlayed then
-        WeeklyQuestService:IncrementByType(player, "matches_played", 1)
-    elseif action == Actions.CoinsEarned then
-        WeeklyQuestService:IncrementByType(player, "coins_earned", amount)
-    end
-end)
-
---------------------------------------------------------------------------------
--- Hook: Time Played (heartbeat every 60 seconds during active matches)
--- Polls the MatchState attribute (set by GameManager) instead of relying on
--- BindableEvents, which suffer from a race condition where the first match
--- fires MatchStarted before this script connects.
---------------------------------------------------------------------------------
-task.spawn(function()
-    -- Credit 1 minute of play time every 60 seconds while match is active
-    while true do
-        task.wait(60)
-        local state = ServerScriptService:GetAttribute("MatchState")
-        if state == "Game" or state == "SuddenDeath" then
-            for _, player in ipairs(Players:GetPlayers()) do
-                WeeklyQuestService:IncrementByType(player, "time_played", 1)
-            end
-        end
     end
 end)
 

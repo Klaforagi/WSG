@@ -4,6 +4,7 @@
 --
 -- Manages per-player weekly quest state with DataStore persistence.
 -- Assigns 3 random weekly quests from WeeklyQuestDefs pool.
+-- Each slot is a scaled daily quest; the same daily source cannot appear twice.
 -- Resets automatically when the calendar week changes (UTC, Monday-based).
 --
 -- Public API used by WeeklyQuestServiceInit.server.lua:
@@ -45,9 +46,9 @@ end
 -- playerWeekly[player] = {
 --     weekKey = "2026-W11",
 --     quests  = {
---         [1] = { defId = "win_3_matches",       progress = 1, claimed = false },
---         [2] = { defId = "capture_5_flags",     progress = 2, claimed = false },
---         [3] = { defId = "play_60_min",         progress = 15, claimed = false },
+--         [1] = { defId = "victory_x4",          progress = 1, claimed = false },
+--         [2] = { defId = "goblin_hunter_x3",    progress = 2, claimed = false },
+--         [3] = { defId = "capture_the_flag_x5", progress = 1, claimed = false },
 --     },
 --     dirty = false,   -- whether unsaved changes exist
 -- }
@@ -110,13 +111,23 @@ local function getCurrencyService()
 end
 
 --------------------------------------------------------------------------------
--- Quest assignment: pick 3 quests from different track types for variety
+-- Quest assignment: 3 scaled daily quests, unique source (no Win 3 + Win 4)
 --------------------------------------------------------------------------------
 local function shuffleInPlace(items)
     for i = #items, 2, -1 do
         local j = math.random(1, i)
         items[i], items[j] = items[j], items[i]
     end
+end
+
+local function sourceIdOf(def)
+    if type(def) ~= "table" then
+        return nil
+    end
+    if type(def.sourceId) == "string" and def.sourceId ~= "" then
+        return def.sourceId
+    end
+    return def.id
 end
 
 local function normalizeQuestIdSet(questIds)
@@ -140,11 +151,14 @@ local function normalizeQuestIdSet(questIds)
     return questIdSet
 end
 
-local function pickQuestId(defs, usedQuestIds, excludedQuestIds, allowExcluded)
+local function pickQuestDef(defs, usedQuestIds, usedSourceIds, excludedQuestIds, allowExcluded)
     local candidates = {}
     for _, def in ipairs(defs) do
-        if not usedQuestIds[def.id] and (allowExcluded or not excludedQuestIds[def.id]) then
-            table.insert(candidates, def.id)
+        local sourceId = sourceIdOf(def)
+        if not usedQuestIds[def.id] and not usedSourceIds[sourceId] then
+            if allowExcluded or not excludedQuestIds[def.id] then
+                table.insert(candidates, def)
+            end
         end
     end
 
@@ -156,14 +170,19 @@ local function pickQuestId(defs, usedQuestIds, excludedQuestIds, allowExcluded)
     return candidates[1]
 end
 
-local function appendQuestEntry(quests, usedQuestIds, defId)
-    if not defId or usedQuestIds[defId] then
+local function appendQuestEntry(quests, usedQuestIds, usedSourceIds, def)
+    if not def then
+        return false
+    end
+    local sourceId = sourceIdOf(def)
+    if usedQuestIds[def.id] or usedSourceIds[sourceId] then
         return false
     end
 
-    usedQuestIds[defId] = true
+    usedQuestIds[def.id] = true
+    usedSourceIds[sourceId] = true
     table.insert(quests, {
-        defId = defId,
+        defId = def.id,
         progress = 0,
         claimed = false,
     })
@@ -181,31 +200,32 @@ local function assignNewQuests(excludedQuestIds)
 
     local quests = {}
     local usedQuestIds = {}
+    local usedSourceIds = {}
 
     for i = 1, math.min(3, #trackTypes) do
         local trackType = trackTypes[i]
         local pool = WeeklyQuestDefs.ByTrackType[trackType] or {}
-        local defId = pickQuestId(pool, usedQuestIds, excludedQuestIdSet, false)
-        if not defId then
-            defId = pickQuestId(pool, usedQuestIds, excludedQuestIdSet, true)
+        local def = pickQuestDef(pool, usedQuestIds, usedSourceIds, excludedQuestIdSet, false)
+        if not def then
+            def = pickQuestDef(pool, usedQuestIds, usedSourceIds, excludedQuestIdSet, true)
         end
-        appendQuestEntry(quests, usedQuestIds, defId)
+        appendQuestEntry(quests, usedQuestIds, usedSourceIds, def)
     end
 
     while #quests < 3 do
-        local defId = pickQuestId(WeeklyQuestDefs.Pool, usedQuestIds, excludedQuestIdSet, false)
-        if not defId then
+        local def = pickQuestDef(WeeklyQuestDefs.Pool, usedQuestIds, usedSourceIds, excludedQuestIdSet, false)
+        if not def then
             break
         end
-        appendQuestEntry(quests, usedQuestIds, defId)
+        appendQuestEntry(quests, usedQuestIds, usedSourceIds, def)
     end
 
     while #quests < 3 do
-        local defId = pickQuestId(WeeklyQuestDefs.Pool, usedQuestIds, excludedQuestIdSet, true)
-        if not defId then
+        local def = pickQuestDef(WeeklyQuestDefs.Pool, usedQuestIds, usedSourceIds, excludedQuestIdSet, true)
+        if not def then
             break
         end
-        appendQuestEntry(quests, usedQuestIds, defId)
+        appendQuestEntry(quests, usedQuestIds, usedSourceIds, def)
     end
 
     return quests
@@ -349,7 +369,6 @@ function WeeklyQuestService:GetWeeklyQuests(player)
                 progress    = math.min(q.progress, def.goal),
                 reward      = def.reward,
                 claimed     = q.claimed,
-                displayUnit = def.displayUnit,
             })
         end
     end
@@ -458,24 +477,20 @@ function WeeklyQuestService:RerollQuest(player, questIndex)
         return false, "Quest unavailable"
     end
 
-    local assignedIds = {}
+    local usedSourceIds = {}
     for _, quest in ipairs(data.quests) do
-        assignedIds[quest.defId] = true
-    end
-
-    local alternatives = {}
-    local sameTrackPool = WeeklyQuestDefs.ByTrackType[currentDef.trackType] or {}
-    for _, def in ipairs(sameTrackPool) do
-        if def.id ~= current.defId and not assignedIds[def.id] then
-            table.insert(alternatives, def)
+        local assignedDef = WeeklyQuestDefs.ById[quest.defId]
+        local sourceId = sourceIdOf(assignedDef)
+        if sourceId then
+            usedSourceIds[sourceId] = true
         end
     end
 
-    if #alternatives == 0 then
-        for _, def in ipairs(WeeklyQuestDefs.Pool) do
-            if def.id ~= current.defId and not assignedIds[def.id] then
-                table.insert(alternatives, def)
-            end
+    local alternatives = {}
+    for _, def in ipairs(WeeklyQuestDefs.Pool) do
+        local sourceId = sourceIdOf(def)
+        if sourceId and not usedSourceIds[sourceId] then
+            table.insert(alternatives, def)
         end
     end
 

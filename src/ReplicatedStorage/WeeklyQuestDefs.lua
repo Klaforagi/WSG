@@ -1,200 +1,86 @@
 --------------------------------------------------------------------------------
 -- WeeklyQuestDefs.lua  –  Shared weekly quest pool (ReplicatedStorage)
--- Used by WeeklyQuestService (server) and DailyQuestsUI (client) for display.
+-- Used by WeeklyQuestService (server) and weekly quest boards (client).
 --
--- DESIGN: Weekly quests are longer-term commitment goals focused on wins,
--- objectives, and sustained play. They intentionally differ from daily quests
--- which target quick session-based combat and participation.
+-- Weekly quests are scaled copies of the daily pool:
+--   goal   x3 / x4 / x5
+--   reward x5 / x6 / x7  (matching the chosen goal multiplier)
+-- A weekly board never rolls two variants of the same daily quest.
 --------------------------------------------------------------------------------
+
+local DailyQuestDefs = require(script.Parent:WaitForChild("DailyQuestDefs"))
 
 local WeeklyQuestDefs = {}
 
---------------------------------------------------------------------------------
--- Track types used for server-side event routing
---------------------------------------------------------------------------------
-WeeklyQuestDefs.TrackTypes = {
-    MATCHES_WON     = "matches_won",
-    FLAG_CAPTURES   = "flag_captures",
-    FLAG_RETURNS    = "flag_returns",
-    TIME_PLAYED     = "time_played",
-    COINS_EARNED    = "coins_earned",
-    MATCHES_PLAYED  = "matches_played",
+WeeklyQuestDefs.GOAL_MULTIPLIERS = { 3, 4, 5 }
+WeeklyQuestDefs.REWARD_MULTIPLIERS = {
+	[3] = 5,
+	[4] = 6,
+	[5] = 7,
 }
 
---------------------------------------------------------------------------------
--- Quest pool  (17 quests – 2-3 per track type at easy/medium/hard tiers)
---
--- goal:       target value the player must reach
--- reward:     coins awarded on claim
--- trackType:  key used by the server to route game events to quest progress
--- displayUnit: optional – if set, progress text uses this label
---------------------------------------------------------------------------------
-WeeklyQuestDefs.Pool = {
-    -- Matches Won  (requires victories, not just participation)
-    {
-        id        = "win_3_matches",
-        title     = "Champion",
-        desc      = "Win 3 matches with your team",
-        goal      = 3,
-        reward    = 180,
-        trackType = "matches_won",
-    },
-    {
-        id        = "win_5_matches",
-        title     = "Grand Champion",
-        desc      = "Win 5 matches with your team",
-        goal      = 5,
-        reward    = 230,
-        trackType = "matches_won",
-    },
-    {
-        id        = "win_10_matches",
-        title     = "Legendary Victor",
-        desc      = "Win 10 matches with your team",
-        goal      = 10,
-        reward    = 300,
-        trackType = "matches_won",
-    },
+WeeklyQuestDefs.TrackTypes = table.clone(DailyQuestDefs.TrackTypes)
 
-    -- Flag Captures  (objective play)
-    {
-        id        = "capture_3_flags",
-        title     = "Flag Runner",
-        desc      = "Capture 3 enemy flags",
-        goal      = 3,
-        reward    = 180,
-        trackType = "flag_captures",
-    },
-    {
-        id        = "capture_5_flags",
-        title     = "Flag Dominator",
-        desc      = "Capture 5 enemy flags",
-        goal      = 5,
-        reward    = 230,
-        trackType = "flag_captures",
-    },
-    {
-        id        = "capture_8_flags",
-        title     = "Capture King",
-        desc      = "Capture 8 enemy flags",
-        goal      = 8,
-        reward    = 280,
-        trackType = "flag_captures",
-    },
-
-    -- Flag Returns  (defensive objective play)
-    {
-        id        = "return_3_flags",
-        title     = "Banner Guardian",
-        desc      = "Return your team's flag 3 times",
-        goal      = 3,
-        reward    = 180,
-        trackType = "flag_returns",
-    },
-    {
-        id        = "return_5_flags",
-        title     = "Flag Defender",
-        desc      = "Return your team's flag 5 times",
-        goal      = 5,
-        reward    = 230,
-        trackType = "flag_returns",
-    },
-    {
-        id        = "return_8_flags",
-        title     = "Loyal Protector",
-        desc      = "Return your team's flag 8 times",
-        goal      = 8,
-        reward    = 280,
-        trackType = "flag_returns",
-    },
-
-    -- Time Played  (sustained presence in matches)
-    {
-        id          = "play_30_min",
-        title       = "Battlefield Veteran",
-        desc        = "Spend 30 minutes in matches",
-        goal        = 30,
-        reward      = 180,
-        trackType   = "time_played",
-        displayUnit = "min",
-    },
-    {
-        id          = "play_60_min",
-        title       = "War Veteran",
-        desc        = "Spend 60 minutes in matches",
-        goal        = 60,
-        reward      = 230,
-        trackType   = "time_played",
-        displayUnit = "min",
-    },
-    {
-        id          = "play_120_min",
-        title       = "Ironclad",
-        desc        = "Spend 120 minutes in matches",
-        goal        = 120,
-        reward      = 280,
-        trackType   = "time_played",
-        displayUnit = "min",
-    },
-
-    -- Coins Earned  (larger weekly target)
-    {
-        id        = "earn_500_coins",
-        title     = "Wealth Builder",
-        desc      = "Earn 500 coins from gameplay",
-        goal      = 500,
-        reward    = 200,
-        trackType = "coins_earned",
-    },
-    {
-        id        = "earn_1000_coins",
-        title     = "Fortune Seeker",
-        desc      = "Earn 1,000 coins from gameplay",
-        goal      = 1000,
-        reward    = 280,
-        trackType = "coins_earned",
-    },
-
-    -- Matches Played  (larger commitment than daily)
-    {
-        id        = "complete_15_matches",
-        title     = "Loyal Fighter",
-        desc      = "Complete 15 matches",
-        goal      = 15,
-        reward    = 180,
-        trackType = "matches_played",
-    },
-    {
-        id        = "complete_25_matches",
-        title     = "Dedicated Warrior",
-        desc      = "Complete 25 matches",
-        goal      = 25,
-        reward    = 230,
-        trackType = "matches_played",
-    },
-    {
-        id        = "complete_40_matches",
-        title     = "Marathon Runner",
-        desc      = "Complete 40 matches",
-        goal      = 40,
-        reward    = 280,
-        trackType = "matches_played",
-    },
-}
-
--- Build a quick lookup by id
-WeeklyQuestDefs.ById = {}
-for _, def in ipairs(WeeklyQuestDefs.Pool) do
-    WeeklyQuestDefs.ById[def.id] = def
+local function formatGoal(n)
+	local s = tostring(math.floor((tonumber(n) or 0) + 0.5))
+	while true do
+		local nextS, replaced = string.gsub(s, "^(-?%d+)(%d%d%d)", "%1,%2")
+		s = nextS
+		if replaced == 0 then
+			break
+		end
+	end
+	return s
 end
 
--- Group by trackType for selection diversity
-WeeklyQuestDefs.ByTrackType = {}
+local function scaleDescription(desc, newGoal)
+	local scaled = tostring(desc or ""):gsub("%d[%d,]*", formatGoal(newGoal), 1)
+	if newGoal ~= 1 then
+		scaled = scaled:gsub("(%d) match$", "%1 matches")
+		scaled = scaled:gsub("(%d) match ", "%1 matches ")
+		scaled = scaled:gsub("(%d) time$", "%1 times")
+		scaled = scaled:gsub("(%d) time ", "%1 times ")
+	end
+	return scaled
+end
+
+WeeklyQuestDefs.Pool = {}
+for _, daily in ipairs(DailyQuestDefs.Pool) do
+	for _, goalMult in ipairs(WeeklyQuestDefs.GOAL_MULTIPLIERS) do
+		local rewardMult = WeeklyQuestDefs.REWARD_MULTIPLIERS[goalMult]
+		local goal = (tonumber(daily.goal) or 0) * goalMult
+		local reward = (tonumber(daily.reward) or 0) * rewardMult
+		table.insert(WeeklyQuestDefs.Pool, {
+			id          = daily.id .. "_x" .. tostring(goalMult),
+			sourceId    = daily.id,
+			title       = daily.title,
+			desc        = scaleDescription(daily.desc, goal),
+			goal        = goal,
+			reward      = reward,
+			trackType   = daily.trackType,
+			goalMult    = goalMult,
+			rewardMult  = rewardMult,
+		})
+	end
+end
+
+WeeklyQuestDefs.ById = {}
 for _, def in ipairs(WeeklyQuestDefs.Pool) do
-    if not WeeklyQuestDefs.ByTrackType[def.trackType] then
-        WeeklyQuestDefs.ByTrackType[def.trackType] = {}
-    end
-    table.insert(WeeklyQuestDefs.ByTrackType[def.trackType], def)
+	WeeklyQuestDefs.ById[def.id] = def
+end
+
+WeeklyQuestDefs.ByTrackType = {}
+WeeklyQuestDefs.BySourceId = {}
+for _, def in ipairs(WeeklyQuestDefs.Pool) do
+	if not WeeklyQuestDefs.ByTrackType[def.trackType] then
+		WeeklyQuestDefs.ByTrackType[def.trackType] = {}
+	end
+	table.insert(WeeklyQuestDefs.ByTrackType[def.trackType], def)
+
+	if not WeeklyQuestDefs.BySourceId[def.sourceId] then
+		WeeklyQuestDefs.BySourceId[def.sourceId] = {}
+	end
+	table.insert(WeeklyQuestDefs.BySourceId[def.sourceId], def)
 end
 
 return WeeklyQuestDefs
