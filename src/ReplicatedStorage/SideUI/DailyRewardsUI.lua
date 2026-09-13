@@ -1,216 +1,754 @@
 --------------------------------------------------------------------------------
--- DailyRewardsUI.lua  –  Controller for your pre-built Studio UI
+-- DailyRewardsUI.lua  –  Code-built daily login modal (navy + gold)
+-- Featured today's reward + compact 7-day track. Does not use the Studio GUI.
 --------------------------------------------------------------------------------
-local TweenService = game:GetService("TweenService")
+
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+
+local UITheme = require(script.Parent.UITheme)
+local TimeHelper
+pcall(function()
+	TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
+end)
+
+local AssetCodes
+pcall(function()
+	AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes", 5))
+end)
 
 local DailyRewardsUI = {}
 
-local screenGui = nil          -- The ScreenGui (DailyRewardsGui)
-local window = nil             -- DailyRewardsWindow
-local dayCards = {}
-local claimFrame = nil
-local claimButton = nil
-local streakNumberLabel = nil
-local daysLabel = nil
-local closeBtn = nil
+local screenGui
+local overlay
+local window
+local windowScale
+local claimButton
+local claimHint
+local featuredIcon
+local featuredDayLabel
+local featuredName
+local featuredStatus
+local streakValue
+local timerLabel
+local dayNodes = {}
 local isOpen = false
+local currentState
+local selectedDay = 1
+local onClaimCb
+local timerToken = 0
 
+local NAVY = UITheme.NAVY
+local NAVY_LIGHT = UITheme.NAVY_LIGHT
+local GOLD = UITheme.GOLD
+local GOLD_DIM = UITheme.GOLD_DIM
+local WHITE = UITheme.WHITE
+local DIM = UITheme.DIM_TEXT
+local GREEN = UITheme.GREEN_BTN
+local CARD = UITheme.CARD_BG
+local STROKE = UITheme.CARD_STROKE
 
-local function tweenProp(inst, props, info)
-    info = info or TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-    local tw = TweenService:Create(inst, info, props)
-    tw:Play()
-    return tw
+local function px(base)
+	local cam = workspace.CurrentCamera
+	local screenY = 1080
+	if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
+		screenY = cam.ViewportSize.Y
+	end
+	return math.max(1, math.round(base * screenY / 1080))
 end
 
--- Create: either use passed ScreenGui or find the player's DailyRewardsGui in PlayerGui
-function DailyRewardsUI.Create(passedScreenGui, initialState, callbacks)
-    local player = Players.LocalPlayer
-    if passedScreenGui and passedScreenGui:IsA("ScreenGui") then
-        screenGui = passedScreenGui
-    else
-        if not player then
-            warn("[DailyRewardsUI] No LocalPlayer available")
-            return
-        end
-        local playerGui = player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui")
-        screenGui = playerGui:FindFirstChild("DailyRewardsGui") or playerGui:WaitForChild("DailyRewardsGui", 5)
-    end
+local function constrainText(label, minSize, maxSize)
+	local c = Instance.new("UITextSizeConstraint")
+	c.MinTextSize = minSize
+	c.MaxTextSize = maxSize
+	c.Parent = label
+	return c
+end
 
-    if not screenGui then
-        warn("[DailyRewardsUI] DailyRewardsGui not found in PlayerGui")
-        return
-    end
+local function corner(parent, radius)
+	local c = Instance.new("UICorner")
+	c.CornerRadius = UDim.new(0, radius)
+	c.Parent = parent
+	return c
+end
 
-    window = screenGui:FindFirstChild("DailyRewardsWindow")
-    if not window then
-        warn("[DailyRewardsUI] DailyRewardsWindow not found!")
-        return
-    end
+local function stroke(parent, color, thickness, transparency)
+	local s = Instance.new("UIStroke")
+	s.Color = color
+	s.Thickness = thickness or 1.2
+	s.Transparency = transparency or 0.25
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent = parent
+	return s
+end
 
-    -- Find commonly used elements
-    streakNumberLabel = window:FindFirstChild("Streak#")
-    daysLabel = window:FindFirstChild("Days")
-    claimFrame = window:FindFirstChild("ClaimButton")
-    closeBtn = window:FindFirstChild("CloseBtn")
-    if claimFrame then claimButton = claimFrame:FindFirstChild("Claim") end
+local function inferType(reward)
+	if type(reward) ~= "table" then
+		return "Coins"
+	end
+	local t = reward.rewardType or reward.type
+	if type(t) == "string" and t ~= "" then
+		return t
+	end
+	local name = string.lower(tostring(reward.displayName or ""))
+	if string.find(name, "shard", 1, true) then
+		return "Shards"
+	end
+	if string.find(name, "key", 1, true) then
+		return "Key"
+	end
+	return "Coins"
+end
 
-    -- Day cards
-    local container = window:FindFirstChild("CardsContainer")
-    dayCards = {}
-    if container then
-        for i = 1, 7 do
-            local card = container:FindFirstChild("Day" .. i)
-            if card then
-                dayCards[i] = {
-                    frame = card,
-                    stroke = card:FindFirstChildOfClass("UIStroke"),
-                    rewardLabel = card:FindFirstChild("RewardLabel"),
-                    amountLabel = card:FindFirstChild("AmountLabel"),
-                    statusClaimed = card:FindFirstChild("StatusLabelClaimed"),
-                    statusToday = card:FindFirstChild("StatusLabelToday"),
-                }
-            end
-        end
-    end
+local function iconForType(rewardType)
+	if not (AssetCodes and AssetCodes.Get) then
+		return ""
+	end
+	if rewardType == "Shards" then
+		return AssetCodes.Get("Shards") or ""
+	end
+	if rewardType == "Key" then
+		return AssetCodes.Get("Key") or ""
+	end
+	return AssetCodes.Get("Coin") or ""
+end
 
-    -- Close button behaviour: keep how it is (top-right trigger should remain unchanged elsewhere)
-    if closeBtn then
-        closeBtn.Activated:Connect(function()
-            DailyRewardsUI.Close()
-        end)
-    end
+local function hideLegacyStudioGui(playerGui)
+	local legacy = playerGui:FindFirstChild("DailyRewardsGui")
+	if legacy and legacy:IsA("ScreenGui") and legacy ~= screenGui then
+		legacy.Enabled = false
+		local win = legacy:FindFirstChild("DailyRewardsWindow")
+		if win then
+			win.Visible = false
+		end
+	end
+end
 
-    -- Claim button callbacks
-    if claimButton and callbacks and callbacks.onClaim then
-        claimButton.Activated:Connect(callbacks.onClaim)
-    end
-    if claimButton then
-        claimButton.Activated:Connect(function()
-            if DailyRewardsUI.onClaim then DailyRewardsUI.onClaim() end
-        end)
-    end
+local FALLBACK_REWARDS = {
+	{ day = 1, displayName = "100 Coins", amount = 100, rewardType = "Coins" },
+	{ day = 2, displayName = "50 Shards", amount = 50, rewardType = "Shards" },
+	{ day = 3, displayName = "200 Coins", amount = 200, rewardType = "Coins" },
+	{ day = 4, displayName = "100 Shards", amount = 100, rewardType = "Shards" },
+	{ day = 5, displayName = "300 Coins", amount = 300, rewardType = "Coins" },
+	{ day = 6, displayName = "150 Shards", amount = 150, rewardType = "Shards" },
+	{ day = 7, displayName = "1 Golden Key", amount = 1, rewardType = "Key" },
+}
 
-    -- Ensure ScreenGui starts disabled by module until explicitly opened
-    if screenGui then screenGui.Enabled = screenGui.Enabled or false end
+local function getReward(day)
+	local rewards = currentState and currentState.rewards
+	if type(rewards) == "table" then
+		for _, reward in ipairs(rewards) do
+			if type(reward) == "table" and tonumber(reward.day) == day then
+				return reward
+			end
+		end
+		if type(rewards[day]) == "table" then
+			return rewards[day]
+		end
+	end
+	return FALLBACK_REWARDS[day]
+end
 
-    if initialState then
-        DailyRewardsUI.Refresh(initialState)
-    end
+local function hasRealClaim(state)
+	local lastClaimTime = tonumber(state and state.lastClaimTime)
+	local currentDay = tonumber(state and state.currentDay) or 0
+	return lastClaimTime ~= nil and lastClaimTime > 1600000000 and currentDay > 0
+end
 
-    return DailyRewardsUI
+local function computeDayStatus(dayIndex, state)
+	if type(state) ~= "table" or not hasRealClaim(state) then
+		return dayIndex == 1 and "claimable" or "future"
+	end
+	local currentDay = tonumber(state.currentDay) or 0
+	if state.alreadyClaimed == true then
+		return dayIndex <= currentDay and "claimed" or "future"
+	end
+	if dayIndex <= currentDay then
+		return "claimed"
+	end
+	if dayIndex == currentDay + 1 then
+		return "claimable"
+	end
+	return "future"
+end
+
+local function statusColor(status)
+	if status == "claimed" then
+		return Color3.fromRGB(28, 58, 40), Color3.fromRGB(70, 210, 110)
+	end
+	if status == "claimable" then
+		return Color3.fromRGB(42, 36, 16), GOLD
+	end
+	return CARD, STROKE
+end
+
+local function secondsUntilNextDay()
+	if TimeHelper and TimeHelper.SecondsUntilNextDailyReset then
+		return math.max(0, tonumber(TimeHelper.SecondsUntilNextDailyReset()) or 0)
+	end
+	local utc = os.date("!*t", os.time())
+	local elapsed = (utc.hour * 3600) + (utc.min * 60) + utc.sec
+	return math.max(0, 86400 - elapsed)
+end
+
+local function formatHMS(total)
+	total = math.max(0, math.floor(tonumber(total) or 0))
+	local h = math.floor(total / 3600)
+	local m = math.floor((total % 3600) / 60)
+	local s = total % 60
+	return string.format("%02d:%02d:%02d", h, m, s)
+end
+
+local function updateTimerLabel()
+	if not timerLabel then
+		return
+	end
+	timerLabel.Text = formatHMS(secondsUntilNextDay())
+end
+
+local function refreshFeatured()
+	local reward = getReward(selectedDay)
+	if not reward then
+		return
+	end
+	local status = computeDayStatus(selectedDay, currentState)
+	local rewardType = inferType(reward)
+	featuredIcon.Image = iconForType(rewardType)
+	featuredDayLabel.Text = "DAY " .. tostring(selectedDay)
+	featuredName.Text = reward.displayName or ("Day " .. tostring(selectedDay))
+
+	local canClaim = currentState and currentState.canClaimToday and not currentState.alreadyClaimed
+	if status == "claimable" then
+		featuredStatus.Text = "READY TO CLAIM"
+		featuredStatus.TextColor3 = GOLD
+		claimHint.Text = "Claim now to keep your streak alive."
+	elseif status == "claimed" then
+		featuredStatus.Text = "CLAIMED"
+		featuredStatus.TextColor3 = Color3.fromRGB(90, 220, 130)
+		claimHint.Text = "This reward is already yours."
+	else
+		featuredStatus.Text = "LOCKED"
+		featuredStatus.TextColor3 = DIM
+		claimHint.Text = "Claim today's reward to reach this day."
+	end
+
+	if canClaim then
+		claimButton.Text = "CLAIM REWARD"
+		claimButton.BackgroundColor3 = GREEN
+		claimButton.TextColor3 = WHITE
+		claimButton.Active = true
+	elseif currentState and currentState.alreadyClaimed then
+		claimButton.Text = "COME BACK TOMORROW"
+		claimButton.BackgroundColor3 = Color3.fromRGB(32, 48, 40)
+		claimButton.TextColor3 = DIM
+		claimButton.Active = false
+	else
+		claimButton.Text = "KEEP YOUR STREAK"
+		claimButton.BackgroundColor3 = Color3.fromRGB(32, 36, 52)
+		claimButton.TextColor3 = DIM
+		claimButton.Active = false
+	end
+end
+
+local function refreshTrack()
+	for i, node in ipairs(dayNodes) do
+		local reward = getReward(i)
+		local status = computeDayStatus(i, currentState)
+		local bg, border = statusColor(status)
+		node.frame.BackgroundColor3 = bg
+		node.stroke.Color = border
+		if status == "claimed" or status == "claimable" then
+			node.stroke.Thickness = 2
+			node.stroke.Transparency = 0.05
+		else
+			node.stroke.Thickness = 1.2
+			node.stroke.Transparency = 0.35
+		end
+		if status == "claimed" then
+			node.dayLabel.TextColor3 = Color3.fromRGB(90, 220, 130)
+		elseif status == "claimable" then
+			node.dayLabel.TextColor3 = GOLD
+		else
+			node.dayLabel.TextColor3 = DIM
+		end
+		node.icon.Image = iconForType(inferType(reward or {}))
+		node.icon.ImageTransparency = status == "future" and 0.35 or 0
+		node.check.Visible = status == "claimed"
+		node.scale.Scale = 1
+	end
 end
 
 function DailyRewardsUI.Refresh(state)
-    if not state or not window then return end
+	if type(state) ~= "table" then
+		return
+	end
+	currentState = state
+	if not hasRealClaim(state) then
+		state.currentStreak = 0
+		state.currentDay = 0
+		state.alreadyClaimed = false
+		state.canClaimToday = true
+		state.lastClaimTime = 0
+	end
+	if streakValue then
+		streakValue.Text = tostring(state.currentStreak or 0)
+	end
 
-    -- Streak display
-    if streakNumberLabel then
-        streakNumberLabel.Text = tostring(state.currentStreak or 0)
-    end
-    if daysLabel then
-        daysLabel.Text = ((state.currentStreak or 0) == 1) and "DAY" or "DAYS"
-    end
+	selectedDay = 1
+	for i = 1, 7 do
+		if computeDayStatus(i, state) == "claimable" then
+			selectedDay = i
+			break
+		end
+	end
+	if state.alreadyClaimed == true and hasRealClaim(state) then
+		selectedDay = math.clamp(tonumber(state.currentDay) or 1, 1, 7)
+	end
 
-    -- Update day cards
-    if streakNumberLabel then
-        streakNumberLabel.Text = tostring(state.currentStreak or 0)
-    end
+	refreshTrack()
+	refreshFeatured()
+end
 
-    if daysLabel then
-        local streak = state.currentStreak or 0
-        daysLabel.Text = (streak == 1) and "Day" or "Days"
-    end
+function DailyRewardsUI.Create(parent, initialState, callbacks)
+	onClaimCb = callbacks and callbacks.onClaim or nil
+	local player = Players.LocalPlayer
+	local playerGui = player and (player:FindFirstChild("PlayerGui") or player:WaitForChild("PlayerGui"))
+	if typeof(parent) == "Instance" and parent:IsA("PlayerGui") then
+		playerGui = parent
+	elseif typeof(parent) == "Instance" and parent:IsA("ScreenGui") then
+		playerGui = parent.Parent
+	end
+	if not playerGui then
+		warn("[DailyRewardsUI] PlayerGui missing")
+		return
+	end
 
-    local rewards = state.rewards or {}
-    for i, card in ipairs(dayCards) do
-        local reward = rewards[i]
-        if reward and card then
-            if card.rewardLabel then card.rewardLabel.Text = reward.displayName or "" end
-            if card.amountLabel then card.amountLabel.Text = "x" .. tostring(reward.amount or 0) end
+	hideLegacyStudioGui(playerGui)
 
-            local status = reward.status or "future"
+	local existing = playerGui:FindFirstChild("DailyRewardsMenu")
+	if existing then
+		existing:Destroy()
+	end
 
-            -- Reset visibility
-            if card.statusClaimed then card.statusClaimed.Visible = false end
-            if card.statusToday then card.statusToday.Visible = false end
+	screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "DailyRewardsMenu"
+	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true
+	screenGui.DisplayOrder = 540
+	screenGui.Enabled = false
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	screenGui.Parent = playerGui
 
-            -- Apply visuals per status
-            if status == "claimable" then
-                card.frame.BackgroundColor3 = Color3.fromRGB(255, 217, 0)
-                if card.stroke then card.stroke.Color = Color3.fromRGB(255, 200, 0) end
-                if card.statusToday then card.statusToday.Visible = true end
+	overlay = Instance.new("Frame")
+	overlay.Name = "Overlay"
+	overlay.Size = UDim2.fromScale(1, 1)
+	overlay.BackgroundColor3 = Color3.fromRGB(6, 8, 16)
+	overlay.BackgroundTransparency = 0.42
+	overlay.BorderSizePixel = 0
+	overlay.Active = false
+	overlay.ZIndex = 1
+	overlay.Parent = screenGui
 
-            elseif status == "claimed" then
-                card.frame.BackgroundColor3 = Color3.fromRGB(38, 240, 16)
-                if card.stroke then card.stroke.Color = Color3.fromRGB(24, 184, 12) end
-                if card.statusClaimed then card.statusClaimed.Visible = true end
+	window = Instance.new("Frame")
+	window.Name = "Window"
+	window.AnchorPoint = Vector2.new(0.5, 0.5)
+	window.Position = UDim2.fromScale(0.5, 0.5)
+	window.Size = UDim2.fromScale(0.52, 0.62)
+	window.BackgroundColor3 = NAVY
+	window.BorderSizePixel = 0
+	window.Active = true
+	window.ZIndex = 2
+	window.Parent = screenGui
+	corner(window, px(16))
+	stroke(window, GOLD, 2, 0.28)
 
-            else
-                card.frame.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
-                if card.stroke then card.stroke.Color = Color3.fromRGB(55, 62, 95) end
-            end
-        end
-    end
+	local sizeConstraint = Instance.new("UISizeConstraint")
+	sizeConstraint.MinSize = Vector2.new(420, 380)
+	sizeConstraint.MaxSize = Vector2.new(760, 620)
+	sizeConstraint.Parent = window
 
-    -- Claim button state
-    if claimFrame and claimButton then
-        local canClaim = state.canClaimToday and not state.alreadyClaimed
-        claimButton.Active = canClaim
+	windowScale = Instance.new("UIScale")
+	windowScale.Scale = 1
+	windowScale.Parent = window
 
-        if canClaim then
-            claimButton.Text = "CLAIM REWARD"
-            claimFrame.BackgroundTransparency = 0
-        elseif state.alreadyClaimed then
-            claimButton.Text = "✓ CLAIMED TODAY"
-            claimFrame.BackgroundTransparency = 0.35
-        else
-            claimButton.Text = "COME BACK TOMORROW"
-            claimFrame.BackgroundTransparency = 0.35
-        end
-    end
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0.04, 0)
+	pad.PaddingBottom = UDim.new(0.04, 0)
+	pad.PaddingLeft = UDim.new(0.045, 0)
+	pad.PaddingRight = UDim.new(0.045, 0)
+	pad.Parent = window
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.BackgroundTransparency = 1
+	title.Size = UDim2.new(0.42, 0, 0.09, 0)
+	title.Position = UDim2.fromScale(0, 0)
+	title.Font = Enum.Font.GothamBlack
+	title.Text = "DAILY LOGIN"
+	title.TextColor3 = GOLD
+	title.TextScaled = true
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.ZIndex = 3
+	title.Parent = window
+	constrainText(title, 18, 34)
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Name = "CloseBtn"
+	closeBtn.AnchorPoint = Vector2.new(1, 0)
+	closeBtn.Position = UDim2.fromScale(1, 0)
+	closeBtn.Size = UDim2.fromScale(0.08, 0.09)
+	closeBtn.BackgroundColor3 = UITheme.CLOSE_DEFAULT
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Font = Enum.Font.GothamBlack
+	closeBtn.Text = "X"
+	closeBtn.TextColor3 = GOLD
+	closeBtn.TextScaled = true
+	closeBtn.AutoButtonColor = false
+	closeBtn.ZIndex = 4
+	closeBtn.Parent = window
+	corner(closeBtn, px(8))
+	local closeAspect = Instance.new("UIAspectRatioConstraint")
+	closeAspect.AspectRatio = 1
+	closeAspect.Parent = closeBtn
+	constrainText(closeBtn, 14, 26)
+	closeBtn.MouseEnter:Connect(function()
+		closeBtn.BackgroundColor3 = UITheme.CLOSE_HOVER
+		closeBtn.TextColor3 = WHITE
+	end)
+	closeBtn.MouseLeave:Connect(function()
+		closeBtn.BackgroundColor3 = UITheme.CLOSE_DEFAULT
+		closeBtn.TextColor3 = GOLD
+	end)
+	closeBtn.Activated:Connect(function()
+		DailyRewardsUI.Close()
+	end)
+
+	timerLabel = Instance.new("TextLabel")
+	timerLabel.Name = "NextDayTimer"
+	timerLabel.BackgroundTransparency = 1
+	timerLabel.AnchorPoint = Vector2.new(1, 0)
+	timerLabel.Position = UDim2.new(0.88, 0, 0, 0)
+	timerLabel.Size = UDim2.new(0.42, 0, 0.09, 0)
+	timerLabel.FontFace = Font.new(
+		"rbxasset://fonts/families/SourceSansPro.json",
+		Enum.FontWeight.Bold,
+		Enum.FontStyle.Normal
+	)
+	timerLabel.Text = "00:00:00"
+	timerLabel.TextColor3 = GOLD
+	timerLabel.TextScaled = true
+	timerLabel.TextXAlignment = Enum.TextXAlignment.Right
+	timerLabel.ZIndex = 3
+	timerLabel.Parent = window
+	constrainText(timerLabel, 11, 18)
+	updateTimerLabel()
+	timerToken += 1
+	local thisTimer = timerToken
+	task.spawn(function()
+		while thisTimer == timerToken and timerLabel and timerLabel.Parent do
+			updateTimerLabel()
+			task.wait(1)
+		end
+	end)
+
+	local streakChip = Instance.new("Frame")
+	streakChip.Name = "StreakChip"
+	streakChip.BackgroundColor3 = Color3.fromRGB(32, 28, 14)
+	streakChip.Size = UDim2.new(0.34, 0, 0.07, 0)
+	streakChip.Position = UDim2.fromScale(0, 0.105)
+	streakChip.ZIndex = 3
+	streakChip.Parent = window
+	corner(streakChip, px(8))
+	stroke(streakChip, GOLD_DIM, 1.2, 0.35)
+
+	local streakCaption = Instance.new("TextLabel")
+	streakCaption.BackgroundTransparency = 1
+	streakCaption.Size = UDim2.fromScale(0.58, 1)
+	streakCaption.Position = UDim2.fromScale(0.06, 0)
+	streakCaption.Font = Enum.Font.GothamBold
+	streakCaption.Text = "STREAK"
+	streakCaption.TextColor3 = GOLD
+	streakCaption.TextScaled = true
+	streakCaption.TextXAlignment = Enum.TextXAlignment.Left
+	streakCaption.ZIndex = 4
+	streakCaption.Parent = streakChip
+	constrainText(streakCaption, 10, 16)
+
+	streakValue = Instance.new("TextLabel")
+	streakValue.Name = "StreakValue"
+	streakValue.BackgroundTransparency = 1
+	streakValue.AnchorPoint = Vector2.new(1, 0)
+	streakValue.Position = UDim2.fromScale(0.94, 0)
+	streakValue.Size = UDim2.fromScale(0.34, 1)
+	streakValue.Font = Enum.Font.GothamBlack
+	streakValue.Text = "0"
+	streakValue.TextColor3 = WHITE
+	streakValue.TextScaled = true
+	streakValue.TextXAlignment = Enum.TextXAlignment.Right
+	streakValue.ZIndex = 4
+	streakValue.Parent = streakChip
+	constrainText(streakValue, 12, 22)
+
+	local featured = Instance.new("Frame")
+	featured.Name = "Featured"
+	featured.BackgroundColor3 = NAVY_LIGHT
+	featured.Size = UDim2.new(1, 0, 0.38, 0)
+	featured.Position = UDim2.fromScale(0, 0.2)
+	featured.ZIndex = 3
+	featured.Parent = window
+	corner(featured, px(14))
+	stroke(featured, GOLD_DIM, 1.4, 0.45)
+
+	local featuredPad = Instance.new("UIPadding")
+	featuredPad.PaddingTop = UDim.new(0.08, 0)
+	featuredPad.PaddingBottom = UDim.new(0.08, 0)
+	featuredPad.PaddingLeft = UDim.new(0.04, 0)
+	featuredPad.PaddingRight = UDim.new(0.04, 0)
+	featuredPad.Parent = featured
+
+	local iconWell = Instance.new("Frame")
+	iconWell.Name = "IconWell"
+	iconWell.BackgroundColor3 = Color3.fromRGB(14, 16, 28)
+	iconWell.Size = UDim2.fromScale(0.26, 0.84)
+	iconWell.Position = UDim2.fromScale(0.02, 0.08)
+	iconWell.ZIndex = 4
+	iconWell.Parent = featured
+	corner(iconWell, px(12))
+	local iconAspect = Instance.new("UIAspectRatioConstraint")
+	iconAspect.AspectRatio = 1
+	iconAspect.Parent = iconWell
+
+	featuredIcon = Instance.new("ImageLabel")
+	featuredIcon.Name = "Icon"
+	featuredIcon.BackgroundTransparency = 1
+	featuredIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+	featuredIcon.Position = UDim2.fromScale(0.5, 0.5)
+	featuredIcon.Size = UDim2.fromScale(0.72, 0.72)
+	featuredIcon.ScaleType = Enum.ScaleType.Fit
+	featuredIcon.ZIndex = 5
+	featuredIcon.Parent = iconWell
+
+	featuredDayLabel = Instance.new("TextLabel")
+	featuredDayLabel.Name = "DayLabel"
+	featuredDayLabel.BackgroundTransparency = 1
+	featuredDayLabel.Position = UDim2.fromScale(0.34, 0.04)
+	featuredDayLabel.Size = UDim2.new(0.64, 0, 0.18, 0)
+	featuredDayLabel.Font = Enum.Font.GothamBold
+	featuredDayLabel.Text = "DAY 1"
+	featuredDayLabel.TextColor3 = GOLD
+	featuredDayLabel.TextScaled = true
+	featuredDayLabel.TextXAlignment = Enum.TextXAlignment.Left
+	featuredDayLabel.ZIndex = 5
+	featuredDayLabel.Parent = featured
+	constrainText(featuredDayLabel, 12, 20)
+
+	featuredStatus = Instance.new("TextLabel")
+	featuredStatus.Name = "Status"
+	featuredStatus.BackgroundTransparency = 1
+	featuredStatus.Position = UDim2.fromScale(0.34, 0.22)
+	featuredStatus.Size = UDim2.new(0.64, 0, 0.14, 0)
+	featuredStatus.Font = Enum.Font.GothamBold
+	featuredStatus.Text = "LOCKED"
+	featuredStatus.TextColor3 = DIM
+	featuredStatus.TextScaled = true
+	featuredStatus.TextXAlignment = Enum.TextXAlignment.Left
+	featuredStatus.ZIndex = 5
+	featuredStatus.Parent = featured
+	constrainText(featuredStatus, 10, 16)
+
+	featuredName = Instance.new("TextLabel")
+	featuredName.Name = "RewardName"
+	featuredName.BackgroundTransparency = 1
+	featuredName.Position = UDim2.fromScale(0.34, 0.38)
+	featuredName.Size = UDim2.new(0.64, 0, 0.28, 0)
+	featuredName.Font = Enum.Font.GothamBlack
+	featuredName.Text = "100 Coins"
+	featuredName.TextColor3 = WHITE
+	featuredName.TextScaled = true
+	featuredName.TextXAlignment = Enum.TextXAlignment.Left
+	featuredName.ZIndex = 5
+	featuredName.Parent = featured
+	constrainText(featuredName, 16, 30)
+
+	claimHint = Instance.new("TextLabel")
+	claimHint.Name = "Hint"
+	claimHint.BackgroundTransparency = 1
+	claimHint.Position = UDim2.fromScale(0.34, 0.7)
+	claimHint.Size = UDim2.new(0.64, 0, 0.24, 0)
+	claimHint.Font = Enum.Font.Gotham
+	claimHint.Text = "Claim now to keep your streak alive."
+	claimHint.TextColor3 = DIM
+	claimHint.TextScaled = true
+	claimHint.TextWrapped = true
+	claimHint.TextXAlignment = Enum.TextXAlignment.Left
+	claimHint.ZIndex = 5
+	claimHint.Parent = featured
+	constrainText(claimHint, 10, 16)
+
+	local track = Instance.new("Frame")
+	track.Name = "Track"
+	track.BackgroundTransparency = 1
+	track.Size = UDim2.new(1, 0, 0.2, 0)
+	track.Position = UDim2.fromScale(0, 0.6)
+	track.ZIndex = 3
+	track.Parent = window
+
+	local trackLayout = Instance.new("UIListLayout")
+	trackLayout.FillDirection = Enum.FillDirection.Horizontal
+	trackLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	trackLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	trackLayout.Padding = UDim.new(0.012, 0)
+	trackLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	trackLayout.Parent = track
+
+	dayNodes = {}
+	for i = 1, 7 do
+		local cell = Instance.new("TextButton")
+		cell.Name = "Day" .. i
+		cell.AutoButtonColor = false
+		cell.Text = ""
+		cell.BackgroundColor3 = CARD
+		cell.BorderSizePixel = 0
+		cell.Size = UDim2.fromScale(0.125, 0.92)
+		cell.LayoutOrder = i
+		cell.ZIndex = 4
+		cell.Parent = track
+		corner(cell, px(10))
+		local cellStroke = stroke(cell, STROKE, 1.2, 0.35)
+		local cellScale = Instance.new("UIScale")
+		cellScale.Parent = cell
+
+		local dayLabel = Instance.new("TextLabel")
+		dayLabel.BackgroundTransparency = 1
+		dayLabel.Size = UDim2.new(1, 0, 0.28, 0)
+		dayLabel.Position = UDim2.fromScale(0, 0.06)
+		dayLabel.Font = Enum.Font.GothamBold
+		dayLabel.Text = tostring(i)
+		dayLabel.TextColor3 = GOLD
+		dayLabel.TextScaled = true
+		dayLabel.ZIndex = 5
+		dayLabel.Parent = cell
+		constrainText(dayLabel, 9, 16)
+
+		local icon = Instance.new("ImageLabel")
+		icon.BackgroundTransparency = 1
+		icon.AnchorPoint = Vector2.new(0.5, 0)
+		icon.Position = UDim2.fromScale(0.5, 0.34)
+		icon.Size = UDim2.fromScale(0.5, 0.42)
+		icon.ScaleType = Enum.ScaleType.Fit
+		icon.ZIndex = 5
+		icon.Parent = cell
+
+		local check = Instance.new("TextLabel")
+		check.Name = "Check"
+		check.BackgroundTransparency = 1
+		check.Size = UDim2.new(1, 0, 0.22, 0)
+		check.Position = UDim2.fromScale(0, 0.74)
+		check.Font = Enum.Font.GothamBlack
+		check.Text = "✓"
+		check.TextColor3 = Color3.fromRGB(90, 220, 130)
+		check.TextScaled = true
+		check.Visible = false
+		check.ZIndex = 6
+		check.Parent = cell
+		constrainText(check, 8, 14)
+
+		dayNodes[i] = {
+			frame = cell,
+			stroke = cellStroke,
+			scale = cellScale,
+			dayLabel = dayLabel,
+			icon = icon,
+			check = check,
+		}
+
+		cell.Activated:Connect(function()
+			selectedDay = i
+			refreshTrack()
+			refreshFeatured()
+		end)
+	end
+
+	claimButton = Instance.new("TextButton")
+	claimButton.Name = "ClaimButton"
+	claimButton.AutoButtonColor = false
+	claimButton.Size = UDim2.new(1, 0, 0.1, 0)
+	claimButton.Position = UDim2.fromScale(0, 0.83)
+	claimButton.BackgroundColor3 = GREEN
+	claimButton.BorderSizePixel = 0
+	claimButton.Font = Enum.Font.GothamBlack
+	claimButton.Text = "CLAIM REWARD"
+	claimButton.TextColor3 = WHITE
+	claimButton.TextScaled = true
+	claimButton.ZIndex = 4
+	claimButton.Parent = window
+	corner(claimButton, px(12))
+	constrainText(claimButton, 14, 24)
+	claimButton.Activated:Connect(function()
+		if not (currentState and currentState.canClaimToday and not currentState.alreadyClaimed) then
+			return
+		end
+		if onClaimCb then
+			onClaimCb()
+		end
+	end)
+
+	DailyRewardsUI.Refresh({
+		currentDay = 0,
+		currentStreak = 0,
+		lastClaimTime = 0,
+		alreadyClaimed = false,
+		canClaimToday = true,
+		rewards = {},
+	})
+	if initialState then
+		DailyRewardsUI.Refresh(initialState)
+	end
+
+	return DailyRewardsUI
 end
 
 function DailyRewardsUI.Open()
-    if not screenGui or not window or isOpen then return end
-    isOpen = true
-    screenGui.Enabled = true
-    window.Visible = true
-    if not screenGui or not window then
-        warn("[DailyRewardsUI] ERROR: screenGui or window is nil")
-        return
-    end
-    if isOpen then return end
-
-    isOpen = true
-    screenGui.Enabled = true          -- ← This is the key fix
-    window.Visible = true
-    print("[DailyRewardsUI] UI Opened (Enabled = true)")
+	if not screenGui or not window then
+		return
+	end
+	local player = Players.LocalPlayer
+	local playerGui = player and player:FindFirstChild("PlayerGui")
+	if playerGui then
+		hideLegacyStudioGui(playerGui)
+	end
+	isOpen = true
+	screenGui.Enabled = true
+	windowScale.Scale = 0.94
+	overlay.BackgroundTransparency = 1
+	TweenService:Create(overlay, TweenInfo.new(0.16), { BackgroundTransparency = 0.42 }):Play()
+	TweenService:Create(windowScale, TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { Scale = 1 }):Play()
 end
 
 function DailyRewardsUI.Close()
-    if not screenGui or not window then return end
-    isOpen = false
-    screenGui.Enabled = false
-    window.Visible = false
+	if not screenGui then
+		return
+	end
+	isOpen = false
+	screenGui.Enabled = false
 end
 
 function DailyRewardsUI.IsOpen()
-    return isOpen
+	return isOpen == true
 end
 
 function DailyRewardsUI.PlayClaimAnimation(dayIndex)
-    local card = dayCards[dayIndex]
-    if not card or not card.frame then return end
-
-    local original = card.frame.BackgroundColor3
-    tweenProp(card.frame, { BackgroundColor3 = Color3.fromRGB(255, 215, 80) }, TweenInfo.new(0.12))
-    task.delay(0.18, function()
-        if card.frame then
-            tweenProp(card.frame, { BackgroundColor3 = original }, TweenInfo.new(0.25))
-        end
-    end)
+	local node = dayNodes[dayIndex]
+	if not node then
+		return
+	end
+	TweenService:Create(node.scale, TweenInfo.new(0.12), { Scale = 1.16 }):Play()
+	task.delay(0.16, function()
+		if node.scale then
+			TweenService:Create(node.scale, TweenInfo.new(0.2), { Scale = (selectedDay == dayIndex) and 1.08 or 1 }):Play()
+		end
+	end)
 end
 
 return DailyRewardsUI

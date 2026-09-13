@@ -22,6 +22,7 @@ hudScreenGui.Parent = playerGui
 -- Load DailyRewardsUI module
 --------------------------------------------------------------------------------
 local DailyRewardsUI
+local MenuController
 do
     local ok, sideUI = pcall(function() return ReplicatedStorage:WaitForChild("SideUI", 10) end)
     if not ok or not sideUI then
@@ -40,14 +41,16 @@ do
                 warn("[DailyRewardsClient] Failed to require DailyRewardsUI:", res)
             end
         end
+        local menuMod = sideUI:FindFirstChild("MenuController")
+        if menuMod and menuMod:IsA("ModuleScript") then
+            local okMenu, menuRes = pcall(function() return require(menuMod) end)
+            if okMenu then
+                MenuController = menuRes
+            end
+        end
     end
 end
 
---------------------------------------------------------------------------------
--- Try to find and initialize your pre-built GUI
---------------------------------------------------------------------------------
-local realGui = playerGui:FindFirstChild("DailyRewardsGui")
-local drRemotes = nil
 local getStateRF, claimRF, stateUpdatedRE
 local uiInitialized = false
 
@@ -60,56 +63,54 @@ local function doClaim()
         warn("[DailyRewardsClient] Claim RPC failed:", success)
         return
     end
-    if updatedState and DailyRewardsUI and DailyRewardsUI.Refresh then
+    if type(updatedState) == "table" and DailyRewardsUI and DailyRewardsUI.Refresh then
         DailyRewardsUI.Refresh(updatedState)
-    else
-        if getStateRF and getStateRF:IsA("RemoteFunction") then
-            local ok2, s2 = pcall(function() return getStateRF:InvokeServer() end)
-            if ok2 and type(s2) == "table" and DailyRewardsUI and DailyRewardsUI.Refresh then
-                DailyRewardsUI.Refresh(s2)
-            end
+        if DailyRewardsUI.PlayClaimAnimation then
+            DailyRewardsUI.PlayClaimAnimation(updatedState.currentDay)
+        end
+    elseif getStateRF and getStateRF:IsA("RemoteFunction") then
+        local ok2, s2 = pcall(function() return getStateRF:InvokeServer() end)
+        if ok2 and type(s2) == "table" and DailyRewardsUI and DailyRewardsUI.Refresh then
+            DailyRewardsUI.Refresh(s2)
         end
     end
 end
 
-if realGui and DailyRewardsUI then
-    pcall(function()
-        -- Find remotes (optional, DailyRewardServiceInit creates these)
-        local remotesRoot = ReplicatedStorage:FindFirstChild("Remotes")
-        if remotesRoot then
-            local drFolder = remotesRoot:FindFirstChild("DailyRewards")
-            drFolder = drFolder or (remotesRoot:FindFirstChild("DailyRewards") and remotesRoot:FindFirstChild("DailyRewards"))
-            if drFolder then
-                getStateRF = drFolder:FindFirstChild("GetDailyRewardState")
-                claimRF = drFolder:FindFirstChild("ClaimDailyReward")
-                stateUpdatedRE = drFolder:FindFirstChild("DailyRewardStateUpdated")
-            end
+local function ensureUi()
+    if uiInitialized or not DailyRewardsUI then
+        return uiInitialized
+    end
+    local remotesRoot = ReplicatedStorage:FindFirstChild("Remotes")
+    if remotesRoot then
+        local drFolder = remotesRoot:FindFirstChild("DailyRewards")
+        if drFolder then
+            getStateRF = drFolder:FindFirstChild("GetDailyRewardState")
+            claimRF = drFolder:FindFirstChild("ClaimDailyReward")
+            stateUpdatedRE = drFolder:FindFirstChild("DailyRewardStateUpdated")
         end
+    end
 
-        local initialState = nil
-        if getStateRF and getStateRF:IsA("RemoteFunction") then
-            local ok, s = pcall(function() return getStateRF:InvokeServer() end)
-            if ok and type(s) == "table" then
-                initialState = s
+    DailyRewardsUI.Create(playerGui, nil, { onClaim = doClaim })
+    uiInitialized = true
+
+    if stateUpdatedRE and stateUpdatedRE:IsA("RemoteEvent") then
+        stateUpdatedRE.OnClientEvent:Connect(function(state)
+            if DailyRewardsUI and DailyRewardsUI.Refresh then
+                DailyRewardsUI.Refresh(state)
             end
-        end
-
-        DailyRewardsUI.Create(realGui, initialState, { onClaim = doClaim })
-        uiInitialized = true
-
-        -- Listen for server pushes
-        if stateUpdatedRE and stateUpdatedRE:IsA("RemoteEvent") then
-            stateUpdatedRE.OnClientEvent:Connect(function(state)
-                if DailyRewardsUI and DailyRewardsUI.Refresh then
-                    DailyRewardsUI.Refresh(state)
-                end
-                if state and state.autoPopup and state.canClaimToday and DailyRewardsUI and not DailyRewardsUI.IsOpen() then
+            if state and state.autoPopup and state.canClaimToday and DailyRewardsUI and not DailyRewardsUI.IsOpen() then
+                if MenuController then
+                    MenuController.OpenMenu("DailyRewards")
+                else
                     DailyRewardsUI.Open()
                 end
-            end)
-        end
-    end)
+            end
+        end)
+    end
+    return true
 end
+
+pcall(ensureUi)
 
 --------------------------------------------------------------------------------
 -- Create the top-left Daily Login button (Roblox unibar chip style)
@@ -274,49 +275,70 @@ end)
 --------------------------------------------------------------------------------
 -- Button Click
 --------------------------------------------------------------------------------
-button.Activated:Connect(function()
-    print("[DailyRewardsClient] Button clicked!")
-
-    local realGui = playerGui:FindFirstChild("DailyRewardsGui")
-
-    if not realGui then
-        warn("[DailyRewardsClient] ERROR: DailyRewardsGui not found in PlayerGui!")
+local function openDailyRewardsPanel()
+    if not DailyRewardsUI then
         return
     end
+    if not ensureUi() then
+        return
+    end
+    if getStateRF and getStateRF:IsA("RemoteFunction") then
+        local ok, s = pcall(function()
+            return getStateRF:InvokeServer()
+        end)
+        if ok and type(s) == "table" then
+            DailyRewardsUI.Refresh(s)
+        else
+            DailyRewardsUI.Refresh({
+                currentDay = 0,
+                currentStreak = 0,
+                lastClaimTime = 0,
+                alreadyClaimed = false,
+                canClaimToday = true,
+                rewards = {},
+            })
+        end
+    end
+    DailyRewardsUI.Open()
+end
 
+if MenuController then
+    MenuController.RegisterMenu("DailyRewards", {
+        open = function()
+            openDailyRewardsPanel()
+        end,
+        close = function()
+            if DailyRewardsUI then
+                DailyRewardsUI.Close()
+            end
+        end,
+        closeInstant = function()
+            if DailyRewardsUI then
+                DailyRewardsUI.Close()
+            end
+        end,
+        isOpen = function()
+            return DailyRewardsUI ~= nil and DailyRewardsUI.IsOpen() == true
+        end,
+    })
+end
+
+button.Activated:Connect(function()
     if not DailyRewardsUI then
         warn("[DailyRewardsClient] ERROR: DailyRewardsUI module is nil!")
         return
     end
-
-    -- Try to initialize if not already done (ensure callbacks wired)
-    if not DailyRewardsUI.IsOpen() then
-        if not uiInitialized then
-            local success, err = pcall(function()
-                local initialState = nil
-                if getStateRF and getStateRF:IsA("RemoteFunction") then
-                    local ok, s = pcall(function() return getStateRF:InvokeServer() end)
-                    if ok and type(s) == "table" then
-                        initialState = s
-                    end
-                end
-                DailyRewardsUI.Create(realGui, initialState, { onClaim = doClaim })
-            end)
-            if not success then
-                warn("[DailyRewardsClient] ERROR in DailyRewardsUI.Create:", err)
-                return
-            end
-            uiInitialized = true
-        end
+    if MenuController then
+        MenuController.ToggleMenu("DailyRewards")
+        return
     end
-
-    -- Now open or close
+    if not ensureUi() then
+        return
+    end
     if DailyRewardsUI.IsOpen() then
         DailyRewardsUI.Close()
-        print("[DailyRewardsClient] Closed UI")
     else
-        DailyRewardsUI.Open()
-        print("[DailyRewardsClient] Opened UI")
+        openDailyRewardsPanel()
     end
 end)
 
