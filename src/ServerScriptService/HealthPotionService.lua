@@ -214,8 +214,12 @@ local function snapshotCombatModifiers(player)
 		for modifierId, modifier in pairs(flatMods) do
 			local remaining = math.max(0, (tonumber(modifier.expiresAt) or 0) - now)
 			if remaining > 0 then
+				local meleeFlat = tonumber(modifier.meleeFlat or modifier.flat) or 0
+				local rangedFlat = tonumber(modifier.rangedFlat) or 0
 				flat[modifierId] = {
-					flat = tonumber(modifier.flat) or 0,
+					flat = meleeFlat,
+					meleeFlat = meleeFlat,
+					rangedFlat = rangedFlat,
 					remaining = remaining,
 					source = modifier.source,
 				}
@@ -507,13 +511,17 @@ local function applyPotionEffect(player, potionDef, humanoid)
 
 	if potionDef.EffectType == "OutgoingDamageFlat" then
 		local durationSeconds = math.max(0, tonumber(potionDef.DurationSeconds) or 0)
-		local flatAdd = tonumber(potionDef.FlatDamageAdd) or 0
-		if durationSeconds <= 0 or flatAdd == 0 then
+		local meleeFlat = tonumber(potionDef.FlatDamageAdd or potionDef.MeleeFlatDamageAdd) or 0
+		local rangedFlat = tonumber(potionDef.RangedFlatDamageAdd) or 0
+		if durationSeconds <= 0 or (meleeFlat == 0 and rangedFlat == 0) then
 			return false, "Potion effect unavailable", nil
 		end
 
 		local modifierId = potionDef.ModifierId or potionDef.Id
-		HealthPotionService:SetOutgoingFlatModifier(player, modifierId, flatAdd, durationSeconds, potionDef.DisplayName)
+		HealthPotionService:SetOutgoingFlatModifier(player, modifierId, {
+			melee = meleeFlat,
+			ranged = rangedFlat,
+		}, durationSeconds, potionDef.DisplayName)
 
 		local sizeAdd = tonumber(potionDef.SizeAdd) or 0
 		if sizeAdd ~= 0 then
@@ -526,10 +534,22 @@ local function applyPotionEffect(player, potionDef, humanoid)
 			end)
 		end
 
-		local descText = string.format("%s: +%d flat damage (melee)", potionDef.DisplayName or "Strength", flatAdd)
+		local parts = {}
+		if meleeFlat ~= 0 then
+			table.insert(parts, string.format("%+d Melee Damage", meleeFlat))
+		end
+		if rangedFlat ~= 0 then
+			table.insert(parts, string.format("%+d Ranged Damage", rangedFlat))
+		end
+		local descText = table.concat(parts, ", ")
+		if descText ~= "" then
+			descText = descText .. "."
+		end
 		return true, nil, {
 			duration = durationSeconds,
-			flatAdd = flatAdd,
+			flatAdd = meleeFlat,
+			meleeFlat = meleeFlat,
+			rangedFlat = rangedFlat,
 			modifierId = modifierId,
 			description = descText,
 		}
@@ -574,9 +594,13 @@ local function restoreCombatModifiers(player, rawModifiers)
 	if type(rawModifiers.flat) == "table" then
 		for modifierId, entry in pairs(rawModifiers.flat) do
 			local remaining = math.max(0, tonumber(entry.remaining) or 0)
-			local flatAdd = tonumber(entry.flat) or 0
-			if remaining > 0 and flatAdd ~= 0 then
-				HealthPotionService:SetOutgoingFlatModifier(player, modifierId, flatAdd, remaining, entry.source)
+			local meleeFlat = tonumber(entry.meleeFlat or entry.flat) or 0
+			local rangedFlat = tonumber(entry.rangedFlat) or 0
+			if remaining > 0 and (meleeFlat ~= 0 or rangedFlat ~= 0) then
+				HealthPotionService:SetOutgoingFlatModifier(player, modifierId, {
+					melee = meleeFlat,
+					ranged = rangedFlat,
+				}, remaining, entry.source)
 			end
 		end
 	end
@@ -742,12 +766,20 @@ function HealthPotionService:GetOutgoingDamageMultiplier(player)
 	return totalMultiplier
 end
 
+local function resolveDamageSource(damageContext)
+	if type(damageContext) == "table" and type(damageContext.source) == "string" then
+		return string.lower(damageContext.source)
+	end
+	return "melee"
+end
+
 function HealthPotionService:GetOutgoingDamageFlat(player, _damageContext)
 	local modifiers = activeOutgoingFlatModifiers[player]
 	if not modifiers then
 		return 0
 	end
 
+	local source = resolveDamageSource(_damageContext)
 	local serverTime = getServerTime()
 	local totalFlat = 0
 	local hadExpired = false
@@ -757,7 +789,12 @@ function HealthPotionService:GetOutgoingDamageFlat(player, _damageContext)
 			modifiers[modifierId] = nil
 			hadExpired = true
 		else
-			local flat = tonumber(modifier.flat) or 0
+			local flat = 0
+			if source == "ranged" then
+				flat = tonumber(modifier.rangedFlat) or 0
+			else
+				flat = tonumber(modifier.meleeFlat or modifier.flat) or 0
+			end
 			if flat ~= 0 then
 				totalFlat = totalFlat + flat
 			end
@@ -773,10 +810,17 @@ function HealthPotionService:SetOutgoingFlatModifier(player, modifierId, flatAdd
 	if not player or type(modifierId) ~= "string" then
 		return false
 	end
-	flatAdd = tonumber(flatAdd) or 0
+	local meleeFlat = 0
+	local rangedFlat = 0
+	if type(flatAdd) == "table" then
+		meleeFlat = tonumber(flatAdd.melee or flatAdd.flat) or 0
+		rangedFlat = tonumber(flatAdd.ranged) or 0
+	else
+		meleeFlat = tonumber(flatAdd) or 0
+	end
 	durationSeconds = math.max(0, tonumber(durationSeconds) or 0)
 
-	if flatAdd == 0 then
+	if meleeFlat == 0 and rangedFlat == 0 then
 		return false, "invalid params"
 	end
 
@@ -803,7 +847,9 @@ function HealthPotionService:SetOutgoingFlatModifier(player, modifierId, flatAdd
 	local token = (existing and existing.token or 0) + 1
 	local expiresAt = getServerTime() + durationSeconds
 	modifiers[modifierId] = {
-		flat = flatAdd,
+		flat = meleeFlat,
+		meleeFlat = meleeFlat,
+		rangedFlat = rangedFlat,
 		expiresAt = expiresAt,
 		token = token,
 		source = source,
@@ -828,13 +874,7 @@ function HealthPotionService:ApplyOutgoingDamageModifiers(player, baseDamage, _d
 	local result = damage * multiplier
 	local flatAdd = self:GetOutgoingDamageFlat(player, _damageContext) or 0
 	if type(flatAdd) == "number" and flatAdd ~= 0 then
-		local applyFlat = true
-		if type(_damageContext) == "table" and _damageContext.source and _damageContext.source ~= "melee" then
-			applyFlat = false
-		end
-		if applyFlat then
-			result = result + flatAdd
-		end
+		result = result + flatAdd
 	end
 	return result
 end

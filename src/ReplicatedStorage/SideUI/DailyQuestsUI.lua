@@ -40,6 +40,7 @@ local function px(base)
 end
 
 local ACH_MOBILE_TEXT_SCALE = UserInputService.TouchEnabled and 0.84 or 1
+local ACH_TOOLTIP_PC_SCALE = UserInputService.TouchEnabled and 1 or 1.7
 
 local function achTextPx(base, minText)
     local cam = workspace.CurrentCamera
@@ -53,6 +54,14 @@ local function achTextPx(base, minText)
         return math.max(minText, scaled)
     end
     return math.max(8, scaled)
+end
+
+local function achTooltipTextPx(base, minText)
+    local size = achTextPx(base, minText)
+    if ACH_TOOLTIP_PC_SCALE ~= 1 then
+        size = math.max(minText or size, math.floor(size * ACH_TOOLTIP_PC_SCALE))
+    end
+    return size
 end
 
 --------------------------------------------------------------------------------
@@ -2345,7 +2354,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         stageTooltip.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
         stageTooltip.BackgroundTransparency = 0.03
         stageTooltip.BorderSizePixel = 0
-        stageTooltip.Size = UDim2.new(0, px(300), 0, px(74))
+        local tipWidth = UserInputService.TouchEnabled and px(300) or px(480)
+        stageTooltip.Size = UDim2.new(0, tipWidth, 0, px(110))
         stageTooltip.AutomaticSize = Enum.AutomaticSize.Y
         stageTooltip.Visible = false
         stageTooltip.Active = false
@@ -2365,10 +2375,11 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         tipStroke.Parent = stageTooltip
 
         local tipPad = Instance.new("UIPadding")
-        tipPad.PaddingTop = UDim.new(0, px(9))
-        tipPad.PaddingBottom = UDim.new(0, px(9))
-        tipPad.PaddingLeft = UDim.new(0, px(10))
-        tipPad.PaddingRight = UDim.new(0, px(10))
+        local tipPadPx = UserInputService.TouchEnabled and px(9) or px(14)
+        tipPad.PaddingTop = UDim.new(0, tipPadPx)
+        tipPad.PaddingBottom = UDim.new(0, tipPadPx)
+        tipPad.PaddingLeft = UDim.new(0, tipPadPx)
+        tipPad.PaddingRight = UDim.new(0, tipPadPx)
         tipPad.Parent = stageTooltip
 
         local tipLayout = Instance.new("UIListLayout")
@@ -2383,7 +2394,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         stageTooltipTitle.Font = Enum.Font.GothamBold
         stageTooltipTitle.Text = ""
         stageTooltipTitle.TextColor3 = GOLD
-        stageTooltipTitle.TextSize = achTextPx(15, 12)
+        stageTooltipTitle.TextSize = achTooltipTextPx(16, 13)
         stageTooltipTitle.TextXAlignment = Enum.TextXAlignment.Left
         stageTooltipTitle.TextWrapped = true
         stageTooltipTitle.TextTruncate = Enum.TextTruncate.None
@@ -2399,7 +2410,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         stageTooltipBody.Font = Enum.Font.GothamMedium
         stageTooltipBody.Text = ""
         stageTooltipBody.TextColor3 = WHITE
-        stageTooltipBody.TextSize = achTextPx(12, 10)
+        stageTooltipBody.TextSize = achTooltipTextPx(14, 12)
         stageTooltipBody.TextWrapped = true
         stageTooltipBody.TextXAlignment = Enum.TextXAlignment.Left
         stageTooltipBody.TextYAlignment = Enum.TextYAlignment.Top

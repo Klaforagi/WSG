@@ -1,7 +1,7 @@
 -- LosingTeamLockout.server.lua
 --
 -- Reworked behavior:
--- 1) Losers receive a "Defeat" movement debuff: -10 speed.
+-- 1) Losers receive a "Defeat" movement debuff: -10 speed (shown as -50%).
 -- 2) Debuff persists until lobby/intermission clears it.
 -- 3) During EndGame, losers also get a temporary lock flag that blocks
 --    reset/team-change actions (handled by other systems).

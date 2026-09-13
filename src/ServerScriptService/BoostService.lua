@@ -235,11 +235,16 @@ local function applyActiveBoostEffects(player, boostId, entry)
 		end
 	end
 
-	if def.OutgoingFlatAdd and tonumber(def.OutgoingFlatAdd) and tonumber(def.OutgoingFlatAdd) ~= 0 then
+	local meleeFlat = tonumber(def.OutgoingMeleeFlatAdd or def.OutgoingFlatAdd) or 0
+	local rangedFlat = tonumber(def.OutgoingRangedFlatAdd) or 0
+	if meleeFlat ~= 0 or rangedFlat ~= 0 then
 		local hps = getHealthPotionService()
 		if hps and type(hps.SetOutgoingFlatModifier) == "function" then
 			pcall(function()
-				hps:SetOutgoingFlatModifier(player, def.ModifierId or def.Id, tonumber(def.OutgoingFlatAdd), remaining, def.DisplayName)
+				hps:SetOutgoingFlatModifier(player, def.ModifierId or def.Id, {
+					melee = meleeFlat,
+					ranged = rangedFlat,
+				}, remaining, def.DisplayName)
 			end)
 		end
 	end

@@ -435,14 +435,26 @@ local function measureText(text, textSize, font, maxWidth)
     return Vector2.new(math.min(maxWidth, math.max(1, len * textSize * 0.55)), math.max(textSize, math.ceil(len * textSize * 0.55 / math.max(1, maxWidth)) * textSize))
 end
 
+local function isTouchUi()
+    return UserInputService.TouchEnabled
+end
+
+local function buffTooltipTitleSize()
+    return isTouchUi() and math.max(13, px(15)) or math.max(16, px(18))
+end
+
+local function buffTooltipBodySize()
+    return isTouchUi() and math.max(11, px(12)) or math.max(13, px(14))
+end
+
 local function sizeTooltipToText()
     local titleText = tooltipTitle.Text or ""
     local bodyText = tooltipDescription.Visible and (tooltipDescription.Text or "") or ""
-    local titleSize = math.max(13, px(15))
-    local bodySize = math.max(11, px(12))
+    local titleSize = buffTooltipTitleSize()
+    local bodySize = buffTooltipBodySize()
     local padX = TOOLTIP_PADDING * 2
-    local minW = px(200)
-    local maxW = px(380)
+    local minW = isTouchUi() and px(200) or px(240)
+    local maxW = isTouchUi() and px(380) or px(440)
 
     local unconstrainedTitle = measureText(titleText, titleSize, tooltipTitle.Font, 4000)
     local width = math.clamp(math.max(unconstrainedTitle.X + padX + px(8), minW), minW, maxW)
@@ -473,8 +485,8 @@ local function sizeTooltipToText()
 end
 
 local function refreshTooltipLayout()
-    TOOLTIP_WIDTH = px(250)
-    TOOLTIP_PADDING = px(10)
+    TOOLTIP_WIDTH = isTouchUi() and px(250) or px(290)
+    TOOLTIP_PADDING = isTouchUi() and px(10) or px(12)
     tooltipCorner.CornerRadius = UDim.new(0, px(8))
     tooltipStroke.Thickness = math.max(1, px(1))
     tooltipPadding.PaddingTop = UDim.new(0, TOOLTIP_PADDING)
@@ -482,8 +494,8 @@ local function refreshTooltipLayout()
     tooltipPadding.PaddingLeft = UDim.new(0, TOOLTIP_PADDING)
     tooltipPadding.PaddingRight = UDim.new(0, TOOLTIP_PADDING)
     tooltipLayout.Padding = UDim.new(0, px(3))
-    tooltipTitle.TextSize = math.max(13, px(15))
-    tooltipDescription.TextSize = math.max(11, px(12))
+    tooltipTitle.TextSize = buffTooltipTitleSize()
+    tooltipDescription.TextSize = buffTooltipBodySize()
     if tooltip.Visible then
         sizeTooltipToText()
     else
@@ -555,12 +567,9 @@ local function positionTooltip(_entryId)
     local tooltipHeight = math.max(1, tooltip.AbsoluteSize.Y > 0 and tooltip.AbsoluteSize.Y or px(72))
     local mouse = UserInputService:GetMouseLocation()
     local x = mouse.X + px(16)
-    local y = mouse.Y + px(18)
+    local y = mouse.Y - tooltipHeight - px(12)
     if x + tooltipWidth > screenSize.X - margin then
         x = mouse.X - tooltipWidth - px(8)
-    end
-    if y + tooltipHeight > screenSize.Y - margin then
-        y = mouse.Y - tooltipHeight - px(8)
     end
     x = math.clamp(x, margin, math.max(margin, screenSize.X - tooltipWidth - margin))
     y = math.clamp(y, margin, math.max(margin, screenSize.Y - tooltipHeight - margin))
