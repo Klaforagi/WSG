@@ -36,8 +36,9 @@ local THEMES = {
 }
 
 -- Designed at this width; height follows content. Uniformly scaled to fit the viewport.
+-- Desktop uses the full design size. Phones use a tighter fit (see getFitMetrics).
 local DESIGN_WIDTH = 1100
-local FIT_SCALE = 0.75
+local FIT_SCALE = 1
 local PLAYER_ROW_HEIGHT = 42
 local PLAYER_ROW_GAP = 6
 
@@ -290,17 +291,27 @@ local function getViewportSize()
 	return 1920, 1080
 end
 
-local function getFitScale(contentHeight)
+-- Phones only (short side ~390–430). 720p/windowed PCs must stay on the desktop scale.
+local function getFitMetrics()
 	local vw, vh = getViewportSize()
+	local compact = math.min(vw, vh) <= 500
+	return vw, vh, compact
+end
+
+local function getFitScale(contentHeight)
+	local vw, vh, compact = getFitMetrics()
 	local height = tonumber(contentHeight) or 0
 	if height < 1 then
 		height = 400
 	end
-	local scale = math.min((vw * 0.94) / DESIGN_WIDTH, (vh * 0.88) / height, FIT_SCALE)
+	local maxScale = compact and 0.50 or FIT_SCALE
+	local widthFrac = compact and 0.76 or 0.94
+	local heightFrac = compact and 0.70 or 0.88
+	local scale = math.min((vw * widthFrac) / DESIGN_WIDTH, (vh * heightFrac) / height, maxScale)
 	if scale ~= scale then
-		scale = FIT_SCALE
+		scale = maxScale
 	end
-	return math.clamp(scale, 0.22, FIT_SCALE)
+	return math.clamp(scale, 0.22, maxScale)
 end
 
 local function listContentHeight(count)
@@ -542,7 +553,7 @@ local function showMatchResults(payload)
 	card.Size = UDim2.fromOffset(DESIGN_WIDTH, 0)
 	card.AutomaticSize = Enum.AutomaticSize.Y
 	card.BackgroundColor3 = theme.cardBg
-	card.BackgroundTransparency = 1
+	card.BackgroundTransparency = 0.15
 	card.BorderSizePixel = 0
 	card.Active = false
 	card.Selectable = false
@@ -555,6 +566,27 @@ local function showMatchResults(payload)
 	cardPad.PaddingRight = UDim.new(0, 18)
 	cardPad.PaddingBottom = UDim.new(0, 16)
 	cardPad.Parent = card
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Name = "CloseButton"
+	closeBtn.Size = UDim2.fromOffset(36, 36)
+	closeBtn.Position = UDim2.new(1, -14, 0, 14)
+	closeBtn.AnchorPoint = Vector2.new(1, 0)
+	closeBtn.BackgroundColor3 = theme.closeBg
+	closeBtn.Text = "X"
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.TextSize = 18
+	closeBtn.TextColor3 = WHITE
+	closeBtn.AutoButtonColor = true
+	closeBtn.ZIndex = 20
+	closeBtn.Parent = card
+	corner(closeBtn, 8)
+	stroke(closeBtn, theme.accent, 1.2)
+	closeBtn.Activated:Connect(function()
+		if gui.Parent then
+			gui:Destroy()
+		end
+	end)
 
 	local content = Instance.new("Frame")
 	content.Name = "Content"
@@ -771,9 +803,12 @@ local function showMatchResults(payload)
 	end
 
 	local function applyListCaps()
-		local vw, vh = getViewportSize()
-		local widthScale = math.min((vw * 0.94) / DESIGN_WIDTH, FIT_SCALE)
-		local maxContentH = (vh * 0.88) / math.max(widthScale, 0.22)
+		local vw, vh, compact = getFitMetrics()
+		local maxScale = compact and 0.50 or FIT_SCALE
+		local widthFrac = compact and 0.76 or 0.94
+		local heightFrac = compact and 0.70 or 0.88
+		local widthScale = math.min((vw * widthFrac) / DESIGN_WIDTH, maxScale)
+		local maxContentH = (vh * heightFrac) / math.max(widthScale, 0.22)
 		local headerH = rawHeight(header)
 		local chrome = 28
 		local maxListH = math.max(PLAYER_ROW_HEIGHT, math.floor(maxContentH - headerH - chrome))
@@ -810,38 +845,14 @@ local function showMatchResults(payload)
 		end
 	end)
 
-	uiScale.Scale = FIT_SCALE
-	TweenService:Create(card, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		BackgroundTransparency = 0.15,
-	}):Play()
+	uiScale.Scale = getFitScale(400)
 	task.defer(function()
+		if not gui.Parent then
+			return
+		end
 		applyListCaps()
 		local openScale = getFitScale(rawHeight(card))
-		uiScale.Scale = openScale * 0.88
-		TweenService:Create(uiScale, TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-			Scale = openScale,
-		}):Play()
-	end)
-
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromOffset(36, 36)
-	closeBtn.Position = UDim2.new(1, -14, 0, 14)
-	closeBtn.AnchorPoint = Vector2.new(1, 0)
-	closeBtn.BackgroundColor3 = theme.closeBg
-	closeBtn.Text = "X"
-	closeBtn.Font = Enum.Font.GothamBold
-	closeBtn.TextSize = 18
-	closeBtn.TextColor3 = WHITE
-	closeBtn.AutoButtonColor = true
-	closeBtn.ZIndex = 3
-	closeBtn.Parent = card
-	corner(closeBtn, 8)
-	stroke(closeBtn, theme.accent, 1.2)
-
-	closeBtn.Activated:Connect(function()
-		if gui.Parent then
-			gui:Destroy()
-		end
+		uiScale.Scale = openScale
 	end)
 end
 

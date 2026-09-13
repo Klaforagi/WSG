@@ -441,6 +441,7 @@ local function buildStallEntries()
 				CooldownSeconds = potionDef.CooldownSeconds,
 				PriceCoins = potionDef.PriceCoins,
 				PriceRobux = potionDef.PriceRobux,
+				PurchaseQuantity = potionDef.PurchaseQuantity,
 				RobuxProductId = potionDef.RobuxProductId,
 				Purchasable = potionDef.Purchasable == true,
 				IconGlyph = potionDef.IconGlyph,
@@ -1439,7 +1440,12 @@ end
 		nameLabel.Position = UDim2.new(0.26, 0, 0.05, 0)
 		nameLabel.Size = UDim2.new(0.7, 0, 0.13, 0)
 		nameLabel.Font = Enum.Font.GothamBlack
-		nameLabel.Text = tostring(entry.DisplayName or entry.Id or "Potion")
+		local displayName = tostring(entry.DisplayName or entry.Id or "Potion")
+		local packQty = math.max(1, math.floor(tonumber(entry.PurchaseQuantity) or 1))
+		if packQty > 1 then
+			displayName = displayName .. "  x" .. tostring(packQty)
+		end
+		nameLabel.Text = displayName
 		nameLabel.TextColor3 = WHITE
 		nameLabel.TextSize = textPx(21, 19, 21)
 		nameLabel.TextTruncate = Enum.TextTruncate.AtEnd

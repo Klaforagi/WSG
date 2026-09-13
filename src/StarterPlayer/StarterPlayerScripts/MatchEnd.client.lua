@@ -48,6 +48,11 @@ title.TextColor3 = GOLD_TEXT
 title.Text = ""
 title.Parent = frame
 
+local titleSize = Instance.new("UITextSizeConstraint")
+titleSize.MinTextSize = 16
+titleSize.MaxTextSize = 36
+titleSize.Parent = title
+
 local titleStroke = Instance.new("UIStroke")
 titleStroke.Color = Color3.fromRGB(100, 80, 10)
 titleStroke.Thickness = 1.2
@@ -133,6 +138,12 @@ local function showEnd(resultType, winner)
     local tH = (title.TextBounds.Y ~= 0) and title.TextBounds.Y or 28
     local sH = (subtitle.TextBounds.Y ~= 0) and subtitle.TextBounds.Y or 18
     local targetH = math.ceil(tH + sH + 36)
+
+    local cam = workspace.CurrentCamera
+    local vw = (cam and cam.ViewportSize.X > 1) and cam.ViewportSize.X or 1920
+    local vh = (cam and cam.ViewportSize.Y > 1) and cam.ViewportSize.Y or 1080
+    targetW = math.min(targetW, math.max(160, math.floor(vw * 0.50)))
+    targetH = math.min(targetH, math.max(48, math.floor(vh * 0.16)))
 
     -- pop-in animation from a compact pixel size to the computed target size
     frame.Size = UDim2.new(0, math.max(120, math.floor(targetW * 0.75)), 0, math.max(48, math.floor(targetH * 0.75)))

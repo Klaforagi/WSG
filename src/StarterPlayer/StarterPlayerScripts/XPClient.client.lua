@@ -406,12 +406,16 @@ refreshXPBarTint()
 
 levelUpLabel.Text = ""
 levelUpLabel.TextTransparency = 1
-levelUpLabel.ZIndex = 10
+levelUpLabel.TextStrokeTransparency = 1
+levelUpLabel.ZIndex = 12
 levelUpLabel.Parent = barBG
 
 -- Helpers to update and show/hide XP counter
 local xpCountInteractionVisible = false
 local xpCountFadeTween = nil
+local levelUpTextActive = false
+local levelUpSequenceToken = 0
+local levelUpFadeTween = nil
 
 local function updateXPCountText()
     local cx = currentXP
@@ -437,6 +441,11 @@ local function isAlwaysShowXPTextEnabled()
 end
 
 local function setXPCountVisible(visible, animate)
+    if levelUpTextActive then
+        visible = false
+        animate = false
+    end
+
     if xpCountFadeTween then
         xpCountFadeTween:Cancel()
         xpCountFadeTween = nil
@@ -918,18 +927,46 @@ local function onLevelUp(payload)
         end
     end)
 
-    -- show small "LEVEL UP!" text centered on the XP bar
+    -- Hold "LEVEL UP!" on the bar for 2s (hiding XP progress), then tween out
+    -- and restore the normal XP text.
+    levelUpSequenceToken += 1
+    local token = levelUpSequenceToken
+    levelUpTextActive = true
+
+    if levelUpFadeTween then
+        levelUpFadeTween:Cancel()
+        levelUpFadeTween = nil
+    end
+
+    setXPCountVisible(false, false)
+
     levelUpLabel.Text = "LEVEL UP!"
+    levelUpLabel.Visible = true
     levelUpLabel.TextTransparency = 0
     levelUpLabel.TextStrokeTransparency = 0.65
 
-    -- fade out after 2 seconds
     task.delay(2, function()
-        local fadeInfo = TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+        if token ~= levelUpSequenceToken then
+            return
+        end
+
+        local fadeInfo = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         local t = TweenService:Create(levelUpLabel, fadeInfo, {
             TextTransparency = 1,
             TextStrokeTransparency = 1,
         })
+        levelUpFadeTween = t
+        t.Completed:Connect(function()
+            if token ~= levelUpSequenceToken then
+                return
+            end
+            if levelUpFadeTween == t then
+                levelUpFadeTween = nil
+            end
+            levelUpLabel.Text = ""
+            levelUpTextActive = false
+            setXPCountVisible(isAlwaysShowXPTextEnabled() or xpCountInteractionVisible, true)
+        end)
         t:Play()
     end)
 end

@@ -15,8 +15,9 @@ local orderedPotions = {
         Category = "Battle",
         Description = "",
         DetailText = "Restores 40 HP instantly",
-        PriceCoins = 25,
-        PriceRobux = 39,
+        PriceCoins = 50,
+        PriceRobux = 29,
+        PurchaseQuantity = 3,
         StockPerRefresh = 5,
         RobuxProductId = PotionProductIds.HealthPotionRobuxProductId,
         Purchasable = true,
@@ -38,7 +39,8 @@ local orderedPotions = {
         Description = "",
         DetailText = "+30% Movement Speed for 8s",
         PriceCoins = 50,
-        PriceRobux = 49,
+        PriceRobux = 29,
+        PurchaseQuantity = 3,
         StockPerRefresh = 4,
         RobuxProductId = PotionProductIds.SpeedPotionRobuxProductId,
         Purchasable = true,
@@ -62,7 +64,8 @@ local orderedPotions = {
         Description = "",
         DetailText = "+6 Melee Damage, +3 Ranged Damage for 10s",
         PriceCoins = 50,
-        PriceRobux = 9,
+        PriceRobux = 29,
+        PurchaseQuantity = 3,
         StockPerRefresh = 4,
         RobuxProductId = PotionProductIds.StrengthPotionRobuxProductId,
         Purchasable = true,
@@ -92,6 +95,18 @@ PotionConfig.Potions = orderedPotions
 
 function PotionConfig.GetById(potionId)
     return potionsById[potionId]
+end
+
+function PotionConfig.GetPurchaseQuantity(potionDefOrId)
+    local potionDef = potionDefOrId
+    if type(potionDefOrId) == "string" then
+        potionDef = PotionConfig.GetById(potionDefOrId)
+    end
+    local qty = math.floor(tonumber(potionDef and potionDef.PurchaseQuantity) or 1)
+    if qty < 1 then
+        qty = 1
+    end
+    return qty
 end
 
 function PotionConfig.GetMaxEquippedPotions()

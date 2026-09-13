@@ -975,10 +975,17 @@ function HealthPotionService:PurchasePotion(player, potionId)
 		return false, "Currency system unavailable", self:GetState(player)
 	end
 
+	local qty = 1
+	if type(PotionConfig.GetPurchaseQuantity) == "function" then
+		qty = PotionConfig.GetPurchaseQuantity(potionDef)
+	else
+		qty = math.max(1, math.floor(tonumber(potionDef.PurchaseQuantity) or 1))
+	end
+
 	local pd = ensurePlayerData(player)
 	local entry = ensurePotionEntry(pd, resolvedPotionId)
-	entry.count += 1
-	entry.totalGranted += 1
+	entry.count += qty
+	entry.totalGranted += qty
 
 	markDirty(player, resolvedPotionId .. "_purchase", { force = true })
 	fireStateChanged(player)

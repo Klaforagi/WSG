@@ -111,7 +111,7 @@ local Presets = {
             Weight   = 20,  -- 2x Orc's weight of 5
             XPReward = 8,
             CoinReward = { Min = 1, Max = 6 },
-            ScoreReward = 3,
+            ScoreReward = 2,
         },
         Movement = {
             WalkSpeed    = 12,  -- Orc default (8) +4

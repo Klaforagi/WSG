@@ -19,6 +19,7 @@ local function addProduct(kind, def)
 		DisplayName = def.DisplayName,
 		ProductId = productId,
 		Price = price,
+		GrantQuantity = math.max(1, math.floor(tonumber(def.PurchaseQuantity) or 1)),
 	}
 	table.insert(PotionProducts.Products, product)
 

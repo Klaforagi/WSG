@@ -317,8 +317,9 @@ local function processReceipt(receiptInfo)
 				return Enum.ProductPurchaseDecision.NotProcessedYet
 			end
 
+			local grantQty = math.max(1, math.floor(tonumber(potionProduct.GrantQuantity) or 1))
 			local grantOk, grantResult = pcall(function()
-				return potionService:GrantPotion(playerObj, potionProduct.ItemId, 1)
+				return potionService:GrantPotion(playerObj, potionProduct.ItemId, grantQty)
 			end)
 			if not grantOk or not grantResult then
 				warn("[CoinShopReceipt] GrantPotion failed for", playerObj.Name, potionProduct.ItemId, ":", tostring(grantResult))
