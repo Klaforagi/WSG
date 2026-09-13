@@ -554,9 +554,10 @@ local function returnDroppedFlag(team, player, allowDirectRespawn)
 	flagInfo.returnDeadline = 0
 	respawnFlag(team)
 
-	local playerName = player and player.Name or nil
+	local playerName = player and ((player.DisplayName ~= "" and player.DisplayName) or player.Name) or nil
 	local playerTeamName = player and player.Team and player.Team.Name or nil
-	FlagStatus:FireAllClients("returned", playerName, playerTeamName, team)
+	local playerUserId = player and player.UserId or nil
+	FlagStatus:FireAllClients("returned", playerName, playerTeamName, team, nil, playerUserId)
 	FlagStatus:FireAllClients("playSound", "Flag_return")
 
 	if player then
@@ -657,7 +658,7 @@ local function pickUpFlag(team, model, player)
 	setFlagInstanceAttributes(carried, team, false, true, false, player, 0)
 	syncFlagState(team)
 	applyFlagCarrySlow(player)
-	FlagStatus:FireAllClients("pickup", player.Name, playerTeamName, team)
+	FlagStatus:FireAllClients("pickup", (player.DisplayName ~= "" and player.DisplayName) or player.Name, playerTeamName, team, nil, player.UserId)
 	local takenSoundName = "Flag_taken"
 	if playerTeamName == "Blue" and team == "Red" then
 		takenSoundName = "Flag_taken_blue"
@@ -1103,7 +1104,7 @@ local function captureFlagAtStand(pl, standTeam)
 		FlagCaptured:Fire(pl, playerTeamName, flagTeam)
 	end)
 
-	FlagStatus:FireAllClients("captured", pl.Name, playerTeamName, flagTeam)
+	FlagStatus:FireAllClients("captured", (pl.DisplayName ~= "" and pl.DisplayName) or pl.Name, playerTeamName, flagTeam, nil, pl.UserId)
 	local captureSoundName = "Flag_capture"
 	if playerTeamName == "Blue" and flagTeam == "Red" then
 		captureSoundName = "Flag_capture_blue"

@@ -3,9 +3,11 @@
 -- Only players with kills > 0 are shown.  Hidden when nobody has any kills.
 
 local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local TopHudStack = require(ReplicatedStorage:WaitForChild("TopHudStack"))
 
 ------------------------------------------------------------------------
 -- Configuration
@@ -37,6 +39,7 @@ end
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "TopPvpKillersHud"
 screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 5
 screenGui.Parent = PlayerGui
 
@@ -44,10 +47,14 @@ local rootFrame = Instance.new("Frame")
 rootFrame.Name = "Root"
 rootFrame.BackgroundTransparency = 1
 rootFrame.AnchorPoint = Vector2.new(0.5, 0)
-rootFrame.Position = UDim2.new(0.5, 0, 0.05, 0)
+rootFrame.Position = TopHudStack.GetKillersPosition()
 rootFrame.Size = UDim2.new(0.05, 0, 0.1, 0)
 rootFrame.Visible = false -- hidden until someone has kills
 rootFrame.Parent = screenGui
+
+local function placeRoot()
+	rootFrame.Position = TopHudStack.GetKillersPosition()
+end
 
 ------------------------------------------------------------------------
 -- Responsive sizing helpers
@@ -250,8 +257,9 @@ local function updateHud()
 
     local visibleCount = math.min(#entries, MAX_SLOTS)
 
-    -- 4) Resize root container and show it
+    -- 4) Resize root container, park it under the scoreboard, and show it
     updateRootSize(slotPx, visibleCount)
+    placeRoot()
     rootFrame.Visible = true
 
     -- 5) Build set of userIds that SHOULD be visible
@@ -372,8 +380,42 @@ end
 if workspace.CurrentCamera then
     workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
         updateHud()
+        placeRoot()
     end)
 end
+
+local function hookScoreboard(root)
+    if not root or root:GetAttribute("TopHudStackHooked") then
+        return
+    end
+    root:SetAttribute("TopHudStackHooked", true)
+    root:GetPropertyChangedSignal("AbsoluteSize"):Connect(placeRoot)
+    root:GetPropertyChangedSignal("AbsolutePosition"):Connect(placeRoot)
+    root:GetPropertyChangedSignal("Visible"):Connect(placeRoot)
+    placeRoot()
+end
+
+local function watchMatchHud(hud)
+    if not hud then
+        return
+    end
+    hookScoreboard(hud:FindFirstChild("ScoreboardRoot"))
+    hud.ChildAdded:Connect(function(child)
+        if child.Name == "ScoreboardRoot" then
+            hookScoreboard(child)
+        end
+    end)
+end
+
+local existingHud = PlayerGui:FindFirstChild("MatchHUD")
+if existingHud then
+    watchMatchHud(existingHud)
+end
+PlayerGui.ChildAdded:Connect(function(child)
+    if child.Name == "MatchHUD" then
+        watchMatchHud(child)
+    end
+end)
 
 -- Initial draw (after a short yield so leaderstats can replicate)
 task.defer(function()

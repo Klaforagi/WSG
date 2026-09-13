@@ -134,11 +134,10 @@ end
 
 local function announceEventStart(eventId)
     local def = getEventDef(eventId)
-    local text = def and def.Announcement
+    local text = def and (def.Name or def.Announcement)
     if not text or text == "" then return end
-    local color = def.AnnouncementColor or Color3.fromRGB(255, 180, 55)
     pcall(function()
-        FlagStatus:FireAllClients("event", text, nil, nil, color)
+        FlagStatus:FireAllClients("event", text)
     end)
 end
 
