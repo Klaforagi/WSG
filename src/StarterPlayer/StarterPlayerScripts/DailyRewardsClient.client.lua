@@ -3,8 +3,8 @@
 --------------------------------------------------------------------------------
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -112,46 +112,29 @@ if realGui and DailyRewardsUI then
 end
 
 --------------------------------------------------------------------------------
--- Create the Top-Right Button
+-- Create the top-left Daily Login button (Roblox unibar chip style)
 --------------------------------------------------------------------------------
-local function px(base)
-    local cam = workspace.CurrentCamera
-    local screenY = 1080
-    if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
-        screenY = cam.ViewportSize.Y
+local CORE_HUD_BTN_SIZE = 44
+local CORE_HUD_BTN_GAP = 8
+local CORE_HUD_UNIBAR_GAP = 8
+local CORE_HUD_Y_NUDGE = 4
+
+local function layoutTopHudButtonsFrame(frame)
+    if not frame then return end
+    local x = 176
+    local y = 8 + CORE_HUD_Y_NUDGE
+    local ok, inset = pcall(function()
+        return GuiService.TopbarInset
+    end)
+    if ok and inset and typeof(inset) == "Rect" and inset.Width > 0 and inset.Width < 400 then
+        x = inset.Min.X + inset.Width + CORE_HUD_UNIBAR_GAP
+        y = inset.Min.Y + math.max(0, (inset.Height - CORE_HUD_BTN_SIZE) * 0.5) + CORE_HUD_Y_NUDGE
     end
-    return math.max(1, math.round(base * screenY / 1080))
+    frame.AnchorPoint = Vector2.new(0, 0)
+    frame.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+    frame.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE * 2 + CORE_HUD_BTN_GAP, CORE_HUD_BTN_SIZE)
 end
 
-local isMobile = UserInputService.TouchEnabled
-
-local function getHudUtilityButtonMetrics()
-    local shortSide = math.min(workspace.CurrentCamera.ViewportSize.X, workspace.CurrentCamera.ViewportSize.Y)
-    local buttonSize = isMobile and math.clamp(shortSide * 0.072, 52, 78) or math.clamp(shortSide * 0.048, 44, 62)
-    local insetX = math.clamp(buttonSize * 0.26, 12, 20)
-    local insetY = math.clamp(buttonSize * 0.22, 10, 16)
-    local gap = math.clamp(buttonSize * 0.16, 6, 12)
-    
-    return {
-        buttonSize = math.floor(buttonSize + 0.5),
-        insetX = math.floor(insetX + 0.5),
-        insetY = math.floor(insetY + 0.5),
-        gap = math.floor(gap + 0.5),
-    }
-end
-
-local hudMetrics = getHudUtilityButtonMetrics()
-local buttonSize = hudMetrics.buttonSize
-
-local btnContainer = Instance.new("Frame")
-btnContainer.Name = "DailyRewardsBtnContainer"
-btnContainer.AnchorPoint = Vector2.new(1, 0)
--- Fixed scale-only placement and sizing (no pixel offsets)
-btnContainer.Size = UDim2.new(0.8, 0, 0.8, 0)
-btnContainer.Position = UDim2.new(0.93, 0, 0.02, 0)
-btnContainer.BackgroundTransparency = 1
--- Try to parent into the shared TopRightButtonsFrame if available; create
--- it locally as a fallback to ensure consistent top-right alignment.
 local function ensureTopRightButtonsFrame()
     local topGui = playerGui:FindFirstChild("TopRightButtonsGui")
     if not topGui then
@@ -167,19 +150,42 @@ local function ensureTopRightButtonsFrame()
     if not frame then
         frame = Instance.new("Frame")
         frame.Name = "TopRightButtonsFrame"
-        frame.AnchorPoint = Vector2.new(1, 0)
         frame.BackgroundTransparency = 1
-        frame.Position = UDim2.new(0.99, 0, 0.02, 0)
-        frame.Size = UDim2.new(0.05, 0, 0.1, 0)
         frame.Parent = topGui
+    end
+    local layout = frame:FindFirstChildOfClass("UIListLayout")
+    if not layout then
+        layout = Instance.new("UIListLayout")
+        layout.Parent = frame
+    end
+    layout.FillDirection = Enum.FillDirection.Horizontal
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+    layout.VerticalAlignment = Enum.VerticalAlignment.Center
+    layout.Padding = UDim.new(0, CORE_HUD_BTN_GAP)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    local aspect = frame:FindFirstChildOfClass("UIAspectRatioConstraint")
+    if aspect then
+        aspect:Destroy()
+    end
+    layoutTopHudButtonsFrame(frame)
+    if not frame:GetAttribute("TopbarInsetBound") then
+        frame:SetAttribute("TopbarInsetBound", true)
+        pcall(function()
+            GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(function()
+                layoutTopHudButtonsFrame(frame)
+            end)
+        end)
     end
     return frame
 end
 
-local topFrame = playerGui:FindFirstChild("TopRightButtonsGui") and playerGui.TopRightButtonsGui:FindFirstChild("TopRightButtonsFrame") or nil
-if not topFrame then
-    topFrame = ensureTopRightButtonsFrame()
-end
+local topFrame = ensureTopRightButtonsFrame()
+
+local btnContainer = Instance.new("Frame")
+btnContainer.Name = "DailyRewardsBtnContainer"
+btnContainer.BackgroundTransparency = 1
+btnContainer.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE, CORE_HUD_BTN_SIZE)
+btnContainer.LayoutOrder = 2
 btnContainer.Parent = topFrame
 
 local button = Instance.new("ImageButton")
@@ -187,98 +193,73 @@ button.Name = "DailyRewardsButton"
 button.AnchorPoint = Vector2.new(0.5, 0.5)
 button.Position = UDim2.fromScale(0.5, 0.5)
 button.Size = UDim2.fromScale(1, 1)
-button.BackgroundColor3 = Color3.fromRGB(20, 24, 34)
-button.BackgroundTransparency = 0.3
+button.BackgroundColor3 = Color3.fromRGB(23, 23, 23)
+button.BackgroundTransparency = 0.1
 button.AutoButtonColor = false
 button.BorderSizePixel = 0
 button.ZIndex = 600
 button.Parent = btnContainer
 
 local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
+btnCorner.CornerRadius = UDim.new(1, 0)
 btnCorner.Parent = button
-
-local btnStroke = Instance.new("UIStroke")
-btnStroke.Color = Color3.fromRGB(255, 255, 255)
-btnStroke.Thickness = 1
-btnStroke.Transparency = 0.84
-btnStroke.Parent = button
 
 local btnScale = Instance.new("UIScale")
 btnScale.Parent = button
 
--- Gift Box Icon
+-- Gift box: white outline, sharp box/lid, simple two-loop bow
 do
-    local iconSize = math.floor(buttonSize * 0.65)
+    local WHITE = Color3.fromRGB(255, 255, 255)
+
+    local function outlineShape(parent, name, size, pos, zIndex, corner)
+        local frame = Instance.new("Frame")
+        frame.Name = name
+        frame.BackgroundTransparency = 1
+        frame.BorderSizePixel = 0
+        frame.Size = size
+        frame.Position = pos
+        frame.AnchorPoint = Vector2.new(0.5, 0.5)
+        frame.ZIndex = zIndex
+        frame.Parent = parent
+        if corner and corner > 0 then
+            local cornerInst = Instance.new("UICorner")
+            cornerInst.CornerRadius = UDim.new(corner, 0)
+            cornerInst.Parent = frame
+        end
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = WHITE
+        stroke.Thickness = 1.6
+        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+        stroke.Parent = frame
+        return frame
+    end
+
     local iconFrame = Instance.new("Frame")
     iconFrame.Name = "IconGlyph"
     iconFrame.AnchorPoint = Vector2.new(0.5, 0.5)
     iconFrame.Position = UDim2.fromScale(0.5, 0.52)
-    iconFrame.Size = UDim2.new(0.6, 0, 0.6, 0)
+    iconFrame.Size = UDim2.new(0.56, 0, 0.56, 0)
     iconFrame.BackgroundTransparency = 1
     iconFrame.ZIndex = 610
     iconFrame.Parent = button
 
-    local boxBody = Instance.new("Frame")
-    boxBody.Name = "Body"
-    boxBody.Size = UDim2.fromScale(0.88, 0.50)
-    boxBody.Position = UDim2.fromScale(0.06, 0.48)
-    boxBody.BackgroundColor3 = Color3.fromRGB(255, 215, 80)
-    boxBody.BorderSizePixel = 0
-    boxBody.ZIndex = 611
-    boxBody.Parent = iconFrame
-    Instance.new("UICorner", boxBody).CornerRadius = UDim.new(0.12, 0)
+    outlineShape(iconFrame, "BowLeft", UDim2.fromScale(0.30, 0.28), UDim2.fromScale(0.36, 0.24), 614, 1)
+    outlineShape(iconFrame, "BowRight", UDim2.fromScale(0.30, 0.28), UDim2.fromScale(0.64, 0.24), 614, 1)
+    outlineShape(iconFrame, "BowKnot", UDim2.fromScale(0.11, 0.11), UDim2.fromScale(0.50, 0.26), 615, 1)
 
-    local boxLid = Instance.new("Frame")
-    boxLid.Name = "Lid"
-    boxLid.Size = UDim2.fromScale(0.98, 0.24)
-    boxLid.Position = UDim2.fromScale(0.01, 0.26)
-    boxLid.BackgroundColor3 = Color3.fromRGB(255, 230, 110)
-    boxLid.BorderSizePixel = 0
-    boxLid.ZIndex = 612
-    boxLid.Parent = iconFrame
-    Instance.new("UICorner", boxLid).CornerRadius = UDim.new(0.15, 0)
-
-    local vRib = Instance.new("Frame")
-    vRib.Name = "VRibbon"
-    vRib.AnchorPoint = Vector2.new(0.5, 0)
-    vRib.Size = UDim2.fromScale(0.16, 0.72)
-    vRib.Position = UDim2.fromScale(0.5, 0.26)
-    vRib.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-    vRib.BorderSizePixel = 0
-    vRib.ZIndex = 613
-    vRib.Parent = iconFrame
-
-    local hRib = Instance.new("Frame")
-    hRib.Name = "HRibbon"
-    hRib.AnchorPoint = Vector2.new(0, 0.5)
-    hRib.Size = UDim2.fromScale(0.88, 0.13)
-    hRib.Position = UDim2.fromScale(0.06, 0.66)
-    hRib.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-    hRib.BorderSizePixel = 0
-    hRib.ZIndex = 613
-    hRib.Parent = iconFrame
-
-    local bow = Instance.new("Frame")
-    bow.Name = "Bow"
-    bow.AnchorPoint = Vector2.new(0.5, 1)
-    bow.Size = UDim2.fromScale(0.30, 0.22)
-    bow.Position = UDim2.fromScale(0.5, 0.30)
-    bow.BackgroundColor3 = Color3.fromRGB(220, 60, 60)
-    bow.BorderSizePixel = 0
-    bow.ZIndex = 614
-    bow.Parent = iconFrame
-    Instance.new("UICorner", bow).CornerRadius = UDim.new(1, 0)
+    outlineShape(iconFrame, "LidLeft", UDim2.fromScale(0.44, 0.13), UDim2.fromScale(0.25, 0.44), 612, 0)
+    outlineShape(iconFrame, "LidRight", UDim2.fromScale(0.44, 0.13), UDim2.fromScale(0.75, 0.44), 612, 0)
+    outlineShape(iconFrame, "BodyLeft", UDim2.fromScale(0.40, 0.38), UDim2.fromScale(0.26, 0.77), 611, 0)
+    outlineShape(iconFrame, "BodyRight", UDim2.fromScale(0.40, 0.38), UDim2.fromScale(0.74, 0.77), 611, 0)
 end
 
 -- Hover Effects
 button.MouseEnter:Connect(function()
-    TweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.18}):Play()
-    TweenService:Create(btnScale, TweenInfo.new(0.1), {Scale = 1.05}):Play()
+    TweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.02}):Play()
 end)
 
 button.MouseLeave:Connect(function()
-    TweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.3}):Play()
+    TweenService:Create(button, TweenInfo.new(0.1), {BackgroundTransparency = 0.1}):Play()
     TweenService:Create(btnScale, TweenInfo.new(0.1), {Scale = 1}):Play()
 end)
 

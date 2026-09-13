@@ -92,6 +92,7 @@ closePad.PaddingRight = UDim.new(0.12, 0)
 closePad.Parent = closeBtn
 
 local voteUiDismissed = false
+local lastVoteClock = 0
 
 closeBtn.MouseEnter:Connect(function()
     closeBtn.BackgroundColor3 = Color3.fromRGB(55, 30, 38)
@@ -188,25 +189,39 @@ local function createOption(mapName)
         print("[MapVoteUI] no thumbnail for", mapName)
     end
 
-    -- click handling: compute normalized click within voteArea and send to server
+    -- Vote on release only, using GuiObject input.Position so the pin
+    -- lands where the pointer lifts (same space as AbsolutePosition).
     option.Active = true
-    option.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            if CastVoteRE then
-                -- compute normalized position inside voteArea
-                local absPos = voteArea.AbsolutePosition
-                local absSize = voteArea.AbsoluteSize
-                if absSize.X > 0 and absSize.Y > 0 then
-                    local relX = (input.Position.X - absPos.X) / absSize.X
-                    local relY = (input.Position.Y - absPos.Y) / absSize.Y
-                    relX = math.clamp(relX, 0, 1)
-                    relY = math.clamp(relY, 0, 1)
-                    CastVoteRE:FireServer(mapName, { x = relX, y = relY })
-                else
-                    CastVoteRE:FireServer(mapName)
-                end
-            end
+    option.InputEnded:Connect(function(input)
+        if input.UserInputType ~= Enum.UserInputType.MouseButton1
+            and input.UserInputType ~= Enum.UserInputType.Touch then
+            return
         end
+        if input.UserInputState ~= Enum.UserInputState.End then
+            return
+        end
+        if not CastVoteRE or not root.Visible then
+            return
+        end
+        local now = os.clock()
+        if now - lastVoteClock < 0.08 then
+            return
+        end
+
+        local absPos = voteArea.AbsolutePosition
+        local absSize = voteArea.AbsoluteSize
+        if absSize.X <= 0 or absSize.Y <= 0 then
+            lastVoteClock = now
+            CastVoteRE:FireServer(mapName)
+            return
+        end
+        local relX = (input.Position.X - absPos.X) / absSize.X
+        local relY = (input.Position.Y - absPos.Y) / absSize.Y
+        if relX < 0 or relX > 1 or relY < 0 or relY > 1 then
+            return
+        end
+        lastVoteClock = now
+        CastVoteRE:FireServer(mapName, { x = relX, y = relY })
     end)
 
     return option

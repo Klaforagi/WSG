@@ -6,13 +6,36 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local UserInputService = game:GetService("UserInputService")
 local ContentProvider = game:GetService("ContentProvider")
+local GuiService = game:GetService("GuiService")
 
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 print("[SideUI] initializing for", player and player.Name)
 
--- Top-right shared container for small HUD buttons (Options, DailyRewards, etc.)
+-- Match Roblox's built-in topbar unibar chips (fixed 44px circles).
+local CORE_HUD_BTN_SIZE = 44
+local CORE_HUD_BTN_GAP = 8
+local CORE_HUD_UNIBAR_GAP = 8
+local CORE_HUD_Y_NUDGE = 4
+
+local function layoutTopHudButtonsFrame(frame)
+    if not frame then return end
+    local x = 176
+    local y = 8 + CORE_HUD_Y_NUDGE
+    local ok, inset = pcall(function()
+        return GuiService.TopbarInset
+    end)
+    if ok and inset and typeof(inset) == "Rect" and inset.Width > 0 and inset.Width < 400 then
+        x = inset.Min.X + inset.Width + CORE_HUD_UNIBAR_GAP
+        y = inset.Min.Y + math.max(0, (inset.Height - CORE_HUD_BTN_SIZE) * 0.5) + CORE_HUD_Y_NUDGE
+    end
+    frame.AnchorPoint = Vector2.new(0, 0)
+    frame.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
+    frame.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE * 2 + CORE_HUD_BTN_GAP, CORE_HUD_BTN_SIZE)
+end
+
+-- Shared top-left container for Settings + Daily Login, parked just right of chat.
 local function ensureTopRightButtonsContainer()
     local topGui = playerGui:FindFirstChild("TopRightButtonsGui")
     if not topGui then
@@ -28,33 +51,32 @@ local function ensureTopRightButtonsContainer()
     if not frame then
         frame = Instance.new("Frame")
         frame.Name = "TopRightButtonsFrame"
-        frame.AnchorPoint = Vector2.new(1, 0)
         frame.BackgroundTransparency = 1
-        frame.Position = UDim2.new(0.99, 0, 0.02, 0)
-        frame.Size = UDim2.new(0.05, 0, 0.1, 0)
         frame.Parent = topGui
     end
-    -- Ensure a UIListLayout exists and has the correct settings so children
-    -- are aligned horizontally and right-aligned in the frame.
     local layout = frame:FindFirstChildOfClass("UIListLayout")
     if not layout then
         layout = Instance.new("UIListLayout")
         layout.Parent = frame
     end
     layout.FillDirection = Enum.FillDirection.Horizontal
-    layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+    layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
     layout.VerticalAlignment = Enum.VerticalAlignment.Center
-    layout.Padding = UDim.new(0.08, 0)
+    layout.Padding = UDim.new(0, CORE_HUD_BTN_GAP)
     layout.SortOrder = Enum.SortOrder.LayoutOrder
-    -- Ensure an aspect ratio constraint for consistent shape
     local aspect = frame:FindFirstChildOfClass("UIAspectRatioConstraint")
-    if not aspect then
-        aspect = Instance.new("UIAspectRatioConstraint")
-        aspect.Parent = frame
+    if aspect then
+        aspect:Destroy()
     end
-    aspect.AspectRatio = 1
-    aspect.AspectType = Enum.AspectType.FitWithinMaxSize
-    aspect.DominantAxis = Enum.DominantAxis.Width
+    layoutTopHudButtonsFrame(frame)
+    if not frame:GetAttribute("TopbarInsetBound") then
+        frame:SetAttribute("TopbarInsetBound", true)
+        pcall(function()
+            GuiService:GetPropertyChangedSignal("TopbarInset"):Connect(function()
+                layoutTopHudButtonsFrame(frame)
+            end)
+        end)
+    end
     return topGui, frame
 end
 
@@ -1137,24 +1159,7 @@ local function CreateLegacyLauncherButtonUnused(def)
     return btn, badge
 end
 
--- Create a compact, top-right utility button for opening Options.
--- DailyRewardsClient positions its button immediately to the left of this slot.
-local function getHudUtilityButtonMetrics()
-    local viewportX, viewportY = getViewportSize()
-    local shortSide = math.min(viewportX, viewportY)
-    local buttonSize = UserInputService.TouchEnabled
-        and safeClamp(shortSide * 0.07, 50, 72)
-        or safeClamp(shortSide * 0.045, 42, 58)
-    local insetX = safeClamp(buttonSize * 0.28, 12, 18)
-    local insetY = safeClamp(buttonSize * 0.24, 10, 16)
-
-    return {
-        buttonSize = math.floor(buttonSize + 0.5),
-        insetX = math.floor(insetX + 0.5),
-        insetY = math.floor(insetY + 0.5),
-    }
-end
-
+-- Compact top-left utility button for opening Options (Roblox unibar chip style).
 local function CreateHudOptionsButton(onActivated)
     local existingHudGui = playerGui:FindFirstChild("OptionsHudGui")
     if existingHudGui then
@@ -1171,11 +1176,9 @@ local function CreateHudOptionsButton(onActivated)
 
     local container = Instance.new("Frame")
     container.Name = "HudControls"
-    container.AnchorPoint = Vector2.new(1, 0)
     container.BackgroundTransparency = 1
-    container.Size = UDim2.new(0.8, 0, 0.8, 0)
-    -- Parent HudControls into the shared TopRightButtonsFrame so multiple
-    -- small HUD buttons can be aligned together in the top-right corner.
+    container.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE, CORE_HUD_BTN_SIZE)
+    container.LayoutOrder = 1
     local _, topFrame = ensureTopRightButtonsContainer()
     container.Parent = topFrame
 
@@ -1184,8 +1187,8 @@ local function CreateHudOptionsButton(onActivated)
     button.AnchorPoint = Vector2.new(0.5, 0.5)
     button.Position = UDim2.fromScale(0.5, 0.5)
     button.Size = UDim2.fromScale(1, 1)
-    button.BackgroundColor3 = Color3.fromRGB(20, 24, 34)
-    button.BackgroundTransparency = 0.3
+    button.BackgroundColor3 = Color3.fromRGB(23, 23, 23)
+    button.BackgroundTransparency = 0.1
     button.AutoButtonColor = false
     button.Active = true
     button.BorderSizePixel = 0
@@ -1194,14 +1197,8 @@ local function CreateHudOptionsButton(onActivated)
     button.Parent = container
 
     local buttonCorner = Instance.new("UICorner")
-    buttonCorner.CornerRadius = UDim.new(0, px(9))
+    buttonCorner.CornerRadius = UDim.new(1, 0)
     buttonCorner.Parent = button
-
-    local buttonStroke = Instance.new("UIStroke")
-    buttonStroke.Color = Color3.fromRGB(255, 255, 255)
-    buttonStroke.Thickness = 1
-    buttonStroke.Transparency = 0.84
-    buttonStroke.Parent = button
 
     local buttonScale = Instance.new("UIScale")
     buttonScale.Parent = button
@@ -1237,10 +1234,10 @@ local function CreateHudOptionsButton(onActivated)
     fallbackConstraint.MaxTextSize = 16
     fallbackConstraint.Parent = iconFallback
 
-    local idleBgTransparency = 0.3
-    local hoverBgTransparency = 0.18
-    local pressedBgTransparency = 0.08
-    local idleIconColor = Color3.fromRGB(232, 236, 244)
+    local idleBgTransparency = 0.1
+    local hoverBgTransparency = 0.02
+    local pressedBgTransparency = 0
+    local idleIconColor = Color3.fromRGB(255, 255, 255)
     local activeIconColor = Color3.fromRGB(255, 255, 255)
     local isHovering = false
 
@@ -1249,38 +1246,6 @@ local function CreateHudOptionsButton(onActivated)
         tweenInstance(icon, { ImageColor3 = imageColor }, TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
         tweenInstance(buttonScale, { Scale = scaleValue }, TweenInfo.new(0.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out))
     end
-
-    local function updateLayout()
-        local metrics = getHudUtilityButtonMetrics()
-        local buttonSize = metrics.buttonSize
-
-        -- Preserve scale-only sizing/position for HudControls (no pixel offsets)
-        container.Size = UDim2.new(0.8, 0, 0.8, 0)
-        container.Position = UDim2.new(0.99, 0, 0.02, 0)
-        buttonCorner.CornerRadius = UDim.new(0, math.max(8, math.floor(buttonSize * 0.24)))
-        local fbBase = fallbackConstraint and (fallbackConstraint:GetAttribute("BaseMaxTextSize") or container:GetAttribute("BaseMaxTextSize")) or 12
-        fallbackConstraint.MaxTextSize = math.max(fbBase, math.floor(buttonSize * 0.35))
-    end
-
-    local cameraViewportConn
-    local cameraChangedConn
-
-    local function bindViewportListener()
-        if cameraViewportConn then
-            cameraViewportConn:Disconnect()
-            cameraViewportConn = nil
-        end
-
-        local camera = workspace.CurrentCamera
-        if camera then
-            cameraViewportConn = camera:GetPropertyChangedSignal("ViewportSize"):Connect(updateLayout)
-        end
-    end
-
-    cameraChangedConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-        bindViewportListener()
-        task.defer(updateLayout)
-    end)
 
     button.MouseEnter:Connect(function()
         isHovering = true
@@ -1310,21 +1275,8 @@ local function CreateHudOptionsButton(onActivated)
         end
     end)
 
-    hudGui.Destroying:Connect(function()
-        if cameraViewportConn then
-            cameraViewportConn:Disconnect()
-            cameraViewportConn = nil
-        end
-        if cameraChangedConn then
-            cameraChangedConn:Disconnect()
-            cameraChangedConn = nil
-        end
-    end)
-
-    bindViewportListener()
     iconFallback.Visible = (icon.Image == nil or icon.Image == "")
     tweenButtonVisuals(idleBgTransparency, idleIconColor, 1)
-    task.defer(updateLayout)
 
     return hudGui, button
 end
