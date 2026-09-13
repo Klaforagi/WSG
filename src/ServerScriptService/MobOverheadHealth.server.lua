@@ -226,6 +226,10 @@ local function getNameplateMaxDistance(ownerType)
 	return NPC_NAMEPLATE_MAX_DISTANCE
 end
 
+local function shouldAlwaysOnTop(ownerType)
+	return ownerType == "Player"
+end
+
 ------------------------------------------------------------------------
 -- Disable default Roblox display
 ------------------------------------------------------------------------
@@ -245,7 +249,7 @@ local function buildBillboard(model, attachPart, displayName, ownerType, ownerPl
 		existing:SetAttribute(OWNER_TYPE_ATTRIBUTE, ownerType)
 		updateNameplateOffset(model, existing, ownerType, attachPart)
 		existing.MaxDistance = getNameplateMaxDistance(ownerType)
-		existing.AlwaysOnTop = false
+		existing.AlwaysOnTop = shouldAlwaysOnTop(ownerType)
 		local bg = existing:FindFirstChild("Background")
 		local nameLabel = bg and bg:FindFirstChild("NameLabel")
 		if nameLabel and nameLabel:IsA("TextLabel") then
@@ -259,7 +263,7 @@ local function buildBillboard(model, attachPart, displayName, ownerType, ownerPl
 	billboard.Name         = BILLBOARD_NAME
 	billboard.Size         = BILLBOARD_SIZE
 	billboard.StudsOffset  = getNameplateOffset(ownerType)
-	billboard.AlwaysOnTop  = false
+	billboard.AlwaysOnTop  = shouldAlwaysOnTop(ownerType)
 	billboard.MaxDistance  = getNameplateMaxDistance(ownerType)
 	billboard.ResetOnSpawn = false
 	billboard.Enabled      = true

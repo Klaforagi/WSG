@@ -123,7 +123,7 @@ local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "CustomHealthBar"
 screenGui.ResetOnSpawn = false
 screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 6
+screenGui.DisplayOrder = 10050
 screenGui.Parent = playerGui
 
 -- Damage flash overlay (full-screen subtle red flash on taking damage)

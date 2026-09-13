@@ -23,13 +23,13 @@ SalvageConfig.ValueByRarity = {
 }
 
 SalvageConfig.SizeBonusByTier = {
-    Tiny  = 10,
-    Large = 10,
-    Giant = 25,
-    King  = 50,
+    Tiny  = 30,
+    Large = 30,
+    Giant = 75,
+    King  = 150,
 }
 
-SalvageConfig.EnchantBonus = 25
+SalvageConfig.EnchantBonus = 75
 
 local CANONICAL_TIER_NAMES = {
     tiny = "Tiny",

@@ -715,87 +715,40 @@ function CrateOpeningUI.Init(playerGui)
     end
     setSalvageButtonText("DISMANTLE +0")
 
-    ---------------------------------------------------------------------------
-    -- SALVAGE CONFIRMATION OVERLAY (for Rare+ items)
-    ---------------------------------------------------------------------------
-    local confirmFrame = Instance.new("Frame")
-    confirmFrame.Name = "SalvageConfirm"
-    confirmFrame.BackgroundColor3 = Color3.fromRGB(16, 18, 32)
-    confirmFrame.BackgroundTransparency = 0.04
-    confirmFrame.Size = UDim2.new(0, px(320), 0, px(180))
-    confirmFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    confirmFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-    confirmFrame.Visible = false
-    confirmFrame.ZIndex = 30
-    confirmFrame.Parent = screen
+    local SALVAGE_IDLE_BG = Color3.fromRGB(27, 31, 43)
+    local DISMANTLE_CONFIRM_RED = Color3.fromRGB(200, 50, 50)
+    local DISMANTLE_CONFIRM_SECONDS = 5
+    local salvageConfirmToken = 0
+    local salvageConfirmArmed = false
+    local lastSalvageValue = 0
 
-    local cfCorner = Instance.new("UICorner")
-    cfCorner.CornerRadius = UDim.new(0, px(14))
-    cfCorner.Parent = confirmFrame
+    local function applySalvageIdleStyle()
+        salvageBtn.BackgroundColor3 = SALVAGE_IDLE_BG
+        salvageStroke.Color = SALVAGE_ORANGE
+        salvageTextFront.TextColor3 = SALVAGE_ORANGE
+        setSalvageButtonText("DISMANTLE +" .. tostring(lastSalvageValue))
+    end
 
-    local cfStroke = Instance.new("UIStroke")
-    cfStroke.Color = Color3.fromRGB(255, 80, 80)
-    cfStroke.Thickness = 2
-    cfStroke.Transparency = 0.2
-    cfStroke.Parent = confirmFrame
+    local function clearSalvageConfirm()
+        salvageConfirmToken += 1
+        salvageConfirmArmed = false
+    end
 
-    local confirmMsg = Instance.new("TextLabel")
-    confirmMsg.Name = "Message"
-    confirmMsg.BackgroundTransparency = 1
-    confirmMsg.Font = Enum.Font.GothamBold
-    confirmMsg.Text = "Dismantle this weapon?"
-    confirmMsg.TextColor3 = WHITE
-    confirmMsg.TextSize = math.max(14, math.floor(px(16)))
-    confirmMsg.TextWrapped = true
-    confirmMsg.Size = UDim2.new(1, -px(24), 0, px(70))
-    confirmMsg.Position = UDim2.new(0, px(12), 0, px(16))
-    confirmMsg.TextXAlignment = Enum.TextXAlignment.Center
-    confirmMsg.TextYAlignment = Enum.TextYAlignment.Center
-    confirmMsg.ZIndex = 31
-    confirmMsg.Parent = confirmFrame
-
-    local cfBtnRow = Instance.new("Frame")
-    cfBtnRow.Name = "ConfirmBtnRow"
-    cfBtnRow.BackgroundTransparency = 1
-    cfBtnRow.Size = UDim2.new(1, -px(24), 0, px(40))
-    cfBtnRow.AnchorPoint = Vector2.new(0.5, 1)
-    cfBtnRow.Position = UDim2.new(0.5, 0, 1, -px(16))
-    cfBtnRow.ZIndex = 31
-    cfBtnRow.Parent = confirmFrame
-
-    local confirmYes = Instance.new("TextButton")
-    confirmYes.Name = "ConfirmSalvage"
-    confirmYes.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-    confirmYes.Font = Enum.Font.GothamBold
-    confirmYes.Text = "CONFIRM"
-    confirmYes.TextColor3 = WHITE
-    confirmYes.TextSize = math.max(13, math.floor(px(14)))
-    confirmYes.Size = UDim2.new(0.55, -px(4), 1, 0)
-    confirmYes.Position = UDim2.new(0, 0, 0, 0)
-    confirmYes.AutoButtonColor = false
-    confirmYes.ZIndex = 32
-    confirmYes.Parent = cfBtnRow
-
-    local cyCorner = Instance.new("UICorner")
-    cyCorner.CornerRadius = UDim.new(0, px(8))
-    cyCorner.Parent = confirmYes
-
-    local confirmNo = Instance.new("TextButton")
-    confirmNo.Name = "Cancel"
-    confirmNo.BackgroundColor3 = Color3.fromRGB(48, 55, 82)
-    confirmNo.Font = Enum.Font.GothamBold
-    confirmNo.Text = "CANCEL"
-    confirmNo.TextColor3 = DIM_TEXT
-    confirmNo.TextSize = math.max(13, math.floor(px(14)))
-    confirmNo.Size = UDim2.new(0.45, -px(4), 1, 0)
-    confirmNo.Position = UDim2.new(0.55, px(4), 0, 0)
-    confirmNo.AutoButtonColor = false
-    confirmNo.ZIndex = 32
-    confirmNo.Parent = cfBtnRow
-
-    local cnCorner = Instance.new("UICorner")
-    cnCorner.CornerRadius = UDim.new(0, px(8))
-    cnCorner.Parent = confirmNo
+    local function armSalvageConfirm()
+        salvageConfirmToken += 1
+        local token = salvageConfirmToken
+        salvageConfirmArmed = true
+        salvageBtn.BackgroundColor3 = DISMANTLE_CONFIRM_RED
+        salvageStroke.Color = Color3.fromRGB(255, 140, 140)
+        salvageTextFront.TextColor3 = WHITE
+        setSalvageButtonText("CONFIRM DISMANTLE")
+        task.delay(DISMANTLE_CONFIRM_SECONDS, function()
+            if token ~= salvageConfirmToken then return end
+            if not salvageConfirmArmed then return end
+            clearSalvageConfirm()
+            applySalvageIdleStyle()
+        end)
+    end
 
     local function applyResponsiveLayout()
         marker.Size = UDim2.new(0, math.max(2, px(3)), 0, math.max(px(CARD_H + 40), pxWidth(220)))
@@ -869,23 +822,6 @@ function CrateOpeningUI.Init(playerGui)
             label.TextSize = salvageBtn.TextSize
             ensureTextSizeConstraint(label, 8, salvageBtn.TextSize)
         end
-
-        confirmFrame.Size = UDim2.new(0, math.max(px(320), pxWidth(360)), 0, math.max(px(180), pxWidth(200)))
-        confirmFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-        cfCorner.CornerRadius = UDim.new(0, px(14))
-
-        confirmMsg.TextSize = math.max(14, math.floor(px(16)))
-        confirmMsg.Size = UDim2.new(1, -pxWidth(24), 0, px(70))
-        confirmMsg.Position = UDim2.new(0, pxWidth(12), 0, px(16))
-
-        cfBtnRow.Size = UDim2.new(1, -pxWidth(24), 0, px(40))
-        cfBtnRow.Position = UDim2.new(0.5, 0, 1, -px(16))
-
-        confirmYes.TextSize = math.max(13, math.floor(px(14)))
-        cyCorner.CornerRadius = UDim.new(0, px(8))
-
-        confirmNo.TextSize = math.max(13, math.floor(px(14)))
-        cnCorner.CornerRadius = UDim.new(0, px(8))
     end
 
     applyResponsiveLayout()
@@ -977,10 +913,11 @@ function CrateOpeningUI.Init(playerGui)
     -- Close handler
     ---------------------------------------------------------------------------
     closeOverlay = function(preserveDecisionState)
+        lastSalvageValue = 0
+        clearSalvageConfirm()
         screen.Enabled = false
         resultFrame.Visible = false
         btnRow.Visible = false
-        confirmFrame.Visible = false
         closeBtn.Visible = false
         currentResultData = nil
         if not preserveDecisionState then
@@ -1087,18 +1024,8 @@ function CrateOpeningUI.Init(playerGui)
         if decisionDebounce then return end
         if not currentResultData then return end
 
-        -- Rare or higher: show confirmation popup
-        local rarity = currentResultData.rarity
-        if rarity ~= "Common" then
-            local salvVal = currentResultData.salvageValue or 0
-            confirmMsg.Text = string.format(
-                "Are you sure you want to dismantle\nthis %s weapon for %d Shards?",
-                rarity, salvVal
-            )
-            print("[CrateReward] Salvage confirmation required for rarity: " .. rarity)
-            confirmFrame.Visible = true
-        else
-            -- Play sound immediately for instant feedback
+        if salvageConfirmArmed then
+            clearSalvageConfirm()
             pcall(function()
                 local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
                 if soundsFolder then
@@ -1113,34 +1040,10 @@ function CrateOpeningUI.Init(playerGui)
                 end
             end)
             doSalvage()
+            return
         end
-    end)
 
-    ---------------------------------------------------------------------------
-    -- CONFIRMATION POPUP HANDLERS
-    ---------------------------------------------------------------------------
-    confirmYes.MouseButton1Click:Connect(function()
-        confirmFrame.Visible = false
-        -- Play sound immediately on confirm accept
-        pcall(function()
-            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-            if soundsFolder then
-                local s = soundsFolder:FindFirstChild("Dismantle") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Dismantle"))
-                if s and s:IsA("Sound") then
-                    local SoundService = game:GetService("SoundService")
-                    local clone = s:Clone()
-                    clone.Parent = SoundService
-                    clone:Play()
-                    task.delay((clone.TimeLength or 1) + 0.1, function() pcall(function() clone:Destroy() end) end)
-                end
-            end
-        end)
-        doSalvage()
-    end)
-
-    confirmNo.MouseButton1Click:Connect(function()
-        confirmFrame.Visible = false
-        -- Return to the decision popup; do NOT clear pending reward
+        armSalvageConfirm()
     end)
 
     ---------------------------------------------------------------------------
@@ -1528,14 +1431,15 @@ function CrateOpeningUI.Init(playerGui)
             if resultData.isPending then
                 -- Pending reward: show Keep/Salvage decision
                 local salvVal = resultData.salvageValue or 0
-                setSalvageButtonText("DISMANTLE +" .. tostring(salvVal))
+                lastSalvageValue = salvVal
+                clearSalvageConfirm()
+                applySalvageIdleStyle()
                 btnRow.Visible = true
-                confirmFrame.Visible = false
                 closeBtn.Visible = false
             else
                 -- Already-granted reward (e.g. salvage shop crate): show Close
+                clearSalvageConfirm()
                 btnRow.Visible = false
-                confirmFrame.Visible = false
                 closeBtn.Visible = true
             end
 
@@ -1619,7 +1523,6 @@ function CrateOpeningUI.Init(playerGui)
             screen.Enabled = true
             resultFrame.Visible = true
             btnRow.Visible = false
-            confirmFrame.Visible = false
             closeBtn.Visible = true
             resultImage.Image = ""
             resultName.Text = errMsg

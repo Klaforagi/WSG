@@ -676,8 +676,8 @@ local SHARD_UI_ACCENT = Color3.fromRGB(255, 158, 74)
 local SHARD_UI_BG = Color3.fromRGB(74, 42, 18)
 local SHARD_UI_DIM = Color3.fromRGB(190, 118, 52)
 local SHARD_UI_FEEDBACK_BG = Color3.fromRGB(58, 33, 14)
-local SHARD_UI_OVERLAY_BG = Color3.fromRGB(22, 12, 4)
-local SHARD_UI_CONFIRM_BG = Color3.fromRGB(48, 29, 14)
+local DISMANTLE_CONFIRM_RED = Color3.fromRGB(200, 50, 50)
+local DISMANTLE_CONFIRM_SECONDS = 5
 
 local function createShardRewardRow(parent, name, size, anchorPoint, position, textSize, shardImage, zIndex, pxFn, iconSize, iconScale)
     local row = Instance.new("Frame")
@@ -2197,163 +2197,42 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     discardBtn.Position = UDim2.new(1, 0, 0, 0)
     Instance.new("UICorner", discardBtn).CornerRadius = UDim.new(0, px(8))
     __constraint = Instance.new("UITextSizeConstraint", discardBtn)
-    __constraint.MinTextSize = 9
-    __constraint.MaxTextSize = math.max(11, math.floor(px(15)))
+    __constraint.MinTextSize = 8
+    __constraint.MaxTextSize = math.max(11, math.floor(px(14)))
     local discardStroke = Instance.new("UIStroke", discardBtn)
     discardStroke.Color = SHARD_UI_DIM; discardStroke.Thickness = 1.2; discardStroke.Transparency = 0.3
 
-    -- Salvage confirmation overlay
-    local confirmOverlay = Instance.new("Frame", detailsPanel)
-    confirmOverlay.Name = "ConfirmOverlay"
-    confirmOverlay.BackgroundColor3 = SHARD_UI_OVERLAY_BG
-    confirmOverlay.BackgroundTransparency = 0.08
-    confirmOverlay.Size = UDim2.new(1, 0, 1, 0)
-    confirmOverlay.ZIndex = 50
-    confirmOverlay.Visible = false
-    Instance.new("UICorner", confirmOverlay).CornerRadius = UDim.new(0, px(12))
+    local dismantleConfirmToken = 0
+    local dismantleConfirmArmed = false
+    local dismantleConfirmInstanceId = nil
 
-    local confirmBox = Instance.new("Frame", confirmOverlay)
-    confirmBox.Name = "ConfirmBox"
-    confirmBox.BackgroundColor3 = SHARD_UI_CONFIRM_BG
-    confirmBox.Size = UDim2.new(0.88, 0, 0, px(160))
-    confirmBox.AnchorPoint = Vector2.new(0.5, 0.5)
-    confirmBox.Position = UDim2.new(0.5, 0, 0.5, 0)
-    confirmBox.ZIndex = 51
-    Instance.new("UICorner", confirmBox).CornerRadius = UDim.new(0, px(10))
-    local cbStroke = Instance.new("UIStroke", confirmBox)
-    cbStroke.Color = SHARD_UI_ACCENT; cbStroke.Thickness = 1.5; cbStroke.Transparency = 0.3
-
-    local confirmTitle = Instance.new("TextLabel", confirmBox)
-    confirmTitle.BackgroundTransparency = 1
-    confirmTitle.Font = Enum.Font.GothamBold
-    confirmTitle.Text = "Dismantle Weapon?"
-    confirmTitle.TextColor3 = SHARD_UI_ACCENT
-    confirmTitle.TextScaled = true
-    confirmTitle.Size = UDim2.new(1, 0, 0, px(28))
-    confirmTitle.Position = UDim2.new(0, 0, 0, px(16))
-    confirmTitle.TextXAlignment = Enum.TextXAlignment.Center
-    confirmTitle.ZIndex = 52
-    __constraint = Instance.new("UITextSizeConstraint", confirmTitle)
-    __constraint.MinTextSize = 10
-    __constraint.MaxTextSize = math.max(12, math.floor(px(17)))
-
-    shardWidgets.confirmRewardRow, shardWidgets.confirmRewardLabel = createShardRewardRow(
-        confirmBox,
-        "RewardRow",
-        UDim2.new(0.88, 0, 0, px(24)),
-        Vector2.new(0.5, 0),
-        UDim2.new(0.5, 0, 0, px(48)),
-        px(16),
-        getShardCurrencyImage(),
-        52,
-        px
-    )
-
-    local confirmDesc = Instance.new("TextLabel", confirmBox)
-    confirmDesc.Name = "Desc"
-    confirmDesc.BackgroundTransparency = 1
-    confirmDesc.Font = Enum.Font.GothamMedium
-    confirmDesc.Text = "This action cannot be undone."
-    confirmDesc.TextColor3 = DIM_TEXT
-    confirmDesc.TextScaled = true
-    confirmDesc.TextWrapped = true
-    confirmDesc.Size = UDim2.new(0.85, 0, 0, px(36))
-    confirmDesc.AnchorPoint = Vector2.new(0.5, 0)
-    confirmDesc.Position = UDim2.new(0.5, 0, 0, px(76))
-    confirmDesc.TextXAlignment = Enum.TextXAlignment.Center
-    confirmDesc.TextYAlignment = Enum.TextYAlignment.Top
-    confirmDesc.ZIndex = 52
-    __constraint = Instance.new("UITextSizeConstraint", confirmDesc)
-    __constraint.MinTextSize = 8
-    __constraint.MaxTextSize = math.max(10, math.floor(px(13)))
-
-    local confirmYes = Instance.new("TextButton", confirmBox)
-    confirmYes.Name = "YesBtn"
-    confirmYes.AutoButtonColor = false
-    confirmYes.BackgroundColor3 = SHARD_UI_ACCENT
-    confirmYes.Font = Enum.Font.GothamBold
-    confirmYes.Text = "DISMANTLE"
-    confirmYes.TextColor3 = WHITE
-    confirmYes.TextTransparency = 0
-    confirmYes.TextScaled = true
-    confirmYes.Size = UDim2.new(0.42, 0, 0, px(36))
-    confirmYes.AnchorPoint = Vector2.new(0, 1)
-    confirmYes.Position = UDim2.new(0.06, 0, 1, -px(14))
-    confirmYes.ZIndex = 52
-    Instance.new("UICorner", confirmYes).CornerRadius = UDim.new(0, px(8))
-    -- Ensure no leftover UITextSizeConstraint exists on confirmYes
-    for _, _c in ipairs(confirmYes:GetDescendants()) do
-        if _c and _c.IsA and _c:IsA("UITextSizeConstraint") then
-            pcall(function() _c:Destroy() end)
-        end
-    end
-    local confirmYesStroke = Instance.new("UIStroke", confirmYes)
-    confirmYesStroke.Color = Color3.fromRGB(0, 0, 0); confirmYesStroke.Thickness = 1.5; confirmYesStroke.Transparency = 0.15
-
-    local confirmNo = Instance.new("TextButton", confirmBox)
-    confirmNo.Name = "NoBtn"
-    confirmNo.AutoButtonColor = false
-    confirmNo.BackgroundColor3 = BTN_BG
-    confirmNo.Font = Enum.Font.GothamBold
-    confirmNo.Text = "CANCEL"
-    confirmNo.TextColor3 = WHITE
-    confirmNo.TextTransparency = 0
-    confirmNo.TextScaled = true
-    confirmNo.Size = UDim2.new(0.42, 0, 0, px(36))
-    confirmNo.AnchorPoint = Vector2.new(1, 1)
-    confirmNo.Position = UDim2.new(0.94, 0, 1, -px(14))
-    confirmNo.ZIndex = 52
-    Instance.new("UICorner", confirmNo).CornerRadius = UDim.new(0, px(8))
-    -- Ensure no leftover UITextSizeConstraint exists on confirmNo
-    for _, _c in ipairs(confirmNo:GetDescendants()) do
-        if _c and _c.IsA and _c:IsA("UITextSizeConstraint") then
-            pcall(function() _c:Destroy() end)
-        end
-    end
-    local confirmNoStroke = Instance.new("UIStroke", confirmNo)
-    confirmNoStroke.Color = Color3.fromRGB(0, 0, 0); confirmNoStroke.Thickness = 1.5; confirmNoStroke.Transparency = 0.15
-
-    local CONFIRM_BOX_BASE_HEIGHT = px(160)
-    local CONFIRM_DESC_WIDTH_SCALE = 0.85
-    local CONFIRM_DESC_MIN_HEIGHT = px(36)
-    local CONFIRM_REWARD_TOP = px(48)
-    local CONFIRM_REWARD_HEIGHT = px(24)
-    local CONFIRM_DESC_TOP = px(76)
-    local CONFIRM_DESC_TOP_NO_REWARD = px(52)
-    local CONFIRM_DESC_EXTRA_PADDING = px(6)
-    local CONFIRM_DESC_TO_BUTTON_GAP = px(12)
-    local CONFIRM_BUTTON_HEIGHT = px(36)
-    local CONFIRM_BUTTON_BOTTOM_MARGIN = px(14)
-
-    local function updateConfirmBoxLayout()
-        local descTop = shardWidgets.confirmRewardRow.Visible and CONFIRM_DESC_TOP or CONFIRM_DESC_TOP_NO_REWARD
-        shardWidgets.confirmRewardRow.Position = UDim2.new(0.5, 0, 0, CONFIRM_REWARD_TOP)
-        shardWidgets.confirmRewardRow.Size = UDim2.new(0.88, 0, 0, CONFIRM_REWARD_HEIGHT)
-        confirmDesc.Position = UDim2.new(0.5, 0, 0, descTop)
-
-        local descWidth = math.floor(confirmBox.AbsoluteSize.X * CONFIRM_DESC_WIDTH_SCALE)
-        if descWidth <= 0 then
-            descWidth = math.floor(detailsPanel.AbsoluteSize.X * 0.88 * CONFIRM_DESC_WIDTH_SCALE)
-        end
-        descWidth = math.max(descWidth, 1)
-
-        local cfont = confirmDesc.Font
-        if typeof(cfont) ~= "EnumItem" or cfont == Enum.Font.Unknown then
-            cfont = Enum.Font.GothamMedium
-        end
-        local measuredDesc = safeGetTextSize(confirmDesc.Text or "", confirmDesc.TextSize, cfont, Vector2.new(descWidth, 1000))
-        local descHeight = math.max(CONFIRM_DESC_MIN_HEIGHT, measuredDesc.Y + CONFIRM_DESC_EXTRA_PADDING)
-        confirmDesc.Size = UDim2.new(CONFIRM_DESC_WIDTH_SCALE, 0, 0, descHeight)
-
-        local requiredHeight = descTop
-            + descHeight
-            + CONFIRM_DESC_TO_BUTTON_GAP
-            + CONFIRM_BUTTON_HEIGHT
-            + CONFIRM_BUTTON_BOTTOM_MARGIN
-        confirmBox.Size = UDim2.new(0.88, 0, 0, math.max(CONFIRM_BOX_BASE_HEIGHT, requiredHeight))
+    local function clearDismantleConfirm()
+        dismantleConfirmToken += 1
+        dismantleConfirmArmed = false
+        dismantleConfirmInstanceId = nil
     end
 
-    task.defer(updateConfirmBoxLayout)
+    local function armDismantleConfirm(instanceId)
+        dismantleConfirmToken += 1
+        local token = dismantleConfirmToken
+        dismantleConfirmArmed = true
+        dismantleConfirmInstanceId = instanceId
+        discardBtn.Text = "CONFIRM DISMANTLE"
+        discardBtn.BackgroundColor3 = DISMANTLE_CONFIRM_RED
+        discardBtn.TextColor3 = WHITE
+        discardStroke.Color = Color3.fromRGB(255, 170, 170)
+        discardStroke.Transparency = 0.15
+        task.delay(DISMANTLE_CONFIRM_SECONDS, function()
+            if token ~= dismantleConfirmToken then return end
+            if not dismantleConfirmArmed then return end
+            clearDismantleConfirm()
+            discardBtn.Text = "DISMANTLE"
+            discardBtn.BackgroundColor3 = SHARD_UI_BG
+            discardBtn.TextColor3 = SHARD_UI_ACCENT
+            discardStroke.Color = Color3.fromRGB(0, 0, 0)
+            discardStroke.Transparency = 0.15
+        end)
+    end
 
     -- ══════════════════════════════════════════════════════════════════════
     --  SELECTION & EQUIP STATE
@@ -2499,6 +2378,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     -- updateEquipButton(itemData)
     ---------------------------------------------------------------------------
     local function updateActionButtons(itemData)
+        clearDismantleConfirm()
         -- Favorite & Salvage visibility: hide for starter/non-instance weapons
         local isStarter = itemData and itemData.source == "Starter"
         local isInstance = itemData and itemData.isInstance
@@ -2627,6 +2507,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         selectedItem = itemData
 
         if not itemData then
+            clearDismantleConfirm()
             detailPlaceholder.Visible = true
             detailContent.Visible = false
             detailsPanel.BackgroundColor3 = CARD_BG
@@ -3220,10 +3101,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end)
 
     ---------------------------------------------------------------------------
-    -- Salvage button handler  (opens confirmation prompt with value preview)
+    -- Salvage button handler  (arm CONFIRM DISMANTLE, then fire on second click)
     ---------------------------------------------------------------------------
-    local discardTarget = nil
-
     discardBtn.MouseButton1Click:Connect(function()
         if not selectedItem then return end
         if not selectedItem.isInstance then return end
@@ -3231,109 +3110,79 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         if isItemEquipped(selectedItem) then return end
         if selectedItem.favorited == true then return end
 
-        discardTarget = selectedItem
+        local instanceId = selectedItem.instanceId
+        if not instanceId then return end
 
-        -- Show salvage value preview from SalvageConfig (client-side read; server is authoritative)
-        local salvageValue = 0
-        if SalvageConfig and selectedItem.rarity then
-            salvageValue = getSalvageValueForItem(selectedItem) or 0
+        if dismantleConfirmArmed and dismantleConfirmInstanceId == instanceId then
+            clearDismantleConfirm()
+
+            local salvageRF = ReplicatedStorage:FindFirstChild("SalvageWeapon")
+            if not salvageRF or not salvageRF:IsA("RemoteFunction") then return end
+
+            pcall(function()
+                local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+                if soundsFolder then
+                    local s = soundsFolder:FindFirstChild("Dismantle") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Dismantle"))
+                    if s and s:IsA("Sound") then
+                        local SoundService = game:GetService("SoundService")
+                        local clone = s:Clone()
+                        clone.Parent = SoundService
+                        clone:Play()
+                        task.delay((clone.TimeLength or 1) + 0.1, function() pcall(function() clone:Destroy() end) end)
+                    end
+                end
+            end)
+
+            local ok, success, result = pcall(function()
+                return salvageRF:InvokeServer(instanceId)
+            end)
+
+            if ok and success then
+                if type(result) == "table" and result.newBalance then
+                    pcall(function()
+                        if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
+                    end)
+                end
+
+                for i, item in ipairs(allWeaponItems) do
+                    if item.instanceId == instanceId then
+                        table.remove(allWeaponItems, i)
+                        break
+                    end
+                end
+                setSelectedItem(nil)
+                renderCategory(currentWeaponCategory)
+            else
+                local reason = "Dismantle failed"
+                if type(result) == "table" and result.reason then
+                    reason = result.reason
+                end
+                showSalvageFeedback(reason, RED_TEXT, 3)
+                if selectedItem then
+                    updateActionButtons(selectedItem)
+                end
+            end
+            return
         end
-        confirmTitle.Text = "Dismantle " .. (selectedItem.name or "Weapon") .. "?"
-        shardWidgets.confirmRewardRow.Visible = salvageValue > 0
-        if salvageValue > 0 then
-            shardWidgets.confirmRewardLabel.Text = "Dismantle for " .. tostring(salvageValue)
-            confirmDesc.Text = "This action cannot be undone."
-        else
-            shardWidgets.confirmRewardLabel.Text = ""
-            confirmDesc.Text = "Dismantle this weapon\nThis action cannot be undone."
-        end
-        confirmOverlay.Visible = true
-        updateConfirmBoxLayout()
-        task.defer(updateConfirmBoxLayout)
+
+        armDismantleConfirm(instanceId)
     end)
 
     discardBtn.MouseEnter:Connect(function()
+        if dismantleConfirmArmed then
+            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(230, 70, 70)}):Play()
+            return
+        end
         if selectedItem and not isItemEquipped(selectedItem) and selectedItem.source ~= "Starter" and selectedItem.favorited ~= true then
             TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = Color3.fromRGB(96, 56, 24)}):Play()
         end
     end)
     discardBtn.MouseLeave:Connect(function()
-        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = SHARD_UI_BG}):Play()
-    end)
-
-    confirmNo.MouseButton1Click:Connect(function()
-        confirmOverlay.Visible = false
-        discardTarget = nil
-    end)
-
-    confirmYes.MouseButton1Click:Connect(function()
-        confirmOverlay.Visible = false
-        if not discardTarget then return end
-
-        local instanceId = discardTarget.instanceId
-        local itemName = discardTarget.name or "?"
-        local cat = discardTarget.category
-        if not instanceId then discardTarget = nil return end
-
-        local salvageRF = ReplicatedStorage:FindFirstChild("SalvageWeapon")
-        if not salvageRF or not salvageRF:IsA("RemoteFunction") then discardTarget = nil return end
-
-        -- Play local dismantle sound immediately for low-latency feedback
-        pcall(function()
-            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-            if soundsFolder then
-                local s = soundsFolder:FindFirstChild("Dismantle") or (soundsFolder:FindFirstChild("UI") and soundsFolder.UI:FindFirstChild("Dismantle"))
-                if s and s:IsA("Sound") then
-                    local SoundService = game:GetService("SoundService")
-                    local clone = s:Clone()
-                    clone.Parent = SoundService
-                    clone:Play()
-                    task.delay((clone.TimeLength or 1) + 0.1, function() pcall(function() clone:Destroy() end) end)
-                end
-            end
-        end)
-
-        local ok, success, result = pcall(function()
-            return salvageRF:InvokeServer(instanceId)
-        end)
-
-        if ok and success then
-            -- Show success feedback with awarded amount
-            local awarded = (type(result) == "table" and result.awarded) or 0
-            if awarded > 0 then
-                showSalvageFeedback("Dismantled for +" .. tostring(awarded) .. " Shards", SHARD_UI_ACCENT, 2.5)
-            else
-                showSalvageFeedback("Dismantled!", SHARD_UI_ACCENT, 2)
-            end
-
-            -- Update header salvage display immediately
-            if type(result) == "table" and result.newBalance then
-                pcall(function()
-                    if _G.UpdateShopHeaderSalvage then _G.UpdateShopHeaderSalvage() end
-                end)
-            end
-
-            -- Remove from local allWeaponItems
-            for i, item in ipairs(allWeaponItems) do
-                if item.instanceId == instanceId then
-                    table.remove(allWeaponItems, i)
-                    break
-                end
-            end
-            -- Clear selection
-            setSelectedItem(nil)
-            -- Re-render
-            renderCategory(currentWeaponCategory)
-        else
-            -- Salvage failed – show error feedback
-            local reason = "Dismantle failed"
-            if type(result) == "table" and result.reason then
-                reason = result.reason
-            end
-            showSalvageFeedback(reason, RED_TEXT, 3)
+        if dismantleConfirmArmed then
+            TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = DISMANTLE_CONFIRM_RED}):Play()
+            return
         end
-
-        discardTarget = nil
+        TweenService:Create(discardBtn, TWEEN_QUICK, {BackgroundColor3 = SHARD_UI_BG}):Play()
     end)
 
     -- ══════════════════════════════════════════════════════════════════════
@@ -6622,10 +6471,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     obj.TextScaled = true
                     -- Don't add constraints to elements that are part of the left tab sidebar
                     if sidebar and obj:IsDescendantOf(sidebar) then
-                        return
-                    end
-                    -- Don't add constraints to elements that are part of the salvage/confirm overlay
-                    if confirmOverlay and obj:IsDescendantOf(confirmOverlay) then
                         return
                     end
                     if not obj:FindFirstChildOfClass("UITextSizeConstraint") then

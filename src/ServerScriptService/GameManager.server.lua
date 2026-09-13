@@ -51,11 +51,6 @@ local AdjustMatchTime = ensureRemote("AdjustMatchTime")
 -- Built when MatchResults fire; the previous rig is destroyed only once a replacement is ready.
 local MVP_MODEL_NAME = "MVP_Avatar"
 local MVP_SCALE = 1.5
-local MVP_GOLD = Color3.fromRGB(255, 214, 70)
-local MVP_GOLD_LIGHT = Color3.fromRGB(255, 240, 170)
-local MVP_GOLD_WARM = Color3.fromRGB(255, 196, 48)
-local MVP_WHITE = Color3.fromRGB(245, 245, 252)
-local MVP_NAVY = Color3.fromRGB(10, 12, 26)
 local MVP_LIGHT_KNIGHTS = Color3.fromRGB(0, 110, 254)
 local MVP_LIGHT_BARBARIANS = Color3.fromRGB(254, 88, 88)
 local currentMVP = {
@@ -258,112 +253,61 @@ local function resolveMVPDisplayName(userId)
     return "Unknown"
 end
 
-local function attachMVPLabel(rig, userId)
-    local head = rig:FindFirstChild("Head")
-    local adornee = (head and head:IsA("BasePart") and head) or rig:FindFirstChild("HumanoidRootPart")
-    if not (adornee and adornee:IsA("BasePart")) then
+local function attachMVPLabel(rig, userId, spawnPart, teamKey)
+    if not (spawnPart and spawnPart:IsA("BasePart")) then
         return
     end
 
-    local headLift = 0.9
-    if head and head:IsA("BasePart") then
-        headLift = (head.Size.Y * 0.5) + 0.85
-    end
+    local offsetY = (spawnPart.Size.Y * 0.5) + 9
+    pcall(function()
+        local cf, size = rig:GetBoundingBox()
+        if cf and size then
+            offsetY = (cf.Position.Y + size.Y * 0.5) - spawnPart.Position.Y + 1.15
+        end
+    end)
+
+    -- Static world anchor so the name does not follow dance animation on Head/HRP.
+    local anchor = Instance.new("Part")
+    anchor.Name = "MVPNameAnchor"
+    anchor.Anchored = true
+    anchor.CanCollide = false
+    anchor.CanQuery = false
+    anchor.CanTouch = false
+    anchor.Massless = true
+    anchor.Transparency = 1
+    anchor.Size = Vector3.new(0.2, 0.2, 0.2)
+    anchor.CFrame = CFrame.new(spawnPart.Position + Vector3.new(0, offsetY, 0))
+    anchor.Parent = rig
 
     local billboard = Instance.new("BillboardGui")
     billboard.Name = "MVPLabel"
-    billboard.Adornee = adornee
-    billboard.AlwaysOnTop = true
+    billboard.Adornee = anchor
+    billboard.AlwaysOnTop = false
     billboard.LightInfluence = 0
     billboard.MaxDistance = 220
-    billboard.Size = UDim2.new(6.2, 0, 1.85, 0)
-    billboard.StudsOffsetWorldSpace = Vector3.new(0, headLift, 0)
+    billboard.Size = UDim2.new(8, 0, 1.15, 0)
+    billboard.StudsOffsetWorldSpace = Vector3.new(0, 0, 0)
     billboard.ResetOnSpawn = false
     billboard.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    billboard.Parent = rig
-
-    local plate = Instance.new("Frame")
-    plate.Name = "Plate"
-    plate.BackgroundColor3 = MVP_NAVY
-    plate.BackgroundTransparency = 0.28
-    plate.BorderSizePixel = 0
-    plate.Size = UDim2.fromScale(1, 1)
-    plate.Parent = billboard
-
-    local plateCorner = Instance.new("UICorner")
-    plateCorner.CornerRadius = UDim.new(0, 10)
-    plateCorner.Parent = plate
-
-    local plateStroke = Instance.new("UIStroke")
-    plateStroke.Color = MVP_GOLD
-    plateStroke.Thickness = 1.6
-    plateStroke.Transparency = 0.12
-    plateStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    plateStroke.Parent = plate
-
-    local pad = Instance.new("UIPadding")
-    pad.PaddingLeft = UDim.new(0.06, 0)
-    pad.PaddingRight = UDim.new(0.06, 0)
-    pad.PaddingTop = UDim.new(0.08, 0)
-    pad.PaddingBottom = UDim.new(0.08, 0)
-    pad.Parent = plate
-
-    local title = Instance.new("TextLabel")
-    title.Name = "Title"
-    title.BackgroundTransparency = 1
-    title.BorderSizePixel = 0
-    title.Size = UDim2.new(1, 0, 0.55, 0)
-    title.Position = UDim2.fromScale(0, 0)
-    title.Font = Enum.Font.GothamBlack
-    title.Text = "◆  MVP  ◆"
-    title.TextColor3 = Color3.new(1, 1, 1)
-    title.TextScaled = true
-    title.TextStrokeColor3 = Color3.fromRGB(48, 32, 4)
-    title.TextStrokeTransparency = 0.2
-    title.Parent = plate
-
-    local titleSize = Instance.new("UITextSizeConstraint")
-    titleSize.MinTextSize = 16
-    titleSize.MaxTextSize = 32
-    titleSize.Parent = title
-
-    local shine = Instance.new("UIGradient")
-    shine.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, MVP_GOLD_LIGHT),
-        ColorSequenceKeypoint.new(0.45, MVP_GOLD_WARM),
-        ColorSequenceKeypoint.new(1, MVP_GOLD_LIGHT),
-    })
-    shine.Rotation = 0
-    shine.Parent = title
-
-    local divider = Instance.new("Frame")
-    divider.Name = "Divider"
-    divider.AnchorPoint = Vector2.new(0.5, 0.5)
-    divider.BackgroundColor3 = MVP_GOLD
-    divider.BackgroundTransparency = 0.35
-    divider.BorderSizePixel = 0
-    divider.Position = UDim2.new(0.5, 0, 0.58, 0)
-    divider.Size = UDim2.new(0.42, 0, 0, 2)
-    divider.Parent = plate
+    billboard.Parent = anchor
 
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PlayerName"
     nameLabel.BackgroundTransparency = 1
     nameLabel.BorderSizePixel = 0
-    nameLabel.Size = UDim2.new(1, 0, 0.36, 0)
-    nameLabel.Position = UDim2.fromScale(0, 0.64)
-    nameLabel.Font = Enum.Font.GothamBold
+    nameLabel.Size = UDim2.fromScale(1, 1)
+    nameLabel.Font = Enum.Font.GothamBlack
     nameLabel.Text = resolveMVPDisplayName(userId)
-    nameLabel.TextColor3 = MVP_WHITE
+    nameLabel.TextColor3 = colorForMVPTeam(teamKey)
     nameLabel.TextScaled = true
-    nameLabel.TextStrokeColor3 = MVP_NAVY
-    nameLabel.TextStrokeTransparency = 0.25
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(8, 10, 22)
+    nameLabel.TextStrokeTransparency = 0.4
     nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-    nameLabel.Parent = plate
+    nameLabel.Parent = billboard
 
     local nameSize = Instance.new("UITextSizeConstraint")
-    nameSize.MinTextSize = 12
-    nameSize.MaxTextSize = 20
+    nameSize.MinTextSize = 18
+    nameSize.MaxTextSize = 36
     nameSize.Parent = nameLabel
 end
 
@@ -469,7 +413,7 @@ local function spawnMVPAvatar(userId, preparedDescription, teamKey)
         placeMVPRig(rig, spawnPart)
     end)
     pcall(function()
-        attachMVPLabel(rig, userId)
+        attachMVPLabel(rig, userId, spawnPart, teamKey)
     end)
 
     currentMVP.model = rig
