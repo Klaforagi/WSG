@@ -20,6 +20,11 @@ pcall(function()
 	StatService = require(ServerScriptService:WaitForChild("StatService", 10))
 end)
 
+local KingService
+pcall(function()
+	KingService = require(ServerScriptService:WaitForChild("KingService", 10))
+end)
+
 pcall(function()
 	local mod = ServerScriptService:FindFirstChild("WeaponMasteryService")
 	if mod and mod:IsA("ModuleScript") then
@@ -1105,6 +1110,11 @@ local function captureFlagAtStand(pl, standTeam)
 	end)
 
 	FlagStatus:FireAllClients("captured", (pl.DisplayName ~= "" and pl.DisplayName) or pl.Name, playerTeamName, flagTeam, nil, pl.UserId)
+	if KingService then
+		pcall(function()
+			KingService:TryCrownFromCapture(pl)
+		end)
+	end
 	local captureSoundName = "Flag_capture"
 	if playerTeamName == "Blue" and flagTeam == "Red" then
 		captureSoundName = "Flag_capture_blue"

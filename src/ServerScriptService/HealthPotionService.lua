@@ -872,6 +872,10 @@ function HealthPotionService:ApplyOutgoingDamageModifiers(player, baseDamage, _d
 		return damage
 	end
 	local result = damage * multiplier
+	local kingMult = player and tonumber(player:GetAttribute("KingDamageMult")) or nil
+	if type(kingMult) == "number" and kingMult > 0 then
+		result = result * kingMult
+	end
 	local flatAdd = self:GetOutgoingDamageFlat(player, _damageContext) or 0
 	if type(flatAdd) == "number" and flatAdd ~= 0 then
 		result = result + flatAdd

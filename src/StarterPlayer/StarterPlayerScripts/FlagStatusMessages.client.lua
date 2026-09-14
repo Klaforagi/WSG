@@ -114,6 +114,16 @@ local function buildRichText(item)
 			"<font color='%s'>The </font><font color='%s'>%s</font><font color='%s'> Flag has been returned!</font>",
 			GOLD_HEX, fHex, teamWord, GOLD_HEX
 		)
+	elseif item.eventType == "crowned" then
+		return string.format(
+			"<font color='%s'>%s</font><font color='%s'> has been crowned King!</font>",
+			pHex, playerName, GOLD_HEX
+		)
+	elseif item.eventType == "slain_king" then
+		return string.format(
+			"<font color='%s'>%s</font><font color='%s'> has slain the King</font>",
+			pHex, playerName, GOLD_HEX
+		)
 	end
 	return playerName
 end
@@ -249,7 +259,8 @@ FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName,
 		return
 	end
 
-	if eventType == "pickup" or eventType == "returned" or eventType == "captured" then
+	if eventType == "pickup" or eventType == "returned" or eventType == "captured"
+		or eventType == "crowned" or eventType == "slain_king" then
 		table.insert(messageQueue, {
 			eventType = eventType,
 			playerName = playerName,

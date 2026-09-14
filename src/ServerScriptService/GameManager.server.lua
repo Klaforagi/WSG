@@ -428,6 +428,11 @@ pcall(function()
     EventScheduler = require(ServerScriptService:WaitForChild("EventScheduler", 10))
 end)
 
+local KingService
+pcall(function()
+    KingService = require(ServerScriptService:WaitForChild("KingService", 10))
+end)
+
 ---------------------------------------------------------------------
 -- Bindable event  (server script → GameManager)
 ---------------------------------------------------------------------
@@ -838,6 +843,7 @@ function endMatch(winnerTeam)
     intermissionStartTick = nil
     -- Stop event scheduler for this match
     if EventScheduler then pcall(function() EventScheduler:StopMatch() end) end
+    if KingService then pcall(function() KingService:OnMatchEnd() end) end
     print("[GameManager] END — winner:", winnerTeam, "  Blue:", teamScores.Blue, " Red:", teamScores.Red)
     pcall(function() MatchEnd:FireAllClients("win", winnerTeam) end)
     pcall(function() MatchEndedBE:Fire(winnerTeam) end)
@@ -947,13 +953,26 @@ function startMatch()
 
     -- Start event scheduler for this match
     if EventScheduler then pcall(function() EventScheduler:StartMatch(matchStartTick) end) end
+    if KingService then pcall(function() KingService:OnMatchStart() end) end
 
     -- Monitor remaining time; sleeps exactly until 0 so it fires instantly.
     -- Re-checks after waking in case matchStartTick was adjusted mid-sleep.
     task.spawn(function()
+        local prevRemaining = MATCH_DURATION
+        local kingCheckpoints = { 720, 540, 360, 180 }
         while State == "Game" do
             local now = workspace:GetServerTimeNow()
             local remaining = MATCH_DURATION - (now - matchStartTick)
+            if KingService then
+                for _, checkpoint in ipairs(kingCheckpoints) do
+                    if prevRemaining > checkpoint and remaining <= checkpoint then
+                        pcall(function()
+                            KingService:TryPeriodicCrown()
+                        end)
+                    end
+                end
+            end
+            prevRemaining = remaining
             if remaining <= 0 then
                 if teamScores.Blue == teamScores.Red then
                     setMatchState("SuddenDeath")

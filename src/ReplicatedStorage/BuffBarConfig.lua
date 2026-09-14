@@ -50,6 +50,16 @@ BuffBarConfig.StaticEntries = {
         ShowTimer = true,
         SortOrder = 10,
     },
+    king = {
+        Id = "king",
+        DisplayName = "King",
+        Description = "You are the king! Stats increased.",
+        IconShape = "crown",
+        IconColor = {255, 214, 70},
+        AccentColor = {255, 214, 70},
+        ShowTimer = true,
+        SortOrder = 8,
+    },
     hut_heal = {
         Id = "hut_heal",
         DisplayName = "Heal Buff",
@@ -149,6 +159,9 @@ BuffBarConfig.StaticEntries = {
 BuffBarConfig.StaticAliases = {
     EVENT = "event",
     Event = "event",
+    king = "king",
+    King = "king",
+    KING = "king",
     meteor_event = "meteor_shower",
     meteorshower = "meteor_shower",
     MeteorEvent = "meteor_shower",

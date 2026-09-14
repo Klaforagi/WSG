@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ServerScriptService = game:GetService("ServerScriptService")
+local TweenService = game:GetService("TweenService")
 
 local HumanoidStatService = require(ServerScriptService:WaitForChild("HumanoidStatService"))
 
@@ -15,6 +16,9 @@ local SCALE_VARS = {
 
 local MIN_SCALE = 0.35
 local MAX_SCALE = 3.5
+local SIZE_TWEEN_INFO = TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local scaleTweens = {} -- [Humanoid] = { Tween }
 
 local function clampScale(v)
     return math.clamp(v, MIN_SCALE, MAX_SCALE)
@@ -32,19 +36,38 @@ local function ensureNumberValue(parent, name, default)
     return v
 end
 
-local function applyHumanoidUniformScale(humanoid, multiplier)
+local function cancelScaleTweens(humanoid)
+    local bag = scaleTweens[humanoid]
+    if not bag then
+        return
+    end
+    for _, tween in ipairs(bag) do
+        pcall(function()
+            tween:Cancel()
+        end)
+    end
+    scaleTweens[humanoid] = nil
+end
+
+local function applyHumanoidUniformScale(humanoid, multiplier, instant)
     if not humanoid or humanoid.Parent == nil then return false end
     multiplier = clampScale(multiplier)
-    -- Ensure AutomaticScalingEnabled is true so engine applies the NumberValues
     pcall(function() humanoid.AutomaticScalingEnabled = true end)
-    -- Create or update NumberValues
+    cancelScaleTweens(humanoid)
+    local bag = {}
     for name, _ in pairs(SCALE_VARS) do
         local nv = ensureNumberValue(humanoid, name, 1)
-        -- Use multiplier for all body scales; head scale uses multiplier as well
-        pcall(function() nv.Value = multiplier end)
+        if instant or math.abs(nv.Value - multiplier) < 0.001 then
+            pcall(function() nv.Value = multiplier end)
+        else
+            local tween = TweenService:Create(nv, SIZE_TWEEN_INFO, { Value = multiplier })
+            table.insert(bag, tween)
+            tween:Play()
+        end
     end
-    -- Give engine a tick to apply changes
-    RunService.Heartbeat:Wait()
+    if #bag > 0 then
+        scaleTweens[humanoid] = bag
+    end
     return true
 end
 
@@ -70,13 +93,16 @@ local function onCharacterAdded(player, character)
     end
 
     local multiplier = tonumber(initialSize) and (initialSize / 10) or 1
-    applyHumanoidUniformScale(humanoid, multiplier)
+    applyHumanoidUniformScale(humanoid, multiplier, true)
 
-    -- Listen for future attribute changes
     humanoid:GetAttributeChangedSignal("Size"):Connect(function()
         local s = humanoid:GetAttribute("Size")
         if type(s) ~= "number" then return end
-        applyHumanoidUniformScale(humanoid, s / 10)
+        applyHumanoidUniformScale(humanoid, s / 10, false)
+    end)
+
+    humanoid.Destroying:Connect(function()
+        cancelScaleTweens(humanoid)
     end)
 end
 

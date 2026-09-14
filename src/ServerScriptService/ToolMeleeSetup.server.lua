@@ -157,7 +157,7 @@ end
 --
 -- Size multiplier = sizePercent / 100
 --   100% → 1.0x   (normal baseline)
---   200% → 2.0x   (King: double damage, double swing time)
+--   200% → 2.0x   (weapon size: more damage, slower swing)
 --    80% → 0.8x   (Tiny: less damage, faster swing)
 ---------------------------------------------------------------------------
 
@@ -731,14 +731,18 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
     end
 
     -- resolve config (rarity defaults merged with weapon overrides)
-    local sizePercent     = getToolSizePercent(tool)
-    -- incorporate player-level size stat (base 10 = normal)
+    -- Weapon size drives damage/timing. Character size (king, strength potion)
+    -- must NOT slow swings or delay hitboxes — that desynced client combo
+    -- timing and made 1-of-3 swings miss. Character scale only shifts the
+    -- hitbox so it stays in front of the larger body.
+    local sizePercent = getToolSizePercent(tool)
+    local playerScale = 1
     if HumanoidStatService and type(HumanoidStatService.GetFinalStat) == "function" then
         local ok, playerSize = pcall(function()
             return HumanoidStatService:GetFinalStat(player, "Size")
         end)
         if ok and type(playerSize) == "number" and playerSize > 0 then
-            sizePercent = sizePercent * (playerSize / 10)
+            playerScale = math.clamp(playerSize / 10, 0.5, 3.5)
         end
     end
     local cfg = getServerMeleeCfg(toolName, sizePercent)
@@ -972,7 +976,13 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
 
             local baseBoxSize = cfg.hitboxSize or Vector3.new(4, 3, 7)
             local boxSize = baseBoxSize * hitboxScale
+            if playerScale ~= 1 then
+                boxSize = Vector3.new(boxSize.X * playerScale, boxSize.Y, boxSize.Z * playerScale)
+            end
             local offset  = cfg.hitboxOffset or Vector3.new(0, 1, boxSize.Z * 0.5)
+            if playerScale ~= 1 then
+                offset = Vector3.new(offset.X * playerScale, offset.Y, offset.Z * playerScale)
+            end
             -- For spears, bias the hitbox forward as weapon size increases so
             -- larger spears hit closer to the tip. This adds up to an extra
             -- 25% of the box length at 200% size (clamped).

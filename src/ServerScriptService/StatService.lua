@@ -208,6 +208,17 @@ function StatService:GetStat(player, statName)
     return stats[statName] or 0
 end
 
+function StatService:AddScore(player, amount)
+    if not player or not player:IsA("Player") then
+        return 0
+    end
+    amount = tonumber(amount) or 0
+    if amount == 0 then
+        return self:GetStat(player, "Score")
+    end
+    return incrementStat(player, "Score", amount)
+end
+
 --------------------------------------------------------------------------------
 -- Registration: PvP Elimination
 --------------------------------------------------------------------------------

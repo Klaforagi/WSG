@@ -932,6 +932,53 @@ local function createGoldCoinIcon(parent, accent)
     parent.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.72)
 end
 
+local function createCrownIcon(parent, accent)
+    local group = Instance.new("Frame")
+    group.Name = "CrownIcon"
+    group.AnchorPoint = Vector2.new(0.5, 0.5)
+    group.Position = UDim2.new(0.5, 0, 0.5, 0)
+    group.Size = UDim2.new(0.78, 0, 0.78, 0)
+    group.BackgroundTransparency = 1
+    group.ZIndex = parent.ZIndex + 1
+    group.Parent = parent
+
+    local function piece(name, pos, size, z)
+        local f = Instance.new("Frame")
+        f.Name = name
+        f.AnchorPoint = Vector2.new(0.5, 0.5)
+        f.Position = pos
+        f.Size = size
+        f.BackgroundColor3 = accent
+        f.BorderSizePixel = 0
+        f.ZIndex = z
+        f.Parent = group
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, px(3))
+        c.Parent = f
+        return f
+    end
+
+    piece("Band", UDim2.new(0.50, 0, 0.72, 0), UDim2.new(0.82, 0, 0.18, 0), group.ZIndex + 2)
+    piece("LeftPeak", UDim2.new(0.24, 0, 0.46, 0), UDim2.new(0.16, 0, 0.40, 0), group.ZIndex + 3)
+    piece("RightPeak", UDim2.new(0.76, 0, 0.46, 0), UDim2.new(0.16, 0, 0.40, 0), group.ZIndex + 3)
+    piece("CenterPeak", UDim2.new(0.50, 0, 0.38, 0), UDim2.new(0.18, 0, 0.52, 0), group.ZIndex + 4)
+
+    local jewel = Instance.new("Frame")
+    jewel.Name = "Jewel"
+    jewel.AnchorPoint = Vector2.new(0.5, 0.5)
+    jewel.Position = UDim2.new(0.50, 0, 0.16, 0)
+    jewel.Size = UDim2.new(0.14, 0, 0.14, 0)
+    jewel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    jewel.BorderSizePixel = 0
+    jewel.ZIndex = group.ZIndex + 5
+    jewel.Parent = group
+    local jewelCorner = Instance.new("UICorner")
+    jewelCorner.CornerRadius = UDim.new(1, 0)
+    jewelCorner.Parent = jewel
+
+    parent.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.72)
+end
+
 local function createGlyphIcon(parent, def, accent)
     local glyph = Instance.new("TextLabel")
     glyph.Name = "Glyph"
@@ -1030,6 +1077,8 @@ local function createTile(entry)
         createGoblinFaceIcon(iconFrame, accent)
     elseif def.IconShape == "gold_coin" then
         createGoldCoinIcon(iconFrame, accent)
+    elseif def.IconShape == "crown" then
+        createCrownIcon(iconFrame, accent)
     elseif assetId then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
@@ -1488,6 +1537,21 @@ task.spawn(function()
     local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
     if not remotes then
         return
+    end
+
+    local kingState = remotes:WaitForChild("KingState", 15)
+    if kingState and kingState:IsA("RemoteEvent") then
+        kingState.OnClientEvent:Connect(function(payload)
+            if type(payload) == "table" and payload.active == true then
+                upsertEntry("king", getStaticDef("king"), {
+                    expiresAt = tonumber(payload.expiresAt),
+                    timeKind = "server",
+                    sortOrder = 8,
+                })
+            else
+                removeEntry("king")
+            end
+        end)
     end
 
     local potionsFolder = remotes:WaitForChild("Potions", 10)
