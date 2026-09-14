@@ -698,8 +698,23 @@ local function onHumanoidDied(humanoid, model)
         coinAward = (ok and type(result) == "number") and result or base
     end
 
-    -- Kill feed
-    pcall(function() KillFeed:FireAllClients(killer.Name, victimName, coinAward) end)
+    -- Kill feed (extra args drive the top-elims HUD instantly)
+    local killerKills, killerStreak
+    if shouldCountElimination and isPlayerVictim and StatService then
+        killerKills = StatService:GetStat(killer, "PlayerKills")
+        killerStreak = StatService:GetStat(killer, "KillStreak")
+    end
+    pcall(function()
+        KillFeed:FireAllClients(
+            killer.Name,
+            victimName,
+            coinAward,
+            killer.UserId,
+            killerKills,
+            killerStreak,
+            victimPlayer and victimPlayer.UserId or nil
+        )
+    end)
 
     -- XP reward (include coinAward in metadata so XP popup can show coins)
     if shouldCountElimination and XPModule and XPModule.AwardXP then

@@ -7,7 +7,7 @@ local AlertBannerStyle = require(script.Parent:WaitForChild("AlertBannerStyle"))
 
 local TopHudStack = {}
 TopHudStack.Gap = 8
-TopHudStack.KillersBelowScoreboardPad = 32
+TopHudStack.KillersBelowScoreboardPad = 24
 TopHudStack.KillersHeightScale = 0.85
 TopHudStack.KillersSlotGap = 12
 

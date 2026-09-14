@@ -33,12 +33,32 @@ local function getTeamFill(player)
     return TEAM_FILL[teamName] or DEFAULT_FILL
 end
 
-local function getKillStreak(player)
-    local v = player and player:GetAttribute("KillStreak")
-    if type(v) == "number" then
-        return v
+local overlayKills = {}
+local overlayStreak = {}
+
+local function getPlayerKills(player)
+    local attr = tonumber(player and player:GetAttribute("PlayerKills")) or 0
+    local over = overlayKills[player.UserId]
+    if over ~= nil then
+        if attr >= over then
+            overlayKills[player.UserId] = nil
+            return attr
+        end
+        return over
     end
-    return 0
+    return attr
+end
+
+local function getKillStreak(player)
+    local attr = tonumber(player and player:GetAttribute("KillStreak")) or 0
+    local over = overlayStreak[player.UserId]
+    if over ~= nil then
+        if attr == over then
+            overlayStreak[player.UserId] = nil
+        end
+        return over
+    end
+    return attr
 end
 
 ------------------------------------------------------------------------
@@ -90,7 +110,7 @@ for i = 1, MAX_SLOTS do
     slot.BackgroundTransparency = SLOT_BG_TRANSPARENCY
     slot.BorderSizePixel = 0
     slot.AnchorPoint = Vector2.new(0, 0)
-    slot.ClipsDescendants = true
+    slot.ClipsDescendants = false
     slot.Visible = false
     slot.Parent = rootFrame
 
@@ -150,53 +170,55 @@ for i = 1, MAX_SLOTS do
     countLabel.TextColor3 = AlertBannerStyle.TextColor
     countLabel.TextXAlignment = Enum.TextXAlignment.Right
     countLabel.TextYAlignment = Enum.TextYAlignment.Bottom
-    countLabel.ZIndex = 4
+    countLabel.ZIndex = 5
     countLabel.Parent = slot
     AlertBannerStyle.ApplyTextStroke(countLabel)
 
     local streakFrame = Instance.new("Frame")
     streakFrame.Name = "Streak"
-    streakFrame.AnchorPoint = Vector2.new(0, 1)
-    streakFrame.Position = UDim2.new(0, 3, 1, 1)
-    streakFrame.Size = UDim2.fromOffset(24, 34)
+    streakFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+    streakFrame.Position = UDim2.new(0, 14, 1, -10)
+    streakFrame.Size = UDim2.fromOffset(32, 32)
     streakFrame.BackgroundTransparency = 1
-    streakFrame.ZIndex = 4
+    streakFrame.ZIndex = 3
     streakFrame.Visible = false
     streakFrame.Parent = slot
 
-    local streakLayout = Instance.new("UIListLayout")
-    streakLayout.FillDirection = Enum.FillDirection.Vertical
-    streakLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-    streakLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-    streakLayout.SortOrder = Enum.SortOrder.LayoutOrder
-    streakLayout.Padding = UDim.new(0, -2)
-    streakLayout.Parent = streakFrame
-
-    local streakLabel = Instance.new("TextLabel")
-    streakLabel.Name = "StreakCount"
-    streakLabel.LayoutOrder = 1
-    streakLabel.Size = UDim2.new(1, 0, 0.55, 0)
-    streakLabel.BackgroundTransparency = 1
-    streakLabel.Font = AlertBannerStyle.Font
-    streakLabel.Text = ""
-    streakLabel.TextColor3 = Color3.fromRGB(255, 170, 60)
-    streakLabel.TextXAlignment = Enum.TextXAlignment.Center
-    streakLabel.TextYAlignment = Enum.TextYAlignment.Bottom
-    streakLabel.ZIndex = 5
-    streakLabel.Parent = streakFrame
-    AlertBannerStyle.ApplyTextStroke(streakLabel)
-
     local fireLabel = Instance.new("TextLabel")
     fireLabel.Name = "Fire"
-    fireLabel.LayoutOrder = 2
-    fireLabel.Size = UDim2.new(1, 0, 0.45, 0)
+    fireLabel.Size = UDim2.fromScale(1, 1)
     fireLabel.BackgroundTransparency = 1
     fireLabel.Font = Enum.Font.GothamBold
     fireLabel.Text = "\u{1F525}"
+    fireLabel.TextScaled = true
     fireLabel.TextXAlignment = Enum.TextXAlignment.Center
-    fireLabel.TextYAlignment = Enum.TextYAlignment.Top
-    fireLabel.ZIndex = 5
+    fireLabel.TextYAlignment = Enum.TextYAlignment.Center
+    fireLabel.ZIndex = 3
     fireLabel.Parent = streakFrame
+    local fireStroke = Instance.new("UIStroke")
+    fireStroke.Color = Color3.fromRGB(0, 0, 0)
+    fireStroke.Thickness = 2.4
+    fireStroke.Transparency = 0.15
+    fireStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
+    fireStroke.Parent = fireLabel
+    fireLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    fireLabel.TextStrokeTransparency = 0.2
+
+    local streakLabel = Instance.new("TextLabel")
+    streakLabel.Name = "StreakCount"
+    streakLabel.AnchorPoint = Vector2.new(0, 1)
+    streakLabel.Position = UDim2.new(0, 2, 1, 1)
+    streakLabel.Size = UDim2.fromOffset(28, 22)
+    streakLabel.BackgroundTransparency = 1
+    streakLabel.Font = AlertBannerStyle.Font
+    streakLabel.Text = ""
+    streakLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+    streakLabel.TextXAlignment = Enum.TextXAlignment.Left
+    streakLabel.TextYAlignment = Enum.TextYAlignment.Bottom
+    streakLabel.ZIndex = 5
+    streakLabel.Visible = false
+    streakLabel.Parent = slot
+    AlertBannerStyle.ApplyTextStroke(streakLabel)
 
     slots[i] = {
         frame = slot,
@@ -215,15 +237,19 @@ local function applySizeToSlot(s, px)
     s.portrait.Size = UDim2.fromScale(1, 1)
     s.portrait.Position = UDim2.fromScale(0, 0)
     local killSize = math.max(14, math.floor(px * 0.34))
+    local countW = math.floor(px * 0.55)
+    local countH = math.floor(px * 0.4)
     s.countLabel.TextSize = killSize
-    s.countLabel.Size = UDim2.fromOffset(math.floor(px * 0.55), math.floor(px * 0.4))
+    s.countLabel.Size = UDim2.fromOffset(countW, countH)
     s.countLabel.Position = UDim2.new(1, -2, 1, 1)
-    local streakW = math.max(18, math.floor(px * 0.4))
-    local streakH = math.max(28, math.floor(px * 0.5))
-    s.streakFrame.Size = UDim2.fromOffset(streakW, streakH)
-    s.streakFrame.Position = UDim2.new(0, 2, 1, 1)
-    s.streakLabel.TextSize = math.max(12, math.floor(px * 0.26))
-    s.fireLabel.TextSize = math.max(11, math.floor(px * 0.22))
+    s.streakLabel.TextSize = killSize
+    s.streakLabel.Size = UDim2.fromOffset(countW, countH)
+    s.streakLabel.Position = UDim2.new(0, 2, 1, 1)
+    local firePx = math.max(30, math.floor(px * 0.58))
+    s.streakFrame.Size = UDim2.fromOffset(firePx, firePx)
+    local digitCenterX = 2 + math.floor(killSize * 0.38)
+    local digitCenterY = 1 - math.floor(killSize * 0.42) - 6
+    s.streakFrame.Position = UDim2.new(0, digitCenterX, 1, digitCenterY)
 end
 
 local function applyTeamLook(s, player)
@@ -236,9 +262,11 @@ end
 local function applyStreak(s, streak)
     if streak >= STREAK_MIN then
         s.streakFrame.Visible = true
+        s.streakLabel.Visible = true
         s.streakLabel.Text = tostring(streak)
     else
         s.streakFrame.Visible = false
+        s.streakLabel.Visible = false
         s.streakLabel.Text = ""
     end
 end
@@ -256,15 +284,6 @@ local function getThumbnail(userId)
         return url
     end
     return ""
-end
-
-------------------------------------------------------------------------
--- PlayerKills helper
-------------------------------------------------------------------------
-local function getPlayerKills(player)
-    local v = player:GetAttribute("PlayerKills")
-    if type(v) == "number" then return v end
-    return 0
 end
 
 ------------------------------------------------------------------------
@@ -398,16 +417,6 @@ end
 ------------------------------------------------------------------------
 local playerConns = {}
 
-local function watchPlayer(player)
-    unwatchPlayer(player)
-    local conns = {}
-    table.insert(conns, player:GetAttributeChangedSignal("PlayerKills"):Connect(updateHud))
-    table.insert(conns, player:GetAttributeChangedSignal("KillStreak"):Connect(updateHud))
-    table.insert(conns, player:GetPropertyChangedSignal("Team"):Connect(updateHud))
-    playerConns[player] = conns
-    updateHud()
-end
-
 local function unwatchPlayer(player)
     local conns = playerConns[player]
     if not conns then
@@ -419,6 +428,16 @@ local function unwatchPlayer(player)
     playerConns[player] = nil
 end
 
+local function watchPlayer(player)
+    unwatchPlayer(player)
+    local conns = {}
+    table.insert(conns, player:GetAttributeChangedSignal("PlayerKills"):Connect(updateHud))
+    table.insert(conns, player:GetAttributeChangedSignal("KillStreak"):Connect(updateHud))
+    table.insert(conns, player:GetPropertyChangedSignal("Team"):Connect(updateHud))
+    playerConns[player] = conns
+    updateHud()
+end
+
 Players.PlayerAdded:Connect(function(player)
     task.defer(function()
         watchPlayer(player)
@@ -428,8 +447,28 @@ end)
 Players.PlayerRemoving:Connect(function(player)
     unwatchPlayer(player)
     thumbnailCache[player.UserId] = nil
+    overlayKills[player.UserId] = nil
+    overlayStreak[player.UserId] = nil
     updateHud()
 end)
+
+local killFeedEvent = ReplicatedStorage:FindFirstChild("KillFeed") or ReplicatedStorage:WaitForChild("KillFeed", 10)
+if killFeedEvent and killFeedEvent:IsA("RemoteEvent") then
+    killFeedEvent.OnClientEvent:Connect(function(_killerName, _victimName, _coins, killerUserId, kills, streak, victimUserId)
+        if type(killerUserId) == "number" then
+            if type(kills) == "number" then
+                overlayKills[killerUserId] = kills
+            end
+            if type(streak) == "number" then
+                overlayStreak[killerUserId] = streak
+            end
+        end
+        if type(victimUserId) == "number" then
+            overlayStreak[victimUserId] = 0
+        end
+        updateHud()
+    end)
+end
 
 -- Watch all players currently in the game (blocking so we pick up their stats)
 for _, p in ipairs(Players:GetPlayers()) do
