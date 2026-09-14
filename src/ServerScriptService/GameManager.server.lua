@@ -115,24 +115,6 @@ local function colorForMVPName(teamKey)
     return MVP_NAME_KNIGHTS
 end
 
-local function applyMVPPlayerNameScaled(billboard)
-    if not (billboard and billboard:IsA("BillboardGui")) then
-        return
-    end
-    local nameLabel = billboard:FindFirstChild("PlayerName")
-    if nameLabel and nameLabel:IsA("TextLabel") then
-        nameLabel.TextScaled = true
-    end
-end
-
-local function patchExistingMVPLabels()
-    for _, inst in ipairs(workspace:GetDescendants()) do
-        if inst.Name == MVP_LABEL_NAME and inst:IsA("BillboardGui") then
-            applyMVPPlayerNameScaled(inst)
-        end
-    end
-end
-
 local function clearMVPLabel(from)
     if not from then
         return
@@ -311,35 +293,30 @@ local function attachMVPLabel(rig, userId, spawnPart, teamKey)
         end
     end)
 
-    -- Size Scale is studs (same as JoinBlue/JoinRed). No pixel Offset / min text size.
+    -- Same BillboardGui setup as JoinBlue/JoinRed team titles (studs, no pixel Offset).
     local billboard = Instance.new("BillboardGui")
     billboard.Name = MVP_LABEL_NAME
     billboard.Adornee = spawnPart
-    billboard.AlwaysOnTop = false
-    billboard.LightInfluence = 0
-    billboard.MaxDistance = 160
-    billboard.Size = UDim2.new(10, 0, 2.2, 0)
     billboard.StudsOffset = Vector3.new(0, 0, 0)
     billboard.StudsOffsetWorldSpace = Vector3.new(0, offsetY, 0)
-    billboard.ResetOnSpawn = false
-    billboard.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    billboard.AlwaysOnTop = false
+    billboard.LightInfluence = 0
+    billboard.MaxDistance = 200
+    billboard.Size = UDim2.new(16, 0, 8, 0)
     billboard.Parent = spawnPart
 
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PlayerName"
+    nameLabel.Size = UDim2.new(1, 0, 0.52, 0)
+    nameLabel.Position = UDim2.new(0, 0, 0, 0)
     nameLabel.BackgroundTransparency = 1
-    nameLabel.BorderSizePixel = 0
-    nameLabel.Size = UDim2.fromScale(1, 1)
-    nameLabel.Font = Enum.Font.GothamBlack
+    nameLabel.Font = Enum.Font.Bangers
+    nameLabel.TextScaled = true
     nameLabel.Text = resolveMVPUsername(userId)
     nameLabel.TextColor3 = colorForMVPName(teamKey)
-    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     nameLabel.TextStrokeTransparency = 0.25
-    nameLabel.TextTruncate = Enum.TextTruncate.None
-    nameLabel.TextWrapped = false
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
     nameLabel.Parent = billboard
-    nameLabel.TextScaled = true
-    applyMVPPlayerNameScaled(billboard)
 end
 
 local function playMVPDance(rig, humanoid)
@@ -1028,8 +1005,6 @@ function startMatch()
         end
     end)
 end
-
-task.defer(patchExistingMVPLabels)
 
 -- (boot logic moved below to allow MapVoteService to control match starts)
 -- Allow external systems (e.g. MapVoteService) to request a match start
