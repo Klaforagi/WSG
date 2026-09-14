@@ -108,6 +108,11 @@ local function showEnd(resultType, winner)
     end
     frame.Position = TopHudStack.GetWinPosition()
     frame.Visible = true
+    task.defer(function()
+        if frame.Visible then
+            frame.Position = TopHudStack.GetWinPosition()
+        end
+    end)
     title.TextTransparency = 1
     subtitle.TextTransparency = 1
     titleStroke.Transparency = 1
@@ -272,3 +277,9 @@ if intermissionEvent then
         hideEndScreen()
     end)
 end
+
+TopHudStack.OnLayoutChanged(function()
+    if frame.Visible then
+        frame.Position = TopHudStack.GetWinPosition()
+    end
+end)

@@ -200,6 +200,14 @@ local function displayItem(item)
 	local lblStroke = AlertBannerStyle.ApplyTextStroke(label)
 	lblStroke.Transparency = 1
 
+	local function snapAlertY()
+		if panel and panel.Parent then
+			panel.Position = TopHudStack.GetAlertPosition()
+		end
+	end
+	snapAlertY()
+	task.defer(snapAlertY)
+
 	TweenService:Create(label, TweenInfo.new(0.18), { TextTransparency = 0 }):Play()
 	TweenService:Create(lblStroke, TweenInfo.new(0.18), { Transparency = AlertBannerStyle.StrokeTransparency }):Play()
 	if avatarImage then
@@ -256,5 +264,13 @@ FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName,
 			message = playerName,
 		})
 		processQueue()
+	end
+end)
+
+TopHudStack.OnLayoutChanged(function()
+	for _, child in ipairs(screenGui:GetChildren()) do
+		if child.Name == "FlagMsgPanel" then
+			child.Position = TopHudStack.GetAlertPosition()
+		end
 	end
 end)

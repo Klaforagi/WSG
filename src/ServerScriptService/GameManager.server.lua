@@ -234,13 +234,9 @@ local function placeMVPRig(model, spawnPart)
     model:PivotTo(spawnPart.CFrame * CFrame.new(0, lift, 0))
 end
 
-local function resolveMVPDisplayName(userId)
+local function resolveMVPUsername(userId)
     local player = Players:GetPlayerByUserId(userId)
-    if player then
-        local displayName = player.DisplayName
-        if type(displayName) == "string" and displayName ~= "" then
-            return displayName
-        end
+    if player and type(player.Name) == "string" and player.Name ~= "" then
         return player.Name
     end
 
@@ -258,11 +254,11 @@ local function attachMVPLabel(rig, userId, spawnPart, teamKey)
         return
     end
 
-    local offsetY = (spawnPart.Size.Y * 0.5) + 9
+    local offsetY = (spawnPart.Size.Y * 0.5) + 12
     pcall(function()
         local cf, size = rig:GetBoundingBox()
         if cf and size then
-            offsetY = (cf.Position.Y + size.Y * 0.5) - spawnPart.Position.Y + 1.15
+            offsetY = (cf.Position.Y + size.Y * 0.5) - spawnPart.Position.Y + 3.2
         end
     end)
 
@@ -285,7 +281,8 @@ local function attachMVPLabel(rig, userId, spawnPart, teamKey)
     billboard.AlwaysOnTop = false
     billboard.LightInfluence = 0
     billboard.MaxDistance = 220
-    billboard.Size = UDim2.new(8, 0, 1.15, 0)
+    -- Scale is studs: tiny from far away, readable up close. No pixel cap.
+    billboard.Size = UDim2.new(14, 0, 1.4, 0)
     billboard.StudsOffsetWorldSpace = Vector3.new(0, 0, 0)
     billboard.ResetOnSpawn = false
     billboard.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -297,18 +294,14 @@ local function attachMVPLabel(rig, userId, spawnPart, teamKey)
     nameLabel.BorderSizePixel = 0
     nameLabel.Size = UDim2.fromScale(1, 1)
     nameLabel.Font = Enum.Font.GothamBlack
-    nameLabel.Text = resolveMVPDisplayName(userId)
+    nameLabel.Text = resolveMVPUsername(userId)
     nameLabel.TextColor3 = colorForMVPTeam(teamKey)
     nameLabel.TextScaled = true
     nameLabel.TextStrokeColor3 = Color3.fromRGB(8, 10, 22)
     nameLabel.TextStrokeTransparency = 0.4
-    nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+    nameLabel.TextTruncate = Enum.TextTruncate.None
+    nameLabel.TextWrapped = false
     nameLabel.Parent = billboard
-
-    local nameSize = Instance.new("UITextSizeConstraint")
-    nameSize.MinTextSize = 18
-    nameSize.MaxTextSize = 36
-    nameSize.Parent = nameLabel
 end
 
 local function playMVPDance(rig, humanoid)

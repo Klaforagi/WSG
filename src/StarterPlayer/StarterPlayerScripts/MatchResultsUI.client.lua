@@ -686,18 +686,35 @@ local function showMatchResults(payload)
 
 	local mvpChip = Instance.new("Frame")
 	mvpChip.Name = "MVPChip"
-	mvpChip.Size = UDim2.fromOffset(340, 52)
+	mvpChip.AutomaticSize = Enum.AutomaticSize.X
+	mvpChip.Size = UDim2.fromOffset(0, 52)
 	mvpChip.BackgroundColor3 = GOLD_CHIP
 	mvpChip.LayoutOrder = 5
 	mvpChip.Parent = header
 	corner(mvpChip, 8)
 	stroke(mvpChip, GOLD, 1.4, 0.25)
 
+	local mvpChipMin = Instance.new("UISizeConstraint")
+	mvpChipMin.MinSize = Vector2.new(280, 52)
+	mvpChipMin.Parent = mvpChip
+
+	local mvpPad = Instance.new("UIPadding")
+	mvpPad.PaddingLeft = UDim.new(0, 10)
+	mvpPad.PaddingRight = UDim.new(0, 10)
+	mvpPad.Parent = mvpChip
+
+	local mvpLayout = Instance.new("UIListLayout")
+	mvpLayout.FillDirection = Enum.FillDirection.Horizontal
+	mvpLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	mvpLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	mvpLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	mvpLayout.Padding = UDim.new(0, 10)
+	mvpLayout.Parent = mvpChip
+
 	local mvpAvWrap = Instance.new("Frame")
 	mvpAvWrap.BackgroundColor3 = GOLD_CHIP
 	mvpAvWrap.Size = UDim2.fromOffset(40, 40)
-	mvpAvWrap.Position = UDim2.new(0, 10, 0.5, 0)
-	mvpAvWrap.AnchorPoint = Vector2.new(0, 0.5)
+	mvpAvWrap.LayoutOrder = 1
 	mvpAvWrap.Parent = mvpChip
 	corner(mvpAvWrap, 20)
 	stroke(mvpAvWrap, GOLD, 1.2)
@@ -714,13 +731,15 @@ local function showMatchResults(payload)
 		textSize = 18,
 		color = GOLD,
 		xAlign = Enum.TextXAlignment.Left,
-		pos = UDim2.new(0, 62, 0, 0),
-		size = UDim2.new(0.48, 0, 1, 0),
+		size = UDim2.fromOffset(0, 52),
 	})
+	mvpName.LayoutOrder = 2
+	mvpName.AutomaticSize = Enum.AutomaticSize.X
+	mvpName.TextTruncate = Enum.TextTruncate.None
+	mvpName.TextWrapped = false
 
 	local badge = Instance.new("Frame")
-	badge.AnchorPoint = Vector2.new(1, 0.5)
-	badge.Position = UDim2.new(1, -10, 0.5, 0)
+	badge.LayoutOrder = 3
 	badge.Size = UDim2.fromOffset(86, 28)
 	badge.BackgroundColor3 = GOLD_BADGE
 	badge.Parent = mvpChip
@@ -737,7 +756,7 @@ local function showMatchResults(payload)
 	if payload.mvpUserId then
 		for _, p in ipairs(payload.players or {}) do
 			if p.userId == payload.mvpUserId then
-				mvpName.Text = p.displayName or p.name or "MVP"
+				mvpName.Text = p.name or "MVP"
 				fillAvatar(mvpAv, p.userId, Enum.ThumbnailSize.Size48x48)
 				badge.BackgroundColor3 = badgeColorForTeam(p.team)
 				break

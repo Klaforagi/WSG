@@ -74,6 +74,7 @@ local MATCH_STAT_DEFAULTS = {
     FlagCaptures  = 0,
     FlagReturns   = 0,
     PlayerKills   = 0,
+    KillStreak    = 0,
 }
 
 --------------------------------------------------------------------------------
@@ -216,6 +217,7 @@ function StatService:RegisterElimination(killer, victim)
     if victim and victim:IsA("Player") and not isTrackedTeamPlayer(victim) then return end
     incrementStat(killer, "Eliminations", 1)
     incrementStat(killer, "PlayerKills", 1)
+    incrementStat(killer, "KillStreak", 1)
     incrementStat(killer, "Score", 10)
     fireEvent(killer, self.Actions.Elimination, 1, {
         target     = victim,
@@ -240,6 +242,13 @@ function StatService:RegisterDeath(player)
     if not player or not player:IsA("Player") then return end
     if not isTrackedTeamPlayer(player) then return end
     incrementStat(player, "Deaths", 1)
+    local stats = getStats(player)
+    if stats then
+        stats.KillStreak = 0
+        pcall(function()
+            player:SetAttribute("KillStreak", 0)
+        end)
+    end
     fireEvent(player, self.Actions.Death, 1)
 end
 

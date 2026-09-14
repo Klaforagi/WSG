@@ -6,9 +6,12 @@ local Players = game:GetService("Players")
 local AlertBannerStyle = require(script.Parent:WaitForChild("AlertBannerStyle"))
 
 local TopHudStack = {}
-TopHudStack.Gap = 6
+TopHudStack.Gap = 8
+TopHudStack.KillersBelowScoreboardPad = 32
+TopHudStack.KillersHeightScale = 0.85
+TopHudStack.KillersSlotGap = 12
 
-local KILLERS_UI_SCALE = 0.6
+local layoutListeners = {}
 
 local function getPlayerGui()
 	local player = Players.LocalPlayer
@@ -23,41 +26,54 @@ local function getViewport()
 	return 1280, 720
 end
 
-local function findDescendant(parent, name)
-	if not parent then
-		return nil
-	end
-	return parent:FindFirstChild(name, true)
+local function getScoreboardRoot()
+	local pg = getPlayerGui()
+	local hud = pg and pg:FindFirstChild("MatchHUD")
+	return hud and hud:FindFirstChild("ScoreboardRoot")
 end
 
-function TopHudStack.GetKillersHeight()
-	local vw = getViewport()
-	local slotPx = math.clamp(math.floor(vw * 0.05 * KILLERS_UI_SCALE), 24, 80 * KILLERS_UI_SCALE)
-	return slotPx + math.floor(slotPx * 0.4)
+local function getKillersRoot()
+	local pg = getPlayerGui()
+	local hud = pg and pg:FindFirstChild("TopPvpKillersHud")
+	return hud and hud:FindFirstChild("Root")
+end
+
+function TopHudStack.GetScoreboardHeight()
+	local root = getScoreboardRoot()
+	if root and root.AbsoluteSize.Y > 1 then
+		return root.AbsoluteSize.Y
+	end
+	local _, vh = getViewport()
+	return math.floor(vh * 0.1)
 end
 
 function TopHudStack.GetScoreboardBottom()
-	local pg = getPlayerGui()
-	local hud = pg and pg:FindFirstChild("MatchHUD")
-	local root = hud and findDescendant(hud, "ScoreboardRoot")
-	if root and root.Visible and root.AbsoluteSize.Y > 1 then
-		return root.AbsolutePosition.Y + root.AbsoluteSize.Y
-	end
+	local root = getScoreboardRoot()
 	local _, vh = getViewport()
-	return math.floor(vh * 0.01) + math.floor(vh * 0.1)
+	local fallback = math.floor(vh * 0.01) + TopHudStack.GetScoreboardHeight()
+	if root and root.Visible and root.AbsoluteSize.Y > 1 then
+		return math.max(root.AbsolutePosition.Y + root.AbsoluteSize.Y, fallback)
+	end
+	return fallback
+end
+
+function TopHudStack.GetKillersSlotPx()
+	return math.max(32, math.floor(TopHudStack.GetScoreboardHeight() * TopHudStack.KillersHeightScale))
+end
+
+function TopHudStack.GetKillersHeight()
+	local root = getKillersRoot()
+	if root and root.AbsoluteSize.Y > 1 then
+		return root.AbsoluteSize.Y
+	end
+	return TopHudStack.GetKillersSlotPx()
 end
 
 function TopHudStack.GetKillersTop()
-	return TopHudStack.GetScoreboardBottom() + TopHudStack.Gap
+	return TopHudStack.GetScoreboardBottom() + TopHudStack.KillersBelowScoreboardPad
 end
 
 function TopHudStack.GetAlertTop()
-	local pg = getPlayerGui()
-	local hud = pg and pg:FindFirstChild("TopPvpKillersHud")
-	local root = hud and hud:FindFirstChild("Root")
-	if root and root.Visible and root.AbsoluteSize.Y > 1 then
-		return root.AbsolutePosition.Y + root.AbsoluteSize.Y + TopHudStack.Gap
-	end
 	return TopHudStack.GetKillersTop() + TopHudStack.GetKillersHeight() + TopHudStack.Gap
 end
 
@@ -99,6 +115,19 @@ end
 
 function TopHudStack.GetWinPosition()
 	return UDim2.new(0.5, 0, 0, TopHudStack.GetWinTop())
+end
+
+function TopHudStack.OnLayoutChanged(callback)
+	if type(callback) ~= "function" then
+		return
+	end
+	table.insert(layoutListeners, callback)
+end
+
+function TopHudStack.NotifyLayoutChanged()
+	for _, callback in ipairs(layoutListeners) do
+		pcall(callback)
+	end
 end
 
 return TopHudStack

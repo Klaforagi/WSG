@@ -8,6 +8,7 @@ local TweenService = game:GetService("TweenService")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 local TopHudStack = require(ReplicatedStorage:WaitForChild("TopHudStack"))
+local AlertBannerStyle = require(ReplicatedStorage:WaitForChild("AlertBannerStyle"))
 
 ------------------------------------------------------------------------
 -- Configuration
@@ -15,22 +16,29 @@ local TopHudStack = require(ReplicatedStorage:WaitForChild("TopHudStack"))
 local MAX_SLOTS = 5
 local PORTRAIT_TYPE = Enum.ThumbnailType.HeadShot
 local PORTRAIT_SIZE = Enum.ThumbnailSize.Size100x100
-local SLOT_GAP = 10
+local SLOT_GAP = TopHudStack.KillersSlotGap
 local TWEEN_MOVE = TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local TWEEN_FADE = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
--- Team-based border colors (Barbarians / Knights sides)
-local TEAM_STROKE_COLORS = {
-    Red  = Color3.fromRGB(220, 50, 50),
-    Blue = Color3.fromRGB(50, 100, 220),
+local TEAM_FILL = {
+    Red  = AlertBannerStyle.BarbariansColor,
+    Blue = AlertBannerStyle.KnightsColor,
 }
-local DEFAULT_STROKE = Color3.fromRGB(180, 180, 190)
+local DEFAULT_FILL = Color3.fromRGB(90, 90, 105)
+local STREAK_MIN = 3
+local SLOT_BG_TRANSPARENCY = 0.72
 
-local function getStrokeColorForPlayer(player)
-    if player and player.Team and player.Team.Name then
-        return TEAM_STROKE_COLORS[player.Team.Name] or DEFAULT_STROKE
+local function getTeamFill(player)
+    local teamName = player and player.Team and player.Team.Name
+    return TEAM_FILL[teamName] or DEFAULT_FILL
+end
+
+local function getKillStreak(player)
+    local v = player and player:GetAttribute("KillStreak")
+    if type(v) == "number" then
+        return v
     end
-    return DEFAULT_STROKE
+    return 0
 end
 
 ------------------------------------------------------------------------
@@ -54,32 +62,20 @@ rootFrame.Parent = screenGui
 
 local function placeRoot()
 	rootFrame.Position = TopHudStack.GetKillersPosition()
+	TopHudStack.NotifyLayoutChanged()
 end
 
 ------------------------------------------------------------------------
 -- Responsive sizing helpers
 ------------------------------------------------------------------------
-local function getViewportWidth()
-    local cam = workspace.CurrentCamera
-    if cam and cam.ViewportSize then
-        return cam.ViewportSize.X
-    end
-    return 1280
-end
-
--- Scale factor: reduce overall UI to ~60% (40% smaller)
-local UI_SCALE = 0.6
 local function computeSlotPx()
-    local vw = getViewportWidth()
-    local px = math.floor(vw * 0.05 * UI_SCALE)
-    return math.clamp(px, 24, 80 * UI_SCALE)
+    return TopHudStack.GetKillersSlotPx()
 end
 
 local function updateRootSize(slotPx, visibleCount)
     local count = math.max(visibleCount, 1)
     local totalW = count * slotPx + (count - 1) * SLOT_GAP
-    local topMargin = math.floor(slotPx * 0.4) -- space above slots for crown
-    rootFrame.Size = UDim2.new(0, totalW, 0, slotPx + topMargin)
+    rootFrame.Size = UDim2.new(0, totalW, 0, slotPx)
 end
 
 ------------------------------------------------------------------------
@@ -90,87 +86,160 @@ for i = 1, MAX_SLOTS do
     local slot = Instance.new("Frame")
     slot.Name = "Slot" .. i
     slot.Size = UDim2.new(0, 56, 0, 56)
-    slot.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-    slot.BackgroundTransparency = 0.2
+    slot.BackgroundColor3 = DEFAULT_FILL
+    slot.BackgroundTransparency = SLOT_BG_TRANSPARENCY
     slot.BorderSizePixel = 0
     slot.AnchorPoint = Vector2.new(0, 0)
-    slot.ClipsDescendants = false
+    slot.ClipsDescendants = true
     slot.Visible = false
     slot.Parent = rootFrame
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 6)
+    corner.CornerRadius = UDim.new(0, 8)
     corner.Parent = slot
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = DEFAULT_STROKE
-    stroke.Thickness = 2
-    stroke.Transparency = 0.2
+    stroke.Color = DEFAULT_FILL
+    stroke.Thickness = 1.4
+    stroke.Transparency = 0.35
     stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
     stroke.Parent = slot
 
     local portrait = Instance.new("ImageLabel")
     portrait.Name = "Portrait"
-    portrait.Size = UDim2.new(1, -4, 1, -4)
-    portrait.Position = UDim2.new(0, 2, 0, 2)
+    portrait.Size = UDim2.fromScale(1, 1)
     portrait.BackgroundTransparency = 1
     portrait.BorderSizePixel = 0
     portrait.ScaleType = Enum.ScaleType.Crop
     portrait.Image = ""
+    portrait.ZIndex = 1
     portrait.Parent = slot
 
     local pCorner = Instance.new("UICorner")
-    pCorner.CornerRadius = UDim.new(0, 5)
+    pCorner.CornerRadius = UDim.new(0, 8)
     pCorner.Parent = portrait
 
-    local countBg = Instance.new("Frame")
-    countBg.Name = "CountBg"
-    countBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-    countBg.BackgroundTransparency = 1
-    countBg.BorderSizePixel = 0
-    countBg.Parent = slot
-
-    local cbCorner = Instance.new("UICorner")
-    cbCorner.CornerRadius = UDim.new(0, 4)
-    cbCorner.Parent = countBg
+    local wash = Instance.new("Frame")
+    wash.Name = "TeamWash"
+    wash.Size = UDim2.fromScale(1, 1)
+    wash.BackgroundColor3 = DEFAULT_FILL
+    wash.BackgroundTransparency = 0
+    wash.BorderSizePixel = 0
+    wash.ZIndex = 2
+    wash.Parent = slot
+    local washCorner = Instance.new("UICorner")
+    washCorner.CornerRadius = UDim.new(0, 8)
+    washCorner.Parent = wash
+    local washGrad = Instance.new("UIGradient")
+    washGrad.Rotation = 90
+    washGrad.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 1),
+        NumberSequenceKeypoint.new(0.42, 0.88),
+        NumberSequenceKeypoint.new(1, 0.28),
+    })
+    washGrad.Parent = wash
 
     local countLabel = Instance.new("TextLabel")
     countLabel.Name = "Count"
-    countLabel.Size = UDim2.new(1, 0, 1, 0)
+    countLabel.AnchorPoint = Vector2.new(1, 1)
+    countLabel.Position = UDim2.new(1, -2, 1, 1)
+    countLabel.Size = UDim2.fromOffset(28, 22)
     countLabel.BackgroundTransparency = 1
-    countLabel.TextColor3 = Color3.new(1, 1, 1)
-    countLabel.TextStrokeTransparency = 0.4
-    countLabel.Font = Enum.Font.GothamBold
+    countLabel.Font = AlertBannerStyle.Font
     countLabel.Text = ""
-    countLabel.TextScaled = true
-    countLabel.Parent = countBg
+    countLabel.TextColor3 = AlertBannerStyle.TextColor
+    countLabel.TextXAlignment = Enum.TextXAlignment.Right
+    countLabel.TextYAlignment = Enum.TextYAlignment.Bottom
+    countLabel.ZIndex = 4
+    countLabel.Parent = slot
+    AlertBannerStyle.ApplyTextStroke(countLabel)
 
-    local crown = nil
+    local streakFrame = Instance.new("Frame")
+    streakFrame.Name = "Streak"
+    streakFrame.AnchorPoint = Vector2.new(0, 1)
+    streakFrame.Position = UDim2.new(0, 3, 1, 1)
+    streakFrame.Size = UDim2.fromOffset(24, 34)
+    streakFrame.BackgroundTransparency = 1
+    streakFrame.ZIndex = 4
+    streakFrame.Visible = false
+    streakFrame.Parent = slot
+
+    local streakLayout = Instance.new("UIListLayout")
+    streakLayout.FillDirection = Enum.FillDirection.Vertical
+    streakLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+    streakLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+    streakLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    streakLayout.Padding = UDim.new(0, -2)
+    streakLayout.Parent = streakFrame
+
+    local streakLabel = Instance.new("TextLabel")
+    streakLabel.Name = "StreakCount"
+    streakLabel.LayoutOrder = 1
+    streakLabel.Size = UDim2.new(1, 0, 0.55, 0)
+    streakLabel.BackgroundTransparency = 1
+    streakLabel.Font = AlertBannerStyle.Font
+    streakLabel.Text = ""
+    streakLabel.TextColor3 = Color3.fromRGB(255, 170, 60)
+    streakLabel.TextXAlignment = Enum.TextXAlignment.Center
+    streakLabel.TextYAlignment = Enum.TextYAlignment.Bottom
+    streakLabel.ZIndex = 5
+    streakLabel.Parent = streakFrame
+    AlertBannerStyle.ApplyTextStroke(streakLabel)
+
+    local fireLabel = Instance.new("TextLabel")
+    fireLabel.Name = "Fire"
+    fireLabel.LayoutOrder = 2
+    fireLabel.Size = UDim2.new(1, 0, 0.45, 0)
+    fireLabel.BackgroundTransparency = 1
+    fireLabel.Font = Enum.Font.GothamBold
+    fireLabel.Text = "\u{1F525}"
+    fireLabel.TextXAlignment = Enum.TextXAlignment.Center
+    fireLabel.TextYAlignment = Enum.TextYAlignment.Top
+    fireLabel.ZIndex = 5
+    fireLabel.Parent = streakFrame
 
     slots[i] = {
-        frame     = slot,
-        portrait  = portrait,
-        countBg   = countBg,
+        frame = slot,
+        portrait = portrait,
+        wash = wash,
         countLabel = countLabel,
-        crown     = crown,
-        stroke    = stroke,
+        streakFrame = streakFrame,
+        streakLabel = streakLabel,
+        fireLabel = fireLabel,
+        stroke = stroke,
     }
 end
 
--- Apply pixel-based sizes to one slot and its children
 local function applySizeToSlot(s, px)
-    s.frame.Size = UDim2.new(0, px, 0, px)
-    s.portrait.Size = UDim2.new(1, -4, 1, -4)
-    s.portrait.Position = UDim2.new(0, 2, 0, 2)
-    local countH = math.max(14, math.floor(px * 0.26))
-    s.countBg.Size = UDim2.new(1, -4, 0, countH)
-    s.countBg.Position = UDim2.new(0, 2, 1, -countH - 2)
-    s.countLabel.TextSize = math.max(10, math.floor(countH * 0.75))
-    local crownPx = math.floor(px * 0.5)
-    if s.crown then
-        s.crown.Size = UDim2.new(0, crownPx, 0, crownPx)
-        -- place crown above the slot: AnchorPoint is (0.5, 1) so Y=0 offset -4 puts it just above the top edge
-        s.crown.Position = UDim2.new(0.5, 0, 0, -4)
+    s.frame.Size = UDim2.fromOffset(px, px)
+    s.portrait.Size = UDim2.fromScale(1, 1)
+    s.portrait.Position = UDim2.fromScale(0, 0)
+    local killSize = math.max(14, math.floor(px * 0.34))
+    s.countLabel.TextSize = killSize
+    s.countLabel.Size = UDim2.fromOffset(math.floor(px * 0.55), math.floor(px * 0.4))
+    s.countLabel.Position = UDim2.new(1, -2, 1, 1)
+    local streakW = math.max(18, math.floor(px * 0.4))
+    local streakH = math.max(28, math.floor(px * 0.5))
+    s.streakFrame.Size = UDim2.fromOffset(streakW, streakH)
+    s.streakFrame.Position = UDim2.new(0, 2, 1, 1)
+    s.streakLabel.TextSize = math.max(12, math.floor(px * 0.26))
+    s.fireLabel.TextSize = math.max(11, math.floor(px * 0.22))
+end
+
+local function applyTeamLook(s, player)
+    local color = getTeamFill(player)
+    s.frame.BackgroundColor3 = color
+    s.wash.BackgroundColor3 = color
+    s.stroke.Color = color
+end
+
+local function applyStreak(s, streak)
+    if streak >= STREAK_MIN then
+        s.streakFrame.Visible = true
+        s.streakLabel.Text = tostring(streak)
+    else
+        s.streakFrame.Visible = false
+        s.streakLabel.Text = ""
     end
 end
 
@@ -216,7 +285,6 @@ end
 ------------------------------------------------------------------------
 local function updateHud()
     local slotPx = computeSlotPx()
-    local topMargin = math.floor(slotPx * 0.4)
 
     -- 1) Build sorted list of players with kills > 0
     local entries = {}
@@ -240,7 +308,7 @@ local function updateHud()
             tw:Play()
             tw.Completed:Connect(function()
                 slots[idx].frame.Visible = false
-                slots[idx].frame.BackgroundTransparency = 0.2
+                slots[idx].frame.BackgroundTransparency = SLOT_BG_TRANSPARENCY
             end)
             slotOwner[r.si] = nil
             usedSlots[r.uid] = nil
@@ -292,17 +360,16 @@ local function updateHud()
     for i = 1, visibleCount do
         local entry = entries[i]
         local uid = entry.userId
-        local targetPos = UDim2.new(0, (i - 1) * (slotPx + SLOT_GAP), 0, topMargin)
+        local targetPos = UDim2.new(0, (i - 1) * (slotPx + SLOT_GAP), 0, 0)
         local si = usedSlots[uid]
 
         if si then
             -- Player already owns a slot → update data and tween to new position
             local s = slots[si]
             applySizeToSlot(s, slotPx)
+            applyTeamLook(s, entry.player)
+            applyStreak(s, getKillStreak(entry.player))
             s.countLabel.Text = tostring(entry.kills)
-            if s.crown then s.crown.Visible = (i == 1) end
-            local targetColor = getStrokeColorForPlayer(entry.player)
-            TweenService:Create(s.stroke, TWEEN_FADE, { Color = targetColor }):Play()
             TweenService:Create(s.frame, TWEEN_MOVE, { Position = targetPos }):Play()
         else
             -- New player — grab a free slot, place at target, fade in
@@ -313,17 +380,15 @@ local function updateHud()
 
             local s = slots[si]
             applySizeToSlot(s, slotPx)
+            applyTeamLook(s, entry.player)
+            applyStreak(s, getKillStreak(entry.player))
             s.portrait.Image = getThumbnail(uid)
             s.countLabel.Text = tostring(entry.kills)
-            if s.crown then s.crown.Visible = (i == 1) end
 
-            s.stroke.Color = getStrokeColorForPlayer(entry.player)
-
-            -- Snap to correct position, then fade in from transparent
             s.frame.Position = targetPos
             s.frame.BackgroundTransparency = 1
             s.frame.Visible = true
-            TweenService:Create(s.frame, TWEEN_FADE, { BackgroundTransparency = 0.2 }):Play()
+            TweenService:Create(s.frame, TWEEN_FADE, { BackgroundTransparency = SLOT_BG_TRANSPARENCY }):Play()
         end
     end
 end
@@ -334,29 +399,24 @@ end
 local playerConns = {}
 
 local function watchPlayer(player)
-    -- avoid duplicate connections
-    if playerConns[player] then
-        playerConns[player]:Disconnect()
-        playerConns[player] = nil
-    end
-    -- listen for attribute changes to PlayerKills
-    if player.GetAttributeChangedSignal then
-        playerConns[player] = player:GetAttributeChangedSignal("PlayerKills"):Connect(function()
-            updateHud()
-        end)
-    else
-        -- fallback: poll periodically (very unlikely on modern clients)
-        playerConns[player] = nil
-    end
-    -- refresh immediately so we pick up the current value
+    unwatchPlayer(player)
+    local conns = {}
+    table.insert(conns, player:GetAttributeChangedSignal("PlayerKills"):Connect(updateHud))
+    table.insert(conns, player:GetAttributeChangedSignal("KillStreak"):Connect(updateHud))
+    table.insert(conns, player:GetPropertyChangedSignal("Team"):Connect(updateHud))
+    playerConns[player] = conns
     updateHud()
 end
 
 local function unwatchPlayer(player)
-    if playerConns[player] then
-        playerConns[player]:Disconnect()
-        playerConns[player] = nil
+    local conns = playerConns[player]
+    if not conns then
+        return
     end
+    for _, conn in ipairs(conns) do
+        conn:Disconnect()
+    end
+    playerConns[player] = nil
 end
 
 Players.PlayerAdded:Connect(function(player)
