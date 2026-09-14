@@ -85,7 +85,8 @@ end
 
 local function buildRichText(item)
 	if item.eventType == "event" then
-		return escapeRichText(item.message or "")
+		local accentHex = colorToHex(item.accentColor or AlertBannerStyle.TextColor)
+		return string.format("<font color='%s'>%s</font>", accentHex, escapeRichText(item.message or ""))
 	end
 
 	local pHex = teamHex(item.playerTeamName)
@@ -200,7 +201,7 @@ local function displayItem(item)
 	label.RichText = true
 	label.Font = AlertBannerStyle.Font
 	label.TextSize = textSize
-	label.TextColor3 = AlertBannerStyle.TextColor
+	label.TextColor3 = (item.eventType == "event" and item.accentColor) or AlertBannerStyle.TextColor
 	label.TextXAlignment = showAvatar and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.ZIndex = 101
@@ -273,6 +274,7 @@ FlagStatus.OnClientEvent:Connect(function(eventType, playerName, playerTeamName,
 		table.insert(messageQueue, {
 			eventType = eventType,
 			message = playerName,
+			accentColor = typeof(_accentColor) == "Color3" and _accentColor or AlertBannerStyle.TextColor,
 		})
 		processQueue()
 	end

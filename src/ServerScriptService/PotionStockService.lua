@@ -24,7 +24,7 @@ local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
 local DATASTORE_NAME = "PotionStock_v1"
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 
-local REFRESH_INTERVAL = 600 -- 10 minutes
+local REFRESH_INTERVAL = 1200 -- 20 minutes
 
 local PotionStockService = {}
 PotionStockService.RefreshInterval = REFRESH_INTERVAL

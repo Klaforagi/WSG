@@ -53,6 +53,10 @@ local MVP_MODEL_NAME = "MVP_Avatar"
 local MVP_SCALE = 1.5
 local MVP_LIGHT_KNIGHTS = Color3.fromRGB(0, 110, 254)
 local MVP_LIGHT_BARBARIANS = Color3.fromRGB(254, 88, 88)
+-- Match JoinPartHandler team-title colors (Knights / Barbarians above "0/8").
+local MVP_NAME_KNIGHTS = Color3.fromRGB(60, 140, 255)
+local MVP_NAME_BARBARIANS = Color3.fromRGB(255, 60, 60)
+local MVP_LABEL_NAME = "MVPLabel"
 local currentMVP = {
     model = nil,
     track = nil,
@@ -104,6 +108,43 @@ local function colorForMVPTeam(teamKey)
     return MVP_LIGHT_KNIGHTS
 end
 
+local function colorForMVPName(teamKey)
+    if teamKey == "Red" then
+        return MVP_NAME_BARBARIANS
+    end
+    return MVP_NAME_KNIGHTS
+end
+
+local function applyMVPPlayerNameScaled(billboard)
+    if not (billboard and billboard:IsA("BillboardGui")) then
+        return
+    end
+    local nameLabel = billboard:FindFirstChild("PlayerName")
+    if nameLabel and nameLabel:IsA("TextLabel") then
+        nameLabel.TextScaled = true
+    end
+end
+
+local function patchExistingMVPLabels()
+    for _, inst in ipairs(workspace:GetDescendants()) do
+        if inst.Name == MVP_LABEL_NAME and inst:IsA("BillboardGui") then
+            applyMVPPlayerNameScaled(inst)
+        end
+    end
+end
+
+local function clearMVPLabel(from)
+    if not from then
+        return
+    end
+    local existing = from:FindFirstChild(MVP_LABEL_NAME)
+    if existing then
+        pcall(function()
+            existing:Destroy()
+        end)
+    end
+end
+
 local function applyMVPBlockLights(teamKey)
     local root = findMVPBlockRoot()
     if not root then
@@ -144,6 +185,12 @@ local function stopAndDestroyCurrentMVP()
         end
     end
     currentMVP.userId = nil
+    local spawnPart = findMVPSpawnPart()
+    clearMVPLabel(spawnPart)
+    local blockRoot = findMVPBlockRoot()
+    if blockRoot and blockRoot ~= spawnPart then
+        clearMVPLabel(blockRoot)
+    end
 end
 
 -- Dances live in EmoteConfig (animation ids). AssetCodes only has empty icon slots.
@@ -254,39 +301,29 @@ local function attachMVPLabel(rig, userId, spawnPart, teamKey)
         return
     end
 
+    clearMVPLabel(spawnPart)
+
     local offsetY = (spawnPart.Size.Y * 0.5) + 12
     pcall(function()
         local cf, size = rig:GetBoundingBox()
         if cf and size then
-            offsetY = (cf.Position.Y + size.Y * 0.5) - spawnPart.Position.Y + 3.2
+            offsetY = (cf.Position.Y + size.Y * 0.5) - spawnPart.Position.Y + 2.2
         end
     end)
 
-    -- Static world anchor so the name does not follow dance animation on Head/HRP.
-    local anchor = Instance.new("Part")
-    anchor.Name = "MVPNameAnchor"
-    anchor.Anchored = true
-    anchor.CanCollide = false
-    anchor.CanQuery = false
-    anchor.CanTouch = false
-    anchor.Massless = true
-    anchor.Transparency = 1
-    anchor.Size = Vector3.new(0.2, 0.2, 0.2)
-    anchor.CFrame = CFrame.new(spawnPart.Position + Vector3.new(0, offsetY, 0))
-    anchor.Parent = rig
-
+    -- Size Scale is studs (same as JoinBlue/JoinRed). No pixel Offset / min text size.
     local billboard = Instance.new("BillboardGui")
-    billboard.Name = "MVPLabel"
-    billboard.Adornee = anchor
+    billboard.Name = MVP_LABEL_NAME
+    billboard.Adornee = spawnPart
     billboard.AlwaysOnTop = false
     billboard.LightInfluence = 0
-    billboard.MaxDistance = 220
-    -- Scale is studs: tiny from far away, readable up close. No pixel cap.
-    billboard.Size = UDim2.new(14, 0, 1.4, 0)
-    billboard.StudsOffsetWorldSpace = Vector3.new(0, 0, 0)
+    billboard.MaxDistance = 160
+    billboard.Size = UDim2.new(10, 0, 2.2, 0)
+    billboard.StudsOffset = Vector3.new(0, 0, 0)
+    billboard.StudsOffsetWorldSpace = Vector3.new(0, offsetY, 0)
     billboard.ResetOnSpawn = false
     billboard.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    billboard.Parent = anchor
+    billboard.Parent = spawnPart
 
     local nameLabel = Instance.new("TextLabel")
     nameLabel.Name = "PlayerName"
@@ -295,13 +332,14 @@ local function attachMVPLabel(rig, userId, spawnPart, teamKey)
     nameLabel.Size = UDim2.fromScale(1, 1)
     nameLabel.Font = Enum.Font.GothamBlack
     nameLabel.Text = resolveMVPUsername(userId)
-    nameLabel.TextColor3 = colorForMVPTeam(teamKey)
-    nameLabel.TextScaled = true
-    nameLabel.TextStrokeColor3 = Color3.fromRGB(8, 10, 22)
-    nameLabel.TextStrokeTransparency = 0.4
+    nameLabel.TextColor3 = colorForMVPName(teamKey)
+    nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+    nameLabel.TextStrokeTransparency = 0.25
     nameLabel.TextTruncate = Enum.TextTruncate.None
     nameLabel.TextWrapped = false
     nameLabel.Parent = billboard
+    nameLabel.TextScaled = true
+    applyMVPPlayerNameScaled(billboard)
 end
 
 local function playMVPDance(rig, humanoid)
@@ -990,6 +1028,8 @@ function startMatch()
         end
     end)
 end
+
+task.defer(patchExistingMVPLabels)
 
 -- (boot logic moved below to allow MapVoteService to control match starts)
 -- Allow external systems (e.g. MapVoteService) to request a match start
