@@ -762,6 +762,176 @@ local function createFlagIcon(parent, accent)
     parent.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.72)
 end
 
+local function createMeteorIcon(parent, accent)
+    local group = Instance.new("Frame")
+    group.Name = "MeteorIcon"
+    group.AnchorPoint = Vector2.new(0.5, 0.5)
+    group.Position = UDim2.new(0.5, 0, 0.5, 0)
+    group.Size = UDim2.new(0.84, 0, 0.84, 0)
+    group.BackgroundTransparency = 1
+    group.ZIndex = parent.ZIndex + 1
+    group.Parent = parent
+
+    local trailColor = accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)
+    local trails = {
+        { pos = UDim2.new(0.58, 0, 0.46, 0), size = UDim2.new(0.10, 0, 0.58, 0), rot = 48, trans = 0.12 },
+        { pos = UDim2.new(0.70, 0, 0.50, 0), size = UDim2.new(0.08, 0, 0.46, 0), rot = 48, trans = 0.28 },
+        { pos = UDim2.new(0.46, 0, 0.48, 0), size = UDim2.new(0.08, 0, 0.40, 0), rot = 48, trans = 0.38 },
+    }
+    for i, spec in ipairs(trails) do
+        local trail = Instance.new("Frame")
+        trail.Name = "Trail" .. i
+        trail.AnchorPoint = Vector2.new(0.5, 1)
+        trail.Position = spec.pos
+        trail.Size = spec.size
+        trail.Rotation = spec.rot
+        trail.BackgroundColor3 = trailColor
+        trail.BackgroundTransparency = spec.trans
+        trail.BorderSizePixel = 0
+        trail.ZIndex = group.ZIndex + 1
+        trail.Parent = group
+        local trailCorner = Instance.new("UICorner")
+        trailCorner.CornerRadius = UDim.new(1, 0)
+        trailCorner.Parent = trail
+    end
+
+    local ball = Instance.new("Frame")
+    ball.Name = "Ball"
+    ball.AnchorPoint = Vector2.new(0.5, 0.5)
+    ball.Position = UDim2.new(0.34, 0, 0.62, 0)
+    ball.Size = UDim2.new(0.40, 0, 0.40, 0)
+    ball.BackgroundColor3 = accent
+    ball.BorderSizePixel = 0
+    ball.ZIndex = group.ZIndex + 3
+    ball.Parent = group
+    local ballCorner = Instance.new("UICorner")
+    ballCorner.CornerRadius = UDim.new(1, 0)
+    ballCorner.Parent = ball
+
+    local shine = Instance.new("Frame")
+    shine.Name = "Shine"
+    shine.AnchorPoint = Vector2.new(0.5, 0.5)
+    shine.Position = UDim2.new(0.38, 0, 0.34, 0)
+    shine.Size = UDim2.new(0.28, 0, 0.28, 0)
+    shine.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    shine.BackgroundTransparency = 0.15
+    shine.BorderSizePixel = 0
+    shine.ZIndex = ball.ZIndex + 1
+    shine.Parent = ball
+    local shineCorner = Instance.new("UICorner")
+    shineCorner.CornerRadius = UDim.new(1, 0)
+    shineCorner.Parent = shine
+
+    parent.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.72)
+end
+
+local function createGoblinFaceIcon(parent, accent)
+    local group = Instance.new("Frame")
+    group.Name = "GoblinIcon"
+    group.AnchorPoint = Vector2.new(0.5, 0.5)
+    group.Position = UDim2.new(0.5, 0, 0.5, 0)
+    group.Size = UDim2.new(0.92, 0, 0.92, 0)
+    group.BackgroundTransparency = 1
+    group.ZIndex = parent.ZIndex + 1
+    group.Parent = parent
+
+    local skin = Color3.fromRGB(140, 185, 85)
+    local dark = Color3.fromRGB(35, 40, 28)
+    local hat = Color3.fromRGB(92, 62, 36)
+
+    local function rect(name, pos, size, color, z, rot, radius)
+        local f = Instance.new("Frame")
+        f.Name = name
+        f.AnchorPoint = Vector2.new(0.5, 0.5)
+        f.Position = pos
+        f.Size = size
+        f.Rotation = rot or 0
+        f.BackgroundColor3 = color
+        f.BorderSizePixel = 0
+        f.ZIndex = z
+        f.Parent = group
+        local c = Instance.new("UICorner")
+        c.CornerRadius = UDim.new(radius or 1, 0)
+        c.Parent = f
+        return f
+    end
+
+    -- Pointy side ears (long diamonds)
+    rect("LeftEar", UDim2.new(0.10, 0, 0.54, 0), UDim2.new(0.42, 0, 0.16, 0), skin, group.ZIndex + 1, -18, 0.45)
+    rect("RightEar", UDim2.new(0.90, 0, 0.54, 0), UDim2.new(0.42, 0, 0.16, 0), skin, group.ZIndex + 1, 18, 0.45)
+
+    rect("Head", UDim2.new(0.50, 0, 0.58, 0), UDim2.new(0.58, 0, 0.58, 0), skin, group.ZIndex + 2, 0, 0.22)
+
+    -- Brown helmet / cap
+    rect("Hat", UDim2.new(0.50, 0, 0.34, 0), UDim2.new(0.58, 0, 0.28, 0), hat, group.ZIndex + 5, 0, 0.35)
+    rect("Brim", UDim2.new(0.50, 0, 0.46, 0), UDim2.new(0.70, 0, 0.10, 0), hat, group.ZIndex + 6, 0, 0.5)
+
+    -- Simple black oval eyes
+    rect("LeftEye", UDim2.new(0.38, 0, 0.60, 0), UDim2.new(0.10, 0, 0.16, 0), dark, group.ZIndex + 4, 0, 1)
+    rect("RightEye", UDim2.new(0.62, 0, 0.60, 0), UDim2.new(0.10, 0, 0.16, 0), dark, group.ZIndex + 4, 0, 1)
+
+    rect("Mouth", UDim2.new(0.50, 0, 0.76, 0), UDim2.new(0.22, 0, 0.06, 0), dark, group.ZIndex + 4, 0, 1)
+
+    parent.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.72)
+end
+
+local function createGoldCoinIcon(parent, accent)
+    local group = Instance.new("Frame")
+    group.Name = "GoldIcon"
+    group.AnchorPoint = Vector2.new(0.5, 0.5)
+    group.Position = UDim2.new(0.5, 0, 0.5, 0)
+    group.Size = UDim2.new(0.78, 0, 0.78, 0)
+    group.BackgroundTransparency = 1
+    group.ZIndex = parent.ZIndex + 1
+    group.Parent = parent
+
+    local coin = Instance.new("Frame")
+    coin.Name = "Coin"
+    coin.Size = UDim2.fromScale(1, 1)
+    coin.BackgroundColor3 = accent
+    coin.BorderSizePixel = 0
+    coin.ZIndex = group.ZIndex + 1
+    coin.Parent = group
+    local coinCorner = Instance.new("UICorner")
+    coinCorner.CornerRadius = UDim.new(1, 0)
+    coinCorner.Parent = coin
+    local coinStroke = Instance.new("UIStroke")
+    coinStroke.Color = accent:Lerp(Color3.fromRGB(120, 80, 10), 0.35)
+    coinStroke.Thickness = 2
+    coinStroke.Transparency = 0.1
+    coinStroke.Parent = coin
+
+    local inner = Instance.new("Frame")
+    inner.Name = "Inner"
+    inner.AnchorPoint = Vector2.new(0.5, 0.5)
+    inner.Position = UDim2.fromScale(0.5, 0.5)
+    inner.Size = UDim2.fromScale(0.62, 0.62)
+    inner.BackgroundTransparency = 1
+    inner.ZIndex = coin.ZIndex + 1
+    inner.Parent = coin
+    local innerCorner = Instance.new("UICorner")
+    innerCorner.CornerRadius = UDim.new(1, 0)
+    innerCorner.Parent = inner
+    local innerStroke = Instance.new("UIStroke")
+    innerStroke.Color = accent:Lerp(Color3.fromRGB(255, 255, 210), 0.45)
+    innerStroke.Thickness = 1.6
+    innerStroke.Transparency = 0.15
+    innerStroke.Parent = inner
+
+    local mark = Instance.new("TextLabel")
+    mark.Name = "Mark"
+    mark.Size = UDim2.fromScale(1, 1)
+    mark.BackgroundTransparency = 1
+    mark.Font = Enum.Font.GothamBlack
+    mark.Text = "$"
+    mark.TextColor3 = accent:Lerp(Color3.fromRGB(90, 55, 0), 0.25)
+    mark.TextScaled = true
+    mark.ZIndex = coin.ZIndex + 2
+    mark.Parent = coin
+
+    parent.BackgroundColor3 = accent:Lerp(Color3.new(0, 0, 0), 0.72)
+end
+
 local function createGlyphIcon(parent, def, accent)
     local glyph = Instance.new("TextLabel")
     glyph.Name = "Glyph"
@@ -854,6 +1024,12 @@ local function createTile(entry)
         createPlusIcon(iconFrame, accent)
     elseif def.IconShape == "flag" then
         createFlagIcon(iconFrame, accent)
+    elseif def.IconShape == "meteor" then
+        createMeteorIcon(iconFrame, accent)
+    elseif def.IconShape == "goblin_face" then
+        createGoblinFaceIcon(iconFrame, accent)
+    elseif def.IconShape == "gold_coin" then
+        createGoldCoinIcon(iconFrame, accent)
     elseif assetId then
         local icon = Instance.new("ImageLabel")
         icon.Name = "Icon"
@@ -1043,15 +1219,11 @@ local function syncEvent(active, eventId, endTime)
     end
 
     local expiresAt = tonumber(endTime) or tonumber(ReplicatedStorage:GetAttribute("EventEndTime")) or 0
-    local def = getStaticDef("event") or { Id = "event", DisplayName = "Event", Description = "Meteor Shower active - collect shards for coins.", FallbackSymbol = "\u{2605}", IconGlyph = "\u{2605}", IconColor = {255, 215, 80}, AccentColor = {255, 215, 80}, IconTextMaxSize = 86, ShowTimer = true, SortOrder = 10 }
+    local def = getStaticDef(eventId) or getStaticDef("event") or { Id = "event", DisplayName = "Event", Description = "A timed event is active.", FallbackSymbol = "\u{2605}", IconGlyph = "\u{2605}", IconColor = {255, 215, 80}, AccentColor = {255, 215, 80}, IconTextMaxSize = 86, ShowTimer = true, SortOrder = 10 }
     local eventDef = EventConfig and EventConfig.EventDefs and EventConfig.EventDefs[eventId]
     if eventDef then
         def.DisplayName = eventDef.Name or def.DisplayName
-        if eventId == "GoldRush" then
-            def.Description = eventDef.Description or "Gold Rush active - collect scattered coins for rewards."
-        else
-            def.Description = eventDef.Description or def.Description
-        end
+        def.Description = eventDef.Description or def.Description
     end
     upsertEntry("event", def, { expiresAt = expiresAt, timeKind = "server" })
 end

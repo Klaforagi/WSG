@@ -27,9 +27,8 @@ AssetCodes.images = {
     Trolls = "rbxassetid://4911139003",
     Team = "rbxassetid://93323617037148",
     DailyReward = "rbxassetid://6034281693",  -- calendar/gift icon
-    KnightPreview = "",      -- static inventory/shop preview for the Knight skin
-    IronKnightPreview = "",   -- static inventory/shop preview for the Iron Knight skin
-    GoblinPreview = "",       -- static inventory/shop preview for the Goblin skin
+    -- Event icons
+    GoblinRaid = "rbxassetid://117738842907977",
     --POTION icons
     HealthPotion = "rbxassetid://100548032317989",
     SpeedPotion = "rbxassetid://112364730003039",

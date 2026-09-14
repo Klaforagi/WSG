@@ -62,10 +62,10 @@ EventConfig.EventDefs = {
         CompletionRewardCoins = 0,
     },
     GoldRush = {
-        Name       = "Gold Rush",
+        Name       = "Coin Rush",
         Objective  = "",
         Reward     = "3 Coins Per Pickup",
-        Announcement = "Gold Rush",
+        Announcement = "Coin Rush",
         AnnouncementColor = Color3.fromRGB(255, 215, 80),
         RequiredCoins = 0,
         PickupRewardCoins = 3,
