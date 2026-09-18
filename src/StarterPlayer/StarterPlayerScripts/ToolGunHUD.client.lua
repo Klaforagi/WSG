@@ -13,6 +13,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 local fireEvent = ReplicatedStorage:WaitForChild("ToolGunFire")
 local fireAck = ReplicatedStorage:WaitForChild("ToolGunFireAck")
 local fireHit = ReplicatedStorage:FindFirstChild("ToolGunHit")
+local projectileVisualEvent = ReplicatedStorage:WaitForChild("ToolGunProjectileVisual")
 
 -- Config (from original crosshair)
 local BASE_GAP = 6
@@ -41,6 +42,207 @@ local Debris = game:GetService("Debris")
 local TOOLCFG_MODULE
 if ReplicatedStorage:FindFirstChild("Toolgunsettings") then
     TOOLCFG_MODULE = require(ReplicatedStorage:WaitForChild("Toolgunsettings"))
+end
+
+local WeaponEnchantConfig
+local enchantConfigModule = ReplicatedStorage:FindFirstChild("WeaponEnchantConfig")
+if enchantConfigModule then
+    WeaponEnchantConfig = require(enchantConfigModule)
+end
+
+local function projectilePrimary(visual)
+    if visual:IsA("BasePart") then return visual end
+    if visual:IsA("Model") then
+        if visual.PrimaryPart then return visual.PrimaryPart end
+        local part = visual:FindFirstChildWhichIsA("BasePart", true)
+        if part then visual.PrimaryPart = part end
+        return part
+    end
+    return nil
+end
+
+local function setProjectileCFrame(visual, primary, cf)
+    if visual:IsA("Model") then
+        visual:PivotTo((cf * primary.CFrame:Inverse()) * visual:GetPivot())
+    else
+        visual.CFrame = cf
+    end
+end
+
+local activeClientProjectiles = {}
+local function projectileKey(shooterUserId, shotId)
+    return tostring(shooterUserId) .. ":" .. tostring(shotId)
+end
+
+local function spawnClientProjectile(toolName, origin, direction, enchantName, visualScale, shooterUserId, shotId)
+    if not TOOLCFG_MODULE or not TOOLCFG_MODULE.getPreset then return end
+    local presetName = tostring(toolName):match("^Tool(.+)") or tostring(toolName)
+    local preset = TOOLCFG_MODULE.getPreset(presetName:lower())
+    local templates = ReplicatedStorage:FindFirstChild("ClientProjectileVisuals")
+    local template = preset and templates and templates:FindFirstChild(tostring(preset.projectile_name))
+    if not template then return end
+
+    local visual = template:Clone()
+    visual.Name = "_LocalPredictedProjectile"
+    visual:SetAttribute("_LocalPredictedProjectile", true)
+    local primary = projectilePrimary(visual)
+    if not primary then visual:Destroy() return end
+
+    visualScale = tonumber(visualScale) or 1
+    if visual:IsA("Model") and math.abs(visualScale - 1) > 0.001 then
+        pcall(function() visual:ScaleTo(visual:GetScale() * visualScale) end)
+    elseif visual:IsA("BasePart") and math.abs(visualScale - 1) > 0.001 then
+        visual.Size *= visualScale
+        for _, item in ipairs(visual:GetDescendants()) do
+            if item:IsA("Attachment") then item.Position *= visualScale end
+        end
+    end
+
+    local predictedTrails = {}
+    for _, item in ipairs(visual:GetDescendants()) do
+        if item:IsA("BasePart") then
+            item.Anchored = true
+            item.CanCollide = false
+            item.CanTouch = false
+            item.CanQuery = false
+        elseif item:IsA("Trail") then
+            table.insert(predictedTrails, item)
+            item.Enabled = false
+        end
+    end
+    if visual:IsA("BasePart") then
+        visual.Anchored = true
+        visual.CanCollide = false
+        visual.CanTouch = false
+        visual.CanQuery = false
+    end
+
+    if direction.Magnitude <= 0.001 then visual:Destroy() return end
+    direction = direction.Unit
+
+    local correction = nil
+    local configuredRotation = preset.visual_rotation or preset.visual_rotation_degrees
+    if typeof(configuredRotation) == "Vector3" then
+        correction = CFrame.Angles(
+            math.rad(configuredRotation.X),
+            math.rad(configuredRotation.Y),
+            math.rad(configuredRotation.Z)
+        )
+    elseif type(configuredRotation) == "table" then
+        correction = CFrame.Angles(
+            math.rad(tonumber(configuredRotation[1] or configuredRotation.X) or 0),
+            math.rad(tonumber(configuredRotation[2] or configuredRotation.Y) or 0),
+            math.rad(tonumber(configuredRotation[3] or configuredRotation.Z) or 0)
+        )
+    end
+    local size = primary.Size
+    local longest = math.max(size.X, size.Y, size.Z)
+    local shortest = math.min(size.X, size.Y, size.Z)
+    if not correction and longest >= 0.05 and longest >= shortest * 1.25 then
+        if size.Y >= size.X and size.Y >= size.Z then
+            correction = CFrame.Angles(-math.pi / 2, 0, 0)
+        elseif size.X >= size.Y and size.X >= size.Z then
+            correction = CFrame.Angles(0, math.pi / 2, 0)
+        end
+    end
+    correction = correction or CFrame.new()
+    local tip = visual:FindFirstChild("Tip", true)
+    local tipLocal = Vector3.zero
+    if tip and tip:IsA("Attachment") then
+        tipLocal = primary.CFrame:PointToObjectSpace(tip.WorldPosition)
+    end
+
+    -- Server-created trails are not part of the stored template. Mirror the
+    -- projectile trail locally so it begins on the same frame as the arrow.
+    if #predictedTrails == 0 and tip and tip:IsA("Attachment") and tip.Parent and tip.Parent:IsA("BasePart") then
+        local secondAttachment = Instance.new("Attachment")
+        secondAttachment.Name = "_PredictedProjectileTrail1"
+        secondAttachment.CFrame = tip.CFrame * CFrame.new(0, 0.18, 0)
+        secondAttachment.Parent = tip.Parent
+
+        local trail = Instance.new("Trail")
+        trail.Name = "AmmoTrail"
+        trail.Attachment0 = tip
+        trail.Attachment1 = secondAttachment
+        trail.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, primary.Color),
+            ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+        })
+        trail.Transparency = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 0.2),
+            NumberSequenceKeypoint.new(0.6, 0.55),
+            NumberSequenceKeypoint.new(1, 1),
+        })
+        trail.WidthScale = NumberSequence.new({
+            NumberSequenceKeypoint.new(0, 1.2075),
+            NumberSequenceKeypoint.new(0.65, 0.6325),
+            NumberSequenceKeypoint.new(1, 0.092),
+        })
+        trail.Lifetime = math.clamp((preset.projectile_lifetime or 4) * 0.08, 0.18, 0.35)
+        trail.MinLength = 0
+        trail.FaceCamera = true
+        trail.LightEmission = 0.45
+        trail.Enabled = false
+        trail.Parent = tip.Parent
+        table.insert(predictedTrails, trail)
+    end
+
+    local enchantTrailColor = WeaponEnchantConfig
+        and WeaponEnchantConfig.GetTrailColorSequenceForEnchant
+        and WeaponEnchantConfig.GetTrailColorSequenceForEnchant(enchantName)
+    if enchantTrailColor then
+        for _, trail in ipairs(predictedTrails) do trail.Color = enchantTrailColor end
+    end
+
+    local displayName = tostring(toolName):match("^Tool(.+)") or tostring(toolName)
+    if displayName:lower():find("ethereal", 1, true) and WeaponEnchantConfig
+        and WeaponEnchantConfig.GetEtherealPartColor then
+        local bodyColor = WeaponEnchantConfig.GetEtherealPartColor(enchantName)
+        if bodyColor then
+            local function tint(item)
+                if item:IsA("BasePart") and item.Name ~= "EnchantBlock" then item.Color = bodyColor end
+            end
+            tint(visual)
+            for _, item in ipairs(visual:GetDescendants()) do tint(item) end
+        end
+    end
+
+    local speed = preset.bulletspeed or 150
+    local drop = preset.bulletdrop or 55
+    local velocity = direction * speed
+    local position = origin
+    local elapsed = 0
+    local function flightCFrame(atPosition, moveDirection)
+        local targetDirection = preset.visual_flip and -moveDirection or moveDirection
+        return CFrame.lookAt(atPosition, atPosition + targetDirection) * correction * CFrame.new(-tipLocal)
+    end
+    setProjectileCFrame(visual, primary, flightCFrame(position, direction))
+    visual.Parent = workspace
+    local key = projectileKey(shooterUserId, shotId)
+    local previous = activeClientProjectiles[key]
+    if previous and previous.Parent then previous:Destroy() end
+    activeClientProjectiles[key] = visual
+    for _, trail in ipairs(predictedTrails) do
+        trail.Enabled = true
+    end
+
+    local connection
+    connection = RunService.RenderStepped:Connect(function(dt)
+        elapsed += dt
+        if elapsed >= (preset.projectile_lifetime or 4) or not visual.Parent then
+            connection:Disconnect()
+            visual:Destroy()
+            return
+        end
+        velocity += Vector3.new(0, -drop, 0) * dt
+        position += velocity * dt
+        local moveDirection = velocity.Magnitude > 0.001 and velocity.Unit or direction
+        setProjectileCFrame(visual, primary, flightCFrame(position, moveDirection))
+    end)
+    visual.Destroying:Connect(function()
+        if activeClientProjectiles[key] == visual then activeClientProjectiles[key] = nil end
+        if connection and connection.Connected then connection:Disconnect() end
+    end)
 end
 
 -- Size-scaling helpers (mirrors server logic in ToolGunSetup)
@@ -264,7 +466,28 @@ local isHoldingFire = false
 local shotInFlight = false
 local nextAllowedFireAt = 0
 local fireToken = 0
+local nextClientShotId = 0
+local locallyRenderedShots = {}
 local currentFiringTool = nil
+
+projectileVisualEvent.OnClientEvent:Connect(function(action, shooterUserId, shotId, toolName, origin, direction, enchantName, visualScale)
+    if action == "finish" then
+        local visual = activeClientProjectiles[projectileKey(shooterUserId, shotId)]
+        if visual then
+            -- Server collision is the sole authority for when the visible arrow ends.
+            visual:Destroy()
+        end
+        return
+    end
+    if action ~= "spawn" then return end
+    -- The shooter already rendered this shot before its request made a round trip.
+    if shooterUserId == player.UserId and locallyRenderedShots[shotId] then
+        locallyRenderedShots[shotId] = nil
+        return
+    end
+    if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then return end
+    spawnClientProjectile(toolName, origin, direction, enchantName, visualScale, shooterUserId, shotId)
+end)
 local toolCooldowns = {} -- toolName → base cd (set by attachTool, used in ACK handler)
 
 local function tryFire(tool)
@@ -320,8 +543,28 @@ local function tryFire(tool)
 		rayOrigin = mouseRay.Origin
 		rayDirection = mouseRay.Direction.Unit
 	end
+    local presetName = tostring(tool.Name):match("^Tool(.+)") or tostring(tool.Name)
+    local preset = TOOLCFG_MODULE and TOOLCFG_MODULE.getPreset and TOOLCFG_MODULE.getPreset(presetName:lower())
+    local range = (preset and preset.range) or 450
+    local localDirection = (rayOrigin + rayDirection * range) - origin
+    if localDirection.Magnitude <= 0.001 then localDirection = rayDirection end
 
-    fireEvent:FireServer(rayOrigin, rayDirection, origin, tool.Name)
+    nextClientShotId += 1
+    local shotId = nextClientShotId
+    locallyRenderedShots[shotId] = true
+    local sizePercent = getClientSizePercent(tool)
+    local visualScale = math.clamp(sizePercent / 100, 0.1, 5)
+    spawnClientProjectile(
+        tool.Name,
+        origin,
+        localDirection.Unit,
+        tool:GetAttribute("EnchantName"),
+        visualScale,
+        player.UserId,
+        shotId
+    )
+    fireEvent:FireServer(rayOrigin, rayDirection, origin, tool.Name, shotId)
+    task.delay(5, function() locallyRenderedShots[shotId] = nil end)
     -- Failsafe: if no ACK within 0.35s, clear the in-flight flag so the gun does not get stuck
     local myToken = fireToken
     task.delay(0.35, function()

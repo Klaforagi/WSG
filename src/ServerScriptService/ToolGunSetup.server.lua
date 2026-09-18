@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local StarterPack = game:GetService("StarterPack")
+local ServerStorage = game:GetService("ServerStorage")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
 local RunService = game:GetService("RunService")
@@ -167,6 +168,31 @@ if not fireHit then
     fireHit = Instance.new("RemoteEvent")
     fireHit.Name = HIT_EVENT_NAME
     fireHit.Parent = ReplicatedStorage
+end
+
+local PROJECTILE_VISUAL_EVENT_NAME = "ToolGunProjectileVisual"
+local projectileVisualEvent = ReplicatedStorage:FindFirstChild(PROJECTILE_VISUAL_EVENT_NAME)
+if not projectileVisualEvent then
+    projectileVisualEvent = Instance.new("RemoteEvent")
+    projectileVisualEvent.Name = PROJECTILE_VISUAL_EVENT_NAME
+    projectileVisualEvent.Parent = ReplicatedStorage
+end
+
+-- Read-only copies let the firing client render the projectile immediately.
+-- Collision and damage still use the separate server-authoritative projectile.
+local clientProjectileVisuals = ReplicatedStorage:FindFirstChild("ClientProjectileVisuals")
+if not clientProjectileVisuals then
+    clientProjectileVisuals = Instance.new("Folder")
+    clientProjectileVisuals.Name = "ClientProjectileVisuals"
+    clientProjectileVisuals.Parent = ReplicatedStorage
+end
+local storedProjectiles = ServerStorage:FindFirstChild("Projectiles")
+if storedProjectiles then
+    for _, template in ipairs(storedProjectiles:GetChildren()) do
+        if not clientProjectileVisuals:FindFirstChild(template.Name) then
+            template:Clone().Parent = clientProjectileVisuals
+        end
+    end
 end
 
 -- Kill credit events (fire kill feed + score directly from damage code)
@@ -722,7 +748,7 @@ local function applyDamage(player, humanoid, victimModel, damage, hitPart, hitPo
     -- need to TAG the humanoid (already done above via lastDamager* attributes).
 end
 
-local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName)
+local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName, clientShotId)
     -- projCfg contains per-tool overrides: damage, range, bulletdrop, projectile_size, projectile_lifetime
     local pDamage = (projCfg and projCfg.damage) or DAMAGE
     -- Ranged upgrade multiplier is applied at hit time in applyDamage
@@ -789,7 +815,6 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     end
 
     applyProjectilePhysicsFlags(visual)
-    visual.Parent = Workspace
     params.FilterDescendantsInstances = {player.Character, visual}
 
     local enchantName = projCfg and projCfg._enchantName
@@ -851,13 +876,38 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         end)
     end
 
+    -- Do not parent the clone until its muzzle-aligned transform and effects are
+    -- ready. Parenting first can replicate the template's saved Studio position
+    -- for a frame, which looks like the projectile spawned far in front of the bow.
+    -- This instance is simulation-only. Every client renders the broadcast visual,
+    -- avoiding replication-delay jumps while the server retains hit authority.
+    local function hideServerVisual(item)
+        if item:IsA("BasePart") then
+            item.Transparency = 1
+            item.CastShadow = false
+        elseif item:IsA("Trail") or item:IsA("Beam") or item:IsA("ParticleEmitter") then
+            item.Enabled = false
+        end
+    end
+    hideServerVisual(visual)
+    for _, item in ipairs(visual:GetDescendants()) do hideServerVisual(item) end
+    visual:SetAttribute("_ServerProjectileSimulation", true)
+    visual.Parent = Workspace
+
     local lastPos = origin
     local velocity = initialVelocity
     local startTime = tick()
     local conn
     local hitHumanoids = {} -- prevent double-hits between original ray and expanded box
+    local visualFinished = false
+    local function finishClientVisual(position)
+        if visualFinished then return end
+        visualFinished = true
+        projectileVisualEvent:FireAllClients("finish", player.UserId, clientShotId, position)
+    end
     conn = RunService.Heartbeat:Connect(function(dt)
         if not visual.Parent then
+            finishClientVisual(lastPos)
             conn:Disconnect()
             return
         end
@@ -915,6 +965,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
                                     )
                                     hitHumanoids[hum] = true
                                     boxHit = true
+                                    finishClientVisual(bp.Position)
                                     -- destroy projectile so it cannot hit others after box-only hit
                                     pcall(function()
                                         if conn then
@@ -978,6 +1029,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
             -- Impact handling: stop simulation, anchor + orient the visual at hit, play impact sound, then destroy after delay
             local hitPos = rayResult.Position
             local hitNormal = rayResult.Normal or Vector3.new(0, 1, 0)
+            finishClientVisual(hitPos)
 
             -- stop the heartbeat simulation
             if conn then
@@ -1245,6 +1297,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         lastPos = nextPos
 
         if (lastPos - origin).Magnitude > pRange or tick() - startTime > pLifetime then
+                finishClientVisual(lastPos)
                 if visual and visual.Parent then
                     visual:Destroy()
                 end
@@ -1254,9 +1307,17 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     end)
 end
 
-fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOrigin, toolName)
+local function isFiniteVector3(value)
+    return typeof(value) == "Vector3"
+        and value.X == value.X and value.Y == value.Y and value.Z == value.Z
+        and math.abs(value.X) < math.huge
+        and math.abs(value.Y) < math.huge
+        and math.abs(value.Z) < math.huge
+end
+
+fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOrigin, toolName, clientShotId)
     -- basic validation of types
-    if typeof(camOrigin) ~= "Vector3" or typeof(camDirection) ~= "Vector3" or typeof(gunOrigin) ~= "Vector3" then return end
+    if not isFiniteVector3(camOrigin) or not isFiniteVector3(camDirection) or not isFiniteVector3(gunOrigin) then return end
     if not player or not player.Character then return end
     -- Losing-team tool lockout: server-authoritative block on weapon use.
     if player:GetAttribute("ToolsLocked") == true then return end
@@ -1339,23 +1400,31 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
     scaledCfg._weaponName = equippedTool:GetAttribute("WeaponName") or toolName
     scaledCfg._enchantName = equippedTool:GetAttribute("EnchantName")
 
-    -- basic proximity checks (allow some leeway for camera offsets)
-    if (gunOrigin - hrp.Position).Magnitude > 60 then return end
+    -- The firing client owns its character assembly, so its attachment position is
+    -- newer than the server's replicated copy while the player is moving. Keep the
+    -- client muzzle after tightly validating it against the character and the
+    -- server-observed attachment. Replacing it with the latter made projectiles
+    -- visibly spawn behind/to the side of a moving bow by roughly one network RTT.
+    if (gunOrigin - hrp.Position).Magnitude > 16 then return end
     if (camOrigin - hrp.Position).Magnitude > 120 then return end
 
-    -- Server-authoritative muzzle: Handle.Fire, then Handle, then the client origin.
-    local fireOrigin = gunOrigin
+    local serverFireOrigin = nil
     if ToolgunModule and type(ToolgunModule.getFireOrigin) == "function" then
-        fireOrigin = ToolgunModule.getFireOrigin(equippedTool, gunOrigin) or gunOrigin
+        serverFireOrigin = ToolgunModule.getFireOrigin(equippedTool, nil)
     else
         local fireAttachment = findNamedAttachment(equippedTool, "Fire")
         if fireAttachment then
-            fireOrigin = fireAttachment.WorldPosition
+            serverFireOrigin = fireAttachment.WorldPosition
         end
     end
-    if typeof(fireOrigin) ~= "Vector3" then
-        fireOrigin = gunOrigin
+
+    -- Allow replication delay, but reject a forged muzzle that is nowhere near the
+    -- equipped weapon. The actual visual/simulation origin remains the fresh client
+    -- attachment position so it stays glued to Fire even during strafes and dashes.
+    if isFiniteVector3(serverFireOrigin) and (gunOrigin - serverFireOrigin).Magnitude > 16 then
+        return
     end
+    local fireOrigin = gunOrigin
 
     -- perform a server-side hitscan from the camera ray first so shots go where the player's cursor is
     local params = RaycastParams.new()
@@ -1414,7 +1483,17 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
 
     -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts
     local initVel = aimDir * tBULLETSPEED
-    spawnProjectile(player, fireOrigin, initVel, scaledCfg, toolName)
+    projectileVisualEvent:FireAllClients(
+        "spawn",
+        player.UserId,
+        clientShotId,
+        toolName,
+        fireOrigin,
+        aimDir,
+        scaledCfg._enchantName,
+        projVisualScale
+    )
+    spawnProjectile(player, fireOrigin, initVel, scaledCfg, toolName, clientShotId)
 
     -- Apply a brief movement slow while firing ranged weapons.
     do
