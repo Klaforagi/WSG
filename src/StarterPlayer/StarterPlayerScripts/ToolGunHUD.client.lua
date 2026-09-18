@@ -4,6 +4,8 @@ local StarterPack = game:GetService("StarterPack")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local FastCast = require(ReplicatedStorage:WaitForChild("Dependencies"):WaitForChild("FastCastRedux"))
+local RangedCast = require(ReplicatedStorage:WaitForChild("RangedCast"))
 
 local player = Players.LocalPlayer
 local camera = workspace.CurrentCamera
@@ -74,7 +76,59 @@ local function projectileKey(shooterUserId, shotId)
     return tostring(shooterUserId) .. ":" .. tostring(shotId)
 end
 
-local function spawnClientProjectile(toolName, origin, direction, enchantName, visualScale, shooterUserId, shotId)
+local cosmeticCasters = {}
+local function getCosmeticCaster(toolName)
+    local caster = cosmeticCasters[toolName]
+    if caster then return caster end
+    caster = FastCast.new()
+    caster.LengthChanged:Connect(function(cast, origin, direction, length, velocity)
+        local state = cast.UserData
+        if state.visual.Parent then
+            local moveDirection = velocity.Magnitude > 0.001 and velocity.Unit or direction
+            state.place(origin + direction * length, moveDirection)
+        end
+    end)
+    caster.CastTerminating:Connect(function(cast)
+        local state = cast.UserData
+        if state.cast == cast then state.cast = nil end
+        -- A cosmetic cast reaching its range must not invent an impact. Keep the
+        -- last pose until the server's finish message (or cleanup timeout).
+    end)
+    cosmeticCasters[toolName] = caster
+    return caster
+end
+
+local function startCosmeticCast(state, origin, direction, flight, age)
+    if state.cast then state.cast:Terminate() end
+    local acceleration = Vector3.new(0, -flight.drop, 0)
+    local initialVelocity = direction.Unit * flight.speed
+    local startPosition = origin + initialVelocity * age + acceleration * (0.5 * age * age)
+    local velocity = initialVelocity + acceleration * age
+    local params = RaycastParams.new()
+    -- Client casts only animate. Collision/termination comes from server RayHit.
+    params.FilterType = Enum.RaycastFilterType.Include
+    params.FilterDescendantsInstances = {}
+    local behavior = FastCast.newBehavior()
+    behavior.RaycastParams = params
+    behavior.Acceleration = acceleration
+    behavior.MaxDistance = flight.range
+    state.place(startPosition, velocity.Magnitude > 0.001 and velocity.Unit or direction)
+    local cast = getCosmeticCaster(state.toolName):Fire(startPosition, direction, velocity, behavior)
+    cast.UserData = state
+    state.cast = cast
+    state.flightVersion = (state.flightVersion or 0) + 1
+    local version = state.flightVersion
+    task.delay(math.max(0, flight.lifetime - age), function()
+        if state.cast == cast then cast:Terminate() end
+    end)
+    -- Clean up rejected requests and missing finish messages without a leaked
+    -- arrow/cast. Accepted shots normally end through the server event.
+    task.delay(math.max(0, flight.lifetime - age) + 2, function()
+        if state.flightVersion == version and state.visual.Parent then state.visual:Destroy() end
+    end)
+end
+
+local function spawnClientProjectile(toolName, origin, direction, enchantName, visualScale, shooterUserId, shotId, flight)
     if not TOOLCFG_MODULE or not TOOLCFG_MODULE.getPreset then return end
     local presetName = tostring(toolName):match("^Tool(.+)") or tostring(toolName)
     local preset = TOOLCFG_MODULE.getPreset(presetName:lower())
@@ -207,42 +261,38 @@ local function spawnClientProjectile(toolName, origin, direction, enchantName, v
         end
     end
 
-    local speed = preset.bulletspeed or 150
-    local drop = preset.bulletdrop or 55
-    local velocity = direction * speed
-    local position = origin
-    local elapsed = 0
     local function flightCFrame(atPosition, moveDirection)
         local targetDirection = preset.visual_flip and -moveDirection or moveDirection
         return CFrame.lookAt(atPosition, atPosition + targetDirection) * correction * CFrame.new(-tipLocal)
     end
-    setProjectileCFrame(visual, primary, flightCFrame(position, direction))
-    visual.Parent = workspace
     local key = projectileKey(shooterUserId, shotId)
     local previous = activeClientProjectiles[key]
-    if previous and previous.Parent then previous:Destroy() end
-    activeClientProjectiles[key] = visual
-    for _, trail in ipairs(predictedTrails) do
-        trail.Enabled = true
-    end
-
-    local connection
-    connection = RunService.RenderStepped:Connect(function(dt)
-        elapsed += dt
-        if elapsed >= (preset.projectile_lifetime or 4) or not visual.Parent then
-            connection:Disconnect()
-            visual:Destroy()
-            return
-        end
-        velocity += Vector3.new(0, -drop, 0) * dt
-        position += velocity * dt
-        local moveDirection = velocity.Magnitude > 0.001 and velocity.Unit or direction
-        setProjectileCFrame(visual, primary, flightCFrame(position, moveDirection))
-    end)
+    if previous then previous.visual:Destroy() end
+    local state = {
+        visual = visual,
+        primary = primary,
+        toolName = toolName,
+        trails = predictedTrails,
+        place = function(position, moveDirection)
+            setProjectileCFrame(visual, primary, flightCFrame(position, moveDirection))
+        end,
+    }
+    activeClientProjectiles[key] = state
     visual.Destroying:Connect(function()
-        if activeClientProjectiles[key] == visual then activeClientProjectiles[key] = nil end
-        if connection and connection.Connected then connection:Disconnect() end
+        if activeClientProjectiles[key] == state then activeClientProjectiles[key] = nil end
+        if state.cast then state.cast:Terminate() end
+        if state.followConnection then state.followConnection:Disconnect() end
     end)
+    local settings = flight or {
+        speed = preset.bulletspeed or 150,
+        drop = preset.bulletdrop or 55,
+        range = preset.range or 450,
+        lifetime = preset.projectile_lifetime or 4,
+    }
+    local age = flight and math.max(0, workspace:GetServerTimeNow() - flight.startedAt) or 0
+    startCosmeticCast(state, origin, direction, settings, age)
+    visual.Parent = workspace
+    for _, trail in ipairs(predictedTrails) do trail.Enabled = true end
 end
 
 -- Size-scaling helpers (mirrors server logic in ToolGunSetup)
@@ -470,23 +520,52 @@ local nextClientShotId = 0
 local locallyRenderedShots = {}
 local currentFiringTool = nil
 
-projectileVisualEvent.OnClientEvent:Connect(function(action, shooterUserId, shotId, toolName, origin, direction, enchantName, visualScale)
+projectileVisualEvent.OnClientEvent:Connect(function(action, shooterUserId, shotId, toolName, origin, direction, enchantName, visualScale, flight)
+    local state = activeClientProjectiles[projectileKey(shooterUserId, shotId)]
     if action == "finish" then
-        local visual = activeClientProjectiles[projectileKey(shooterUserId, shotId)]
-        if visual then
-            -- Server collision is the sole authority for when the visible arrow ends.
-            visual:Destroy()
+        local impact = toolName -- finish payload
+        if not state then return end
+        if state.cast then state.cast:Terminate() end
+        state.flightVersion = (state.flightVersion or 0) + 1
+        if typeof(impact) == "table" and typeof(impact.position) == "Vector3" then
+            local velocity = impact.velocity
+            if typeof(velocity) == "Vector3" and velocity.Magnitude > 0.001 then
+                state.place(impact.position, velocity.Unit)
+            end
+            for _, trail in ipairs(state.trails) do trail.Enabled = false end
+            if impact.leaveProjectile then
+                local hitPart = impact.hitPart
+                if hitPart and hitPart:IsA("BasePart") then
+                    local offset = hitPart.CFrame:ToObjectSpace(state.primary.CFrame)
+                    state.followConnection = RunService.RenderStepped:Connect(function()
+                        if not hitPart.Parent then
+                            state.visual:Destroy()
+                            return
+                        end
+                        setProjectileCFrame(state.visual, state.primary, hitPart.CFrame * offset)
+                    end)
+                end
+                Debris:AddItem(state.visual, impact.stickLifetime or 2)
+                return
+            end
         end
+        state.visual:Destroy()
         return
     end
     if action ~= "spawn" then return end
-    -- The shooter already rendered this shot before its request made a round trip.
+    if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then return end
     if shooterUserId == player.UserId and locallyRenderedShots[shotId] then
         locallyRenderedShots[shotId] = nil
-        return
+        if state and flight then
+            -- Retain the immediate muzzle visual, but reconcile its trajectory to
+            -- the server's camera target, settings and launch time.
+            for _, trail in ipairs(state.trails) do trail:Clear() end
+            startCosmeticCast(state, origin, direction, flight,
+                math.max(0, workspace:GetServerTimeNow() - flight.startedAt))
+            return
+        end
     end
-    if typeof(origin) ~= "Vector3" or typeof(direction) ~= "Vector3" then return end
-    spawnClientProjectile(toolName, origin, direction, enchantName, visualScale, shooterUserId, shotId)
+    spawnClientProjectile(toolName, origin, direction, enchantName, visualScale, shooterUserId, shotId, flight)
 end)
 local toolCooldowns = {} -- toolName → base cd (set by attachTool, used in ACK handler)
 
@@ -546,7 +625,13 @@ local function tryFire(tool)
     local presetName = tostring(tool.Name):match("^Tool(.+)") or tostring(tool.Name)
     local preset = TOOLCFG_MODULE and TOOLCFG_MODULE.getPreset and TOOLCFG_MODULE.getPreset(presetName:lower())
     local range = (preset and preset.range) or 450
-    local localDirection = (rayOrigin + rayDirection * range) - origin
+    local aimParams = RaycastParams.new()
+    aimParams.FilterType = Enum.RaycastFilterType.Exclude
+    aimParams.FilterDescendantsInstances = { char }
+    aimParams.IgnoreWater = true
+    local aimHit = RangedCast.RaycastAim(workspace, rayOrigin, rayDirection * range, aimParams, player)
+    local aimPoint = aimHit and aimHit.Position or (rayOrigin + rayDirection * range)
+    local localDirection = aimPoint - origin
     if localDirection.Magnitude <= 0.001 then localDirection = rayDirection end
 
     nextClientShotId += 1

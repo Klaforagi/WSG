@@ -3,9 +3,10 @@ local StarterPack = game:GetService("StarterPack")
 local ServerStorage = game:GetService("ServerStorage")
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
-local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local ServerScriptService = game:GetService("ServerScriptService")
+local FastCast = require(ReplicatedStorage:WaitForChild("Dependencies"):WaitForChild("FastCastRedux"))
+local RangedCast = require(ReplicatedStorage:WaitForChild("RangedCast"))
 
 -- XP integration
 local XPModule
@@ -591,61 +592,9 @@ local function applyOutgoingDamageModifiers(player, damage, context)
     return damage
 end
 
--- Raycast helper that skips Accessory parts so bullets pass through hats/attachments.
+local shouldPierceProjectile = RangedCast.ShouldPierce
 local function raycastSkippingAccessories(origin, direction, rayParams, attackerPlayer)
-    local maxIter = 10
-    local start = origin
-    local remaining = direction
-    for i = 1, maxIter do
-        if not remaining or remaining.Magnitude <= 0.001 then break end
-        local result = Workspace:Raycast(start, remaining, rayParams)
-        if not result or not result.Instance then
-            return result
-        end
-        local inst = result.Instance
-        local acc = nil
-        local shouldSkip = false
-        if inst and inst.FindFirstAncestorWhichIsA then
-            acc = inst:FindFirstAncestorWhichIsA("Accessory")
-        end
-        if inst and inst:IsA("BasePart") then
-            local instName = tostring(inst.Name)
-            local ogreModel = (instName == "Helmet") and inst:FindFirstAncestor("Ogre") or nil
-            shouldSkip = (
-                instName == "InvisWall"
-                or instName == "PickupPart"
-                or instName == "DefaultZone"
-                or (ogreModel and ogreModel:FindFirstChildOfClass("Humanoid") ~= nil)
-                or inst.CanQuery == false
-            )
-            -- Skip teammate character parts so tracers/projectiles pass through allies
-            if not shouldSkip then
-                local maybeModel = inst:FindFirstAncestorOfClass("Model")
-                if maybeModel then
-                    local targetPlayer = Players:GetPlayerFromCharacter(maybeModel)
-                    if targetPlayer and attackerPlayer and targetPlayer.Team and attackerPlayer.Team and targetPlayer.Team == attackerPlayer.Team then
-                        shouldSkip = true
-                    end
-                end
-            end
-            if not shouldSkip and inst:FindFirstAncestor("EventMeteorZones") then
-                shouldSkip = true
-            end
-        end
-        if acc or shouldSkip then
-            -- skip accessory: continue raycast just past the hit position
-            local hitPos = result.Position
-            local dirUnit = remaining.Unit
-            local traveled = (hitPos - start).Magnitude
-            local remainingLen = math.max(0, remaining.Magnitude - traveled)
-            start = hitPos + dirUnit * 0.02
-            remaining = dirUnit * remainingLen
-            -- try again
-        else
-            return result
-        end
-    end
-    return nil
+    return RangedCast.RaycastAim(Workspace, origin, direction, rayParams, attackerPlayer)
 end
 
 -- Same integer roll melee uses on attacks 1-2: ceil(base * 0.7) through ceil(base * 1.0).
@@ -748,7 +697,27 @@ local function applyDamage(player, humanoid, victimModel, damage, hitPart, hitPo
     -- need to TAG the humanoid (already done above via lastDamager* attributes).
 end
 
-local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName, clientShotId)
+-- One caster per equipped tool, reused across shots. Per-shot state lives on
+-- ActiveCast.UserData so simultaneous players/shots cannot share damage context.
+local projectileCasters = setmetatable({}, { __mode = "k" })
+local function getProjectileCaster(tool)
+    local caster = projectileCasters[tool]
+    if caster then return caster end
+    caster = FastCast.new()
+    caster.LengthChanged:Connect(function(cast, origin, direction, length, velocity)
+        cast.UserData.OnLengthChanged(origin, direction, length, velocity)
+    end)
+    caster.RayHit:Connect(function(cast, result, velocity)
+        cast.UserData.OnRayHit(result, velocity)
+    end)
+    caster.CastTerminating:Connect(function(cast)
+        cast.UserData.OnTerminating()
+    end)
+    projectileCasters[tool] = caster
+    return caster
+end
+
+local function spawnProjectile(player, origin, initialVelocity, projCfg, toolName, clientShotId, equippedTool)
     -- projCfg contains per-tool overrides: damage, range, bulletdrop, projectile_size, projectile_lifetime
     local pDamage = (projCfg and projCfg.damage) or DAMAGE
     -- Ranged upgrade multiplier is applied at hit time in applyDamage
@@ -848,7 +817,6 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
         extraRotation = getShaftLookCorrection(primary)
     end
     local tipLocalPos = getTipLocalPosition(visual, primary)
-    local lastCFrame = getLookCFrame(origin, aimUnit, visualFlip)
     pcall(function()
         setVisualPrimaryCFrame(visual, usingModel, getAlignedPrimaryCFrame(origin, aimUnit, visualFlip, tipLocalPos, extraRotation))
     end)
@@ -895,415 +863,107 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     visual.Parent = Workspace
 
     local lastPos = origin
-    local velocity = initialVelocity
-    local startTime = tick()
-    local conn
-    local hitHumanoids = {} -- prevent double-hits between original ray and expanded box
-    local visualFinished = false
-    local function finishClientVisual(position)
-        if visualFinished then return end
-        visualFinished = true
-        projectileVisualEvent:FireAllClients("finish", player.UserId, clientShotId, position)
+    local hitHumanoids = {}
+    local impactResult = nil
+    local impactVelocity = initialVelocity
+    local caster = getProjectileCaster(equippedTool)
+    local behavior = FastCast.newBehavior()
+    behavior.RaycastParams = params
+    behavior.MaxDistance = pRange
+    behavior.Acceleration = Vector3.new(0, -pDrop, 0)
+    behavior.CanPierceFunction = function(_, result)
+        return shouldPierceProjectile(result.Instance, player)
     end
-    conn = RunService.Heartbeat:Connect(function(dt)
-        if not visual.Parent then
-            finishClientVisual(lastPos)
-            conn:Disconnect()
-            return
-        end
-        -- apply gravity/bullet drop to vertical component of velocity
-        velocity = velocity + Vector3.new(0, -pDrop * dt, 0)
-        local nextPos = lastPos + velocity * dt
 
-        -- Expanded temporary hitbox: create a box about the projectile's segment
-        -- that only considers humanoid parts. This helps slightly-missed shots
-        -- still register if they intersect the larger box. Scale is 1.3x visual.
-        local ok, boxParts = pcall(function()
-            local centerPos = lastPos + (nextPos - lastPos) * 0.5
-            local boxCF = CFrame.new(centerPos)
-            local sizeVec = nil
-            if usingModel and visual and visual.PrimaryPart then
-                sizeVec = visual:GetExtentsSize()
-            elseif visual and visual:IsA("BasePart") then
-                sizeVec = visual.Size
-            else
-                sizeVec = Vector3.new(0.3, 0.3, 0.3)
-            end
-            local boxSize = sizeVec * 1.2
-            return Workspace:GetPartBoundsInBox(boxCF, boxSize)
-        end)
-        if ok and type(boxParts) == "table" then
-            local boxHit = false
-            for _, bp in ipairs(boxParts) do
-                if bp and bp:IsA("BasePart") then
-                    if visual and (bp == visual or bp:IsDescendantOf(visual)) then
-                        continue
-                    end
-                    local candidateModel = bp:FindFirstAncestorOfClass("Model")
-                    if candidateModel and visual and candidateModel == visual then
-                        continue
-                    end
-                    if candidateModel then
-                        local hum = candidateModel:FindFirstChildOfClass("Humanoid")
-                        if hum and hum.Health > 0 and not hitHumanoids[hum] then
-                            if not shouldIgnoreHumanoidTarget(candidateModel, hum) then
-                                -- don't damage the shooter
-                                if player and Players:GetPlayerFromCharacter(candidateModel) == player then
-                                    -- skip
-                                else
-                                    local boxDamage = pDamage
-                                    applyDamage(
-                                        player,
-                                        hum,
-                                        candidateModel,
-                                        boxDamage,
-                                        bp,
-                                        bp.Position,
-                                        projCfg and projCfg._weaponInstanceId,
-                                        (projCfg and projCfg._weaponName) or toolName,
-                                        projCfg and projCfg._enchantName
-                                    )
-                                    hitHumanoids[hum] = true
-                                    boxHit = true
-                                    finishClientVisual(bp.Position)
-                                    -- destroy projectile so it cannot hit others after box-only hit
-                                    pcall(function()
-                                        if conn then
-                                            conn:Disconnect()
-                                        end
-                                        if visual and visual.Parent then
-                                            visual:Destroy()
-                                        end
-                                    end)
-                                    break
-                                end
-                            end
-                        end
-                    end
+    -- Cosmetics may be Models with Tip attachments, so we manage them through
+    -- UserData instead of FastCast's BasePart-only CosmeticBulletTemplate.
+    projectileVisualEvent:FireAllClients(
+        "spawn", player.UserId, clientShotId, toolName, origin, aimUnit,
+        projCfg._enchantName, modelVisualScale, {
+            speed = initialVelocity.Magnitude,
+            drop = pDrop,
+            range = pRange,
+            lifetime = pLifetime,
+            startedAt = Workspace:GetServerTimeNow(),
+        }
+    )
+    local cast = caster:Fire(origin, initialVelocity.Unit, initialVelocity, behavior)
+    cast.UserData.OnLengthChanged = function(segmentOrigin, segmentDirection, length, velocity)
+        lastPos = segmentOrigin + segmentDirection * length
+        local moveDir = velocity.Magnitude > 0.001 and velocity.Unit or aimUnit
+        setVisualPrimaryCFrame(visual, usingModel, getAlignedPrimaryCFrame(
+            lastPos, moveDir, visualFlip, tipLocalPos, extraRotation
+        ))
+    end
+    cast.UserData.OnRayHit = function(rayResult, velocity)
+        impactResult = rayResult
+        impactVelocity = velocity
+        local inst = rayResult.Instance
+        local parent = inst
+        while parent and parent ~= Workspace do
+            local humanoid = parent:FindFirstChildOfClass("Humanoid")
+            if humanoid and humanoid.Health > 0 then
+                if shouldIgnoreHumanoidTarget(parent, humanoid) then
+                    parent = parent.Parent
+                    continue
                 end
+                if hitHumanoids[humanoid] then
+                    parent = parent.Parent
+                    continue
+                end
+                applyDamage(
+                    player,
+                    humanoid,
+                    parent,
+                    pDamage,
+                    inst,
+                    rayResult.Position,
+                    projCfg and projCfg._weaponInstanceId,
+                    (projCfg and projCfg._weaponName) or toolName,
+                    projCfg and projCfg._enchantName
+                )
+                hitHumanoids[humanoid] = true
+                break
             end
-            if boxHit then
-                return
-            end
+            parent = parent.Parent
         end
 
-        local rayResult = raycastSkippingAccessories(lastPos, (nextPos - lastPos), params, player)
-        if rayResult and rayResult.Instance then
-            -- hit detected
-            if WeaponTrailService and visual then
-                pcall(function()
-                    WeaponTrailService.SetProjectileTrailEnabled(visual, false)
-                end)
+        -- Retain the original landing sound when this preset leaves arrows behind.
+        if leaveProjectile then
+            local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+            local toolgunFolder = soundsFolder and soundsFolder:FindFirstChild("Toolgun")
+            local template = toolgunFolder and toolgunFolder:FindFirstChild("Projectile_land")
+            if template and template:IsA("Sound") then
+                local host = Instance.new("Part")
+                host.Name = "_ProjectileSound"
+                host.Size = Vector3.new(0.2, 0.2, 0.2)
+                host.Transparency = 1
+                host.Anchored = true
+                host.CanCollide = false
+                host.CanTouch = false
+                host.CanQuery = false
+                host.CFrame = CFrame.new(rayResult.Position)
+                host.Parent = Workspace
+                local sound = template:Clone()
+                sound.Parent = host
+                sound:Play()
+                game:GetService("Debris"):AddItem(host, 4)
             end
-
-            local inst = rayResult.Instance
-            local parent = inst
-            while parent and parent ~= Workspace do
-                local humanoid = parent:FindFirstChildOfClass("Humanoid")
-                    if humanoid and humanoid.Health > 0 then
-                    if shouldIgnoreHumanoidTarget(parent, humanoid) then
-                        parent = parent.Parent
-                        continue
-                    end
-                        if hitHumanoids[humanoid] then
-                            -- already damaged by expanded hitbox for this projectile
-                            parent = parent.Parent
-                            continue
-                        end
-                    applyDamage(
-                        player,
-                        humanoid,
-                        parent,
-                        pDamage,
-                        inst,
-                        rayResult.Position,
-                        projCfg and projCfg._weaponInstanceId,
-                        (projCfg and projCfg._weaponName) or toolName,
-                        projCfg and projCfg._enchantName
-                    )
-                    hitHumanoids[humanoid] = true
-                    break
-                end
-                parent = parent.Parent
-            end
-            -- Impact handling: stop simulation, anchor + orient the visual at hit, play impact sound, then destroy after delay
-            local hitPos = rayResult.Position
-            local hitNormal = rayResult.Normal or Vector3.new(0, 1, 0)
-            finishClientVisual(hitPos)
-
-            -- stop the heartbeat simulation
-            if conn then
-                conn:Disconnect()
-                conn = nil
-            end
-
-            -- If this projectile should NOT be left in the world, destroy it immediately and return
-            if not leaveProjectile then
-                if visual and visual.Parent then
-                    pcall(function() visual:Destroy() end)
-                end
-                return
-            end
-
-            -- Determine rotation to keep from last frame
-            local rot = nil
-            if lastCFrame then
-                rot = lastCFrame - lastCFrame.Position
-            end
-
-            -- Helper: set safe physics flags on a BasePart
-            -- `anchor` controls whether to Anchor (true) or leave unanchored for welding (false)
-            local function safePartFlags(part, anchor)
-                part.Anchored = (anchor == true)
-                part.CanCollide = false
-                pcall(function() part.CanTouch = false end)
-                pcall(function() part.CanQuery = false end)
-            end
-
-            -- Try to find an Attachment named 'Tip' to align precisely
-            local function findTipAttachment(obj, primary)
-                if not obj then return nil end
-                -- Prefer Attachment named 'Tip' under the PrimaryPart
-                if primary and primary:IsA("BasePart") then
-                    local a = primary:FindFirstChild("Tip")
-                    if a and a:IsA("Attachment") then return a end
-                end
-                -- Otherwise search descendants for Attachment named 'Tip'
-                for _, d in ipairs(obj:GetDescendants()) do
-                    if d:IsA("Attachment") and d.Name == "Tip" then
-                        return d
-                    end
-                end
-                return nil
-            end
-
-            -- Finalize projectile placement: keep rotation, align Tip to hitPos,
-            -- weld to hit BasePart (to follow moving objects) or anchor in world space.
-            if usingModel and visual:IsA("Model") then
-                -- ensure PrimaryPart exists
-                local primary = visual.PrimaryPart
-                if not primary then
-                    for _, d in ipairs(visual:GetDescendants()) do
-                        if d:IsA("BasePart") then
-                            primary = d
-                            visual.PrimaryPart = primary
-                            break
-                        end
-                    end
-                end
-                if primary then
-                    -- determine the BasePart we struck
-                    local hitInstance = rayResult.Instance
-                    local hitPart = nil
-                    if hitInstance and hitInstance:IsA("BasePart") and not hitInstance:IsA("Terrain") then
-                        hitPart = hitInstance
-                    end
-
-                    -- Place Tip at the hit, keeping the in-flight look rotation.
-                    local stickLook = rot and (CFrame.new(hitPos) * rot) or CFrame.new(hitPos)
-                    local stickCFrame = stickLook * CFrame.new(-tipLocalPos)
-                    setVisualPrimaryCFrame(visual, usingModel, stickCFrame)
-
-                    -- Weld to hitPart (moves with it) or anchor in world space
-                    if hitPart then
-                        -- Determine if the hit part belongs to a character Model with a Humanoid
-                        local char = hitPart:FindFirstAncestorOfClass("Model")
-                        local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-                        -- Attach the projectile to the hit part by following its CFrame every Heartbeat.
-                        -- This avoids adding the projectile to the character's physics assembly.
-                        local targetPart = hitPart.AssemblyRootPart or hitPart
-
-                        -- Ensure projectile is parented to Workspace (or Projectiles folder)
-                        local projFolder = Workspace:FindFirstChild("Projectiles")
-                        if not projFolder then
-                            projFolder = Instance.new("Folder")
-                            projFolder.Name = "Projectiles"
-                            projFolder.Parent = Workspace
-                        end
-                        if visual.Parent ~= projFolder then
-                            visual.Parent = projFolder
-                        end
-
-                        -- Compute relative offset from the hitPart to the projectile
-                        local rel
-                        if usingModel and visual.PrimaryPart then
-                            rel = targetPart.CFrame:ToObjectSpace(visual.PrimaryPart.CFrame)
-                            -- Anchor model primary part so it won't be added to the physics assembly
-                            for _, part in ipairs(visual:GetDescendants()) do
-                                if part:IsA("BasePart") then
-                                    part.Anchored = true
-                                end
-                            end
-                        else
-                            rel = targetPart.CFrame:ToObjectSpace(visual.CFrame)
-                            visual.Anchored = true
-                        end
-
-                        visual.Massless = true
-                        visual.CanCollide = false
-                        pcall(function() visual.CanTouch = false end)
-                        pcall(function() visual.CanQuery = false end)
-
-                        local followConn
-                        followConn = RunService.Heartbeat:Connect(function()
-                            if not visual or not visual.Parent or not targetPart or not targetPart.Parent then
-                                if followConn then
-                                    followConn:Disconnect()
-                                    followConn = nil
-                                end
-                                if visual and visual.Parent then
-                                    pcall(function() visual:Destroy() end)
-                                end
-                                return
-                            end
-
-                            if usingModel and visual.PrimaryPart then
-                                visual:SetPrimaryPartCFrame(targetPart.CFrame * rel)
-                            else
-                                visual.CFrame = targetPart.CFrame * rel
-                            end
-                        end)
-
-                        -- Single destroy timer for this arrow
-                            task.spawn(function()
-                                task.wait(stickLifetime)
-                                if followConn then
-                                    followConn:Disconnect()
-                                    followConn = nil
-                                end
-                                if visual and visual.Parent then
-                                    pcall(function() visual:Destroy() end)
-                                end
-                            end)
-                    else
-                        -- Fallback to anchoring in world space
-                        for _, d in ipairs(visual:GetDescendants()) do
-                            if d:IsA("BasePart") then
-                                d.Anchored = true
-                            end
-                        end
-                    end
-
-                    -- (destroy handled by impact branch above)
-                end
-            elseif visual and visual:IsA("BasePart") then
-                -- determine the BasePart we struck
-                local hitInstance = rayResult.Instance
-                local hitPart = nil
-                if hitInstance and hitInstance:IsA("BasePart") and not hitInstance:IsA("Terrain") then
-                    hitPart = hitInstance
-                end
-
-                if hitPart then
-                    -- Determine if the hit part belongs to a character Model with a Humanoid
-                    local char = hitPart:FindFirstAncestorOfClass("Model")
-                    local hum = char and char:FindFirstChildOfClass("Humanoid")
-
-                    -- Attach the projectile to the hit part by following its CFrame every Heartbeat.
-                    local targetPart = hitPart.AssemblyRootPart or hitPart
-
-                    -- Ensure projectile is parented to Workspace.Projectiles
-                    local projFolder = Workspace:FindFirstChild("Projectiles")
-                    if not projFolder then
-                        projFolder = Instance.new("Folder")
-                        projFolder.Name = "Projectiles"
-                        projFolder.Parent = Workspace
-                    end
-                    if visual.Parent ~= projFolder then
-                        visual.Parent = projFolder
-                    end
-
-                    -- Compute relative offset from hit part to arrow
-                    local rel = targetPart.CFrame:ToObjectSpace(visual.CFrame)
-
-                    -- Anchor the arrow so it is kept out of the target's physics assembly
-                    visual.Anchored = true
-                    visual.Massless = true
-                    visual.CanCollide = false
-                    pcall(function() visual.CanTouch = false end)
-                    pcall(function() visual.CanQuery = false end)
-
-                    local followConn
-                    followConn = RunService.Heartbeat:Connect(function()
-                        if not visual or not visual.Parent or not targetPart or not targetPart.Parent then
-                            if followConn then
-                                followConn:Disconnect()
-                                followConn = nil
-                            end
-                            if visual and visual.Parent then
-                                pcall(function() visual:Destroy() end)
-                            end
-                            return
-                        end
-                        visual.CFrame = targetPart.CFrame * rel
-                    end)
-
-                    -- Single destroy timer for this arrow
-                        task.spawn(function()
-                            task.wait(stickLifetime)
-                            if followConn then
-                                followConn:Disconnect()
-                                followConn = nil
-                            end
-                            if visual and visual.Parent then
-                                pcall(function() visual:Destroy() end)
-                            end
-                        end)
-                end
-            end
-
-            -- play projectile land sound at the impact position on server (only if projectile is left)
-            if leaveProjectile then
-                pcall(function()
-                    local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
-                    if soundsFolder then
-                        local toolgunFolder = soundsFolder:FindFirstChild("Toolgun")
-                        if toolgunFolder then
-                            local template = toolgunFolder:FindFirstChild("Projectile_land")
-                            if template and template:IsA("Sound") and hitPos then
-                                -- create a tiny invisible host part at hitPos so the sound is 3D
-                                local host = Instance.new("Part")
-                                host.Name = "_ProjectileSound"
-                                host.Size = Vector3.new(0.2, 0.2, 0.2)
-                                host.Transparency = 1
-                                host.Anchored = true
-                                host.CanCollide = false
-                                pcall(function() host.CanTouch = false end)
-                                pcall(function() host.CanQuery = false end)
-                                host.CFrame = CFrame.new(hitPos)
-                                host.Parent = Workspace
-
-                                local s = template:Clone()
-                                s.Parent = host
-                                s:Play()
-                                game:GetService("Debris"):AddItem(host, 4)
-                            end
-                        end
-                    end
-                end)
-            end
-
-            -- (destroy handled by impact branch above)
-
-            return
         end
-
-        local moveDir = (velocity.Magnitude > 0.001) and velocity.Unit or Vector3.new(0, 0, -1)
-        lastCFrame = getLookCFrame(nextPos, moveDir, visualFlip)
-        pcall(function()
-            setVisualPrimaryCFrame(visual, usingModel, getAlignedPrimaryCFrame(nextPos, moveDir, visualFlip, tipLocalPos, extraRotation))
-        end)
-        lastPos = nextPos
-
-        if (lastPos - origin).Magnitude > pRange or tick() - startTime > pLifetime then
-                finishClientVisual(lastPos)
-                if visual and visual.Parent then
-                    visual:Destroy()
-                end
-            conn:Disconnect()
-            return
-        end
+    end
+    cast.UserData.OnTerminating = function()
+        projectileVisualEvent:FireAllClients("finish", player.UserId, clientShotId, {
+            position = impactResult and impactResult.Position or lastPos,
+            velocity = impactVelocity,
+            hitPart = impactResult and impactResult.Instance,
+            leaveProjectile = impactResult ~= nil and leaveProjectile,
+            stickLifetime = stickLifetime,
+        })
+        visual:Destroy()
+    end
+    -- FastCast owns stepping and MaxDistance; preserve the preset's lifetime too.
+    task.delay(pLifetime, function()
+        if cast.StateInfo then cast:Terminate() end
     end)
 end
 
@@ -1318,6 +978,9 @@ end
 fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOrigin, toolName, clientShotId)
     -- basic validation of types
     if not isFiniteVector3(camOrigin) or not isFiniteVector3(camDirection) or not isFiniteVector3(gunOrigin) then return end
+    if camDirection.Magnitude <= 0.001 or type(toolName) ~= "string" then return end
+    if type(clientShotId) ~= "number" or clientShotId ~= clientShotId
+        or math.abs(clientShotId) == math.huge then return end
     if not player or not player.Character then return end
     -- Losing-team tool lockout: server-authoritative block on weapon use.
     if player:GetAttribute("ToolsLocked") == true then return end
@@ -1481,19 +1144,9 @@ fireEvent.OnServerEvent:Connect(function(player, camOrigin, camDirection, gunOri
         if fireAck then fireAck:FireClient(player, fireOrigin, aimPoint, toolName) end
     end)
 
-    -- Spawn projectile along aimDir; ballistic simulation + raycasts will determine actual impacts
+    -- FastCast uses the existing weapon speed and bulletdrop configuration.
     local initVel = aimDir * tBULLETSPEED
-    projectileVisualEvent:FireAllClients(
-        "spawn",
-        player.UserId,
-        clientShotId,
-        toolName,
-        fireOrigin,
-        aimDir,
-        scaledCfg._enchantName,
-        projVisualScale
-    )
-    spawnProjectile(player, fireOrigin, initVel, scaledCfg, toolName, clientShotId)
+    spawnProjectile(player, fireOrigin, initVel, scaledCfg, toolName, clientShotId, equippedTool)
 
     -- Apply a brief movement slow while firing ranged weapons.
     do
