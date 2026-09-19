@@ -427,29 +427,8 @@ local function getVisualRotationCFrame(projCfg)
     return nil
 end
 
--- Studio arrow meshes are usually authored along +Y (they look flat in Studio).
--- CFrame.lookAt aims the part's -Z, so those arrows fly pointing world-up unless
--- we map the longest shaft axis onto look.
-local function getShaftLookCorrection(primary)
-    if not primary or not primary:IsA("BasePart") then
-        return CFrame.new()
-    end
-
-    local size = primary.Size
-    local longest = math.max(size.X, size.Y, size.Z)
-    local shortest = math.min(size.X, size.Y, size.Z)
-    if longest < 0.05 or longest < shortest * 1.25 then
-        return CFrame.new()
-    end
-
-    if size.Y >= size.X and size.Y >= size.Z then
-        return CFrame.Angles(-math.pi / 2, 0, 0)
-    end
-    if size.X >= size.Y and size.X >= size.Z then
-        return CFrame.Angles(0, math.pi / 2, 0)
-    end
-    return CFrame.new()
-end
+-- Shared with client cosmetics so multipart arrows use the same shaft axis.
+local getShaftLookCorrection = RangedCast.GetShaftLookCorrection
 
 local function getLookCFrame(position, direction, visualFlip)
     if not direction or direction.Magnitude <= 0.001 then
@@ -484,18 +463,7 @@ local function setVisualPrimaryCFrame(visual, usingModel, cf)
     end
 
     if visual:IsA("Model") then
-        pcall(function()
-            visual.WorldPivot = primary.CFrame
-            visual:PivotTo(cf)
-        end)
-        if (primary.CFrame.Position - cf.Position).Magnitude > 0.05 then
-            local delta = cf * primary.CFrame:Inverse()
-            for _, descendant in ipairs(visual:GetDescendants()) do
-                if descendant:IsA("BasePart") then
-                    descendant.CFrame = delta * descendant.CFrame
-                end
-            end
-        end
+        visual:PivotTo((cf * primary.CFrame:Inverse()) * visual:GetPivot())
     else
         visual.CFrame = cf
     end
@@ -814,7 +782,7 @@ local function spawnProjectile(player, origin, initialVelocity, projCfg, toolNam
     local aimUnit = (initialVelocity and initialVelocity.Magnitude > 0.001) and initialVelocity.Unit or Vector3.new(0, 0, -1)
     local primary = getVisualPrimary(visual)
     if extraRotation == nil then
-        extraRotation = getShaftLookCorrection(primary)
+        extraRotation = getShaftLookCorrection(visual, primary)
     end
     local tipLocalPos = getTipLocalPosition(visual, primary)
     pcall(function()

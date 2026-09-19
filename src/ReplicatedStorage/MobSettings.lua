@@ -32,6 +32,9 @@ local Defaults = {
         UseEnraged       = false,
         DetectionRadius  = 18,  -- studs; range for auto-detecting nearby players
         AggroDuration    = 6,   -- seconds to remain aggroed on the attacker
+        StuckJumpDelay   = 1.25, -- seconds without meaningful walking progress
+        StuckJumpCooldown = 2.5,
+        StuckJumpMaxTargetHeight = 6, -- do not hop after players far above the mob
     },
     Attack = {
         Damage      = 5,
@@ -41,6 +44,8 @@ local Defaults = {
         Windup      = 1,        -- seconds mob is locked before hitbox fires
         Sound       = "MobSwing",
         HitboxSize  = Vector3.new(5, 6, 5),
+        HitboxWidthMultiplier = 1.2, -- slightly wider swings
+        HitboxDepthMultiplier = 0.8, -- shorten the forward end without changing width
         HitboxOffset = Vector3.new(0, 0, 3),
         Knockback   = 18,       -- horizontal hit impulse scalar (mass-scaled)
         KnockbackY  = 2,        -- optional upward pop impulse scalar (mass-scaled)
@@ -51,6 +56,7 @@ local Defaults = {
         Run    = "",            -- empty = falls back to Walk
         Idle   = "",            -- empty = none
         Attack = "",            -- empty = none (plays during Windup)
+        Jump   = "rbxassetid://734326930",
     },
     Appearance = {
         SkinVariation = 8,       -- max RGB offset applied per channel on spawn

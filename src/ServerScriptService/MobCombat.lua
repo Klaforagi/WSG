@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 local TweenService = game:GetService("TweenService")
@@ -13,8 +14,8 @@ local MobCombat = {}
 
 local function defaultGetRootPart(model)
     if not model then return nil end
-    if model.PrimaryPart then return model.PrimaryPart end
     return model:FindFirstChild("HumanoidRootPart")
+        or model.PrimaryPart
         or model:FindFirstChild("Torso")
         or model:FindFirstChild("UpperTorso")
         or model:FindFirstChildWhichIsA("BasePart")
@@ -159,17 +160,31 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local USE_ENRAGED = (cfgMove.UseEnraged == true)
     local DETECTION_RADIUS = cfgMove.DetectionRadius or 20
     local AGGRO_DURATION = cfgMove.AggroDuration or 8
+    local STUCK_JUMP_DELAY = cfgMove.StuckJumpDelay or 1.25
+    local STUCK_JUMP_COOLDOWN = cfgMove.StuckJumpCooldown or 2.5
+    local STUCK_JUMP_MAX_TARGET_HEIGHT = cfgMove.StuckJumpMaxTargetHeight or 6
 
     local ATTACK_DAMAGE = cfgAtk.Damage or 12
     local ATTACK_COOLDOWN = cfgAtk.Cooldown or 1
     local ATTACK_RANGE = cfgAtk.Range or 6
     local ATTACK_WINDUP = cfgAtk.Windup or 0.45
     local ATTACK_SOUND = cfgAtk.Sound or "MobSwing"
-    local HITBOX_SIZE = cfgAtk.HitboxSize or Vector3.new(5, 6, 5)
-    local HITBOX_OFFSET = cfgAtk.HitboxOffset or Vector3.new(0, 0, 3)
+    local baseHitboxSize = cfgAtk.HitboxSize or Vector3.new(5, 6, 5)
+    local hitboxDepth = baseHitboxSize.Z * (cfgAtk.HitboxDepthMultiplier or 0.8)
+    local HITBOX_SIZE = Vector3.new(
+        baseHitboxSize.X * (cfgAtk.HitboxWidthMultiplier or 1.2),
+        baseHitboxSize.Y,
+        hitboxDepth
+    )
+    local baseHitboxOffset = cfgAtk.HitboxOffset or Vector3.new(0, 0, 3)
+    -- Keep the near edge in place; remove reach from the far end of the swing.
+    local HITBOX_OFFSET = baseHitboxOffset - Vector3.new(0, 0, (baseHitboxSize.Z - hitboxDepth) * 0.5)
     local HIT_KNOCKBACK = cfgAtk.Knockback or 50
     local HIT_KNOCKBACK_Y = cfgAtk.KnockbackY or 12
     local MIN_SPACING = cfgAtk.MinimumSpacingDistance or 3.5
+    local SWING_START_RANGE = math.min(ATTACK_RANGE, HITBOX_OFFSET.Z + HITBOX_SIZE.Z * 0.5)
+    -- Leave room for MoveTo's arrival tolerance, especially for short Goblin swings.
+    local APPROACH_SPACING = math.min(MIN_SPACING, math.max(0.5, SWING_START_RANGE - 1))
     local ORC_NOISE_CHANCE = 0.25
     local ORC_NOISE_COOLDOWN = 3
     local isOrc = (mobModel.Name == "Orc")
@@ -188,7 +203,6 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local aggroExpiry = 0
     local chasing = false
     local moving = false
-    local stationaryTicks = 0
     local aiRunning = true
 
     local lastMoveTarget = nil
@@ -197,19 +211,73 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local REPATH_DISTANCE = 1.5
     local lastOrcNoiseProcAt = os.clock() -- start at now so full cooldown must expire before first noise (prevents spawn-time audio pop)
     local lastGoblinNoiseProcAt = os.clock() -- shared cooldown for both GoblinNoise and GoblinDeath
-    local STUCK_MISS_THRESHOLD = 2
-    local STUCK_SPEED_THRESHOLD = 0.6
-    local STUCK_RETREAT_TIME = 0.2
-    local stuckMissesWhileStationary = 0
-    local forcedRetreatUntil = 0
+    local facingTarget = nil
+    local attackTarget = nil
+    local TURN_RESPONSE = 12
 
     HumanoidStatService:EnsureHumanoidSubject(humanoid)
     HumanoidStatService:SetBaseStat(humanoid, MOVEMENT_SPEED_STAT, WALK_SPEED)
     humanoid.AutoRotate = true
 
+    local lastBaseSpeed = WALK_SPEED
     local function setMobSpeed(speed)
+        if speed == lastBaseSpeed then return end
+        lastBaseSpeed = speed
         HumanoidStatService:SetBaseStat(humanoid, MOVEMENT_SPEED_STAT, speed)
     end
+
+    -- Turn through physics when stationary; root CFrame writes can visibly snap
+    -- a colliding/animated rig and cancel its current MoveTo command.
+    local facingAlign, facingAttachment
+    local function disableFacing()
+        if facingAlign then facingAlign.Enabled = false end
+        humanoid.AutoRotate = true
+    end
+    local function clearFacing()
+        disableFacing()
+        if facingAlign then facingAlign:Destroy(); facingAlign = nil end
+        if facingAttachment then facingAttachment:Destroy(); facingAttachment = nil end
+    end
+    local facingConnection
+    facingConnection = RunService.Heartbeat:Connect(function()
+        if not aiRunning or not mobModel.Parent or humanoid.Health <= 0 then
+            facingConnection:Disconnect()
+            clearFacing()
+            return
+        end
+        if moving then
+            disableFacing()
+            return
+        end
+        local root = getRootPart(mobModel)
+        local target = attackTarget or facingTarget
+        local targetHumanoid = target and target.Parent and target.Parent:FindFirstChildOfClass("Humanoid")
+        if not root or not target or not target.Parent or not targetHumanoid or targetHumanoid.Health <= 0 then
+            disableFacing()
+            return
+        end
+        humanoid.AutoRotate = false
+        local delta = Vector3.new(target.Position.X - root.Position.X, 0, target.Position.Z - root.Position.Z)
+        if delta.Magnitude > 0.05 then
+            if not facingAlign then
+                facingAttachment = Instance.new("Attachment")
+                facingAttachment.Name = "_MobFacingAttachment"
+                facingAttachment.Parent = root
+                facingAlign = Instance.new("AlignOrientation")
+                facingAlign.Name = "_MobFacing"
+                facingAlign.Mode = Enum.OrientationAlignmentMode.OneAttachment
+                facingAlign.Attachment0 = facingAttachment
+                facingAlign.RigidityEnabled = false
+                facingAlign.Responsiveness = TURN_RESPONSE
+                facingAlign.MaxTorque = 1e6
+                facingAlign.MaxAngularVelocity = math.rad(360)
+                facingAlign.Enabled = false
+                facingAlign.Parent = root
+            end
+            facingAlign.CFrame = CFrame.lookAt(Vector3.zero, delta)
+            facingAlign.Enabled = true
+        end
+    end)
 
     local function updateSpeedByState()
         if isEnraged then
@@ -291,6 +359,17 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         end)
     end
 
+    local jumpTrack
+    local jumpAnimObj = Instance.new("Animation")
+    jumpAnimObj.Name = "Jump_Mob"
+    jumpAnimObj.AnimationId = cfgAnim.Jump or "rbxassetid://734326930"
+    jumpAnimObj.Parent = mobModel
+    pcall(function()
+        jumpTrack = animator:LoadAnimation(jumpAnimObj)
+        jumpTrack.Priority = Enum.AnimationPriority.Action
+        jumpTrack.Looped = false
+    end)
+
     local activeTrack
     local function playMoveAnim(useRun)
         local desired = useRun and runTrack or walkTrack
@@ -299,7 +378,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
         pcall(function()
             for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                if track ~= desired and track ~= attackTrack then
+                if track ~= desired and track ~= attackTrack and track ~= jumpTrack then
                     track:Stop(0.15)
                 end
             end
@@ -312,7 +391,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local function playIdleAnim()
         pcall(function()
             for _, track in ipairs(animator:GetPlayingAnimationTracks()) do
-                if track ~= idleTrack and track ~= attackTrack then
+                if track ~= idleTrack and track ~= attackTrack and track ~= jumpTrack then
                     track:Stop(0.2)
                 end
             end
@@ -341,7 +420,6 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local function startWalking(dest, useRun)
         humanoid:MoveTo(dest)
         moving = true
-        stationaryTicks = 0
         lastMoveTarget = dest
         lastMoveCommandAt = os.clock()
         playMoveAnim(useRun)
@@ -365,8 +443,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     end
 
     local function stopWalking()
+        if not moving and not lastMoveTarget then return end
         moving = false
-        stationaryTicks = 0
         local root = getRootPart(mobModel)
         if root then
             humanoid:MoveTo(root.Position)
@@ -385,6 +463,11 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     end)
 
     humanoid.StateChanged:Connect(function(_, newState)
+        if newState == Enum.HumanoidStateType.Jumping then
+            if jumpTrack then jumpTrack:Play(0.1) end
+        elseif newState == Enum.HumanoidStateType.Landed or newState == Enum.HumanoidStateType.Dead then
+            if jumpTrack then jumpTrack:Stop(0.15) end
+        end
         if isAttacking then return end
         if newState == Enum.HumanoidStateType.Running or newState == Enum.HumanoidStateType.RunningNoPhysics then
             enforceAnim()
@@ -401,6 +484,33 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         end
         stopWalking()
     end)
+
+    local progressPosition = nil
+    local progressAt = os.clock()
+    local lastRecoveryJump = -math.huge
+    local function updateStuckRecovery(root, targetRoot)
+        local now = os.clock()
+        local position = root.Position
+        local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
+        local targetTooHigh = targetRoot and targetRoot.Position.Y - position.Y > STUCK_JUMP_MAX_TARGET_HEIGHT
+        if not moving or isAttacking or humanoid.WalkSpeed <= 0 or not grounded or targetTooHigh then
+            progressPosition, progressAt = position, now
+            return
+        end
+        local progress = progressPosition and Vector3.new(
+            position.X - progressPosition.X, 0, position.Z - progressPosition.Z
+        ).Magnitude or math.huge
+        if progress >= 0.5 then
+            progressPosition, progressAt = position, now
+            return
+        end
+        if now - progressAt >= STUCK_JUMP_DELAY and now - lastRecoveryJump >= STUCK_JUMP_COOLDOWN
+            and humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping) then
+            humanoid.Jump = true
+            lastRecoveryJump = now
+            progressPosition, progressAt = position, now
+        end
+    end
 
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     local mobSoundsFolder = soundsFolder and soundsFolder:FindFirstChild("Mobs")
@@ -454,13 +564,16 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
     local function performAttack(targetRoot)
         if isAttacking then return end
-        if not mobModel.Parent or humanoid.Health <= 0 then return end
+        if not aiRunning or not mobModel.Parent or humanoid.Health <= 0 then return end
+        if not targetRoot or not targetRoot.Parent then return end
+        if humanoid.FloorMaterial == Enum.Material.Air then return end
 
         local now = os.clock()
-        if now < forcedRetreatUntil then return end
         if now - lastSwingEnd < ATTACK_COOLDOWN then return end
 
         isAttacking = true
+        attackTarget = targetRoot
+        stopWalking()
 
         playTemplateSound(attackSwingTemplate, getRootPart(mobModel) or mobModel)
         -- Orc-specific flavor: 25% chance to play OrcNoise on attack (3s proc cooldown).
@@ -471,22 +584,20 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         if attackTrack then
             pcall(function()
                 local len = attackTrack.Length
-                if len > 0 and ATTACK_WINDUP > 0 then
-                    attackTrack:AdjustSpeed(len / ATTACK_WINDUP)
-                end
-                attackTrack:Play(0.08)
+                local speed = (len > 0 and ATTACK_WINDUP > 0) and (len / ATTACK_WINDUP) or 1
+                attackTrack:Play(0.08, 1, speed)
             end)
         end
 
         task.wait(ATTACK_WINDUP)
 
-        if not mobModel.Parent or humanoid.Health <= 0 then
+        if not aiRunning or not mobModel.Parent or humanoid.Health <= 0 then
             isAttacking = false
+            attackTarget = nil
             return
         end
 
         local root = getRootPart(mobModel)
-        local didHit = false
         if root then
             local boxCF = buildForwardBoxCFrame(root, HITBOX_OFFSET)
 
@@ -528,8 +639,6 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
             end
 
             for victimHum, ply in pairs(hitHumanoids) do
-                didHit = true
-
                 local victimChar = victimHum and victimHum.Parent
                 if CombatUtils and CombatUtils.isPodiumAvatar(victimChar) then
                     -- Ignore podium avatars
@@ -563,22 +672,21 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 local parentForSound = (victimChar and (victimChar:FindFirstChild("HumanoidRootPart") or victimChar:FindFirstChildWhichIsA("BasePart"))) or mobModel
                 playTemplateSound(mobHitTemplate, parentForSound)
             end
-
-            local vel = root.AssemblyLinearVelocity or root.Velocity
-            local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-            if (hSpeed < STUCK_SPEED_THRESHOLD) and (not didHit) then
-                stuckMissesWhileStationary = stuckMissesWhileStationary + 1
-                if stuckMissesWhileStationary >= STUCK_MISS_THRESHOLD then
-                    forcedRetreatUntil = os.clock() + STUCK_RETREAT_TIME
-                    stuckMissesWhileStationary = 0
-                end
-            else
-                stuckMissesWhileStationary = 0
-            end
         end
 
         lastSwingEnd = os.clock()
         isAttacking = false
+        attackTarget = nil
+    end
+
+    local attackSightParams = RaycastParams.new()
+    attackSightParams.FilterType = Enum.RaycastFilterType.Exclude
+    attackSightParams.FilterDescendantsInstances = { mobModel }
+    attackSightParams.IgnoreWater = true
+    attackSightParams.RespectCanCollide = true
+    local function hasAttackSight(root, targetRoot)
+        local result = Workspace:Raycast(root.Position, targetRoot.Position - root.Position, attackSightParams)
+        return not result or result.Instance:IsDescendantOf(targetRoot.Parent)
     end
 
     local areaCenter, areaSize, areaLockActive
@@ -607,7 +715,6 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                     local aHum = attacker.Character:FindFirstChildOfClass("Humanoid")
                     if aHum and aHum.Health > 0 then
                         areaLockActive = false
-                        stopWalking()
                         aggroPlayer = attacker
                         aggroExpiry = os.clock() + AGGRO_DURATION
                     end
@@ -638,9 +745,11 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 else
                     -- Force a clean first move into the assigned lane before aggro/wander.
                     chasing = false
+                    facingTarget = nil
                     aggroPlayer = nil
                     updateSpeedByState()
                     startWalkingSmart(Vector3.new(areaCenter.X, root.Position.Y, areaCenter.Z), false)
+                    updateStuckRecovery(root, nil)
                     if not isAttacking then
                         enforceAnim()
                     end
@@ -673,6 +782,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
             end
 
             if targetRoot and dist then
+                facingTarget = targetRoot
                 local wasChasing = chasing
                 chasing = true
                 -- Orc-specific flavor: 25% chance to play OrcNoise when first aggroed (3s proc cooldown).
@@ -688,30 +798,25 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 local targetPos = targetRoot.Position
                 local horizontalDelta = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z)
                 local horizontalDist = horizontalDelta.Magnitude
-                local retreating = os.clock() < forcedRetreatUntil
-
-                if retreating and horizontalDist > 0.05 then
-                    local awayDir = -horizontalDelta.Unit
-                    local retreatPos = root.Position + awayDir * (MIN_SPACING * 2)
-                    startWalkingSmart(Vector3.new(retreatPos.X, root.Position.Y, retreatPos.Z), true)
+                -- Stop on the near side of the target, instead of crossing them
+                -- and flipping the travel direction on every AI update.
+                local resumeDistance = APPROACH_SPACING + (moving and 0 or 0.5)
+                if isAttacking then
+                    stopWalking()
+                elseif horizontalDist > resumeDistance then
+                    local movePos = targetPos - horizontalDelta.Unit * APPROACH_SPACING
+                    startWalkingSmart(Vector3.new(movePos.X, root.Position.Y, movePos.Z), true)
                 else
-                    if horizontalDist > MIN_SPACING then
-                        if not humanoid.AutoRotate then
-                            humanoid.AutoRotate = true
-                        end
-                        local dir = horizontalDelta.Unit
-                        -- Overshoot past the target so the humanoid never decelerates before entering attack range.
-                        local movePos = targetPos + dir * MIN_SPACING
-                        startWalkingSmart(Vector3.new(movePos.X, root.Position.Y, movePos.Z), true)
-                    else
-                        stopWalking()
-                    end
+                    stopWalking()
                 end
 
-                if (not retreating) and dist <= ATTACK_RANGE then
+                -- A wall-blocked swing would repeatedly reset stuck detection.
+                -- Keep trying to approach/recover until the player is reachable.
+                if dist <= SWING_START_RANGE and hasAttackSight(root, targetRoot) then
                     task.spawn(performAttack, targetRoot)
                 end
             else
+                facingTarget = nil
                 if chasing then
                     chasing = false
                     -- Restore auto-rotate now that we are no longer locked onto a target.
@@ -749,27 +854,15 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                         end
                         startWalking(dest, false)
                     end
-                else
-                    if moving and root:IsA("BasePart") then
-                        local vel = root.AssemblyLinearVelocity or root.Velocity
-                        local hSpeed = Vector3.new(vel.X, 0, vel.Z).Magnitude
-                        if hSpeed < 0.3 then
-                            stationaryTicks = stationaryTicks + 1
-                            if stationaryTicks >= 5 then
-                                stopWalking()
-                            end
-                        else
-                            stationaryTicks = 0
-                        end
-                    end
                 end
             end
 
             if not isAttacking then
                 enforceAnim()
             end
+            updateStuckRecovery(root, targetRoot)
 
-            task.wait(0.2)
+            task.wait(0.1)
         end
 
         aiRunning = false
@@ -777,6 +870,8 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
     humanoid.Died:Connect(function()
         aiRunning = false
+        facingConnection:Disconnect()
+        clearFacing()
         stopWalking()
 
         if mobTag then
@@ -793,6 +888,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     return {
         Stop = function()
             aiRunning = false
+            facingConnection:Disconnect()
+            clearFacing()
+            stopWalking()
         end,
     }
 end

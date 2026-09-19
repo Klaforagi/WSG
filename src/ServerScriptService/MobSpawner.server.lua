@@ -54,8 +54,8 @@ end
 ---------------------------------------------------------------------------
 local function getRootPart(model)
     if not model then return nil end
-    if model.PrimaryPart then return model.PrimaryPart end
     return model:FindFirstChild("HumanoidRootPart")
+        or model.PrimaryPart
         or model:FindFirstChild("Torso")
         or model:FindFirstChild("UpperTorso")
         or model:FindFirstChildWhichIsA("BasePart")
@@ -342,6 +342,15 @@ local function spawnMobFromTemplate(entry, template)
     setModelCollisionGroup(mob, MOB_COLLISION_GROUP)
     applyMobPartCollisionOverrides(mob)
     applyOrcAxeCollisionFix(mob)
+
+    -- Keep NPC physics with the server that runs their AI and attack checks.
+    -- Automatic ownership changes near players otherwise fight server steering.
+    for _, part in ipairs(mob:GetDescendants()) do
+        if part:IsA("BasePart") and not part.Anchored then
+            local canSet = part:CanSetNetworkOwnership()
+            if canSet then part:SetNetworkOwner(nil) end
+        end
+    end
 
     local humanoid = mob:FindFirstChildOfClass("Humanoid")
     if not humanoid then

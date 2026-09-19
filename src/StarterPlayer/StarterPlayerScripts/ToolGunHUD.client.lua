@@ -189,17 +189,7 @@ local function spawnClientProjectile(toolName, origin, direction, enchantName, v
             math.rad(tonumber(configuredRotation[3] or configuredRotation.Z) or 0)
         )
     end
-    local size = primary.Size
-    local longest = math.max(size.X, size.Y, size.Z)
-    local shortest = math.min(size.X, size.Y, size.Z)
-    if not correction and longest >= 0.05 and longest >= shortest * 1.25 then
-        if size.Y >= size.X and size.Y >= size.Z then
-            correction = CFrame.Angles(-math.pi / 2, 0, 0)
-        elseif size.X >= size.Y and size.X >= size.Z then
-            correction = CFrame.Angles(0, math.pi / 2, 0)
-        end
-    end
-    correction = correction or CFrame.new()
+    correction = correction or RangedCast.GetShaftLookCorrection(visual, primary)
     local tip = visual:FindFirstChild("Tip", true)
     local tipLocal = Vector3.zero
     if tip and tip:IsA("Attachment") then
