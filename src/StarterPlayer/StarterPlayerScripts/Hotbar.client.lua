@@ -838,7 +838,7 @@ local function refreshSlots()
                         ui.btn.BackgroundColor3 = bgColor
                         ui.stroke.Color         = strokeColor
                         ui.nameLabel.TextColor3 = COLOR_TEXT
-                        ui.nameLabel.Text       = "Heal"
+                        ui.nameLabel.Text       = "Bandage"
                     elseif utilityType == "potion" then
                         local potionId = getPotionIdForSlot(idx)
                         local equippedPotionDef = getPotionDefinition(potionId)

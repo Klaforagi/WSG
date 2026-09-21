@@ -184,7 +184,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local MIN_SPACING = cfgAtk.MinimumSpacingDistance or 3.5
     local SWING_START_RANGE = math.min(ATTACK_RANGE, HITBOX_OFFSET.Z + HITBOX_SIZE.Z * 0.5)
     -- Leave room for MoveTo's arrival tolerance, especially for short Goblin swings.
-    local APPROACH_SPACING = math.min(MIN_SPACING, math.max(0.5, SWING_START_RANGE - 1))
+    local APPROACH_SPACING = math.min(MIN_SPACING, math.max(0.5, SWING_START_RANGE - 1.5))
     local ORC_NOISE_CHANCE = 0.25
     local ORC_NOISE_COOLDOWN = 3
     local isOrc = (mobModel.Name == "Orc")
@@ -445,6 +445,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     local function stopWalking()
         if not moving and not lastMoveTarget then return end
         moving = false
+        humanoid.Jump = false
         local root = getRootPart(mobModel)
         if root then
             humanoid:MoveTo(root.Position)
@@ -474,8 +475,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         end
     end)
 
-    humanoid.MoveToFinished:Connect(function()
-        if chasing then return end
+    humanoid.MoveToFinished:Connect(function(reached)
+        -- A completed chase command is no longer movement intent either.
+        if chasing and not reached then return end
         local root = getRootPart(mobModel)
         if root and root:IsA("BasePart") then
             local vel = root.AssemblyLinearVelocity or root.Velocity
@@ -493,7 +495,11 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         local position = root.Position
         local grounded = humanoid.FloorMaterial ~= Enum.Material.Air
         local targetTooHigh = targetRoot and targetRoot.Position.Y - position.Y > STUCK_JUMP_MAX_TARGET_HEIGHT
-        if not moving or isAttacking or humanoid.WalkSpeed <= 0 or not grounded or targetTooHigh then
+        local goalDelta = lastMoveTarget and lastMoveTarget - position
+        local goalDistance = goalDelta and Vector3.new(goalDelta.X, 0, goalDelta.Z).Magnitude or 0
+        local tryingToMove = moving and goalDistance > 1
+            and humanoid.MoveDirection.Magnitude > 0.05
+        if not tryingToMove or isAttacking or humanoid.WalkSpeed <= 0 or not grounded or targetTooHigh then
             progressPosition, progressAt = position, now
             return
         end
@@ -798,10 +804,14 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 local targetPos = targetRoot.Position
                 local horizontalDelta = Vector3.new(targetPos.X - root.Position.X, 0, targetPos.Z - root.Position.Z)
                 local horizontalDist = horizontalDelta.Magnitude
+                local verticalReach = HITBOX_SIZE.Y * 0.5 + targetRoot.Size.Y * 0.5
+                local withinHeight = math.abs(targetPos.Y - (root.Position.Y + HITBOX_OFFSET.Y)) <= verticalReach
+                local canReachTarget = horizontalDist <= SWING_START_RANGE
+                    and withinHeight and hasAttackSight(root, targetRoot)
                 -- Stop on the near side of the target, instead of crossing them
                 -- and flipping the travel direction on every AI update.
                 local resumeDistance = APPROACH_SPACING + (moving and 0 or 0.5)
-                if isAttacking then
+                if isAttacking or canReachTarget then
                     stopWalking()
                 elseif horizontalDist > resumeDistance then
                     local movePos = targetPos - horizontalDelta.Unit * APPROACH_SPACING
@@ -812,7 +822,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
 
                 -- A wall-blocked swing would repeatedly reset stuck detection.
                 -- Keep trying to approach/recover until the player is reachable.
-                if dist <= SWING_START_RANGE and hasAttackSight(root, targetRoot) then
+                if canReachTarget then
                     task.spawn(performAttack, targetRoot)
                 end
             else

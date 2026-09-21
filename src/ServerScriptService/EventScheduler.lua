@@ -20,6 +20,14 @@ local Players            = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local EventConfig = require(ReplicatedStorage:WaitForChild("EventConfig"))
+local MIN_REMAINING_SECONDS = 90
+
+local function eventWindowRemaining()
+    if ServerScriptService:GetAttribute("MatchState") ~= "Game" then return 0 end
+    local endsAt = ServerScriptService:GetAttribute("MatchEndsAt")
+    if type(endsAt) ~= "number" then return 0 end
+    return math.max(0, endsAt - workspace:GetServerTimeNow() - MIN_REMAINING_SECONDS)
+end
 
 ---------------------------------------------------------------------
 -- Remote: server → client  (EventStateChanged)
@@ -176,9 +184,9 @@ local function startActiveEvent(eventId, durationSeconds, source)
         return false, "Unknown event: " .. tostring(eventId)
     end
 
-    local matchState = ServerScriptService:GetAttribute("MatchState")
-    if matchState == "EndGame" or matchState == "Intermission" or matchState == "Voting" or matchState == "Loading" then
-        return false, "events disabled during " .. tostring(matchState)
+    local windowRemaining = eventWindowRemaining()
+    if windowRemaining <= 0 then
+        return false, "Events require normal gameplay with more than 90 seconds remaining"
     end
 
     if _activeIdx then
@@ -186,12 +194,13 @@ local function startActiveEvent(eventId, durationSeconds, source)
     end
 
     local duration = math.max(1, tonumber(durationSeconds) or tonumber(def.DurationSeconds) or tonumber(EventConfig.EVENT_DURATION) or 60)
+    duration = math.min(duration, windowRemaining)
     EventConfig.ActiveEventId = eventId
     _activeIdx = eventId
     _eventEndTime = workspace:GetServerTimeNow() + duration
 
     print(('[EventManager] Starting %s'):format(tostring(def.Name or eventId)))
-    print(('[EventScheduler] Event \'%s\' ACTIVE for %ds (%s)'):format(tostring(eventId), duration, tostring(source or "scheduler")))
+    print(('[EventScheduler] Event \'%s\' ACTIVE for %.1fs (%s)'):format(tostring(eventId), duration, tostring(source or "scheduler")))
     broadcast(true, eventId)
     announceEventStart(eventId)
     notifyServer(true, eventId)
@@ -271,6 +280,7 @@ function EventScheduler:StartMatch(_matchStartTick)
             -- Wait one roll interval
             task.wait(EventConfig.CHANCE_INTERVAL)
             if not _running then return end
+            if eventWindowRemaining() <= 0 then continue end
 
             if _activeIdx ~= nil then
                 local remaining = (_eventEndTime or 0) - workspace:GetServerTimeNow()
@@ -405,5 +415,16 @@ end
 function EventScheduler:SyncPlayer(player)
     sendStateTo(player)
 end
+
+-- Also stop active/admin events when the clock is adjusted or sudden death begins.
+local function enforceEventWindow()
+    if _activeIdx and (eventWindowRemaining() <= 0
+        or workspace:GetServerTimeNow() >= (_eventEndTime or 0)) then
+        endActiveEvent("event window closed")
+    end
+end
+game:GetService("RunService").Heartbeat:Connect(enforceEventWindow)
+ServerScriptService:GetAttributeChangedSignal("MatchState"):Connect(enforceEventWindow)
+ServerScriptService:GetAttributeChangedSignal("MatchEndsAt"):Connect(enforceEventWindow)
 
 return EventScheduler

@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local GuiService = game:GetService("GuiService")
+local ClaimSound = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("ClaimSound"))
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -63,9 +64,12 @@ local function doClaim()
         warn("[DailyRewardsClient] Claim RPC failed:", success)
         return
     end
+    if success == true then
+        pcall(ClaimSound.Play)
+    end
     if type(updatedState) == "table" and DailyRewardsUI and DailyRewardsUI.Refresh then
         DailyRewardsUI.Refresh(updatedState)
-        if DailyRewardsUI.PlayClaimAnimation then
+        if success == true and DailyRewardsUI.PlayClaimAnimation then
             DailyRewardsUI.PlayClaimAnimation(updatedState.currentDay)
         end
     elseif getStateRF and getStateRF:IsA("RemoteFunction") then

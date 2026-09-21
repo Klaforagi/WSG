@@ -57,6 +57,11 @@ local subtitleStroke = AlertBannerStyle.ApplyTextStroke(subtitle)
 
 local hideThread = nil
 local playGameSound
+local showingWinner = false
+local function getBannerPosition()
+    if showingWinner then return UDim2.new(0.5, 0, 0.01, 0) end
+    return TopHudStack.GetWinPosition()
+end
 
 local function hideEndScreen()
     if hideThread then
@@ -72,6 +77,7 @@ local function hideEndScreen()
 end
 
 local function showEnd(resultType, winner)
+    showingWinner = resultType ~= "sudden"
     -- cancel any pending hide
     if hideThread then
         pcall(function() task.cancel(hideThread) end)
@@ -106,11 +112,11 @@ local function showEnd(resultType, winner)
         subtitle.Text = ""
         subtitle.Visible = false
     end
-    frame.Position = TopHudStack.GetWinPosition()
+    frame.Position = getBannerPosition()
     frame.Visible = true
     task.defer(function()
         if frame.Visible then
-            frame.Position = TopHudStack.GetWinPosition()
+            frame.Position = getBannerPosition()
         end
     end)
     title.TextTransparency = 1
@@ -126,7 +132,9 @@ local function showEnd(resultType, winner)
         TweenService:Create(subtitleStroke, fadeIn, { Transparency = AlertBannerStyle.StrokeTransparency }):Play()
     end
 
-    local displayTime = (resultType == "sudden") and AlertBannerStyle.SuddenHoldSeconds or AlertBannerStyle.WinHoldSeconds
+    -- The winner replaces the scoreboard until intermission/the next match.
+    if showingWinner then return end
+    local displayTime = AlertBannerStyle.SuddenHoldSeconds
     hideThread = task.delay(displayTime, function()
         local fadeOut = TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
         TweenService:Create(title, fadeOut, { TextTransparency = 1 }):Play()
@@ -280,6 +288,6 @@ end
 
 TopHudStack.OnLayoutChanged(function()
     if frame.Visible then
-        frame.Position = TopHudStack.GetWinPosition()
+        frame.Position = getBannerPosition()
     end
 end)

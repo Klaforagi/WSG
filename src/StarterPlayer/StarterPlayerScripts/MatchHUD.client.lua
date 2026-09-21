@@ -776,22 +776,12 @@ local function wirePhaseRE(phaseRE)
                 prematchFrame.Visible = false
             end)
         elseif phase == "endgame" then
-            -- keep scoreboard visible during endgame and show endgame timer
-            root.Visible = true
-            endgameFrame.Visible = true
+            -- The winner banner owns the top HUD during endgame.
+            root.Visible = false
+            endgameFrame.Visible = false
             matchResultsFrame.Visible = false
             votingFrame.Visible = false
             prematchFrame.Visible = false
-            local endsAt = tick() + duration
-            spawn(function()
-                while endgameFrame.Visible do
-                    local left = math.max(0, math.floor(endsAt - tick()))
-                    endgameLabel.Text = string.format("Endgame: %ds", left)
-                    if left <= 0 then break end
-                    task.wait(0.25)
-                end
-                endgameFrame.Visible = false
-            end)
         else
             matchResultsFrame.Visible = false
             votingFrame.Visible = false
@@ -902,8 +892,8 @@ local function wireMatchEnd(ev)
     ev.OnClientEvent:Connect(function(resultType, winner)
         -- stop the local timer so it doesn't keep counting down
         running = false
-        -- keep scoreboard visible during endgame display; MapVote will switch phases
-        root.Visible = true
+        -- Sudden death retains scores; a completed match replaces them with the winner.
+        root.Visible = resultType == "sudden"
         if resultType == "sudden" then
            setTimerDisplay("SUDDEN")
         elseif resultType == "win" then

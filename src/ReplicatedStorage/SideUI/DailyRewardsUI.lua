@@ -279,9 +279,14 @@ function DailyRewardsUI.Refresh(state)
 	if type(state) ~= "table" then
 		return
 	end
-	currentState = state
-	if not hasRealClaim(state) then
-		state.currentStreak = 0
+    state = table.clone(state)
+    currentState = state
+    -- A reset streak must not retain a previous cycle's claimed-day visuals.
+    if tonumber(state.currentStreak) == 0 then
+        state.currentDay = 0
+    end
+    if not hasRealClaim(state) then
+        state.currentStreak = tonumber(state.currentStreak) or 0
 		state.currentDay = 0
 		state.alreadyClaimed = false
 		state.canClaimToday = true

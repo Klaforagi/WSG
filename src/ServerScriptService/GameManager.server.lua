@@ -962,6 +962,7 @@ function startMatch()
     -- Fade starts 1s before match start during Prematch; destroy once Game begins.
     destroyBarriers()
     matchStartTick = workspace:GetServerTimeNow()
+    ServerScriptService:SetAttribute("MatchEndsAt", matchStartTick + MATCH_DURATION)
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
     pcall(function() MatchStartedBE:Fire() end)
@@ -1073,6 +1074,7 @@ AdjustMatchTime.OnServerEvent:Connect(function(player, deltaSeconds)
     if State ~= "Game" or type(matchStartTick) ~= "number" then return end
     -- apply delta: adding to matchStartTick moves start later and increases remaining time
     matchStartTick = matchStartTick + deltaSeconds
+    ServerScriptService:SetAttribute("MatchEndsAt", matchStartTick + MATCH_DURATION)
     print("[GameManager] AdjustMatchTime by", deltaSeconds, "new matchStartTick", matchStartTick)
     -- notify all clients to resync (use AdjustMatchTime, NOT MatchStart, to avoid resetting scores)
     pcall(function() AdjustMatchTime:FireAllClients(matchStartTick) end)

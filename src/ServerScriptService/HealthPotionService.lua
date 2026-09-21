@@ -1133,6 +1133,7 @@ function HealthPotionService:UseEquippedPotion(player, potionId)
 	payload = payload or {}
 	payload.cooldown = cooldownSeconds
 	payload.potionId = equippedPotionId
+	payload.consumed = true
 	payload.state = self:GetState(player)
 
 	local effectDuration = math.max(0, tonumber(payload.duration or potionDef.DurationSeconds) or 0)

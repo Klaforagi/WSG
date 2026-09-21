@@ -1506,8 +1506,10 @@ local function applyPotionEffect(payload)
     if not def then
         return
     end
-    -- Play potion sound when effect starts (also covers instant-use potions)
-    pcall(function() playPotionSound() end)
+    -- Expiry/cleanup also uses this remote; only drinking a potion plays audio.
+    if payload.consumed == true then
+        pcall(function() playPotionSound() end)
+    end
 
     local expiresAt = tonumber(payload.expiresAt)
     local duration = tonumber(payload.duration)

@@ -213,9 +213,18 @@ function DailyRewardService:GetState(player)
     local lastClaimTime = tonumber(pd.lastClaimTime) or 0
     local lastClaimedDay = 0
     local claimedToday = false
+    local currentStreak = math.max(0, tonumber(pd.currentStreak) or 0)
     if lastClaimTime > 0 then
         lastClaimedDay = math.max(0, math.floor(tonumber(pd.currentDay) or 0))
         claimedToday = getDateKeyFromTime(lastClaimTime) == getDateKeyFromTime()
+    end
+    -- Project the same reset that ClaimReward will apply, before the player claims.
+    if daysBetween(lastClaimTime, os.time()) > 1 or currentStreak == 0 then
+        lastClaimedDay = 0
+        currentStreak = 0
+    elseif not claimedToday and lastClaimedDay >= 7 then
+        -- A new reward cycle starts at day 1 without losing the consecutive streak.
+        lastClaimedDay = 0
     end
     if lastClaimedDay <= 0 then
         lastClaimTime = 0
@@ -224,10 +233,10 @@ function DailyRewardService:GetState(player)
     end
 
     return {
-        currentStreak = lastClaimedDay > 0 and (pd.currentStreak or 0) or 0,
+        currentStreak = currentStreak,
         currentDay = lastClaimedDay,
         lastClaimTime = lastClaimTime,
-        totalClaims = lastClaimedDay > 0 and (pd.totalClaims or 0) or 0,
+        totalClaims = pd.totalClaims or 0,
         canClaimToday = not claimedToday,
         alreadyClaimed = claimedToday,
         cycleDays = 7,
