@@ -1,12 +1,12 @@
 -- Market: shared weapon offers, trails and emotes. Cosmetic cards are rarity-neutral.
 local RS = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
 local Catalog = require(RS:WaitForChild("MarketCatalog"))
 local Preview = require(RS:WaitForChild("SideUI"):WaitForChild("CosmeticPreviewController"))
 local RarityStyles = require(script.Parent:WaitForChild("RarityStyles"))
 local ClaimSound = require(script.Parent:WaitForChild("ClaimSound"))
 local AssetCodes = require(RS:WaitForChild("AssetCodes"))
-local Enchants = require(RS:WaitForChild("WeaponEnchantConfig"))
 local EnchantTextStyler = require(script.Parent:WaitForChild("EnchantTextStyler"))
 local ItemIconRegistry = require(RS:WaitForChild("ItemIconRegistry"))
 local MarketStallUI = {}
@@ -14,7 +14,8 @@ local callbacks = setmetatable({}, { __mode = "k" })
 local C = { Panel = Color3.fromRGB(18,22,35), Top = Color3.fromRGB(35,44,68),
     Card = Color3.fromRGB(27,34,51), Surface = Color3.fromRGB(12,16,27),
     Stroke = Color3.fromRGB(102,127,190), Text = Color3.fromRGB(246,248,255),
-    Muted = Color3.fromRGB(177,188,214), Gold = Color3.fromRGB(255,204,90) }
+    Muted = Color3.fromRGB(177,188,214), Gold = Color3.fromRGB(255,204,90),
+    PurchaseGreen = Color3.fromRGB(64,154,78) }
 
 local function make(class, parent, properties)
     local instance = Instance.new(class)
@@ -149,7 +150,8 @@ function MarketStallUI.Create(parent, options)
     local panel = make("Frame", root, { Name = "Panel", AnchorPoint = Vector2.new(.5,.5),
         BackgroundColor3 = C.Panel, BorderSizePixel = 0 })
     round(panel, 22)
-    make("UIStroke", panel, { Color = C.Stroke, Thickness = 2, Transparency = .1 })
+    -- Use the same gold outline as the primary menu windows.
+    make("UIStroke", panel, { Color = Color3.fromRGB(255, 215, 80), Thickness = 2, Transparency = .1 })
     make("UIGradient", panel, { Color = ColorSequence.new(C.Top, C.Panel), Rotation = 90 })
     make("UIAspectRatioConstraint", panel, { AspectRatio = 1.4,
         AspectType = Enum.AspectType.FitWithinMaxSize, DominantAxis = Enum.DominantAxis.Width })
@@ -176,6 +178,33 @@ function MarketStallUI.Create(parent, options)
     make("UIStroke",balance,{Color=Color3.new(0,0,0),Thickness=1,Transparency=.48})
     local close = button(panel, "X", UDim2.fromScale(.93,.02), UDim2.fromScale(.045,.055))
     close.Name = "CloseButton"
+    -- Match the shared menu close-button feedback and its gold trim.
+    local closeGold = Color3.fromRGB(255, 215, 80)
+    local closeDefault = Color3.fromRGB(26, 30, 48)
+    local closeHover = Color3.fromRGB(55, 30, 38)
+    local closePress = Color3.fromRGB(18, 20, 32)
+    close.BackgroundColor3 = closeDefault
+    close.TextColor3 = closeGold
+    close.Font = Enum.Font.GothamBlack
+    local closeAspect = make("UIAspectRatioConstraint", close, { AspectRatio = 1, DominantAxis = Enum.DominantAxis.Height })
+    local closeStroke = make("UIStroke", close, { Color = closeGold, Thickness = 1.2, Transparency = .4, ApplyStrokeMode = Enum.ApplyStrokeMode.Border })
+    local closeTextConstraint = close:FindFirstChildOfClass("UITextSizeConstraint")
+    if closeTextConstraint then
+        closeTextConstraint.MinTextSize = 14
+        closeTextConstraint.MaxTextSize = 26
+    end
+    close.MouseEnter:Connect(function()
+        TweenService:Create(close, TweenInfo.new(.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = closeHover, TextColor3 = Color3.new(1,1,1) }):Play()
+    end)
+    close.MouseLeave:Connect(function()
+        TweenService:Create(close, TweenInfo.new(.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = closeDefault, TextColor3 = closeGold }):Play()
+    end)
+    close.MouseButton1Down:Connect(function()
+        TweenService:Create(close, TweenInfo.new(.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = closePress }):Play()
+    end)
+    close.MouseButton1Up:Connect(function()
+        TweenService:Create(close, TweenInfo.new(.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), { BackgroundColor3 = closeHover }):Play()
+    end)
     close.Activated:Connect(function()
         if callbacks[root] then callbacks[root]() else root.Visible = false end
     end)
@@ -255,7 +284,7 @@ function MarketStallUI.Create(parent, options)
             actionValue.Text=purchasing and number(selected.CoinPrice) or text
             actionIcon.Visible=purchasing
             local affordable=coinBalance >= (selected.CoinPrice or 0)
-            action.BackgroundColor3=purchasing and (affordable and Color3.fromRGB(235,185,57) or Color3.fromRGB(104,87,55)) or C.Card
+            action.BackgroundColor3=purchasing and (affordable and C.PurchaseGreen or Color3.fromRGB(73,96,70)) or C.Card
             action.BackgroundTransparency=purchasing and not affordable and .12 or 0
             actionValue.TextTransparency=purchasing and not affordable and .18 or 0
             actionStroke.Transparency=purchasing and .35 or .55
@@ -274,8 +303,7 @@ function MarketStallUI.Create(parent, options)
             detailRarity.Text = item.Rarity
             detailRarity.TextColor3 = RarityStyles.GetColor(item.Rarity)
             EnchantTextStyler.ApplySize(detailSize,item.SizeTier,item.SizeTier.." "..item.SizePercent.."%")
-            detailEnchant.Text = item.EnchantName or ""
-            detailEnchant.TextColor3 = Enchants.GetColorForEnchant(item.EnchantName or "") or C.Text
+            EnchantTextStyler.Apply(detailEnchant, item.EnchantName)
         end
         detailImage.Visible, viewport.Visible = isImage, not isImage
         if isImage then detailImage.Image = itemImage(item) end
@@ -308,8 +336,8 @@ function MarketStallUI.Create(parent, options)
                 local size=label(card,"",UDim2.fromScale(.04,.51),UDim2.fromScale(.68,.14),14)
                 EnchantTextStyler.ApplySize(size,item.SizeTier,item.SizeTier.." "..item.SizePercent.."%")
                 if item.EnchantName and item.EnchantName~="" then
-                    local enchant=label(card,item.EnchantName,UDim2.fromScale(.04,.67),UDim2.fromScale(.68,.13),14)
-                    enchant.TextColor3=Enchants.GetColorForEnchant(item.EnchantName) or C.Text
+                    local enchant=label(card,"",UDim2.fromScale(.04,.67),UDim2.fromScale(.68,.13),14)
+                    EnchantTextStyler.Apply(enchant, item.EnchantName)
                 end
             elseif item.Category == "Trail" then
                 -- The swatch depicts the trail itself, never ownership or rarity.

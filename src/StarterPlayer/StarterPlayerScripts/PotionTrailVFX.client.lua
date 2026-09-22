@@ -17,6 +17,11 @@ local TRAIL_LIFETIME = 0.55
 local FADE_DESTROY_DELAY = 0.8
 
 local active = {} -- [Player] = { token = n, expiresAt = n }
+local activeStrength = {} -- [Player] = { token = n, attachments = { Attachment } }
+local strengthGeneration = {} -- [Player] = monotonically increasing token
+local STRENGTH_EFFECT_NAME = "_StrengthPotionLifesteal"
+local HEALTH_EFFECT_NAME = "_HealthPotionBandageBurst"
+local ORANGE = Color3.fromRGB(255, 82, 0)
 
 local function getNow()
     local ok, result = pcall(function()
@@ -134,6 +139,128 @@ local function stopTrail(targetPlayer)
     fadeTrail(targetPlayer)
 end
 
+local function getHandParts(character)
+    local hands = {}
+    for _, name in ipairs({ "LeftHand", "Left Arm", "RightHand", "Right Arm" }) do
+        local part = character and character:FindFirstChild(name)
+        if part and part:IsA("BasePart") then
+            table.insert(hands, part)
+        end
+    end
+    return hands
+end
+
+local function clearStrengthEffect(targetPlayer)
+    local state = activeStrength[targetPlayer]
+    activeStrength[targetPlayer] = nil
+    if state then
+        for _, attachment in ipairs(state.attachments or {}) do
+            if attachment and attachment.Parent then
+                attachment:Destroy()
+            end
+        end
+    end
+end
+
+local function addFallbackLifestealEmitter(attachment)
+    local emitter = Instance.new("ParticleEmitter")
+    emitter.Name = "LifestealOrange"
+    emitter.Texture = "rbxasset://textures/particles/sparkles_main.dds"
+    emitter.Color = ColorSequence.new(ORANGE)
+    emitter.LightEmission = 0.2
+    emitter.LightInfluence = 0
+    emitter.Lifetime = NumberRange.new(0.35, 0.65)
+    emitter.Rate = 25
+    emitter.Speed = NumberRange.new(0.45, 1.2)
+    emitter.SpreadAngle = Vector2.new(35, 35)
+    emitter.Size = NumberSequence.new(0.22, 0)
+    emitter.Transparency = NumberSequence.new({
+        NumberSequenceKeypoint.new(0, 0.12),
+        NumberSequenceKeypoint.new(1, 1),
+    })
+    emitter.Parent = attachment
+end
+
+local function addStrengthEffect(targetPlayer, expiresAt)
+    local character = targetPlayer and targetPlayer.Character
+    if not character or type(expiresAt) ~= "number" or expiresAt <= getNow() then
+        clearStrengthEffect(targetPlayer)
+        return
+    end
+
+    clearStrengthEffect(targetPlayer)
+    strengthGeneration[targetPlayer] = (strengthGeneration[targetPlayer] or 0) + 1
+    local state = { token = strengthGeneration[targetPlayer], attachments = {} }
+    activeStrength[targetPlayer] = state
+    local lifestealTemplate = ReplicatedStorage:FindFirstChild("Enchants")
+    lifestealTemplate = lifestealTemplate and lifestealTemplate:FindFirstChild("Lifesteal")
+
+    for _, hand in ipairs(getHandParts(character)) do
+        local attachment = Instance.new("Attachment")
+        attachment.Name = STRENGTH_EFFECT_NAME
+        attachment.Parent = hand
+        table.insert(state.attachments, attachment)
+
+        local copiedAny = false
+        if lifestealTemplate then
+            if lifestealTemplate:IsA("ParticleEmitter") then
+                    local emitter = lifestealTemplate:Clone()
+                    emitter.Color = ColorSequence.new(ORANGE)
+                    emitter.Rate = 25
+                    emitter.LightEmission = 0.2
+                    emitter.LightInfluence = 0
+                    emitter.Enabled = true
+                emitter.Parent = attachment
+                copiedAny = true
+            end
+            for _, descendant in ipairs(lifestealTemplate:GetDescendants()) do
+                if descendant:IsA("ParticleEmitter") then
+                    local emitter = descendant:Clone()
+                    emitter.Color = ColorSequence.new(ORANGE)
+                    emitter.Rate = 25
+                    emitter.LightEmission = 0.2
+                    emitter.LightInfluence = 0
+                    emitter.Enabled = true
+                    emitter.Parent = attachment
+                    copiedAny = true
+                end
+            end
+        end
+        if not copiedAny then
+            addFallbackLifestealEmitter(attachment)
+        end
+    end
+
+    local token = state.token
+    task.delay(math.max(0, expiresAt - getNow()), function()
+        local current = activeStrength[targetPlayer]
+        if current and current.token == token then
+            clearStrengthEffect(targetPlayer)
+        end
+    end)
+end
+
+local function playHealthBandageBurst(targetPlayer)
+    local character = targetPlayer and targetPlayer.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local vfxFolder = ReplicatedStorage:FindFirstChild("VFX")
+    local potionTemplate = vfxFolder and vfxFolder:FindFirstChild("PlusHealsPotion")
+    if not rootPart or not potionTemplate then return end
+
+    local burst = potionTemplate:Clone()
+    burst.Name = HEALTH_EFFECT_NAME
+    burst.Parent = rootPart
+    task.delay(2, function()
+        if burst and burst.Parent then
+            for _, descendant in ipairs(burst:GetDescendants()) do
+                if descendant:IsA("ParticleEmitter") then descendant.Enabled = false end
+            end
+            if burst:IsA("ParticleEmitter") then burst.Enabled = false end
+            Debris:AddItem(burst, 0.75)
+        end
+    end)
+end
+
 local function startTrail(targetPlayer, expiresAt)
     if not targetPlayer then
         return
@@ -180,6 +307,7 @@ local function hookCharacter(targetPlayer)
 
     targetPlayer.CharacterRemoving:Connect(function(character)
         clearTrail(character, false)
+        clearStrengthEffect(targetPlayer)
     end)
 end
 
@@ -189,6 +317,8 @@ end
 Players.PlayerAdded:Connect(hookCharacter)
 Players.PlayerRemoving:Connect(function(leaving)
     active[leaving] = nil
+    clearStrengthEffect(leaving)
+    strengthGeneration[leaving] = nil
 end)
 
 task.spawn(function()
@@ -201,7 +331,7 @@ task.spawn(function()
     end
 
     effectStarted.OnClientEvent:Connect(function(payload)
-        if type(payload) ~= "table" or payload.potionId ~= "speed_potion" then
+        if type(payload) ~= "table" then
             return
         end
 
@@ -216,6 +346,12 @@ task.spawn(function()
         end
 
         hookCharacter(targetPlayer)
-        startTrail(targetPlayer, tonumber(payload.expiresAt))
+        if payload.potionId == "speed_potion" then
+            startTrail(targetPlayer, tonumber(payload.expiresAt))
+        elseif payload.potionId == "strength_potion" then
+            addStrengthEffect(targetPlayer, tonumber(payload.expiresAt))
+        elseif payload.potionId == "health_potion" then
+            playHealthBandageBurst(targetPlayer)
+        end
     end)
 end)

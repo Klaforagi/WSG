@@ -152,28 +152,24 @@ local function showEnd(resultType, winner)
     end)
 end
 
-local function isMusicSound(sound)
-    if not sound or not sound:IsA("Sound") then
-        return false
-    end
-    if sound.SoundGroup and string.lower(sound.SoundGroup.Name) == "music" then
-        return true
-    end
-    local sounds = ReplicatedStorage:FindFirstChild("Sounds")
-    local musicFolder = sounds and sounds:FindFirstChild("Music")
-    if musicFolder and sound:IsDescendantOf(musicFolder) then
-        return true
-    end
-    return false
-end
+-- Only interrupt transient match-alert audio when the win announcement starts.
+-- World sounds (mob deaths, swings, impacts, etc.) are deliberately never
+-- searched or stopped here.
+local MATCH_ALERT_SOUND_NAMES = {
+    ClockTick = true,
+    SuddenDeath = true,
+    KnightsStart = true,
+    BarbariansStart = true,
+}
 
-local function stopPlayingSfx(exceptSound)
+local function stopPlayingMatchAlerts(exceptSound)
     local function stopIn(container)
         if not container then
             return
         end
         for _, inst in ipairs(container:GetDescendants()) do
-            if inst:IsA("Sound") and inst ~= exceptSound and inst.IsPlaying and not isMusicSound(inst) then
+            if inst:IsA("Sound") and inst ~= exceptSound and inst.IsPlaying
+                and MATCH_ALERT_SOUND_NAMES[inst.Name] == true then
                 pcall(function()
                     inst:Stop()
                 end)
@@ -184,8 +180,6 @@ local function stopPlayingSfx(exceptSound)
     stopIn(workspace.CurrentCamera)
     stopIn(playerGui)
     stopIn(game:GetService("SoundService"))
-    stopIn(player.Character)
-    stopIn(workspace)
 end
 
 -- play a sound from ReplicatedStorage.Sounds.Game (search recursively)
@@ -229,7 +223,7 @@ playGameSound = function(soundName)
     local snd = soundInst:Clone()
     snd.Parent = parent
     if soundName == "KnightsWin" or soundName == "BarbariansWin" then
-        stopPlayingSfx(snd)
+        stopPlayingMatchAlerts(snd)
     end
     snd:Play()
     task.delay((snd.TimeLength or 2) + 0.2, function()

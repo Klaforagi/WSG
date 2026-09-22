@@ -615,22 +615,41 @@ function ForgeStallUI.Create(parent, options)
 	closeButton.AnchorPoint = Vector2.new(1, 0)
 	closeButton.Position = UDim2.new(1.03, 0, -0.03, 0)
 	closeButton.Size = UDim2.new(0.07, 0, 0.08, 0)
-	closeButton.BackgroundColor3 = Color3.fromRGB(198, 148, 56)
+	-- Shared rounded-close style, tuned to the Forge's ember palette.
+	local closeDefault = Color3.fromRGB(37, 24, 14)
+	local closeHover = Color3.fromRGB(83, 42, 16)
+	local closePress = Color3.fromRGB(24, 15, 10)
+	closeButton.BackgroundColor3 = closeDefault
 	closeButton.BorderSizePixel = 0
 	closeButton.AutoButtonColor = false
 	closeButton.Text = "X"
-	closeButton.TextColor3 = WHITE
+	closeButton.TextColor3 = ORANGE_BRIGHT
 	closeButton.TextSize = math.max(16, px(16))
 	closeButton.TextScaled = true
 	closeButton.Font = Enum.Font.GothamBlack
 	closeButton.Parent = panel
-	applyCorners(closeButton, px(10))
+	local closeAspect = Instance.new("UIAspectRatioConstraint")
+	closeAspect.AspectRatio = 1
+	closeAspect.DominantAxis = Enum.DominantAxis.Height
+	closeAspect.Parent = closeButton
+	applyCorners(closeButton, px(8))
+	local closeStroke = applyStroke(closeButton, ORANGE, 1.2, 0.4)
+	local closeTextConstraint = Instance.new("UITextSizeConstraint")
+	closeTextConstraint.MinTextSize = 14
+	closeTextConstraint.MaxTextSize = math.max(18, px(26))
+	closeTextConstraint.Parent = closeButton
 
 	trackConn(closeButton.MouseEnter:Connect(function()
-		TweenService:Create(closeButton, QUICK_TWEEN, { BackgroundColor3 = ORANGE_BRIGHT }):Play()
+		TweenService:Create(closeButton, QUICK_TWEEN, { BackgroundColor3 = closeHover, TextColor3 = WHITE }):Play()
 	end))
 	trackConn(closeButton.MouseLeave:Connect(function()
-		TweenService:Create(closeButton, QUICK_TWEEN, { BackgroundColor3 = ORANGE }):Play()
+		TweenService:Create(closeButton, QUICK_TWEEN, { BackgroundColor3 = closeDefault, TextColor3 = ORANGE_BRIGHT }):Play()
+	end))
+	trackConn(closeButton.MouseButton1Down:Connect(function()
+		TweenService:Create(closeButton, QUICK_TWEEN, { BackgroundColor3 = closePress }):Play()
+	end))
+	trackConn(closeButton.MouseButton1Up:Connect(function()
+		TweenService:Create(closeButton, QUICK_TWEEN, { BackgroundColor3 = closeHover }):Play()
 	end))
 	trackConn(closeButton.Activated:Connect(function()
 		if type(options.onClose) == "function" then

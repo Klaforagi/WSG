@@ -237,7 +237,7 @@ local function refreshFeatured()
 		claimButton.TextColor3 = WHITE
 		claimButton.Active = true
 	elseif currentState and currentState.alreadyClaimed then
-		claimButton.Text = "COME BACK TOMORROW"
+		claimButton.Text = "CLAIMED TODAY"
 		claimButton.BackgroundColor3 = Color3.fromRGB(32, 48, 40)
 		claimButton.TextColor3 = DIM
 		claimButton.Active = false
@@ -491,7 +491,7 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	title.Name = "Title"
 	title.BackgroundTransparency = 1
 	title.Size = UDim2.fromScale(0.42, 1)
-	title.Position = UDim2.fromScale(0, 0)
+	title.Position = UDim2.fromScale(0.06, 0)
 	title.Font = Enum.Font.GothamBlack
 	title.Text = "DAILY LOGIN"
 	title.TextColor3 = GOLD
@@ -542,9 +542,10 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	timerLabel = Instance.new("TextLabel")
 	timerLabel.Name = "NextDayTimer"
 	timerLabel.BackgroundTransparency = 1
-	timerLabel.AnchorPoint = Vector2.new(1, 0)
-	timerLabel.Position = UDim2.new(0.88, 0, 0, 0)
-	timerLabel.Size = UDim2.fromScale(0.42, 1)
+	-- Keep the countdown with the claim action instead of competing with the title.
+	timerLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	timerLabel.Position = UDim2.fromScale(0.5, 0.965)
+	timerLabel.Size = UDim2.fromScale(0.42, 0.06)
 	timerLabel.FontFace = Font.new(
 		"rbxasset://fonts/families/SourceSansPro.json",
 		Enum.FontWeight.Bold,
@@ -553,9 +554,9 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	timerLabel.Text = "00:00:00"
 	timerLabel.TextColor3 = GOLD
 	timerLabel.TextScaled = true
-	timerLabel.TextXAlignment = Enum.TextXAlignment.Right
+	timerLabel.TextXAlignment = Enum.TextXAlignment.Center
 	timerLabel.ZIndex = 3
-	timerLabel.Parent = header
+	timerLabel.Parent = content
 	constrainText(timerLabel, 16, 26)
 	updateTimerLabel()
 	timerToken += 1
@@ -774,8 +775,8 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	claimButton = Instance.new("TextButton")
 	claimButton.Name = "ClaimButton"
 	claimButton.AutoButtonColor = false
-	claimButton.Size = UDim2.fromScale(1, 0.12)
-	claimButton.Position = UDim2.fromScale(0, 0.82)
+	claimButton.Size = UDim2.fromScale(1, 0.11)
+	claimButton.Position = UDim2.fromScale(0, 0.81)
 	claimButton.BackgroundColor3 = GREEN
 	claimButton.BorderSizePixel = 0
 	claimButton.Font = Enum.Font.GothamBlack
