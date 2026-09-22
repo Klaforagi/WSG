@@ -273,9 +273,9 @@ function CurrencyService:SetCoins(player, amount)
 end
 
 function CurrencyService:AddCoins(player, amount, reasonOrOptions)
-    if not player then return end
+    if not player then return 0 end
     amount = math.floor(tonumber(amount) or 0)
-    if amount == 0 then return end
+    if amount == 0 then return 0 end
 
     local skipMultipliers = false
     local reason = nil
@@ -304,6 +304,7 @@ function CurrencyService:AddCoins(player, amount, reasonOrOptions)
 
     local cur = CurrencyService:GetCoins(player)
     CurrencyService:SetCoins(player, cur + amount)
+    return amount
 end
 
 --------------------------------------------------------------------------------

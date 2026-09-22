@@ -440,10 +440,31 @@ local function applyWeaponScale(player, toolClone, toolName, instanceId)
     if bestInstance and bestInstance.sizePercent then
         -- Stamp size as an attribute so ToolMeleeSetup / ToolMelee.client can read it
         toolClone:SetAttribute("SizePercent", bestInstance.sizePercent)
-        if bestInstance.sizePercent ~= 100 then
-            WeaponScaleService.ApplyScale(toolClone, bestInstance.sizePercent)
+        toolClone:SetAttribute("WeaponBaseSizePercent", bestInstance.sizePercent)
+        local humanoid = player.Character and player.Character:FindFirstChildOfClass("Humanoid")
+        local playerSize = humanoid and tonumber(humanoid:GetAttribute("SizePercent")) or 100
+        -- The weapon roll and temporary player-size buffs are visual-only here.
+        WeaponScaleService.ApplyScale(toolClone, bestInstance.sizePercent * playerSize / 100)
+    end
+end
+
+local function syncPlayerWeaponCosmetics(player, character)
+    if not WeaponScaleService or not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    local function refresh()
+        local playerSize = tonumber(humanoid:GetAttribute("SizePercent")) or 100
+        for _, container in ipairs({ character, player:FindFirstChildOfClass("Backpack"), player:FindFirstChild("StarterGear") }) do
+            if container then
+                for _, tool in ipairs(container:GetChildren()) do
+                    local base = tool:IsA("Tool") and tonumber(tool:GetAttribute("WeaponBaseSizePercent"))
+                    if base then pcall(WeaponScaleService.ApplyScale, tool, base * playerSize / 100) end
+                end
+            end
         end
     end
+    humanoid:GetAttributeChangedSignal("SizePercent"):Connect(refresh)
+    task.defer(refresh)
 end
 
 local function bindGripAlignmentForTool(tool)
@@ -1083,7 +1104,7 @@ local function onPlayerAdded(player)
     end)
 
     -- give tools every time the character spawns
-    player.CharacterAdded:Connect(function()
+    player.CharacterAdded:Connect(function(character)
         -- brief yield so the engine creates the fresh Backpack
         task.wait(0.2)
         giveLoadout(player)
@@ -1107,6 +1128,7 @@ local function onPlayerAdded(player)
         -- MENU-LOCK FAILSAFE: watch for tools parented to Character while menu is open
         local char = player.Character
         if char then
+            syncPlayerWeaponCosmetics(player, char)
             bindGripAlignmentInContainer(char)
             char.ChildAdded:Connect(function(child)
                 bindGripAlignmentForTool(child)
@@ -1131,6 +1153,7 @@ local function onPlayerAdded(player)
             local currentBackpack = player:FindFirstChildOfClass("Backpack")
             bindGripAlignmentInContainer(currentBackpack)
             bindGripAlignmentInContainer(player.Character)
+            syncPlayerWeaponCosmetics(player, player.Character)
             -- Notify client that loadout is ready
             print("[ToolbarSync]", player.Name, "loadout granted (fast-start), notifying client")
             pcall(function()

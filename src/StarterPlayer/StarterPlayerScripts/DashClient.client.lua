@@ -370,6 +370,7 @@ cdText.Parent = btn
 -- BUTTON VISUAL FEEDBACK
 --------------------------------------------------------------------------------
 local function setButtonReady()
+    btn.Active = true
     btn.BackgroundColor3 = getTeamTintFill(currentTeamColor)
     btnStroke.Color = GOLD_DIM
     iconLabel.TextColor3 = GOLD
@@ -377,6 +378,7 @@ local function setButtonReady()
 end
 
 local function setButtonCooldown()
+    btn.Active = false
     btn.BackgroundColor3 = DISABLED_BG
     btnStroke.Color = Color3.fromRGB(60, 62, 80)
     iconLabel.TextColor3 = DIM_TEXT
@@ -390,6 +392,7 @@ end
 local function setButtonBlocked()
     -- Use the same visuals as cooldown to indicate unavailable (server enforces reasons)
     setButtonCooldown()
+    btn.Active = false
 end
 
 -- Update button visuals based on availability (cooldown takes precedence)

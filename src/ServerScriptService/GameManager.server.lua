@@ -642,7 +642,8 @@ local function onAddScore(teamName, delta)
         broadcastScore(teamName, delta, false)
         local blue = teamScores.Blue or 0
         local red = teamScores.Red or 0
-        if math.abs(blue - red) >= 5 then
+        -- Sudden death is next point wins.
+        if blue ~= red then
             endMatch((blue > red) and "Blue" or "Red")
         end
         return

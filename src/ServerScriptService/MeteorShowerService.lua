@@ -132,15 +132,17 @@ end
 local function awardObjectiveCompletion(player, popupPosition)
     if getRequiredShards() <= 0 then return end
     local rewardCoins = getCompletionRewardCoins()
+    local creditedCoins = 0
     if rewardCoins > 0 and CurrencyService and CurrencyService.AddCoins then
-        pcall(function()
-            CurrencyService:AddCoins(player, rewardCoins, "MeteorShowerObjective")
+        local ok, credited = pcall(function()
+            return CurrencyService:AddCoins(player, rewardCoins, "MeteorShowerObjective")
         end)
+        if ok then creditedCoins = math.max(0, math.floor(tonumber(credited) or 0)) end
     end
 
-    if rewardCoins > 0 and popupPosition then
+    if creditedCoins > 0 and popupPosition then
         pcall(function()
-            ShardCollectedRemote:FireClient(player, popupPosition, rewardCoins, "EventReward")
+            ShardCollectedRemote:FireClient(player, popupPosition, creditedCoins, "EventReward")
         end)
     end
 
@@ -566,16 +568,20 @@ local function spawnShard(position)
 
         -- Grant +5 coins
         local rewardAmount = Config.SHARD_REWARD_COINS
+        local creditedAmount = 0
         if CurrencyService and CurrencyService.AddCoins then
-            pcall(function()
-                CurrencyService:AddCoins(plr, rewardAmount, "MeteorShard")
+            local ok, credited = pcall(function()
+                return CurrencyService:AddCoins(plr, rewardAmount, "MeteorShard")
             end)
+            if ok then creditedAmount = math.max(0, math.floor(tonumber(credited) or 0)) end
         end
 
         -- Tell the client: show popup + play Collect sound
-        pcall(function()
-            ShardCollectedRemote:FireClient(plr, shard.Position, rewardAmount)
-        end)
+        if creditedAmount > 0 then
+            pcall(function()
+                ShardCollectedRemote:FireClient(plr, shard.Position, creditedAmount)
+            end)
+        end
 
         pcall(function()
             incrementShardObjective(plr, shard.Position)
@@ -610,22 +616,25 @@ _meteorRayParams.FilterDescendantsInstances = {}
 
 --- Raycast from spawnPos toward targetPos; returns the first real surface hit,
 --- ignoring the meteor root. Falls back to targetPos if nothing is found.
-local function findImpactPosition(spawnPos, targetPos, meteorRoot)
-    _meteorRayParams.FilterDescendantsInstances = { meteorRoot }
+local function findImpactResult(spawnPos, targetPos, meteorRoot)
+    local ignored = { meteorRoot }
     local dir    = targetPos - spawnPos
-    local result = workspace:Raycast(spawnPos, dir, _meteorRayParams)
-    return result and result.Position or targetPos
+    for _ = 1, 32 do
+        _meteorRayParams.FilterDescendantsInstances = ignored
+        local result = workspace:Raycast(spawnPos, dir, _meteorRayParams)
+        if not result then return nil end
+        local tree = result.Instance:FindFirstAncestor("Tree")
+        if tree and result.Instance.Name == "TreeLeaves" then
+            table.insert(ignored, result.Instance) -- foliage is cosmetic, not meteor cover
+        else
+            return result
+        end
+    end
+    return nil
 end
 
---- Returns true if `part` or any of its ancestors contains "Tree" in the name.
-local function isOnTree(part)
-    if string.find(part.Name, "Tree", 1, true) then return true end
-    local cur = part.Parent
-    while cur and cur ~= workspace do
-        if string.find(cur.Name, "Tree", 1, true) then return true end
-        cur = cur.Parent
-    end
-    return false
+local function isTreeTrunk(part)
+    return part and part.Name == "Part" and part:FindFirstAncestor("Tree") ~= nil
 end
 
 local function spawnOneMeteor()
@@ -650,7 +659,14 @@ local function spawnOneMeteor()
     table.insert(_currentMeteors, meteor)
 
     -- Raycast to find the actual first surface hit along the fall path
-    local impactPos = findImpactPosition(spawnPos, target, meteor)
+    local impactResult = findImpactResult(spawnPos, target, meteor)
+    if impactResult and isTreeTrunk(impactResult.Instance) then
+        -- Do not launch meteors into tree trunks. The scheduler will try another
+        -- random location on its next spawn tick.
+        meteor:Destroy()
+        return
+    end
+    local impactPos = impactResult and impactResult.Position or target
 
     -- Check at spawn time if the surface is a Tree (skip shard if so)
     local _impactRayDown = workspace:Raycast(
@@ -658,7 +674,7 @@ local function spawnOneMeteor()
         Vector3.new(0, -8, 0),
         _meteorRayParams
     )
-    local impactOnTree = _impactRayDown and isOnTree(_impactRayDown.Instance)
+    local impactOnTree = _impactRayDown and isTreeTrunk(_impactRayDown.Instance)
 
     -- Scripted fall: Quad-In easing simulates gravitational acceleration
     local direction = (impactPos - spawnPos).Unit

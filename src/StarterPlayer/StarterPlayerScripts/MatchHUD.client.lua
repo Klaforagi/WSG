@@ -211,14 +211,14 @@ end
 --------------------------------------------------------------------------------
 -- HELPER: build a team panel
 --------------------------------------------------------------------------------
-local function makeTeamPanel(name, glowColor, anchorX, posX)
+local function makeTeamPanel(name, glowColor, fillColor, anchorX, posX)
     local panel = Instance.new("Frame")
     panel.Name = name
     panel.AnchorPoint = Vector2.new(anchorX, 0.5)
     panel.Position = UDim2.new(posX, 0, 0.5, 0)
     panel.Size = UDim2.new(0.345, 0, 0.80, 0)
-    panel.BackgroundColor3 = NAVY_MID
-    panel.BackgroundTransparency = 0.18
+    panel.BackgroundColor3 = fillColor
+    panel.BackgroundTransparency = 0.12
     panel.BorderSizePixel = 0
     panel.ClipsDescendants = true
     panel.ZIndex = 2
@@ -236,8 +236,8 @@ local function makeTeamPanel(name, glowColor, anchorX, posX)
     -- subtle depth gradient (top-to-bottom)
     local grad = Instance.new("UIGradient")
     grad.Color = ColorSequence.new({
-        ColorSequenceKeypoint.new(0, Color3.fromRGB(210, 215, 230)),
-        ColorSequenceKeypoint.new(1, Color3.fromRGB(175, 180, 205)),
+        ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(155, 155, 155)),
     })
     grad.Rotation = 90
     grad.Parent = panel
@@ -259,7 +259,7 @@ end
 --------------------------------------------------------------------------------
 -- BLUE PANEL
 --------------------------------------------------------------------------------
-local bluePanel = makeTeamPanel("BluePanel", BLUE_GLOW, 0, 0.01)
+local bluePanel = makeTeamPanel("BluePanel", BLUE_GLOW, Color3.fromRGB(20, 36, 88), 0, 0.01)
 
 -- Colored accent bar on the inner edge (right side, facing timer)
 do
@@ -324,7 +324,7 @@ end
 --------------------------------------------------------------------------------
 -- RED PANEL
 --------------------------------------------------------------------------------
-local redPanel = makeTeamPanel("RedPanel", RED_GLOW, 1, 0.99)
+local redPanel = makeTeamPanel("RedPanel", RED_GLOW, Color3.fromRGB(92, 27, 35), 1, 0.99)
 
 -- Colored accent bar on the inner edge (left side, facing timer)
 do
@@ -591,7 +591,7 @@ end)
 -- FLAG CARRIER INDICATORS (stylized flag icons)
 --------------------------------------------------------------------------------
 
--- buildFlagIcon: creates a stylized flag shape from UI elements inside a container
+-- buildFlagIcon: creates a compact pennant badge that scales with its team panel.
 -- Returns the container Frame (set .Visible to show/hide)
 local function buildFlagIcon(parent, flagColor, glowColor)
     local container = Instance.new("Frame")
@@ -602,18 +602,27 @@ local function buildFlagIcon(parent, flagColor, glowColor)
     container.Visible = false
     container.Parent = parent
 
-    -- Pole (matches the BuffBar flag icon style)
+    -- Gold-tipped pole and a notched pennant read cleanly at every scoreboard size.
     local pole = Instance.new("Frame")
     pole.Name = "Pole"
     pole.AnchorPoint = Vector2.new(0.5, 0.5)
     pole.Position = UDim2.new(0.26, 0, 0.52, 0)
     pole.Size = UDim2.new(0.09, 0, 0.84, 0)
-    pole.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    pole.BackgroundColor3 = GOLD_TEXT
     pole.BackgroundTransparency = 0
     pole.BorderSizePixel = 0
     pole.ZIndex = 6
     pole.Parent = container
     Instance.new("UICorner", pole).CornerRadius = UDim.new(1, 0)
+    local finial = Instance.new("Frame")
+    finial.AnchorPoint = Vector2.new(0.5, 0.5)
+    finial.Position = UDim2.fromScale(0.26, 0.10)
+    finial.Size = UDim2.fromScale(0.20, 0.20)
+    finial.BackgroundColor3 = GOLD_TEXT
+    finial.BorderSizePixel = 0
+    finial.ZIndex = 7
+    finial.Parent = container
+    Instance.new("UICorner", finial).CornerRadius = UDim.new(1, 0)
 
     -- Banner (the flag cloth, attached to the right of the pole)
     local banner = Instance.new("Frame")
@@ -627,6 +636,23 @@ local function buildFlagIcon(parent, flagColor, glowColor)
     banner.ZIndex = 6
     banner.Parent = container
     Instance.new("UICorner", banner).CornerRadius = UDim.new(0, 3)
+    local bannerGradient = Instance.new("UIGradient")
+    bannerGradient.Color = ColorSequence.new({
+        ColorSequenceKeypoint.new(0, flagColor:Lerp(Color3.new(1,1,1), .25)),
+        ColorSequenceKeypoint.new(1, flagColor:Lerp(Color3.new(0,0,0), .25)),
+    })
+    bannerGradient.Rotation = 90
+    bannerGradient.Parent = banner
+    -- A small dark notch makes the cloth silhouette feel like a real flag.
+    local notch = Instance.new("Frame")
+    notch.AnchorPoint = Vector2.new(1, .5)
+    notch.Position = UDim2.fromScale(1, .5)
+    notch.Size = UDim2.fromScale(.20, .30)
+    notch.Rotation = 45
+    notch.BackgroundColor3 = NAVY
+    notch.BorderSizePixel = 0
+    notch.ZIndex = 7
+    notch.Parent = banner
 
     -- Banner glow stroke
     local bannerStroke = Instance.new("UIStroke")
@@ -657,8 +683,8 @@ local function makeFlagSlot(panel, alignRight)
         local abs = slot.AbsoluteSize
         if abs.X == 0 or abs.Y == 0 then return end
         -- icon is taller than wide (flag shape); height-based sizing
-        local iconH = math.clamp(math.floor(abs.Y * 0.72), 14, 52)
-        local iconW = math.clamp(math.floor(iconH * 0.8), 12, 44)
+        local iconH = math.clamp(math.floor(abs.Y * 0.70), 12, math.max(12, math.floor(abs.Y * .9)))
+        local iconW = math.clamp(math.floor(iconH * 0.78), 10, math.max(10, math.floor(abs.X * .25)))
         local spacing = math.max(4, math.floor(iconW * 0.2))
         local y = math.floor((abs.Y - iconH) / 2)
 

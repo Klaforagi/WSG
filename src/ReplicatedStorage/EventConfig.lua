@@ -70,12 +70,11 @@ EventConfig.EventDefs = {
         RequiredCoins = 0,
         PickupRewardCoins = 3,
         CompletionRewardCoins = 0,
-        MaxRewardCoins = 60,
         WaveCount = 5,
         MinPickupsPerWave = 18,
         PickupsPerPlayerPerWave = 4,
         MaxPickupsPerWave = 40,
-        PickupLifetime = 24,
+        PickupLifetime = 20,
     },
     GoblinRaid = {
         Name       = "Goblin Raid",

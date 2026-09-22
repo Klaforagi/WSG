@@ -5,10 +5,10 @@
 ]]
 
 local Players             = game:GetService("Players")
-local TweenService        = game:GetService("TweenService")
-local Debris              = game:GetService("Debris")
+local RunService          = game:GetService("RunService")
 local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local ServerScriptService = game:GetService("ServerScriptService")
+local ServerStorage       = game:GetService("ServerStorage")
 
 local EventConfig = require(ReplicatedStorage:WaitForChild("EventConfig"))
 
@@ -69,12 +69,8 @@ local function getCompletionRewardCoins()
     return tonumber(getDef().CompletionRewardCoins) or 25
 end
 
-local function getMaxRewardCoins()
-    return tonumber(getDef().MaxRewardCoins) or 60
-end
-
 local function getPickupLifetime()
-    return tonumber(getDef().PickupLifetime) or 24
+    return tonumber(getDef().PickupLifetime) or 20
 end
 
 local function fireProgress(player)
@@ -92,16 +88,12 @@ local function grantCoins(player, amount, source)
     if amount <= 0 then return 0 end
 
     local userId = player.UserId
-    local maxCoins = getMaxRewardCoins()
-    local alreadyEarned = _playerEarned[userId] or 0
-    local grantAmount = math.min(amount, math.max(0, maxCoins - alreadyEarned))
-    if grantAmount <= 0 then return 0 end
-
-    _playerEarned[userId] = alreadyEarned + grantAmount
-    pcall(function()
-        CurrencyService:AddCoins(player, grantAmount, source)
+    local grantAmount = amount
+    _playerEarned[userId] = (_playerEarned[userId] or 0) + grantAmount
+    local ok, credited = pcall(function()
+        return CurrencyService:AddCoins(player, grantAmount, source)
     end)
-    return grantAmount
+    return ok and math.max(0, math.floor(tonumber(credited) or 0)) or 0
 end
 
 local function awardCompletion(player, popupPosition)
@@ -177,14 +169,26 @@ end
 local function raycastToGround(position)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = { workspace:FindFirstChild("GoldRushPickups") }
+    local ignored = { workspace:FindFirstChild("GoldRushPickups") }
+    params.FilterDescendantsInstances = ignored
 
-    local result = workspace:Raycast(position + Vector3.new(0, 220, 0), Vector3.new(0, -520, 0), params)
-    if result then
-        return result.Position + Vector3.new(0, 2.4, 0)
+    local origin = position + Vector3.new(0, 220, 0)
+    local direction = Vector3.new(0, -520, 0)
+    for _ = 1, 32 do
+        params.FilterDescendantsInstances = ignored
+        local result = workspace:Raycast(origin, direction, params)
+        if not result then break end
+        local tree = result.Instance:FindFirstAncestor("Tree")
+        if tree and result.Instance.Name == "TreeLeaves" then
+            table.insert(ignored, result.Instance)
+        elseif tree and result.Instance.Name == "Part" then
+            return nil -- Never place Coin Rush drops on a tree trunk.
+        else
+            return result.Position + Vector3.new(0, 2.4, 0)
+        end
     end
 
-    return Vector3.new(position.X, math.max(position.Y, 8), position.Z)
+    return nil
 end
 
 local function samplePickupPosition()
@@ -259,45 +263,146 @@ local function cleanupPickup(record)
         pcall(function() record.tween:Cancel() end)
         record.tween = nil
     end
+    if record.spin then
+        pcall(function() record.spin:Disconnect() end)
+        record.spin = nil
+    end
     if record.part then
         pcall(function() record.part:Destroy() end)
         record.part = nil
+    end
+    if record.sensor then
+        pcall(function() record.sensor:Destroy() end)
+        record.sensor = nil
     end
 end
 
 local function spawnPickup(position)
     if not _active then return end
 
-    local pickup = Instance.new("Part")
+    local items = ServerStorage:FindFirstChild("Items")
+    local template = items and items:FindFirstChild("Coin")
+    if not template then
+        warn("[GoldRush] ServerStorage.Items.Coin is missing")
+        return
+    end
+    local pickup = template:Clone()
     pickup.Name = "GoldRushCoin"
-    pickup.Shape = Enum.PartType.Ball
-    pickup.Size = Vector3.new(1.55, 1.55, 1.55)
-    pickup.Material = Enum.Material.Neon
-    pickup.Color = Color3.fromRGB(255, 210, 70)
-    pickup.Anchored = true
-    pickup.CanCollide = false
-    pickup.CanQuery = false
-    pickup.CanTouch = true
-    pickup.CFrame = CFrame.new(position)
-    pickup.Parent = getPickupFolder()
+    local touchPart
+    for _, descendant in ipairs({ pickup, table.unpack(pickup:GetDescendants()) }) do
+        if descendant:IsA("BasePart") then
+            descendant.Anchored = true
+            descendant.CanCollide = false
+            descendant.CanQuery = false
+            descendant.CanTouch = true
+            touchPart = touchPart or descendant
+            -- Keep the authored particles, but make the event readable rather than noisy.
+            for _, effect in ipairs(descendant:GetDescendants()) do
+                if effect:IsA("ParticleEmitter") then
+                    effect.Rate = math.min(effect.Rate, 4)
+                    effect.Speed = NumberRange.new(0.15, 0.6)
+                    effect.Lifetime = NumberRange.new(0.25, 0.55)
+                end
+            end
+        end
+    end
+    if not touchPart then
+        pickup:Destroy()
+        warn("[GoldRush] ServerStorage.Items.Coin has no BasePart")
+        return
+    end
+    -- Resolve the first surface below the drop rather than placing the coin at
+    -- a fixed height. This lets it settle on hills, props, and other geometry.
+    local pickupFolder = getPickupFolder()
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = { pickupFolder }
+    local hit = workspace:Raycast(position + Vector3.new(0, 12, 0), Vector3.new(0, -30, 0), rayParams)
+    local sourcePivot = pickup:GetPivot()
+    local boxCF, boxSize
+    if pickup:IsA("BasePart") then
+        boxCF, boxSize = pickup.CFrame, pickup.Size
+    else
+        boxCF, boxSize = pickup:GetBoundingBox()
+    end
+    -- An invisible, slightly oversized sensor defines the resting clearance.
+    -- Its bottom reaches the surface first, leaving the visible coin just above it.
+    local sensor = Instance.new("Part")
+    sensor.Name = "GoldRushCoinSensor"
+    sensor.Size = boxSize + Vector3.new(.24, .24, .24)
+    sensor.Anchored = true
+    sensor.CanCollide = false
+    sensor.CanQuery = false
+    sensor.CanTouch = true
+    sensor.Transparency = 1
+    sensor.CastShadow = false
+    local sensorRelative = sourcePivot:ToObjectSpace(boxCF)
+    local pivotToBottom = sourcePivot:PointToObjectSpace(boxCF.Position).Y - sensor.Size.Y * .5
+    local rotation = CFrame.new(sourcePivot.Position):Inverse() * sourcePivot
+    local landingPosition = hit and (hit.Position + Vector3.new(0, -pivotToBottom + .03, 0)) or position
+    local landingPivot = CFrame.new(landingPosition) * rotation
+    pickup:PivotTo(landingPivot * CFrame.new(0, 15, 0))
+    pickup.Parent = pickupFolder
+    sensor.CFrame = pickup:GetPivot() * sensorRelative
+    sensor.Parent = pickupFolder
 
-    local sparkle = Instance.new("Sparkles")
-    sparkle.SparkleColor = Color3.fromRGB(255, 230, 120)
-    sparkle.Parent = pickup
-
-    local bobTween = TweenService:Create(
-        pickup,
-        TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
-        { CFrame = pickup.CFrame + Vector3.new(0, 1.1, 0) }
-    )
-    bobTween:Play()
-
-    local record = { part = pickup, tween = bobTween, connection = nil }
+    local dropStartedAt = workspace:GetServerTimeNow()
+    local spinOffset = math.rad(math.random(0, 359))
+    local lifetime = getPickupLifetime()
+    local visualParts = {}
+    local visualTextures = {}
+    for _, part in ipairs({ pickup, table.unpack(pickup:GetDescendants()) }) do
+        if part:IsA("BasePart") then visualParts[part] = part.Transparency end
+        if part:IsA("Decal") or part:IsA("Texture") then
+            visualTextures[part] = part.Transparency
+        end
+    end
+    local record = { part = pickup, sensor = sensor, tween = nil, connection = nil, spin = nil,
+        visualParts = visualParts, visualTextures = visualTextures, fadeStartedAt = dropStartedAt + lifetime - 5 }
+    record.spin = RunService.Heartbeat:Connect(function()
+        if not pickup.Parent then
+            if record.spin then record.spin:Disconnect(); record.spin = nil end
+            return
+        end
+        local t = workspace:GetServerTimeNow()
+        local hoverDuration = 1
+        local elapsedSinceDrop = t - dropStartedAt
+        local dropProgress = math.clamp((elapsedSinceDrop - hoverDuration) / 4, 0, 1)
+        local currentPivot
+        if elapsedSinceDrop < hoverDuration then
+            -- Briefly present the drop in the air before it begins gliding down.
+            currentPivot = landingPivot * CFrame.new(0, 15, 0)
+                * CFrame.Angles(0, spinOffset + elapsedSinceDrop * math.rad(45), 0)
+        elseif dropProgress < 1 then
+            -- A gentle glide from ten studs up, rather than a quick pop-in.
+            -- Ease out: it decelerates into its resting position instead of
+            -- accelerating toward the ground.
+            local eased = 1 - (1 - dropProgress) * (1 - dropProgress)
+            currentPivot = landingPivot * CFrame.new(0, 15 * (1 - eased), 0)
+                * CFrame.Angles(0, spinOffset + elapsedSinceDrop * math.rad(45), 0)
+        else
+            -- One relaxed rotation every eight seconds, with the existing soft bob.
+            local landedFor = elapsedSinceDrop - hoverDuration - 4
+            currentPivot = landingPivot * CFrame.new(0, math.sin(landedFor * 2) * .2, 0)
+                * CFrame.Angles(0, spinOffset + elapsedSinceDrop * math.rad(45), 0)
+        end
+        pickup:PivotTo(currentPivot)
+        sensor.CFrame = currentPivot * sensorRelative
+        local fade = math.clamp((t - record.fadeStartedAt) / 5, 0, 1)
+        if fade > 0 then
+            for part, originalTransparency in pairs(record.visualParts) do
+                if part.Parent then part.Transparency = originalTransparency + (1 - originalTransparency) * fade end
+            end
+            for texture, originalTransparency in pairs(record.visualTextures) do
+                if texture.Parent then texture.Transparency = originalTransparency + (1 - originalTransparency) * fade end
+            end
+        end
+    end)
     table.insert(_activePickups, record)
 
     local collected = false
-    record.connection = pickup.Touched:Connect(function(hit)
-        if collected or not _active then return end
+    record.connection = sensor.Touched:Connect(function(hit)
+        if collected then return end
         local character = hit.Parent
         if not character then return end
         local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -305,18 +410,13 @@ local function spawnPickup(position)
         local player = Players:GetPlayerFromCharacter(character)
         if not player then return end
 
-        if (_playerEarned[player.UserId] or 0) >= getMaxRewardCoins() then
-            fireProgress(player)
-            return
-        end
-
         collected = true
-        pickup.CanTouch = false
+        sensor.CanTouch = false
 
         local granted = grantCoins(player, getPickupRewardCoins(), "GoldRushPickup")
         if granted > 0 then
             pcall(function()
-                CoinCollectedRemote:FireClient(player, pickup.Position, granted, "GoldRushPickup")
+                CoinCollectedRemote:FireClient(player, touchPart.Position, granted, "GoldRushPickup")
             end)
 
             local required = getRequiredCoins()
@@ -325,7 +425,7 @@ local function spawnPickup(position)
                 fireProgress(player)
 
                 if (_playerProgress[player.UserId] or 0) >= required then
-                    awardCompletion(player, pickup.Position)
+                    awardCompletion(player, touchPart.Position)
                     fireProgress(player)
                 end
             end
@@ -334,15 +434,9 @@ local function spawnPickup(position)
         cleanupPickup(record)
     end)
 
-    local lifetime = getPickupLifetime()
-    if lifetime > 5 then
-        task.delay(lifetime - 4, function()
-            if not pickup or not pickup.Parent then return end
-            local fadeInfo = TweenInfo.new(4, Enum.EasingStyle.Linear)
-            TweenService:Create(pickup, fadeInfo, { Transparency = 1 }):Play()
-        end)
-    end
-    Debris:AddItem(pickup, lifetime)
+    task.delay(lifetime, function()
+        cleanupPickup(record)
+    end)
 end
 
 local function spawnWave()
@@ -421,10 +515,8 @@ function GoldRushService:Stop()
         _spawnThread = nil
     end
 
-    for _, record in ipairs(_activePickups) do
-        cleanupPickup(record)
-    end
-    _activePickups = {}
+    -- Existing drops finish their own lifetime. They should not blink away
+    -- just because the event timer ended.
     _playerProgress = {}
     _playerCompleted = {}
     _playerEarned = {}
