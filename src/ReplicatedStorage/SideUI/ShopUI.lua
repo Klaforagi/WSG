@@ -550,11 +550,30 @@ local function buildShopCard(parent, item, host)
     badgeStroke.Parent = badge
     -- badge text sizing: runtime scaler will handle sizing; no explicit constraint
 
+    if item.SaleBadgeText then
+        local saleBadge = Instance.new("TextLabel")
+        saleBadge.Name = "SaleBadge"
+        saleBadge.BackgroundColor3 = Color3.fromRGB(78, 190, 91)
+        saleBadge.BorderSizePixel = 0
+        saleBadge.Position = UDim2.new(0.30, 0, 0.07, 0)
+        saleBadge.Size = UDim2.new(0.18, 0, 0.13, 0)
+        saleBadge.Font = Enum.Font.GothamBlack
+        saleBadge.Text = tostring(item.SaleBadgeText)
+        saleBadge.TextColor3 = WHITE
+        saleBadge.TextScaled = true
+        saleBadge.ZIndex = 2
+        saleBadge.Parent = card
+        applyCorners(saleBadge, px(10))
+    end
+
     local pricePill = Instance.new("Frame")
     pricePill.Name = "PricePill"
     pricePill.AnchorPoint = Vector2.new(1, 0)
     pricePill.Position = UDim2.new(0.96, 0, 0.07, 0)
     pricePill.Size = UDim2.new(0.22, 0, 0.13, 0)
+    if item.OriginalPriceRobux then
+        pricePill.Size = UDim2.new(0.34, 0, 0.13, 0)
+    end
     pricePill.BackgroundColor3 = PANEL_BG
     pricePill.BorderSizePixel = 0
     pricePill.Parent = card
@@ -587,6 +606,31 @@ local function buildShopCard(parent, item, host)
     priceLabel.TextYAlignment = Enum.TextYAlignment.Center
     priceLabel.Parent = pricePill
     -- removed fixed UITextSizeConstraint per design: allow scaled sizing
+
+    if item.OriginalPriceRobux then
+        priceLabel.Position = UDim2.new(0.69, 0, 0, 0)
+        priceLabel.Size = UDim2.new(0.25, 0, 1, 0)
+        local originalPrice = Instance.new("TextLabel")
+        originalPrice.Name = "OriginalPrice"
+        originalPrice.BackgroundTransparency = 1
+        -- Leave the left edge clear for the Robux icon.
+        originalPrice.Position = UDim2.new(0.29, 0, 0, 0)
+        originalPrice.Size = UDim2.new(0.35, 0, 1, 0)
+        originalPrice.Font = Enum.Font.GothamBold
+        originalPrice.Text = tostring(math.floor(tonumber(item.OriginalPriceRobux) or 0))
+        originalPrice.TextColor3 = DIM_TEXT
+        originalPrice.TextScaled = true
+        originalPrice.Parent = pricePill
+        local strike = Instance.new("Frame")
+        strike.Name = "Strikethrough"
+        strike.AnchorPoint = Vector2.new(0.5, 0.5)
+        strike.Position = UDim2.new(0.465, 0, 0.5, 0)
+        strike.Size = UDim2.new(0.33, 0, 0, 1)
+        strike.BackgroundColor3 = Color3.fromRGB(220, 90, 90)
+        strike.BorderSizePixel = 0
+        strike.ZIndex = 2
+        strike.Parent = pricePill
+    end
 
     local iconBubble = Instance.new("Frame")
     iconBubble.Name = "IconBubble"
@@ -701,7 +745,7 @@ local function buildShopCard(parent, item, host)
     local ownedAttr = getItemOwnedAttribute(item)
 
     local function refreshVisuals()
-        if item.Kind == "GamePass" and ownedAttr then
+        if (item.Kind == "GamePass" or item.OneTimePurchase == true) and ownedAttr then
             owned = player:GetAttribute(ownedAttr) == true
         else
             owned = false
@@ -733,7 +777,7 @@ local function buildShopCard(parent, item, host)
         if busy then
             return
         end
-        if item.Kind == "GamePass" and owned then
+        if (item.Kind == "GamePass" or item.OneTimePurchase == true) and owned then
             showToast(host or card, tostring(item.DisplayName or item.Id or "Item") .. " already owned.", ORANGE_BRIGHT, 2)
             return
         end
@@ -769,7 +813,7 @@ local function buildShopCard(parent, item, host)
 
     buyButton.Activated:Connect(openPurchase)
 
-    if item.Kind == "GamePass" and ownedAttr then
+    if (item.Kind == "GamePass" or item.OneTimePurchase == true) and ownedAttr then
         player:GetAttributeChangedSignal(ownedAttr):Connect(refreshVisuals)
     end
 
@@ -798,14 +842,13 @@ local function getPackTabItems(source, kindLabel, iconKey, accentColor, nounLabe
     for index, pack in ipairs(source.Packs) do
         local amount = math.floor(tonumber(pack.Coins or pack.Keys) or 0)
         local price = math.floor(tonumber(pack.Price) or 0)
-        local nounText = amount == 1 and nounLabel or (nounLabel .. "s")
         table.insert(items, {
             Id = string.lower(kindLabel) .. "_pack_" .. tostring(index),
             SortOrder = index,
             Kind = "Product",
             DisplayName = tostring(pack.Name or (formatNumber(amount) .. " " .. nounLabel .. " Pack")),
             BadgeText = kindLabel,
-            Description = string.format("%s %s for %d Robux.", formatNumber(amount), nounText, price),
+            Description = "",
             PriceRobux = price,
             ProductId = pack.ProductId,
             AccentColor = accentColor,

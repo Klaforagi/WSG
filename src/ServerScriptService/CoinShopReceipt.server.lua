@@ -165,6 +165,45 @@ end
 
 local RECEIPT_DS_NAME = "CoinShopReceipts_v1"
 local receiptStore = DataStoreService:GetDataStore(RECEIPT_DS_NAME)
+local STARTER_PACK_DS_NAME = "StarterPackPurchases_v1"
+local starterPackStore = DataStoreService:GetDataStore(STARTER_PACK_DS_NAME)
+
+local function starterPackKey(userId)
+	return "starter_" .. tostring(userId)
+end
+
+local function hasStarterPack(player)
+	if not player then return false end
+	if player:GetAttribute("StarterPackPurchased") == true then
+		return true
+	end
+	local ok, claimed = pcall(function()
+		return starterPackStore:GetAsync(starterPackKey(player.UserId))
+	end)
+	if ok and claimed == true then
+		player:SetAttribute("StarterPackPurchased", true)
+		return true
+	end
+	return false
+end
+
+local function markStarterPackPurchased(player)
+	local ok, err = pcall(function()
+		starterPackStore:SetAsync(starterPackKey(player.UserId), true)
+	end)
+	if not ok then
+		warn("[CoinShopReceipt] Failed to save Starter Pack ownership for", player.Name, ":", tostring(err))
+		return false
+	end
+	player:SetAttribute("StarterPackPurchased", true)
+	return true
+end
+
+Players.PlayerAdded:Connect(function(player)
+	task.spawn(function()
+		hasStarterPack(player)
+	end)
+end)
 
 local function receiptKey(receiptId)
 	return "receipt_" .. tostring(receiptId)
@@ -224,6 +263,14 @@ local function processReceipt(receiptInfo)
 	if not playerObj then
 		warn("[CoinShopReceipt] Player", playerId, "not in server – will retry later")
 		return Enum.ProductPurchaseDecision.NotProcessedYet
+	end
+
+	local isOneTimeStarterPack = shopProduct and shopProduct.Id == "starter_pack" and shopProduct.OneTimePurchase == true
+	if isOneTimeStarterPack and hasStarterPack(playerObj) then
+		-- Developer products cannot be un-purchased, but a duplicate receipt must
+		-- never grant the one-time bundle again.
+		markReceiptProcessed(receiptId, playerId, productId, shopProduct.Id, "starter_pack_duplicate")
+		return Enum.ProductPurchaseDecision.PurchaseGranted
 	end
 
 	if (coinsToAward or keysToAward or shardsToAward or (shopProduct and shopProduct.Reward)) and not CurrencyService then
@@ -337,6 +384,9 @@ local function processReceipt(receiptInfo)
 		pcall(function()
 			CurrencyService:SaveForPlayer(playerObj)
 		end)
+		if isOneTimeStarterPack and not markStarterPackPurchased(playerObj) then
+			return Enum.ProductPurchaseDecision.NotProcessedYet
+		end
 	end
 
 	if (coinsToAward or keysToAward or shardsToAward) and CurrencyService then

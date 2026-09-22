@@ -120,6 +120,9 @@ local function grantCurrencyPack(player, payload)
 end
 
 local function grantStarterPack(player)
+    if player:GetAttribute("StarterPackPurchased") == true then
+        return false, "Starter Pack already claimed."
+    end
     local reward = nil
     if type(ShopCatalog.GetStarterPackReward) == "function" then
         reward = ShopCatalog.GetStarterPackReward()
@@ -147,6 +150,7 @@ local function grantStarterPack(player)
         cur:AddSalvage(player, reward.Salvage)
     end
     saveCurrencyIfPossible(player)
+    player:SetAttribute("StarterPackPurchased", true)
 
     return true, "Granted Starter Pack for Studio testing."
 end
