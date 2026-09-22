@@ -404,6 +404,15 @@ function KingService:IsKing(player)
 	return player ~= nil and currentKing == player
 end
 
+-- Used by transitions such as a voluntary return to the Neutral lobby.
+function KingService:RemoveKing(player)
+	if currentKing ~= player then
+		return false
+	end
+	Uncrown(player, nil)
+	return true
+end
+
 function KingService:TryCrown(player, _source)
 	if not player or not player.Parent then
 		return false

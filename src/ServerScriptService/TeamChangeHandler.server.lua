@@ -8,6 +8,10 @@ local Teams = game:GetService("Teams")
 local ServerScriptService = game:GetService("ServerScriptService")
 
 local TeamDisplayNames = require(ReplicatedStorage:WaitForChild("TeamDisplayNames"))
+local KingService
+pcall(function()
+	KingService = require(ServerScriptService:WaitForChild("KingService", 10))
+end)
 
 -- Helper to locate a spawn part (BlueSpawn/RedSpawn) in any map model under Workspace
 local function findSpawnPart(spawnName)
@@ -214,6 +218,11 @@ returnToLobbyRequest.OnServerEvent:Connect(function(plr)
 	end
 
 	lastChangeTime[plr] = now
+	-- King bonuses only exist while playing for a team. Remove them before
+	-- changing to Neutral so they cannot persist through the lobby respawn.
+	if KingService and KingService.IsKing and KingService:IsKing(plr) then
+		KingService:RemoveKing(plr)
+	end
 	plr.Team = neutralTeam
 	plr:SetAttribute("Team", nil)  -- clears the attribute; TeamSpawn will see nil → LobbySpawn
 

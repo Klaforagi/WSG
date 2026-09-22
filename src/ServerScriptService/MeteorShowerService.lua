@@ -522,7 +522,7 @@ end
 -- Meteor shard spawning & collection
 ---------------------------------------------------------------------
 
-local function spawnShard(position)
+local function spawnShard(position, surfaceNormal)
     if not _active then return end
     if math.random() > Config.SHARD_SPAWN_CHANCE then return end
 
@@ -535,7 +535,9 @@ local function spawnShard(position)
     shard.Transparency = Config.SHARD_NEON_TRANSPARENCY or 0.75
     shard.Anchored = true
     shard.CanCollide = false
-    shard.CFrame = CFrame.new(position + Vector3.new(0, Config.SHARD_Y_OFFSET, 0))
+    local normal = (typeof(surfaceNormal) == "Vector3" and surfaceNormal.Magnitude > 0)
+        and surfaceNormal.Unit or Vector3.yAxis
+    shard.CFrame = CFrame.new(position + normal * (tonumber(Config.SHARD_SURFACE_CLEARANCE) or -0.20))
     shard.Parent = workspace
 
     local light = Instance.new("PointLight")
@@ -637,6 +639,70 @@ local function isTreeTrunk(part)
     return part and part.Name == "Part" and part:FindFirstAncestor("Tree") ~= nil
 end
 
+-- Event zones supply an X/Z area, not a reliable landing height. Resolve the
+-- actual surface beneath that point before launching the meteor.
+local function findGroundBelow(position)
+    local ignored = {}
+    local origin = position + Vector3.new(0, 160, 0)
+    local direction = Vector3.new(0, -420, 0)
+    for _ = 1, 32 do
+        _meteorRayParams.FilterDescendantsInstances = ignored
+        local result = workspace:Raycast(origin, direction, _meteorRayParams)
+        if not result then return nil end
+        local tree = result.Instance:FindFirstAncestor("Tree")
+        if tree and result.Instance.Name == "TreeLeaves" then
+            table.insert(ignored, result.Instance)
+        elseif isTreeTrunk(result.Instance) then
+            return nil
+        else
+            return result
+        end
+    end
+    return nil
+end
+
+local function fadeMeteorAfterImpact(meteor)
+    local duration = math.max(.1, tonumber(Config.IMPACT_PARTICLE_FADE_DURATION) or 3)
+    local emitters = {}
+    for _, descendant in ipairs(meteor:GetDescendants()) do
+        if descendant:IsA("BasePart") then
+            descendant.Transparency = 1
+        elseif descendant:IsA("ParticleEmitter") and descendant.Name == "ParticleEmitter" then
+            -- The VFX model has three named emitters under its two attachments.
+            -- Stop spawning new particles, then fade the particles already alive.
+            descendant.Enabled = false
+            table.insert(emitters, { emitter = descendant, transparency = descendant.Transparency })
+        elseif descendant:IsA("PointLight") or descendant:IsA("Trail")
+            or descendant:IsA("Fire") or descendant:IsA("Smoke") then
+            descendant.Enabled = false
+        end
+    end
+
+    task.spawn(function()
+        local startedAt = workspace:GetServerTimeNow()
+        while meteor.Parent do
+            local progress = math.clamp((workspace:GetServerTimeNow() - startedAt) / duration, 0, 1)
+            for _, entry in ipairs(emitters) do
+                local emitter = entry.emitter
+                if emitter.Parent then
+                    local keys = {}
+                    for _, key in ipairs(entry.transparency.Keypoints) do
+                        table.insert(keys, NumberSequenceKeypoint.new(
+                            key.Time,
+                            key.Value + (1 - key.Value) * progress,
+                            key.Envelope * (1 - progress)
+                        ))
+                    end
+                    emitter.Transparency = NumberSequence.new(keys)
+                end
+            end
+            if progress >= 1 then break end
+            task.wait()
+        end
+        if meteor.Parent then meteor:Destroy() end
+    end)
+end
+
 local function spawnOneMeteor()
     if not _active then return end
 
@@ -652,8 +718,11 @@ local function spawnOneMeteor()
         return  -- skip this cycle; will try again next interval
     end
 
-    local targetPos = sampleTargetPosition()
-    if not targetPos then return end
+    local zonePosition = sampleTargetPosition()
+    if not zonePosition then return end
+    local groundResult = findGroundBelow(zonePosition)
+    if not groundResult then return end
+    local targetPos = groundResult.Position
 
     local meteor, spawnPos, target = createMeteor(targetPos)
     table.insert(_currentMeteors, meteor)
@@ -666,19 +735,24 @@ local function spawnOneMeteor()
         meteor:Destroy()
         return
     end
-    local impactPos = impactResult and impactResult.Position or target
+    local surfacePos = impactResult and impactResult.Position or target
+    local surfaceNormal = impactResult and impactResult.Normal or Vector3.yAxis
+    -- Keep the visible meteor outside the contacted surface on slopes, hills,
+    -- and raised props; the contact point remains the damage/shard origin.
+    local meteorEndPos = surfacePos + surfaceNormal.Unit
+        * (tonumber(Config.METEOR_SURFACE_CLEARANCE) or 0.25)
 
     -- Check at spawn time if the surface is a Tree (skip shard if so)
     local _impactRayDown = workspace:Raycast(
-        impactPos + Vector3.new(0, 2, 0),
+        surfacePos + Vector3.new(0, 2, 0),
         Vector3.new(0, -8, 0),
         _meteorRayParams
     )
     local impactOnTree = _impactRayDown and isTreeTrunk(_impactRayDown.Instance)
 
     -- Scripted fall: Quad-In easing simulates gravitational acceleration
-    local direction = (impactPos - spawnPos).Unit
-    local endCF = CFrame.new(impactPos, impactPos + direction)
+    local direction = (meteorEndPos - spawnPos).Unit
+    local endCF = CFrame.new(meteorEndPos, meteorEndPos + direction)
 
     local tweenInfo = TweenInfo.new(
         Config.FALL_DURATION,
@@ -690,27 +764,18 @@ local function spawnOneMeteor()
 
     tween.Completed:Connect(function()
         -- Impact flash
-        createImpactEffect(impactPos)
+        createImpactEffect(surfacePos)
 
         -- Deal AoE damage at impact site
-        applyImpactDamage(impactPos)
+        applyImpactDamage(surfacePos)
 
         -- Spawn a collectible shard (skip if impact surface is a tree)
         if not impactOnTree then
-            spawnShard(impactPos)
+            spawnShard(surfacePos, surfaceNormal)
         end
 
-        -- Turn off emitters so they fade naturally before removal
-        pcall(function()
-            for _, child in ipairs(meteor:GetChildren()) do
-                if child:IsA("Fire") or child:IsA("Smoke") or child:IsA("PointLight") then
-                    child.Enabled = false
-                end
-            end
-        end)
+        fadeMeteorAfterImpact(meteor)
 
-        -- Schedule removal via Debris (safe against errors)
-        Debris:AddItem(meteor, Config.IMPACT_CLEANUP_DELAY)
     end)
 
     tween:Play()

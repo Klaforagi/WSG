@@ -298,6 +298,13 @@ function CurrencyService:AddCoins(player, amount, reasonOrOptions)
         if gamepassSvc and type(gamepassSvc.GetCoinBonus) == "function" then
             bonus = math.max(0, tonumber(gamepassSvc:GetCoinBonus(player)) or 0)
         end
+        -- Studio purchase tests set these attributes immediately. Honor them
+        -- directly so reward sources (including timed events) don't have to
+        -- wait for the asynchronous gamepass ownership cache to refresh.
+        if player:GetAttribute("ShopCoins2xOwned") == true
+            or player:GetAttribute("StudioShopTestOwned_coins_2x_gamepass") == true then
+            bonus = math.max(bonus, 1)
+        end
 
         amount = math.floor(amount * math.max(1, baseMultiplier + bonus))
     end

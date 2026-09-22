@@ -48,7 +48,9 @@ MeteorShowerConfig.MAX_ACTIVE_METEORS = 8      -- hard cap; spawns are skipped i
 -- Impact & cleanup
 ---------------------------------------------------------------------
 MeteorShowerConfig.IMPACT_FLASH_DURATION  = 0.5  -- seconds for the flash expand+fade
-MeteorShowerConfig.IMPACT_CLEANUP_DELAY   = 0.6  -- seconds after impact before meteor part is removed
+MeteorShowerConfig.IMPACT_PARTICLE_FADE_DURATION = 3 -- particles fade after the meteor body hides
+MeteorShowerConfig.IMPACT_CLEANUP_DELAY   = 3.1 -- cleanup after particles complete
+MeteorShowerConfig.METEOR_SURFACE_CLEARANCE = 1.75 -- 1.5 studs higher than the prior slope/prop lift
 
 ---------------------------------------------------------------------
 -- Impact damage
@@ -70,7 +72,8 @@ MeteorShowerConfig.SHARD_LIGHT_BRIGHTNESS  = 0.3  -- toned down (was 1.5)
 MeteorShowerConfig.SHARD_NEON_TRANSPARENCY = 0.45  -- easier to spot while collectible
 MeteorShowerConfig.SHARD_BOB_DISTANCE      = 0.5
 MeteorShowerConfig.SHARD_BOB_DURATION      = 3.4
-MeteorShowerConfig.SHARD_Y_OFFSET          = -2    -- studs above ground level
+MeteorShowerConfig.SHARD_Y_OFFSET          = 0     -- legacy compatibility; placement uses surface normal
+MeteorShowerConfig.SHARD_SURFACE_CLEARANCE = 1.30 -- 1.5 studs above its prior resting position
 
 ---------------------------------------------------------------------
 -- Target zones
