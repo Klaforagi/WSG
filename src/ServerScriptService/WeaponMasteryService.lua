@@ -113,6 +113,19 @@ local function getMasteryBonusBreakdown(player)
         end
     end
 
+    -- Studio ownership is set through player attributes before any async
+    -- ownership refresh. Treat it as a fallback, never an extra duplicate.
+    if player:GetAttribute("ShopVIPOwned") == true
+        or player:GetAttribute("StudioShopTestOwned_vip_gamepass") == true then
+        breakdown.vipOwned = true
+        breakdown.vipBonus = math.max(breakdown.vipBonus, 0.2)
+    end
+    if player:GetAttribute("ShopMastery2xOwned") == true
+        or player:GetAttribute("StudioShopTestOwned_mastery_2x_gamepass") == true then
+        breakdown.masteryOwned = true
+        breakdown.masteryBonus = math.max(breakdown.masteryBonus, 1)
+    end
+
     breakdown.totalBonus = breakdown.vipBonus + breakdown.masteryBonus
     breakdown.multiplier = math.max(1, 1 + breakdown.totalBonus)
     return breakdown
@@ -496,6 +509,7 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     if not isTrackedTeamPlayer(player) then return nil end
     if type(instanceId) ~= "string" or instanceId == "" then return nil end
 
+    local rewardKind = meta and meta.kind
     local entry, weaponName, meta = getEntryForInstance(player, instanceId, true)
     if not entry or not weaponName then return nil end
 
@@ -503,11 +517,16 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
     statAmount = math.max(0, math.floor(tonumber(statAmount) or 0))
     local oldLevel = entry.level or 0
 
+    local masteryMultiplier = 1
     local bonusInfo = getMasteryBonusBreakdown(player)
-    local masteryMultiplier = bonusInfo.multiplier
-    local boostSvc = getBoostService()
-    if boostSvc and type(boostSvc.GetMasteryMultiplier) == "function" then
-        masteryMultiplier = masteryMultiplier * math.max(1, tonumber(boostSvc:GetMasteryMultiplier(player)) or 1)
+    -- Only eliminations are reward-boost eligible.  Per-hit mastery, quest
+    -- claims, and any future non-combat award remain fixed at their base rate.
+    if rewardKind == "PlayerElimination" or rewardKind == "MobKill" then
+        masteryMultiplier = bonusInfo.multiplier
+        local boostSvc = getBoostService()
+        if boostSvc and type(boostSvc.GetMasteryMultiplier) == "function" then
+            masteryMultiplier += math.max(1, tonumber(boostSvc:GetMasteryMultiplier(player)) or 1) - 1
+        end
     end
     local awardedXP = 0
 
@@ -524,15 +543,12 @@ local function addProgress(player, instanceId, xpAmount, statKey, statAmount, me
         table.insert(sourceText, string.format("VIP=%s(+%.1f)", tostring(bonusInfo.vipOwned == true), bonusInfo.vipBonus))
         table.insert(sourceText, string.format("MasteryPass=%s(+%.1f)", tostring(bonusInfo.masteryOwned == true), bonusInfo.masteryBonus))
         print(string.format(
-            "[WeaponMastery] %s/%s gain: baseXP=%.1f, sources={%s}, totalBonus=%.1f, formula=%.1f * (1 + %.1f) = %.1f, awardedXP=%.1f, level %d -> %d",
+            "[WeaponMastery] %s/%s gain: baseXP=%.1f, sources={%s}, multiplier=%.1f, awardedXP=%.1f, level %d -> %d",
             tostring(player.Name),
             tostring(weaponName),
             baseXP,
             table.concat(sourceText, ", "),
-            bonusInfo.totalBonus,
-            baseXP,
-            bonusInfo.totalBonus,
-            awardedXP,
+            masteryMultiplier,
             awardedXP,
             oldLevel,
             entry.level or oldLevel
@@ -775,27 +791,19 @@ function WeaponMasteryService:RegisterDamage(player, instanceId, amount)
 
     entry.damage = (entry.damage or 0) + amount
     entry.lastUsedAt = os.time()
-    local bonusInfo = getMasteryBonusBreakdown(player)
     local baseXP = normalizeXPValue(Config.XP.Hit or 0)
-    local masteryMultiplier = bonusInfo.multiplier
-    local boostSvc = getBoostService()
-    if boostSvc and type(boostSvc.GetMasteryMultiplier) == "function" then
-        masteryMultiplier = masteryMultiplier * math.max(1, tonumber(boostSvc:GetMasteryMultiplier(player)) or 1)
-    end
+    -- Damage ticks are not kills, so they deliberately stay at base mastery.
+    local masteryMultiplier = 1
     local oldLevel = entry.level or 0
     local xpAmount = applyMasteryXP(entry, baseXP, masteryMultiplier, (meta and meta.rarity) or entry.rarity)
 
     if xpAmount > 0 then
         print(string.format(
-            "[WeaponMastery] %s/%s hit gain: baseXP=%.1f, VIP=%s(+%.1f), MasteryPass=%s(+%.1f), multiplier=%.1f, awardedXP=%.1f",
+            "[WeaponMastery] %s/%s hit gain: baseXP=%.1f, multiplier=%.1f, awardedXP=%.1f",
             tostring(player.Name),
             tostring(weaponName),
             baseXP,
-            tostring(bonusInfo.vipOwned == true),
-            bonusInfo.vipBonus,
-            tostring(bonusInfo.masteryOwned == true),
-            bonusInfo.masteryBonus,
-            bonusInfo.multiplier,
+            masteryMultiplier,
             xpAmount
         ))
         fireUpdated(player, instanceId, weaponName, {

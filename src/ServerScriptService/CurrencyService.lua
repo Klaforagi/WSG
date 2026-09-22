@@ -286,7 +286,19 @@ function CurrencyService:AddCoins(player, amount, reasonOrOptions)
         skipMultipliers = reasonOrOptions.skipMultipliers == true
     end
 
-    if amount > 0 and not skipMultipliers and reason ~= "purchase" then
+    -- Reward bonuses deliberately apply only to active gameplay.  Claims such
+    -- as quests, achievements, daily rewards, and purchases remain their
+    -- configured fixed values.
+    local boostedSources = {
+        elimination = true,
+        flag_capture = true,
+        GoldRushPickup = true,
+        GoldRushObjective = true,
+        MeteorShard = true,
+        MeteorShowerObjective = true,
+        GoblinRaidBonus = true,
+    }
+    if amount > 0 and not skipMultipliers and boostedSources[reason] == true then
         local baseMultiplier = 1
         local boostSvc = getBoostService()
         if boostSvc and type(boostSvc.GetCoinMultiplier) == "function" then
@@ -301,10 +313,16 @@ function CurrencyService:AddCoins(player, amount, reasonOrOptions)
         -- Studio purchase tests set these attributes immediately. Honor them
         -- directly so reward sources (including timed events) don't have to
         -- wait for the asynchronous gamepass ownership cache to refresh.
+        local studioBonus = 0
+        if player:GetAttribute("ShopVIPOwned") == true
+            or player:GetAttribute("StudioShopTestOwned_vip_gamepass") == true then
+            studioBonus += 0.2
+        end
         if player:GetAttribute("ShopCoins2xOwned") == true
             or player:GetAttribute("StudioShopTestOwned_coins_2x_gamepass") == true then
-            bonus = math.max(bonus, 1)
+            studioBonus += 1
         end
+        bonus = math.max(bonus, studioBonus)
 
         amount = math.floor(amount * math.max(1, baseMultiplier + bonus))
     end

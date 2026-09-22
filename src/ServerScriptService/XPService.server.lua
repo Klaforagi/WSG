@@ -323,21 +323,34 @@ local function AwardXP(player, reason, amountOverride, metadata)
 
     if amount <= 0 then return false end
 
-    -- Apply optional XP boost multiplier (2x XP, etc.) plus permanent
-    -- additive gamepass bonuses (VIP / 2x XP).
-    local boostMultiplier = 1
-    local boostSvc = getBoostService()
-    if boostSvc and type(boostSvc.GetXPMultiplier) == "function" then
-        boostMultiplier = math.max(1, tonumber(boostSvc:GetXPMultiplier(player)) or 1)
-    end
+    -- Boosts and passes each add their bonus from the original reward.  They
+    -- only affect kills, flag captures, and active event rewards; quest and
+    -- achievement XP must always stay fixed.
+    local boostedReasons = { PlayerKill = true, MobKill = true, FlagCapture = true, GoblinRaid = true }
+    if boostedReasons[reasonKey] == true then
+        local boostMultiplier = 1
+        local boostSvc = getBoostService()
+        if boostSvc and type(boostSvc.GetXPMultiplier) == "function" then
+            boostMultiplier = math.max(1, tonumber(boostSvc:GetXPMultiplier(player)) or 1)
+        end
 
-    local gamepassBonus = 0
-    local gamepassSvc = getGamepassService()
-    if gamepassSvc and type(gamepassSvc.GetXPBonus) == "function" then
-        gamepassBonus = math.max(0, tonumber(gamepassSvc:GetXPBonus(player)) or 0)
+        local gamepassBonus = 0
+        local gamepassSvc = getGamepassService()
+        if gamepassSvc and type(gamepassSvc.GetXPBonus) == "function" then
+            gamepassBonus = math.max(0, tonumber(gamepassSvc:GetXPBonus(player)) or 0)
+        end
+        local studioBonus = 0
+        if player:GetAttribute("ShopVIPOwned") == true
+            or player:GetAttribute("StudioShopTestOwned_vip_gamepass") == true then
+            studioBonus += 0.2
+        end
+        if player:GetAttribute("ShopXP2xOwned") == true
+            or player:GetAttribute("StudioShopTestOwned_xp_2x_gamepass") == true then
+            studioBonus += 1
+        end
+        gamepassBonus = math.max(gamepassBonus, studioBonus)
+        amount = math.floor(amount * math.max(1, boostMultiplier + gamepassBonus))
     end
-
-    amount = math.floor(amount * math.max(1, boostMultiplier + gamepassBonus))
 
     if amount <= 0 then return false end
 

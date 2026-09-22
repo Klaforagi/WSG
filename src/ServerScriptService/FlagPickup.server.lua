@@ -527,7 +527,7 @@ local function awardFlagReturnRewards(player)
 	end
 	if CurrencyService and CurrencyService.AddCoins then
 		pcall(function()
-			CurrencyService:AddCoins(player, 5, "objective")
+			CurrencyService:AddCoins(player, 5, "flag_return")
 		end)
 	end
 	if StatService then
@@ -1099,7 +1099,7 @@ local function captureFlagAtStand(pl, standTeam)
 	end
 	if CurrencyService and CurrencyService.AddCoins then
 		pcall(function()
-			CurrencyService:AddCoins(pl, 10, "objective")
+			CurrencyService:AddCoins(pl, 10, "flag_capture")
 		end)
 	end
 	if StatService then

@@ -739,11 +739,14 @@ local function makeFlagSlot(panel, alignRight)
     return {slot = slot, blue = blueCarried, red = redCarried}
 end
 
-local blueFlagSlot = makeFlagSlot(bluePanel, true)
-local redFlagSlot = makeFlagSlot(redPanel, false)
+-- The scoreboard intentionally stays score-only. Flag carry state is still
+-- handled by the objective UI, but no icon is added to either score panel.
+local blueFlagSlot = nil
+local redFlagSlot = nil
 
 local function setCarriedFlag(teamName, flagTeamName, present)
     local slot = (teamName == "Blue") and blueFlagSlot or redFlagSlot
+    if not slot then return end
     if flagTeamName == "Blue" then
         slot.blue.Visible = present
     elseif flagTeamName == "Red" then
