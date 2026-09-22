@@ -68,7 +68,7 @@ closeBtn.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
 closeBtn.BorderSizePixel = 0
 closeBtn.Font = Enum.Font.GothamBlack
 closeBtn.Text = "X"
-closeBtn.TextColor3 = Color3.fromRGB(254, 214, 56)
+closeBtn.TextColor3 = Color3.fromRGB(255, 215, 80)
 closeBtn.TextScaled = true
 closeBtn.AutoButtonColor = false
 closeBtn.ZIndex = 20
@@ -77,19 +77,18 @@ local closeAspect = Instance.new("UIAspectRatioConstraint")
 closeAspect.AspectRatio = 1
 closeAspect.Parent = closeBtn
 local closeCorner = Instance.new("UICorner")
-closeCorner.CornerRadius = UDim.new(0, 6)
+closeCorner.CornerRadius = UDim.new(0, math.max(1, math.round(8 * ((workspace.CurrentCamera and workspace.CurrentCamera.ViewportSize.Y) or 1080) / 1080)))
 closeCorner.Parent = closeBtn
 local closeStroke = Instance.new("UIStroke")
-closeStroke.Color = Color3.fromRGB(254, 214, 56)
+closeStroke.Color = Color3.fromRGB(255, 215, 80)
 closeStroke.Thickness = 1.2
 closeStroke.Transparency = 0.4
+closeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 closeStroke.Parent = closeBtn
-local closePad = Instance.new("UIPadding")
-closePad.PaddingTop = UDim.new(0.12, 0)
-closePad.PaddingBottom = UDim.new(0.12, 0)
-closePad.PaddingLeft = UDim.new(0.12, 0)
-closePad.PaddingRight = UDim.new(0.12, 0)
-closePad.Parent = closeBtn
+local closeTextSize = Instance.new("UITextSizeConstraint")
+closeTextSize.MinTextSize = 14
+closeTextSize.MaxTextSize = 26
+closeTextSize.Parent = closeBtn
 
 local voteUiDismissed = false
 local lastVoteClock = 0
@@ -100,7 +99,7 @@ closeBtn.MouseEnter:Connect(function()
 end)
 closeBtn.MouseLeave:Connect(function()
     closeBtn.BackgroundColor3 = Color3.fromRGB(26, 30, 48)
-    closeBtn.TextColor3 = Color3.fromRGB(254, 214, 56)
+    closeBtn.TextColor3 = Color3.fromRGB(255, 215, 80)
 end)
 closeBtn.Activated:Connect(function()
     voteUiDismissed = true

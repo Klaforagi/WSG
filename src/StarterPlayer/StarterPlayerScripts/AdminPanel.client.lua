@@ -2489,14 +2489,6 @@ if USER_DATA_AVAILABLE then
             local s = makeSection("Inventory", nextOrder())
             local weapons = d.Weapons
             addRow(s, "Owned Weapons", weapons and tostring(countKeys(weapons)) or "N/A", 1)
-            local skins = d.Skins
-            if type(skins) == "table" then
-                addRow(s, "Owned Skins",    tostring(countKeys(skins.owned or {})), 2)
-                addRow(s, "Equipped Skin",  safeStr(skins.equipped),                3)
-            else
-                addRow(s, "Owned Skins",   "N/A", 2)
-                addRow(s, "Equipped Skin", "N/A", 3)
-            end
             local effects = d.Effects
             if type(effects) == "table" then
                 addRow(s, "Owned Effects", tostring(countKeys(effects.owned or {})), 4)
@@ -3449,13 +3441,6 @@ if RESTORE_AVAILABLE then
         do
             local s = rSection("Previous Inventory", nextOrder())
             rRow(s, "Owned Weapons", prev.Weapons and tostring(rCountKeys(prev.Weapons)) or "N/A", 1)
-            local skins = prev.Skins
-            if type(skins) == "table" then
-                rRow(s, "Owned Skins",   tostring(rCountKeys(skins.owned or {})), 2)
-                rRow(s, "Equipped Skin", rSafe(skins.equipped),                   3)
-            else
-                rRow(s, "Skins", "N/A", 2)
-            end
             local effects = prev.Effects
             if type(effects) == "table" then
                 rRow(s, "Owned Effects", tostring(rCountKeys(effects.owned or {})), 4)

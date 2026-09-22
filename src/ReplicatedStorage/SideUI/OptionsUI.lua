@@ -1064,7 +1064,12 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		cbStroke.Color = GOLD
 		cbStroke.Thickness = 1.2
 		cbStroke.Transparency = 0.4
+		cbStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		cbStroke.Parent = popClose
+		local closeTextSize = Instance.new("UITextSizeConstraint")
+		closeTextSize.MinTextSize = 14
+		closeTextSize.MaxTextSize = 26
+		closeTextSize.Parent = popClose
 
 		-- Hover / press feedback
 		local closeFeedback = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)

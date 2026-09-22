@@ -1,8 +1,8 @@
 --------------------------------------------------------------------------------
 -- EffectsPreview.lua  –  Client-side dash trail preview for Inventory Effects tab
 --
--- Builds a preview rig posed mid-dash, then spawns coloured ribbon-parts
--- behind it as it oscillates to simulate the trail visually.
+-- Builds an attachment-aligned avatar and a continuous, tapered ribbon along
+-- a repeating dash. Uses live dash timing and effect definitions.
 --
 -- NOTE: Roblox Trail instances do NOT render inside ViewportFrames.
 -- This module uses a part-based ribbon fallback that closely matches
@@ -24,20 +24,10 @@ pcall(function()
     if mod and mod:IsA("ModuleScript") then EffectDefs = require(mod) end
 end)
 
--- Optional: reuse head + accessory attachment helper from StandaloneSkinPreview
-local StandaloneSkinPreview = nil
-pcall(function()
-    local mods = ReplicatedStorage:FindFirstChild("Modules")
-    local mod = mods and mods:FindFirstChild("StandaloneSkinPreview")
-    if mod and mod:IsA("ModuleScript") then
-        StandaloneSkinPreview = require(mod)
-    end
-end)
-
 local EffectsPreview = {}
 
 local function dprint(...)
-    print("[EffectsPreview]", ...)
+    -- Preview logging is intentionally quiet during item selection.
 end
 
 --------------------------------------------------------------------------------
@@ -47,46 +37,34 @@ local _activeConn   = nil   -- RenderStepped connection
 local _activeWM     = nil   -- WorldModel reference
 local _ribbonParts  = {}    -- { {part, spawnTime}, ... }
 local _elapsed      = 0     -- clock tracked inside RenderStepped
+local _generation   = 0     -- invalidate avatar builds that yield during selection changes
 
 --------------------------------------------------------------------------------
 -- RIBBON CONFIGURATION  (preview-only — does NOT affect live gameplay)
 --------------------------------------------------------------------------------
-local RIBBON_LIFETIME    = 1.3     -- seconds each ribbon segment persists
+local RIBBON_LIFETIME    = DashConfig.TrailLifetime or 0.8     -- seconds each ribbon segment persists
 local RIBBON_SPACING     = 0.10    -- studs of movement between spawns
 local RIBBON_HEIGHT      = 2.3     -- matches attachment span  (0.8 to -1.5)
 local RIBBON_THICKNESS   = 0.06    -- thin slab (depth toward camera)
-local RIBBON_WIDTH       = 0.35    -- width perpendicular to camera view
-local MAX_RIBBONS        = 60      -- safety cap
+local MAX_RIBBONS        = 160      -- safety cap
 
 --------------------------------------------------------------------------------
 -- MOTION / CAMERA CONFIGURATION
 --------------------------------------------------------------------------------
--- Movement direction aligned with rig facing (160° Y rotation)
-local MOVE_DIR   = Vector3.new(-0.781, 0, 0.625)
+-- Movement direction aligned with the avatar facing left.
+local MOVE_DIR   = Vector3.new(-1, 0, 0)
 local BASE_POS   = Vector3.new(0, 3, 0)
-local RIG_Y_ROT  = math.rad(160)
-local DASH_DURATION = 1.0  -- seconds for one forward dash
-local RESET_DELAY   = 0.5  -- pause at start before next dash
+local RIG_Y_ROT  = math.rad(90)
+local DASH_DURATION = DashConfig.Duration or 0.2  -- seconds for one forward dash
+local RESET_DELAY   = RIBBON_LIFETIME + 0.6  -- pause at start before next dash
 local CYCLE_TIME    = DASH_DURATION + RESET_DELAY
-local SLIDE_DIST    = 3.0  -- studs total dash distance
+local SLIDE_DIST    = 7.0  -- studs total dash distance
 
-local CAM_POS    = Vector3.new(2, 5, 7)
+local CAM_POS    = Vector3.new(0, 4.5, 13)
 local CAM_TARGET = Vector3.new(0, 2.5, 0)
 local CAM_FOV    = 50
 
--- Rainbow colours (from real TrailColorSequence keypoints)
-local RAINBOW_COLORS = {
-    Color3.fromRGB(255,  60,  60),   -- red
-    Color3.fromRGB(255, 160,  40),   -- orange
-    Color3.fromRGB(255, 230,  60),   -- yellow
-    Color3.fromRGB( 40, 220,  80),   -- green
-    Color3.fromRGB( 40, 210, 255),   -- cyan
-    Color3.fromRGB( 60,  80, 255),   -- blue
-    Color3.fromRGB(200,  60, 255),   -- magenta
-}
-
---------------------------------------------------------------------------------
--- BUILD PREVIEW RIG  (reuses SkinPreview pattern)
+-- BUILD PREVIEW RIG
 --------------------------------------------------------------------------------
 local function buildRig()
     local player = Players.LocalPlayer
@@ -100,7 +78,7 @@ local function buildRig()
             pcall(function() desc = hum:GetAppliedDescription() end)
             if desc then
                 local ok, rig = pcall(function()
-                    return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+                    return Players:CreateHumanoidModelFromDescription(desc, hum.RigType)
                 end)
                 if ok and rig then
                     for _, d in ipairs(rig:GetDescendants()) do
@@ -115,7 +93,11 @@ local function buildRig()
 
     -- Fallback: clone character
     if character then
-        local rig = character:Clone()
+        local archivable = character.Archivable
+        character.Archivable = true
+        local ok, rig = pcall(function() return character:Clone() end)
+        character.Archivable = archivable
+        if not ok or not rig then return nil end
         for _, d in ipairs(rig:GetDescendants()) do
             if d:IsA("BaseScript") or d:IsA("BillboardGui") or d:IsA("ForceField") then
                 d:Destroy()
@@ -175,8 +157,8 @@ local function resolveTrailConfig(effectId)
     local isDark = (not isRainbow) and solidColor
         and (solidColor.R + solidColor.G + solidColor.B) < 0.75
 
-    -- Preview-only: slightly more opaque than live for readability
-    local baseTransp = isRainbow and 0.15 or (isDark and 0.05 or 0.25)
+    -- Match DashClient starting transparency for each effect.
+    local baseTransp = isRainbow and 0.2 or (isDark and 0.1 or 0.3)
 
     dprint("Resolved trail config:", effectId,
         "| rainbow=", isRainbow, "| dark=", isDark, "| baseTransp=", baseTransp)
@@ -186,7 +168,8 @@ local function resolveTrailConfig(effectId)
         isRainbow = isRainbow,
         isDark = isDark,
         baseTransparency = baseTransp,
-        rainbowColors = isRainbow and RAINBOW_COLORS or nil,
+        colorSequence = def.TrailColorSequence,
+        endWidth = isRainbow and 0.4 or 0.3,
     }
 end
 
@@ -202,48 +185,38 @@ local function cleanupAllRibbons()
     _ribbonParts = {}
 end
 
-local function spawnRibbon(worldModel, ribbonPos, config, colorIndex)
-    -- Determine colour
-    local color
-    if config.isRainbow and config.rainbowColors then
-        local idx = ((colorIndex - 1) % #config.rainbowColors) + 1
-        color = config.rainbowColors[idx]
-    else
-        color = config.color
+local function sampleColor(sequence, t, fallback)
+    if not sequence then return fallback end
+    local keys = sequence.Keypoints
+    for i = 2, #keys do
+        if t <= keys[i].Time then
+            local left, right = keys[i-1], keys[i]
+            return left.Value:Lerp(right.Value, (t-left.Time)/(right.Time-left.Time))
+        end
     end
+    return keys[#keys].Value
+end
 
-    -- Orient ribbon to face the camera (billboard-style vertical slab)
-    local dirToCam = CAM_POS - ribbonPos
-    local flatDir = Vector3.new(dirToCam.X, 0, dirToCam.Z)
-    if flatDir.Magnitude < 0.001 then flatDir = Vector3.new(0, 0, 1) end
-    flatDir = flatDir.Unit
-
-    local ribbonCF = CFrame.lookAt(ribbonPos, ribbonPos + flatDir)
-
+local function spawnRibbon(worldModel, from, to, config)
+    local delta = to - from
+    if delta.Magnitude < 0.001 then return end
     local part = Instance.new("Part")
-    part.Name = "_RibbonSeg"
+    part.Name = "TrailRibbon"
     part.Anchored = true
-    part.CanCollide = false
+    part.CanCollide, part.CanTouch, part.CanQuery = false, false, false
     part.CastShadow = false
-    part.Size = Vector3.new(RIBBON_WIDTH, RIBBON_HEIGHT, RIBBON_THICKNESS)
-    part.CFrame = ribbonCF
-    part.Color = color
-    part.Material = Enum.Material.Neon
+    part.Size = Vector3.new(delta.Magnitude + 0.005, RIBBON_HEIGHT, RIBBON_THICKNESS)
+    local right = delta.Unit
+    local up = Vector3.yAxis
+    part.CFrame = CFrame.fromMatrix((from + to) * 0.5, right, up, right:Cross(up))
+    part.Color = config.color
+    part.Material = Enum.Material.SmoothPlastic
     part.Transparency = config.baseTransparency
     part.Parent = worldModel
-
-    table.insert(_ribbonParts, {
-        part = part,
-        spawnTime = _elapsed,
-        baseTransparency = config.baseTransparency,
-    })
-
-    -- Enforce cap
+    table.insert(_ribbonParts, {part=part, spawnTime=_elapsed,
+        baseTransparency=config.baseTransparency, config=config})
     while #_ribbonParts > MAX_RIBBONS do
-        local oldest = table.remove(_ribbonParts, 1)
-        if oldest.part and oldest.part.Parent then
-            oldest.part:Destroy()
-        end
+        table.remove(_ribbonParts,1).part:Destroy()
     end
 end
 
@@ -259,9 +232,12 @@ local function updateRibbonFade()
             table.remove(_ribbonParts, i)
         else
             local frac = age / RIBBON_LIFETIME
-            -- Ease-in fade: slow at start, faster toward end
-            local fadeFrac = frac * frac
+            -- Match the live linear transparency sequence.
+            local fadeFrac = frac
             entry.part.Transparency = entry.baseTransparency + (1 - entry.baseTransparency) * fadeFrac
+            entry.part.Size = Vector3.new(entry.part.Size.X,
+                RIBBON_HEIGHT * (1 - frac * (1 - (entry.config.endWidth or 0.3))), RIBBON_THICKNESS)
+            entry.part.Color = sampleColor(entry.config.colorSequence, frac, entry.config.color)
             i = i + 1
         end
     end
@@ -271,6 +247,7 @@ end
 -- STOP  –  Disconnect loop, cleanup
 --------------------------------------------------------------------------------
 function EffectsPreview.Stop()
+    _generation += 1
     if _activeConn then
         _activeConn:Disconnect()
         _activeConn = nil
@@ -292,6 +269,7 @@ function EffectsPreview.Update(viewportFrame, effectId)
 
     -- Clean previous
     EffectsPreview.Stop()
+    local generation = _generation
 
     for _, child in ipairs(viewportFrame:GetChildren()) do
         if child:IsA("WorldModel") or child:IsA("Camera") or child:IsA("Model") then
@@ -303,6 +281,7 @@ function EffectsPreview.Update(viewportFrame, effectId)
 
     local rig = buildRig()
     if not rig then return end
+    if generation ~= _generation or not viewportFrame.Parent then rig:Destroy(); return end
 
     -- Strip existing skin cosmetic parts
     local toRemove = {}
@@ -313,22 +292,72 @@ function EffectsPreview.Update(viewportFrame, effectId)
     end
     for _, child in ipairs(toRemove) do child:Destroy() end
 
-    -- Try to apply live head + head accessories onto preview rig (best-effort)
-    if StandaloneSkinPreview and type(StandaloneSkinPreview.ApplyLiveHeadToRig) == "function" then
-        pcall(function()
-            StandaloneSkinPreview.ApplyLiveHeadToRig(rig)
-        end)
-    end
-
-    -- Anchor all parts
+    -- Keep joints free to position the limbs/accessories; only anchor the root.
     for _, d in ipairs(rig:GetDescendants()) do
         if d:IsA("BasePart") then
-            d.Anchored = true
+            d.Anchored = d.Name == "HumanoidRootPart"
+            d.CanCollide, d.CanTouch, d.CanQuery = false, false, false
+            d.CastShadow = false
+        elseif d:IsA("Tool") or d:IsA("Trail") or d:IsA("ParticleEmitter")
+            or d:IsA("BillboardGui") or d:IsA("ForceField") then
+            d:Destroy()
         end
     end
-
-    -- Pose the rig for a mid-dash look
     poseDashLean(rig)
+    local root = rig:FindFirstChild("HumanoidRootPart")
+    if not root then rig:Destroy(); return end
+    rig.PrimaryPart = root
+    local humanoid = rig:FindFirstChildOfClass("Humanoid")
+    if humanoid then humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end
+    -- Resolve the motor hierarchy before the first render, rather than freezing the spawn pose.
+    local positioned = {[root]=true}
+    for _ = 1, 20 do
+        local changed = false
+        for _, joint in ipairs(rig:GetDescendants()) do
+            if joint:IsA("Motor6D") and joint.Part0 and joint.Part1
+                and positioned[joint.Part0] and not positioned[joint.Part1] then
+                joint.Part1.CFrame = joint.Part0.CFrame * joint.C0 * joint.Transform * joint.C1:Inverse()
+                positioned[joint.Part1] = true
+                changed = true
+            end
+        end
+        if not changed then break end
+    end
+    -- Accessory attachment alignment also handles hats whose weld hasn't settled yet.
+    for _, accessory in ipairs(rig:GetChildren()) do
+        if accessory:IsA("Accessory") then
+            local handle = accessory:FindFirstChild("Handle")
+            if handle and handle:IsA("BasePart") then
+                local attachment = handle:FindFirstChildOfClass("Attachment")
+                local target
+                if attachment then
+                    for _, body in ipairs(rig:GetChildren()) do
+                        if body:IsA("BasePart") then
+                            target = body:FindFirstChild(attachment.Name)
+                            if target and target:IsA("Attachment") then break end
+                            target = nil
+                        end
+                    end
+                end
+                local weld = handle:FindFirstChild("AccessoryWeld")
+                if target then
+                    handle.CFrame = target.WorldCFrame * attachment.CFrame:Inverse()
+                    if weld then weld:Destroy() end
+                    weld = Instance.new("Weld")
+                    weld.Name = "AccessoryWeld"
+                    weld.Part0, weld.Part1 = target.Parent, handle
+                    weld.C0, weld.C1 = target.CFrame, attachment.CFrame
+                    weld.Parent = handle
+                elseif weld and weld:IsA("Weld") and weld.Part0 and weld.Part1 then
+                    if weld.Part0 == handle then
+                        handle.CFrame = weld.Part1.CFrame * weld.C1 * weld.C0:Inverse()
+                    else
+                        handle.CFrame = weld.Part0.CFrame * weld.C0 * weld.C1:Inverse()
+                    end
+                end
+            end
+        end
+    end
 
     -- Initial rig position
     local baseRot = CFrame.Angles(0, RIG_Y_ROT, 0)
@@ -351,6 +380,17 @@ function EffectsPreview.Update(viewportFrame, effectId)
     camera.CFrame = CFrame.lookAt(CAM_POS, CAM_TARGET)
     camera.Parent = viewportFrame
     viewportFrame.CurrentCamera = camera
+    viewportFrame.Ambient = Color3.fromRGB(200, 200, 200)
+    viewportFrame.LightColor = Color3.new(1, 1, 1)
+    local _, rigSize = rig:GetBoundingBox()
+    local function fitCamera()
+        local size = viewportFrame.AbsoluteSize
+        local aspectRatio = size.X / math.max(1, size.Y)
+        local halfHeight = math.max(rigSize.Y * 0.6, (rigSize.X + SLIDE_DIST) * 0.55 / math.max(0.2, aspectRatio))
+        local distance = halfHeight / math.tan(math.rad(CAM_FOV * 0.5)) + rigSize.Z * 0.5
+        camera.CFrame = CFrame.lookAt(CAM_TARGET + Vector3.new(0, distance * 0.12, distance), CAM_TARGET)
+    end
+    fitCamera()
 
     -- Lighting
     local keyLightPart = Instance.new("Part")
@@ -372,7 +412,7 @@ function EffectsPreview.Update(viewportFrame, effectId)
     -- Repeating one-way dash loop with ribbon spawning
     _elapsed = 0
     local lastSpawnPos = nil
-    local ribbonColorIdx = 0
+    local lastCycle = -1
     local startPos = BASE_POS - MOVE_DIR * (SLIDE_DIST * 0.5)
     local endPos   = BASE_POS + MOVE_DIR * (SLIDE_DIST * 0.5)
 
@@ -386,13 +426,20 @@ function EffectsPreview.Update(viewportFrame, effectId)
         end
 
         _elapsed = _elapsed + dt
+        fitCamera()
 
+        local cycle = math.floor(_elapsed / CYCLE_TIME)
+        if cycle ~= lastCycle then
+            cleanupAllRibbons()
+            lastSpawnPos = startPos + Vector3.new(0,-0.35,0)
+            lastCycle = cycle
+        end
         local phase = _elapsed % CYCLE_TIME
         local isDashing = phase < DASH_DURATION
 
-        if isDashing then
+        if isDashing or lastSpawnPos then
             -- Forward dash: ease-out for natural deceleration
-            local t = phase / DASH_DURATION
+            local t = math.min(1, phase / DASH_DURATION)
             local eased = 1 - (1 - t) * (1 - t)
             local worldPos = startPos:Lerp(endPos, eased)
             rig:PivotTo(CFrame.new(worldPos) * baseRot)
@@ -403,24 +450,19 @@ function EffectsPreview.Update(viewportFrame, effectId)
                 local currentPos = hrp.Position
                 local ribbonPos = Vector3.new(currentPos.X, currentPos.Y - 0.35, currentPos.Z)
 
-                if lastSpawnPos == nil or (currentPos - lastSpawnPos).Magnitude >= RIBBON_SPACING then
-                    ribbonColorIdx = ribbonColorIdx + 1
-                    spawnRibbon(worldModel, ribbonPos, trailConfig, ribbonColorIdx)
-                    lastSpawnPos = currentPos
+                if lastSpawnPos then
+                    local distance = (ribbonPos-lastSpawnPos).Magnitude
+                    local count = math.max(1, math.ceil(distance/RIBBON_SPACING))
+                    for i=1,count do
+                        spawnRibbon(worldModel, lastSpawnPos:Lerp(ribbonPos,(i-1)/count),
+                            lastSpawnPos:Lerp(ribbonPos,i/count),trailConfig)
+                    end
                 end
+                lastSpawnPos = isDashing and ribbonPos or nil
             end
-        else
-            -- Reset phase: clear leftover ribbons then reposition rig
-            cleanupAllRibbons()
-            rig:PivotTo(CFrame.new(startPos) * baseRot)
-            lastSpawnPos = nil
-            ribbonColorIdx = 0
         end
-
-        -- Fade existing ribbons during dash
-        if isDashing then
-            updateRibbonFade()
-        end
+        -- Keep the completed trail visible as it fades; never erase it at dash end.
+        updateRibbonFade()
     end)
 
     dprint("Preview started — one-way dash ribbon trail active")

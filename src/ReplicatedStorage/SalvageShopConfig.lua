@@ -7,9 +7,9 @@
 --   Id            – unique string identifier
 --   DisplayName   – player-facing name
 --   Description   – short description
---   Category      – "Skin" | "Effect" | "Crate"
+--   Category      – "Effect" | "Crate"
 --   SalvagePrice  – amount of Salvage currency required
---   RewardType    – "Skin" | "Effect" | "Crate" (how the reward is granted)
+--   RewardType    – "Effect" | "Crate" (how the reward is granted)
 --   RewardId      – the Id used by the target reward system
 --   Rarity        – display rarity tag (cosmetic, for card styling)
 --   IconGlyph     – fallback text glyph if no image asset is available
@@ -23,7 +23,7 @@ SalvageShopConfig.Items = {
     {
         Id           = "salvage_trail_emerald",
         DisplayName  = "Emerald Trail",
-        Description  = "A vivid green dash trail now sold for coins in Cosmetics.",
+        Description  = "A vivid green dash trail now sold for coins at the Market.",
         Category     = "Effect",
         SalvagePrice = 120,
         RewardType   = "Effect",
@@ -33,25 +33,12 @@ SalvageShopConfig.Items = {
         Unique       = true,
         Enabled      = false,
     },
-    {
-        Id           = "salvage_skin_iron",
-        DisplayName  = "Iron Knight",
-        Description  = "Battered armor from countless dismantled weapons.",
-        Category     = "Skin",
-        SalvagePrice = 300,
-        RewardType   = "Skin",
-        RewardId     = "IronKnight",
-        Rarity       = "Epic",
-        IconGlyph    = "\u{1F6E1}",
-        Unique       = true,
-        Enabled      = false,
-    },
     -- [REMOVED] "Shard Weapon Crate" – obsolete; weapon crates are purchased
     -- elsewhere and the old Shop side menu no longer lists shop crates.
     {
         Id           = "salvage_trail_gold",
         DisplayName  = "Golden Trail",
-        Description  = "A shimmering gold dash trail now sold for coins in Cosmetics.",
+        Description  = "A shimmering gold dash trail now sold for coins at the Market.",
         Category     = "Effect",
         SalvagePrice = 200,
         RewardType   = "Effect",

@@ -380,7 +380,7 @@ task.spawn(function()
         -----------------------------------------------------------------------
         -- Hook: Coins spent  (wrap CurrencyService.SetCoins)
         -- All coin purchases flow through SetCoins (called directly by
-        -- CrateService, SkinService, EffectsService, EmoteService, Loadout)
+        -- CrateService, EffectsService, EmoteService, Loadout)
         -- or indirectly via AddCoins (BoostService, UpgradeService).
         -- We detect when the balance decreases and track the delta.
         -----------------------------------------------------------------------
@@ -413,16 +413,12 @@ end)
 
 --------------------------------------------------------------------------------
 -- Hook: itemsOwned  (Collector achievement)
--- Queries ownership counts from SkinService, EffectsService, EmoteServiceInit
+-- Queries ownership counts from EffectsService, EmoteServiceInit
 -- via dedicated BindableFunctions. Called on player load and after purchases.
 --------------------------------------------------------------------------------
 function recalcItemsOwned(player)
     if not player or not player:IsA("Player") or not player.Parent then return end
     local total = 0
-    pcall(function()
-        local bf = ServerScriptService:FindFirstChild("GetSkinOwnedCount")
-        if bf then total = total + (bf:Invoke(player) or 0) end
-    end)
     pcall(function()
         local bf = ServerScriptService:FindFirstChild("GetEffectOwnedCount")
         if bf then total = total + (bf:Invoke(player) or 0) end
@@ -440,7 +436,7 @@ end
 task.spawn(function()
     local function onPlayerReady(player)
         task.spawn(function()
-            task.wait(4) -- let SkinService, EffectsService, EmoteService load
+            task.wait(4) -- let EffectsService, EmoteService load
             recalcItemsOwned(player)
         end)
     end
@@ -451,28 +447,6 @@ end)
 -- Also recount when items are granted via SalvageShop BindableFunctions
 task.spawn(function()
     task.wait(3)
-    local grantSkinBF = ServerScriptService:FindFirstChild("GrantSkin")
-    if grantSkinBF and grantSkinBF:IsA("BindableFunction") then
-        local _prevGrantSkin
-        local okPrev = pcall(function()
-            _prevGrantSkin = grantSkinBF.OnInvoke
-        end)
-        if okPrev and type(_prevGrantSkin) == "function" then
-            grantSkinBF.OnInvoke = function(player, skinId)
-                local result = _prevGrantSkin(player, skinId)
-                if result then
-                    task.spawn(function()
-                        task.wait(0.5)
-                        recalcItemsOwned(player)
-                    end)
-                end
-                return result
-            end
-            print("[AchievementServiceInit] GrantSkin wrapped for itemsOwned tracking")
-        else
-            warn("[AchievementServiceInit] GrantSkin OnInvoke is write-only here; skipping wrapper")
-        end
-    end
     local grantEffectBF = ServerScriptService:FindFirstChild("GrantEffect")
     if grantEffectBF and grantEffectBF:IsA("BindableFunction") then
         local _prevGrantEffect

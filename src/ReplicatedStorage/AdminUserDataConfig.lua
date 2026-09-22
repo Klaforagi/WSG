@@ -24,7 +24,7 @@ AdminUserDataConfig.ResetTypes = {
 AdminUserDataConfig.ResetButtons = {
     { id = "Currency",     label = "Reset Currency",     desc = "Coins, Keys, Shards" },
     { id = "Progression",  label = "Reset Progression",  desc = "Level, XP, Upgrades" },
-    { id = "Inventory",    label = "Reset Inventory",    desc = "Weapons, Skins, Effects, Emotes, Potions, Loadout" },
+    { id = "Inventory",    label = "Reset Inventory",    desc = "Weapons, Effects, Emotes, Potions, Loadout" },
     { id = "Mastery",      label = "Reset Mastery",      desc = "Weapon mastery XP, levels, and damage progress" },
     { id = "Gamepasses",   label = "Reset Gamepasses",   desc = "Refresh owned pass bonuses and clear Studio test grants" },
     { id = "Quests",       label = "Reset Quests",       desc = "Daily + Weekly quest progress" },

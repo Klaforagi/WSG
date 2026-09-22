@@ -1,6 +1,6 @@
 -- PotionsStallPrompt.server.lua
 -- The Potions stall now uses the same client-side zone-detection pattern as
--- the Skins/Cosmetics and Forge (Upgrade) stalls (see PotionsStall.client.lua
+-- the Market and Forge (Upgrade) stalls (see PotionsStall.client.lua
 -- and UpgradeStall.client.lua). The "Press E" ProximityPrompt is no longer
 -- desired here. This server script just ensures any ProximityPrompt parented
 -- under a Potions stall is disabled so other clients can never see one,

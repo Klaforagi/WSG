@@ -2,7 +2,7 @@
 -- InventoryUI.lua  –  Compact grid inventory with right-side details panel
 --
 -- Layout:
---   Left sidebar:   Melee · Ranged · Boosts · Skins · Effects · Emotes
+--   Left sidebar:   Melee · Ranged · Boosts · Effects · Emotes
 --   Centre:         Scrollable weapon card grid (compact, rarity-coloured)
 --   Right panel:    Selected weapon details + Equip button
 --
@@ -443,19 +443,18 @@ end
 -- (SIZE_TIER_STYLES removed — EnchantTextStyler is the sole source of size-tier colors)
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Tab definitions  (Melee & Ranged are separate; above Boosts/Skins/Effects/Emotes)
+-- Tab definitions  (Melee & Ranged are separate; above Boosts/Effects/Emotes)
 -- ═══════════════════════════════════════════════════════════════════════════
 local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
     { id = "ranged",  icon = "\u{1F3F9}", label = "Ranged",  order = 2 },
     { id = "boosts",  icon = "\u{1F9EA}",  label = "Potions", order = 3 },
-    { id = "skins",   icon = "\u{1F94B}", label = "Skins",   order = 4 }, -- martial uniform (🥋)
     { id = "effects", icon = "\u{1F4AB}",  label = "Effects", order = 5 }, -- dizzy
     { id = "emotes",  icon = "\u{1F57A}",  label = "Emotes",  order = 6 }, -- man dancing 🕺
 }
 
 -- ═══════════════════════════════════════════════════════════════════════════
--- Tab icon helpers  (custom pixel-art icons for Skins & Effects)
+-- Tab icon helpers  (custom pixel-art icons for Effects)
 -- ═══════════════════════════════════════════════════════════════════════════
 local function markIconPart(part)
     part:SetAttribute("TabIconPart", true)
@@ -481,7 +480,6 @@ local function setTabIconTint(iconRoot, color)
 end
 
 local CUSTOM_TAB_ICON_COLORS = {
-    skins   = { active = Color3.fromRGB(178, 146, 220), inactive = Color3.fromRGB(114, 99, 140) },
     effects = { active = Color3.fromRGB(214, 138, 206), inactive = Color3.fromRGB(136, 90, 131) },
 }
 
@@ -501,29 +499,7 @@ local function buildCustomTabIcon(parentBtn, tabId)
     root.Position = UDim2.new(0.5, 0, 0, px(8))
     root.Parent = parentBtn
 
-    if tabId == "skins" then
-        local shoulders = markIconPart(Instance.new("Frame"))
-        shoulders.BackgroundTransparency = 0; shoulders.BorderSizePixel = 0
-        shoulders.Size = UDim2.new(0, px(18), 0, px(7))
-        shoulders.Position = UDim2.new(0.5, 0, 0, px(14)); shoulders.AnchorPoint = Vector2.new(0.5, 0)
-        shoulders.Parent = root
-        Instance.new("UICorner", shoulders).CornerRadius = UDim.new(0, px(3))
-
-        local torso = markIconPart(Instance.new("Frame"))
-        torso.BackgroundTransparency = 0; torso.BorderSizePixel = 0
-        torso.Size = UDim2.new(0, px(12), 0, px(8))
-        torso.Position = UDim2.new(0.5, 0, 0, px(10)); torso.AnchorPoint = Vector2.new(0.5, 0)
-        torso.Parent = root
-        Instance.new("UICorner", torso).CornerRadius = UDim.new(0, px(3))
-
-        local head = markIconPart(Instance.new("Frame"))
-        head.BackgroundTransparency = 0; head.BorderSizePixel = 0
-        head.Size = UDim2.new(0, px(8), 0, px(8))
-        head.Position = UDim2.new(0.5, 0, 0, px(2)); head.AnchorPoint = Vector2.new(0.5, 0)
-        head.Parent = root
-        Instance.new("UICorner", head).CornerRadius = UDim.new(1, 0)
-
-    elseif tabId == "effects" then
+    if tabId == "effects" then
         local sparkleV = markIconPart(Instance.new("Frame"))
         sparkleV.BackgroundTransparency = 0; sparkleV.BorderSizePixel = 0
         sparkleV.Size = UDim2.new(0, px(3), 0, px(14))
@@ -859,74 +835,6 @@ local function getBoostIconImage(def)
 end
 
 
-
-local function getSkinIconImage(def)
-    if type(def) ~= "table" then return nil end
-    if type(def.IconAssetId) == "string" and #def.IconAssetId > 0 then return def.IconAssetId end
-    local key = def.IconKey
-    if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
-        local image = AssetCodesGlobal.Get(key)
-        if type(image) == "string" and #image > 0 then return image end
-    end
-    return nil
-end
-
-local function getSkinPreviewImage(def)
-    if type(def) ~= "table" then return nil end
-    if type(def.PreviewImageAssetId) == "string" and #def.PreviewImageAssetId > 0 then
-        return def.PreviewImageAssetId
-    end
-    local key = def.PreviewImageKey
-    if AssetCodesGlobal and type(AssetCodesGlobal.Get) == "function" and key then
-        local image = AssetCodesGlobal.Get(key)
-        if type(image) == "string" and #image > 0 then return image end
-    end
-    return getSkinIconImage(def)
-end
-
-local function clearViewportPreviewScene(viewportFrame)
-    if not viewportFrame then return end
-    for _, child in ipairs(viewportFrame:GetChildren()) do
-        if child:IsA("WorldModel") or child:IsA("Camera") or child:IsA("Model") then
-            child:Destroy()
-        end
-    end
-end
-
-local function updateSkinDetailPreview(viewportFrame, previewImageLabel, skinId, skinDefsModule, skinPreviewModule)
-    if not viewportFrame or not previewImageLabel then return end
-
-    clearViewportPreviewScene(viewportFrame)
-    previewImageLabel.Visible = false
-
-    if not skinId or not skinDefsModule then return end
-
-    local def = skinDefsModule.GetById and skinDefsModule.GetById(skinId)
-    if not def then return end
-
-    local previewShowHelm = _G.PlayerSettings and _G.PlayerSettings.ShowHelm
-    if previewShowHelm == nil then previewShowHelm = true end
-    if skinPreviewModule then
-        local ok, rendered = pcall(function()
-            if type(skinPreviewModule.RenderSkinPreview) == "function" then
-                return skinPreviewModule.RenderSkinPreview(viewportFrame, skinId, {
-                    mode = "Large",
-                    showHelm = previewShowHelm,
-                })
-            end
-            return skinPreviewModule.Update(viewportFrame, skinId, previewShowHelm)
-        end)
-        if ok and rendered ~= false then
-            return
-        end
-    end
-
-    local previewImage = getSkinPreviewImage(def)
-    if previewImage then
-        previewImageLabel.Image = previewImage
-        previewImageLabel.Visible = true
-    end
-end
 
 local function ensureBoostRemotes()
     if boostRemotes then return boostRemotes end
@@ -1395,7 +1303,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         bar.BackgroundTransparency = 1
         Instance.new("UICorner", bar).CornerRadius = UDim.new(0.5, 0)
 
-            if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" or def.id == "skins" or def.id == "effects" then
+            if def.id == "melee" or def.id == "ranged" or def.id == "boosts" or def.id == "emotes" or def.id == "effects" then
             local iconLbl = Instance.new("TextLabel", btn)
             iconLbl.Name = "Icon"
             iconLbl.BackgroundTransparency = 1
@@ -4247,724 +4155,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
     end -- end Boosts scope block
 
     -- ══════════════════════════════════════════════════════════════════════
-    --  SKINS PAGE  (grid + details panel, mirrors weapon tab pattern)
-    -- ══════════════════════════════════════════════════════════════════════
-    local skinsArea = Instance.new("Frame")
-    skinsArea.Name = "SkinsArea"
-    skinsArea.BackgroundTransparency = 1
-    skinsArea.Size = UDim2.new(1, CONTENT_W_OFF, 1, 0)
-    skinsArea.Position = UDim2.new(0, CONTENT_X, 0, 0)
-    skinsArea.Visible = false
-    skinsArea.Parent = root
-
-    do
-        -- ── Skin modules & remotes ──────────────────────────────────────
-        local SkinDefs = nil
-        pcall(function()
-            local mod = ReplicatedStorage:FindFirstChild("SkinDefinitions")
-            if mod and mod:IsA("ModuleScript") then SkinDefs = require(mod) end
-        end)
-
-        local SkinPreview = nil
-        pcall(function()
-            local mod = script.Parent:FindFirstChild("SkinPreview")
-            if mod and mod:IsA("ModuleScript") then SkinPreview = require(mod) end
-        end)
-
-        local skinRemotes = nil
-        local function ensureSkinRemotes()
-            if skinRemotes then return skinRemotes end
-            local rf = ReplicatedStorage:FindFirstChild("Remotes")
-            if not rf then rf = ReplicatedStorage:WaitForChild("Remotes", 10) end
-            if not rf then return nil end
-            local sf = rf:FindFirstChild("Skins") or rf:WaitForChild("Skins", 5)
-            if not sf then return nil end
-            skinRemotes = {
-                getOwned      = sf:FindFirstChild("GetOwnedSkins"),
-                equip         = sf:FindFirstChild("EquipSkin"),
-                getEquipped   = sf:FindFirstChild("GetEquippedSkin"),
-                changed       = sf:FindFirstChild("EquippedSkinChanged"),
-                favorite      = sf:FindFirstChild("FavoriteSkin"),
-                getFavorites  = sf:FindFirstChild("GetSkinFavorites"),
-            }
-            return skinRemotes
-        end
-
-        local allSkinDefs = SkinDefs and SkinDefs.GetInventorySkins() or {}
-
-        -- ── State ───────────────────────────────────────────────────────
-        local ownedSkinSet    = {}
-        local equippedSkinId  = nil
-        local favoritedSkins  = {}
-        local selectedSkinId  = nil
-        local skinCards       = {} -- [skinId] = { card, cardStroke, isDefault }
-
-        -- ── Grid (left side) ────────────────────────────────────────────
-        local skinGridScroll = Instance.new("ScrollingFrame")
-        skinGridScroll.Name = "SkinGridScroll"
-        skinGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
-        skinGridScroll.BackgroundTransparency = 0.5
-        skinGridScroll.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
-        skinGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-        skinGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-        skinGridScroll.ScrollBarThickness = px(4)
-        skinGridScroll.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
-        skinGridScroll.BorderSizePixel = 0
-        skinGridScroll.Parent = skinsArea
-        Instance.new("UICorner", skinGridScroll).CornerRadius = UDim.new(0, px(10))
-
-        local skinGridLayout = Instance.new("UIGridLayout", skinGridScroll)
-        skinGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
-        skinGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
-        skinGridLayout.FillDirection = Enum.FillDirection.Horizontal
-        skinGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-        skinGridLayout.SortOrder = Enum.SortOrder.LayoutOrder
-
-        local skinGridPad = Instance.new("UIPadding", skinGridScroll)
-        skinGridPad.PaddingTop    = UDim.new(0, px(8))
-        skinGridPad.PaddingLeft   = UDim.new(0, px(8))
-        skinGridPad.PaddingRight  = UDim.new(0, px(8))
-        skinGridPad.PaddingBottom = UDim.new(0, px(8))
-        bindFixedColumnGrid(skinGridScroll, skinGridLayout, skinGridPad, 140, 178)
-
-        -- Empty state (shown when no owned skins)
-        local skinEmptyState = Instance.new("Frame")
-        skinEmptyState.Name = "SkinEmptyState"
-        skinEmptyState.BackgroundTransparency = 1
-        skinEmptyState.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
-        skinEmptyState.Visible = false
-        skinEmptyState.Parent = skinsArea
-
-        local skinEmptyCard = Instance.new("Frame")
-        skinEmptyCard.BackgroundColor3 = CARD_BG
-        skinEmptyCard.Size = UDim2.new(0.7, 0, 0, px(130))
-        skinEmptyCard.AnchorPoint = Vector2.new(0.5, 0.5)
-        skinEmptyCard.Position = UDim2.new(0.5, 0, 0.45, 0)
-        skinEmptyCard.Parent = skinEmptyState
-        Instance.new("UICorner", skinEmptyCard).CornerRadius = UDim.new(0, px(14))
-        local secStroke = Instance.new("UIStroke", skinEmptyCard)
-        secStroke.Color = CARD_STROKE; secStroke.Thickness = 1.2; secStroke.Transparency = 0.3
-
-        local skinEmptyLbl = Instance.new("TextLabel", skinEmptyCard)
-        skinEmptyLbl.BackgroundTransparency = 1
-        skinEmptyLbl.Font = Enum.Font.GothamMedium
-        skinEmptyLbl.Text = "You don't own any skins yet.\nVisit the cosmetics stall to unlock more."
-        skinEmptyLbl.TextColor3 = DIM_TEXT
-        skinEmptyLbl.TextSize = math.max(13, math.floor(px(14)))
-        skinEmptyLbl.TextWrapped = true
-        skinEmptyLbl.Size = UDim2.new(0.85, 0, 0, px(60))
-        skinEmptyLbl.AnchorPoint = Vector2.new(0.5, 0.5)
-        skinEmptyLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
-        skinEmptyLbl.TextXAlignment = Enum.TextXAlignment.Center
-
-        -- ── Details panel (right side) ──────────────────────────────────
-        local skinDetailsPanel = Instance.new("Frame")
-        skinDetailsPanel.Name = "SkinDetailsPanel"
-        skinDetailsPanel.BackgroundColor3 = CARD_BG
-        skinDetailsPanel.Size = UDim2.new(0, DETAIL_W, 1, 0)
-        skinDetailsPanel.AnchorPoint = Vector2.new(1, 0)
-        skinDetailsPanel.Position = UDim2.new(1, 0, 0, 0)
-        skinDetailsPanel.Parent = skinsArea
-        Instance.new("UICorner", skinDetailsPanel).CornerRadius = UDim.new(0, px(12))
-        local sdpStroke = Instance.new("UIStroke", skinDetailsPanel)
-        sdpStroke.Color = CARD_STROKE; sdpStroke.Thickness = 1.4; sdpStroke.Transparency = 0.2
-
-        -- Placeholder
-        local skinDetailPlaceholder = Instance.new("TextLabel", skinDetailsPanel)
-        skinDetailPlaceholder.Name = "Placeholder"
-        skinDetailPlaceholder.BackgroundTransparency = 1
-        skinDetailPlaceholder.Font = Enum.Font.GothamMedium
-        skinDetailPlaceholder.Text = "Select a skin"
-        skinDetailPlaceholder.TextColor3 = DIM_TEXT
-        skinDetailPlaceholder.TextSize = px(22)
-        skinDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
-        skinDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
-        skinDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
-
-        -- Detail content
-        local skinDetailContent = Instance.new("Frame", skinDetailsPanel)
-        skinDetailContent.Name = "DetailContent"
-        skinDetailContent.BackgroundTransparency = 1
-        skinDetailContent.Size = UDim2.new(1, 0, 1, 0)
-        skinDetailContent.Visible = false
-
-        local sdPad = Instance.new("UIPadding", skinDetailContent)
-        sdPad.PaddingTop  = UDim.new(0, px(12)); sdPad.PaddingBottom = UDim.new(0, px(12))
-        sdPad.PaddingLeft = UDim.new(0, px(12)); sdPad.PaddingRight  = UDim.new(0, px(12))
-
-        -- 3D preview area with rarity background
-        local skinPreviewVP = Instance.new("ViewportFrame", skinDetailContent)
-        skinPreviewVP.Name = "PreviewViewport"
-        skinPreviewVP.BackgroundColor3 = RARITY_BG_COLORS.Common
-        skinPreviewVP.Size = UDim2.new(1, 0, 0, px(170))
-        skinPreviewVP.Ambient = Color3.fromRGB(100, 100, 120)
-        Instance.new("UICorner", skinPreviewVP).CornerRadius = UDim.new(0, px(10))
-        local skinIconStroke = Instance.new("UIStroke", skinPreviewVP)
-        skinIconStroke.Color = RARITY_COLORS.Common; skinIconStroke.Thickness = 1.5; skinIconStroke.Transparency = 0.3
-
-        local skinPreviewImage = Instance.new("ImageLabel", skinPreviewVP)
-        skinPreviewImage.Name = "PreviewImage"
-        skinPreviewImage.BackgroundTransparency = 1
-        skinPreviewImage.Size = UDim2.new(0.9, 0, 0.9, 0)
-        skinPreviewImage.AnchorPoint = Vector2.new(0.5, 0.5)
-        skinPreviewImage.Position = UDim2.new(0.5, 0, 0.5, 0)
-        skinPreviewImage.ScaleType = Enum.ScaleType.Fit
-        skinPreviewImage.Visible = false
-        skinPreviewImage.ZIndex = 2
-
-        -- Skin name
-        local skinDetailName = Instance.new("TextLabel", skinDetailContent)
-        skinDetailName.Name = "SkinName"
-        skinDetailName.BackgroundTransparency = 1
-        skinDetailName.Font = Enum.Font.GothamBold
-        skinDetailName.TextColor3 = WHITE
-        skinDetailName.TextXAlignment = Enum.TextXAlignment.Center
-        skinDetailName.Size = UDim2.new(1, 0, 0, px(34))
-        skinDetailName.Position = UDim2.new(0, 0, 0, px(178))
-        skinDetailName.TextTruncate = Enum.TextTruncate.AtEnd
-        constrainText(skinDetailName, 12, math.max(20, math.floor(px(26))))
-
-        -- Rarity label
-        local skinDetailRarity = Instance.new("TextLabel", skinDetailContent)
-        skinDetailRarity.Name = "Rarity"
-        skinDetailRarity.BackgroundTransparency = 1
-        skinDetailRarity.Font = Enum.Font.GothamBold
-        skinDetailRarity.TextColor3 = RARITY_COLORS.Common
-        skinDetailRarity.TextXAlignment = Enum.TextXAlignment.Center
-        skinDetailRarity.Size = UDim2.new(1, 0, 0, px(26))
-        skinDetailRarity.Position = UDim2.new(0, 0, 0, px(214))
-        constrainText(skinDetailRarity, 10, math.max(16, math.floor(px(19))))
-
-        -- Description
-        local skinDetailDesc = Instance.new("TextLabel", skinDetailContent)
-        skinDetailDesc.Name = "Description"
-        skinDetailDesc.BackgroundTransparency = 1
-        skinDetailDesc.Font = Enum.Font.GothamBold
-        skinDetailDesc.TextColor3 = DIM_TEXT
-        skinDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
-        skinDetailDesc.TextWrapped = true
-        skinDetailDesc.Size = UDim2.new(1, 0, 0, px(46))
-        skinDetailDesc.Position = UDim2.new(0, 0, 0, px(244))
-        constrainText(skinDetailDesc, 9, math.max(14, math.floor(px(17))))
-        local skinDescStroke = Instance.new("UIStroke", skinDetailDesc)
-        skinDescStroke.Color = Color3.fromRGB(0, 0, 0)
-        skinDescStroke.Thickness = 1.5
-        skinDescStroke.Transparency = 0.15
-
-        -- Hide Helm toggle row
-        local TOGGLE_ON_C  = Color3.fromRGB(35, 190, 75)
-        local TOGGLE_OFF_C = Color3.fromRGB(45, 48, 65)
-        local KNOB_C       = Color3.fromRGB(255, 255, 255)
-
-        local helmRow = Instance.new("Frame", skinDetailContent)
-        helmRow.Name = "HelmToggleRow"
-        helmRow.BackgroundTransparency = 1
-        helmRow.Size = UDim2.new(1, 0, 0, px(32))
-        helmRow.Position = UDim2.new(0, 0, 0, px(296))
-
-        local helmLabel = Instance.new("TextLabel", helmRow)
-        helmLabel.BackgroundTransparency = 1
-        helmLabel.Font = Enum.Font.GothamBold
-        helmLabel.Text = "Hide Helm"
-        helmLabel.TextColor3 = DIM_TEXT
-        helmLabel.TextXAlignment = Enum.TextXAlignment.Left
-        helmLabel.Size = UDim2.new(0.6, 0, 1, 0)
-        constrainText(helmLabel, 9, math.max(14, math.floor(px(17))))
-        local helmLabelStroke = Instance.new("UIStroke", helmLabel)
-        helmLabelStroke.Color = Color3.fromRGB(0, 0, 0)
-        helmLabelStroke.Thickness = 1.5
-        helmLabelStroke.Transparency = 0.15
-
-        local helmToggleBg = Instance.new("TextButton", helmRow)
-        helmToggleBg.Name = "ToggleBg"
-        helmToggleBg.Text = ""
-        helmToggleBg.AutoButtonColor = false
-        helmToggleBg.Size = UDim2.new(0, px(44), 0, px(24))
-        helmToggleBg.AnchorPoint = Vector2.new(1, 0.5)
-        helmToggleBg.Position = UDim2.new(1, 0, 0.5, 0)
-        helmToggleBg.BorderSizePixel = 0
-        Instance.new("UICorner", helmToggleBg).CornerRadius = UDim.new(1, 0)
-
-        local helmKnob = Instance.new("Frame", helmToggleBg)
-        helmKnob.Name = "Knob"
-        helmKnob.BackgroundColor3 = KNOB_C
-        helmKnob.Size = UDim2.new(0, px(18), 0, px(18))
-        helmKnob.AnchorPoint = Vector2.new(0, 0.5)
-        helmKnob.BorderSizePixel = 0
-        Instance.new("UICorner", helmKnob).CornerRadius = UDim.new(1, 0)
-
-        local function syncHelmToggle()
-            local hideHelm = _G.PlayerSettings and (_G.PlayerSettings.ShowHelm == false)
-            if hideHelm == nil then hideHelm = false end
-            helmToggleBg.BackgroundColor3 = hideHelm and TOGGLE_ON_C or TOGGLE_OFF_C
-            helmKnob.Position = hideHelm and UDim2.new(1, -px(21), 0.5, 0) or UDim2.new(0, px(3), 0.5, 0)
-        end
-        syncHelmToggle()
-
-        helmToggleBg.MouseButton1Click:Connect(function()
-            if not _G.PlayerSettings then return end
-            local hideHelm = (_G.PlayerSettings.ShowHelm == false)
-            local newHideHelm = not hideHelm
-            local newShowHelm = not newHideHelm
-            _G.PlayerSettings.ShowHelm = newShowHelm
-            syncHelmToggle()
-            -- Fire to server (same as OptionsUI)
-            local updateEV = ReplicatedStorage:FindFirstChild("UpdatePlayerSetting")
-            if updateEV and updateEV:IsA("RemoteEvent") then
-                updateEV:FireServer("ShowHelm", newShowHelm)
-            end
-            -- Call global ApplySettings if available
-            if _G.ApplySettings then
-                pcall(_G.ApplySettings, _G.PlayerSettings)
-            end
-            -- Refresh skin preview on helm toggle
-            if selectedSkinId then
-                updateSkinDetailPreview(skinPreviewVP, skinPreviewImage, selectedSkinId, SkinDefs, SkinPreview)
-            end
-        end)
-
-        -- Equip button
-        local skinEquipBtn = Instance.new("TextButton", skinDetailContent)
-        skinEquipBtn.Name = "EquipBtn"
-        skinEquipBtn.AutoButtonColor = false
-        skinEquipBtn.BackgroundColor3 = BTN_BG
-        skinEquipBtn.Font = Enum.Font.GothamBold
-        skinEquipBtn.Text = "EQUIP"
-        skinEquipBtn.TextColor3 = WHITE
-        skinEquipBtn.TextTransparency = 0
-        skinEquipBtn.TextSize = px(22)
-        skinEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
-        skinEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
-        skinEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
-        Instance.new("UICorner", skinEquipBtn).CornerRadius = UDim.new(0, px(10))
-        local skinEquipStroke = Instance.new("UIStroke", skinEquipBtn)
-        skinEquipStroke.Color = Color3.fromRGB(0, 0, 0); skinEquipStroke.Thickness = 1.5; skinEquipStroke.Transparency = 0.15
-
-        -- Action row (Favorite only – no salvage for skins)
-        local skinActionRow = Instance.new("Frame", skinDetailContent)
-        skinActionRow.Name = "ActionRow"
-        skinActionRow.BackgroundTransparency = 1
-        skinActionRow.Size = UDim2.new(0.88, 0, 0, px(44))
-        skinActionRow.AnchorPoint = Vector2.new(0.5, 1)
-        skinActionRow.Position = UDim2.new(0.5, 0, 1, -px(58))
-
-        local SKIN_FAV_YELLOW = Color3.fromRGB(255, 210, 50)
-        local SKIN_FAV_DIM    = Color3.fromRGB(100, 100, 120)
-
-        local skinFavBtn = Instance.new("TextButton", skinActionRow)
-        skinFavBtn.Name = "FavoriteBtn"
-        skinFavBtn.AutoButtonColor = false
-        skinFavBtn.BackgroundColor3 = Color3.fromRGB(36, 38, 56)
-        skinFavBtn.Font = Enum.Font.GothamBold
-        skinFavBtn.Text = "\u{2606}"
-        skinFavBtn.TextColor3 = SKIN_FAV_DIM
-        skinFavBtn.TextSize = px(24)
-        skinFavBtn.Size = UDim2.new(1, 0, 1, 0)
-        Instance.new("UICorner", skinFavBtn).CornerRadius = UDim.new(0, px(8))
-        local skinFavStroke = Instance.new("UIStroke", skinFavBtn)
-        skinFavStroke.Color = SKIN_FAV_DIM; skinFavStroke.Thickness = 1.2; skinFavStroke.Transparency = 0.3
-
-
-        -- ── Helper: update equip button state ───────────────────────────
-        local function updateSkinEquipButton()
-            if not selectedSkinId then return end
-            local isEquipped = (equippedSkinId == selectedSkinId)
-            if isEquipped then
-                skinEquipBtn.Text = "UNEQUIP"
-                skinEquipBtn.BackgroundColor3 = Color3.fromRGB(58, 34, 42)
-                skinEquipBtn.TextColor3 = WHITE
-                skinEquipStroke.Color = RED_TEXT; skinEquipStroke.Transparency = 0.35
-            else
-                skinEquipBtn.Text = "EQUIP"
-                skinEquipBtn.BackgroundColor3 = BTN_BG
-                skinEquipBtn.TextColor3 = WHITE
-                skinEquipStroke.Color = Color3.fromRGB(0, 0, 0); skinEquipStroke.Transparency = 0.15
-            end
-        end
-
-        -- ── Helper: update favorite button state ────────────────────────
-        local function updateSkinFavButton()
-            if not selectedSkinId then return end
-            local isFav = favoritedSkins[selectedSkinId] == true
-            skinFavBtn.Text = isFav and "\u{2605}" or "\u{2606}"
-            skinFavBtn.TextColor3 = isFav and SKIN_FAV_YELLOW or SKIN_FAV_DIM
-            skinFavStroke.Color   = isFav and SKIN_FAV_YELLOW or SKIN_FAV_DIM
-        end
-
-        -- ── Helper: update card highlights ──────────────────────────────
-        local function refreshSkinCards()
-            local visibleCount = 0
-            for sid, info in pairs(skinCards) do
-                local sOwned = ownedSkinSet[sid] == true
-                if sOwned then
-                    info.card.Visible = true
-                    visibleCount = visibleCount + 1
-                else
-                    info.card.Visible = false
-                end
-
-                -- Selection highlight
-                local isSelected = (selectedSkinId == sid)
-                local isEquippedCard = (equippedSkinId == sid)
-                local targetBg = info.baseBg or CARD_BG
-
-                if isSelected then
-                    targetBg = info.selectedBg or CARD_BG
-                    setCardStroke(info.cardStroke, GOLD, 2.5, 0)
-                elseif isEquippedCard then
-                    targetBg = info.equippedBg or CARD_EQUIPPED
-                    setCardStroke(info.cardStroke, GREEN_GLOW, 2.0, 0.16)
-                else
-                    setCardStroke(info.cardStroke, info.baseStrokeColor, info.baseStrokeThickness, info.baseStrokeTransparency)
-                end
-                info.card.BackgroundColor3 = targetBg
-                if info.accentBar then
-                    info.accentBar.BackgroundColor3 = isEquippedCard and GREEN_GLOW or (info.accentColor or GOLD)
-                    info.accentBar.BackgroundTransparency = isEquippedCard and 0 or 0.1
-                end
-
-                -- Equipped bar at bottom of card
-                local eqBar = info.card:FindFirstChild("EquippedBar")
-                if eqBar then eqBar.Visible = isEquippedCard end
-
-                -- Favorite star on card
-                local favStar = info.card:FindFirstChild("FavStar")
-                if favStar then favStar.Visible = (favoritedSkins[sid] == true) end
-            end
-            skinEmptyState.Visible = (visibleCount == 0)
-            skinGridScroll.Visible = (visibleCount > 0)
-        end
-
-        -- ── Helper: select a skin (update details panel) ────────────────
-        local function setSelectedSkin(skinId)
-            selectedSkinId = skinId
-            if not skinId then
-                skinDetailPlaceholder.Visible = true
-                skinDetailContent.Visible = false
-                refreshSkinCards()
-                return
-            end
-            skinDetailPlaceholder.Visible = false
-            skinDetailContent.Visible = true
-
-            local def = SkinDefs and SkinDefs.GetById(skinId)
-            if not def then return end
-
-            local isDefault = def.IsDefault or false
-            local rarity = def.Rarity or "Common"
-            local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
-            local rarityBg = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
-            local skinColor = def.ArmorColor or Color3.fromRGB(150, 150, 155)
-
-            skinDetailName.Text = def.DisplayName or skinId
-            skinDetailName.TextColor3 = isDefault and WHITE or brightenColor(rarityColor, 0.1)
-            skinDetailRarity.Text = rarity
-            skinDetailRarity.TextColor3 = rarityColor
-            skinDetailDesc.Text = def.Description or ""
-            skinPreviewVP.BackgroundColor3 = mixColor(rarityBg, skinColor, isDefault and 0.05 or 0.18)
-            skinIconStroke.Color = rarityColor
-            skinIconStroke.Transparency = 0.12
-            sdpStroke.Color = rarityColor
-            sdpStroke.Transparency = 0.14
-
-            -- Update 3D preview
-            updateSkinDetailPreview(skinPreviewVP, skinPreviewImage, skinId, SkinDefs, SkinPreview)
-
-            updateSkinEquipButton()
-            updateSkinFavButton()
-            syncHelmToggle()
-            refreshSkinCards()
-        end
-
-        -- ── Equip click ─────────────────────────────────────────────────
-        skinEquipBtn.MouseButton1Click:Connect(function()
-            if not selectedSkinId then return end
-            local def = SkinDefs and SkinDefs.GetById(selectedSkinId)
-            if not def then return end
-            local isOwn = ownedSkinSet[selectedSkinId] == true
-            if not isOwn then return end
-
-            local willUnequip = (equippedSkinId == selectedSkinId)
-            local sRemotes = ensureSkinRemotes()
-            if sRemotes and sRemotes.equip and sRemotes.equip:IsA("RemoteEvent") then
-                pcall(function() sRemotes.equip:FireServer(selectedSkinId) end)
-            end
-            equippedSkinId = willUnequip and nil or selectedSkinId
-            updateSkinEquipButton()
-            refreshSkinCards()
-        end)
-
-        -- Equip button hover
-        if not game:GetService("UserInputService").TouchEnabled then
-            skinEquipBtn.MouseEnter:Connect(function()
-                if selectedSkinId then
-                    local hoverColor = (equippedSkinId == selectedSkinId) and Color3.fromRGB(92, 42, 52) or GREEN_BTN
-                    TweenService:Create(skinEquipBtn, TWEEN_QUICK, {BackgroundColor3 = hoverColor}):Play()
-                end
-            end)
-            skinEquipBtn.MouseLeave:Connect(function()
-                updateSkinEquipButton()
-            end)
-        end
-
-        -- ── Favorite click ──────────────────────────────────────────────
-        skinFavBtn.MouseButton1Click:Connect(function()
-            if not selectedSkinId then return end
-            local newState = not (favoritedSkins[selectedSkinId] == true)
-            favoritedSkins[selectedSkinId] = newState or nil
-            updateSkinFavButton()
-            refreshSkinCards()
-            -- Persist to server
-            local sRemotes = ensureSkinRemotes()
-            if sRemotes and sRemotes.favorite and sRemotes.favorite:IsA("RemoteFunction") then
-                task.spawn(function()
-                    pcall(function() sRemotes.favorite:InvokeServer(selectedSkinId, newState) end)
-                end)
-            end
-        end)
-
-        local function createSkinCard(i_sk, def)
-            local skinId      = def.Id
-            local displayName = def.DisplayName or skinId
-            local isDefault   = def.IsDefault or false
-            local isEpic      = (def.Rarity == "Epic")
-            local skinColor   = def.ArmorColor or Color3.fromRGB(150, 150, 155)
-            local accentColor = def.AccentColor or skinColor
-            local rarity      = def.Rarity or "Common"
-            local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
-            local rarityBg    = WEAPON_CARD_BG[rarity] or WEAPON_CARD_BG.Common
-            local baseBg      = mixColor(rarityBg, skinColor, isDefault and 0.04 or 0.14)
-            local selectedBg  = brightenColor(baseBg, 0.05)
-            local equippedBg  = mixColor(baseBg, GREEN_GLOW, 0.16)
-
-            local card = Instance.new("TextButton")
-            card.Name = "SkinCard_" .. skinId
-            card.BackgroundColor3 = baseBg
-            card.Size = UDim2.new(1, 0, 1, 0)
-            card.Text = ""
-            card.AutoButtonColor = false
-            card.BorderSizePixel = 0
-            card.LayoutOrder = isDefault and 0 or i_sk
-            card.ClipsDescendants = true
-            card.Parent = skinGridScroll
-            Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
-
-            local baseStrokeColor = WEAPON_CARD_BORDER[rarity] or shadeColor(rarityColor, 0.65)
-            local baseStrokeThickness = isEpic and 2.0 or 1.7
-            local baseStrokeTransparency = isEpic and 0.08 or 0.16
-            local sCS = Instance.new("UIStroke", card)
-            sCS.Color = baseStrokeColor
-            sCS.Thickness = baseStrokeThickness
-            sCS.Transparency = baseStrokeTransparency
-            addCardSheen(card, rarityColor)
-            local accentBar = addCardAccentBar(card, accentColor)
-
-            do
-                local cardName = Instance.new("TextLabel", card)
-                cardName.Name = "NameLabel"
-                cardName.BackgroundTransparency = 1
-                cardName.Font = Enum.Font.GothamBold
-                cardName.Text = displayName
-                cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
-                cardName.TextSize = INV_CARD.NameTextSize
-                cardName.TextTruncate = Enum.TextTruncate.AtEnd
-                cardName.TextXAlignment = Enum.TextXAlignment.Center
-                cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
-                cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
-                cardName.ZIndex = 3
-                addTextOutline(cardName, 0.18, 1.35)
-            end
-
-            do
-                -- Skin cards use a large preview area spanning most of the card body
-                -- (from just below the name to just above the rarity pill).
-                local iconTopY  = INV_CARD.NameY + INV_CARD.NameHeight + px(4)
-                local iconBotPad = INV_CARD.Line2OffBottom + INV_CARD.Line2Height + px(4)
-
-                local iconArea = Instance.new("Frame", card)
-                iconArea.Name = "IconArea"
-                iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, skinColor, isDefault and 0.06 or 0.26)
-                iconArea.AnchorPoint = Vector2.new(0.5, 0)
-                iconArea.Position = UDim2.new(0.5, 0, 0, iconTopY)
-                iconArea.Size = UDim2.new(0.86, 0, 1, -(iconTopY + iconBotPad))
-                iconArea.BorderSizePixel = 0
-                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
-                addIconWellHighlight(iconArea, accentColor)
-
-                -- Fallback emoji (shown only when no preview is available)
-                local cardIcon = Instance.new("TextLabel", iconArea)
-                cardIcon.Name = "Icon"
-                cardIcon.BackgroundTransparency = 1
-                cardIcon.Font = Enum.Font.GothamBold
-                cardIcon.Text = isDefault and "\u{1F464}" or "\u{1F6E1}"
-                cardIcon.TextScaled = true
-                cardIcon.TextColor3 = isDefault and DIM_TEXT or skinColor
-                cardIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
-                cardIcon.AnchorPoint = Vector2.new(0.5, 0.5)
-                cardIcon.Position = UDim2.fromScale(0.5, 0.5)
-                cardIcon.ZIndex = 3
-                addTextOutline(cardIcon, 0.22, 1.4)
-
-                -- 2D image (used only when an uploaded preview AssetId is configured)
-                local cardIconImage = Instance.new("ImageLabel", iconArea)
-                cardIconImage.Name = "IconImage"
-                cardIconImage.BackgroundTransparency = 1
-                cardIconImage.Size = UDim2.fromScale(1, 1)
-                cardIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
-                cardIconImage.Position = UDim2.fromScale(0.5, 0.5)
-                cardIconImage.ScaleType = Enum.ScaleType.Fit
-                cardIconImage.ZIndex = 4
-                cardIconImage.Visible = false
-
-                local skinImage = getSkinIconImage(def)
-                if skinImage then
-                    -- A real uploaded 2D preview image exists — use it.
-                    cardIconImage.Image = skinImage
-                    cardIconImage.Visible = true
-                    cardIcon.Visible = false
-                elseif not isDefault and SkinPreview then
-                    -- No 2D image — render a live viewport preview (same as Cosmetics stall).
-                    local cardVP = Instance.new("ViewportFrame", iconArea)
-                    cardVP.Name = "SkinCardViewport"
-                    cardVP.BackgroundColor3 = iconArea.BackgroundColor3
-                    cardVP.BackgroundTransparency = 0
-                    cardVP.Size = UDim2.fromScale(1, 1)
-                    cardVP.Position = UDim2.fromScale(0, 0)
-                    cardVP.Ambient = Color3.fromRGB(190, 190, 200)
-                    cardVP.LightColor = Color3.new(1, 1, 1)
-                    cardVP.LightDirection = Vector3.new(0, -1, -1)
-                    cardVP.ZIndex = 4
-                    cardVP.BorderSizePixel = 0
-                    Instance.new("UICorner", cardVP).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
-                    local vpOk, vpRendered = pcall(function()
-                        if type(SkinPreview.RenderSkinPreview) == "function" then
-                            return SkinPreview.RenderSkinPreview(cardVP, skinId, {
-                                mode = "Card",
-                                showHelm = true,
-                            })
-                        end
-                        return SkinPreview.Update(cardVP, skinId, true)
-                    end)
-                    if vpOk and vpRendered ~= false then
-                        cardIcon.Visible = false
-                    else
-                        cardVP:Destroy()
-                    end
-                end
-
-                local swatchWrap = Instance.new("Frame", iconArea)
-                swatchWrap.Name = "ArmorSwatch"
-                swatchWrap.BackgroundColor3 = skinColor
-                swatchWrap.BorderSizePixel = 0
-                swatchWrap.Size = UDim2.new(0.62, 0, 0, px(8))
-                swatchWrap.AnchorPoint = Vector2.new(0.5, 1)
-                swatchWrap.Position = UDim2.new(0.5, 0, 1, -px(2))
-                swatchWrap.ZIndex = 4
-                Instance.new("UICorner", swatchWrap).CornerRadius = UDim.new(0.5, 0)
-                Instance.new("UIGradient", swatchWrap).Color = ColorSequence.new(skinColor, accentColor)
-                local swatchStroke = Instance.new("UIStroke", swatchWrap)
-                swatchStroke.Color = accentColor
-                swatchStroke.Thickness = 1
-                swatchStroke.Transparency = 0.24
-            end
-
-            -- Footer (rarity pill + equipped bar)
-            buildCardFooter(card, rarity, rarityColor, rarityColor, false)
-
-            do
-                local favStar = Instance.new("TextLabel", card)
-                favStar.Name = "FavStar"
-                favStar.BackgroundTransparency = 1
-                favStar.Font = Enum.Font.GothamBold
-                favStar.Text = "\u{2605}"
-                favStar.TextColor3 = SKIN_FAV_YELLOW
-                favStar.TextSize = math.max(14, math.floor(px(16)))
-                favStar.Size = UDim2.new(0, px(20), 0, px(20))
-                favStar.AnchorPoint = Vector2.new(1, 0)
-                favStar.Position = UDim2.new(1, -px(4), 0, px(3))
-                favStar.ZIndex = 8
-                favStar.Visible = false
-                addTextOutline(favStar, 0.2, 1.2)
-            end
-
-            skinCards[skinId] = {
-                card = card,
-                cardStroke = sCS,
-                isDefault = isDefault,
-                accentBar = accentBar,
-                accentColor = accentColor,
-                baseBg = baseBg,
-                hoverBg = brightenColor(baseBg, 0.07),
-                selectedBg = selectedBg,
-                equippedBg = equippedBg,
-                baseStrokeColor = baseStrokeColor,
-                baseStrokeThickness = baseStrokeThickness,
-                baseStrokeTransparency = baseStrokeTransparency,
-            }
-
-            -- Click to select
-            card.MouseButton1Click:Connect(function()
-                setSelectedSkin(skinId)
-            end)
-
-            -- Hover effect
-            if not game:GetService("UserInputService").TouchEnabled then
-                card.MouseEnter:Connect(function()
-                    if selectedSkinId ~= skinId then
-                        local refs = skinCards[skinId]
-                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = refs and refs.hoverBg or brightenColor(baseBg, 0.07)}):Play()
-                    end
-                end)
-                card.MouseLeave:Connect(function()
-                    if selectedSkinId ~= skinId then
-                        local isEq = (equippedSkinId == skinId)
-                        local refs = skinCards[skinId]
-                        local targetBg = refs and (isEq and refs.equippedBg or refs.baseBg) or baseBg
-                        TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
-                    end
-                end)
-            end
-        end
-
-        -- ── Create skin cards ───────────────────────────────────────────
-        for i_sk, def in ipairs(allSkinDefs) do
-            createSkinCard(i_sk, def)
-        end
-
-        -- ── Fetch data from server ──────────────────────────────────────
-        task.spawn(function()
-            local sRemotes = ensureSkinRemotes()
-            if not sRemotes then return end
-            -- Owned skins
-            if sRemotes.getOwned and sRemotes.getOwned:IsA("RemoteFunction") then
-                local ok, list = pcall(function() return sRemotes.getOwned:InvokeServer() end)
-                if ok and type(list) == "table" then
-                    for _, id in ipairs(list) do ownedSkinSet[id] = true end
-                end
-            end
-            -- Equipped skin
-            if sRemotes.getEquipped and sRemotes.getEquipped:IsA("RemoteFunction") then
-                local ok, equipped = pcall(function() return sRemotes.getEquipped:InvokeServer() end)
-                if ok then equippedSkinId = (type(equipped) == "string") and equipped or nil end
-            end
-            -- Favorites
-            if sRemotes.getFavorites and sRemotes.getFavorites:IsA("RemoteFunction") then
-                local ok, favs = pcall(function() return sRemotes.getFavorites:InvokeServer() end)
-                if ok and type(favs) == "table" then favoritedSkins = favs end
-            end
-            refreshSkinCards()
-            -- Listen for equip changes
-            if sRemotes.changed and sRemotes.changed:IsA("RemoteEvent") then
-                sRemotes.changed.OnClientEvent:Connect(function(newEquipped)
-                    equippedSkinId = (type(newEquipped) == "string") and newEquipped or nil
-                    updateSkinEquipButton()
-                    refreshSkinCards()
-                end)
-            end
-        end)
-    end
-
-    -- ══════════════════════════════════════════════════════════════════════
     --  EFFECTS PAGE  (dash trail equip – split layout with preview)
     -- ══════════════════════════════════════════════════════════════════════
     local effectsPage = Instance.new("Frame")
@@ -5103,7 +4293,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- 3D trail preview viewport
             local trailPreviewVP = Instance.new("ViewportFrame", trailDetailContent)
             trailPreviewVP.Name = "PreviewViewport"
-            trailPreviewVP.BackgroundColor3 = RARITY_BG_COLORS.Common
+            trailPreviewVP.BackgroundColor3 = CARD_BG
             trailPreviewVP.Size = UDim2.new(1, 0, 0, px(200))
             trailPreviewVP.Ambient = Color3.fromRGB(100, 100, 120)
             trailPreviewVP.ClipsDescendants = true
@@ -5213,18 +4403,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                         setCardStroke(info.cardStroke, GOLD, 2.5, 0)
                     elseif isEquipped then
                         targetBg = info.equippedBg
-                        setCardStroke(info.cardStroke, GREEN_GLOW, 2.0, 0.16)
+                        setCardStroke(info.cardStroke, info.baseStrokeColor, info.baseStrokeThickness, info.baseStrokeTransparency)
                     else
                         setCardStroke(info.cardStroke, info.baseStrokeColor, info.baseStrokeThickness, info.baseStrokeTransparency)
                     end
                     info.card.BackgroundColor3 = targetBg
                     if info.accentBar then
-                        info.accentBar.BackgroundColor3 = isEquipped and GREEN_GLOW or info.accentColor
-                        info.accentBar.BackgroundTransparency = isEquipped and 0 or 0.1
+                        info.accentBar.BackgroundColor3 = info.accentColor
+                        info.accentBar.BackgroundTransparency = 0.1
                     end
 
                     local eqBar = info.card:FindFirstChild("EquippedBar")
-                    if eqBar then eqBar.Visible = isEquipped end
+                    if eqBar then eqBar.Visible = false end
                 end
                 effectsEmptyState.Visible = (visibleCount == 0)
                 trailGridScroll.Visible = (visibleCount > 0)
@@ -5246,19 +4436,19 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local def = EffectDefs and EffectDefs.GetById(effectId)
                 if not def then return end
 
-                local rarity = def.Rarity or "Common"
+                local rarity = "Common"
                 local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
                 local rarityBg = RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common
                 local isEpic = (rarity == "Epic")
                 local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
 
                 trailDetailName.Text = def.DisplayName or effectId
-                trailDetailName.TextColor3 = isEpic and Color3.fromRGB(220, 185, 255) or brightenColor(effectColor, 0.12)
-                trailDetailDesc.Text = def.IsFree and "Free (default)" or (def.Description or "")
-                trailPreviewVP.BackgroundColor3 = mixColor(rarityBg, effectColor, def.IsRainbow and 0.1 or 0.2)
-                trailVPStroke.Color = rarityColor
+                trailDetailName.TextColor3 = WHITE
+                trailDetailDesc.Text = ""
+                trailPreviewVP.BackgroundColor3 = CARD_BG
+                trailVPStroke.Color = CARD_STROKE
                 trailVPStroke.Transparency = 0.12
-                tdpStroke.Color = rarityColor
+                tdpStroke.Color = CARD_STROKE
                 tdpStroke.Transparency = 0.14
 
                 -- Launch 3D trail preview
@@ -5309,13 +4499,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 local effectColor = def.Color or Color3.fromRGB(180, 220, 255)
                 local isFree      = def.IsFree or false
                 local isRainbow   = def.IsRainbow == true
-                local isEpic      = (def.Rarity == "Epic")
-                local rarity      = def.Rarity or "Common"
+                local isEpic = false
+                local rarity = "Common"
                 local rarityColor = RARITY_COLORS[rarity] or RARITY_COLORS.Common
                 local baseRarityBg = WEAPON_CARD_BG[rarity] or WEAPON_CARD_BG.Common
-                local baseBg = mixColor(baseRarityBg, effectColor, isRainbow and 0.1 or 0.18)
+                local baseBg = CARD_BG
                 local selectedBg = brightenColor(baseBg, 0.05)
-                local equippedBg = mixColor(baseBg, GREEN_GLOW, 0.16)
+                local equippedBg = baseBg
                 local accentColor = isRainbow and Color3.fromRGB(214, 138, 206) or effectColor
 
                 local card = Instance.new("TextButton")
@@ -5330,7 +4520,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 card.Parent = trailGridScroll
                 Instance.new("UICorner", card).CornerRadius = UDim.new(0, INV_CARD.CornerRadius)
 
-                local baseStrokeColor = isRainbow and Color3.fromRGB(200, 160, 255) or (WEAPON_CARD_BORDER[rarity] or shadeColor(rarityColor, 0.65))
+                local baseStrokeColor = CARD_STROKE
                 local baseStrokeThickness = isEpic and 2.0 or 1.7
                 local baseStrokeTransparency = isEpic and 0.08 or 0.16
                 local eCS = Instance.new("UIStroke", card)
@@ -5359,7 +4549,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
-                iconArea.BackgroundColor3 = mixColor(RARITY_BG_COLORS[rarity] or RARITY_BG_COLORS.Common, effectColor, isRainbow and 0.08 or 0.24)
+                iconArea.BackgroundColor3 = CARD_BG
                 iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
                 iconArea.AnchorPoint = Vector2.new(0.5, 0)
                 iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
@@ -5398,7 +4588,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 end
                 addTextOutline(swatchGlyph, 0.24, 1.4)
 
-                buildCardFooter(card, rarity, rarityColor, baseStrokeColor, false)
+                -- Cosmetic cards have no rarity/type subtitle.
 
                 effectCards[effectId] = {
                     card = card,
@@ -5527,30 +4717,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         local EMOTE_SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 8
 
-        local function getEmoteIconImage(def)
-            if EmoteConfig and type(EmoteConfig.GetIconImage) == "function" then
-                local ok, image = pcall(function()
-                    return EmoteConfig.GetIconImage(def, AssetCodesGlobal)
-                end)
-                if ok and type(image) == "string" and image ~= "" then
-                    return image
-                end
-            end
-            return nil
-        end
-
-        local function getEmoteGlyph(def)
-            if EmoteConfig and type(EmoteConfig.GetIconText) == "function" then
-                local ok, text = pcall(function()
-                    return EmoteConfig.GetIconText(def, true)
-                end)
-                if ok and type(text) == "string" and text ~= "" then
-                    return text
-                end
-            end
-            return "\u{1F3AD}"
-        end
-
         local allEmoteDefs = EmoteConfig and EmoteConfig.GetAll() or {}
 
         local emoteGridScroll = Instance.new("ScrollingFrame")
@@ -5647,38 +4813,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         edPad.PaddingLeft = UDim.new(0, px(12))
         edPad.PaddingRight = UDim.new(0, px(12))
 
-        local emoteHero = Instance.new("Frame", emoteDetailContent)
-        emoteHero.Name = "Hero"
-        emoteHero.BackgroundColor3 = accentPanelColor(GOLD, 0.24)
-        emoteHero.Size = UDim2.new(1, 0, 0, px(184))
-        emoteHero.ClipsDescendants = true
-        Instance.new("UICorner", emoteHero).CornerRadius = UDim.new(0, px(10))
-        local emoteHeroStroke = Instance.new("UIStroke", emoteHero)
-        emoteHeroStroke.Color = GOLD
-        emoteHeroStroke.Thickness = 1.5
-        emoteHeroStroke.Transparency = 0.2
-        addCardSheen(emoteHero, GOLD)
-
-        local emoteHeroGlyph = Instance.new("TextLabel", emoteHero)
-        emoteHeroGlyph.Name = "Glyph"
-        emoteHeroGlyph.BackgroundTransparency = 1
-        emoteHeroGlyph.Size = UDim2.new(0.7, 0, 0.7, 0)
-        emoteHeroGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
-        emoteHeroGlyph.Position = UDim2.new(0.5, 0, 0.52, 0)
-        emoteHeroGlyph.Font = Enum.Font.GothamBlack
-        emoteHeroGlyph.TextScaled = true
-        emoteHeroGlyph.TextColor3 = GOLD
-        addTextOutline(emoteHeroGlyph, 0.24, 1.5)
-
-        local emoteHeroImage = Instance.new("ImageLabel", emoteHero)
-        emoteHeroImage.Name = "IconImage"
-        emoteHeroImage.BackgroundTransparency = 1
-        emoteHeroImage.Size = UDim2.new(0.54, 0, 0.54, 0)
-        emoteHeroImage.AnchorPoint = Vector2.new(0.5, 0.5)
-        emoteHeroImage.Position = UDim2.new(0.5, 0, 0.5, 0)
-        emoteHeroImage.ScaleType = Enum.ScaleType.Fit
-        emoteHeroImage.Visible = false
-
         local emoteDetailName = Instance.new("TextLabel", emoteDetailContent)
         emoteDetailName.Name = "EmoteName"
         emoteDetailName.BackgroundTransparency = 1
@@ -5687,7 +4821,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         emoteDetailName.TextSize = px(26)
         emoteDetailName.TextXAlignment = Enum.TextXAlignment.Center
         emoteDetailName.Size = UDim2.new(1, 0, 0, px(34))
-        emoteDetailName.Position = UDim2.new(0, 0, 0, px(192))
+        emoteDetailName.Position = UDim2.new(0, 0, 0, px(8))
         emoteDetailName.TextTruncate = Enum.TextTruncate.AtEnd
 
         local emoteDetailDesc = Instance.new("TextLabel", emoteDetailContent)
@@ -5699,7 +4833,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         emoteDetailDesc.TextWrapped = true
         emoteDetailDesc.TextXAlignment = Enum.TextXAlignment.Center
         emoteDetailDesc.Size = UDim2.new(1, 0, 0, px(48))
-        emoteDetailDesc.Position = UDim2.new(0, 0, 0, px(228))
+        emoteDetailDesc.Position = UDim2.new(0, 0, 0, px(44))
         local descStroke = Instance.new("UIStroke", emoteDetailDesc)
         descStroke.Color = Color3.fromRGB(0, 0, 0)
         descStroke.Thickness = 1.4
@@ -5713,13 +4847,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         emoteStatusLabel.TextSize = px(15)
         emoteStatusLabel.TextXAlignment = Enum.TextXAlignment.Center
         emoteStatusLabel.Size = UDim2.new(1, 0, 0, px(22))
-        emoteStatusLabel.Position = UDim2.new(0, 0, 0, px(278))
+        emoteStatusLabel.Position = UDim2.new(0, 0, 0, px(94))
 
         local emoteSlotsPanel = Instance.new("Frame", emoteDetailContent)
         emoteSlotsPanel.Name = "SlotsPanel"
         emoteSlotsPanel.BackgroundColor3 = accentPanelColor(GOLD, 0.12)
         emoteSlotsPanel.Size = UDim2.new(1, 0, 0, px(190))
-        emoteSlotsPanel.Position = UDim2.new(0, 0, 0, px(306))
+        emoteSlotsPanel.Position = UDim2.new(0, 0, 0, px(122))
         Instance.new("UICorner", emoteSlotsPanel).CornerRadius = UDim.new(0, px(10))
         local emoteSlotsStroke = Instance.new("UIStroke", emoteSlotsPanel)
         emoteSlotsStroke.Color = GOLD
@@ -5914,17 +5048,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             emoteDetailPlaceholder.Visible = false
             emoteDetailContent.Visible = true
 
-            emoteHeroGlyph.Text = getEmoteGlyph(emoteId)
-            local imageId = getEmoteIconImage(def)
-            emoteHeroImage.Visible = type(imageId) == "string" and #imageId > 0
-            if emoteHeroImage.Visible then
-                emoteHeroImage.Image = imageId
-            else
-                emoteHeroImage.Image = ""
-            end
-
             emoteDetailName.Text = def.DisplayName or emoteId
-            emoteDetailDesc.Text = def.Description or ""
+            emoteDetailDesc.Text = ""
 
             local equippedSlot = getEquippedSlotForEmote(emoteId)
             if equippedSlot then
@@ -5977,7 +5102,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                     setCardStroke(refs.cardStroke, GOLD, 2.2, 0)
                 elseif equippedSlot then
                     refs.card.BackgroundColor3 = refs.equippedBg
-                    setCardStroke(refs.cardStroke, GREEN_GLOW, 1.9, 0.16)
+                    setCardStroke(refs.cardStroke, refs.baseStrokeColor, refs.baseStrokeThickness, refs.baseStrokeTransparency)
                 else
                     refs.card.BackgroundColor3 = refs.baseBg
                     setCardStroke(refs.cardStroke, refs.baseStrokeColor, refs.baseStrokeThickness, refs.baseStrokeTransparency)
@@ -5985,7 +5110,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 refs.slotBadge.Visible = (equippedSlot ~= nil)
                 refs.slotBadge.Text = equippedSlot and string.format("SLOT %d", equippedSlot) or ""
-                refs.eqBar.Visible = (equippedSlot ~= nil)
+                refs.eqBar.Visible = false
             end
 
             emotesEmptyState.Visible = (visibleCount == 0)
@@ -6039,9 +5164,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local function createEmoteCard(def, i_emote)
             local emoteId = def.Id
             local displayName = def.DisplayName or emoteId
-            local baseBg = accentPanelColor(GOLD, 0.18)
+            local baseBg = CARD_BG
             local selectedBg = brightenColor(baseBg, 0.05)
-            local equippedBg = mixColor(baseBg, GREEN_GLOW, 0.16)
+            local equippedBg = baseBg
             local baseStrokeColor = Color3.fromRGB(145, 116, 74)
             local baseStrokeThickness = 1.5
             local baseStrokeTransparency = 0.28
@@ -6075,56 +5200,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             cardName.TextTruncate = Enum.TextTruncate.AtEnd
             cardName.TextXAlignment = Enum.TextXAlignment.Center
             cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
-            cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+            cardName.Position = UDim2.new(0, px(5), 0.35, 0)
             cardName.ZIndex = 3
             addTextOutline(cardName, 0.18, 1.35)
-
-            local iconArea = Instance.new("Frame", card)
-            iconArea.Name = "IconArea"
-            iconArea.BackgroundColor3 = mixColor(CARD_BG, GOLD, 0.16)
-            iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
-            iconArea.AnchorPoint = Vector2.new(0.5, 0)
-            iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
-            iconArea.BorderSizePixel = 0
-            Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
-            addIconWellHighlight(iconArea, GOLD)
-
-            local iconGlyph = Instance.new("TextLabel", iconArea)
-            iconGlyph.Name = "Glyph"
-            iconGlyph.BackgroundTransparency = 1
-            iconGlyph.Size = UDim2.new(0.72, 0, 0.72, 0)
-            iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
-            iconGlyph.Position = UDim2.new(0.5, 0, 0.54, 0)
-            iconGlyph.Font = Enum.Font.GothamBlack
-            iconGlyph.Text = getEmoteGlyph(emoteId)
-            iconGlyph.TextScaled = true
-            iconGlyph.TextColor3 = GOLD
-            iconGlyph.ZIndex = 4
-            addTextOutline(iconGlyph, 0.24, 1.4)
-
-            local iconImage = Instance.new("ImageLabel", iconArea)
-            iconImage.Name = "IconImage"
-            iconImage.BackgroundTransparency = 1
-            iconImage.Size = UDim2.new(0.62, 0, 0.62, 0)
-            iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
-            iconImage.Position = UDim2.new(0.5, 0, 0.5, 0)
-            iconImage.ScaleType = Enum.ScaleType.Fit
-            iconImage.ZIndex = 5
-            local iconImageId = getEmoteIconImage(def)
-            iconImage.Visible = type(iconImageId) == "string" and #iconImageId > 0
-            iconImage.Image = iconImage.Visible and iconImageId or ""
-
-            local cardType = Instance.new("TextLabel", card)
-            cardType.Name = "TypeLabel"
-            cardType.BackgroundTransparency = 1
-            cardType.Font = Enum.Font.GothamBold
-            cardType.Text = "Emote"
-            cardType.TextColor3 = GOLD
-            cardType.TextSize = INV_CARD.Line1TextSize
-            cardType.TextXAlignment = Enum.TextXAlignment.Center
-            cardType.Size = UDim2.new(1, -px(10), 0, INV_CARD.Line1Height)
-            cardType.Position = UDim2.new(0, px(5), 1, -INV_CARD.Line1OffBottom - INV_CARD.Line1Height)
-            cardType.ZIndex = 4
 
             local slotBadge = Instance.new("TextLabel", card)
             slotBadge.Name = "SlotBadge"
@@ -6280,7 +5358,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local isWeaponTab = (tabId == "melee" or tabId == "ranged")
         weaponArea.Visible  = isWeaponTab
         boostsPage.Visible  = (tabId == "boosts")
-        skinsArea.Visible   = (tabId == "skins")
         effectsPage.Visible = (tabId == "effects")
         emotesPage.Visible  = (tabId == "emotes")
 
@@ -6450,7 +5527,6 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         resizePage("WeaponArea", "GridScroll", "EmptyState", "DetailsPanel")
         resizePage("BoostsPage", "BoostGridScroll", "BoostEmptyState", "BoostDetailsPanel")
-        resizePage("SkinsArea", "SkinGridScroll", "SkinEmptyState", "SkinDetailsPanel")
         resizePage("EffectsPage", "TrailGridScroll", "EffectsEmptyState", "TrailDetailsPanel")
         resizePage("EmotesPage", "EmoteGridScroll", "EmotesEmptyState", "EmoteDetailsPanel")
 

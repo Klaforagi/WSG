@@ -1828,7 +1828,12 @@ local closeBtnStroke = Instance.new("UIStroke")
 closeBtnStroke.Color = COLORS.gold
 closeBtnStroke.Thickness = 1.2
 closeBtnStroke.Transparency = 0.4
+closeBtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 closeBtnStroke.Parent = closeBtn
+local closeTextSize = Instance.new("UITextSizeConstraint")
+closeTextSize.MinTextSize = 14
+closeTextSize.MaxTextSize = 26
+closeTextSize.Parent = closeBtn
 
 local contentFrame, modalStatusOverlay, prewarmContainer
 
@@ -2926,10 +2931,9 @@ local REPLICATED_MENU_ASSET_MODULES = {
     "HealthPotionConfig",
     "BandageConfig",
     "ItemIconRegistry",
-    "SkinDefinitions",
     "CrateConfig",
     "SalvageShopConfig",
-    "CosmeticsCatalog",
+    "MarketCatalog",
 }
 local SIDE_UI_MENU_ASSET_MODULES = {
     "EffectDefs",
@@ -3388,6 +3392,16 @@ _G.SideUI.OpenPage = OpenPage
 _G.SideUI.OpenOptions = toggleOptionsMenu
 _G.SideUI.SetTitle = function(text) titleLabel.Text = text end
 _G.SideUI.MenuController = MenuController  -- expose for other scripts
+-- Separate modal screens can mirror the rendered size, including overlay scaling.
+_G.SideUI.GetSharedModalSize = function()
+    return window.AbsoluteSize
+end
+_G.SideUI.GetSharedModalCornerRadius = function()
+    return winCorner.CornerRadius
+end
+_G.SideUI.GetSharedCloseStyle = function()
+    return closeBtn.AbsoluteSize, closeBtnCorner.CornerRadius
+end
 _G.SideUI.SetSharedModalOverlay = function(visible, hideShopWindow)
 	if visible then
 		modalOverlay.Visible = true

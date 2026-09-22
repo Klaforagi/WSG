@@ -204,7 +204,7 @@ end
 --- Create a new weapon instance for a player. Returns the instance data table.
 --- sizePercent and sizeTier are optional; if omitted, defaults to 100% / "Normal".
 --- enchantName is optional; if omitted, defaults to "" (no enchant).
-function WeaponInstanceService:CreateInstance(player, weaponName, rarity, category, source, sizePercent, sizeTier, enchantName)
+function WeaponInstanceService:CreateInstance(player, weaponName, rarity, category, source, sizePercent, sizeTier, enchantName, enchantRollFinal)
     if not player then return nil end
     local inv = playerInventories[player]
     if not inv then
@@ -215,7 +215,7 @@ function WeaponInstanceService:CreateInstance(player, weaponName, rarity, catego
     local id = generateId()
     allIds[id] = true
 
-    if WeaponEnchantConfig and type(WeaponEnchantConfig.EnsureEnchantName) == "function" then
+    if not enchantRollFinal and WeaponEnchantConfig and type(WeaponEnchantConfig.EnsureEnchantName) == "function" then
         enchantName = WeaponEnchantConfig.EnsureEnchantName(weaponName, enchantName) or enchantName
     end
 
@@ -229,6 +229,7 @@ function WeaponInstanceService:CreateInstance(player, weaponName, rarity, catego
         sizePercent = sizePercent or 100,   -- SIZE ROLL SYSTEM (80–200)
         sizeTier    = sizeTier or "Normal", -- SIZE ROLL SYSTEM
         enchantName    = (type(enchantName) == "string" and enchantName) or "", -- ENCHANT SYSTEM
+        enchantRollFinal = enchantRollFinal == true, -- Market's displayed roll must survive equip/rejoin.
     }
 
     inv[id] = instanceData

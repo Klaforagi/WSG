@@ -79,7 +79,6 @@ local DATASTORES = {
     WeaponMastery = { name = "WeaponMastery_v1", keyFmt = "WpnMastery_%d" },
     HealthPotions = { name = "HealthPotions_v1", keyFmt = "User_%d" },
     PotionStock   = { name = "PotionStock_v1",   keyFmt = "User_%d" },
-    Skins        = { name = "Skins_v1",          keyFmt = "User_%d"  },
     Effects      = { name = "Effects_v1",        keyFmt = "User_%d"  },
     Emotes       = { name = "Emotes_v1",         keyFmt = "User_%d"  },
     Loadout      = { name = "Loadout_v1",        keyFmt = "user_%d"  },
@@ -106,7 +105,7 @@ end
 local RESET_GROUPS = {
     Currency     = { "Coins", "Keys", "Salvage" },
     Progression  = { "XP", "Upgrades" },
-    Inventory    = { "Weapons", "HealthPotions", "PotionStock", "Skins", "Effects", "Emotes", "Loadout" },
+    Inventory    = { "Weapons", "HealthPotions", "PotionStock", "Effects", "Emotes", "Loadout" },
     Mastery      = { "WeaponMastery" },
     Gamepasses   = { "Gamepasses" },
 

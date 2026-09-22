@@ -8,31 +8,31 @@ local playerGui = player:WaitForChild("PlayerGui")
 local modulesFolder = ReplicatedStorage:WaitForChild("Modules", 15)
 
 if not modulesFolder then
-	warn("[SkinsStall] Modules folder not found")
+	warn("[MarketStall] Modules folder not found")
 	return
 end
 
-local stallModule = modulesFolder:WaitForChild("SkinsStallUI", 15)
+local stallModule = modulesFolder:WaitForChild("MarketStallUI", 15)
 if not (stallModule and stallModule:IsA("ModuleScript")) then
-	warn("[SkinsStall] SkinsStallUI module not found")
+	warn("[MarketStall] MarketStallUI module not found")
 	return
 end
 
-local SkinsStallUI = require(stallModule)
+local MarketStallUI = require(stallModule)
 
-local stallModel = Workspace:WaitForChild("SkinsStall", 30)
+local stallModel = Workspace:WaitForChild("MarketStall", 30)
 if not (stallModel and stallModel:IsA("Model")) then
-	warn("[SkinsStall] SkinsStall model not found")
+	warn("[MarketStall] MarketStall model not found")
 	return
 end
 
 local promptPart = stallModel:WaitForChild("PromptPart", 30)
 if not (promptPart and promptPart:IsA("BasePart")) then
-	warn("[SkinsStall] PromptPart missing under SkinsStall")
+	warn("[MarketStall] PromptPart missing under MarketStall")
 	return
 end
 
-local screenGui = playerGui:FindFirstChild("SkinsStallGui")
+local screenGui = playerGui:FindFirstChild("MarketStallGui")
 if screenGui and not screenGui:IsA("ScreenGui") then
 	screenGui:Destroy()
 	screenGui = nil
@@ -40,7 +40,7 @@ end
 
 if not screenGui then
 	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "SkinsStallGui"
+	screenGui.Name = "MarketStallGui"
 	screenGui.Parent = playerGui
 end
 
@@ -50,7 +50,7 @@ screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.DisplayOrder = 430
 screenGui.Enabled = false
 
-local uiRoot = screenGui:FindFirstChild("SkinsStallRoot")
+local uiRoot = screenGui:FindFirstChild("MarketStallRoot")
 if uiRoot and not uiRoot:IsA("GuiObject") then
 	uiRoot = nil
 end
@@ -81,7 +81,7 @@ do
 	end)
 	if ms and ms.RegisterMenu then
 		pcall(function()
-			ms.RegisterMenu("SkinsStall", {
+			ms.RegisterMenu("MarketStall", {
 				gui = screenGui,
 				isOpen = function()
 					return isOpen
@@ -148,8 +148,8 @@ screenGui.Destroying:Connect(function()
 end)
 
 local function bindCloseHandler()
-	if uiRoot and type(SkinsStallUI.SetCloseCallback) == "function" then
-		SkinsStallUI.SetCloseCallback(uiRoot, function()
+	if uiRoot and type(MarketStallUI.SetCloseCallback) == "function" then
+		MarketStallUI.SetCloseCallback(uiRoot, function()
 			suppressUntilExit = true
 			closeStall()
 		end)
@@ -173,7 +173,7 @@ local function ensureUiBuilt()
 	end
 
 	buildInProgress = true
-	uiRoot = SkinsStallUI.Create(screenGui, {
+	uiRoot = MarketStallUI.Create(screenGui, {
 		onClose = function()
 			suppressUntilExit = true
 			closeStall()
@@ -195,7 +195,7 @@ do
 		end
 	end)
 	if MenuController then
-		MenuController.RegisterMenu("SkinsStall", {
+		MenuController.RegisterMenu("MarketStall", {
 			open = function()
 				ensureUiBuilt()
 				if screenGui and screenGui.Parent then

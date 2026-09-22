@@ -62,8 +62,8 @@ local function getCrateConfig()
 end
 
 --------------------------------------------------------------------------------
--- OWNERSHIP TRACKING  (for unique items: skins, effects)
--- Uses DataStores managed by SkinService / EffectsService via their data tables.
+-- OWNERSHIP TRACKING  (for unique items: effects)
+-- Uses DataStores managed by EffectsService via their data tables.
 -- We query ownership via server-side modules rather than duplicating stores.
 --------------------------------------------------------------------------------
 
@@ -71,47 +71,7 @@ end
 local function playerOwnsReward(player, shopItem)
     if not shopItem.Unique then return false end
 
-    if shopItem.RewardType == "Skin" then
-        -- Query SkinService data
-        local skinSvc = ServerScriptService:FindFirstChild("SkinService.server")
-            or ServerScriptService:FindFirstChild("SkinService")
-        if skinSvc then
-            -- SkinService uses a script, ownership stored in its internal table.
-            -- We check via a BindableFunction if it exists.
-            local bf = ServerScriptService:FindFirstChild("CheckSkinOwnership")
-            if bf and bf:IsA("BindableFunction") then
-                local ok, result = pcall(function() return bf:Invoke(player, shopItem.RewardId) end)
-                if ok then return result == true end
-            end
-        end
-        return false
-    end
-
     if shopItem.RewardType == "Effect" then
-        local bf = ServerScriptService:FindFirstChild("CheckEffectOwnership")
-        if bf and bf:IsA("BindableFunction") then
-            local ok, result = pcall(function() return bf:Invoke(player, shopItem.RewardId) end)
-            if ok then return result == true end
-        end
-        return false
-    end
-
-    return false
-end
-
--- Grant the reward for a salvage shop purchase
-local function grantReward(player, shopItem)
-    if shopItem.RewardType == "Skin" then
-        local bf = ServerScriptService:FindFirstChild("GrantSkin")
-        if bf and bf:IsA("BindableFunction") then
-            local ok, result = pcall(function() return bf:Invoke(player, shopItem.RewardId) end)
-            if ok and result then return true end
-        end
-        -- Fallback: log and succeed (skin will need manual claim if BindableFunction missing)
-        warn("[SalvageShopService] GrantSkin BindableFunction not found for:", shopItem.RewardId)
-        return true
-
-    elseif shopItem.RewardType == "Effect" then
         local bf = ServerScriptService:FindFirstChild("GrantEffect")
         if bf and bf:IsA("BindableFunction") then
             local ok, result = pcall(function() return bf:Invoke(player, shopItem.RewardId) end)

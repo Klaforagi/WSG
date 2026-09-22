@@ -505,7 +505,7 @@ local function applyWeaponEnchant(player, toolClone, toolName, instanceId)
             end
         end)
 
-        if hasEnchant or requiresEnchant then
+        if hasEnchant or requiresEnchant or bestInstance.enchantRollFinal then
             local beforeEnchant = bestInstance.enchantName
             WeaponEnchantService.ApplyEnchantFromInstance(toolClone, bestInstance)
             enchantName = bestInstance.enchantName

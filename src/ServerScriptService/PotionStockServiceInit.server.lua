@@ -22,7 +22,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local DATASTORE_NAME = "PotionStock_v1"
 local ds = DataStoreService:GetDataStore(DATASTORE_NAME)
 
-local REFRESH_BANNER_TEXT = "Potion Stall stock has refreshed!"
+local REFRESH_BANNER_TEXT = "Market has refreshed"
 local REFRESH_BANNER_COLOR = Color3.fromRGB(255, 208, 95)
 
 local function ensureInstance(parent, className, name)

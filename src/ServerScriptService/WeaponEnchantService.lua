@@ -502,7 +502,7 @@ function WeaponEnchantService.ApplyEnchantFromInstance(tool, instanceData)
     if not tool or not instanceData then return end
 
     local weaponName = instanceData.weaponName or tool:GetAttribute("WeaponName") or tool.Name
-    if WeaponEnchantConfig and type(WeaponEnchantConfig.EnsureEnchantName) == "function" then
+    if not instanceData.enchantRollFinal and WeaponEnchantConfig and type(WeaponEnchantConfig.EnsureEnchantName) == "function" then
         local ensured = WeaponEnchantConfig.EnsureEnchantName(weaponName, instanceData.enchantName)
         if ensured and ensured ~= instanceData.enchantName then
             instanceData.enchantName = ensured

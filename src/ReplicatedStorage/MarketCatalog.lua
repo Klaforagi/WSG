@@ -1,17 +1,9 @@
 --------------------------------------------------------------------------------
--- CosmeticsCatalog.lua
--- Shared adapter that groups existing cosmetic configs for the world Cosmetics UI.
+-- MarketCatalog.lua
+-- Shared adapter that groups existing cosmetic configs for the Market stall's trail and emote sections.
 --------------------------------------------------------------------------------
 
 local ReplicatedStorage = script.Parent
-
-local SkinDefinitions = nil
-pcall(function()
-    local mod = ReplicatedStorage:FindFirstChild("SkinDefinitions")
-    if mod and mod:IsA("ModuleScript") then
-        SkinDefinitions = require(mod)
-    end
-end)
 
 local EffectDefs = nil
 pcall(function()
@@ -31,10 +23,9 @@ pcall(function()
     end
 end)
 
-local CosmeticsCatalog = {}
+local MarketCatalog = {}
 
-CosmeticsCatalog.SECTIONS = {
-    { Id = "Skins", Category = "Skin", Header = "SKINS", SortOrder = 10 },
+MarketCatalog.SECTIONS = {
     { Id = "Trails", Category = "Trail", Header = "TRAILS", SortOrder = 20 },
     { Id = "Emotes", Category = "Emote", Header = "EMOTES", SortOrder = 30 },
 }
@@ -47,6 +38,9 @@ local function sortedCopy(list)
         end
     end
     table.sort(result, function(a, b)
+        if (a.IsRainbow == true) ~= (b.IsRainbow == true) then
+            return b.IsRainbow == true
+        end
         local orderA = tonumber(a.SortOrder) or math.huge
         local orderB = tonumber(b.SortOrder) or math.huge
         if orderA ~= orderB then
@@ -55,42 +49,6 @@ local function sortedCopy(list)
         return tostring(a.DisplayName or a.Id or "") < tostring(b.DisplayName or b.Id or "")
     end)
     return result
-end
-
-local function normalizeSkin(def)
-    local coinPrice = 0
-    if SkinDefinitions and type(SkinDefinitions.GetCoinPrice) == "function" then
-        coinPrice = SkinDefinitions.GetCoinPrice(def)
-    elseif type(def.CoinPrice) == "number" then
-        coinPrice = def.CoinPrice
-    elseif type(def.Price) == "number" then
-        coinPrice = def.Price
-    end
-
-    local robuxProductId = 0
-    if SkinDefinitions and type(SkinDefinitions.GetRobuxProductId) == "function" then
-        robuxProductId = SkinDefinitions.GetRobuxProductId(def)
-    else
-        robuxProductId = tonumber(def.RobuxProductId) or 0
-    end
-
-    return {
-        Id = def.Id,
-        Category = "Skin",
-        Type = "Skin",
-        DisplayName = def.DisplayName or def.Id,
-        Description = def.Description or "",
-        CoinPrice = coinPrice,
-        Currency = coinPrice > 0 and "Coins" or nil,
-        RobuxProductId = robuxProductId,
-        RobuxPrice = def.RobuxPrice,
-        Rarity = def.Rarity or "Common",
-        SortOrder = tonumber(def.SortOrder) or 0,
-        IconKey = def.IconKey,
-        PreviewImageKey = def.PreviewImageKey,
-        IsDefault = def.IsDefault == true,
-        Source = def,
-    }
 end
 
 local function normalizeTrail(def)
@@ -103,7 +61,6 @@ local function normalizeTrail(def)
         Description = def.Description or "",
         CoinPrice = coinPrice,
         Currency = coinPrice > 0 and "Coins" or nil,
-        Rarity = def.Rarity or "Common",
         SortOrder = tonumber(def.SortOrder) or 0,
         SubType = def.SubType or "DashTrail",
         Color = def.Color,
@@ -127,7 +84,6 @@ local function normalizeEmote(def)
         Description = def.Description or "",
         CoinPrice = coinPrice,
         Currency = coinPrice > 0 and "Coins" or nil,
-        Rarity = def.Rarity or "Common",
         SortOrder = tonumber(def.SortOrder) or 0,
         Icon = def.Icon,
         IconImage = def.IconImage,
@@ -154,21 +110,8 @@ local function normalizeEmote(def)
     }
 end
 
-function CosmeticsCatalog.GetItemsByCategory(category)
+function MarketCatalog.GetItemsByCategory(category)
     local items = {}
-
-    if category == "Skin" then
-        local skins = {}
-        if SkinDefinitions and type(SkinDefinitions.GetStallSkins) == "function" then
-            skins = SkinDefinitions.GetStallSkins()
-        end
-        for _, def in ipairs(sortedCopy(skins)) do
-            if type(def.Id) == "string" and def.Id ~= "" then
-                table.insert(items, normalizeSkin(def))
-            end
-        end
-        return items
-    end
 
     if category == "Trail" then
         local trails = {}
@@ -199,22 +142,22 @@ function CosmeticsCatalog.GetItemsByCategory(category)
     return items
 end
 
-function CosmeticsCatalog.GetSections()
+function MarketCatalog.GetSections()
     local sections = {}
-    for _, sectionDef in ipairs(CosmeticsCatalog.SECTIONS) do
+    for _, sectionDef in ipairs(MarketCatalog.SECTIONS) do
         table.insert(sections, {
             Id = sectionDef.Id,
             Category = sectionDef.Category,
             Header = sectionDef.Header,
             SortOrder = sectionDef.SortOrder,
-            Items = CosmeticsCatalog.GetItemsByCategory(sectionDef.Category),
+            Items = MarketCatalog.GetItemsByCategory(sectionDef.Category),
         })
     end
     return sections
 end
 
-function CosmeticsCatalog.GetByCategoryAndId(category, id)
-    for _, item in ipairs(CosmeticsCatalog.GetItemsByCategory(category)) do
+function MarketCatalog.GetByCategoryAndId(category, id)
+    for _, item in ipairs(MarketCatalog.GetItemsByCategory(category)) do
         if item.Id == id then
             return item
         end
@@ -222,11 +165,11 @@ function CosmeticsCatalog.GetByCategoryAndId(category, id)
     return nil
 end
 
-function CosmeticsCatalog.GetSlotCount()
+function MarketCatalog.GetSlotCount()
     if EmoteConfig then
         return tonumber(EmoteConfig.SLOT_COUNT) or 8
     end
     return 8
 end
 
-return CosmeticsCatalog
+return MarketCatalog

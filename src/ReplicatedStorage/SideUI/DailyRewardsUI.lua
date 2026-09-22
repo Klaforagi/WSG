@@ -6,6 +6,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local RunService = game:GetService("RunService")
 
 local UITheme = require(script.Parent.UITheme)
 local TimeHelper
@@ -37,6 +38,7 @@ local currentState
 local selectedDay = 1
 local onClaimCb
 local timerToken = 0
+local syncWindowLayout
 
 local NAVY = UITheme.NAVY
 local NAVY_LIGHT = UITheme.NAVY_LIGHT
@@ -358,35 +360,137 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	window.Name = "Window"
 	window.AnchorPoint = Vector2.new(0.5, 0.5)
 	window.Position = UDim2.fromScale(0.5, 0.5)
-	window.Size = UDim2.fromScale(0.52, 0.62)
-	window.BackgroundColor3 = NAVY
+	window.Size = UDim2.fromScale(0.5, 0.72)
+	window.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
+	window.BackgroundTransparency = 0.04
 	window.BorderSizePixel = 0
 	window.Active = true
 	window.ZIndex = 2
 	window.Parent = screenGui
-	corner(window, px(16))
-	stroke(window, GOLD, 2, 0.28)
+	corner(window, px(14))
+	stroke(window, Color3.fromRGB(180, 150, 50), 1.5, 0.15)
+	local gradient = Instance.new("UIGradient")
+	gradient.Color = ColorSequence.new(Color3.new(1, 1, 1), Color3.fromRGB(185, 185, 195))
+	gradient.Rotation = 90
+	gradient.Parent = window
 
-	local sizeConstraint = Instance.new("UISizeConstraint")
-	sizeConstraint.MinSize = Vector2.new(420, 380)
-	sizeConstraint.MaxSize = Vector2.new(760, 620)
-	sizeConstraint.Parent = window
+	local aspect = Instance.new("UIAspectRatioConstraint")
+	aspect.AspectRatio = 1.4
+	aspect.AspectType = Enum.AspectType.FitWithinMaxSize
+	aspect.DominantAxis = Enum.DominantAxis.Width
+	aspect.Parent = window
+
+	-- Match SideUI's Shop/Achievements/Team modal sizing, not the stall panels.
+	local thisWindow = window
+	local thisGui = screenGui
+	local viewportConnection
+	local function layoutWindow()
+		local camera = workspace.CurrentCamera
+		if not camera then return end
+		local viewportX, viewportY = camera.ViewportSize.X, camera.ViewportSize.Y
+		if viewportX <= 0 or viewportY <= 0 then return end
+		local portrait = viewportX < viewportY
+		local widthMin = math.min(math.floor(viewportX * 0.92), 540)
+		local lower = math.max(320, widthMin)
+		local width = math.clamp(math.floor(viewportX * (portrait and 0.82 or 0.65)),
+			lower, math.max(math.floor(viewportX * 0.86), lower))
+		local heightLimit = portrait and math.floor(width * 1.1) or math.floor(viewportY * 0.8)
+		local minHeight = math.max(220, math.floor(viewportY * 0.46))
+		local height = math.clamp(math.min(math.floor(viewportY * 0.72), heightLimit),
+			minHeight, math.max(math.floor(viewportY * 0.84), minHeight))
+		-- SideUI narrows Shop/Achievements/Team by 25% after computing the base size.
+		thisWindow.Position = UDim2.fromScale(0.5, 0.5)
+		thisWindow.Size = UDim2.fromScale(math.max(200, math.floor(width * 0.75)) / viewportX, height / viewportY)
+		-- Mirror the actual shared window: its parent is 110% screen size and
+		-- Inventory uses different sizing from Shop. Don't approximate either.
+		local sideUI = _G.SideUI
+		local windowCorner = thisWindow:FindFirstChildOfClass("UICorner")
+		if windowCorner then
+			windowCorner.CornerRadius = sideUI and sideUI.GetSharedModalCornerRadius
+				and sideUI.GetSharedModalCornerRadius() or UDim.new(0, px(14))
+		end
+		local sharedSize = sideUI and sideUI.GetSharedModalSize and sideUI.GetSharedModalSize()
+		if sharedSize and sharedSize.X > 0 and sharedSize.Y > 0 then
+			-- Already resolved by the shared window's aspect constraint. Applying
+			-- another constraint here can shrink the copied dimensions again.
+			aspect.Parent = nil
+			thisWindow.Size = UDim2.fromOffset(sharedSize.X, sharedSize.Y)
+		else
+			aspect.Parent = thisWindow
+			-- Match the shared overlay scale while SideUI is still initializing.
+			thisWindow.Size = UDim2.fromScale(thisWindow.Size.X.Scale * 1.1, thisWindow.Size.Y.Scale * 1.1)
+		end
+		local close = thisWindow:FindFirstChild("Close")
+		if close then
+			local headerHeight = math.clamp(math.floor(height * 0.1), 44, 76)
+			local closeSize = math.max(26, math.floor(headerHeight * 0.60))
+			close.Size = UDim2.fromOffset(closeSize, closeSize)
+			local closeCorner = close:FindFirstChildOfClass("UICorner")
+			if sideUI and sideUI.GetSharedCloseStyle then
+				local size, radius = sideUI.GetSharedCloseStyle()
+				if size.X > 0 and size.Y > 0 then close.Size = UDim2.fromOffset(size.X, size.Y) end
+				if closeCorner then closeCorner.CornerRadius = radius end
+			elseif closeCorner then
+				closeCorner.CornerRadius = UDim.new(0, px(8))
+			end
+		end
+		local padding = thisWindow:FindFirstChildOfClass("UIPadding")
+		if padding then
+			padding.PaddingTop = UDim.new(0, px(10))
+			padding.PaddingBottom = UDim.new(0, px(10))
+			padding.PaddingLeft = UDim.new(0, px(14))
+			padding.PaddingRight = UDim.new(0, px(14))
+		end
+	end
+	local function bindCamera()
+		if viewportConnection then viewportConnection:Disconnect() end
+		local camera = workspace.CurrentCamera
+		viewportConnection = camera and camera:GetPropertyChangedSignal("ViewportSize"):Connect(layoutWindow)
+		layoutWindow()
+	end
+	local cameraConnection = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(bindCamera)
+	syncWindowLayout = layoutWindow
+	local sizeConnection = RunService.RenderStepped:Connect(function()
+		if thisGui.Enabled then layoutWindow() end
+	end)
+	thisGui.Destroying:Connect(function()
+		aspect:Destroy()
+		cameraConnection:Disconnect()
+		sizeConnection:Disconnect()
+		if viewportConnection then viewportConnection:Disconnect() end
+	end)
+	bindCamera()
 
 	windowScale = Instance.new("UIScale")
 	windowScale.Scale = 1
 	windowScale.Parent = window
 
 	local pad = Instance.new("UIPadding")
-	pad.PaddingTop = UDim.new(0.04, 0)
-	pad.PaddingBottom = UDim.new(0.04, 0)
-	pad.PaddingLeft = UDim.new(0.045, 0)
-	pad.PaddingRight = UDim.new(0.045, 0)
+	pad.PaddingTop = UDim.new(0, px(10))
+	pad.PaddingBottom = UDim.new(0, px(10))
+	pad.PaddingLeft = UDim.new(0, px(14))
+	pad.PaddingRight = UDim.new(0, px(14))
 	pad.Parent = window
+
+	local header = Instance.new("Frame")
+	header.Name = "HeaderBar"
+	header.BackgroundTransparency = 1
+	header.Size = UDim2.fromScale(1, 0.1)
+	header.ZIndex = 3
+	header.Parent = window
+
+	local content = Instance.new("Frame")
+	content.Name = "Content"
+	content.BackgroundTransparency = 1
+	content.Position = UDim2.fromScale(0, 0.1)
+	content.Size = UDim2.fromScale(1, 0.9)
+	content.ZIndex = 3
+	content.Parent = window
 
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
 	title.BackgroundTransparency = 1
-	title.Size = UDim2.new(0.42, 0, 0.09, 0)
+	title.Size = UDim2.fromScale(0.42, 1)
 	title.Position = UDim2.fromScale(0, 0)
 	title.Font = Enum.Font.GothamBlack
 	title.Text = "DAILY LOGIN"
@@ -394,14 +498,14 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	title.TextScaled = true
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.ZIndex = 3
-	title.Parent = window
+	title.Parent = header
 	constrainText(title, 18, 34)
 
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Name = "CloseBtn"
+	closeBtn.Name = "Close"
 	closeBtn.AnchorPoint = Vector2.new(1, 0)
 	closeBtn.Position = UDim2.fromScale(1, 0)
-	closeBtn.Size = UDim2.fromScale(0.08, 0.09)
+	closeBtn.Size = UDim2.fromScale(0.08, 1)
 	closeBtn.BackgroundColor3 = UITheme.CLOSE_DEFAULT
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Font = Enum.Font.GothamBlack
@@ -412,9 +516,11 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	closeBtn.ZIndex = 4
 	closeBtn.Parent = window
 	corner(closeBtn, px(8))
+	stroke(closeBtn, GOLD, 1.2, 0.4)
 	local closeAspect = Instance.new("UIAspectRatioConstraint")
 	closeAspect.AspectRatio = 1
 	closeAspect.Parent = closeBtn
+	layoutWindow()
 	constrainText(closeBtn, 14, 26)
 	closeBtn.MouseEnter:Connect(function()
 		closeBtn.BackgroundColor3 = UITheme.CLOSE_HOVER
@@ -438,7 +544,7 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	timerLabel.BackgroundTransparency = 1
 	timerLabel.AnchorPoint = Vector2.new(1, 0)
 	timerLabel.Position = UDim2.new(0.88, 0, 0, 0)
-	timerLabel.Size = UDim2.new(0.42, 0, 0.09, 0)
+	timerLabel.Size = UDim2.fromScale(0.42, 1)
 	timerLabel.FontFace = Font.new(
 		"rbxasset://fonts/families/SourceSansPro.json",
 		Enum.FontWeight.Bold,
@@ -449,7 +555,7 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	timerLabel.TextScaled = true
 	timerLabel.TextXAlignment = Enum.TextXAlignment.Right
 	timerLabel.ZIndex = 3
-	timerLabel.Parent = window
+	timerLabel.Parent = header
 	constrainText(timerLabel, 16, 26)
 	updateTimerLabel()
 	timerToken += 1
@@ -464,10 +570,10 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	local streakChip = Instance.new("Frame")
 	streakChip.Name = "StreakChip"
 	streakChip.BackgroundColor3 = Color3.fromRGB(32, 28, 14)
-	streakChip.Size = UDim2.new(0.34, 0, 0.07, 0)
-	streakChip.Position = UDim2.fromScale(0, 0.105)
+	streakChip.Size = UDim2.fromScale(0.34, 0.08)
+	streakChip.Position = UDim2.fromScale(0, 0)
 	streakChip.ZIndex = 3
-	streakChip.Parent = window
+	streakChip.Parent = content
 	corner(streakChip, px(8))
 	stroke(streakChip, GOLD_DIM, 1.2, 0.35)
 
@@ -502,10 +608,10 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	local featured = Instance.new("Frame")
 	featured.Name = "Featured"
 	featured.BackgroundColor3 = NAVY_LIGHT
-	featured.Size = UDim2.new(1, 0, 0.38, 0)
-	featured.Position = UDim2.fromScale(0, 0.2)
+	featured.Size = UDim2.fromScale(1, 0.43)
+	featured.Position = UDim2.fromScale(0, 0.1)
 	featured.ZIndex = 3
-	featured.Parent = window
+	featured.Parent = content
 	corner(featured, px(14))
 	stroke(featured, GOLD_DIM, 1.4, 0.45)
 
@@ -584,10 +690,10 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	local track = Instance.new("Frame")
 	track.Name = "Track"
 	track.BackgroundTransparency = 1
-	track.Size = UDim2.new(1, 0, 0.2, 0)
-	track.Position = UDim2.fromScale(0, 0.6)
+	track.Size = UDim2.fromScale(1, 0.23)
+	track.Position = UDim2.fromScale(0, 0.56)
 	track.ZIndex = 3
-	track.Parent = window
+	track.Parent = content
 
 	local trackLayout = Instance.new("UIListLayout")
 	trackLayout.FillDirection = Enum.FillDirection.Horizontal
@@ -668,8 +774,8 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	claimButton = Instance.new("TextButton")
 	claimButton.Name = "ClaimButton"
 	claimButton.AutoButtonColor = false
-	claimButton.Size = UDim2.new(1, 0, 0.1, 0)
-	claimButton.Position = UDim2.fromScale(0, 0.83)
+	claimButton.Size = UDim2.fromScale(1, 0.12)
+	claimButton.Position = UDim2.fromScale(0, 0.82)
 	claimButton.BackgroundColor3 = GREEN
 	claimButton.BorderSizePixel = 0
 	claimButton.Font = Enum.Font.GothamBlack
@@ -677,7 +783,7 @@ function DailyRewardsUI.Create(parent, initialState, callbacks)
 	claimButton.TextColor3 = WHITE
 	claimButton.TextScaled = true
 	claimButton.ZIndex = 4
-	claimButton.Parent = window
+	claimButton.Parent = content
 	corner(claimButton, px(12))
 	constrainText(claimButton, 14, 24)
 	claimButton.Activated:Connect(function()
@@ -735,6 +841,7 @@ function DailyRewardsUI.Open(sameGroup)
 		hideLegacyStudioGui(playerGui)
 	end
 	isOpen = true
+	if syncWindowLayout then syncWindowLayout() end
 	screenGui.Enabled = true
 	if overlay then
 		overlay.Visible = false

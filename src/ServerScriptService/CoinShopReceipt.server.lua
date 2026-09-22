@@ -70,24 +70,6 @@ do
 end
 
 --------------------------------------------------------------------------------
--- Load shared SkinProducts config
---------------------------------------------------------------------------------
-local SkinProducts
-do
-	local mod = ReplicatedStorage:WaitForChild("SkinProducts", 15)
-	if mod and mod:IsA("ModuleScript") then
-		local ok, result = pcall(require, mod)
-		if ok then
-			SkinProducts = result
-		else
-			warn("[CoinShopReceipt] Failed to require SkinProducts:", tostring(result))
-		end
-	else
-		warn("[CoinShopReceipt] SkinProducts module not found – skin receipt handler disabled")
-	end
-end
-
---------------------------------------------------------------------------------
 -- Load shared PotionProducts config
 --------------------------------------------------------------------------------
 local PotionProducts
@@ -156,7 +138,6 @@ local function getAchievementService()
 	return AchievementService
 end
 
-local grantSkinBindable = nil
 local HealthPotionService = nil
 local BoostService = nil
 
@@ -180,18 +161,6 @@ local function getBoostService()
 		end
 	end)
 	return BoostService
-end
-
-local function getGrantSkinBindable()
-	if grantSkinBindable and grantSkinBindable.Parent then
-		return grantSkinBindable
-	end
-	local bindable = SSS:FindFirstChild("GrantSkin")
-	if bindable and bindable:IsA("BindableFunction") then
-		grantSkinBindable = bindable
-		return grantSkinBindable
-	end
-	return nil
 end
 
 local RECEIPT_DS_NAME = "CoinShopReceipts_v1"
@@ -238,11 +207,10 @@ local function processReceipt(receiptInfo)
 	local coinsToAward = CoinProducts and CoinProducts.CoinsByProductId and CoinProducts.CoinsByProductId[productId]
 	local keysToAward = KeyProducts and KeyProducts.KeysByProductId and KeyProducts.KeysByProductId[productId]
 	local shardsToAward = ShardProducts and ShardProducts.ShardsByProductId and ShardProducts.ShardsByProductId[productId]
-	local skinIdToGrant = SkinProducts and SkinProducts.SkinIdByProductId and SkinProducts.SkinIdByProductId[productId]
 	local potionProduct = PotionProducts and PotionProducts.ProductById and PotionProducts.ProductById[productId]
 	local shopProduct = ShopCatalog and ShopCatalog.GetByProductId and ShopCatalog.GetByProductId(productId)
 
-	if not coinsToAward and not keysToAward and not shardsToAward and not skinIdToGrant and not potionProduct and not (shopProduct and shopProduct.Reward) then
+	if not coinsToAward and not keysToAward and not shardsToAward and not potionProduct and not (shopProduct and shopProduct.Reward) then
 		warn("[CoinShopReceipt] Unknown product ID:", productId, "– skipping")
 		return Enum.ProductPurchaseDecision.NotProcessedYet
 	end
@@ -289,22 +257,6 @@ local function processReceipt(receiptInfo)
 		end)
 		if not awardOk then
 			warn("[CoinShopReceipt] AddSalvage failed for", playerObj.Name, ":", tostring(awardErr))
-			return Enum.ProductPurchaseDecision.NotProcessedYet
-		end
-	end
-
-	if skinIdToGrant then
-		local grantSkin = getGrantSkinBindable()
-		if not grantSkin then
-			warn("[CoinShopReceipt] GrantSkin bindable unavailable – cannot award skin")
-			return Enum.ProductPurchaseDecision.NotProcessedYet
-		end
-
-		local grantOk, grantResult = pcall(function()
-			return grantSkin:Invoke(playerObj, skinIdToGrant)
-		end)
-		if not grantOk or not grantResult then
-			warn("[CoinShopReceipt] GrantSkin failed for", playerObj.Name, "skin", tostring(skinIdToGrant), ":", tostring(grantResult))
 			return Enum.ProductPurchaseDecision.NotProcessedYet
 		end
 	end
@@ -393,11 +345,10 @@ local function processReceipt(receiptInfo)
 		end)
 	end
 
-	local awardedAmount = coinsToAward or keysToAward or shardsToAward or skinIdToGrant or (shopProduct and shopProduct.Id) or (potionProduct and potionProduct.ItemId)
+	local awardedAmount = coinsToAward or keysToAward or shardsToAward or (shopProduct and shopProduct.Id) or (potionProduct and potionProduct.ItemId)
 	local awardedType = coinsToAward and "coins"
 		or (keysToAward and "keys")
 		or (shardsToAward and "shards")
-		or (skinIdToGrant and "skin")
 		or (shopProduct and shopProduct.Id)
 		or (potionProduct and potionProduct.Kind)
 		or "unknown"
@@ -410,8 +361,6 @@ local function processReceipt(receiptInfo)
 		robuxPrice = KeyProducts.PriceByProductId[productId]
 	elseif shardsToAward and ShardProducts and ShardProducts.PriceByProductId then
 		robuxPrice = ShardProducts.PriceByProductId[productId]
-	elseif skinIdToGrant and SkinProducts and SkinProducts.PriceByProductId then
-		robuxPrice = SkinProducts.PriceByProductId[productId]
 	elseif shopProduct and type(shopProduct.PriceRobux) == "number" then
 		robuxPrice = shopProduct.PriceRobux
 	elseif potionProduct and PotionProducts and PotionProducts.PriceByProductId then

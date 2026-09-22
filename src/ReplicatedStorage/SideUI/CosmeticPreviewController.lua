@@ -1,6 +1,6 @@
 --------------------------------------------------------------------------------
 -- CosmeticPreviewController.lua
--- Shared viewport preview helper for the Cosmetics podium.
+-- Shared trail/emote viewport preview helper for the Market stall.
 --------------------------------------------------------------------------------
 
 local Players = game:GetService("Players")
@@ -9,14 +9,6 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local sideUI = script.Parent
-
-local SkinPreview = nil
-pcall(function()
-	local mod = sideUI:FindFirstChild("SkinPreview")
-	if mod and mod:IsA("ModuleScript") then
-		SkinPreview = require(mod)
-	end
-end)
 
 local EffectsPreview = nil
 pcall(function()
@@ -215,30 +207,6 @@ function CosmeticPreviewController:ShowIdle()
 	self._activeMode = "Idle"
 end
 
-function CosmeticPreviewController:ShowSkin(skinId, showHelm)
-	self:Stop()
-	if not self.ViewportFrame then
-		return
-	end
-	if SkinPreview and type(SkinPreview.Update) == "function" then
-		local ok = pcall(function()
-			if type(SkinPreview.RenderSkinPreview) == "function" then
-				SkinPreview.RenderSkinPreview(self.ViewportFrame, skinId or "Default", {
-					mode = "Large",
-					showHelm = showHelm ~= false,
-				})
-			else
-				SkinPreview.Update(self.ViewportFrame, skinId or "Default", showHelm ~= false)
-			end
-		end)
-		if ok then
-			self._activeMode = "Skin"
-			return
-		end
-	end
-	self:ShowIdle()
-end
-
 function CosmeticPreviewController:ShowTrail(effectId)
 	self:Stop()
 	if not self.ViewportFrame then
@@ -310,14 +278,12 @@ function CosmeticPreviewController:ShowEmote(emoteId)
 	self._activeMode = "Emote"
 end
 
-function CosmeticPreviewController:ShowItem(item, showHelm)
+function CosmeticPreviewController:ShowItem(item)
 	if type(item) ~= "table" then
 		self:ShowIdle()
 		return
 	end
-	if item.Category == "Skin" then
-		self:ShowSkin(item.Id, showHelm)
-	elseif item.Category == "Trail" then
+	if item.Category == "Trail" then
 		self:ShowTrail(item.Id)
 	elseif item.Category == "Emote" then
 		self:ShowEmote(item.Id)

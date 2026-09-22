@@ -900,9 +900,9 @@ end)
 
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STAGE 6: Menus and stall UIs (pre-require lazy modules)
--- The DailyQuestsUI, ShopUI, ForgeStallUI, and SkinsStallUI are lazy-loaded
+-- The DailyQuestsUI, ShopUI, ForgeStallUI, and MarketStallUI are lazy-loaded
 -- on first open. Requiring and warming them now compiles Lua bytecode early,
--- preloads stall assets, and primes skin previews so first open is instant.
+-- preloads stall assets so first open is instant.
 -- ═══════════════════════════════════════════════════════════════════════════
 setProgress(statusLbl, barFill, "Preparing the War Table...", 0.65)
 pcall(function()
@@ -929,15 +929,15 @@ pcall(function()
 			pcall(require, forgeModule)
 		end
 
-		local skinsStallModule = modulesFolder:FindFirstChild("SkinsStallUI")
-		if skinsStallModule and skinsStallModule:IsA("ModuleScript") then
-			local ok, skinsStallUI = pcall(require, skinsStallModule)
-			if ok and skinsStallUI then
+		local marketStallModule = modulesFolder:FindFirstChild("MarketStallUI")
+		if marketStallModule and marketStallModule:IsA("ModuleScript") then
+			local ok, marketStallUI = pcall(require, marketStallModule)
+			if ok and marketStallUI then
 				pcall(function()
-					local stallGui = playerGui:FindFirstChild("SkinsStallGui")
+					local stallGui = playerGui:FindFirstChild("MarketStallGui")
 					if not (stallGui and stallGui:IsA("ScreenGui")) then
 						stallGui = Instance.new("ScreenGui")
-						stallGui.Name = "SkinsStallGui"
+						stallGui.Name = "MarketStallGui"
 						stallGui.ResetOnSpawn = false
 						stallGui.IgnoreGuiInset = true
 						stallGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -952,13 +952,13 @@ pcall(function()
 						stallGui.Enabled = true
 					end
 
-					local existingRoot = stallGui:FindFirstChild("SkinsStallRoot")
+					local existingRoot = stallGui:FindFirstChild("MarketStallRoot")
 					if existingRoot and existingRoot:IsA("GuiObject") then
 						existingRoot.Visible = false
-					elseif type(skinsStallUI.Create) == "function" then
-						local root = skinsStallUI.Create(stallGui, {
+					elseif type(marketStallUI.Create) == "function" then
+						local root = marketStallUI.Create(stallGui, {
 							onClose = function()
-								local hiddenRoot = stallGui:FindFirstChild("SkinsStallRoot")
+								local hiddenRoot = stallGui:FindFirstChild("MarketStallRoot")
 								if hiddenRoot and hiddenRoot:IsA("GuiObject") then
 									hiddenRoot.Visible = false
 								end
@@ -972,27 +972,9 @@ pcall(function()
 			end
 		end
 
-		local previewModule = modulesFolder:FindFirstChild("StandaloneSkinPreview")
-		if previewModule and previewModule:IsA("ModuleScript") then
-			local ok, preview = pcall(require, previewModule)
-			if ok and preview and type(preview.WarmupAsync) == "function" then
-				pcall(function()
-					preview.WarmupAsync()
-				end)
-			end
-		end
 	end
 end)
 
-pcall(function()
-	local previewFolder = ReplicatedStorage:FindFirstChild("SkinPreviews")
-	if previewFolder then
-		local previewAssets = collectPreloadableAssets(previewFolder)
-		if #previewAssets > 0 then
-			ContentProvider:PreloadAsync(previewAssets)
-		end
-	end
-end)
 
 -- Pre-require quest definitions so data tables are cached
 pcall(function()
