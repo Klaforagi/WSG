@@ -452,18 +452,41 @@ local function syncPlayerWeaponCosmetics(player, character)
     if not WeaponScaleService or not character then return end
     local humanoid = character:FindFirstChildOfClass("Humanoid")
     if not humanoid then return end
-    local function refresh()
+    local function refreshTool(tool)
+        if player.Character ~= character or not humanoid.Parent then return end
+        if tool.Parent ~= character and tool.Parent ~= player:FindFirstChildOfClass("Backpack")
+            and tool.Parent ~= player:FindFirstChild("StarterGear") then return end
+        local base = tool:IsA("Tool") and tonumber(tool:GetAttribute("WeaponBaseSizePercent"))
+        if not base then return end
         local playerSize = tonumber(humanoid:GetAttribute("SizePercent")) or 100
+        pcall(WeaponScaleService.ApplyScale, tool, base * playerSize / 100)
+    end
+    local function refresh()
+        if player.Character ~= character or not humanoid.Parent then return end
         for _, container in ipairs({ character, player:FindFirstChildOfClass("Backpack"), player:FindFirstChild("StarterGear") }) do
             if container then
                 for _, tool in ipairs(container:GetChildren()) do
-                    local base = tool:IsA("Tool") and tonumber(tool:GetAttribute("WeaponBaseSizePercent"))
-                    if base then pcall(WeaponScaleService.ApplyScale, tool, base * playerSize / 100) end
+                    refreshTool(tool)
                 end
             end
         end
     end
-    humanoid:GetAttributeChangedSignal("SizePercent"):Connect(refresh)
+    local connections = {}
+    table.insert(connections, humanoid:GetAttributeChangedSignal("SizePercent"):Connect(refresh))
+    -- Copies arriving from StarterGear and tools being drawn must be restored
+    -- from their saved originals using this character's current size.
+    local function onToolAdded(child)
+        if child:IsA("Tool") then task.defer(refreshTool, child) end
+    end
+    table.insert(connections, character.ChildAdded:Connect(onToolAdded))
+    local backpack = player:FindFirstChildOfClass("Backpack")
+    if backpack then
+        table.insert(connections, backpack.ChildAdded:Connect(onToolAdded))
+    end
+    table.insert(connections, player.CharacterRemoving:Connect(function(removing)
+        if removing ~= character then return end
+        for _, connection in ipairs(connections) do connection:Disconnect() end
+    end))
     task.defer(refresh)
 end
 

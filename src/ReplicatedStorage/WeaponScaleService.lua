@@ -5,7 +5,7 @@
 --  - Cache originals (sizes, mesh scales, weld C0/C1) and always compute from originals.
 
 local WeaponScaleService = {}
-local GRIP_DEBUG = true
+local GRIP_DEBUG = false
 
 local cache = setmetatable({}, { __mode = "k" }) -- weak keys
 local gripMotorDefaults = setmetatable({}, { __mode = "k" })
@@ -15,6 +15,16 @@ local pendingGripRefresh = setmetatable({}, { __mode = "k" })
 local APPLIED_MODEL_NAME = "AppliedCharacterSkin"
 local FULL_BODY_SKIN_MODEL_ATTRIBUTE = "_FullBodySkinModel"
 local RunService = game:GetService("RunService")
+
+-- StarterGear tools are cloned after being scaled. Lua caches do not clone,
+-- so persist the authored dimensions on each instance before first scaling.
+local function originalValue(instance, key, current)
+    local attribute = "_WeaponScaleOriginal" .. key
+    local saved = instance:GetAttribute(attribute)
+    if saved ~= nil then return saved end
+    instance:SetAttribute(attribute, current)
+    return current
+end
 
 local function normalizeScaleInput(s)
     if type(s) ~= "number" then return nil end
@@ -420,10 +430,10 @@ function WeaponScaleService.CacheOriginals(tool)
         entry.originalGripWorldCF = nil
     else
         entry.grip = gripAtt
-        entry.originalGripLocalCF = gripAtt.CFrame
-        entry.originalGripWorldCF = handle.CFrame * gripAtt.CFrame
+        entry.originalGripLocalCF = originalValue(gripAtt, "CFrame", gripAtt.CFrame)
+        entry.originalGripWorldCF = handle.CFrame * entry.originalGripLocalCF
     end
-    entry.originalToolGrip = tool.Grip
+    entry.originalToolGrip = originalValue(tool, "Grip", tool.Grip)
 
     -- Parts: every BasePart on the tool (Handle, siblings, nested meshes)
     local parts = collectToolParts(tool, handle)
@@ -431,7 +441,7 @@ function WeaponScaleService.CacheOriginals(tool)
         if part and part:IsA("BasePart") then
             local mesh = part:FindFirstChildOfClass("SpecialMesh")
             -- Compute part CFrame relative to Grip pivot if available, otherwise relative to Handle
-            local relCF = handle.CFrame:ToObjectSpace(part.CFrame)
+            local relCF = originalValue(part, "RelativeCFrame", handle.CFrame:ToObjectSpace(part.CFrame))
             local relToGrip = nil
             if entry.originalGripWorldCF then
                 relToGrip = entry.originalGripWorldCF:ToObjectSpace(part.CFrame)
@@ -439,8 +449,8 @@ function WeaponScaleService.CacheOriginals(tool)
                 relToGrip = relCF
             end
             local partEntry = {
-                Size = part.Size,
-                MeshScale = mesh and mesh.Scale or nil,
+                Size = originalValue(part, "Size", part.Size),
+                MeshScale = mesh and originalValue(mesh, "Scale", mesh.Scale) or nil,
                 RelCFrame = relCF,
                 RelToGrip = relToGrip,
                 Attachments = {},
@@ -451,8 +461,8 @@ function WeaponScaleService.CacheOriginals(tool)
                     local ok, pos = pcall(function() return child.Position end)
                     local ok2, ori = pcall(function() return child.Orientation end)
                     partEntry.Attachments[child] = {
-                        Position = (ok and pos) and pos or Vector3.new(),
-                        Orientation = (ok2 and ori) and ori or Vector3.new(),
+                        Position = originalValue(child, "Position", (ok and pos) and pos or Vector3.new()),
+                        Orientation = originalValue(child, "Orientation", (ok2 and ori) and ori or Vector3.new()),
                     }
                 end
             end
@@ -471,8 +481,8 @@ function WeaponScaleService.CacheOriginals(tool)
             continue
         end
         entry.welds[w] = {
-            C0 = w.C0,
-            C1 = w.C1,
+            C0 = originalValue(w, "C0", w.C0),
+            C1 = originalValue(w, "C1", w.C1),
             Part0 = p0,
             Part1 = p1,
             inside0 = (inside0 ~= nil),
@@ -483,7 +493,7 @@ function WeaponScaleService.CacheOriginals(tool)
     end
 
     -- Debug prints: discovered welds
-    print("[WeaponScale] Cached tool:", tool:GetFullName())
+    if GRIP_DEBUG then print("[WeaponScale] Cached tool:", tool:GetFullName()) end
     if next(entry.welds) == nil then
         warn("[WeaponScale] No weld-like joints discovered inside tool:", tool.Name)
     else
@@ -491,16 +501,16 @@ function WeaponScaleService.CacheOriginals(tool)
             local tname = w.ClassName or "Weld"
             local n0 = (wdata.Part0 and wdata.Part0.Name) or "(nil)"
             local n1 = (wdata.Part1 and wdata.Part1.Name) or "(nil)"
-            print("[WeaponScale] Weld:", w:GetFullName(), tname, "Part0=", n0, "Part1=", n1)
+            if GRIP_DEBUG then print("[WeaponScale] Weld:", w:GetFullName(), tname, "Part0=", n0, "Part1=", n1) end
         end
     end
 
     -- Debug: which parts are weld-controlled
     for part, pd in pairs(entry.parts) do
         if entry.weldControlled[part] then
-            print("[WeaponScale] Part weld-controlled:", part:GetFullName())
+            if GRIP_DEBUG then print("[WeaponScale] Part weld-controlled:", part:GetFullName()) end
         else
-            print("[WeaponScale] Part free (non-welded):", part:GetFullName())
+            if GRIP_DEBUG then print("[WeaponScale] Part free (non-welded):", part:GetFullName()) end
         end
     end
 
@@ -532,7 +542,7 @@ local function applyScaleFromCache(entry, scale)
                     if att and att.Parent then
                         pcall(function() att.Position = adot.Position * scale end)
                         pcall(function() att.Orientation = adot.Orientation end)
-                        print("[WeaponScale] Scaled attachment:", att:GetFullName(), "on part", part:GetFullName())
+                        if GRIP_DEBUG then print("[WeaponScale] Scaled attachment:", att:GetFullName(), "on part", part:GetFullName()) end
                     end
                 end
             end
@@ -565,10 +575,10 @@ local function applyScaleFromCache(entry, scale)
                         local newRel = CFrame.new(rel.Position * scale) * rot
                         local world = handle.CFrame * newRel
                         pcall(function() part.CFrame = world end)
-                        print("[WeaponScale] Free-part positioned:", part:GetFullName())
+                        if GRIP_DEBUG then print("[WeaponScale] Free-part positioned:", part:GetFullName()) end
                     end
             else
-                print("[WeaponScale] Weld-driven part left to weld system:", part:GetFullName())
+                if GRIP_DEBUG then print("[WeaponScale] Weld-driven part left to weld system:", part:GetFullName()) end
             end
         end
     end
@@ -582,7 +592,7 @@ local function applyScaleFromCache(entry, scale)
         -- i.e. newToolGrip = currentGripLocalCF * originalGripLocalCF:Inverse() * entry.originalToolGrip
         local newToolGrip = currentGripLocalCF * entry.originalGripLocalCF:Inverse() * entry.originalToolGrip
         pcall(function() entry.tool.Grip = newToolGrip end)
-        print("[WeaponScale] Adjusted Tool.Grip for", entry.tool:GetFullName())
+        if GRIP_DEBUG then print("[WeaponScale] Adjusted Tool.Grip for", entry.tool:GetFullName()) end
 
         -- If tool is currently equipped, update the character's RightGrip Motor6D C1 instead of unequipping
         refreshCharacterRightGrip(entry.tool)
@@ -600,9 +610,18 @@ function WeaponScaleService.ApplyScale(tool, scalePercent)
     local entry = cache[tool] or WeaponScaleService.CacheOriginals(tool)
     if not entry then return false, "cache failed" end
 
+    -- Equipping/moving a tool does not change its scale. Avoid rewriting every
+    -- part, mesh, attachment and weld (and refreshing the grip) on each draw.
+    -- Keep this marker in the Lua cache so a cloned tool still initializes.
+    local handleData = entry.parts[entry.handle]
+    if entry.appliedScale == s and handleData and entry.handle.Size == handleData.Size * s then
+        return true
+    end
+
     -- Always compute from original cache (no compounding)
     applyScaleFromCache(entry, s)
-    print("[WeaponScale] Applied scale", s, "to", tool:GetFullName())
+    entry.appliedScale = s
+    if GRIP_DEBUG then print("[WeaponScale] Applied scale", s, "to", tool:GetFullName()) end
     return true
 end
 
@@ -611,14 +630,15 @@ function WeaponScaleService.ResetScale(tool)
     local entry = cache[tool]
     if not entry then return false end
     applyScaleFromCache(entry, 1.0)
-    print("[WeaponScale] Reset scale for", tool:GetFullName())
+    entry.appliedScale = 1.0
+    if GRIP_DEBUG then print("[WeaponScale] Reset scale for", tool:GetFullName()) end
     return true
 end
 
 function WeaponScaleService.ClearCache(tool)
     if not tool then return false end
     cache[tool] = nil
-    print("[WeaponScale] Cleared cache for", tool:GetFullName())
+    if GRIP_DEBUG then print("[WeaponScale] Cleared cache for", tool:GetFullName()) end
     return true
 end
 
