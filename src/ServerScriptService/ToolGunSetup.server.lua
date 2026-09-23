@@ -672,6 +672,7 @@ local function getProjectileCaster(tool)
     local caster = projectileCasters[tool]
     if caster then return caster end
     caster = FastCast.new()
+    caster.WorldRoot = RangedCast.CreateProjectileWorldRoot(Workspace)
     caster.LengthChanged:Connect(function(cast, origin, direction, length, velocity)
         cast.UserData.OnLengthChanged(origin, direction, length, velocity)
     end)

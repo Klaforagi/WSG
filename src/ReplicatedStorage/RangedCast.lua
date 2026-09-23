@@ -2,6 +2,53 @@
 local Players = game:GetService("Players")
 local RangedCast = {}
 
+-- 0.9 studs across, centered on the cast path (the projectile's Tip attachment).
+-- Independent of the cosmetic arrow's size.
+-- Set to 0 to restore the original thin-ray collision.
+RangedCast.ProjectileHitRadius = 0.45
+-- Extra coverage below the Tip in world space; total downward reach is 0.9.
+RangedCast.ProjectileHitDownwardExtension = 0.45
+
+-- FastCast routes all travel/piercing queries through WorldRoot:Raycast.
+-- Sweep the Tip sphere and an overlapping sphere below it along the segment,
+-- keeping the same filtering, hit events and server damage authority.
+function RangedCast.CreateProjectileWorldRoot(worldRoot)
+    return {
+        Raycast = function(_, origin, direction, params)
+            if direction.Magnitude <= 0.000001 then return nil end
+            local rayHit = worldRoot:Raycast(origin, direction, params)
+            local radius = RangedCast.ProjectileHitRadius
+            if radius <= 0 then return rayHit end
+            local sphereHit = worldRoot:Spherecast(origin, radius, direction, params)
+            local downwardExtension = RangedCast.ProjectileHitDownwardExtension
+            if downwardExtension > 0 then
+                local lowerOrigin = origin - Vector3.new(0, downwardExtension, 0)
+                local lowerHit = worldRoot:Spherecast(lowerOrigin, radius, direction, params)
+                if lowerHit and (not sphereHit or lowerHit.Distance < sphereHit.Distance) then
+                    sphereHit = lowerHit
+                end
+            end
+            -- Spherecasts omit initially overlapping geometry. Keep the central
+            -- ray as a fallback so close walls still block the projectile.
+            if rayHit and (not sphereHit or rayHit.Distance < sphereHit.Distance) then
+                return rayHit
+            end
+            if not sphereHit then return nil end
+            -- FastCast uses Position as the projectile's travel point. A sphere
+            -- result instead reports the surface contact, which is off-center.
+            -- Keep the Tip on its original path, including hits by the lower
+            -- sphere; the added coverage must not pull the visual downward.
+            return {
+                Instance = sphereHit.Instance,
+                Position = origin + direction.Unit * sphereHit.Distance,
+                Distance = sphereHit.Distance,
+                Normal = sphereHit.Normal,
+                Material = sphereHit.Material,
+            }
+        end,
+    }
+end
+
 -- The model's PrimaryPart can be a handle/pivot rather than the shaft. Infer
 -- the flight axis from visible geometry, then express it in primary-part space.
 -- Tip position determines which end points forward; its rotation is irrelevant.
