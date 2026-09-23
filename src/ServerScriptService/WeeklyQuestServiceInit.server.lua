@@ -177,13 +177,13 @@ StatService:OnStatEvent(function(payload)
     elseif action == Actions.MatchWon then
         WeeklyQuestService:IncrementByType(player, "matches_won", 1)
     elseif action == Actions.DamageDealt then
+        -- Total damage includes every source, including typed weapon hits.
+        WeeklyQuestService:IncrementByType(player, "damage_dealt", amount)
         local dmgType = payload.metadata and payload.metadata.damageType or nil
         if dmgType == "melee" then
             WeeklyQuestService:IncrementByType(player, "damage_melee", amount)
         elseif dmgType == "ranged" then
             WeeklyQuestService:IncrementByType(player, "damage_ranged", amount)
-        else
-            WeeklyQuestService:IncrementByType(player, "damage_dealt", amount)
         end
     elseif action == Actions.CoinsEarned then
         WeeklyQuestService:IncrementByType(player, "coins_earned", amount)

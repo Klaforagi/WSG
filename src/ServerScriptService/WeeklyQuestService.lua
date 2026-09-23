@@ -435,9 +435,7 @@ function WeeklyQuestService:ResetAllQuests(player)
     end
 
     local week = currentWeekKey()
-    if data.lastBoardResetKey == week then
-        return false, "Already reset this week", self:GetWeeklyQuests(player)
-    end
+    -- Manual board resets are unlimited; retain the week only as metadata.
 
     local previousQuestIds = {}
     for _, quest in ipairs(data.quests) do

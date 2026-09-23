@@ -1,5 +1,5 @@
 -- TopPvpKillersHud.client.lua
--- Top PvP killers HUD with animated reordering, responsive sizing, styled frames.
+-- Top match killers HUD with animated reordering, responsive sizing, styled frames.
 -- Only players with kills > 0 are shown.  Hidden when nobody has any kills.
 
 local Players = game:GetService("Players")
@@ -14,6 +14,8 @@ local AlertBannerStyle = require(ReplicatedStorage:WaitForChild("AlertBannerStyl
 -- Configuration
 ------------------------------------------------------------------------
 local MAX_SLOTS = 5
+-- Temporary: set false for player-only rankings AND fire-icon streaks.
+local INCLUDE_MOB_KILLS = true
 local PORTRAIT_TYPE = Enum.ThumbnailType.HeadShot
 local PORTRAIT_SIZE = Enum.ThumbnailSize.Size100x100
 local SLOT_GAP = TopHudStack.KillersSlotGap
@@ -50,6 +52,11 @@ local function getPlayerKills(player)
 end
 
 local function getKillStreak(player)
+    if INCLUDE_MOB_KILLS then
+        -- KillFeed's streak overlay is PvP-only. Use the server's combined
+        -- counter, which resets on death and at the start of each match.
+        return tonumber(player:GetAttribute("CombinedKillStreak")) or 0
+    end
     local attr = tonumber(player and player:GetAttribute("KillStreak")) or 0
     local over = overlayStreak[player.UserId]
     if over ~= nil then
@@ -59,6 +66,13 @@ local function getKillStreak(player)
         return over
     end
     return attr
+end
+
+local function getRankingKills(player)
+    local mobKills = INCLUDE_MOB_KILLS and (tonumber(player:GetAttribute("MobKills")) or 0) or 0
+    -- The kill-feed overlay contains PvP kills only; add mob kills separately
+    -- so a later player kill cannot overwrite the combined total.
+    return getPlayerKills(player) + mobKills
 end
 
 ------------------------------------------------------------------------
@@ -308,7 +322,7 @@ local function updateHud()
     -- 1) Build sorted list of players with kills > 0
     local entries = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        local k = getPlayerKills(p)
+        local k = getRankingKills(p)
         if k > 0 then
             table.insert(entries, { player = p, kills = k, userId = p.UserId })
         end
@@ -413,7 +427,7 @@ local function updateHud()
 end
 
 ------------------------------------------------------------------------
--- Watch PlayerKills changes per player
+-- Watch match kill counters per player (both reset through StatService).
 ------------------------------------------------------------------------
 local playerConns = {}
 
@@ -432,6 +446,10 @@ local function watchPlayer(player)
     unwatchPlayer(player)
     local conns = {}
     table.insert(conns, player:GetAttributeChangedSignal("PlayerKills"):Connect(updateHud))
+    if INCLUDE_MOB_KILLS then
+        table.insert(conns, player:GetAttributeChangedSignal("MobKills"):Connect(updateHud))
+        table.insert(conns, player:GetAttributeChangedSignal("CombinedKillStreak"):Connect(updateHud))
+    end
     table.insert(conns, player:GetAttributeChangedSignal("KillStreak"):Connect(updateHud))
     table.insert(conns, player:GetPropertyChangedSignal("Team"):Connect(updateHud))
     playerConns[player] = conns

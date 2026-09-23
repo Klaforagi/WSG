@@ -74,7 +74,9 @@ local MATCH_STAT_DEFAULTS = {
     FlagCaptures  = 0,
     FlagReturns   = 0,
     PlayerKills   = 0,
+    MobKills      = 0,
     KillStreak    = 0,
+    CombinedKillStreak = 0, -- player + mob kills since the last death
 }
 
 --------------------------------------------------------------------------------
@@ -229,6 +231,7 @@ function StatService:RegisterElimination(killer, victim)
     incrementStat(killer, "Eliminations", 1)
     incrementStat(killer, "PlayerKills", 1)
     incrementStat(killer, "KillStreak", 1)
+    incrementStat(killer, "CombinedKillStreak", 1)
     incrementStat(killer, "Score", 10)
     fireEvent(killer, self.Actions.Elimination, 1, {
         target     = victim,
@@ -242,6 +245,8 @@ end
 function StatService:RegisterMobKill(killer, mobName)
     if not killer or not killer:IsA("Player") then return end
     if not isTrackedTeamPlayer(killer) then return end
+    incrementStat(killer, "MobKills", 1)
+    incrementStat(killer, "CombinedKillStreak", 1)
     incrementStat(killer, "Score", getMobScoreReward(mobName))
     fireEvent(killer, self.Actions.MobKill, 1, { mobName = mobName })
 end
@@ -256,8 +261,10 @@ function StatService:RegisterDeath(player)
     local stats = getStats(player)
     if stats then
         stats.KillStreak = 0
+        stats.CombinedKillStreak = 0
         pcall(function()
             player:SetAttribute("KillStreak", 0)
+            player:SetAttribute("CombinedKillStreak", 0)
         end)
     end
     fireEvent(player, self.Actions.Death, 1)

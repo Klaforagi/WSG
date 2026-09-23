@@ -529,9 +529,7 @@ function QuestService:ResetAllQuests(player)
     end
 
     local today = todayKey()
-    if pd.lastBoardResetKey == today then
-        return false, "Already reset today", self:GetQuestsForPlayer(player)
-    end
+    -- Manual board resets are unlimited; retain the date only as metadata.
 
     local previousOrder = table.clone(pd.questOrder)
     local newOrder = assignQuestOrder(previousOrder)
