@@ -87,7 +87,7 @@ local function setModelCollisionGroup(model, groupName)
     for _, desc in ipairs(model:GetDescendants()) do
         if desc:IsA("BasePart") then
             desc.Anchored = false
-            desc.CanCollide = true
+            -- Preserve the template's limb/accessory collision settings.
             desc.CollisionGroup = groupName
         end
     end

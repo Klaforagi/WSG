@@ -360,15 +360,17 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     end
 
     local jumpTrack
-    local jumpAnimObj = Instance.new("Animation")
-    jumpAnimObj.Name = "Jump_Mob"
-    jumpAnimObj.AnimationId = cfgAnim.Jump or "rbxassetid://734326930"
-    jumpAnimObj.Parent = mobModel
-    pcall(function()
-        jumpTrack = animator:LoadAnimation(jumpAnimObj)
-        jumpTrack.Priority = Enum.AnimationPriority.Action
-        jumpTrack.Looped = false
-    end)
+    if cfgAnim.Jump and cfgAnim.Jump ~= "" then
+        local jumpAnimObj = Instance.new("Animation")
+        jumpAnimObj.Name = "Jump_Mob"
+        jumpAnimObj.AnimationId = cfgAnim.Jump
+        jumpAnimObj.Parent = mobModel
+        pcall(function()
+            jumpTrack = animator:LoadAnimation(jumpAnimObj)
+            jumpTrack.Priority = Enum.AnimationPriority.Action
+            jumpTrack.Looped = false
+        end)
+    end
 
     local activeTrack
     local function playMoveAnim(useRun)
@@ -418,6 +420,7 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     end
 
     local function startWalking(dest, useRun)
+        disableFacing()
         humanoid:MoveTo(dest)
         moving = true
         lastMoveTarget = dest
@@ -476,8 +479,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
     end)
 
     humanoid.MoveToFinished:Connect(function(reached)
-        -- A completed chase command is no longer movement intent either.
-        if chasing and not reached then return end
+        -- Chase goals are owned by the AI loop. An arrival notification can
+        -- belong to an older goal and must not cancel the current chase or jump.
+        if chasing then return end
         local root = getRootPart(mobModel)
         if root and root:IsA("BasePart") then
             local vel = root.AssemblyLinearVelocity or root.Velocity
@@ -497,8 +501,9 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
         local targetTooHigh = targetRoot and targetRoot.Position.Y - position.Y > STUCK_JUMP_MAX_TARGET_HEIGHT
         local goalDelta = lastMoveTarget and lastMoveTarget - position
         local goalDistance = goalDelta and Vector3.new(goalDelta.X, 0, goalDelta.Z).Magnitude or 0
+        -- Movement intent comes from our outstanding goal, not MoveDirection:
+        -- that can drop to zero when the Humanoid is obstructed.
         local tryingToMove = moving and goalDistance > 1
-            and humanoid.MoveDirection.Magnitude > 0.05
         if not tryingToMove or isAttacking or humanoid.WalkSpeed <= 0 or not grounded or targetTooHigh then
             progressPosition, progressAt = position, now
             return
@@ -510,9 +515,17 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
             progressPosition, progressAt = position, now
             return
         end
-        if now - progressAt >= STUCK_JUMP_DELAY and now - lastRecoveryJump >= STUCK_JUMP_COOLDOWN
-            and humanoid:GetStateEnabled(Enum.HumanoidStateType.Jumping) then
+        if now - progressAt >= STUCK_JUMP_DELAY and now - lastRecoveryJump >= STUCK_JUMP_COOLDOWN then
+            -- Some NPC templates disable jumping or have zero jump strength.
+            -- Retain positive authored values; only repair a disabled jump.
+            humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+            if humanoid.UseJumpPower then
+                if humanoid.JumpPower <= 0 then humanoid.JumpPower = 50 end
+            elseif humanoid.JumpHeight <= 0 then
+                humanoid.JumpHeight = 7.2
+            end
             humanoid.Jump = true
+            humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
             lastRecoveryJump = now
             progressPosition, progressAt = position, now
         end
@@ -808,13 +821,18 @@ function MobCombat.StartMob(mobModel, mobConfig, context)
                 local withinHeight = math.abs(targetPos.Y - (root.Position.Y + HITBOX_OFFSET.Y)) <= verticalReach
                 local canReachTarget = horizontalDist <= SWING_START_RANGE
                     and withinHeight and hasAttackSight(root, targetRoot)
+                    and humanoid.FloorMaterial ~= Enum.Material.Air
                 -- Stop on the near side of the target, instead of crossing them
                 -- and flipping the travel direction on every AI update.
-                local resumeDistance = APPROACH_SPACING + (moving and 0 or 0.5)
                 if isAttacking or canReachTarget then
                     stopWalking()
-                elseif horizontalDist > resumeDistance then
-                    local movePos = targetPos - horizontalDelta.Unit * APPROACH_SPACING
+                elseif horizontalDist > 1 then
+                    -- Maintain spacing only when the target is farther away.
+                    -- If a nearby target is blocked or on a small ledge, move
+                    -- toward them so arrival tolerance cannot strand us outside
+                    -- attack range with no active goal for recovery.
+                    local spacing = horizontalDist > SWING_START_RANGE and APPROACH_SPACING or 0
+                    local movePos = targetPos - horizontalDelta.Unit * spacing
                     startWalkingSmart(Vector3.new(movePos.X, root.Position.Y, movePos.Z), true)
                 else
                     stopWalking()

@@ -999,49 +999,45 @@ swingEvent.OnServerEvent:Connect(function(player, toolName, lookDir, clientCombo
             local upV    = curHrp.CFrame.UpVector
             local lookV  = curHrp.CFrame.LookVector
 
-            local centerZ = offset.Z
-            local spread  = boxSize.Z * 0.35
-            local sampleDepths = { centerZ - spread, centerZ, centerZ + spread }
+            -- Query the configured box once. Three full-size boxes offset along
+            -- Z extended the actual reach by 35% of its depth on either end.
             local candidateHits = {}
+            local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * offset.Z
+            local boxCFrame = CFrame.new(pos, pos + lookV)
+            local halfSize  = boxSize / 2
 
-            for _, depth in ipairs(sampleDepths) do
-                local pos = curHrp.Position + rightV * offset.X + upV * offset.Y + lookV * depth
-                local boxCFrame = CFrame.new(pos, pos + lookV)
-                local halfSize  = boxSize / 2
+            -- Debug: show hitbox part (only when cfg.showHitbox == true)
+            if cfg.showHitbox == true then
+                local dbg = Instance.new("Part")
+                dbg.Name = "_HitboxDebug"
+                dbg.Size = boxSize
+                dbg.CFrame = boxCFrame
+                dbg.Anchored = true
+                dbg.CanCollide = false
+                dbg.CanTouch = false
+                dbg.CanQuery = false
+                dbg.Transparency = 0.7
+                dbg.Color = cfg.hitboxColor or Color3.fromRGB(255, 0, 0)
+                dbg.Material = Enum.Material.Neon
+                dbg.Parent = workspace
+                Debris:AddItem(dbg, scaledActive + 0.05)
+            end
 
-                -- Debug: show hitbox part (only when cfg.showHitbox == true)
-                if cfg.showHitbox == true then
-                    local dbg = Instance.new("Part")
-                    dbg.Name = "_HitboxDebug"
-                    dbg.Size = boxSize
-                    dbg.CFrame = boxCFrame
-                    dbg.Anchored = true
-                    dbg.CanCollide = false
-                    dbg.CanTouch = false
-                    dbg.CanQuery = false
-                    dbg.Transparency = 0.7
-                    dbg.Color = cfg.hitboxColor or Color3.fromRGB(255, 0, 0)
-                    dbg.Material = Enum.Material.Neon
-                    dbg.Parent = workspace
-                    Debris:AddItem(dbg, scaledActive + 0.05)
-                end
-
-                local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
-                for _, hit in ipairs(targetsNow) do
-                    if not hitAlready[hit.humanoid] then
-                        local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
-                        local victimPos = (victimRoot and victimRoot.Position) or hit.hitPos
-                        if victimPos then
-                            local distToAttacker = (victimPos - curHrp.Position).Magnitude
-                            local existing = candidateHits[hit.humanoid]
-                            if (not existing) or distToAttacker < existing.dist then
-                                candidateHits[hit.humanoid] = {
-                                    hit = hit,
-                                    boxCFrame = boxCFrame,
-                                    victimRoot = victimRoot,
-                                    dist = distToAttacker,
-                                }
-                            end
+            local targetsNow = getTargetsInBox(player.Character, boxCFrame, halfSize)
+            for _, hit in ipairs(targetsNow) do
+                if not hitAlready[hit.humanoid] then
+                    local victimRoot = hit.model:FindFirstChild("HumanoidRootPart") or hit.model:FindFirstChild("Torso")
+                    local victimPos = (victimRoot and victimRoot.Position) or hit.hitPos
+                    if victimPos then
+                        local distToAttacker = (victimPos - curHrp.Position).Magnitude
+                        local existing = candidateHits[hit.humanoid]
+                        if (not existing) or distToAttacker < existing.dist then
+                            candidateHits[hit.humanoid] = {
+                                hit = hit,
+                                boxCFrame = boxCFrame,
+                                victimRoot = victimRoot,
+                                dist = distToAttacker,
+                            }
                         end
                     end
                 end

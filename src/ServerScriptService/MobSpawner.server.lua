@@ -65,7 +65,8 @@ local function setModelCollisionGroup(model, groupName)
     for _, d in ipairs(model:GetDescendants()) do
         if d:IsA("BasePart") then
             d.Anchored = false
-            d.CanCollide = true
+            -- Keep the rig's authored collision flags. Enabling collisions on
+            -- every limb/accessory makes the NPC catch on slopes and obstacles.
             d.CollisionGroup = groupName
         end
     end
