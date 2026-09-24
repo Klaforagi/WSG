@@ -21,7 +21,7 @@ local MATCH_DURATION   = 5 * 60   -- round duration in seconds (5 minutes)
 local END_SCREEN_TIME  = 10       -- seconds the winner screen (endgame) stays up
 local MATCH_RESULTS_DURATION = 15 -- seconds for match results display (intermission)
 local VOTING_DURATION = 15       -- seconds for map voting
-local LOADING_DURATION = 2        -- seconds for loading/map spawn settling
+local LOADING_DURATION = 3        -- minimum visible loading time, after map spawning
 local PREMATCH_DURATION = 15      -- seconds for prematch team selection
 local BARRIER_FADE_TIME = 1       -- seconds to fade barriers before they are destroyed
 local INTERMISSION_DURATION = 60  -- seconds players wait in the lobby between rounds
@@ -483,6 +483,7 @@ local intermissionStartTick = nil
 local phaseGen = 0
 local phaseStartTick = nil
 local lastMatchResultsPayload = nil
+local hasCompletedMatch = false
 
 local STATE_DURATION = {
     Intermission = MATCH_RESULTS_DURATION,
@@ -535,6 +536,8 @@ GetMatchState.OnServerInvoke = function(player)
     return {
         state = State or "Idle",
         startedAt = startedAt,
+        currentMap = workspace:GetAttribute("CurrentMap"),
+        hasCompletedMatch = hasCompletedMatch,
         duration = duration,
         matchStartTick = matchStartTick,
         matchDuration = MATCH_DURATION,
@@ -664,6 +667,9 @@ local function setPlayersToNeutralLobby()
     local neutralTeam = Teams:FindFirstChild("Neutral")
 
     for _, pl in ipairs(Players:GetPlayers()) do
+        -- Lobby players keep their existing character and position.
+        local teamName = pl.Team and pl.Team.Name
+        if teamName ~= "Blue" and teamName ~= "Red" then continue end
         pcall(function()
             if neutralTeam then
                 pl.Team = neutralTeam
@@ -755,6 +761,7 @@ local function runLobbyCycle()
         -- If we have a stored match results payload from the previous endMatch,
         -- emit it now so clients show the MatchResults UI during Intermission.
         if lastMatchResultsPayload then
+            hasCompletedMatch = true
             pcall(function()
                 MatchResults:FireAllClients(lastMatchResultsPayload)
             end)
@@ -793,14 +800,14 @@ local function runLobbyCycle()
         end
         resetMatchForIntermission()
     intermissionStartTick = workspace:GetServerTimeNow()
-    pcall(function() IntermissionStart:FireAllClients(MATCH_RESULTS_DURATION, intermissionStartTick) end)
+    pcall(function() IntermissionStart:FireAllClients(MATCH_RESULTS_DURATION, intermissionStartTick, hasCompletedMatch) end)
 
     afterDelay(MATCH_RESULTS_DURATION, "Intermission", myGen, function()
         -- Voting
         setMatchState("Voting")
         if MapVote and MapVote.StartVoting then pcall(function() MapVote.StartVoting() end) end
         if PhaseRE and PhaseRE:IsA("RemoteEvent") then
-            pcall(function() PhaseRE:FireAllClients({ phase = "voting", duration = VOTING_DURATION, currentMap = nil }) end)
+            pcall(function() PhaseRE:FireAllClients({ phase = "voting", duration = VOTING_DURATION, startedAt = phaseStartTick, currentMap = nil }) end)
         end
         local genVoting = phaseGen
 
@@ -811,21 +818,23 @@ local function runLobbyCycle()
                 local ok, res = pcall(function() return MapVote.StopVotingAndGetWinner() end)
                 if ok then winner = res end
             end
-            -- Spawn winner map if available
-            if winner and MapVote and MapVote.SpawnMap then pcall(function() MapVote.SpawnMap(winner) end) end
-
             -- Loading
             setMatchState("Loading")
             if PhaseRE and PhaseRE:IsA("RemoteEvent") then
-                pcall(function() PhaseRE:FireAllClients({ phase = "loading", duration = LOADING_DURATION, currentMap = winner }) end)
+                pcall(function() PhaseRE:FireAllClients({ phase = "loading", duration = LOADING_DURATION, startedAt = phaseStartTick, currentMap = winner }) end)
             end
             local genLoading = phaseGen
+
+            -- Tell clients which map is loading before doing the expensive clone.
+            task.wait()
+            if State ~= "Loading" or phaseGen ~= genLoading then return end
+            if winner and MapVote and MapVote.SpawnMap then pcall(function() MapVote.SpawnMap(winner) end) end
 
             afterDelay(LOADING_DURATION, "Loading", genLoading, function()
                 -- Prematch
                 setMatchState("Prematch")
                 if PhaseRE and PhaseRE:IsA("RemoteEvent") then
-                    pcall(function() PhaseRE:FireAllClients({ phase = "prematch", duration = PREMATCH_DURATION, currentMap = winner }) end)
+                    pcall(function() PhaseRE:FireAllClients({ phase = "prematch", duration = PREMATCH_DURATION, startedAt = phaseStartTick, currentMap = winner }) end)
                 end
                 local genPrematch = phaseGen
 
@@ -960,12 +969,12 @@ function startMatch()
     teamScores.Red = 0
     intermissionStartTick = nil
     setMatchState("Game")
-    -- Fade starts 1s before match start during Prematch; destroy once Game begins.
-    destroyBarriers()
     matchStartTick = workspace:GetServerTimeNow()
     ServerScriptService:SetAttribute("MatchEndsAt", matchStartTick + MATCH_DURATION)
     print("[GameManager] MATCH START —", MATCH_DURATION, "s")
     pcall(function() MatchStart:FireAllClients(MATCH_DURATION, matchStartTick) end)
+    -- Broadcast the start before barrier cleanup and other match setup work.
+    destroyBarriers()
     pcall(function() MatchStartedBE:Fire() end)
 
     -- Start event scheduler for this match
@@ -1058,7 +1067,7 @@ Players.PlayerAdded:Connect(function(pl)
         if EventScheduler then pcall(function() EventScheduler:SyncPlayer(pl) end) end
     elseif State == "Intermission" and intermissionStartTick then
         pcall(function()
-            IntermissionStart:FireClient(pl, MATCH_RESULTS_DURATION, intermissionStartTick)
+            IntermissionStart:FireClient(pl, MATCH_RESULTS_DURATION, intermissionStartTick, hasCompletedMatch)
         end)
     end
 end)

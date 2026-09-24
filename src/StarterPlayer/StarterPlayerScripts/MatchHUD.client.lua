@@ -78,7 +78,7 @@ phaseContainer.Parent = screenGui
 local matchResultsFrame = Instance.new("Frame")
 matchResultsFrame.Name = "MatchResultsFrame"
 matchResultsFrame.Size = UDim2.new(1, 0, 1, 0)
-matchResultsFrame.BackgroundTransparency = 0.5
+matchResultsFrame.BackgroundTransparency = 1
 matchResultsFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
 matchResultsFrame.BorderSizePixel = 0
 matchResultsFrame.Visible = false
@@ -96,7 +96,7 @@ matchResultsLabel.Parent = matchResultsFrame
 local votingFrame = Instance.new("Frame")
 votingFrame.Name = "VotingFrame"
 votingFrame.Size = UDim2.new(1, 0, 1, 0)
-votingFrame.BackgroundTransparency = 0.5
+votingFrame.BackgroundTransparency = 1
 votingFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
 votingFrame.BorderSizePixel = 0
 votingFrame.Visible = false
@@ -115,7 +115,7 @@ votingLabel.Parent = votingFrame
 local prematchFrame = Instance.new("Frame")
 prematchFrame.Name = "PrematchFrame"
 prematchFrame.Size = UDim2.new(1, 0, 1, 0)
-prematchFrame.BackgroundTransparency = 0.5
+prematchFrame.BackgroundTransparency = 1
 prematchFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
 prematchFrame.BorderSizePixel = 0
 prematchFrame.Visible = false
@@ -134,7 +134,7 @@ prematchLabel.Parent = prematchFrame
 local endgameFrame = Instance.new("Frame")
 endgameFrame.Name = "EndgameFrame"
 endgameFrame.Size = UDim2.new(1, 0, 1, 0)
-endgameFrame.BackgroundTransparency = 0.5
+endgameFrame.BackgroundTransparency = 1
 endgameFrame.BackgroundColor3 = Color3.fromRGB(12, 14, 28)
 endgameFrame.BorderSizePixel = 0
 endgameFrame.Visible = false
@@ -756,67 +756,59 @@ end
 
 -- Wire MapVote Phase remote to display MatchResults and Voting timers
 local remotesFolder = ReplicatedStorage:FindFirstChild("Remotes")
+local phaseVersion = 0
+local function clearPhaseDisplay()
+    phaseVersion += 1
+    matchResultsFrame.Visible = false
+    votingFrame.Visible = false
+    prematchFrame.Visible = false
+    endgameFrame.Visible = false
+end
+
+local function showPhase(payload)
+    if not payload or type(payload.phase) ~= "string" then return end
+    clearPhaseDisplay()
+    local phase = payload.phase
+    local frame, label, format
+    if phase == "matchResults" then
+        frame, label, format = matchResultsFrame, matchResultsLabel, "Match Results: %ds"
+    elseif phase == "voting" then
+        frame, label, format = votingFrame, votingLabel, "Voting: %ds"
+    elseif phase == "prematch" then
+        frame, label, format = prematchFrame, prematchLabel, "Match begins in %ds"
+    elseif phase == "loading" then
+        root.Visible = false
+        prematchLabel.Text = payload.currentMap and ('Loading "' .. tostring(payload.currentMap) .. '"') or "Loading map..."
+        prematchFrame.Visible = true
+        return
+    elseif phase == "endgame" then
+        root.Visible = false
+        return
+    else
+        return
+    end
+    root.Visible = false
+    local endsAt = (payload.startedAt or workspace:GetServerTimeNow()) + (payload.duration or 0)
+    local version = phaseVersion
+    local function update()
+        local left = math.max(0, math.ceil(endsAt - workspace:GetServerTimeNow()))
+        label.Text = string.format(format, left)
+        return left
+    end
+    update()
+    frame.Visible = true
+    task.spawn(function()
+        while version == phaseVersion do
+            if update() <= 0 then break end
+            task.wait(0.05)
+        end
+        -- Keep the text until the next authoritative phase; never leave a gap.
+    end)
+end
+
 local function wirePhaseRE(phaseRE)
     if not phaseRE or not phaseRE:IsA("RemoteEvent") then return end
-    phaseRE.OnClientEvent:Connect(function(payload)
-        if not payload or type(payload.phase) ~= "string" then return end
-        local phase = payload.phase
-        local duration = payload.duration or 0
-        if phase == "matchResults" then
-            matchResultsFrame.Visible = true
-            votingFrame.Visible = false
-            prematchFrame.Visible = false
-            local endsAt = tick() + duration
-            spawn(function()
-                while matchResultsFrame.Visible do
-                    local left = math.max(0, math.floor(endsAt - tick()))
-                    matchResultsLabel.Text = string.format("Match Results: %ds", left)
-                    if left <= 0 then break end
-                    task.wait(0.25)
-                end
-                matchResultsFrame.Visible = false
-            end)
-        elseif phase == "voting" then
-            votingFrame.Visible = true
-            matchResultsFrame.Visible = false
-            prematchFrame.Visible = false
-            local endsAt = tick() + duration
-            spawn(function()
-                while votingFrame.Visible do
-                    local left = math.max(0, math.floor(endsAt - tick()))
-                    votingLabel.Text = string.format("Voting: %ds", left)
-                    if left <= 0 then break end
-                    task.wait(0.25)
-                end
-                votingFrame.Visible = false
-            end)
-        elseif phase == "prematch" then
-            prematchFrame.Visible = true
-            matchResultsFrame.Visible = false
-            votingFrame.Visible = false
-            local endsAt = tick() + duration
-            spawn(function()
-                while prematchFrame.Visible do
-                    local left = math.max(0, math.floor(endsAt - tick()))
-                    prematchLabel.Text = string.format("Match begins in %ds", left)
-                    if left <= 0 then break end
-                    task.wait(0.25)
-                end
-                prematchFrame.Visible = false
-            end)
-        elseif phase == "endgame" then
-            -- The winner banner owns the top HUD during endgame.
-            root.Visible = false
-            endgameFrame.Visible = false
-            matchResultsFrame.Visible = false
-            votingFrame.Visible = false
-            prematchFrame.Visible = false
-        else
-            matchResultsFrame.Visible = false
-            votingFrame.Visible = false
-            prematchFrame.Visible = false
-        end
-    end)
+    phaseRE.OnClientEvent:Connect(showPhase)
 end
 
 if remotesFolder then
@@ -860,7 +852,7 @@ spawn(function()
         if running and matchStartTick and matchDuration then
             local now = workspace:GetServerTimeNow()
             local elapsed = now - matchStartTick
-            local floorRemaining = math.floor(matchDuration - elapsed)
+            local floorRemaining = math.ceil(matchDuration - elapsed)
             local newRemaining = math.max(0, floorRemaining)
             -- play tick once when the integer remaining strictly decreases
             if timerMode == "Match" and newRemaining >= 0 and newRemaining <= 9 then
@@ -892,6 +884,7 @@ end
 
 local function wireMatchStart(ev)
     ev.OnClientEvent:Connect(function(durationSeconds, startTick)
+        clearPhaseDisplay()
         beginTimer(durationSeconds, startTick, "Match")
         -- show scoreboard root when authoritative match starts
         root.Visible = true
@@ -910,10 +903,15 @@ local function wireMatchStart(ev)
 end
 
 local function wireIntermissionStart(ev)
-    ev.OnClientEvent:Connect(function(durationSeconds, startTick)
+    ev.OnClientEvent:Connect(function(durationSeconds, startTick, hasCompletedMatch)
         -- hide scoreboard during intermission
         root.Visible = false
         beginTimer(durationSeconds, startTick, "Intermission")
+        if hasCompletedMatch then
+            showPhase({ phase = "matchResults", duration = durationSeconds, startedAt = startTick })
+        else
+            clearPhaseDisplay()
+        end
     end)
 end
 
@@ -969,18 +967,28 @@ spawn(function()
     local ok, fn = pcall(function() return ReplicatedStorage:WaitForChild("GetMatchState", 5) end)
     if not ok or not fn then return end
     if not fn:IsA("RemoteFunction") then return end
+    local version = phaseVersion
     local ok2, info = pcall(function() return fn:InvokeServer() end)
     if not ok2 or type(info) ~= "table" then return end
+    if phaseVersion ~= version then return end -- a newer live phase already arrived
     if info.teamScores and type(info.teamScores) == "table" then
         blueScore = info.teamScores.Blue or 0
         redScore = info.teamScores.Red or 0
     end
     if info.state == "Game" and type(info.matchStartTick) == "number" and type(info.matchDuration) == "number" then
+        clearPhaseDisplay()
         beginTimer(info.matchDuration, info.matchStartTick, "Match")
+        remaining = math.max(0, math.ceil(info.matchDuration - (workspace:GetServerTimeNow() - info.matchStartTick)))
         root.Visible = true
-    elseif info.state == "Intermission" and type(info.intermissionStartTick) == "number" then
-        beginTimer(info.intermissionDuration, info.intermissionStartTick, "Intermission")
-        root.Visible = false
+        refresh()
+    elseif info.state == "Intermission" or info.state == "Voting" or info.state == "Loading" or info.state == "Prematch" then
+        if info.state == "Intermission" and not info.hasCompletedMatch then
+            root.Visible = false
+            clearPhaseDisplay()
+            return
+        end
+        local phase = info.state == "Intermission" and "matchResults" or string.lower(info.state)
+        showPhase({ phase = phase, duration = info.duration, startedAt = info.startedAt, currentMap = info.currentMap })
     else
         refresh()
     end

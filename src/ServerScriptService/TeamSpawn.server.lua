@@ -40,6 +40,8 @@ end
 -- Config
 -----------------------------------------------------------------------
 local MAX_TEAM_SIZE = 8
+-- Shared by the instant team-join teleport and CharacterAdded placement.
+local spawnStates = setmetatable({}, { __mode = "k" })
 
 -----------------------------------------------------------------------
 -- Prevent ALL players from auto-spawning — we control location ourselves.
@@ -197,6 +199,11 @@ local function doAssignTeam(player, teamName, sendResponse)
 		local spawnPart = findSpawnPart(spawnName)
 		if hrp and spawnPart and spawnPart:IsA("BasePart") then
 			hrp.CFrame = randomPointOnPart(spawnPart)
+			local state = spawnStates[player]
+			if state then
+				state.lastKnownTeam = teamName
+				state.hasSpawnedOnTeam = true
+			end
 		else
 			pcall(function() player:LoadCharacter() end)
 		end
@@ -227,27 +234,26 @@ end)
 Players.PlayerAdded:Connect(function(player)
 	player.Team = neutralTeam
 
-	-- Per-player spawn-state tracking (lives inside this closure)
-	local lastKnownTeam    = nil   -- team we last spawned this player onto
-	local hasSpawnedOnTeam = false -- false → next team spawn goes to main spawn
+	local state = { lastKnownTeam = nil, hasSpawnedOnTeam = false }
+	spawnStates[player] = state
 
 	player.CharacterAdded:Connect(function(char)
 		local hrp = char:WaitForChild("HumanoidRootPart", 10)
-		if not hrp then return end
+		if not hrp or player.Character ~= char then return end
 
 		local currentTeam = player:GetAttribute("Team") -- "Blue" | "Red" | nil
 
 		-- Detect team change → reset first-spawn flag so they land at main spawn
-		if currentTeam ~= lastKnownTeam then
-			hasSpawnedOnTeam = false
-			lastKnownTeam    = currentTeam
+		if currentTeam ~= state.lastKnownTeam then
+			state.hasSpawnedOnTeam = false
+			state.lastKnownTeam = currentTeam
 		end
 
 		-- MatchRestart attribute → treat next spawn as first-on-team
 		local isRestart = player:GetAttribute("MatchRestart") == true
 		if isRestart then
 			player:SetAttribute("MatchRestart", nil)
-			hasSpawnedOnTeam = false
+			state.hasSpawnedOnTeam = false
 		end
 
 		local matchState = ServerScriptService:GetAttribute("MatchState")
@@ -259,8 +265,8 @@ Players.PlayerAdded:Connect(function(player)
 			moveToLobby(hrp)
 
 		-- ── First spawn on a team (or after restart) ────────────────────────
-		elseif not hasSpawnedOnTeam then
-			hasSpawnedOnTeam = true
+		elseif not state.hasSpawnedOnTeam then
+			state.hasSpawnedOnTeam = true
 			local spawnName = currentTeam == "Red" and "RedSpawn" or "BlueSpawn"
 			local spawnPart = findSpawnPart(spawnName)
 			if spawnPart and spawnPart:IsA("BasePart") then
@@ -303,6 +309,9 @@ Players.PlayerAdded:Connect(function(player)
 					end
 				end
 				task.wait(respawnTime)
+				-- Match end, team switches or returning to the lobby may already
+				-- have replaced this character while the death timer was running.
+				if player.Parent ~= Players or player.Character ~= char then return end
 				pcall(function() player:LoadCharacter() end)
 			end)
 		end

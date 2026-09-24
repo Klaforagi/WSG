@@ -47,16 +47,7 @@ title.TextScaled = true
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.TextColor3 = Color3.fromRGB(255, 220, 120)
 
-local timerLabel = Instance.new("TextLabel")
-timerLabel.Parent = root
-timerLabel.Size = UDim2.new(0.22, 0, 0.12, 0)
-timerLabel.AnchorPoint = Vector2.new(1, 0)
-timerLabel.Position = UDim2.new(0.9, 0, 0.02, 0)
-timerLabel.BackgroundTransparency = 1
-timerLabel.Font = Enum.Font.Gotham
-timerLabel.TextScaled = true
-timerLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
-timerLabel.Text = ""
+-- The top MatchHUD owns the voting countdown using the server phase timestamp.
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.Name = "CloseBtn"
@@ -329,20 +320,9 @@ if PhaseRE then
     PhaseRE.OnClientEvent:Connect(function(payload)
         if not payload then return end
         local phase = payload.phase
-        local duration = payload.duration or 0
         if phase == "voting" then
             voteUiDismissed = false
             root.Visible = true
-            -- start countdown
-            local endsAt = tick() + duration
-            spawn(function()
-                while true do
-                    local left = math.max(0, math.floor(endsAt - tick()))
-                    timerLabel.Text = string.format("Voting: %ds", left)
-                    if left <= 0 then break end
-                    task.wait(0.25)
-                end
-            end)
         else
             voteUiDismissed = false
             root.Visible = false
