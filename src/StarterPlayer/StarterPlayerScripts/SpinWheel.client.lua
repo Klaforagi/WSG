@@ -13,6 +13,8 @@ local playerGui = player:WaitForChild("PlayerGui")
 local CrateConfig = require(ReplicatedStorage:WaitForChild("CrateConfig"))
 local SpinWheelConfig = require(ReplicatedStorage:WaitForChild("SpinWheelConfig"))
 local RobuxPurchaseUI = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("RobuxPurchaseUI"))
+local UITheme = require(ReplicatedStorage:WaitForChild("SideUI"):WaitForChild("UITheme"))
+local AssetCodes = require(ReplicatedStorage:WaitForChild("AssetCodes"))
 local tickBoundaryAngles = SpinWheelConfig.GetTickBoundaryAngles()
 
 local remotesFolder = ReplicatedStorage:WaitForChild("Remotes", 15)
@@ -496,9 +498,11 @@ overlayGui.DisplayOrder = 45
 
 local toastContainer = ensureChild(overlayGui, "Frame", "ToastContainer")
 toastContainer.BackgroundTransparency = 1
-toastContainer.AnchorPoint = Vector2.new(0.5, 1)
-toastContainer.Position = UDim2.new(0.5, 0, 1, -180)
-toastContainer.Size = UDim2.new(0, 420, 0, 100)
+toastContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+toastContainer.Position = UDim2.fromScale(0.5, 0.72)
+toastContainer.Size = UDim2.fromScale(0.84, 0.18)
+local toastBounds = ensureChild(toastContainer, "UISizeConstraint", "Bounds")
+toastBounds.MaxSize = Vector2.new(500, 112)
 
 local modalShade = ensureChild(overlayGui, "Frame", "PurchaseShade")
 modalShade.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -852,52 +856,87 @@ local function applyWheelAngle(angleDegrees)
     end
 end
 
-local function showToast(message, color)
-    local toast = Instance.new("TextLabel")
+local activeToast
+local function showToast(message, color, rewardType)
+    if activeToast then activeToast:Destroy() end
+    local toast = Instance.new("CanvasGroup")
+    activeToast = toast
     toast.Name = "Toast"
-    toast.BackgroundColor3 = Color3.fromRGB(18, 20, 36)
-    toast.BackgroundTransparency = 1
-    toast.Size = UDim2.new(1, 0, 0, 58)
-    toast.AnchorPoint = Vector2.new(0.5, 1)
-    toast.Position = UDim2.new(0.5, 0, 1, 40)
-    toast.Font = Enum.Font.GothamBold
-    toast.TextSize = 26
-    toast.TextColor3 = color or Color3.fromRGB(123, 255, 94)
-    toast.Text = message
-    toast.TextWrapped = true
+    toast.BackgroundColor3 = UITheme.NAVY
+    toast.BorderSizePixel = 0
+    toast.Size = UDim2.new(1, -4, 1, -4)
+    toast.AnchorPoint = Vector2.new(0.5, 0.5)
+    toast.Position = UDim2.fromScale(0.5, 0.5)
+    toast.GroupTransparency = 1
     toast.Parent = toastContainer
 
     local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, 10)
+    corner.CornerRadius = UDim.new(0, 12)
     corner.Parent = toast
 
     local stroke = Instance.new("UIStroke")
-    stroke.Color = toast.TextColor3
-    stroke.Thickness = 1.2
-    stroke.Transparency = 0.35
+    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    stroke.Color = UITheme.GOLD
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.2
     stroke.Parent = toast
 
-    local tweenIn = TweenService:Create(toast, TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
-        BackgroundTransparency = 0.08,
-        Position = UDim2.new(0.5, 0, 1, 0),
-    })
-    tweenIn:Play()
+    local gradient = Instance.new("UIGradient")
+    gradient.Color = ColorSequence.new(UITheme.NAVY_LIGHT, UITheme.NAVY)
+    gradient.Rotation = 90
+    gradient.Parent = toast
 
-    task.delay(2.8, function()
-        if not toast.Parent then
-            return
-        end
-        local tweenOut = TweenService:Create(toast, TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
-            BackgroundTransparency = 1,
-            TextTransparency = 1,
-            Position = UDim2.new(0.5, 0, 1, 40),
-        })
-        tweenOut:Play()
+    local iconKeys = { coins = "Coin", scrap = "Shards", keys = "Key", health_potions = "HealthPotion" }
+    local iconKey = rewardType and iconKeys[rewardType]
+    local iconAsset = iconKey and AssetCodes.Get(iconKey)
+    if iconAsset and iconAsset ~= "" then
+        local icon = Instance.new("ImageLabel")
+        icon.Name = "RewardIcon"
+        icon.BackgroundTransparency = 1
+        icon.AnchorPoint = Vector2.new(0, 0.5)
+        icon.Position = UDim2.fromScale(0.04, 0.5)
+        icon.Size = UDim2.fromScale(0.14, 0.58)
+        icon.ScaleType = Enum.ScaleType.Fit
+        icon.Image = iconAsset
+        icon.Parent = toast
+    end
+
+    local textLeft = iconAsset and 0.21 or 0.05
+    local function textLabel(name, text, y, height, font, tint, maxSize)
+        local label = Instance.new("TextLabel")
+        label.Name = name
+        label.BackgroundTransparency = 1
+        label.Position = UDim2.fromScale(textLeft, y)
+        label.Size = UDim2.fromScale(0.95 - textLeft, height)
+        label.Font = font
+        label.TextColor3 = tint
+        label.Text = text
+        label.TextScaled = true
+        label.TextWrapped = true
+        label.TextXAlignment = iconAsset and Enum.TextXAlignment.Left or Enum.TextXAlignment.Center
+        label.Parent = toast
+        local limit = Instance.new("UITextSizeConstraint")
+        limit.MinTextSize = 9
+        limit.MaxTextSize = maxSize
+        limit.Parent = label
+    end
+    textLabel("Heading", rewardType and "WHEEL REWARD" or "SPIN THE WHEEL",
+        0.15, 0.22, Enum.Font.GothamBlack, UITheme.GOLD, 14)
+    textLabel("Message", message, 0.4, 0.44, Enum.Font.GothamBold, color or UITheme.WHITE, 26)
+
+    -- Fade the entire card together without shifting its screen-relative anchor.
+    TweenService:Create(toast, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+        GroupTransparency = 0,
+    }):Play()
+
+    task.delay(3.2, function()
+        if not toast.Parent then return end
+        local tweenOut = TweenService:Create(toast, TweenInfo.new(0.25), { GroupTransparency = 1 })
         tweenOut.Completed:Once(function()
-            pcall(function()
-                toast:Destroy()
-            end)
+            if activeToast == toast then activeToast = nil end
+            toast:Destroy()
         end)
+        tweenOut:Play()
     end)
 end
 
@@ -996,7 +1035,7 @@ local function showSpinReward(resultPayload)
 
     local rewardText = getRewardText(resultPayload)
     if rewardText ~= "" then
-        showToast(string.format("You got %s!", rewardText), getRewardToastColor(resultPayload))
+        showToast(rewardText, getRewardToastColor(resultPayload), resultPayload.rewardType)
     end
     displayLocalSpinAnnouncement(type(resultPayload.chatAnnouncement) == "table" and resultPayload.chatAnnouncement or nil)
 end
