@@ -505,16 +505,19 @@ local function playDashEffects(targetPlayer, effectId)
     if not rootPart then return end
 
     -- Resolve effect definition from EffectDefs
-    local def = EffectDefs and EffectDefs.GetById(effectId or "DefaultTrail")
-    if not def then
-        def = EffectDefs and EffectDefs.GetById("DefaultTrail")
-    end
+    local def = EffectDefs and EffectDefs.GetById(effectId)
+    if not def then return end
 
     -- Determine trail color or color sequence
     local isRainbow = def and def.IsRainbow
     local trailColorSeq
     local solidColor
-    if isRainbow and def.TrailColorSequence then
+    if def and def.IsTeamTrail then
+        local team = targetPlayer.Team
+        -- Lobby/neutral players are yellow; team color takes precedence in-match.
+        solidColor = (team and team.TeamColor and team.TeamColor.Color) or Color3.fromRGB(255, 220, 55)
+        trailColorSeq = ColorSequence.new(solidColor, solidColor)
+    elseif isRainbow and def.TrailColorSequence then
         trailColorSeq = def.TrailColorSequence
         solidColor = def.Color or Color3.fromRGB(180, 120, 255)
         log("[Dash] Using Rainbow Trail sequence")
@@ -731,7 +734,7 @@ if playDashVFX then
     playDashVFX.OnClientEvent:Connect(function(dashingPlayer, effectId)
         if not dashingPlayer or not dashingPlayer:IsA("Player") then return end
         print("[DashClient] received dash VFX for", dashingPlayer.Name,
-            "trail:", effectId or "DefaultTrail")
+            "trail:", effectId or "None")
         playDashEffects(dashingPlayer, effectId)
     end)
 else

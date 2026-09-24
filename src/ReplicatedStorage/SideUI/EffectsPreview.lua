@@ -153,7 +153,7 @@ local function resolveTrailConfig(effectId)
     end
 
     local isRainbow = def.IsRainbow == true
-    local solidColor = def.Color or DashConfig.DefaultEffectColor
+    local solidColor = def.IsTeamTrail and Color3.fromRGB(45, 125, 255) or def.Color or DashConfig.DefaultEffectColor
     local isDark = (not isRainbow) and solidColor
         and (solidColor.R + solidColor.G + solidColor.B) < 0.75
 
@@ -165,6 +165,7 @@ local function resolveTrailConfig(effectId)
 
     return {
         color = solidColor,
+        isTeamTrail = def.IsTeamTrail == true,
         isRainbow = isRainbow,
         isDark = isDark,
         baseTransparency = baseTransp,
@@ -431,6 +432,12 @@ function EffectsPreview.Update(viewportFrame, effectId)
         local cycle = math.floor(_elapsed / CYCLE_TIME)
         if cycle ~= lastCycle then
             cleanupAllRibbons()
+            if trailConfig.isTeamTrail then
+                -- Preview teams in sequence, starting with the Knights on every selection.
+                trailConfig.color = cycle % 2 == 0 and Color3.fromRGB(45, 125, 255)
+                    or Color3.fromRGB(230, 60, 60)
+                trailConfig.colorSequence = nil
+            end
             lastSpawnPos = startPos + Vector3.new(0,-0.35,0)
             lastCycle = cycle
         end

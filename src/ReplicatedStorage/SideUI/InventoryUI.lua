@@ -449,7 +449,7 @@ local TAB_DEFS = {
     { id = "melee",   icon = "\u{2694}",  label = "Melee",   order = 1 },
     { id = "ranged",  icon = "\u{1F3F9}", label = "Ranged",  order = 2 },
     { id = "boosts",  icon = "\u{1F9EA}",  label = "Potions", order = 3 },
-    { id = "effects", icon = "\u{1F4AB}",  label = "Effects", order = 5 }, -- dizzy
+    { id = "effects", icon = "\u{1F4AB}",  label = "Trails", order = 5 }, -- dizzy
     { id = "emotes",  icon = "\u{1F57A}",  label = "Emotes",  order = 6 }, -- man dancing 🕺
 }
 
@@ -4196,11 +4196,18 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 equip       = ef:FindFirstChild("EquipEffect"),
                 getEquipped = ef:FindFirstChild("GetEquippedEffects"),
                 changed     = ef:FindFirstChild("EquippedEffectsChanged"),
+                ownedChanged = ef:FindFirstChild("OwnedEffectsChanged"),
             }
             return effectRemotes
         end
 
         local allTrailDefs = EffectDefs and EffectDefs.GetBySubType("DashTrail") or {}
+        table.sort(allTrailDefs, function(a, b)
+            local orderA = tonumber(a.SortOrder) or math.huge
+            local orderB = tonumber(b.SortOrder) or math.huge
+            if orderA ~= orderB then return orderA < orderB end
+            return tostring(a.DisplayName or a.Id) < tostring(b.DisplayName or b.Id)
+        end)
 
         if #allTrailDefs > 0 then
             -- ── Left side: scrolling card grid ──────────────────────────
@@ -4249,7 +4256,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             local eeL = Instance.new("TextLabel", eeCard)
             eeL.BackgroundTransparency = 1; eeL.Font = Enum.Font.GothamMedium
-            eeL.Text = "You don't own any effects yet.\nVisit the cosmetics stall to unlock more."
+            eeL.Text = "You don't own any trails yet.\nVisit the market stall to unlock more."
             eeL.TextColor3 = DIM_TEXT; eeL.TextSize = math.max(13, math.floor(px(14)))
             eeL.TextWrapped = true; eeL.Size = UDim2.new(0.85, 0, 0, px(60))
             eeL.AnchorPoint = Vector2.new(0.5, 0.5); eeL.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -4274,7 +4281,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailDetailPlaceholder.Font = Enum.Font.GothamMedium
             trailDetailPlaceholder.Text = "Select a trail"
             trailDetailPlaceholder.TextColor3 = DIM_TEXT
-            trailDetailPlaceholder.TextSize = px(22)
+            trailDetailPlaceholder.TextSize = px(28)
             trailDetailPlaceholder.Size = UDim2.new(1, 0, 1, 0)
             trailDetailPlaceholder.TextXAlignment = Enum.TextXAlignment.Center
             trailDetailPlaceholder.TextYAlignment = Enum.TextYAlignment.Center
@@ -4307,11 +4314,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailDetailName.BackgroundTransparency = 1
             trailDetailName.Font = Enum.Font.GothamBold
             trailDetailName.TextColor3 = WHITE
-            trailDetailName.TextSize = px(26)
+            trailDetailName.TextSize = px(34)
+            trailDetailName.TextScaled = true
+            trailDetailName.TextWrapped = true
+            local trailNameLimit = Instance.new("UITextSizeConstraint", trailDetailName)
+            trailNameLimit.MaxTextSize = px(34)
+            trailNameLimit.MinTextSize = 12
             trailDetailName.TextXAlignment = Enum.TextXAlignment.Center
-            trailDetailName.Size = UDim2.new(1, 0, 0, px(34))
+            trailDetailName.Size = UDim2.new(1, 0, 0, px(64))
             trailDetailName.Position = UDim2.new(0, 0, 0, px(208))
-            trailDetailName.TextTruncate = Enum.TextTruncate.AtEnd
+            trailDetailName.TextTruncate = Enum.TextTruncate.None
 
             -- Rarity label (hidden – redundant for trails)
             local trailDetailRarity = Instance.new("TextLabel", trailDetailContent)
@@ -4350,8 +4362,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             trailEquipBtn.Text = "EQUIP TRAIL"
             trailEquipBtn.TextColor3 = WHITE
             trailEquipBtn.TextTransparency = 0
-            trailEquipBtn.TextSize = px(22)
-            trailEquipBtn.Size = UDim2.new(0.88, 0, 0, px(52))
+            trailEquipBtn.TextSize = px(30)
+            trailEquipBtn.TextScaled = true
+            local trailEquipLimit = Instance.new("UITextSizeConstraint", trailEquipBtn)
+            trailEquipLimit.MaxTextSize = px(30)
+            trailEquipLimit.MinTextSize = 12
+            local trailEquipPad = Instance.new("UIPadding", trailEquipBtn)
+            trailEquipPad.PaddingLeft = UDim.new(0, px(10))
+            trailEquipPad.PaddingRight = UDim.new(0, px(10))
+            trailEquipPad.PaddingTop = UDim.new(0, px(8))
+            trailEquipPad.PaddingBottom = UDim.new(0, px(8))
+            trailEquipBtn.Size = UDim2.new(0.96, 0, 0, px(60))
             trailEquipBtn.AnchorPoint = Vector2.new(0.5, 1)
             trailEquipBtn.Position = UDim2.new(0.5, 0, 1, 0)
             Instance.new("UICorner", trailEquipBtn).CornerRadius = UDim.new(0, px(10))
@@ -4370,9 +4391,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 if not selectedEffectId then return end
                 local isEquipped = (equippedTrailId == selectedEffectId)
                 if isEquipped then
-                    trailEquipBtn.Text = "\u{2714} EQUIPPED"
-                    trailEquipBtn.BackgroundColor3 = DISABLED_BG
-                    trailEquipBtn.TextColor3 = GREEN_GLOW
+                    trailEquipBtn.Text = "UNEQUIP TRAIL"
+                    trailEquipBtn.BackgroundColor3 = GREEN_BTN
+                    trailEquipBtn.TextColor3 = WHITE
                     trailEquipStroke.Color = Color3.fromRGB(0, 0, 0); trailEquipStroke.Transparency = 0.15
                 else
                     trailEquipBtn.Text = "EQUIP TRAIL"
@@ -4463,7 +4484,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             -- ── Equip click ─────────────────────────────────────────────
             trailEquipBtn.MouseButton1Click:Connect(function()
                 if not selectedEffectId then return end
-                if equippedTrailId == selectedEffectId then return end
+                local unequipping = equippedTrailId == selectedEffectId
                 local def = EffectDefs and EffectDefs.GetById(selectedEffectId)
                 if not def then return end
                 local isOwn = ownedSet[selectedEffectId] or (def.IsFree == true)
@@ -4471,9 +4492,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 local eRemotes = ensureEffectRemotes()
                 if eRemotes and eRemotes.equip and eRemotes.equip:IsA("RemoteEvent") then
-                    pcall(function() eRemotes.equip:FireServer(selectedEffectId, "DashTrail") end)
+                    pcall(function() eRemotes.equip:FireServer(unequipping and "" or selectedEffectId, "DashTrail") end)
                 end
-                equippedTrailId = selectedEffectId
+                equippedTrailId = not unequipping and selectedEffectId or nil
                 updateTrailEquipButton()
                 refreshEffectCards()
             end)
@@ -4527,7 +4548,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 eCS.Color = baseStrokeColor
                 eCS.Thickness = baseStrokeThickness
                 eCS.Transparency = baseStrokeTransparency
-                addCardSheen(card, accentColor)
+                -- Keep a single tinted face instead of a separate top section.
+                local trailCardFace = addCardSheen(card, accentColor)
+                trailCardFace.Size = UDim2.fromScale(1, 1)
                 local accentBar = addCardAccentBar(card, accentColor)
                 if isRainbow and def.TrailColorSequence then
                     Instance.new("UIGradient", accentBar).Color = def.TrailColorSequence
@@ -4539,54 +4562,49 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 cardName.Font = Enum.Font.GothamBold
                 cardName.Text = displayName
                 cardName.TextColor3 = isEpic and Color3.fromRGB(210, 170, 255) or WHITE
-                cardName.TextSize = INV_CARD.NameTextSize
-                cardName.TextTruncate = Enum.TextTruncate.AtEnd
+                cardName.TextSize = INV_CARD.NameTextSize * 1.5
+                cardName.TextScaled = true
+                cardName.TextWrapped = true
+                local titleLimit = Instance.new("UITextSizeConstraint", cardName)
+                titleLimit.MaxTextSize = math.floor(INV_CARD.NameTextSize * 1.5)
+                titleLimit.MinTextSize = INV_CARD.NameTextSize
+                cardName.TextTruncate = Enum.TextTruncate.None
                 cardName.TextXAlignment = Enum.TextXAlignment.Center
-                cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
-                cardName.Position = UDim2.new(0, px(5), 0, INV_CARD.NameY)
+                cardName.Size = UDim2.new(1, -px(10), 0.44, -px(8))
+                cardName.Position = UDim2.new(0, px(5), 0, px(8))
                 cardName.ZIndex = 3
                 addTextOutline(cardName, 0.18, 1.35)
 
+                -- One continuous card face: expand the trail art below the title.
                 local iconArea = Instance.new("Frame", card)
                 iconArea.Name = "IconArea"
-                iconArea.BackgroundColor3 = CARD_BG
-                iconArea.Size = UDim2.new(0, INV_CARD.IconSize, 0, INV_CARD.IconSize)
-                iconArea.AnchorPoint = Vector2.new(0.5, 0)
-                iconArea.Position = UDim2.new(0.5, 0, 0, INV_CARD.IconY)
+                iconArea.BackgroundTransparency = 1
+                iconArea.Size = UDim2.new(1, -px(12), 0.56, -px(8))
+                iconArea.Position = UDim2.new(0, px(6), 0.44, 0)
                 iconArea.BorderSizePixel = 0
-                Instance.new("UICorner", iconArea).CornerRadius = UDim.new(0, INV_CARD.IconCorner)
-                addIconWellHighlight(iconArea, accentColor)
 
                 local swatch = Instance.new("Frame", iconArea)
                 swatch.Name = "ColorSwatch"
-                swatch.Size = UDim2.new(0.68, 0, 0, px(9))
-                swatch.AnchorPoint = Vector2.new(0.5, 0)
-                swatch.Position = UDim2.new(0.5, 0, 0.14, 0)
-                swatch.BackgroundColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
+                swatch.Size = UDim2.fromScale(0.8, 0.12)
+                swatch.AnchorPoint = Vector2.new(0.5, 0.5)
+                swatch.Position = UDim2.fromScale(0.5, 0.5)
+                swatch.BackgroundColor3 = (isRainbow or def.IsTeamTrail) and Color3.fromRGB(255,255,255) or effectColor
                 swatch.BorderSizePixel = 0
                 swatch.ZIndex = 4
                 Instance.new("UICorner", swatch).CornerRadius = UDim.new(0.5, 0)
                 if isRainbow and def.TrailColorSequence then
                     Instance.new("UIGradient", swatch).Color = def.TrailColorSequence
+                elseif def.IsTeamTrail then
+                    Instance.new("UIGradient", swatch).Color = ColorSequence.new({
+                        ColorSequenceKeypoint.new(0, Color3.fromRGB(45, 125, 255)),
+                        ColorSequenceKeypoint.new(0.499, Color3.fromRGB(45, 125, 255)),
+                        ColorSequenceKeypoint.new(0.501, Color3.fromRGB(230, 60, 60)),
+                        ColorSequenceKeypoint.new(1, Color3.fromRGB(230, 60, 60)),
+                    })
                 end
                 local swS = Instance.new("UIStroke", swatch)
-                swS.Color = isRainbow and Color3.fromRGB(200,160,255) or effectColor
+                swS.Color = def.IsTeamTrail and CARD_STROKE or (isRainbow and Color3.fromRGB(200,160,255) or effectColor)
                 swS.Thickness = px(2); swS.Transparency = 0.3
-
-                local swatchGlyph = Instance.new("TextLabel", iconArea)
-                swatchGlyph.Text = "\u{2550}\u{2550}\u{2550}"
-                swatchGlyph.Font = Enum.Font.GothamBold
-                swatchGlyph.TextColor3 = isRainbow and Color3.fromRGB(255,255,255) or effectColor
-                swatchGlyph.TextScaled = true
-                swatchGlyph.BackgroundTransparency = 1
-                swatchGlyph.Size = UDim2.new(0.76, 0, 0.36, 0)
-                swatchGlyph.AnchorPoint = Vector2.new(0.5, 1)
-                swatchGlyph.Position = UDim2.new(0.5, 0, 0.93, 0)
-                swatchGlyph.ZIndex = 4
-                if isRainbow and def.TrailColorSequence then
-                    Instance.new("UIGradient", swatchGlyph).Color = def.TrailColorSequence
-                end
-                addTextOutline(swatchGlyph, 0.24, 1.4)
 
                 -- Cosmetic cards have no rarity/type subtitle.
 
@@ -4653,6 +4671,13 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                         end
                     end)
                 end
+                if eRemotes.ownedChanged and eRemotes.ownedChanged:IsA("RemoteEvent") then
+                    eRemotes.ownedChanged.OnClientEvent:Connect(function(list)
+                        ownedSet = {}
+                        if type(list) == "table" then for _, id in ipairs(list) do ownedSet[id] = true end end
+                        refreshEffectCards()
+                    end)
+                end
             end)
         else
             -- Placeholder when no trail effects exist
@@ -4664,7 +4689,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             local t = Instance.new("TextLabel", card)
             t.BackgroundTransparency = 1; t.Font = Enum.Font.GothamBold
-            t.Text = "EFFECTS"; t.TextColor3 = GOLD
+            t.Text = "TRAILS"; t.TextColor3 = GOLD
             t.TextSize = math.max(16, math.floor(px(18)))
             t.Size = UDim2.new(1, 0, 0, px(26)); t.Position = UDim2.new(0, 0, 0.46, 0)
             t.TextXAlignment = Enum.TextXAlignment.Center

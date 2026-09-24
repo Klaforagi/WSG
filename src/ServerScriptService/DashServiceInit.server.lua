@@ -118,19 +118,10 @@ requestDash.OnServerEvent:Connect(function(player)
         local equippedId = player:GetAttribute("EquippedDashTrail")
         dprint("raw EquippedDashTrail attribute for", player.Name, ":", equippedId or "NIL")
 
-        -- Fallback to DefaultTrail if attribute is missing/blank
-        if not equippedId or equippedId == "" then
-            equippedId = "DefaultTrail"
-            dprint("no equipped trail found, falling back to DefaultTrail")
-        end
-
-        -- Validate that the effect exists in EffectDefs
-        if EffectDefs then
-            local def = EffectDefs.GetById(equippedId)
-            if not def then
-                dprint("unknown trail id", equippedId, "– falling back to DefaultTrail")
-                equippedId = "DefaultTrail"
-            end
+        -- No equipped cosmetic: approve movement without spawning trail VFX.
+        if type(equippedId) ~= "string" or equippedId == ""
+            or not EffectDefs or not EffectDefs.GetById(equippedId) then
+            return
         end
 
         -- Send the effect id to all clients so they can resolve color/sequence locally

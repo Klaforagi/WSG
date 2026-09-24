@@ -500,9 +500,9 @@ local toastContainer = ensureChild(overlayGui, "Frame", "ToastContainer")
 toastContainer.BackgroundTransparency = 1
 toastContainer.AnchorPoint = Vector2.new(0.5, 0.5)
 toastContainer.Position = UDim2.fromScale(0.5, 0.72)
-toastContainer.Size = UDim2.fromScale(0.84, 0.18)
+toastContainer.Size = UDim2.fromScale(0.70, 0.14)
 local toastBounds = ensureChild(toastContainer, "UISizeConstraint", "Bounds")
-toastBounds.MaxSize = Vector2.new(500, 112)
+toastBounds.MaxSize = Vector2.new(380, 86)
 
 local modalShade = ensureChild(overlayGui, "Frame", "PurchaseShade")
 modalShade.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -862,7 +862,8 @@ local function showToast(message, color, rewardType)
     local toast = Instance.new("CanvasGroup")
     activeToast = toast
     toast.Name = "Toast"
-    toast.BackgroundColor3 = UITheme.NAVY
+    toast.BackgroundColor3 = Color3.fromRGB(12, 14, 28) -- hotbar background
+    toast.BackgroundTransparency = 0.15
     toast.BorderSizePixel = 0
     toast.Size = UDim2.new(1, -4, 1, -4)
     toast.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -880,11 +881,6 @@ local function showToast(message, color, rewardType)
     stroke.Thickness = 1.5
     stroke.Transparency = 0.2
     stroke.Parent = toast
-
-    local gradient = Instance.new("UIGradient")
-    gradient.Color = ColorSequence.new(UITheme.NAVY_LIGHT, UITheme.NAVY)
-    gradient.Rotation = 90
-    gradient.Parent = toast
 
     local iconKeys = { coins = "Coin", scrap = "Shards", keys = "Key", health_potions = "HealthPotion" }
     local iconKey = rewardType and iconKeys[rewardType]

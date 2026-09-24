@@ -233,11 +233,26 @@ function MarketStallUI.Create(parent, options)
     local actionValue, actionIcon = coinContent(action)
     local actionStroke = make("UIStroke",action,{Color=Color3.new(1,1,1),Thickness=1.2,Transparency=.35})
     local status = label(panel, "", UDim2.fromScale(.025,.955), UDim2.fromScale(.95,.035), 13)
+    local statusVersion = 0
+    local function showStatus(text)
+        statusVersion += 1
+        local version = statusVersion
+        status.TextTransparency = 0
+        status.Text = text
+        task.delay(5, function()
+            if version ~= statusVersion or not status.Parent then return end
+            local fade = TweenService:Create(status, TweenInfo.new(.35), {TextTransparency = 1})
+            fade.Completed:Once(function()
+                if version == statusVersion and status.Parent then status.Text = "" end
+            end)
+            fade:Play()
+        end)
+    end
     local connections, cards = {}, {}
     local market, selected, selectedCycle
     local coinBalance = 0
     local ownedTrails, ownedEmotes, equippedEmotes = {}, {}, {}
-    local equippedTrail = "DefaultTrail"
+    local equippedTrail = nil
     local requesting = false
     local remotes = RS:WaitForChild("Remotes")
     local marketRemotes = remotes:WaitForChild("Market")
@@ -256,7 +271,7 @@ function MarketStallUI.Create(parent, options)
     end
     local function owned(item)
         if item.Category == "Weapon" then return market and market.Purchased[tostring(item.Slot)] == true end
-        return item.IsFree or (item.Category == "Trail" and (item.Id == "DefaultTrail" or ownedTrails[item.Id]))
+        return item.IsFree or (item.Category == "Trail" and ownedTrails[item.Id])
             or (item.Category == "Emote" and ownedEmotes[item.Id])
     end
     local function actionText(item)
@@ -267,7 +282,7 @@ function MarketStallUI.Create(parent, options)
             if owned(item) then return "PURCHASED" end
             if not market or not market.Ready then return "LOADING..." end
         elseif owned(item) then
-            if item.Category == "Trail" then return equippedTrail == item.Id and "EQUIPPED" or "EQUIP" end
+            if item.Category == "Trail" then return "PURCHASED" end
             return emoteSlot(item.Id) and "UNEQUIP" or "EQUIP"
         end
         return number(item.CoinPrice) .. " COINS"
@@ -288,7 +303,7 @@ function MarketStallUI.Create(parent, options)
             action.BackgroundTransparency=purchasing and not affordable and .12 or 0
             actionValue.TextTransparency=purchasing and not affordable and .18 or 0
             actionStroke.Transparency=purchasing and .35 or .55
-            if requesting then actionValue.Text="PROCESSING..."; actionIcon.Visible=false end
+            if requesting and selected.Category ~= "Trail" then actionValue.Text="PROCESSING..."; actionIcon.Visible=false end
         end
     end
     local function selectItem(item)
@@ -342,9 +357,13 @@ function MarketStallUI.Create(parent, options)
             elseif item.Category == "Trail" then
                 -- The swatch depicts the trail itself, never ownership or rarity.
                 local swatch = make("Frame",card,{ Position=UDim2.fromScale(.86,.22),Size=UDim2.fromScale(.1,.14),
-                    BackgroundColor3=item.Color or C.Text,BorderSizePixel=0 })
+                    BackgroundColor3=(item.IsTeamTrail or item.TrailColorSequence) and Color3.new(1,1,1) or item.Color or C.Text,BorderSizePixel=0 })
                 round(swatch,4)
-                if item.TrailColorSequence then make("UIGradient",swatch,{Color=item.TrailColorSequence}) end
+                if item.TrailColorSequence then make("UIGradient",swatch,{Color=item.TrailColorSequence})
+                elseif item.IsTeamTrail then make("UIGradient",swatch,{Color=ColorSequence.new({
+                    ColorSequenceKeypoint.new(0,Color3.fromRGB(45,125,255)), ColorSequenceKeypoint.new(.499,Color3.fromRGB(45,125,255)),
+                    ColorSequenceKeypoint.new(.501,Color3.fromRGB(230,60,60)), ColorSequenceKeypoint.new(1,Color3.fromRGB(230,60,60)),
+                })}) end
                 titleLabel.Size = UDim2.fromScale(.78,.39)
             end
             -- No emote icons, cosmetic subtitles, rarity labels, or ownership-colored backgrounds.
@@ -395,7 +414,7 @@ function MarketStallUI.Create(parent, options)
         ok,list = invoke(emotes:WaitForChild("GetOwnedEmotes"))
         if ok then ownedEmotes = idSet(list) end
         ok,list = invoke(effects:WaitForChild("GetEquippedEffects"))
-        if ok and type(list)=="table" then equippedTrail = list.DashTrail or "DefaultTrail" end
+        if ok and type(list)=="table" then equippedTrail = list.DashTrail end
         ok,list = invoke(emotes:WaitForChild("GetEquippedEmotes"))
         if ok and type(list)=="table" then equippedEmotes = emoteLoadout(list) end
         updateLabels()
@@ -415,23 +434,25 @@ function MarketStallUI.Create(parent, options)
         if item.Category=="Weapon" or item.Category=="Potion" then
             ok,success,response,extra = invoke(item.Category=="Potion" and buyPotion or buyWeapon,cycle,item.Slot)
             if type(extra)=="table" then applyState(extra) end
-            status.Text = ok and tostring(response or "") or "Purchase failed; please retry"
+            showStatus(ok and tostring(response or "") or "Purchase failed; please retry")
         elseif not owned(item) then
+            if item.Category == "Trail" then ownedTrails[item.Id] = true; updateLabels() end
             local folder = item.Category=="Trail" and effects or emotes
             local remoteName = item.Category=="Trail" and "PurchaseEffect" or "PurchaseEmote"
             ok,success,response,extra = invoke(folder:WaitForChild(remoteName),item.Id)
-            status.Text = ok and success and ("Purchased "..item.DisplayName) or tostring(extra or "Purchase failed")
+            showStatus(ok and success and ("Purchased "..item.DisplayName) or tostring(extra or "Purchase failed"))
+            if not (ok and success) and item.Category == "Trail" then ownedTrails[item.Id] = nil end
             if ok and success then
                 if item.Category=="Trail" then ownedTrails[item.Id]=true else ownedEmotes[item.Id]=true end
             end
         else
-            if item.Category=="Trail" then effects:WaitForChild("EquipEffect"):FireServer(item.Id,"DashTrail")
+            if item.Category=="Trail" then return
             elseif emoteSlot(item.Id) then emotes:WaitForChild("UnequipEmote"):FireServer(emoteSlot(item.Id))
             else
                 local count=0
                 for _ in pairs(equippedEmotes) do count+=1 end
                 if count<Catalog.GetSlotCount() then emotes:WaitForChild("EquipEmote"):FireServer(item.Id)
-                else status.Text="All emote slots are full" end
+                else showStatus("All emote slots are full") end
             end
         end
         if ok and success then ClaimSound.Play() end
@@ -442,7 +463,10 @@ function MarketStallUI.Create(parent, options)
         applyState(data)
     end))
     table.insert(connections,effects:WaitForChild("EquippedEffectsChanged").OnClientEvent:Connect(function(data)
-        equippedTrail=type(data)=="table" and data.DashTrail or "DefaultTrail"; updateLabels()
+        equippedTrail=type(data)=="table" and data.DashTrail or nil; updateLabels()
+    end))
+    table.insert(connections,effects:WaitForChild("OwnedEffectsChanged").OnClientEvent:Connect(function(list)
+        ownedTrails=idSet(list); updateLabels()
     end))
     table.insert(connections,emotes:WaitForChild("EquippedEmotesChanged").OnClientEvent:Connect(function(data)
         equippedEmotes=emoteLoadout(data); updateLabels()

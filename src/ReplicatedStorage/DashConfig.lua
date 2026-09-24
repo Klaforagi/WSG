@@ -32,6 +32,6 @@ DashConfig.AnimationId  = ""
 DashConfig.DefaultEffectColor = Color3.fromRGB(255, 255, 255)
 
 -- The EffectDefs Id that every player starts with
-DashConfig.DefaultTrailId = "DefaultTrail"
+DashConfig.DefaultTrailId = nil -- No cosmetic trail until the player equips one.
 
 return DashConfig

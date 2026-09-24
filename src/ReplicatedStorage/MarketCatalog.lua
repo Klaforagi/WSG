@@ -38,9 +38,6 @@ local function sortedCopy(list)
         end
     end
     table.sort(result, function(a, b)
-        if (a.IsRainbow == true) ~= (b.IsRainbow == true) then
-            return b.IsRainbow == true
-        end
         local orderA = tonumber(a.SortOrder) or math.huge
         local orderB = tonumber(b.SortOrder) or math.huge
         if orderA ~= orderB then
@@ -67,6 +64,7 @@ local function normalizeTrail(def)
         TrailColorSequence = def.TrailColorSequence,
         GhostColors = def.GhostColors,
         IsRainbow = def.IsRainbow == true,
+        IsTeamTrail = def.IsTeamTrail == true,
         IconGlyph = def.IconGlyph,
         IsFree = def.IsFree == true,
         ShopVisible = def.ShopVisible,

@@ -84,6 +84,7 @@ local getOwnedRF            = ensureInstance(effectsFolder, "RemoteFunction", "G
 local equipEffectRE         = ensureInstance(effectsFolder, "RemoteEvent",    "EquipEffect")
 local getEquippedRF         = ensureInstance(effectsFolder, "RemoteFunction", "GetEquippedEffects")
 local equippedChangedRE     = ensureInstance(effectsFolder, "RemoteEvent",    "EquippedEffectsChanged")
+local ownedChangedRE        = ensureInstance(effectsFolder, "RemoteEvent",    "OwnedEffectsChanged")
 
 dprint("Remotes created")
 
@@ -106,7 +107,7 @@ local function countOwnedEffects(data)
     end
     local count = 0
     for effectId, owned in pairs(data.owned) do
-        if owned and effectId ~= DEFAULT_TRAIL_ID then
+        if owned and effectId ~= "DefaultTrail" then
             count += 1
         end
     end
@@ -243,8 +244,6 @@ local function pushEquippedToClient(player)
     pcall(function() equippedChangedRE:FireClient(player, equipped) end)
 end
 
--- The default trail every player should have equipped if they haven't chosen one
-local DEFAULT_TRAIL_ID = "DefaultTrail"
 
 local function registerEffectsSection()
     if effectsSectionRegistered then
@@ -281,11 +280,14 @@ end
 local function syncDashTrailAttribute(player)
     local data = getOrCreateData(player)
     local trailId = data.equipped.DashTrail
-    -- Fall back to the default white trail if nothing is equipped
-    if not trailId or trailId == "" then
-        trailId = DEFAULT_TRAIL_ID
-        data.equipped.DashTrail = trailId
-        dprint(player.Name, "had no equipped trail – set default:", trailId)
+    -- Migrate the retired default trail; no selection means no cosmetic VFX.
+    if data.owned.DefaultTrail or trailId == "DefaultTrail" then
+        data.owned.DefaultTrail = nil
+        if trailId == "DefaultTrail" then
+            trailId = nil
+            data.equipped.DashTrail = nil
+        end
+        markDirty(player, "remove_default_trail")
     end
     player:SetAttribute("EquippedDashTrail", trailId)
     dprint(player.Name, "synced EquippedDashTrail attribute:", trailId)
@@ -295,20 +297,6 @@ end
 Players.PlayerAdded:Connect(function(player)
     DataSaveCoordinator:LoadSection(player, "Effects")
     local data = getOrCreateData(player)
-
-    -- Ensure DefaultTrail is owned (it's free)
-    if not data.owned[DEFAULT_TRAIL_ID] then
-        data.owned[DEFAULT_TRAIL_ID] = true
-        dprint(player.Name, "granted free DefaultTrail")
-        markDirty(player, "default_effect_grant")
-    end
-
-    -- Auto-equip the default white trail if nothing is equipped
-    if not data.equipped.DashTrail or data.equipped.DashTrail == "" then
-        data.equipped.DashTrail = DEFAULT_TRAIL_ID
-        dprint(player.Name, "auto-equipped DefaultTrail (first join or missing)")
-        markDirty(player, "default_effect_equip")
-    end
 
     syncDashTrailAttribute(player)
     dprint(player.Name, "joined – equipped DashTrail:", data.equipped.DashTrail)
@@ -323,15 +311,6 @@ for _, p in ipairs(Players:GetPlayers()) do
     task.spawn(function()
         DataSaveCoordinator:LoadSection(p, "Effects")
         local data = getOrCreateData(p)
-        if not data.owned[DEFAULT_TRAIL_ID] then
-            data.owned[DEFAULT_TRAIL_ID] = true
-            markDirty(p, "default_effect_grant")
-        end
-        if not data.equipped.DashTrail or data.equipped.DashTrail == "" then
-            data.equipped.DashTrail = DEFAULT_TRAIL_ID
-            dprint(p.Name, "auto-equipped DefaultTrail (late init)")
-            markDirty(p, "default_effect_equip")
-        end
         syncDashTrailAttribute(p)
     end)
 end
@@ -375,14 +354,24 @@ purchaseEffectRF.OnServerInvoke = function(player, effectId)
     dprint("Purchased", def.DisplayName, "for", player.Name)
 
     markDirty(player, "purchase_effect")
+    ownedChangedRE:FireClient(player, getOwnedList(player))
 
     local newBal = CurrencyService and CurrencyService:GetCoins(player) or 0
     return true, newBal, "ok"
 end
 
 equipEffectRE.OnServerEvent:Connect(function(player, effectId, subType)
-    if type(effectId) ~= "string" or #effectId == 0 then return end
+    if type(effectId) ~= "string" then return end
     if type(subType) ~= "string" or #subType == 0 then return end
+
+    if effectId == "" and subType == "DashTrail" then
+        local data = getOrCreateData(player)
+        data.equipped.DashTrail = nil
+        syncDashTrailAttribute(player)
+        markDirty(player, "unequip_effect")
+        pushEquippedToClient(player)
+        return
+    end
 
     -- Validate the effect exists and matches the subType
     local def = EffectDefs.GetById(effectId)
