@@ -1,4 +1,3 @@
-local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -6,11 +5,8 @@ local SoundService = game:GetService("SoundService")
 local Workspace = game:GetService("Workspace")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
 
 local CrateConfig = require(ReplicatedStorage:WaitForChild("CrateConfig"))
-local KeyProducts = require(ReplicatedStorage:WaitForChild("KeyProducts"))
-local RobuxPurchaseUI = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("RobuxPurchaseUI"))
 
 local CHEST_DEFS = {
     {
@@ -28,78 +24,6 @@ local CHEST_DEFS = {
 
 CHEST_DEFS[1].openSoundName = "Buy"
 
-local overlayGui = Instance.new("ScreenGui")
-overlayGui.Name = "WeaponChestPromptGui"
-overlayGui.ResetOnSpawn = false
-overlayGui.IgnoreGuiInset = true
-overlayGui.DisplayOrder = 450
-overlayGui.Parent = playerGui
-
-local modalShade = Instance.new("Frame")
-modalShade.Name = "PurchaseShade"
-modalShade.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-modalShade.BackgroundTransparency = 0.3
-modalShade.BorderSizePixel = 0
-modalShade.Size = UDim2.fromScale(1, 1)
-modalShade.Visible = false
-modalShade.Parent = overlayGui
-
-local modalCard = Instance.new("Frame")
-modalCard.Name = "PurchaseCard"
-modalCard.AnchorPoint = Vector2.new(0.5, 0.5)
-modalCard.Position = UDim2.fromScale(0.5, 0.5)
-modalCard.Size = UDim2.new(0, 430, 0, 390)
-modalCard.Parent = modalShade
-RobuxPurchaseUI.StyleModalCard(modalCard, RobuxPurchaseUI.Colors.Black)
-
-local modalHeader = Instance.new("TextLabel")
-modalHeader.Name = "Header"
-modalHeader.BackgroundTransparency = 1
-modalHeader.Size = UDim2.new(1, -30, 0, 56)
-modalHeader.Position = UDim2.new(0, 15, 0, 18)
-modalHeader.Font = Enum.Font.GothamBlack
-modalHeader.TextSize = 30
-modalHeader.Text = "BUY KEYS"
-modalHeader.Parent = modalCard
-RobuxPurchaseUI.ApplyOutlinedText(modalHeader, RobuxPurchaseUI.Colors.Gold)
-
-local modalBody = Instance.new("TextLabel")
-modalBody.Name = "Body"
-modalBody.BackgroundTransparency = 1
-modalBody.Size = UDim2.new(1, -30, 0, 64)
-modalBody.Position = UDim2.new(0, 15, 0, 68)
-modalBody.Font = Enum.Font.GothamMedium
-modalBody.TextSize = 20
-modalBody.TextWrapped = true
-modalBody.Text = "You're out of keys. Pick a pack below to open the Premium Weapon Crate."
-modalBody.Parent = modalCard
-RobuxPurchaseUI.ApplyOutlinedText(modalBody, RobuxPurchaseUI.Colors.GoldSoft)
-
-local buttonList = Instance.new("Frame")
-buttonList.Name = "ButtonList"
-buttonList.BackgroundTransparency = 1
-buttonList.Size = UDim2.new(1, -30, 0, 188)
-buttonList.Position = UDim2.new(0, 15, 0, 138)
-buttonList.Parent = modalCard
-
-local buttonLayout = Instance.new("UIListLayout")
-buttonLayout.FillDirection = Enum.FillDirection.Vertical
-buttonLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-buttonLayout.VerticalAlignment = Enum.VerticalAlignment.Top
-buttonLayout.Padding = UDim.new(0, 8)
-buttonLayout.Parent = buttonList
-
-local cancelButton = Instance.new("TextButton")
-cancelButton.Name = "CancelButton"
-cancelButton.Size = UDim2.new(1, -30, 0, 44)
-cancelButton.Position = UDim2.new(0, 15, 1, -58)
-cancelButton.Font = Enum.Font.GothamBold
-cancelButton.TextSize = 18
-cancelButton.Text = "Not now"
-cancelButton.Parent = modalCard
-RobuxPurchaseUI.StyleCancelButton(cancelButton)
-
-local purchaseModalOpen = false
 local triggerDebounce = false
 local promptEntries = {}
 local warnedMissingOpenSounds = {}
@@ -166,7 +90,6 @@ end
 
 local function canUseChestPrompts()
     return (type(_G.OpenCrateRequested) == "function" or getOpenCrateRemote() ~= nil)
-        and not purchaseModalOpen
     and not isCrateRewardSequenceActive()
     and not isSpinWheelRewardSequenceActive()
 end
@@ -238,14 +161,11 @@ local function getPromptCurrencyText(currencyType)
     return string.format("Coins: %d", getCoins(not canReadApiCoins))
 end
 
-local function closePurchaseModal()
-    purchaseModalOpen = false
-    modalShade.Visible = false
-end
-
-local function openPurchaseModal()
-    purchaseModalOpen = true
-    modalShade.Visible = true
+local function openKeysShop()
+    local sideUI = _G.SideUI
+    if sideUI and type(sideUI.OpenShopSection) == "function" then
+        sideUI.OpenShopSection("keys")
+    end
 end
 
 local function findOpenSoundTemplate(soundName)
@@ -357,37 +277,6 @@ local function requestOpenCrate(crateId)
     end)
 end
 
-cancelButton.Activated:Connect(function()
-    closePurchaseModal()
-end)
-
-for index, pack in ipairs(KeyProducts.Packs or {}) do
-    local packTitle = string.format("%d %s", pack.Keys, (pack.Keys == 1) and "KEY" or "KEYS")
-    local button = RobuxPurchaseUI.CreatePackCard(buttonList, {
-        name = "PackButton" .. tostring(index),
-        title = packTitle,
-        subtitle = pack.Name,
-        price = pack.Price,
-        layoutOrder = index,
-    })
-
-    button.Activated:Connect(function()
-        local productId = pack.ProductId
-        if not productId or productId <= 0 then
-            warn("[WeaponCratePrompts] Product ID not set for", tostring(pack.Name))
-            return
-        end
-
-        closePurchaseModal()
-
-        local ok, err = pcall(function()
-            MarketplaceService:PromptProductPurchase(player, productId)
-        end)
-        if not ok then
-            warn("[WeaponCratePrompts] PromptProductPurchase failed:", tostring(err))
-        end
-    end)
-end
 
 for _, chestInfo in ipairs(CHEST_DEFS) do
     local model = Workspace:WaitForChild(chestInfo.modelName, 30)
@@ -435,7 +324,7 @@ for _, chestInfo in ipairs(CHEST_DEFS) do
 
         if currencyType == "Keys" then
             if getKeys(true) < price then
-                openPurchaseModal()
+                openKeysShop()
                 task.delay(0.2, function()
                     triggerDebounce = false
                 end)

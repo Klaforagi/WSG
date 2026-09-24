@@ -3389,6 +3389,16 @@ _G.SideUI = _G.SideUI or {}
 _G.SideUI.SetCoins = SetCoins
 _G.SideUI.SetBadge = SetBadge
 _G.SideUI.OpenPage = OpenPage
+_G.SideUI.OpenShopSection = function(section)
+    if not shopModule then return end
+    local shop = require(shopModule)
+    shop.setActiveTab(section)
+    if MenuController then
+        MenuController.OpenMenu("Shop")
+    else
+        requestShowModule(shopModule, "SHOP")
+    end
+end
 _G.SideUI.OpenOptions = toggleOptionsMenu
 _G.SideUI.SetTitle = function(text) titleLabel.Text = text end
 _G.SideUI.MenuController = MenuController  -- expose for other scripts

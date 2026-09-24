@@ -65,7 +65,7 @@ local function currentOffers()
     local cycle = Config.GetCycle(workspace:GetServerTimeNow())
     if cycle ~= activeCycle then
         activeCycle = cycle
-        offers = Config.GenerateOffers(cycle, CrateConfig.WeaponsByRarity, nil, Enchants.Enchants)
+        offers = Config.GenerateOffers(cycle, CrateConfig.WeaponsByRarity, nil, Enchants.Enchants, Enchants.GuaranteedEnchantWeapons)
         potionOffers = Config.GeneratePotionOffers(cycle, potionPools)
     end
     return cycle, offers

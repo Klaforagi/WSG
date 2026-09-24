@@ -54,7 +54,7 @@ function MarketConfig.GetPrice(rarity, size, enchanted)
     return MarketConfig.RoundPrice(price)
 end
 
-function MarketConfig.GenerateOffers(cycle, pools, rng, enchants)
+function MarketConfig.GenerateOffers(cycle, pools, rng, enchants, guaranteedEnchantWeapons)
     rng = rng or Random.new(cycle * 10007 + MarketConfig.Version * 7919)
     local offers = {}
     for slot, rarities in ipairs(MarketConfig.SlotRarities) do
@@ -68,7 +68,12 @@ function MarketConfig.GenerateOffers(cycle, pools, rng, enchants)
         local size = tier.name == "Normal" and (90 + rng:NextInteger(0, 10) + rng:NextInteger(0, 10))
             or rng:NextInteger(tier.min, tier.max)
         local enchantName = ""
-        if rng:NextNumber() < MarketConfig.EnchantChance and enchants and #enchants > 0 then
+        local enchantRoll = rng:NextNumber()
+        local requiresEnchant = guaranteedEnchantWeapons and guaranteedEnchantWeapons[weapon.weapon] == true
+        if requiresEnchant then
+            assert(enchants and #enchants > 0, "Guaranteed enchant requires an enchant pool")
+        end
+        if (requiresEnchant or enchantRoll < MarketConfig.EnchantChance) and enchants and #enchants > 0 then
             enchantName = enchants[rng:NextInteger(1, #enchants)].name
         end
         offers[slot] = {

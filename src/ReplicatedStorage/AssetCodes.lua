@@ -115,6 +115,28 @@ AssetCodes.images = {
 }
 
 -- Returns the asset string for a named key, or nil
+AssetCodes.WeaponEnchantImages = {
+    ["Ethereal Bow"] = {
+        Lifesteal = "rbxassetid://84955260485481",
+        Fiery = "rbxassetid://110375733339041",
+        Shock = "rbxassetid://98845734477861",
+        Toxic = "rbxassetid://126119811248143",
+        Icy = "rbxassetid://119934736385316",
+        Void = "rbxassetid://131226844312711",
+    },
+}
+
+function AssetCodes.GetWeaponIcon(weaponName, enchantName)
+    local variants = AssetCodes.WeaponEnchantImages[weaponName]
+    if variants and type(enchantName) == "string" then
+        local normalized = enchantName:match("^%s*(.-)%s*$"):lower()
+        for name, image in pairs(variants) do
+            if name:lower() == normalized then return image end
+        end
+    end
+    return AssetCodes.images[weaponName]
+end
+
 function AssetCodes.Get(name)
     return AssetCodes.images[name]
 end
