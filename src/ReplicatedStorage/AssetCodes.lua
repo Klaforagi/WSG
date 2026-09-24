@@ -51,6 +51,7 @@ AssetCodes.images = {
     Bat = "rbxassetid://70714531979735",
     Plunger = "rbxassetid://106479991943542",
    --Uncommon
+   -- Pixel Sword: add its icon here when an image is available.
    ["Stone Hammer"] = "rbxassetid://139192177366165",
    ["Wooden Spear"] = "rbxassetid://86988825914270",
    Axe = "rbxassetid://96497459859557",
@@ -69,7 +70,7 @@ AssetCodes.images = {
     ["Doom Sword"] = "rbxassetid://131537900374777",
     --UTILITY
     -- ↓ PLACEHOLDER: replace with a final uploaded bandage icon asset ID later
-    Bandage = "rbxassetid://14029553034",
+    Bandage = "rbxassetid://107260178211319",
 
     --RANGED
     Ranged = "rbxassetid://13303448470",

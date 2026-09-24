@@ -396,88 +396,76 @@ end
 -- BANDAGE ICON (programmatic — built from UI primitives)
 --------------------------------------------------------------------------------
 local function buildBandageIcon(parent)
-    local iconFrame = Instance.new("Frame")
-    iconFrame.Name                   = "BandageIcon"
-    iconFrame.AnchorPoint            = Vector2.new(0.5, 0.5)
-    iconFrame.Position               = UDim2.fromScale(0.5, 0.45)
-    iconFrame.Size                   = UDim2.fromScale(0.58, 0.58)
-    iconFrame.BackgroundTransparency = 1
-    iconFrame.ZIndex                 = 2
-    iconFrame.Parent                 = parent
+    local viewport = Instance.new("ViewportFrame")
+    viewport.Name = "BandageIcon"
+    viewport.AnchorPoint = Vector2.new(0.5, 0.5)
+    viewport.Position = UDim2.fromScale(0.5, 0.45)
+    viewport.Size = UDim2.fromScale(0.7, 0.7)
+    viewport.BackgroundTransparency = 1
+    viewport.Ambient = Color3.fromRGB(210, 210, 210)
+    viewport.LightColor = Color3.new(1, 1, 1)
+    viewport.ZIndex = 2
+    viewport.Parent = parent
+    return viewport
+end
 
-    local TAN       = Color3.fromRGB(235, 210, 170)
-    local TAN_DARK  = Color3.fromRGB(175, 145, 105)
-    local PAD_COLOR = Color3.fromRGB(248, 242, 230)
-    local RED_CROSS = Color3.fromRGB(195, 55, 55)
-
-    -- Main diagonal strip
-    local strip1 = Instance.new("Frame")
-    strip1.Name                   = "Strip1"
-    strip1.AnchorPoint            = Vector2.new(0.5, 0.5)
-    strip1.Position               = UDim2.fromScale(0.5, 0.5)
-    strip1.Size                   = UDim2.fromScale(0.90, 0.30)
-    strip1.Rotation               = -35
-    strip1.BackgroundColor3       = TAN
-    strip1.BorderSizePixel        = 0
-    strip1.Parent                 = iconFrame
-    Instance.new("UICorner", strip1).CornerRadius = UDim.new(0.35, 0)
-    local s1s = Instance.new("UIStroke", strip1)
-    s1s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s1s.Color     = TAN_DARK
-    s1s.Thickness = 1
-
-    -- Second crossing strip
-    local strip2 = Instance.new("Frame")
-    strip2.Name                   = "Strip2"
-    strip2.AnchorPoint            = Vector2.new(0.5, 0.5)
-    strip2.Position               = UDim2.fromScale(0.5, 0.5)
-    strip2.Size                   = UDim2.fromScale(0.90, 0.30)
-    strip2.Rotation               = 35
-    strip2.BackgroundColor3       = TAN
-    strip2.BorderSizePixel        = 0
-    strip2.Parent                 = iconFrame
-    Instance.new("UICorner", strip2).CornerRadius = UDim.new(0.35, 0)
-    local s2s = Instance.new("UIStroke", strip2)
-    s2s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    s2s.Color     = TAN_DARK
-    s2s.Thickness = 1
-
-    -- Center pad (gauze)
-    local pad = Instance.new("Frame")
-    pad.Name                   = "Pad"
-    pad.AnchorPoint            = Vector2.new(0.5, 0.5)
-    pad.Position               = UDim2.fromScale(0.5, 0.5)
-    pad.Size                   = UDim2.fromScale(0.24, 0.24)
-    pad.BackgroundColor3       = PAD_COLOR
-    pad.BorderSizePixel        = 0
-    pad.ZIndex                 = 3
-    pad.Parent                 = iconFrame
-    Instance.new("UICorner", pad).CornerRadius = UDim.new(0.18, 0)
-    local ps = Instance.new("UIStroke", pad)
-    ps.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    ps.Color     = TAN_DARK
-    ps.Thickness = 1
-
-    -- Small red cross on the pad
-    local crossH = Instance.new("Frame")
-    crossH.AnchorPoint       = Vector2.new(0.5, 0.5)
-    crossH.Position          = UDim2.fromScale(0.5, 0.5)
-    crossH.Size              = UDim2.fromScale(0.55, 0.16)
-    crossH.BackgroundColor3  = RED_CROSS
-    crossH.BorderSizePixel   = 0
-    crossH.ZIndex            = 4
-    crossH.Parent            = pad
-
-    local crossV = Instance.new("Frame")
-    crossV.AnchorPoint       = Vector2.new(0.5, 0.5)
-    crossV.Position          = UDim2.fromScale(0.5, 0.5)
-    crossV.Size              = UDim2.fromScale(0.16, 0.55)
-    crossV.BackgroundColor3  = RED_CROSS
-    crossV.BorderSizePixel   = 0
-    crossV.ZIndex            = 4
-    crossV.Parent            = pad
-
-    return iconFrame
+local function updateBandageIcon(ui, tool)
+    local viewport = ui.bandageIcon
+    local cameraCF = tool and tool:GetAttribute("BandageThumbnailCFrame")
+    local texture = (AssetCodes and AssetCodes.Get("Bandage")) or (tool and tool.TextureId) or ""
+    if ui.bandagePreviewTool == tool and ui.bandagePreviewCamera == cameraCF
+        and ui.bandagePreviewTexture == texture then return end
+    viewport:ClearAllChildren()
+    viewport.CurrentCamera = nil
+    viewport.Visible = false
+    ui.thumb.Visible = false
+    ui.bandagePreviewTool = nil
+    if not tool then return end
+    -- Prefer the configured bandage image over the tool's camera preview.
+    if texture ~= "" then
+        ui.thumb.Image = texture
+        ui.thumb.Visible = true
+    else
+        local sourceHandle = tool:FindFirstChild("Handle")
+        if not sourceHandle or not sourceHandle:IsA("BasePart") then return end
+        local clone = tool:Clone()
+        if not clone then return end
+        local origin = clone:FindFirstChild("Handle").CFrame
+        local transforms = {}
+        for _, item in ipairs(clone:GetDescendants()) do
+            if item:IsA("BasePart") then
+                transforms[item] = origin:ToObjectSpace(item.CFrame)
+            elseif item:IsA("LuaSourceContainer") or item:IsA("JointInstance")
+                or item:IsA("WeldConstraint") or item:IsA("Camera")
+                or item:IsA("LayerCollector") or item:IsA("Sound") then
+                item:Destroy()
+            end
+        end
+        for part, cf in pairs(transforms) do
+            part.Anchored = true
+            part.CanCollide = false
+            part.CFrame = cf
+        end
+        local model = Instance.new("Model")
+        model.Name = "BandagePreview"
+        clone.Parent = model
+        model.Parent = viewport
+        local camera = Instance.new("Camera")
+        camera.FieldOfView = tonumber(tool:GetAttribute("BandageThumbnailFOV")) or 35
+        if typeof(cameraCF) == "CFrame" then
+            camera.CFrame = cameraCF
+        else
+            local bounds, size = model:GetBoundingBox()
+            local distance = math.max(1, size.Magnitude * 0.5 / math.sin(math.rad(camera.FieldOfView * 0.5))) * 1.15
+            camera.CFrame = CFrame.lookAt(bounds.Position + Vector3.new(1, 0.6, 1).Unit * distance, bounds.Position)
+        end
+        camera.Parent = viewport
+        viewport.CurrentCamera = camera
+        viewport.Visible = true
+    end
+    ui.bandagePreviewTool = tool
+    ui.bandagePreviewCamera = cameraCF
+    ui.bandagePreviewTexture = texture
 end
 
 --------------------------------------------------------------------------------
@@ -581,7 +569,7 @@ local function buildSlot(def)
     cdCountdown.Visible                = false
     cdCountdown.Parent                 = btn
 
-    -- Build programmatic bandage icon for the utility slot
+    -- Build the authored bandage preview for the utility slot
     local bandageIcon = nil
     local potionIcon = nil
     if def.utilityType == "bandage" then
@@ -772,11 +760,7 @@ local function refreshSlots()
 
         -- thumbnail
         if utilityType == "bandage" then
-            -- Bandage slot: use programmatic icon, hide image thumbnail
-            ui.thumb.Visible = false
-            if ui.bandageIcon then
-                ui.bandageIcon.Visible = true
-            end
+            updateBandageIcon(ui, tool)
             if ui.potionIcon then
                 ui.potionIcon.Visible = false
             end

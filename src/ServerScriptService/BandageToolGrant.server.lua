@@ -8,87 +8,38 @@ local Players = game:GetService("Players")
 
 local BANDAGE_TOOL_NAME = "Bandage"
 
-local function createBandageToolTemplate()
-    local tool = Instance.new("Tool")
-    tool.Name = BANDAGE_TOOL_NAME
-    tool.CanBeDropped = false
-    tool.RequiresHandle = true
-    tool:SetAttribute("HotbarCategory", "Utility")
-    tool:SetAttribute("UtilityType", "bandage")
-    tool:SetAttribute("BandageTool", true)
-
-    local handle = Instance.new("Part")
-    handle.Name = "Handle"
-    handle.Size = Vector3.new(1, 0.45, 1.35)
-    handle.Color = Color3.fromRGB(240, 236, 226)
-    handle.Material = Enum.Material.SmoothPlastic
-    handle.CanCollide = false
-    handle.CanTouch = false
-    handle.CanQuery = false
-    handle.Massless = true
-    handle.Parent = tool
-
-    local wrap = Instance.new("Part")
-    wrap.Name = "Wrap"
-    wrap.Size = Vector3.new(1.05, 0.14, 0.42)
-    wrap.Color = Color3.fromRGB(160, 255, 84)
-    wrap.Material = Enum.Material.SmoothPlastic
-    wrap.CanCollide = false
-    wrap.CanTouch = false
-    wrap.CanQuery = false
-    wrap.Massless = true
-    wrap.Parent = tool
-
-    local wrapWeld = Instance.new("WeldConstraint")
-    wrapWeld.Part0 = handle
-    wrapWeld.Part1 = wrap
-    wrapWeld.Parent = wrap
-    wrap.CFrame = handle.CFrame
-
-    local strip = Instance.new("Part")
-    strip.Name = "Strip"
-    strip.Size = Vector3.new(0.16, 0.52, 0.42)
-    strip.Color = Color3.fromRGB(255, 255, 255)
-    strip.Material = Enum.Material.SmoothPlastic
-    strip.CanCollide = false
-    strip.CanTouch = false
-    strip.CanQuery = false
-    strip.Massless = true
-    strip.Parent = tool
-
-    local stripWeld = Instance.new("WeldConstraint")
-    stripWeld.Part0 = handle
-    stripWeld.Part1 = strip
-    stripWeld.Parent = strip
-    strip.CFrame = handle.CFrame
-
-    local plusGui = Instance.new("BillboardGui")
-    plusGui.Name = "PlusIcon"
-    plusGui.Size = UDim2.fromOffset(48, 48)
-    plusGui.StudsOffset = Vector3.new(0, 0.7, 0)
-    plusGui.AlwaysOnTop = true
-    plusGui.Parent = handle
-
-    local plus = Instance.new("TextLabel")
-    plus.BackgroundTransparency = 1
-    plus.Size = UDim2.fromScale(1, 1)
-    plus.Text = "+"
-    plus.TextScaled = true
-    plus.Font = Enum.Font.GothamBlack
-    plus.TextColor3 = Color3.fromRGB(160, 255, 84)
-    plus.TextStrokeColor3 = Color3.fromRGB(40, 80, 20)
-    plus.TextStrokeTransparency = 0.25
-    plus.Parent = plusGui
-
-    tool.GripPos = Vector3.new(0, -0.1, -0.55)
-    tool.GripForward = Vector3.new(0, 0, -1)
-    tool.GripRight = Vector3.new(1, 0, 0)
-    tool.GripUp = Vector3.new(0, 1, 0)
-
-    return tool
+-- Use the authored tool; keep its grip, geometry, attachments and texture.
+local ServerStorage = game:GetService("ServerStorage")
+local toolsFolder = ServerStorage:WaitForChild("Tools", 15)
+local specialFolder = toolsFolder and toolsFolder:WaitForChild("Special", 15)
+local template = specialFolder and specialFolder:WaitForChild(BANDAGE_TOOL_NAME, 15)
+if not template or not template:IsA("Tool") then
+    warn("[BandageToolGrant] Missing Tool ServerStorage.Tools.Special.Bandage")
+    return
 end
-
-local bandageToolTemplate = createBandageToolTemplate()
+local bandageToolTemplate = template:Clone()
+local AssetCodes = require(game:GetService("ReplicatedStorage"):WaitForChild("AssetCodes"))
+bandageToolTemplate.TextureId = AssetCodes.Get("Bandage") or ""
+bandageToolTemplate.CanBeDropped = false
+bandageToolTemplate:SetAttribute("HotbarCategory", "Utility")
+bandageToolTemplate:SetAttribute("UtilityType", "bandage")
+bandageToolTemplate:SetAttribute("BandageTool", true)
+local handle = bandageToolTemplate:FindFirstChild("Handle")
+local thumbnailCamera = bandageToolTemplate:FindFirstChild("ThumbnailCamera", true)
+if handle and handle:IsA("BasePart") and thumbnailCamera and thumbnailCamera:IsA("Camera") then
+    -- Cameras need not replicate: publish the authored view relative to Handle.
+    bandageToolTemplate:SetAttribute("BandageThumbnailCFrame", handle.CFrame:ToObjectSpace(thumbnailCamera.CFrame))
+    bandageToolTemplate:SetAttribute("BandageThumbnailFOV", thumbnailCamera.FieldOfView)
+end
+for _, part in ipairs(bandageToolTemplate:GetDescendants()) do
+    if part:IsA("BasePart") then
+        part.Anchored = false
+        part.CanCollide = false
+        part.CanTouch = false
+        part.CanQuery = false
+        part.Massless = true
+    end
+end
 
 local function grantBandageTool(player)
     if not player or not player.Parent then

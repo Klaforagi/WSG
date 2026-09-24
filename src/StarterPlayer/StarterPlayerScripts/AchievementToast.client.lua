@@ -13,7 +13,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Load achievement definitions for titles and icons
+-- Load achievement definitions for titles and rewards
 local AchievementDefs
 pcall(function()
     local mod = ReplicatedStorage:WaitForChild("AchievementDefs", 10)
@@ -106,7 +106,7 @@ local function playAchievementSound()
     end)
 end
 
-local function showToast(title, icon, reward, ap, achId, category, rewardKind)
+local function showToast(title, reward, ap, achId, category, rewardKind)
     -- Toast frame (TextButton so the whole card is clickable)
     local toast = Instance.new("TextButton")
     toast.Name                = "Toast"
@@ -142,19 +142,6 @@ local function showToast(title, icon, reward, ap, achId, category, rewardKind)
     acCr.CornerRadius = UDim.new(0.5, 0)
     acCr.Parent = accentBar
 
-    -- Icon glyph
-    local iconLbl = Instance.new("TextLabel")
-    iconLbl.Name                = "Icon"
-    iconLbl.BackgroundTransparency = 1
-    iconLbl.Font                = Enum.Font.GothamBold
-    iconLbl.Text                = icon or "★"
-    iconLbl.TextColor3          = GOLD
-    iconLbl.TextSize            = math.max(22, math.floor(px(26)))
-    iconLbl.Size                = UDim2.new(0, px(40), 0, px(40))
-    iconLbl.AnchorPoint         = Vector2.new(0, 0.5)
-    iconLbl.Position            = UDim2.new(0, px(16), 0.5, 0)
-    iconLbl.Parent              = toast
-
     -- "Achievement Complete!" header
     local headerLbl = Instance.new("TextLabel")
     headerLbl.Name               = "Header"
@@ -164,8 +151,8 @@ local function showToast(title, icon, reward, ap, achId, category, rewardKind)
     headerLbl.TextColor3         = GOLD
     headerLbl.TextSize           = math.max(11, math.floor(px(11)))
     headerLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    headerLbl.Size               = UDim2.new(1, -px(70), 0, px(16))
-    headerLbl.Position           = UDim2.new(0, px(62), 0, px(12))
+    headerLbl.Size               = UDim2.new(1, -px(34), 0, px(16))
+    headerLbl.Position           = UDim2.new(0, px(22), 0, px(12))
     headerLbl.Parent             = toast
 
     -- Achievement title
@@ -177,8 +164,8 @@ local function showToast(title, icon, reward, ap, achId, category, rewardKind)
     titleLbl.TextColor3         = WHITE
     titleLbl.TextSize           = math.max(14, math.floor(px(16)))
     titleLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    titleLbl.Size               = UDim2.new(1, -px(70), 0, px(22))
-    titleLbl.Position           = UDim2.new(0, px(62), 0, px(31))
+    titleLbl.Size               = UDim2.new(1, -px(34), 0, px(22))
+    titleLbl.Position           = UDim2.new(0, px(22), 0, px(31))
     titleLbl.Parent             = toast
 
     -- Reward text (coins/keys + AP)
@@ -201,8 +188,8 @@ local function showToast(title, icon, reward, ap, achId, category, rewardKind)
     rewardLbl.TextColor3         = DIM_TEXT
     rewardLbl.TextSize           = math.max(10, math.floor(px(11)))
     rewardLbl.TextXAlignment     = Enum.TextXAlignment.Left
-    rewardLbl.Size               = UDim2.new(1, -px(70), 0, px(15))
-    rewardLbl.Position           = UDim2.new(0, px(62), 0, px(55))
+    rewardLbl.Size               = UDim2.new(1, -px(34), 0, px(15))
+    rewardLbl.Position           = UDim2.new(0, px(22), 0, px(55))
     rewardLbl.Parent             = toast
 
     -- "Click to view" hint at the bottom
@@ -210,7 +197,7 @@ local function showToast(title, icon, reward, ap, achId, category, rewardKind)
     clickLbl.Name               = "ClickHint"
     clickLbl.BackgroundTransparency = 1
     clickLbl.Font               = Enum.Font.GothamMedium
-    clickLbl.Text               = "Click to view  ▶"
+    clickLbl.Text               = "Click to view"
     clickLbl.TextColor3         = Color3.fromRGB(120, 125, 145)
     clickLbl.TextSize           = math.max(9, math.floor(px(10)))
     clickLbl.TextXAlignment     = Enum.TextXAlignment.Right
@@ -242,7 +229,7 @@ local function showToast(title, icon, reward, ap, achId, category, rewardKind)
         if #toastQueue > 0 then
             local next = table.remove(toastQueue, 1)
             isShowing = true
-            showToast(next.title, next.icon, next.reward, next.ap, next.achId, next.category)
+            showToast(next.title, next.reward, next.ap, next.achId, next.category)
         end
     end)
 
@@ -269,7 +256,7 @@ local function showToast(title, icon, reward, ap, achId, category, rewardKind)
                 if #toastQueue > 0 then
                     local next = table.remove(toastQueue, 1)
                     isShowing = true
-                    showToast(next.title, next.icon, next.reward, next.ap, next.achId, next.category, next.rewardKind)
+                    showToast(next.title, next.reward, next.ap, next.achId, next.category, next.rewardKind)
                 end
             end)
         end
@@ -291,13 +278,11 @@ _G.ShowAchievementToast = function(achievementId, stageIndex)
     end
     local si = stageIndex or 1
     local title  = achievementId
-    local icon   = "★"
     local reward = 0
     local rewardKind = "coins"
     local ap     = 0
     local category = nil
     if def then
-        icon = def.icon or icon
         category = def.category
         if def.staged then
             title = AchievementDefs.GetStageTitle and AchievementDefs.GetStageTitle(def, si) or (def.titleFormat and string.format(def.titleFormat, "I") or achievementId)
@@ -319,10 +304,10 @@ _G.ShowAchievementToast = function(achievementId, stageIndex)
     end
 
     if isShowing then
-        table.insert(toastQueue, { title = title, icon = icon, reward = reward, ap = ap, achId = achievementId, category = category, rewardKind = rewardKind })
+        table.insert(toastQueue, { title = title, reward = reward, ap = ap, achId = achievementId, category = category, rewardKind = rewardKind })
     else
         isShowing = true
-        showToast(title, icon, reward, ap, achievementId, category, rewardKind)
+        showToast(title, reward, ap, achievementId, category, rewardKind)
     end
 end
 

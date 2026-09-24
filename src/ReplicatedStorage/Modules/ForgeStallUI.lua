@@ -1035,7 +1035,7 @@ function ForgeStallUI.Create(parent, options)
 		purchaseBox.Parent = row
 		purchaseBox.ClipsDescendants = false
 		applyCorners(purchaseBox, px(12))
-		applyStroke(purchaseBox, ORANGE, 1.05, 0.1)
+		local purchaseStroke = applyStroke(purchaseBox, ORANGE, 1.05, 0.1)
 
 		local costPill = Instance.new("Frame")
 		costPill.BackgroundColor3 = Color3.fromRGB(23, 23, 25)
@@ -1076,7 +1076,7 @@ function ForgeStallUI.Create(parent, options)
 		actionButton.TextSize = tpx(15, 12)
 		actionButton.Parent = purchaseBox
 		applyCorners(actionButton, px(10))
-		applyStroke(actionButton, ORANGE, 1.05, 0.08)
+		local actionStroke = applyStroke(actionButton, ORANGE, 1.05, 0.08)
 		configureAutoText(actionButton, 10, tpx(15, 12))
 
 		local refs = {
@@ -1093,6 +1093,9 @@ function ForgeStallUI.Create(parent, options)
 			costIcon = costIcon,
 			costValue = costValue,
 			actionButton = actionButton,
+			actionStroke = actionStroke,
+			purchaseBox = purchaseBox,
+			purchaseStroke = purchaseStroke,
 			currentMode = "ready",
 			currentCost = 0,
 			lockedLevel = nil,
@@ -1101,19 +1104,21 @@ function ForgeStallUI.Create(parent, options)
 		}
 
 		trackConn(actionButton.MouseEnter:Connect(function()
-			if refs.currentMode ~= "ready" or refs.isPending then
+			if refs.currentMode ~= "ready" or refs.isPending or not refs.canAfford then
 				return
 			end
-			TweenService:Create(actionButton, QUICK_TWEEN, { BackgroundColor3 = BUTTON_READY_HOVER }):Play()
+			if refs.hoverTween then refs.hoverTween:Cancel() end
+			refs.hoverTween = TweenService:Create(actionButton, QUICK_TWEEN, { BackgroundColor3 = BUTTON_READY_HOVER })
+			refs.hoverTween:Play()
 			refs.rowStroke.Color = ORANGE_BRIGHT
 		end))
 		trackConn(actionButton.MouseLeave:Connect(function()
-			if refs.currentMode ~= "ready" or refs.isPending then
+			if refs.currentMode ~= "ready" or refs.isPending or not refs.canAfford then
 				return
 			end
-			TweenService:Create(actionButton, QUICK_TWEEN, {
-				BackgroundColor3 = refs.canAfford and BUTTON_READY or ORANGE_DARK,
-			}):Play()
+			if refs.hoverTween then refs.hoverTween:Cancel() end
+			refs.hoverTween = TweenService:Create(actionButton, QUICK_TWEEN, { BackgroundColor3 = BUTTON_READY })
+			refs.hoverTween:Play()
 			refs.rowStroke.Color = ORANGE
 		end))
 
@@ -1149,6 +1154,7 @@ function ForgeStallUI.Create(parent, options)
 	end
 
 	local function setButtonMode(refs, mode, cost, canAfford, requiredLevel)
+		if refs.hoverTween then refs.hoverTween:Cancel(); refs.hoverTween = nil end
 		refs.currentMode = mode
 		refs.currentCost = cost or 0
 		refs.canAfford = canAfford == true
@@ -1160,7 +1166,12 @@ function ForgeStallUI.Create(parent, options)
 		else
 			refs.costValue.Text = formatNumber(cost)
 		end
-		refs.actionButton.Active = not refs.isPending
+		refs.actionButton.Active = not refs.isPending and canAfford == true
+		refs.actionButton.Selectable = refs.actionButton.Active
+		refs.actionButton.TextColor3 = canAfford and WHITE or Color3.fromRGB(170, 170, 175)
+		refs.actionStroke.Color = canAfford and ORANGE or BUTTON_LOCKED
+		refs.purchaseStroke.Color = canAfford and ORANGE or BUTTON_LOCKED
+		refs.purchaseBox.BackgroundColor3 = canAfford and CARD_BG_ALT or Color3.fromRGB(42, 42, 45)
 
 		if refs.isPending then
 			refs.actionButton.Text = "UPGRADING"
@@ -1184,7 +1195,7 @@ function ForgeStallUI.Create(parent, options)
 		end
 
 		refs.actionButton.Text = "UPGRADE"
-		refs.actionButton.BackgroundColor3 = canAfford and BUTTON_READY or ORANGE_DARK
+		refs.actionButton.BackgroundColor3 = canAfford and BUTTON_READY or BUTTON_LOCKED
 		refs.rowStroke.Color = ORANGE
 	end
 
@@ -1324,7 +1335,7 @@ function ForgeStallUI.Create(parent, options)
 				return
 			end
 			if shardBalance < purchaseCost then
-				showToast(panel, "You need more Shards for that upgrade.", RED, 2.4)
+				updateRow(upgradeId)
 				return
 			end
 
@@ -1356,7 +1367,6 @@ function ForgeStallUI.Create(parent, options)
 
 				if success then
 					playForgeSound()
-					showToast(panel, title .. " upgraded.", GREEN, 2.0)
 					return
 				end
 
@@ -1364,6 +1374,9 @@ function ForgeStallUI.Create(parent, options)
 				if type(result) == "table" then
 					errorMessage = result.reason or result.message or errorMessage
 				end
+				-- A balance change during the request can also make it unaffordable.
+				-- The refreshed balance above disables the button without a toast.
+				if errorMessage == "Insufficient Shards" then return end
 				showToast(panel, tostring(errorMessage), RED, 2.5)
 			end)
 		end))

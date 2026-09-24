@@ -307,6 +307,11 @@ local presetOverrides = {
     },
 
     -- Uncommon
+    ["pixel sword"] = {
+        rarity          = "Uncommon",
+        swing_sound     = "SwordSwing",
+        hit_sound       = "SwordHit",
+    },
     ["stone hammer"] = {
         rarity          = "Uncommon",
         swing_sound     = "BluntSwing",
