@@ -3335,7 +3335,21 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             end
         end
 
-        local sortedCatAchs = sortQuestsForDisplay("achiev_" .. category, catAchs)
+        if category == "Mastery" then
+            local rarityOrder = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5 }
+            table.sort(catAchs, function(a, b)
+                local ap = (tonumber(a.progress) or 0) / math.max(1, tonumber(a.target) or 1)
+                local bp = (tonumber(b.progress) or 0) / math.max(1, tonumber(b.target) or 1)
+                if ap ~= bp then return ap > bp end
+                local ar, br = rarityOrder[a.masteryRarity] or 99, rarityOrder[b.masteryRarity] or 99
+                if ar ~= br then return ar < br end
+                local ac = a.masteryCategory == "Melee" and 1 or 2
+                local bc = b.masteryCategory == "Melee" and 1 or 2
+                if ac ~= bc then return ac < bc end
+                return tostring(a.title) < tostring(b.title)
+            end)
+        end
+        local sortedCatAchs = category == "Mastery" and catAchs or sortQuestsForDisplay("achiev_" .. category, catAchs)
 
         if #sortedCatAchs == 0 then
             local noAch = Instance.new("Frame")
@@ -3374,7 +3388,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         Objectives  = "\u{1F6A9}",   -- 🚩
         Economy     = "\u{1F4B0}",   -- 💰
         Progression = "\u{2B50}",    -- ⭐
-        Special     = "\u{2728}",    -- ✨
+        Mastery     = "\u{2694}",    -- mastery weapons
         Events      = "\u{1F3C6}",   -- 🏆
     }
 
@@ -3383,7 +3397,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         { id = "Objectives",  label = "Objectives",  order = 2 },
         { id = "Economy",     label = "Economy",     order = 3 },
         { id = "Progression", label = "Progression", order = 4 },
-        { id = "Special",     label = "Special",     order = 5 },
+        { id = "Mastery",     label = "Mastery",     order = 5 },
         { id = "Events",      label = "Events",      order = 6 },
     }
 

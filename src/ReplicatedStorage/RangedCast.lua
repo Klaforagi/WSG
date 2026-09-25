@@ -13,6 +13,10 @@ RangedCast.ProjectileHitDownwardExtension = 0.45
 -- Sweep the Tip sphere and an overlapping sphere below it along the segment,
 -- keeping the same filtering, hit events and server damage authority.
 function RangedCast.CreateProjectileWorldRoot(worldRoot)
+    local function isHumanoidPart(instance)
+        local model = instance and instance:FindFirstAncestorOfClass("Model")
+        return model and model:FindFirstChildOfClass("Humanoid") ~= nil
+    end
     return {
         Raycast = function(_, origin, direction, params)
             if direction.Magnitude <= 0.000001 then return nil end
@@ -20,10 +24,16 @@ function RangedCast.CreateProjectileWorldRoot(worldRoot)
             local radius = RangedCast.ProjectileHitRadius
             if radius <= 0 then return rayHit end
             local sphereHit = worldRoot:Spherecast(origin, radius, direction, params)
+            if sphereHit and not isHumanoidPart(sphereHit.Instance) then
+                sphereHit = nil
+            end
             local downwardExtension = RangedCast.ProjectileHitDownwardExtension
             if downwardExtension > 0 then
                 local lowerOrigin = origin - Vector3.new(0, downwardExtension, 0)
                 local lowerHit = worldRoot:Spherecast(lowerOrigin, radius, direction, params)
+                if lowerHit and not isHumanoidPart(lowerHit.Instance) then
+                    lowerHit = nil
+                end
                 if lowerHit and (not sphereHit or lowerHit.Distance < sphereHit.Distance) then
                     sphereHit = lowerHit
                 end

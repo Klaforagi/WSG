@@ -21,7 +21,7 @@ local AchievementDefs = {}
 --------------------------------------------------------------------------------
 -- Categories
 --------------------------------------------------------------------------------
-AchievementDefs.Categories = { "Combat", "Objectives", "Economy", "Progression", "Special", "Events" }
+AchievementDefs.Categories = { "Combat", "Objectives", "Economy", "Progression", "Mastery", "Events" }
 
 AchievementDefs.CategorySet = {}
 for _, cat in ipairs(AchievementDefs.Categories) do
@@ -377,53 +377,48 @@ AchievementDefs.Achievements = {
     },
 
     ---------------------------------------------------------------------------
-    -- SPECIAL
-    ---------------------------------------------------------------------------
-    {
-        id          = "untouchable",
-        category    = "Special",
-        staged      = false,
-        stat        = "flawlessWins",
-        target      = 1,
-        reward      = STAGE_COIN_REWARDS[1],
-        achievementPoints = STAGE_AP_REWARDS[1],
-        title       = "Untouchable",
-        desc        = "Win a match without being eliminated.",
-        icon        = "🛡",
-        hidden      = false,
-    },
-    {
-        id          = "overachiever",
-        category    = "Special",
-        staged      = true,
-        stat        = "achievementsCompleted",
-        titleFormat = "Overachiever %s",
-        descFormat  = "Complete %d achievements.",
-        thresholds  = { 10, 20, 35, 50, 75 },
-        rewards     = copyCoinRewards(5),
-        keyRewards  = copyKeyRewards(5),
-        achievementPoints = copyStages(STAGE_AP_REWARDS, 5),
-        icon        = "⭐",
-        hidden      = false,
-    },
-    {
-        id          = "jack_of_all_trades",
-        category    = "Special",
-        staged      = false,
-        stat        = "categoriesWithCompletion",
-        target      = 4,
-        reward      = STAGE_COIN_REWARDS[1],
-        achievementPoints = STAGE_AP_REWARDS[1],
-        title       = "Jack of All Trades",
-        desc        = "Complete at least 1 achievement in 4 different categories.",
-        icon        = "🃏",
-        hidden      = false,
-    },
-
-    ---------------------------------------------------------------------------
     -- EVENTS  (placeholder category — no active achievements yet)
     ---------------------------------------------------------------------------
 }
+
+-- Weapon mastery achievements are deliberately one-and-done lines.  Keep the
+-- catalog explicit so the ordering is deterministic (rarity, then melee,
+-- then ranged) and so every weapon, including starter weapons, is covered.
+local masteryRewards = {
+    Common = { ap = 3, coins = 1000 },
+    Uncommon = { ap = 5, coins = 1500 },
+    Rare = { ap = 8, coins = 2500 },
+    Epic = { ap = 15, coins = 5000 },
+    Legendary = { ap = 25, coins = 10000 },
+}
+local masteryCatalog = {
+    { "Common", "Melee", "Starter Sword" }, { "Common", "Melee", "Wooden Sword" },
+    { "Common", "Melee", "Branch" }, { "Common", "Melee", "Bat" }, { "Common", "Melee", "Plunger" },
+    { "Common", "Ranged", "Starter Slingshot" }, { "Common", "Ranged", "Slingshot" }, { "Common", "Ranged", "Bow" },
+    { "Uncommon", "Melee", "Stone Hammer" }, { "Uncommon", "Melee", "Wooden Spear" }, { "Uncommon", "Melee", "Axe" }, { "Uncommon", "Melee", "Pixel Sword" },
+    { "Uncommon", "Ranged", "Pixel Bow" }, { "Uncommon", "Ranged", "Elderwood Bow" },
+    { "Rare", "Melee", "Flanged Mace" }, { "Rare", "Melee", "Shortsword" }, { "Rare", "Melee", "Spear" }, { "Rare", "Melee", "Lil Crusher" },
+    { "Rare", "Ranged", "Ironwood Bow" }, { "Rare", "Ranged", "Skeletal Bow" },
+    { "Epic", "Melee", "Spiked Mace" }, { "Epic", "Melee", "Crusher" }, { "Epic", "Melee", "Ethereal Sword" },
+    { "Epic", "Ranged", "Ethereal Bow" },
+    { "Legendary", "Melee", "Punisher" }, { "Legendary", "Melee", "Kingsblade" }, { "Legendary", "Melee", "Doom Sword" },
+    { "Legendary", "Ranged", "Golden Bow" },
+}
+local function masteryId(name)
+    return "mastery_" .. string.lower(string.gsub(name, "[^%w]+", "_"))
+end
+for _, item in ipairs(masteryCatalog) do
+    local rarity, category, weaponName = item[1], item[2], item[3]
+    local reward = masteryRewards[rarity]
+    table.insert(AchievementDefs.Achievements, {
+        id = masteryId(weaponName), category = "Mastery", staged = false,
+        target = 10, reward = reward.coins, achievementPoints = reward.ap,
+        title = weaponName .. " Master",
+        desc = "Reach mastery level 10 with " .. weaponName .. ".",
+        icon = "★", hidden = false, masteryWeaponName = weaponName,
+        masteryRarity = rarity, masteryCategory = category, singleStage = true,
+    })
+end
 
 --------------------------------------------------------------------------------
 -- Roman numeral helper

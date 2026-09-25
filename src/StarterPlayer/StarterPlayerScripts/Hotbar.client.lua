@@ -1118,14 +1118,14 @@ equipSlot = function(idx)
 
     -- If tool is in Backpack, try local equip (fastest path)
     if tool.Parent == backpack then
-        hum:UnequipTools()
+        -- EquipTool switches directly from the current weapon, avoiding the
+        -- visible empty-handed frame and camera reset between tools.
         pcall(function() hum:EquipTool(tool) end)
         task.defer(refreshSlots)
         return
     end
 
     -- Tool only in StarterGear or elsewhere → ask server to handle it
-    hum:UnequipTools()
     forceEquipRemote:FireServer(def.category, tool.Name)
 end
 

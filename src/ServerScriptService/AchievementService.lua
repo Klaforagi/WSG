@@ -268,6 +268,28 @@ local function getKey(player)
     return "User_" .. tostring(player.UserId)
 end
 
+local WeaponMasteryService
+local function getAchievementProgressValue(player, data, def)
+    if def and def.masteryWeaponName then
+        if not WeaponMasteryService then
+            local ok, mod = pcall(function()
+                return require(ServerScriptService:WaitForChild("WeaponMasteryService", 5))
+            end)
+            if ok then WeaponMasteryService = mod end
+        end
+        if WeaponMasteryService and type(WeaponMasteryService.GetMasteryPayloadForWeaponName) == "function" then
+            local ok, payload = pcall(function()
+                return WeaponMasteryService:GetMasteryPayloadForWeaponName(player, def.masteryWeaponName)
+            end)
+            if ok and type(payload) == "table" then
+                return math.max(0, tonumber(payload.level) or 0)
+            end
+        end
+        return 0
+    end
+    return (def and def.stat and data and data.stats[def.stat]) or 0
+end
+
 --------------------------------------------------------------------------------
 -- Forward declarations for functions referenced before definition
 --------------------------------------------------------------------------------
@@ -384,7 +406,7 @@ local function tryAdvanceStage(player, data, def)
 
     -- Check if stat already meets the next stage threshold (carry-over)
     -- Mark as completed (claimable) but do NOT grant reward or archive
-    local statVal = data.stats[def.stat] or 0
+    local statVal = getAchievementProgressValue(player, data, def)
     local nextTarget = AchievementDefs.GetRawTarget(def, ach.stageIndex)
     if statVal >= nextTarget then
         ach.completed = true
@@ -419,7 +441,7 @@ pushProgress = function(player, def, data)
     if ach.maxedOut then si = maxStage end
 
     local target   = AchievementDefs.GetStageTarget(def, si)
-    local statVal  = data.stats[def.stat] or 0
+    local statVal  = getAchievementProgressValue(player, data, def)
     local progress = math.min(AchievementDefs.GetDisplayStat(def, statVal), target)
 
     pcall(function()
@@ -469,7 +491,7 @@ function AchievementService:LoadForPlayer(player)
         if not ach then continue end
         if ach.maxedOut then continue end
 
-        local statVal = data.stats[def.stat] or 0
+        local statVal = getAchievementProgressValue(player, data, def)
         local si = ach.stageIndex
         local target = AchievementDefs.GetRawTarget(def, si)
 
@@ -616,7 +638,7 @@ function AchievementService:_evaluateStatAchievements(player, data, statKey)
                 local ach = data.achievements[def.id]
                 if ach and not ach.completed and not ach.maxedOut then
                     local target = AchievementDefs.GetStageTarget(def, ach.stageIndex)
-                    local val = data.stats[def.stat] or 0
+                    local val = getAchievementProgressValue(player, data, def)
                     if val >= target then
                         ach.completed = true
                         if not ach.achievedOn then
@@ -672,7 +694,7 @@ local function buildStageSnapshots(data, def, ach)
         activeStage = maxStage
     end
 
-    local statVal = data.stats[def.stat] or 0
+    local statVal = getAchievementProgressValue(player, data, def)
     local stages = {}
     for stageIndex = 1, maxStage do
         local target = AchievementDefs.GetStageTarget(def, stageIndex)
@@ -716,6 +738,20 @@ function AchievementService:GetAchievementsForPlayer(player)
     local data = playerData[player]
     if not data then return {} end
 
+    -- Mastery is stored by WeaponMasteryService rather than in achievement
+    -- stats; refresh its one-shot completion state whenever the UI requests
+    -- the list so newly reached level 10 achievements are immediately shown.
+    for _, masteryDef in ipairs(AchievementDefs.Achievements) do
+        if masteryDef.masteryWeaponName then
+            local masteryAch = data.achievements[masteryDef.id]
+            if masteryAch and not masteryAch.completed and not masteryAch.maxedOut
+                and getAchievementProgressValue(player, data, masteryDef) >= masteryDef.target then
+                masteryAch.completed = true
+                masteryAch.achievedOn = masteryAch.achievedOn or os.time()
+            end
+        end
+    end
+
     local out = {}
     for _, def in ipairs(AchievementDefs.Achievements) do
         local ach = data.achievements[def.id]
@@ -727,7 +763,7 @@ function AchievementService:GetAchievementsForPlayer(player)
         if ach.maxedOut then si = maxStage end
 
         local target   = AchievementDefs.GetStageTarget(def, si)
-        local statVal  = data.stats[def.stat] or 0
+        local statVal  = getAchievementProgressValue(player, data, def)
         local progress = math.min(AchievementDefs.GetDisplayStat(def, statVal), target)
 
         table.insert(out, {
@@ -748,6 +784,8 @@ function AchievementService:GetAchievementsForPlayer(player)
             stageIndex = si,
             staged     = def.staged,
             maxedOut   = ach.maxedOut,
+            masteryRarity = def.masteryRarity,
+            masteryCategory = def.masteryCategory,
             stages     = buildStageSnapshots(data, def, ach),
         })
     end
