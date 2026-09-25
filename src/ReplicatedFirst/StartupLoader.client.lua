@@ -833,6 +833,25 @@ pcall(function()
 		if #imageAssets > 0 then
 			ContentProvider:PreloadAsync(imageAssets)
 		end
+
+		-- Market weapon cards can use enchant-specific art that is not part of
+		-- AssetCodes.images. Preload every variant during the loading screen so
+		-- scrolling the market never causes a first-use image hitch.
+		local marketAssets = {}
+		local marketSeen = {}
+		local function addMarketAsset(assetId)
+			if type(assetId) ~= "string" or assetId == "" or marketSeen[assetId] then return end
+			marketSeen[assetId] = true
+			table.insert(marketAssets, assetId)
+		end
+		for _, variants in pairs(AssetCodes.WeaponEnchantImages or {}) do
+			if type(variants) == "table" then
+				for _, assetId in pairs(variants) do addMarketAsset(assetId) end
+			end
+		end
+		if #marketAssets > 0 then
+			ContentProvider:PreloadAsync(marketAssets)
+		end
 	end
 end)
 

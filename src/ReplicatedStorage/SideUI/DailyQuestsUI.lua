@@ -128,13 +128,10 @@ local function getQuestSortPriority(quest, tabId)
     -- player can see what they can claim without scrolling. Daily/Weekly
     -- quests keep their existing ordering (in-progress first).
     if type(tabId) == "string" and string.sub(tabId, 1, 6) == "achiev" then
-        if quest.claimed == true then
-            return 3 -- claimed rows sink below in-progress
-        end
-        if isQuestCompletedForDisplay(quest) then
-            return 1 -- claimable rows pinned to the top
-        end
-        return 2     -- in-progress rows in the middle
+		if quest.claimed == true or isQuestCompletedForDisplay(quest) then
+			return 3 -- every completed achievement stays at the very bottom
+		end
+		return 1     -- incomplete achievements stay above completed rows
     end
     if quest.claimed == true then
         return 3
@@ -3173,20 +3170,7 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hcPad.PaddingBottom = UDim.new(0, px(10))
             hcPad.Parent       = histCard
 
-            -- Checkmark
-            local check = Instance.new("TextLabel")
-            check.Name = "Check"
-            check.BackgroundTransparency = 1
-            check.Font      = Enum.Font.GothamBold
-            check.Text      = "\u{2714}"
-            check.TextColor3 = GREEN_GLOW
-            check.TextTransparency = 0.12
-            check.TextSize  = achTextPx(20, 13)
-            check.Size      = UDim2.new(0, px(28), 0, px(28))
-            check.Position  = UDim2.new(0, 0, 0, px(4))
-            check.Parent    = histCard
-
-            -- Title
+			-- Title
             local hTitle = Instance.new("TextLabel")
             hTitle.Name = "Title"
             hTitle.BackgroundTransparency = 1
@@ -3198,8 +3182,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hTitle.TextSize  = achTextPx(20, 15)
             hTitle.TextXAlignment = Enum.TextXAlignment.Left
             hTitle.TextTruncate = Enum.TextTruncate.AtEnd
-            hTitle.Size      = UDim2.new(1, -px(170), 0, px(26))
-            hTitle.Position  = UDim2.new(0, px(38), 0, 0)
+			hTitle.Size      = UDim2.new(1, -px(150), 0, px(26))
+			hTitle.Position  = UDim2.new(0, 0, 0, 0)
             hTitle.Parent    = histCard
 
             -- Give the date and description the full row width and grow with wrapping.
@@ -3338,6 +3322,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         if category == "Mastery" then
             local rarityOrder = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5 }
             table.sort(catAchs, function(a, b)
+                local aCompleted = a.claimed == true or isQuestCompletedForDisplay(a)
+                local bCompleted = b.claimed == true or isQuestCompletedForDisplay(b)
+                if aCompleted ~= bCompleted then return not aCompleted end
                 local ap = (tonumber(a.progress) or 0) / math.max(1, tonumber(a.target) or 1)
                 local bp = (tonumber(b.progress) or 0) / math.max(1, tonumber(b.target) or 1)
                 if ap ~= bp then return ap > bp end
