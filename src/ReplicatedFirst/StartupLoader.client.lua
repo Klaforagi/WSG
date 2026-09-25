@@ -625,10 +625,9 @@ pcall(function()
 			ShowTeammateHealthBars = false,
 			ShowEnemyHealthBars = true,
 			ShowNPCHealthBars = true,
-			MyHealthDisplayMode = "AboveCharacter",
-			ShowPlayerRings = true,
+			MyHealthDisplayMode = "BottomLeft",
 			ShowPlayerMarkers = true,
-			AlwaysShowXPText = false,
+			AlwaysShowXPText = true,
 		}
 		local settings = {}
 		for k, v in pairs(defaults) do settings[k] = v end
@@ -637,19 +636,23 @@ pcall(function()
 				if data[k] ~= nil then settings[k] = data[k] end
 			end
 		end
-		if settings.MyHealthDisplayMode ~= "AboveCharacter" and settings.MyHealthDisplayMode ~= "Both" then
-			settings.MyHealthDisplayMode = "AboveCharacter"
-		end
+		settings.MyHealthDisplayMode = "BottomLeft"
 		_G.PlayerSettings = settings
-		_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
-		_G.ShowTeammateHealthBars = (settings.ShowTeammateHealthBars == true)
-		_G.ShowEnemyHealthBars = (settings.ShowEnemyHealthBars ~= false)
+		-- These presentation choices are fixed and are not user-configurable.
+		settings.ShowPlayerHighlights = false
+		settings.ShowTeammateHealthBars = false
+		settings.ShowEnemyHealthBars = true
+		settings.ShowNPCHealthBars = true
+		settings.ShowPlayerMarkers = true
+		settings.AlwaysShowXPText = true
+		_G.ShowPlayerHighlights = false
+		_G.ShowTeammateHealthBars = false
+		_G.ShowEnemyHealthBars = true
 		_G.ShowPlayerHealthBars = (_G.ShowTeammateHealthBars or _G.ShowEnemyHealthBars)
 		_G.ShowNPCHealthBars = (settings.ShowNPCHealthBars ~= false)
 		_G.MyHealthDisplayMode = settings.MyHealthDisplayMode
-		_G.ShowPlayerRings = (settings.ShowPlayerRings ~= false)
-		_G.ShowPlayerMarkers = (settings.ShowPlayerMarkers ~= false)
-		_G.AlwaysShowXPText = (settings.AlwaysShowXPText == true)
+		_G.ShowPlayerMarkers = true
+		_G.AlwaysShowXPText = true
 		pcall(function()
 			if type(_G.RefreshLocalHealthDisplaySettings) == "function" then
 				_G.RefreshLocalHealthDisplaySettings()

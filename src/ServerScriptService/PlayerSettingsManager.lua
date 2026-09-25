@@ -30,10 +30,9 @@ local DEFAULTS = {
     ShowTeammateHealthBars = false,
     ShowEnemyHealthBars = true,
     ShowNPCHealthBars = true,
-    MyHealthDisplayMode = "AboveCharacter",
-    ShowPlayerRings = true,
+    MyHealthDisplayMode = "BottomLeft",
     ShowPlayerMarkers = true,
-    AlwaysShowXPText = false,
+    AlwaysShowXPText = true,
 }
 
 local VALID_MY_HEALTH_DISPLAY_MODES = {
@@ -81,7 +80,14 @@ local function ensureDefaults(tbl)
     if tbl.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
         clean.ShowEnemyHealthBars = legacyPlayerBars
     end
-    clean.MyHealthDisplayMode = normalizeMyHealthDisplayMode(clean.MyHealthDisplayMode)
+    clean.MyHealthDisplayMode = "BottomLeft"
+    -- These are global presentation rules, not saved per-player options.
+    clean.ShowPlayerHighlights = false
+    clean.ShowTeammateHealthBars = false
+    clean.ShowEnemyHealthBars = true
+    clean.ShowNPCHealthBars = true
+    clean.ShowPlayerMarkers = true
+    clean.AlwaysShowXPText = true
     return clean
 end
 
@@ -211,6 +217,18 @@ function PlayerSettingsManager.UpdateSetting(player, key, value)
         warn("[PlayerSettingsManager] Attempt to set unknown key", key)
         return false
     end
+	local fixed = {
+		ShowPlayerHighlights = true,
+		ShowTeammateHealthBars = true,
+		ShowEnemyHealthBars = true,
+		ShowNPCHealthBars = true,
+		ShowPlayerMarkers = true,
+		AlwaysShowXPText = true,
+		MyHealthDisplayMode = true,
+	}
+	if fixed[key] then
+		return false
+	end
     if key == "MyHealthDisplayMode" then
         value = normalizeMyHealthDisplayMode(value)
     end

@@ -61,7 +61,7 @@ local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirect
 --------------------------------------------------------------------------------
 -- Default settings
 --------------------------------------------------------------------------------
-local DEFAULT_MY_HEALTH_DISPLAY_MODE = "AboveCharacter"
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
 local VALID_MY_HEALTH_DISPLAY_MODES = {
 	BottomLeft = true,
 	AboveCharacter = true,
@@ -93,9 +93,8 @@ local DEFAULT_SETTINGS = {
 	ShowEnemyHealthBars = true,
 	ShowNPCHealthBars = true,
 	MyHealthDisplayMode = DEFAULT_MY_HEALTH_DISPLAY_MODE,
-	ShowPlayerRings = true,
 	ShowPlayerMarkers = true,
-	AlwaysShowXPText = false,
+	AlwaysShowXPText = true,
 	-- UIScale removed from options
 }
 
@@ -123,7 +122,14 @@ local function ensureSettings()
 	if existing and existing.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
 		PlayerSettings.ShowEnemyHealthBars = legacyPlayerBars
 	end
-	PlayerSettings.MyHealthDisplayMode = normalizeMyHealthDisplayMode(PlayerSettings.MyHealthDisplayMode)
+	PlayerSettings.MyHealthDisplayMode = "BottomLeft"
+	-- These presentation choices are intentionally fixed, not player options.
+	PlayerSettings.ShowPlayerHighlights = false
+	PlayerSettings.ShowTeammateHealthBars = false
+	PlayerSettings.ShowEnemyHealthBars = true
+	PlayerSettings.ShowNPCHealthBars = true
+	PlayerSettings.ShowPlayerMarkers = true
+	PlayerSettings.AlwaysShowXPText = true
 	-- Expose globally so other scripts (camera, sprint, etc.) can read them
 	_G.PlayerSettings = PlayerSettings
 end
@@ -207,9 +213,9 @@ local function ApplySettings(settings)
 	-- GAMEPLAY / UI: expose settings globally for other client systems to read
 	_G.PlayerSettings = settings
 	-- Player Highlights toggle – expose globally for TeamHighlight script
-	_G.ShowPlayerHighlights = (settings.ShowPlayerHighlights ~= false)
+	_G.ShowPlayerHighlights = false
 
-	_G.AlwaysShowXPText = (settings.AlwaysShowXPText == true)
+	_G.AlwaysShowXPText = true
 	pcall(function()
 		if type(_G.RefreshXPTextVisibility) == "function" then
 			_G.RefreshXPTextVisibility()
@@ -217,9 +223,9 @@ local function ApplySettings(settings)
 	end)
 
 	-- Overhead health bars toggles; names are intentionally unaffected.
-	local teammateHealthBarsVisible = (settings.ShowTeammateHealthBars == true)
-	local enemyHealthBarsVisible = (settings.ShowEnemyHealthBars ~= false)
-	local npcHealthBarsVisible = (settings.ShowNPCHealthBars ~= false)
+	local teammateHealthBarsVisible = false
+	local enemyHealthBarsVisible = true
+	local npcHealthBarsVisible = true
 	if _G.ShowTeammateHealthBars ~= teammateHealthBarsVisible then
 		print(string.format("[OverheadUI] Teammate health bars visible = %s", tostring(teammateHealthBarsVisible)))
 	end
@@ -239,7 +245,7 @@ local function ApplySettings(settings)
 		end
 	end)
 
-	local playerMarkersVisible = (settings.ShowPlayerMarkers ~= false)
+	local playerMarkersVisible = true
 	if _G.ShowPlayerMarkers ~= playerMarkersVisible then
 		print(string.format("[PlayerMarkers] Player markers visible = %s", tostring(playerMarkersVisible)))
 	end
@@ -247,17 +253,6 @@ local function ApplySettings(settings)
 	pcall(function()
 		if type(_G.RefreshPlayerMarkers) == "function" then
 			_G.RefreshPlayerMarkers()
-		end
-	end)
-
-	local playerRingsVisible = (settings.ShowPlayerRings ~= false)
-	if _G.ShowPlayerRings ~= playerRingsVisible then
-		print(string.format("[PlayerRings] Player rings visible = %s", tostring(playerRingsVisible)))
-	end
-	_G.ShowPlayerRings = playerRingsVisible
-	pcall(function()
-		if type(_G.RefreshPlayerRingVisibility) == "function" then
-			_G.RefreshPlayerRingVisibility()
 		end
 	end)
 
@@ -300,6 +295,12 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		ShowGameState = true,
 		ShowHelm = true,
 		MyHealthDisplayMode = true,
+		ShowPlayerHighlights = true,
+		ShowTeammateHealthBars = true,
+		ShowEnemyHealthBars = true,
+		ShowNPCHealthBars = true,
+		ShowPlayerMarkers = true,
+		AlwaysShowXPText = true,
 	}
 
 	local function SyncSetting(key, value)
@@ -323,7 +324,8 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		local headerWrap = Instance.new("Frame")
 		headerWrap.Name = text .. "_Header"
 		headerWrap.BackgroundTransparency = 1
-		headerWrap.Size = UDim2.new(1, 0, 0, px(36))
+		headerWrap.Size = UDim2.new(0.9, 0, 0, px(42))
+		headerWrap.Position = UDim2.new(0.05, 0, 0, 0)
 		headerWrap.LayoutOrder = layoutOrder
 		headerWrap.Parent = parentFrame
 
@@ -333,7 +335,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		header.Font = Enum.Font.GothamBold
 		header.Text = text
 		header.TextColor3 = GOLD
-		header.TextSize = math.max(16, math.floor(px(18)))
+		header.TextSize = math.max(18, math.floor(px(20)))
 		header.TextXAlignment = Enum.TextXAlignment.Left
 		header.Size = UDim2.new(1, 0, 0, px(26))
 		header.Position = UDim2.new(0, 0, 0, 0)
@@ -358,7 +360,8 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		local row = Instance.new("Frame")
 		row.Name = "SettingRow"
 		row.BackgroundColor3 = ROW_BG
-		row.Size = UDim2.new(1, 0, 0, px(42))
+		row.Size = UDim2.new(0.9, 0, 0, px(78))
+		row.Position = UDim2.new(0.05, 0, 0, 0)
 		row.LayoutOrder = layoutOrder
 		row.Parent = parentFrame
 
@@ -481,9 +484,10 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	-- HELPER: Slider
 	---------------------------------------------------------------------------
 	local function createSlider(parentFrame, label, settingKey, min, max, step, formatFn, layoutOrder)
-		local row = createRow(parentFrame, layoutOrder)
-		row.Name = "Slider_" .. settingKey
-		row.Size = UDim2.new(1, 0, 0, px(46))
+	local row = createRow(parentFrame, layoutOrder)
+	row.Name = "Slider_" .. settingKey
+	row.Size = UDim2.new(0.9, 0, 0, px(88))
+	row.Position = UDim2.new(0.05, 0, 0, 0)
 
 		local lbl = Instance.new("TextLabel")
 		lbl.Name = "Label"
@@ -491,7 +495,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		lbl.Font = Enum.Font.GothamMedium
 		lbl.Text = label
 		lbl.TextColor3 = WHITE
-		lbl.TextSize = math.max(13, math.floor(px(14)))
+		lbl.TextSize = math.max(15, math.floor(px(16)))
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
 		lbl.Size = UDim2.new(0.30, 0, 1, 0)
 		lbl.Parent = row
@@ -502,7 +506,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		valLabel.BackgroundTransparency = 1
 		valLabel.Font = Enum.Font.GothamBold
 		valLabel.TextColor3 = GOLD
-		valLabel.TextSize = math.max(13, math.floor(px(14)))
+		valLabel.TextSize = math.max(15, math.floor(px(16)))
 		valLabel.TextXAlignment = Enum.TextXAlignment.Right
 		valLabel.AnchorPoint = Vector2.new(1, 0)
 		valLabel.Position = UDim2.new(1, 0, 0, 0)
@@ -519,7 +523,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		sliderArea.Parent = row
 
 		-- Track
-		local trackH = px(8)
+		local trackH = px(12)
 		local trackFrame = Instance.new("Frame")
 		trackFrame.Name = "Track"
 		trackFrame.BackgroundColor3 = SLIDER_TRACK
@@ -551,7 +555,7 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		fillCorner.Parent = fill
 
 		-- Knob (sibling of track so it isn't clipped)
-		local knobSize = px(18)
+		local knobSize = px(26)
 		local sliderKnob = Instance.new("Frame")
 		sliderKnob.Name = "Knob"
 		sliderKnob.BackgroundColor3 = KNOB_COLOR
@@ -980,6 +984,72 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 		return btn
 	end
 
+	local function createCodeRow(parentFrame, layoutOrder)
+	local row = createRow(parentFrame, layoutOrder)
+	row.Name = "RedeemCodeRow"
+	row.Size = UDim2.new(0.9, 0, 0, px(94))
+	row.Position = UDim2.new(0.05, 0, 0, 0)
+
+		local input = Instance.new("TextBox")
+		input.Name = "CodeInput"
+		input.BackgroundColor3 = Color3.fromRGB(20, 23, 39)
+		input.ClearTextOnFocus = false
+		input.Font = Enum.Font.GothamMedium
+		input.PlaceholderText = "Enter code"
+		input.PlaceholderColor3 = DIM_TEXT
+		input.Text = ""
+		input.TextColor3 = WHITE
+		input.TextSize = math.max(16, math.floor(px(17)))
+		input.TextXAlignment = Enum.TextXAlignment.Left
+		input.Size = UDim2.new(0.68, -px(8), 0, px(56))
+		input.Position = UDim2.new(0, 0, 0.5, 0)
+		input.AnchorPoint = Vector2.new(0, 0.5)
+		input.Parent = row
+		local inputCorner = Instance.new("UICorner")
+		inputCorner.CornerRadius = UDim.new(0, px(8))
+		inputCorner.Parent = input
+		local inputStroke = Instance.new("UIStroke")
+		inputStroke.Color = CARD_STROKE
+		inputStroke.Transparency = 0.25
+		inputStroke.Parent = input
+		local inputPad = Instance.new("UIPadding")
+		inputPad.PaddingLeft = UDim.new(0, px(10))
+		inputPad.PaddingRight = UDim.new(0, px(8))
+		inputPad.Parent = input
+
+		local redeem = Instance.new("TextButton")
+		redeem.Name = "RedeemButton"
+		redeem.AutoButtonColor = false
+		redeem.BackgroundColor3 = BTN_BG
+		redeem.Font = Enum.Font.GothamBold
+		redeem.Text = "REDEEM"
+		redeem.TextColor3 = WHITE
+		redeem.TextSize = math.max(15, math.floor(px(16)))
+		redeem.Size = UDim2.new(0.32, 0, 0, px(56))
+		redeem.Position = UDim2.new(1, 0, 0.5, 0)
+		redeem.AnchorPoint = Vector2.new(1, 0.5)
+		redeem.Parent = row
+		local redeemCorner = Instance.new("UICorner")
+		redeemCorner.CornerRadius = UDim.new(0, px(8))
+		redeemCorner.Parent = redeem
+		local redeemStroke = Instance.new("UIStroke")
+		redeemStroke.Color = BTN_STROKE
+		redeemStroke.Transparency = 0.2
+		redeemStroke.Parent = redeem
+
+		redeem.MouseButton1Click:Connect(function()
+			local code = string.gsub(input.Text or "", "^%s*(.-)%s*$", "%1")
+			if code == "" then
+				return
+			end
+			local remotes = game:GetService("ReplicatedStorage")
+			local remote = remotes:FindFirstChild("RedeemCode")
+			if remote and remote:IsA("RemoteFunction") then
+				pcall(function() remote:InvokeServer(code) end)
+			end
+		end)
+	end
+
 	---------------------------------------------------------------------------
 	-- POPUP helper (Controls / Credits)
 	---------------------------------------------------------------------------
@@ -1146,11 +1216,12 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 
 	local rootLayout = Instance.new("UIListLayout")
 	rootLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rootLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	rootLayout.Padding = UDim.new(0, px(10))
 	rootLayout.Parent = root
 
 	local rootPad = Instance.new("UIPadding")
-	rootPad.PaddingTop = UDim.new(0, px(6))
+	rootPad.PaddingTop = UDim.new(0, px(48))
 	rootPad.PaddingBottom = UDim.new(0, px(16))
 	rootPad.PaddingLeft = UDim.new(0, px(8))
 	rootPad.PaddingRight = UDim.new(0, px(8))
@@ -1172,21 +1243,22 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 	createSlider(root, "SFX Volume", "SFXVolume", 0, 1, 0.01,
 		function(v) return math.floor(v * 100) .. "%" end, nextOrder())
 
+	local sectionGap = Instance.new("Frame")
+	sectionGap.Name = "SoundCodesGap"
+	sectionGap.BackgroundTransparency = 1
+	sectionGap.BorderSizePixel = 0
+	sectionGap.Size = UDim2.new(0.9, 0, 0, px(22))
+	sectionGap.LayoutOrder = nextOrder()
+	sectionGap.Parent = root
 
 	---------------------------------------------------------------------------
 	-- GAMEPLAY section removed per request (keep menu minimal)
 
 	---------------------------------------------------------------------------
-	-- UI section
+	-- CODES section (the visual/UI preferences are fixed game-wide)
 	---------------------------------------------------------------------------
-	createSectionHeader(root, "UI", nextOrder())
-	createToggle(root, "Player Highlights", "ShowPlayerHighlights", nextOrder())
-	createToggle(root, "Always Show XP Text", "AlwaysShowXPText", nextOrder())
-	-- My Health Display option removed: enforce AboveCharacter-only HUD
-	createHealthBarsGroup(root, nextOrder())
-	createToggle(root, "Show Player Markers", "ShowPlayerMarkers", nextOrder())
-	createToggle(root, "Show Player Rings", "ShowPlayerRings", nextOrder())
-	-- UI Scale removed per request
+	createSectionHeader(root, "CODES", nextOrder())
+	createCodeRow(root, nextOrder())
 
 	---------------------------------------------------------------------------
 	-- OTHER section removed per request
