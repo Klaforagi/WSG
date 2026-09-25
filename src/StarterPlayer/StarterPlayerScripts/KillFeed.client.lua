@@ -28,7 +28,8 @@ screen.Parent = playerGui
 local frame = Instance.new("Frame")
 frame.Name = "Container"
 frame.AnchorPoint = Vector2.new(1, 0)
-frame.Position = UDim2.new(1, -16, 0.10, 0)
+-- Top-right buttons start at 12px and are 44px tall; leave a 12px gap below.
+frame.Position = UDim2.new(1, -16, 0, 68)
 frame.Size = UDim2.new(0, 0, 0.30, 0)
 frame.AutomaticSize = Enum.AutomaticSize.X
 frame.BackgroundTransparency = 1
