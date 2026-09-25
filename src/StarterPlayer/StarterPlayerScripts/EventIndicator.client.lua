@@ -668,7 +668,6 @@ end
 local function showCoinPopup(worldPosition, amount, popupKind, eventKind, xpAmount)
     local isEventReward = popupKind == "EventReward"
     local isGoldRush = eventKind == "GoldRush"
-    local isGoblinRaid = eventKind == "GoblinRaid"
 
     local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
     local collectSound = soundsFolder and soundsFolder:FindFirstChild("Collect")
@@ -689,7 +688,7 @@ local function showCoinPopup(worldPosition, amount, popupKind, eventKind, xpAmou
     anchor.Parent = workspace
 
     local gui = Instance.new("BillboardGui")
-    gui.Size = isGoblinRaid and UDim2.new(0, 220, 0, 64) or (isEventReward and UDim2.new(0, 160, 0, 52) or UDim2.new(0, 120, 0, 44))
+    gui.Size = isEventReward and UDim2.new(0, 160, 0, 52) or UDim2.new(0, 120, 0, 44)
     gui.StudsOffset = isEventReward and Vector3.new(0, 4.1, 0) or Vector3.new(0, 3, 0)
     gui.AlwaysOnTop = true
     gui.Adornee = anchor
@@ -698,22 +697,11 @@ local function showCoinPopup(worldPosition, amount, popupKind, eventKind, xpAmou
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(1, 0, 1, 0)
     label.BackgroundTransparency = 1
-    if isGoblinRaid then
-        label.Text = "Goblin defeated! +" .. tostring(amount) .. " coins"
-        local xp = tonumber(xpAmount) or 0
-        if xp > 0 then
-            label.Text = label.Text .. "\n+" .. tostring(xp) .. " XP"
-        end
-    else
-        label.Text = "+" .. tostring(amount) .. " coins"
-    end
+    label.Text = "+" .. tostring(amount) .. " coins"
     label.Font = Enum.Font.GothamBold
-    label.TextSize = isGoblinRaid and 20 or (isEventReward and 28 or 22)
+    label.TextSize = isEventReward and 28 or 22
     label.TextWrapped = true
-    if isGoblinRaid then
-        label.TextColor3 = Color3.fromRGB(180, 255, 140)
-        label.TextStrokeColor3 = Color3.fromRGB(18, 62, 18)
-    elseif isGoldRush then
+    if isGoldRush then
         label.TextColor3 = isEventReward and Color3.fromRGB(255, 235, 130) or Color3.fromRGB(255, 215, 80)
         label.TextStrokeColor3 = Color3.fromRGB(96, 54, 0)
     else
@@ -758,13 +746,6 @@ do
         end)
     end
 
-    local goblinRewardRemote = ReplicatedStorage:FindFirstChild("GoblinRaidReward")
-        or ReplicatedStorage:WaitForChild("GoblinRaidReward", 15)
-    if goblinRewardRemote then
-        goblinRewardRemote.OnClientEvent:Connect(function(worldPos, coins, xp)
-            showCoinPopup(worldPos, coins, "EventReward", "GoblinRaid", xp)
-        end)
-    end
 end
 
 -- Clean up on match end

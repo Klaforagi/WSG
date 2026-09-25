@@ -401,6 +401,10 @@ local function getMobScoreReward(model, fallbackName)
     return 3
 end
 
+local function isGoblinRaidBuffed(model)
+    return model and model:IsA("Model") and model:GetAttribute("GoblinRaidBuff") == true
+end
+
 local function fireKillCard(victimPlayer, payload)
     if not victimPlayer or not victimPlayer.Parent then return end
     -- Sanitize Instance fields: a destroyed/unparented Instance will throw when
@@ -664,6 +668,9 @@ local function onHumanoidDied(humanoid, model)
     -- Award team score
     if shouldCountElimination and killer.Team then
         local scoreDelta = isPlayerVictim and KILL_POINTS or getMobScoreReward(model, victimName)
+        if not isPlayerVictim and isGoblinRaidBuffed(model) then
+            scoreDelta *= 2
+        end
         pcall(function() AddScore:Fire(killer.Team.Name, scoreDelta) end)
     end
 
@@ -694,6 +701,9 @@ local function onHumanoidDied(humanoid, model)
     local coinAward = 0
     if shouldCountElimination and CurrencyService and CurrencyService.AddCoins then
         local base = isPlayerVictim and PVP_COIN_REWARD or getMobCoinReward(model, victimName)
+        if not isPlayerVictim and isGoblinRaidBuffed(model) then
+            base *= 2
+        end
         local ok, result = pcall(function() return CurrencyService:AddCoins(killer, base, "elimination") end)
         coinAward = (ok and type(result) == "number") and result or base
     end
@@ -724,6 +734,7 @@ local function onHumanoidDied(humanoid, model)
             local mobXP = 3
             pcall(function()
                 if XPModule.GetMobXP then mobXP = XPModule.GetMobXP(rewardMobName) end
+                if isGoblinRaidBuffed(model) then mobXP *= 2 end
             end)
             pcall(function() XPModule.AwardXP(killer, "MobKill", mobXP, { coinAward = coinAward }) end)
         end

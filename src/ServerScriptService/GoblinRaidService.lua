@@ -29,13 +29,6 @@ pcall(function()
     XPModule = require(ServerScriptService:WaitForChild("XPServiceModule", 10))
 end)
 
-local RewardRemote = ReplicatedStorage:FindFirstChild("GoblinRaidReward")
-if not RewardRemote then
-    RewardRemote = Instance.new("RemoteEvent")
-    RewardRemote.Name = "GoblinRaidReward"
-    RewardRemote.Parent = ReplicatedStorage
-end
-
 local ZombieKillRemote = ReplicatedStorage:FindFirstChild("ZombieKill")
 if not ZombieKillRemote then
     ZombieKillRemote = Instance.new("RemoteEvent")
@@ -63,6 +56,7 @@ local _totalSpawned = 0
 local _defeated = 0
 local _generation = 0
 local _warnedMissingTemplate = false
+local forgetRecord
 
 local function getDef()
     return EventConfig.EventDefs and EventConfig.EventDefs[EVENT_ID] or {}
@@ -168,6 +162,49 @@ local function getRaidFolder()
     folder.Name = "GoblinRaidMobs"
     folder.Parent = Workspace
     return folder
+end
+
+local function markRaidGoblin(model)
+    if not model or not model:IsA("Model") then return end
+    model:SetAttribute("GoblinRaidBuff", true)
+    model:SetAttribute("EventName", EVENT_ID)
+    model:SetAttribute("Source", EVENT_ID)
+end
+
+local function registerExistingGoblin(model)
+    if not model or not model:IsA("Model") or _records[model] then return nil end
+    if model:GetAttribute("TemplateName") ~= TEMPLATE_NAME and model.Name ~= TEMPLATE_NAME then
+        return nil
+    end
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    if not humanoid or humanoid.Health <= 0 then return nil end
+
+    markRaidGoblin(model)
+    local record = {
+        model = model,
+        humanoid = humanoid,
+        mobTag = DEFAULT_MOB_TAG,
+        spawnPosition = model:GetPivot().Position,
+        bonusAwarded = true,
+        existing = true,
+    }
+    _records[model] = record
+    record.diedConn = humanoid.Died:Connect(function()
+        _defeated = _defeated + 1
+        forgetRecord(record)
+    end)
+    record.ancestryConn = model.AncestryChanged:Connect(function(_, parent)
+        if parent == nil then forgetRecord(record) end
+    end)
+    return record
+end
+
+local function markExistingGoblins()
+    for _, desc in ipairs(Workspace:GetDescendants()) do
+        if desc:IsA("Model") and (desc.Name == TEMPLATE_NAME or desc:GetAttribute("TemplateName") == TEMPLATE_NAME) then
+            registerExistingGoblin(desc)
+        end
+    end
 end
 
 local function addBasePartsFrom(container, output)
@@ -304,53 +341,7 @@ local function resolveKiller(humanoid)
     return nil
 end
 
-local function fireRewardPopup(player, worldPosition, coins, xp)
-    if not player or not player.Parent then return end
-    pcall(function()
-        RewardRemote:FireClient(player, worldPosition, coins or 0, xp or 0)
-    end)
-end
-
-local function awardRaidBonus(record)
-    if not record or record.bonusAwarded then return end
-    record.bonusAwarded = true
-
-    local killer = resolveKiller(record.humanoid)
-    if not killer then return end
-
-    local minCoins = math.floor(getNumber("BonusCoinsMin", 10))
-    local maxCoins = math.floor(getNumber("BonusCoinsMax", 20))
-    if maxCoins < minCoins then
-        maxCoins = minCoins
-    end
-    local coinBonus = math.random(minCoins, maxCoins)
-    local grantedCoins = coinBonus
-
-    if CurrencyService and CurrencyService.AddCoins then
-        local ok, result = pcall(function()
-            return CurrencyService:AddCoins(killer, coinBonus, "GoblinRaidBonus")
-        end)
-        if ok and type(result) == "number" then
-            grantedCoins = result
-        end
-    end
-
-    local xpBonus = math.max(0, math.floor(getNumber("BonusXP", 3)))
-    if xpBonus > 0 and XPModule and XPModule.AwardXP then
-        pcall(function()
-            XPModule.AwardXP(killer, "GoblinRaid", xpBonus, {
-                coinAward = grantedCoins,
-                eventName = EVENT_ID,
-            })
-        end)
-    end
-
-    local root = getRootPart(record.model)
-    local popupPosition = root and root.Position or record.spawnPosition or Vector3.new()
-    fireRewardPopup(killer, popupPosition, grantedCoins, xpBonus)
-end
-
-local function forgetRecord(record)
+forgetRecord = function(record)
     if not record then return end
     if record.model then
         _records[record.model] = nil
@@ -397,10 +388,28 @@ local function cleanupRecord(record)
     local model = record.model
     local humanoid = record.humanoid
 
+    local isAlive = humanoid and humanoid.Health > 0
+    local isFullHealth = isAlive and humanoid.Health >= (humanoid.MaxHealth - 0.01)
+
+    -- Untouched event goblins are removed when the event ends. Damaged goblins
+    -- stay in the world and return to normal goblin rewards/behavior.
+    if isAlive and not isFullHealth then
+        if record.combatHandle and record.combatHandle.Stop and not record.existing then
+            -- Keep spawned goblins active; their AI continues normally after
+            -- the event and their raid reward marker is simply removed.
+            record.combatHandle = nil
+        end
+        pcall(function() model:SetAttribute("GoblinRaidBuff", false) end)
+        pcall(function() model:SetAttribute("EventName", nil) end)
+        pcall(function() model:SetAttribute("Source", nil) end)
+        pcall(function() CollectionService:RemoveTag(model, RAID_TAG) end)
+        forgetRecord(record)
+        return
+    end
+
     if record.combatHandle and record.combatHandle.Stop then
         pcall(function() record.combatHandle.Stop() end)
     end
-
     forgetRecord(record)
 
     if model and model.Parent then
@@ -418,7 +427,7 @@ local function countAliveRaidGoblins()
     local count = 0
     for model, record in pairs(_records) do
         local humanoid = record.humanoid
-        if model and model.Parent and humanoid and humanoid.Health > 0 then
+        if model and model.Parent and humanoid and humanoid.Health > 0 and not record.existing then
             count = count + 1
         end
     end
@@ -426,12 +435,13 @@ local function countAliveRaidGoblins()
 end
 
 local function spawnEffect(position)
+	local effectColor = Color3.fromRGB(110, 235, 105)
     local burst = Instance.new("Part")
     burst.Name = "GoblinRaidSpawnBurst"
     burst.Shape = Enum.PartType.Ball
     burst.Size = Vector3.new(1.2, 1.2, 1.2)
     burst.Material = Enum.Material.Neon
-    burst.Color = Color3.fromRGB(90, 210, 95)
+    burst.Color = effectColor
     burst.Anchored = true
     burst.CanCollide = false
     burst.CanTouch = false
@@ -440,14 +450,66 @@ local function spawnEffect(position)
     burst.CFrame = CFrame.new(position)
     burst.Parent = Workspace
 
+	local light = Instance.new("PointLight")
+	light.Color = effectColor
+	light.Brightness = 3
+	light.Range = 12
+	light.Parent = burst
+
+	local particles = Instance.new("ParticleEmitter")
+	particles.Name = "GoblinRaidSpawnParticles"
+	particles.Color = ColorSequence.new(effectColor)
+	particles.LightEmission = 0.8
+	particles.Lifetime = NumberRange.new(0.35, 0.7)
+	particles.Speed = NumberRange.new(7, 13)
+	particles.SpreadAngle = Vector2.new(360, 360)
+	particles.Rate = 0
+	particles.Size = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.3),
+		NumberSequenceKeypoint.new(0.5, 0.8),
+		NumberSequenceKeypoint.new(1, 0),
+	})
+	particles.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0.1),
+		NumberSequenceKeypoint.new(1, 1),
+	})
+	particles.Parent = burst
+	particles:Emit(24)
+
+	local ring = Instance.new("Part")
+	ring.Name = "GoblinRaidSpawnRing"
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Size = Vector3.new(0.15, 2.5, 2.5)
+	ring.Material = Enum.Material.Neon
+	ring.Color = effectColor
+	ring.Transparency = 0.15
+	ring.Anchored = true
+	ring.CanCollide = false
+	ring.CanTouch = false
+	ring.CanQuery = false
+	ring.CFrame = CFrame.new(position) * CFrame.Angles(0, 0, math.rad(90))
+	ring.Parent = Workspace
+
     local tween = TweenService:Create(burst, TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
         Size = Vector3.new(5, 5, 5),
         Transparency = 1,
     })
     tween:Play()
+	local ringTween = TweenService:Create(ring, TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Size = Vector3.new(0.15, 9, 9),
+		Transparency = 1,
+	})
+	ringTween:Play()
+	local lightTween = TweenService:Create(light, TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Brightness = 0,
+	})
+	lightTween:Play()
     task.delay(0.45, function()
         if burst and burst.Parent then burst:Destroy() end
     end)
+	task.delay(0.7, function()
+		if ring and ring.Parent then ring:Destroy() end
+	end)
 end
 
 local function spawnGoblin()
@@ -473,6 +535,7 @@ local function spawnGoblin()
     mob:SetAttribute("Source", EVENT_ID)
     mob:SetAttribute("TemplateName", TEMPLATE_NAME)
     mob:SetAttribute("SpawnPortalGroup", EVENT_ID)
+    mob:SetAttribute("GoblinRaidBuff", true)
 
     local root = getRootPart(mob)
     if root then
@@ -523,7 +586,6 @@ local function spawnGoblin()
 
     record.diedConn = humanoid.Died:Connect(function()
         _defeated = _defeated + 1
-        awardRaidBonus(record)
         forgetRecord(record)
     end)
 
@@ -567,6 +629,10 @@ function GoblinRaidService:Start()
     _totalSpawned = 0
     _defeated = 0
     _records = {}
+
+    -- Existing goblins are part of the raid too; the event only adds its
+    -- normal wave on top of them.
+    markExistingGoblins()
 
     print("[GoblinRaid] Started")
 
