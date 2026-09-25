@@ -21,21 +21,12 @@ local CORE_HUD_Y_NUDGE = 4
 
 local function layoutTopHudButtonsFrame(frame)
     if not frame then return end
-    local x = 176
-    local y = 8 + CORE_HUD_Y_NUDGE
-    local ok, inset = pcall(function()
-        return GuiService.TopbarInset
-    end)
-    if ok and inset and typeof(inset) == "Rect" and inset.Width > 0 and inset.Width < 400 then
-        x = inset.Min.X + inset.Width + CORE_HUD_UNIBAR_GAP
-        y = inset.Min.Y + math.max(0, (inset.Height - CORE_HUD_BTN_SIZE) * 0.5) + CORE_HUD_Y_NUDGE
-    end
-    frame.AnchorPoint = Vector2.new(0, 0)
-    frame.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
-    frame.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE * 2 + CORE_HUD_BTN_GAP, CORE_HUD_BTN_SIZE)
+    frame.AnchorPoint = Vector2.new(1, 0)
+    frame.Position = UDim2.new(1, -16, 0, 12)
+    frame.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE * 3 + CORE_HUD_BTN_GAP * 2, CORE_HUD_BTN_SIZE)
 end
 
--- Shared top-left container for Settings + Daily Login, parked just right of chat.
+-- Shared top-right container: Emotes, Daily Login, Settings.
 local function ensureTopRightButtonsContainer()
     local topGui = playerGui:FindFirstChild("TopRightButtonsGui")
     if not topGui then
@@ -1159,7 +1150,7 @@ local function CreateLegacyLauncherButtonUnused(def)
     return btn, badge
 end
 
--- Compact top-left utility button for opening Options (Roblox unibar chip style).
+-- Compact top-right utility button for opening Options (Roblox unibar chip style).
 local function CreateHudOptionsButton(onActivated)
     local existingHudGui = playerGui:FindFirstChild("OptionsHudGui")
     if existingHudGui then
@@ -1178,7 +1169,7 @@ local function CreateHudOptionsButton(onActivated)
     container.Name = "HudControls"
     container.BackgroundTransparency = 1
     container.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE, CORE_HUD_BTN_SIZE)
-    container.LayoutOrder = 1
+    container.LayoutOrder = 3
     local _, topFrame = ensureTopRightButtonsContainer()
     container.Parent = topFrame
 
@@ -3137,6 +3128,54 @@ local function toggleOptionsMenu()
 end
 
 local optionsHudGui, optionsHudButton = CreateHudOptionsButton(toggleOptionsMenu)
+do
+    local _, topFrame = ensureTopRightButtonsContainer()
+    local previous = topFrame:FindFirstChild("EmotesButton")
+    if previous then previous:Destroy() end
+    local button = Instance.new("TextButton")
+    button.Name = "EmotesButton"
+    button.LayoutOrder = 1
+    button.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE, CORE_HUD_BTN_SIZE)
+    button.BackgroundColor3 = Color3.fromRGB(23, 23, 23)
+    button.BackgroundTransparency = 0.1
+    button.BorderSizePixel = 0
+    button.Text = ""
+    button.AutoButtonColor = true
+    button.Parent = topFrame
+    Instance.new("UICorner", button).CornerRadius = UDim.new(1, 0)
+
+    local face = Instance.new("Frame", button)
+    face.Size = UDim2.fromOffset(25, 25)
+    face.AnchorPoint = Vector2.new(0.5, 0.5)
+    face.Position = UDim2.fromScale(0.5, 0.5)
+    face.BackgroundTransparency = 1
+    Instance.new("UICorner", face).CornerRadius = UDim.new(1, 0)
+    local outline = Instance.new("UIStroke", face)
+    outline.Color = Color3.fromRGB(242, 245, 250)
+    outline.Thickness = 2
+    for _, x in ipairs({0.33, 0.67}) do
+        local eye = Instance.new("Frame", face)
+        eye.AnchorPoint = Vector2.new(0.5, 0.5)
+        eye.Position = UDim2.fromScale(x, 0.36)
+        eye.Size = UDim2.fromOffset(3, 4)
+        eye.BackgroundColor3 = outline.Color
+        eye.BorderSizePixel = 0
+        Instance.new("UICorner", eye).CornerRadius = UDim.new(1, 0)
+    end
+    for i = 0, 7 do
+        local angle = math.rad(25 + i * 130 / 7)
+        local segment = Instance.new("Frame", face)
+        segment.AnchorPoint = Vector2.new(0.5, 0.5)
+        segment.Position = UDim2.fromOffset(12.5 + math.cos(angle) * 7, 12 + math.sin(angle) * 7)
+        segment.Size = UDim2.fromOffset(3, 2)
+        segment.Rotation = math.deg(angle) + 90
+        segment.BackgroundColor3 = outline.Color
+        segment.BorderSizePixel = 0
+    end
+    button.Activated:Connect(function()
+        if _G.EmoteMenu and _G.EmoteMenu.Toggle then _G.EmoteMenu.Toggle() end
+    end)
+end
 
 local function ensureOptionsHudButton()
     if not optionsHudGui or not optionsHudGui.Parent or not optionsHudButton or not optionsHudButton.Parent then

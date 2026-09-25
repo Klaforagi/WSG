@@ -322,10 +322,11 @@ function MarketStallUI.Create(parent, options)
         end
         detailImage.Visible, viewport.Visible = isImage, not isImage
         if isImage then detailImage.Image = itemImage(item) end
+        -- Text and purchase state must not wait for avatar/animation loading.
+        updateLabels()
         if root.Visible then
             if isImage then preview:Stop() else preview:ShowItem(item) end
         end
-        updateLabels()
     end
     local function section(title, items, order)
         local container = make("Frame", scroll, { Size = UDim2.new(1,-8,0,0), AutomaticSize = Enum.AutomaticSize.Y,

@@ -237,7 +237,7 @@ local function OpenEmoteMenu()
     print("[EmoteClient] >>> OpenEmoteMenu() called")
     print("[EmoteClient]   emotePanel:", emotePanel and emotePanel:GetFullName() or "NIL")
     print("[EmoteClient]   emotePanel.Visible before Show:", emotePanel and emotePanel.Visible)
-    local equipped = GetEquippedEmotes()
+    local equipped = cachedEquipped
     print("[EmoteClient]   equipped emotes count:", #equipped)
     if #equipped > 0 then
         EmoteUI.RenderEquippedEmotes(emotePanel, equipped)
@@ -301,40 +301,15 @@ EmoteUI.OnShopClicked = function()
     OpenEmoteShop()
 end
 
-local function OpenEmoteMenuHold()
-    if IsEmoteMenuOpen() then
-        return
-    end
-
-    print("[EmoteClient] >>> OpenEmoteMenuHold()")
-    if MenuController then
-        MenuController.CloseAllMenus("Emote")
-    end
-    OpenEmoteMenu()
+local function OpenEmoteMenuToggle()
+    if MenuController then MenuController.OpenMenu("Emote") else OpenEmoteMenu() end
 end
 
-local function ReleaseEmoteMenuHold()
-    if not IsEmoteMenuOpen() then
-        return
-    end
-
-    print("[EmoteClient] >>> ReleaseEmoteMenuHold()")
-    local activated = false
-    if type(EmoteUI.TriggerHighlightedSelection) == "function" then
-        local ok, result = pcall(function()
-            return EmoteUI.TriggerHighlightedSelection(emotePanel)
-        end)
-        activated = ok and result == true
-    end
-
-    if activated then
-        return
-    end
-
-    if MenuController then
-        MenuController.CloseMenu("Emote")
+local function ToggleEmoteMenu()
+    if IsEmoteMenuOpen() then
+        if MenuController then MenuController.CloseMenu("Emote") else CloseEmoteMenu() end
     else
-        CloseEmoteMenu()
+        OpenEmoteMenuToggle()
     end
 end
 
@@ -361,7 +336,7 @@ if MenuController then
     print("[EmoteClient] Emote menu registered with MenuController")
 end
 
--- ── Keybind: hold F to keep the emote menu open (via ContextActionService) ──
+-- ── Keybind: press F to toggle the emote menu (via ContextActionService) ──
 --
 -- WHY CAS instead of InputBegan for the hotkey:
 --   1. Roblox's modern TextChatService chat uses an internal TextBox that
@@ -386,12 +361,11 @@ local function handleEmoteHotkey(_actionName, inputState, inputObject)
             return Enum.ContextActionResult.Pass
         end
 
-        OpenEmoteMenuHold()
+        ToggleEmoteMenu()
         return Enum.ContextActionResult.Sink
     end
 
     if inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
-        ReleaseEmoteMenuHold()
         return Enum.ContextActionResult.Sink
     end
 
@@ -430,16 +404,8 @@ end)
 -- ── Global API ────────────────────────────────────────────────────────────
 -- Exposed so other scripts (Shop, Inventory, etc.) can open/refresh the menu.
 _G.EmoteMenu = _G.EmoteMenu or {}
-_G.EmoteMenu.Toggle    = function()
-    if IsEmoteMenuOpen() then
-        ReleaseEmoteMenuHold()
-    else
-        OpenEmoteMenuHold()
-    end
-end
-_G.EmoteMenu.Open      = function()
-    OpenEmoteMenuHold()
-end
+_G.EmoteMenu.Toggle = ToggleEmoteMenu
+_G.EmoteMenu.Open = OpenEmoteMenuToggle
 _G.EmoteMenu.Close     = function()
     if MenuController then MenuController.CloseMenu("Emote") else CloseEmoteMenu() end
 end
@@ -463,6 +429,7 @@ task.spawn(function()
     local list = GetEquippedEmotes()
     if list and #list > 0 then
         cachedEquipped = list
+        if IsEmoteMenuOpen() then EmoteUI.RenderEquippedEmotes(emotePanel, list) end
         print("[EmoteClient] initial equipped emotes loaded:", #list)
     end
 
@@ -487,7 +454,7 @@ task.spawn(function()
 end)
 
 -- ── [REMOVED] Debug button was here — now deleted ────────────────────────
--- Hold F to keep the emote wheel open, then release to select or close.
+-- Press F or the face button to toggle; select an emote to play and close.
 -- Destroy any leftover EmoteDebugBtn ScreenGui from previous sessions.
 do
     local staleDebug = playerGui:FindFirstChild("EmoteDebugBtn")

@@ -148,6 +148,7 @@ local function displayItem(item)
 	panel.BorderSizePixel = 0
 	panel.ZIndex = 100
 	panel.Parent = screenGui
+	AlertBannerStyle.BindResponsiveScale(panel)
 
 	local layout = Instance.new("UIListLayout")
 	layout.FillDirection = Enum.FillDirection.Horizontal

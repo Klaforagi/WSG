@@ -126,18 +126,9 @@ local CORE_HUD_Y_NUDGE = 4
 
 local function layoutTopHudButtonsFrame(frame)
     if not frame then return end
-    local x = 176
-    local y = 8 + CORE_HUD_Y_NUDGE
-    local ok, inset = pcall(function()
-        return GuiService.TopbarInset
-    end)
-    if ok and inset and typeof(inset) == "Rect" and inset.Width > 0 and inset.Width < 400 then
-        x = inset.Min.X + inset.Width + CORE_HUD_UNIBAR_GAP
-        y = inset.Min.Y + math.max(0, (inset.Height - CORE_HUD_BTN_SIZE) * 0.5) + CORE_HUD_Y_NUDGE
-    end
-    frame.AnchorPoint = Vector2.new(0, 0)
-    frame.Position = UDim2.fromOffset(math.floor(x + 0.5), math.floor(y + 0.5))
-    frame.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE * 2 + CORE_HUD_BTN_GAP, CORE_HUD_BTN_SIZE)
+    frame.AnchorPoint = Vector2.new(1, 0)
+    frame.Position = UDim2.new(1, -16, 0, 12)
+    frame.Size = UDim2.fromOffset(CORE_HUD_BTN_SIZE * 3 + CORE_HUD_BTN_GAP * 2, CORE_HUD_BTN_SIZE)
 end
 
 local function ensureTopRightButtonsFrame()

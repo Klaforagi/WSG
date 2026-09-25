@@ -65,7 +65,7 @@ local function sanitizeRig(rig)
 	return rig
 end
 
-local function buildAvatarRig()
+local function buildUncachedAvatarRig()
 	local character = player and player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
@@ -102,6 +102,19 @@ local function buildAvatarRig()
 	end
 
 	return nil
+end
+
+local cachedRig, cachedCharacter
+local function buildAvatarRig()
+	local character = player and player.Character
+	if cachedRig and cachedCharacter == character then return cachedRig:Clone() end
+	local rig = buildUncachedAvatarRig()
+	if not rig then return nil end
+	if character ~= player.Character then rig:Destroy(); return nil end
+	if cachedRig then cachedRig:Destroy() end
+	cachedCharacter = character
+	cachedRig = rig:Clone()
+	return rig
 end
 
 local function setupCamera(viewportFrame, worldModel)
@@ -147,6 +160,7 @@ function CosmeticPreviewController.new(viewportFrame)
 	self._connections = {}
 	self._track = nil
 	self._activeMode = nil
+	self._generation = 0
 	return self
 end
 
@@ -160,6 +174,7 @@ function CosmeticPreviewController:_disconnect()
 end
 
 function CosmeticPreviewController:Stop()
+	self._generation += 1
 	self:_disconnect()
 	if self._track then
 		pcall(function()
@@ -179,6 +194,7 @@ end
 
 function CosmeticPreviewController:ShowIdle()
 	self:Stop()
+	local generation = self._generation
 	local viewportFrame = self.ViewportFrame
 	if not viewportFrame then
 		return
@@ -188,6 +204,7 @@ function CosmeticPreviewController:ShowIdle()
 	if not rig then
 		return
 	end
+	if generation ~= self._generation or not viewportFrame.Parent then rig:Destroy(); return end
 
 	local worldModel = Instance.new("WorldModel")
 	worldModel.Name = "IdlePreviewWorld"
@@ -209,6 +226,7 @@ end
 
 function CosmeticPreviewController:ShowTrail(effectId)
 	self:Stop()
+	local generation = self._generation
 	if not self.ViewportFrame then
 		return
 	end
@@ -216,6 +234,7 @@ function CosmeticPreviewController:ShowTrail(effectId)
 		local ok = pcall(function()
 			EffectsPreview.Update(self.ViewportFrame, effectId or "DefaultTrail")
 		end)
+		if generation ~= self._generation then return end
 		if ok then
 			self._activeMode = "Trail"
 			return
@@ -226,6 +245,7 @@ end
 
 function CosmeticPreviewController:ShowEmote(emoteId)
 	self:Stop()
+	local generation = self._generation
 	local viewportFrame = self.ViewportFrame
 	if not viewportFrame then
 		return
@@ -236,6 +256,7 @@ function CosmeticPreviewController:ShowEmote(emoteId)
 	if not rig then
 		return
 	end
+	if generation ~= self._generation or not viewportFrame.Parent then rig:Destroy(); return end
 
 	local worldModel = Instance.new("WorldModel")
 	worldModel.Name = "EmotePreviewWorld"

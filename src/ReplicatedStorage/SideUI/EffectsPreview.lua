@@ -66,7 +66,7 @@ local CAM_FOV    = 50
 
 -- BUILD PREVIEW RIG
 --------------------------------------------------------------------------------
-local function buildRig()
+local function buildUncachedRig()
     local player = Players.LocalPlayer
     local character = player and player.Character
 
@@ -114,6 +114,21 @@ end
 --------------------------------------------------------------------------------
 -- POSE RIG IN DASH-LEAN
 --------------------------------------------------------------------------------
+local cachedRig, cachedCharacter
+local function buildRig()
+    local character = Players.LocalPlayer and Players.LocalPlayer.Character
+    if cachedRig and cachedCharacter == character then
+        return cachedRig:Clone()
+    end
+    local rig = buildUncachedRig()
+    if not rig then return nil end
+    if character ~= Players.LocalPlayer.Character then rig:Destroy(); return nil end
+    if cachedRig then cachedRig:Destroy() end
+    cachedCharacter = character
+    cachedRig = rig:Clone()
+    return rig
+end
+
 local function poseDashLean(rig)
     local hrp = rig:FindFirstChild("HumanoidRootPart")
     if not hrp then return end

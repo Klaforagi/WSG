@@ -3153,7 +3153,8 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             local histCard = Instance.new("Frame")
             histCard.Name             = "HistEntry_" .. tostring(i)
             histCard.BackgroundColor3 = ROW_CLAIMED_BG
-            histCard.Size             = UDim2.new(1, -px(6), 0, px(98))
+            histCard.Size             = UDim2.new(1, -px(6), 0, 0)
+            histCard.AutomaticSize    = Enum.AutomaticSize.Y
             histCard.LayoutOrder      = 10 + i
             histCard.Parent           = contentPanel
 
@@ -3201,20 +3202,32 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hTitle.Position  = UDim2.new(0, px(38), 0, 0)
             hTitle.Parent    = histCard
 
+            -- Give the date and description the full row width and grow with wrapping.
+            local historyBody = Instance.new("Frame", histCard)
+            historyBody.Name = "Details"
+            historyBody.BackgroundTransparency = 1
+            historyBody.Position = UDim2.fromOffset(0, math.max(38, px(50)))
+            historyBody.Size = UDim2.new(1, 0, 0, 0)
+            historyBody.AutomaticSize = Enum.AutomaticSize.Y
+            local historyLayout = Instance.new("UIListLayout", historyBody)
+            historyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            historyLayout.Padding = UDim.new(0, math.max(5, px(6)))
+
             -- Date line (category label removed for cleaner look)
             local dateStr = formatAchievedOn(entry.achievedOn) or ""
             local hMeta   = Instance.new("TextLabel")
             hMeta.Name = "Meta"
             hMeta.BackgroundTransparency = 1
-            hMeta.Font      = Enum.Font.Gotham
+            hMeta.Font      = Enum.Font.GothamMedium
             hMeta.Text      = dateStr
-            hMeta.TextColor3 = Color3.fromRGB(180, 190, 205)
-            hMeta.TextSize  = achTextPx(14, 11)
+            hMeta.TextColor3 = Color3.fromRGB(218, 225, 238)
+            hMeta.TextSize  = achTextPx(18, 15)
             hMeta.TextXAlignment = Enum.TextXAlignment.Left
-            hMeta.TextTruncate = Enum.TextTruncate.AtEnd
-            hMeta.Size      = UDim2.new(1, -px(170), 0, px(18))
-            hMeta.Position  = UDim2.new(0, px(38), 0, px(28))
-            hMeta.Parent    = histCard
+            hMeta.TextWrapped = true
+            hMeta.AutomaticSize = Enum.AutomaticSize.Y
+            hMeta.Size      = UDim2.new(1, 0, 0, 0)
+            hMeta.LayoutOrder = 1
+            hMeta.Parent    = historyBody
 
             -- Desc
             local hDesc = Instance.new("TextLabel")
@@ -3224,13 +3237,15 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hDesc.Text      = entry.desc or ""
             hDesc.TextColor3 = Color3.fromRGB(228, 232, 242)
             hDesc.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-            hDesc.TextStrokeTransparency = 0.68
-            hDesc.TextSize  = achTextPx(14, 11)
+            hDesc.TextStrokeTransparency = 1
+            hDesc.TextSize  = achTextPx(19, 16)
             hDesc.TextXAlignment = Enum.TextXAlignment.Left
             hDesc.TextWrapped = true
-            hDesc.Size      = UDim2.new(1, -px(170), 0, px(32))
-            hDesc.Position  = UDim2.new(0, px(38), 0, px(48))
-            hDesc.Parent    = histCard
+            hDesc.TextYAlignment = Enum.TextYAlignment.Top
+            hDesc.AutomaticSize = Enum.AutomaticSize.Y
+            hDesc.Size      = UDim2.new(1, 0, 0, 0)
+            hDesc.LayoutOrder = 2
+            hDesc.Parent    = historyBody
 
             -- Reward on the right (coins + AP)
             local entryAP = tonumber(entry.ap) or 0
@@ -3253,9 +3268,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
             hReward.TextSize  = achTextPx(16, 13)
             hReward.TextXAlignment = Enum.TextXAlignment.Right
             hReward.TextYAlignment = Enum.TextYAlignment.Center
-            hReward.AnchorPoint = Vector2.new(1, 0.5)
-            hReward.Size      = UDim2.new(0, px(124), 0, px(46))
-            hReward.Position  = UDim2.new(1, 0, 0.5, 0)
+            hReward.AnchorPoint = Vector2.new(1, 0)
+            hReward.Size      = UDim2.new(0, px(124), 0, math.max(32, px(46)))
+            hReward.Position  = UDim2.new(1, 0, 0, 0)
             hReward.Parent    = histCard
         end
     end

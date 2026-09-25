@@ -125,7 +125,7 @@ EffectDefs.Effects = {
         Color = Color3.fromRGB(255, 255, 255), CoinCost = 3000, IsFree = false, ShopVisible = true, SortOrder = 6, IconGlyph = "\u{2550}",
     },
     {
-        Id = "TeamTrail", DisplayName = "Team Trail", Category = "Effects", SubType = "DashTrail",
+        Id = "TeamTrail", DisplayName = "Team Color Trail", Category = "Effects", SubType = "DashTrail",
         Color = Color3.fromRGB(255, 220, 55), CoinCost = 10000, IsFree = false, ShopVisible = true, SortOrder = 10, IconGlyph = "\u{2550}", IsTeamTrail = true,
     },
 }

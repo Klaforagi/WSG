@@ -24,6 +24,7 @@ WeaponEnchantConfig.ENCHANT_CHANCE = 0.20
 -- Weapons that always roll an enchant, even if the crate chance fails.
 WeaponEnchantConfig.GuaranteedEnchantWeapons = {
     ["Ethereal Bow"] = true,
+    ["Ethereal Sword"] = true,
 }
 
 -- Handle / mesh tint used by Ethereal Sword and Ethereal Bow.

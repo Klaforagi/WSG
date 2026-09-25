@@ -85,12 +85,8 @@ local NAVY_MID   = UITheme and UITheme.NAVY_MID   or Color3.fromRGB(16, 20, 40)
 
 -- ── Responsive scaling ────────────────────────────────────────────────────
 local function px(base)
-    local cam = workspace.CurrentCamera
-    local screenY = 1080
-    if cam and cam.ViewportSize and cam.ViewportSize.Y > 0 then
-        screenY = cam.ViewportSize.Y
-    end
-    return math.max(1, math.round(base * screenY / 1080))
+    -- Build at a stable design size; fit the whole wheel when the screen changes.
+    return math.max(1, math.round(base))
 end
 
 -- ── EmoteConfig ───────────────────────────────────────────────────────────
@@ -359,72 +355,41 @@ end
 --------------------------------------------------------------------------------
 -- Show the wheel with a scale-in + fade animation.
 --------------------------------------------------------------------------------
+local function fitWheel(panel)
+    local wheel = panel:FindFirstChild("WheelFrame")
+    if not wheel then return end
+    local available = panel.AbsoluteSize
+    if available.X < 100 or available.Y < 100 then
+        local camera = workspace.CurrentCamera
+        available = camera and camera.ViewportSize or Vector2.new(1920, 1080)
+    end
+    if available.X < 100 or available.Y < 100 then return end
+    local scale = wheel:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", wheel)
+    scale.Scale = math.min(1, (available.X - 24) / wheel.Size.X.Offset,
+        (available.Y - 24) / wheel.Size.Y.Offset)
+end
+
 function EmoteUI.Show(panel)
     if not panel then return end
-    print("[EmoteUI] emote wheel opened")
     clearHighlightedSelection(panel)
-    panel.Visible = true
-
-    local wheel = panel:FindFirstChild("WheelFrame")
-    if wheel then
-        local scale = wheel:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", wheel)
-        scale.Scale = 0.6
-        local infoScale = TweenInfo.new(0.22, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
-        TweenService:Create(scale, infoScale, {Scale = 1.0}):Play()
+    fitWheel(panel)
+    if not panel:GetAttribute("WheelResizeBound") then
+        panel:SetAttribute("WheelResizeBound", true)
+        panel:GetPropertyChangedSignal("AbsoluteSize"):Connect(function() fitWheel(panel) end)
     end
-
     local backdrop = panel:FindFirstChild("Backdrop")
-    if backdrop then
-        backdrop.BackgroundTransparency = 1
-        local infoFade = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-        TweenService:Create(backdrop, infoFade, {BackgroundTransparency = 0.55}):Play()
-    end
+    if backdrop then backdrop.BackgroundTransparency = 0.55 end
+    panel.Visible = true
 end
 
---------------------------------------------------------------------------------
--- Hide the wheel with a scale-out + fade animation.
---------------------------------------------------------------------------------
 function EmoteUI.Hide(panel)
     if not panel then return end
-    print("[EmoteUI] emote wheel closed")
-    clearHighlightedSelection(panel)
-
-    local wheel    = panel:FindFirstChild("WheelFrame")
-    local backdrop = panel:FindFirstChild("Backdrop")
-    local infoOut  = TweenInfo.new(0.14, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-
-    if wheel then
-        local scale = wheel:FindFirstChildOfClass("UIScale") or Instance.new("UIScale", wheel)
-        local t = TweenService:Create(scale, infoOut, {Scale = 0.7})
-        t:Play()
-        t.Completed:Connect(function()
-            if panel then panel.Visible = false end
-            if scale then scale.Scale = 0.6 end
-        end)
-    else
-        task.delay(0.14, function()
-            if panel then panel.Visible = false end
-        end)
-    end
-
-    if backdrop then
-        TweenService:Create(backdrop, infoOut, {BackgroundTransparency = 1}):Play()
-    end
-end
-
---------------------------------------------------------------------------------
--- Instant hide (used when another menu is being opened or after selection).
---------------------------------------------------------------------------------
-function EmoteUI.HideInstant(panel)
-    if not panel then return end
-    print("[EmoteUI] emote wheel closed (instant)")
     clearHighlightedSelection(panel)
     panel.Visible = false
-    local wheel = panel:FindFirstChild("WheelFrame")
-    if wheel then
-        local scale = wheel:FindFirstChildOfClass("UIScale")
-        if scale then scale.Scale = 0.6 end
-    end
+end
+
+function EmoteUI.HideInstant(panel)
+    EmoteUI.Hide(panel)
 end
 
 --------------------------------------------------------------------------------
@@ -486,7 +451,7 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
     local centerCircle = wheel:FindFirstChild("CenterCircle")
     if centerCircle then
         local sub = centerCircle:FindFirstChild("CenterSubtext")
-        if sub then sub.Text = "Release on an emote to play" end
+        if sub then sub.Text = "Select an Emote" end
         local ct = centerCircle:FindFirstChild("CenterTitle")
         if ct then ct.Text = "EMOTES" end
     end
@@ -561,6 +526,11 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
 
             local emoteId   = emote.Id
             local emoteName = emote.DisplayName or emoteId
+            playBtn.Activated:Connect(function()
+                if not panel.Visible then return end
+                setHighlightedSelection(panel, "emote", emoteId)
+                EmoteUI.TriggerHighlightedSelection(panel)
+            end)
 
             -- Hover: highlight slot + update center text
             local hoverInfo = TweenInfo.new(0.10, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
@@ -581,7 +551,7 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
                     local ct = centerCircle:FindFirstChild("CenterTitle")
                     local cs = centerCircle:FindFirstChild("CenterSubtext")
                     if ct then ct.Text = emoteName end
-                    if cs then cs.Text = "Release to play" end
+                    if cs then cs.Text = "Tap or click to play" end
                 end
             end)
             playBtn.MouseLeave:Connect(function()
@@ -600,7 +570,7 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
                     local ct = centerCircle:FindFirstChild("CenterTitle")
                     local cs = centerCircle:FindFirstChild("CenterSubtext")
                     if ct then ct.Text = "EMOTES" end
-                    if cs then cs.Text = "Release on an emote to play" end
+                    if cs then cs.Text = "Select an Emote" end
                 end
             end)
         else

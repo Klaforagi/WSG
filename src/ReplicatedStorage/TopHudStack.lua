@@ -74,6 +74,17 @@ function TopHudStack.GetKillersTop()
 end
 
 function TopHudStack.GetAlertTop()
+	local top = TopHudStack.GetSuddenTop()
+	local pg = getPlayerGui()
+	local gui = pg and pg:FindFirstChild("MatchEndGui")
+	local banner = gui and gui:FindFirstChild("MatchBanner")
+	if banner and banner.Visible and banner:GetAttribute("SuddenDeath") then
+		top += banner.AbsoluteSize.Y + TopHudStack.Gap
+	end
+	return top
+end
+
+function TopHudStack.GetSuddenTop()
 	return TopHudStack.GetKillersTop() + TopHudStack.GetKillersHeight() + TopHudStack.Gap
 end
 

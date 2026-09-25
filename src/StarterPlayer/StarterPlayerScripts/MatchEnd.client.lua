@@ -17,6 +17,7 @@ screen.DisplayOrder = 50
 screen.Parent = playerGui
 
 local frame = Instance.new("Frame")
+frame.Name = "MatchBanner"
 frame.AnchorPoint = Vector2.new(0.5, 0)
 frame.Position = TopHudStack.GetWinPosition()
 frame.AutomaticSize = Enum.AutomaticSize.XY
@@ -24,6 +25,9 @@ frame.BackgroundTransparency = 1
 frame.BorderSizePixel = 0
 frame.Visible = false
 frame.Parent = screen
+AlertBannerStyle.BindResponsiveScale(frame)
+frame:GetPropertyChangedSignal("Visible"):Connect(TopHudStack.NotifyLayoutChanged)
+frame:GetPropertyChangedSignal("AbsoluteSize"):Connect(TopHudStack.NotifyLayoutChanged)
 
 local frameLayout = Instance.new("UIListLayout")
 frameLayout.FillDirection = Enum.FillDirection.Vertical
@@ -60,7 +64,7 @@ local playGameSound
 local showingWinner = false
 local function getBannerPosition()
     if showingWinner then return UDim2.new(0.5, 0, 0.01, 0) end
-    return TopHudStack.GetWinPosition()
+    return UDim2.new(0.5, 0, 0, TopHudStack.GetSuddenTop())
 end
 
 local function hideEndScreen()
@@ -78,6 +82,7 @@ end
 
 local function showEnd(resultType, winner)
     showingWinner = resultType ~= "sudden"
+    frame:SetAttribute("SuddenDeath", resultType == "sudden")
     -- cancel any pending hide
     if hideThread then
         pcall(function() task.cancel(hideThread) end)
