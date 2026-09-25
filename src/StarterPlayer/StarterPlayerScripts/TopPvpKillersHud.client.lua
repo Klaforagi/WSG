@@ -176,7 +176,7 @@ for i = 1, MAX_SLOTS do
     local countLabel = Instance.new("TextLabel")
     countLabel.Name = "Count"
     countLabel.AnchorPoint = Vector2.new(1, 1)
-    countLabel.Position = UDim2.new(1, -2, 1, 1)
+    countLabel.Position = UDim2.new(1.1, 0, 1.1, 0)
     countLabel.Size = UDim2.fromOffset(28, 22)
     countLabel.BackgroundTransparency = 1
     countLabel.Font = AlertBannerStyle.Font
@@ -191,7 +191,7 @@ for i = 1, MAX_SLOTS do
     local streakFrame = Instance.new("Frame")
     streakFrame.Name = "Streak"
     streakFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    streakFrame.Position = UDim2.new(0, 14, 1, -10)
+    streakFrame.Position = UDim2.new(0, 0, 0.9, 0)
     streakFrame.Size = UDim2.fromOffset(32, 32)
     streakFrame.BackgroundTransparency = 1
     streakFrame.ZIndex = 3
@@ -200,7 +200,8 @@ for i = 1, MAX_SLOTS do
 
     local fireLabel = Instance.new("TextLabel")
     fireLabel.Name = "Fire"
-    fireLabel.Size = UDim2.fromScale(1, 1)
+    fireLabel.Size = UDim2.new(1.1, 0, 1.1, 0)
+    fireLabel.Position = UDim2.new(0, 0, -0.1, 0)
     fireLabel.BackgroundTransparency = 1
     fireLabel.Font = Enum.Font.GothamBold
     fireLabel.Text = "\u{1F525}"
@@ -220,18 +221,18 @@ for i = 1, MAX_SLOTS do
 
     local streakLabel = Instance.new("TextLabel")
     streakLabel.Name = "StreakCount"
-    streakLabel.AnchorPoint = Vector2.new(0, 1)
-    streakLabel.Position = UDim2.new(0, 2, 1, 1)
-    streakLabel.Size = UDim2.fromOffset(28, 22)
+    streakLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+    streakLabel.Position = UDim2.fromScale(0.5, 0.5)
+    streakLabel.Size = UDim2.fromScale(1, 1)
     streakLabel.BackgroundTransparency = 1
     streakLabel.Font = AlertBannerStyle.Font
     streakLabel.Text = ""
     streakLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-    streakLabel.TextXAlignment = Enum.TextXAlignment.Left
-    streakLabel.TextYAlignment = Enum.TextYAlignment.Bottom
+    streakLabel.TextXAlignment = Enum.TextXAlignment.Center
+    streakLabel.TextYAlignment = Enum.TextYAlignment.Center
     streakLabel.ZIndex = 5
     streakLabel.Visible = false
-    streakLabel.Parent = slot
+    streakLabel.Parent = streakFrame
     AlertBannerStyle.ApplyTextStroke(streakLabel)
 
     slots[i] = {
@@ -242,6 +243,7 @@ for i = 1, MAX_SLOTS do
         streakFrame = streakFrame,
         streakLabel = streakLabel,
         fireLabel = fireLabel,
+        fireStroke = fireStroke,
         stroke = stroke,
     }
 end
@@ -255,15 +257,14 @@ local function applySizeToSlot(s, px)
     local countH = math.floor(px * 0.4)
     s.countLabel.TextSize = killSize
     s.countLabel.Size = UDim2.fromOffset(countW, countH)
-    s.countLabel.Position = UDim2.new(1, -2, 1, 1)
+    s.countLabel.Position = UDim2.new(1.1, 0, 1.1, 0)
     s.streakLabel.TextSize = killSize
-    s.streakLabel.Size = UDim2.fromOffset(countW, countH)
-    s.streakLabel.Position = UDim2.new(0, 2, 1, 1)
-    local firePx = math.max(30, math.floor(px * 0.58))
+    -- Scale with the portrait; the old 30px minimum overwhelmed small mobile slots.
+    local firePx = math.clamp(math.floor(px * 0.50), 16, 48)
     s.streakFrame.Size = UDim2.fromOffset(firePx, firePx)
-    local digitCenterX = 2 + math.floor(killSize * 0.38)
-    local digitCenterY = 1 - math.floor(killSize * 0.42) - 6
-    s.streakFrame.Position = UDim2.new(0, digitCenterX, 1, digitCenterY)
+    s.fireStroke.Thickness = math.clamp(firePx * 0.05, 1, 2)
+    -- Number and flame share one centered container at the portrait's lower left.
+    s.streakFrame.Position = UDim2.new(0, 0, 0.9, 0)
 end
 
 local function applyTeamLook(s, player)

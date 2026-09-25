@@ -3162,16 +3162,24 @@ do
         eye.BorderSizePixel = 0
         Instance.new("UICorner", eye).CornerRadius = UDim.new(1, 0)
     end
-    for i = 0, 7 do
-        local angle = math.rad(25 + i * 130 / 7)
-        local segment = Instance.new("Frame", face)
-        segment.AnchorPoint = Vector2.new(0.5, 0.5)
-        segment.Position = UDim2.fromOffset(12.5 + math.cos(angle) * 7, 12 + math.sin(angle) * 7)
-        segment.Size = UDim2.fromOffset(3, 2)
-        segment.Rotation = math.deg(angle) + 90
-        segment.BackgroundColor3 = outline.Color
-        segment.BorderSizePixel = 0
-    end
+    local mouth = Instance.new("TextLabel", face)
+    mouth.Name = "Mouth"
+    mouth.AnchorPoint = Vector2.new(0.5, 0.5)
+    mouth.Position = UDim2.fromScale(0.52, 0.7)
+    mouth.Size = UDim2.fromOffset(14, 14)
+    mouth.BackgroundTransparency = 1
+    mouth.Text = ")"
+    mouth.TextColor3 = Color3.fromRGB(255, 255, 255)
+    mouth.Font = Enum.Font.Merriweather
+    mouth.TextSize = 14
+    mouth.Rotation = 90
+    mouth.TextXAlignment = Enum.TextXAlignment.Center
+    mouth.TextYAlignment = Enum.TextYAlignment.Center
+    mouth.ZIndex = 508
+    local mouthStroke = Instance.new("UIStroke", mouth)
+    mouthStroke.Color = Color3.fromRGB(255, 255, 255)
+    mouthStroke.Thickness = 0.6
+    mouthStroke.Transparency = 0
     button.Activated:Connect(function()
         if _G.EmoteMenu and _G.EmoteMenu.Toggle then _G.EmoteMenu.Toggle() end
     end)

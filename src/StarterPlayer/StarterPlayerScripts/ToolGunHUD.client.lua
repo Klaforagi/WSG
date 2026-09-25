@@ -591,7 +591,9 @@ local function tryFire(tool)
 	local rayOrigin
 	    local rayDirection
 
-	if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+	if UserInputService.TouchEnabled then
+		-- Touch aiming stays at the crosshair even if a keyboard/mouse becomes
+		-- available during a held burst (including Studio's phone emulator).
 		-- Mobile: fire through the same point the crosshair uses (screen center)
 		local viewport = activeCamera.ViewportSize
 		local centerRay = activeCamera:ViewportPointToRay(viewport.X * 0.5, viewport.Y * 0.5)
@@ -874,7 +876,7 @@ local function attachTool(tool)
         tool.Equipped:Connect(function()
             clearMouseConns()
 
-            if UserInputService.TouchEnabled and not UserInputService.MouseEnabled then
+            if UserInputService.TouchEnabled then
                 table.insert(mouseConns, UserInputService.InputBegan:Connect(function(input, gameProcessed)
                     if input.UserInputType ~= Enum.UserInputType.Touch then
                         return
