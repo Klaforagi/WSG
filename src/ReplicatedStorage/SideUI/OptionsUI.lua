@@ -89,7 +89,7 @@ local DEFAULT_SETTINGS = {
 	ShowGameState     = true,
 	ShowHelm          = true,
 	ShowPlayerHighlights = false,
-	ShowTeammateHealthBars = false,
+	ShowTeammateHealthBars = true,
 	ShowEnemyHealthBars = true,
 	ShowNPCHealthBars = true,
 	MyHealthDisplayMode = DEFAULT_MY_HEALTH_DISPLAY_MODE,
@@ -125,7 +125,7 @@ local function ensureSettings()
 	PlayerSettings.MyHealthDisplayMode = "AboveCharacter"
 	-- These presentation choices are intentionally fixed, not player options.
 	PlayerSettings.ShowPlayerHighlights = false
-	PlayerSettings.ShowTeammateHealthBars = false
+	PlayerSettings.ShowTeammateHealthBars = true
 	PlayerSettings.ShowEnemyHealthBars = true
 	PlayerSettings.ShowNPCHealthBars = true
 	PlayerSettings.ShowPlayerMarkers = true
@@ -223,7 +223,7 @@ local function ApplySettings(settings)
 	end)
 
 	-- Overhead health bars toggles; names are intentionally unaffected.
-	local teammateHealthBarsVisible = false
+	local teammateHealthBarsVisible = true
 	local enemyHealthBarsVisible = true
 	local npcHealthBarsVisible = true
 	if _G.ShowTeammateHealthBars ~= teammateHealthBarsVisible then
@@ -904,9 +904,11 @@ function OptionsUI.Create(parent, _coinApi, _inventoryApi)
 
 			btn.MouseButton1Click:Connect(function()
 				if option.id == "off" then
-					PlayerSettings.ShowTeammateHealthBars = false
+					PlayerSettings.ShowTeammateHealthBars = true
 					PlayerSettings.ShowEnemyHealthBars = false
 					PlayerSettings.ShowNPCHealthBars = false
+				elseif option.key == "ShowTeammateHealthBars" then
+					PlayerSettings.ShowTeammateHealthBars = true
 				else
 					PlayerSettings[option.key] = not isHealthBarVisible(option.key)
 				end

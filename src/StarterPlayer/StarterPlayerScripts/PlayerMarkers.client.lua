@@ -209,10 +209,10 @@ local function refreshMarker(player)
 		return
 	end
 
-	-- Otherwise show the marker. Teammates are visible far away and through walls.
+	-- Otherwise show the marker. Markers must obey world occlusion for every team.
 	if teammate then
 		gui.Enabled = true
-		gui.AlwaysOnTop = true
+		gui.AlwaysOnTop = false
 		gui.MaxDistance = TEAMMATE_MAX_DISTANCE
 		marker.BackgroundTransparency = 0
 		return

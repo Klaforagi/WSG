@@ -227,7 +227,7 @@ local function getNameplateMaxDistance(ownerType)
 end
 
 local function shouldAlwaysOnTop(ownerType)
-	return ownerType == "Player"
+	return false
 end
 
 ------------------------------------------------------------------------

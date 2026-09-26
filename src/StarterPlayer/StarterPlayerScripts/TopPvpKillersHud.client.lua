@@ -176,7 +176,7 @@ for i = 1, MAX_SLOTS do
     local countLabel = Instance.new("TextLabel")
     countLabel.Name = "Count"
     countLabel.AnchorPoint = Vector2.new(1, 1)
-    countLabel.Position = UDim2.new(1.1, 0, 1.1, 0)
+    countLabel.Position = UDim2.new(1.05, 0, 1.1, 0)
     countLabel.Size = UDim2.fromOffset(28, 22)
     countLabel.BackgroundTransparency = 1
     countLabel.Font = AlertBannerStyle.Font
@@ -191,7 +191,7 @@ for i = 1, MAX_SLOTS do
     local streakFrame = Instance.new("Frame")
     streakFrame.Name = "Streak"
     streakFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-    streakFrame.Position = UDim2.new(0, 0, 0.9, 0)
+    streakFrame.Position = UDim2.new(0.1, 0, 0.94, 0)
     streakFrame.Size = UDim2.fromOffset(32, 32)
     streakFrame.BackgroundTransparency = 1
     streakFrame.ZIndex = 3
@@ -257,14 +257,14 @@ local function applySizeToSlot(s, px)
     local countH = math.floor(px * 0.4)
     s.countLabel.TextSize = killSize
     s.countLabel.Size = UDim2.fromOffset(countW, countH)
-    s.countLabel.Position = UDim2.new(1.1, 0, 1.1, 0)
+    s.countLabel.Position = UDim2.new(1.05, 0, 1.1, 0)
     s.streakLabel.TextSize = killSize
     -- Scale with the portrait; the old 30px minimum overwhelmed small mobile slots.
     local firePx = math.clamp(math.floor(px * 0.50), 16, 48)
     s.streakFrame.Size = UDim2.fromOffset(firePx, firePx)
     s.fireStroke.Thickness = math.clamp(firePx * 0.05, 1, 2)
     -- Number and flame share one centered container at the portrait's lower left.
-    s.streakFrame.Position = UDim2.new(0, 0, 0.9, 0)
+    s.streakFrame.Position = UDim2.new(0.1, 0, 0.94, 0)
 end
 
 local function applyTeamLook(s, player)

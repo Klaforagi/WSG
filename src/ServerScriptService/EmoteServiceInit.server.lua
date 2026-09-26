@@ -220,7 +220,7 @@ local function loadEmoteData(player)
     for _, def in ipairs(EmoteConfig.GetAll()) do
         if def.IsFree then owned[def.Id] = true end
     end
-    return sanitizeEmoteData({ owned = owned, equipped = {} }), success and "new" or "failed", err
+    return sanitizeEmoteData({ owned = owned, equipped = { [1] = "wave" } }), success and "new" or "failed", err
 end
 
 local function getSaveData(player)
@@ -288,6 +288,7 @@ local function loadProfile(player)
         status = status,
         data = copyEmoteData(data),
         reason = reason,
+        markDirty = status == "new",
     }
 end
 

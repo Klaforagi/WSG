@@ -632,7 +632,7 @@ pcall(function()
 			ShowGameState = true,
 			ShowHelm = true,
 			ShowPlayerHighlights = false,
-			ShowTeammateHealthBars = false,
+			ShowTeammateHealthBars = true,
 			ShowEnemyHealthBars = true,
 			ShowNPCHealthBars = true,
 			MyHealthDisplayMode = "AboveCharacter",
@@ -650,13 +650,13 @@ pcall(function()
 		_G.PlayerSettings = settings
 		-- These presentation choices are fixed and are not user-configurable.
 		settings.ShowPlayerHighlights = false
-		settings.ShowTeammateHealthBars = false
+		settings.ShowTeammateHealthBars = true
 		settings.ShowEnemyHealthBars = true
 		settings.ShowNPCHealthBars = true
 		settings.ShowPlayerMarkers = true
 		settings.AlwaysShowXPText = true
 		_G.ShowPlayerHighlights = false
-		_G.ShowTeammateHealthBars = false
+		_G.ShowTeammateHealthBars = true
 		_G.ShowEnemyHealthBars = true
 		_G.ShowPlayerHealthBars = (_G.ShowTeammateHealthBars or _G.ShowEnemyHealthBars)
 		_G.ShowNPCHealthBars = (settings.ShowNPCHealthBars ~= false)

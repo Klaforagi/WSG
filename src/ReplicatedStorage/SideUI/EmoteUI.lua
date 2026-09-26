@@ -338,7 +338,8 @@ function EmoteUI.Build(screenGui)
         nameLabel.ZIndex               = 316
         nameLabel.Parent               = slot
 
-        -- Empty-slot dash (visible when no emote assigned)
+        -- Retained for compatibility with older render paths, but hidden so
+        -- empty slots show only their numbered keybind.
         local lockLabel = Instance.new("TextLabel")
         lockLabel.Name                 = "LockLabel"
         lockLabel.Size                 = UDim2.new(0.50, 0, 0.50, 0)
@@ -346,7 +347,8 @@ function EmoteUI.Build(screenGui)
         lockLabel.Position             = UDim2.new(0.5, 0, 0.45, 0)
         lockLabel.BackgroundTransparency = 1
         lockLabel.Font                 = Enum.Font.GothamBold
-        lockLabel.Text                 = "—"
+        lockLabel.Text                 = ""
+        lockLabel.Visible              = false
         lockLabel.TextColor3           = Color3.fromRGB(65, 70, 92)
         lockLabel.TextScaled           = true
         lockLabel.TextXAlignment       = Enum.TextXAlignment.Center
@@ -696,8 +698,8 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
                 nameLabel.Size = UDim2.new(0.82, 0, 0.34, 0)
             end
             if lockLabel then
-                lockLabel.Visible = true
-                lockLabel.Text = "—"
+                lockLabel.Visible = false
+                lockLabel.Text = ""
                 lockLabel.TextColor3 = Color3.fromRGB(65, 70, 92)
                 lockLabel.Font = Enum.Font.GothamBold
                 lockLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
@@ -749,8 +751,8 @@ function EmoteUI.ShowEmptyState(panel)
         end
         local lockLabel = slot:FindFirstChild("LockLabel")
         if lockLabel then
-            lockLabel.Visible = true
-            lockLabel.Text = "—"
+            lockLabel.Visible = false
+            lockLabel.Text = ""
             lockLabel.TextColor3 = Color3.fromRGB(65, 70, 92)
             lockLabel.Font = Enum.Font.GothamBold
             lockLabel.Position = UDim2.new(0.5, 0, 0.45, 0)

@@ -25,16 +25,9 @@ local LINE_LENGTH = 10
 local GAP_RETURN_TIME = 0.18
 local DEFAULT_RECOIL_AMOUNT = 8
 
--- Tracer / color utils (from original toolgun client)
-local TEAM_TRACER_COLORS = {
-    Blue = Color3.fromRGB(65, 105, 225),
-    Red  = Color3.fromRGB(255, 75, 75),
-}
+-- Projectile trails and the aiming reticle stay neutral across teams.
 local DEFAULT_TRACER_COLOR = Color3.fromRGB(255, 200, 100)
 local function getTracerColor()
-    if player and player.Team then
-        return TEAM_TRACER_COLORS[player.Team.Name] or DEFAULT_TRACER_COLOR
-    end
     return DEFAULT_TRACER_COLOR
 end
 
@@ -209,7 +202,7 @@ local function spawnClientProjectile(toolName, origin, direction, enchantName, v
         trail.Attachment0 = tip
         trail.Attachment1 = secondAttachment
         trail.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, primary.Color),
+            ColorSequenceKeypoint.new(0, DEFAULT_TRACER_COLOR),
             ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
         })
         trail.Transparency = NumberSequence.new({
@@ -229,6 +222,13 @@ local function spawnClientProjectile(toolName, origin, direction, enchantName, v
         trail.Enabled = false
         trail.Parent = tip.Parent
         table.insert(predictedTrails, trail)
+    end
+
+    for _, trail in ipairs(predictedTrails) do
+        trail.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, DEFAULT_TRACER_COLOR),
+            ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+        })
     end
 
     local enchantTrailColor = WeaponEnchantConfig

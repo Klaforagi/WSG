@@ -56,18 +56,27 @@ local function getCharacterParts(player)
     return humanoid, rootPart
 end
 
---- Raycast forward from rootPart to detect walls; returns clamped distance.
-local function clampDistanceToWall(rootPart, direction, maxDist)
-    local cfg = getConfig()
-    local rayDist = maxDist + (cfg and cfg.WallRayExtra or 3)
+-- Sweep the torso volume so corners cannot slip past a single center ray.
+-- Keep the volume above the feet to avoid treating flat ground as a wall.
+local function castDashObstacle(rootPart, direction, distance)
     local params = RaycastParams.new()
     params.FilterType = Enum.RaycastFilterType.Exclude
     params.FilterDescendantsInstances = { rootPart.Parent }
+    params.RespectCanCollide = true
+    params.CollisionGroup = rootPart.CollisionGroup
+    local size = rootPart.Size
+    return workspace:Blockcast(
+        CFrame.lookAt(rootPart.Position, rootPart.Position + direction),
+        Vector3.new(size.X + 1, size.Y * 1.5, size.Z + 0.5),
+        direction * distance,
+        params
+    )
+end
 
-    local result = workspace:Raycast(rootPart.Position, direction.Unit * rayDist, params)
+local function clampDistanceToWall(rootPart, direction, maxDist)
+    local result = castDashObstacle(rootPart, direction, maxDist + 0.5)
     if result then
-        local wallDist = (result.Position - rootPart.Position).Magnitude - 2 -- 2-stud buffer
-        return math.max(0, math.min(maxDist, wallDist))
+        return math.max(0, math.min(maxDist, result.Distance - 0.5))
     end
     return maxDist
 end
@@ -119,22 +128,55 @@ local function executeDash(player, humanoid, rootPart)
     linVel.Attachment0 = attachment
     linVel.RelativeTo = Enum.ActuatorRelativeTo.World
     linVel.VectorVelocity = dashVelocity
+    linVel.ForceLimitsEnabled = true
     linVel.MaxForce = maxForce
     linVel.Parent = rootPart
 
     log(player.Name, "dashing", distance, "studs over", duration, "s")
 
-    local function finishDashCleanup()
+    local cleanedUp = false
+    local obstacleConnection
+    local decelTween
+    local function finishDashCleanup(hitObstacle)
+        if cleanedUp then return end
+        cleanedUp = true
+        if obstacleConnection then obstacleConnection:Disconnect() end
+        if decelTween then decelTween:Cancel() end
         if linVel and linVel.Parent then linVel:Destroy() end
         if attachment and attachment.Parent then attachment:Destroy() end
+        if hitObstacle and rootPart.Parent and humanoid.Health > 0 then
+            local velocity = rootPart.AssemblyLinearVelocity
+            rootPart.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
+            local spin = rootPart.AssemblyAngularVelocity
+            rootPart.AssemblyAngularVelocity = Vector3.new(0, spin.Y, 0)
+        end
         if state then
             state.isDashing = false
+            state.cleanup = nil
         end
         player:SetAttribute("IsDashing", false)
         log(player.Name, "dash complete")
     end
+    state.cleanup = finishDashCleanup
+
+    -- Remains connected during deceleration: the slowdown still applies force.
+    obstacleConnection = RunService.PreSimulation:Connect(function(dt)
+        if player.Character ~= rootPart.Parent or not rootPart.Parent
+            or humanoid.Health <= 0 or not linVel.Parent then
+            finishDashCleanup()
+            return
+        end
+        local velocity = rootPart.AssemblyLinearVelocity
+        local horizontalSpeed = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+        local lookAhead = math.max(horizontalSpeed, linVel.VectorVelocity.Magnitude)
+            * math.max(dt, 1 / 30) + 0.5
+        if castDashObstacle(rootPart, flatDir, lookAhead) then
+            finishDashCleanup(true)
+        end
+    end)
 
     task.delay(duration, function()
+        if cleanedUp then return end
         if not (linVel and linVel.Parent) then
             finishDashCleanup()
             return
@@ -158,6 +200,7 @@ local function executeDash(player, humanoid, rootPart)
             TweenInfo.new(decelTime, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
             { VectorVelocity = endVel }
         )
+        decelTween = tween
 
         local finished = false
         local function onDecelDone()
@@ -240,6 +283,8 @@ function DashService:TryDash(player)
 end
 
 function DashService:ClearPlayer(player)
+    local state = playerState[player]
+    if state and state.cleanup then state.cleanup() end
     playerState[player] = nil
     player:SetAttribute("IsDashing", false)
     log("cleared state for", player.Name)

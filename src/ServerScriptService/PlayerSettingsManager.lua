@@ -27,7 +27,7 @@ local DEFAULTS = {
     ShowGameState = true,
     ShowHelm = false,
     ShowPlayerHighlights = false,
-    ShowTeammateHealthBars = false,
+    ShowTeammateHealthBars = true,
     ShowEnemyHealthBars = true,
     ShowNPCHealthBars = true,
     MyHealthDisplayMode = "AboveCharacter",
@@ -83,7 +83,7 @@ local function ensureDefaults(tbl)
     clean.MyHealthDisplayMode = "AboveCharacter"
     -- These are global presentation rules, not saved per-player options.
     clean.ShowPlayerHighlights = false
-    clean.ShowTeammateHealthBars = false
+    clean.ShowTeammateHealthBars = true
     clean.ShowEnemyHealthBars = true
     clean.ShowNPCHealthBars = true
     clean.ShowPlayerMarkers = true

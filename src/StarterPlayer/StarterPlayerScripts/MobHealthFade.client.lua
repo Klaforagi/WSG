@@ -87,7 +87,7 @@ local function healthBarsEnabled(billboard)
 	end
 	if getOwnerType(billboard) == "Player" then
 		if isTeammateBillboard(billboard) then
-			return _G.ShowTeammateHealthBars == true
+			return true
 		end
 		return _G.ShowEnemyHealthBars ~= false
 	end

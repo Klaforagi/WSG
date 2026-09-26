@@ -130,7 +130,7 @@ function MarketCatalog.GetItemsByCategory(category)
             emotes = EmoteConfig.GetAll()
         end
         for _, def in ipairs(sortedCopy(emotes)) do
-            if type(def.Id) == "string" and def.Id ~= "" then
+            if type(def.Id) == "string" and def.Id ~= "" and def.IsFree ~= true then
                 table.insert(items, normalizeEmote(def))
             end
         end

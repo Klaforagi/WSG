@@ -29,8 +29,8 @@ do
 	end
 end
 
--- FallingDown is often reached via Physics/Ragdoll first during torque events.
--- NOTE: Upright stabilizer and blocked-state enforcement removed per request.
+-- SetStateEnabled does not replicate, so PlayerBalance.client.lua also applies
+-- these states on the owning client. Leave death and intentional Physics alone.
 
 local function setNoCollide(part: BasePart)
 	part.CanCollide = false
@@ -56,11 +56,6 @@ local function applyHeadAndAccessoryNoCollide(char: Model)
 	end
 	char.ChildAdded:Connect(handleAccessory)
 end
-
--- lockHumanoidStates removed to avoid forcing upright or blocking states
-
--- Keeps the character upright (resists tipping) but allows free yaw turning.
--- addUprightStabilizer removed to avoid forcing upright alignment
 
 local function applySpawnForceField(char: Model)
 	-- Remove any existing ForceField first (Roblox may create one via SpawnLocation)
@@ -100,7 +95,11 @@ local function applySpawnForceField(char: Model)
 end
 
 local function applyCharacterSettings(char: Model)
-	-- Keep head/accessory no-collide for safety, but do not force upright or block humanoid states.
+	local balanceHumanoid = char:FindFirstChildOfClass("Humanoid") or char:WaitForChild("Humanoid", 10)
+	if balanceHumanoid then
+		balanceHumanoid:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+		balanceHumanoid:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+	end
 	applyHeadAndAccessoryNoCollide(char)
 	applySpawnForceField(char)
 
