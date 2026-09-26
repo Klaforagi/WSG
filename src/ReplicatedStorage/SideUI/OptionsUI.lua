@@ -61,7 +61,7 @@ local TWEEN_QUICK = TweenInfo.new(0.15, Enum.EasingStyle.Quad, Enum.EasingDirect
 --------------------------------------------------------------------------------
 -- Default settings
 --------------------------------------------------------------------------------
-local DEFAULT_MY_HEALTH_DISPLAY_MODE = "BottomLeft"
+local DEFAULT_MY_HEALTH_DISPLAY_MODE = "AboveCharacter"
 local VALID_MY_HEALTH_DISPLAY_MODES = {
 	BottomLeft = true,
 	AboveCharacter = true,
@@ -122,7 +122,7 @@ local function ensureSettings()
 	if existing and existing.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
 		PlayerSettings.ShowEnemyHealthBars = legacyPlayerBars
 	end
-	PlayerSettings.MyHealthDisplayMode = "BottomLeft"
+	PlayerSettings.MyHealthDisplayMode = "AboveCharacter"
 	-- These presentation choices are intentionally fixed, not player options.
 	PlayerSettings.ShowPlayerHighlights = false
 	PlayerSettings.ShowTeammateHealthBars = false

@@ -30,7 +30,7 @@ local DEFAULTS = {
     ShowTeammateHealthBars = false,
     ShowEnemyHealthBars = true,
     ShowNPCHealthBars = true,
-    MyHealthDisplayMode = "BottomLeft",
+    MyHealthDisplayMode = "AboveCharacter",
     ShowPlayerMarkers = true,
     AlwaysShowXPText = true,
 }
@@ -80,7 +80,7 @@ local function ensureDefaults(tbl)
     if tbl.ShowEnemyHealthBars == nil and type(legacyPlayerBars) == "boolean" then
         clean.ShowEnemyHealthBars = legacyPlayerBars
     end
-    clean.MyHealthDisplayMode = "BottomLeft"
+    clean.MyHealthDisplayMode = "AboveCharacter"
     -- These are global presentation rules, not saved per-player options.
     clean.ShowPlayerHighlights = false
     clean.ShowTeammateHealthBars = false

@@ -778,7 +778,7 @@ local function showPhase(payload)
         frame, label, format = prematchFrame, prematchLabel, "Match begins in %ds"
     elseif phase == "loading" then
         root.Visible = false
-        prematchLabel.Text = payload.currentMap and ('Loading "' .. tostring(payload.currentMap) .. '"') or "Loading map..."
+        prematchLabel.Text = payload.currentMap and ("Loading " .. tostring(payload.currentMap)) or "Loading map..."
         prematchFrame.Visible = true
         return
     elseif phase == "endgame" then

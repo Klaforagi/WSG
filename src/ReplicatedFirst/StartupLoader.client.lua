@@ -635,7 +635,7 @@ pcall(function()
 			ShowTeammateHealthBars = false,
 			ShowEnemyHealthBars = true,
 			ShowNPCHealthBars = true,
-			MyHealthDisplayMode = "BottomLeft",
+			MyHealthDisplayMode = "AboveCharacter",
 			ShowPlayerMarkers = true,
 			AlwaysShowXPText = true,
 		}
@@ -646,7 +646,7 @@ pcall(function()
 				if data[k] ~= nil then settings[k] = data[k] end
 			end
 		end
-		settings.MyHealthDisplayMode = "BottomLeft"
+		settings.MyHealthDisplayMode = "AboveCharacter"
 		_G.PlayerSettings = settings
 		-- These presentation choices are fixed and are not user-configurable.
 		settings.ShowPlayerHighlights = false

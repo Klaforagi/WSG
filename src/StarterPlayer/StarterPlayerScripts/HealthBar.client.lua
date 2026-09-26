@@ -63,28 +63,10 @@ local RED_FILL    = Color3.fromRGB(220, 50, 50)
 local WHITE       = Color3.fromRGB(245, 245, 245)
 local fill = nil
 
-local DEFAULT_MY_HEALTH_DISPLAY_MODE = "AboveCharacter"
-local VALID_MY_HEALTH_DISPLAY_MODES = {
-	BottomLeft = true,
-	AboveCharacter = true,
-	Both = true,
-}
-
-local function getLocalHealthDisplayMode()
-	local settings = _G.PlayerSettings
-	local mode = _G.MyHealthDisplayMode
-	if type(settings) == "table" and settings.MyHealthDisplayMode ~= nil then
-		mode = settings.MyHealthDisplayMode
-	end
-	if VALID_MY_HEALTH_DISPLAY_MODES[mode] then
-		return mode
-	end
-	return DEFAULT_MY_HEALTH_DISPLAY_MODE
-end
-
 local function shouldShowBottomLeftHealth()
-	local mode = getLocalHealthDisplayMode()
-	return mode == "BottomLeft" or mode == "Both"
+	-- Personal health is always shown above the character, including while
+	-- settings are loading or an older saved preference is still present.
+	return false
 end
 
 -- Team-aware fill color (replaces GREEN_FILL for >50% HP)

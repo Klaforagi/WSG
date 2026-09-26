@@ -33,28 +33,10 @@ local BASE = {
 
 local localPlayer = Players.LocalPlayer
 
-local DEFAULT_MY_HEALTH_DISPLAY_MODE = "AboveCharacter"
-local VALID_MY_HEALTH_DISPLAY_MODES = {
-	BottomLeft = true,
-	AboveCharacter = true,
-	Both = true,
-}
-
-local function getLocalHealthDisplayMode()
-	local settings = _G.PlayerSettings
-	local mode = _G.MyHealthDisplayMode
-	if type(settings) == "table" and settings.MyHealthDisplayMode ~= nil then
-		mode = settings.MyHealthDisplayMode
-	end
-	if VALID_MY_HEALTH_DISPLAY_MODES[mode] then
-		return mode
-	end
-	return DEFAULT_MY_HEALTH_DISPLAY_MODE
-end
-
 local function shouldShowLocalOverheadHealth()
-	local mode = getLocalHealthDisplayMode()
-	return mode == "AboveCharacter" or mode == "Both"
+	-- Keep the local player's overhead health visible regardless of legacy
+	-- saved settings or the order in which client settings finish loading.
+	return true
 end
 
 local function lerp(a, b, t)
