@@ -9,7 +9,8 @@
 --   EquippedEmotesChanged (RE server→client) push after equip/unequip
 --   PurchaseEmote       (RF client→server)  buy an emote with coins
 --   EquipEmote          (RE client→server)  equip an owned emote into the next open slot
---   UnequipEmote        (RE client→server)  clear an emote slot and compact the loadout
+--   AssignEmoteSlot     (RE client→server)  place an owned emote in a chosen wheel slot
+--   UnequipEmote        (RE client→server)  clear an emote slot
 --   GetOwnedEmotes      (RF client→server)  fetch list of owned emote ids
 --------------------------------------------------------------------------------
 
@@ -86,6 +87,7 @@ local getEquippedRF      = ensureInstance(emotesFolder, "RemoteFunction", "GetEq
 local equippedChangedRE  = ensureInstance(emotesFolder, "RemoteEvent",    "EquippedEmotesChanged")
 local purchaseEmoteRF    = ensureInstance(emotesFolder, "RemoteFunction", "PurchaseEmote")
 local equipEmoteRE       = ensureInstance(emotesFolder, "RemoteEvent",    "EquipEmote")
+local assignEmoteSlotRE  = ensureInstance(emotesFolder, "RemoteEvent",    "AssignEmoteSlot")
 local unequipEmoteRE     = ensureInstance(emotesFolder, "RemoteEvent",    "UnequipEmote")
 local getOwnedRF         = ensureInstance(emotesFolder, "RemoteFunction", "GetOwnedEmotes")
 
@@ -145,14 +147,13 @@ local function sanitizeOwnedSet(owned)
     return sanitized
 end
 
-local function compactEquippedSlots(equipped, owned)
-    local compacted = {}
+local function sanitizeEquippedSlots(equipped, owned)
+    local sanitized = {}
     if type(equipped) ~= "table" then
-        return compacted
+        return sanitized
     end
 
     local seen = {}
-    local nextSlot = 1
     for slot = 1, SLOT_COUNT do
         local emoteId = equipped[slot]
         if type(emoteId) == "string"
@@ -160,19 +161,18 @@ local function compactEquippedSlots(equipped, owned)
             and (owned == nil or owned[emoteId] == true)
             and not seen[emoteId]
         then
-            compacted[nextSlot] = emoteId
+            sanitized[slot] = emoteId
             seen[emoteId] = true
-            nextSlot += 1
         end
     end
 
-    return compacted
+    return sanitized
 end
 
 local function sanitizeEmoteData(data)
     data = type(data) == "table" and data or {}
     data.owned = sanitizeOwnedSet(data.owned)
-    data.equipped = compactEquippedSlots(data.equipped, data.owned)
+    data.equipped = sanitizeEquippedSlots(data.equipped, data.owned)
     return data
 end
 
@@ -571,7 +571,7 @@ purchaseEmoteRF.OnServerInvoke = function(player, emoteId)
     -- Mark as owned
     local data = getOrCreateData(player)
     data.owned[emoteId] = true
-    data.equipped = compactEquippedSlots(data.equipped, data.owned)
+    data.equipped = sanitizeEquippedSlots(data.equipped, data.owned)
     print("[EmoteService] purchase accepted:", player.Name, emoteId)
 
     -- Auto-equip into the first empty slot if available
@@ -601,7 +601,7 @@ equipEmoteRE.OnServerEvent:Connect(function(player, emoteId)
     end
 
     local data = getOrCreateData(player)
-    data.equipped = compactEquippedSlots(data.equipped, data.owned)
+    data.equipped = sanitizeEquippedSlots(data.equipped, data.owned)
 
     for s = 1, SLOT_COUNT do
         if data.equipped[s] == emoteId then
@@ -624,6 +624,35 @@ equipEmoteRE.OnServerEvent:Connect(function(player, emoteId)
     pushEquippedToClient(player)
 end)
 
+-- ASSIGN EMOTE SLOT (the inventory emote wheel places an owned emote here)
+assignEmoteSlotRE.OnServerEvent:Connect(function(player, emoteId, slot)
+    slot = tonumber(slot)
+    if type(emoteId) ~= "string" or #emoteId == 0 then return end
+    if not slot or slot < 1 or slot > SLOT_COUNT then return end
+    slot = math.floor(slot)
+
+    if not isOwned(player, emoteId) then
+        warn("[EmoteService] slot assignment rejected: not owned", player.Name, emoteId)
+        return
+    end
+
+    local data = getOrCreateData(player)
+    data.equipped = sanitizeEquippedSlots(data.equipped, data.owned)
+
+    -- An emote can only occupy one wheel slot. Moving it clears its old slot;
+    -- assigning it to an occupied target replaces the emote that was there.
+    for existingSlot = 1, SLOT_COUNT do
+        if data.equipped[existingSlot] == emoteId then
+            data.equipped[existingSlot] = nil
+        end
+    end
+    data.equipped[slot] = emoteId
+
+    print("[EmoteService] assigned", emoteId, "to slot", slot, "for", player.Name)
+    markDirty(player, "assign_emote_slot")
+    pushEquippedToClient(player)
+end)
+
 -- UNEQUIP EMOTE
 unequipEmoteRE.OnServerEvent:Connect(function(player, slot)
     slot = tonumber(slot)
@@ -633,7 +662,7 @@ unequipEmoteRE.OnServerEvent:Connect(function(player, slot)
     local data = getOrCreateData(player)
     local removed = data.equipped[slot]
     data.equipped[slot] = nil
-    data.equipped = compactEquippedSlots(data.equipped, data.owned)
+    data.equipped = sanitizeEquippedSlots(data.equipped, data.owned)
     print("[EmoteService] unequipped slot", slot, "for", player.Name, "was:", removed)
 
     markDirty(player, "unequip_emote")

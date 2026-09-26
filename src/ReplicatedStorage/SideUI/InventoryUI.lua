@@ -4734,6 +4734,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 getOwned    = ef:FindFirstChild("GetOwnedEmotes"),
                 getEquipped = ef:FindFirstChild("GetEquippedEmotes"),
                 equip       = ef:FindFirstChild("EquipEmote"),
+                assign      = ef:FindFirstChild("AssignEmoteSlot"),
                 unequip     = ef:FindFirstChild("UnequipEmote"),
                 changed     = ef:FindFirstChild("EquippedEmotesChanged"),
             }
@@ -4743,22 +4744,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local EMOTE_SLOT_COUNT = (EmoteConfig and EmoteConfig.SLOT_COUNT) or 8
 
         local allEmoteDefs = EmoteConfig and EmoteConfig.GetAll() or {}
+        -- Keep both sides proportional to the available inventory width.  This
+        -- avoids the wheel panel overlapping the cards on narrower displays.
+        local EMOTE_GRID_WIDTH = 0.5
+        local EMOTE_GRID_GAP = px(20)
 
         local emoteGridScroll = Instance.new("ScrollingFrame")
         emoteGridScroll.Name = "EmoteGridScroll"
         emoteGridScroll.BackgroundColor3 = Color3.fromRGB(14, 16, 30)
         emoteGridScroll.BackgroundTransparency = 0.5
-        emoteGridScroll.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        emoteGridScroll.Size = UDim2.new(EMOTE_GRID_WIDTH, -EMOTE_GRID_GAP, 1, 0)
         emoteGridScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
         emoteGridScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
         emoteGridScroll.ScrollBarThickness = px(4)
         emoteGridScroll.ScrollBarImageColor3 = Color3.fromRGB(180, 150, 50)
         emoteGridScroll.BorderSizePixel = 0
+        emoteGridScroll.ClipsDescendants = true
+        emoteGridScroll.ScrollingDirection = Enum.ScrollingDirection.Y
         emoteGridScroll.Parent = emotesPage
         Instance.new("UICorner", emoteGridScroll).CornerRadius = UDim.new(0, px(10))
 
         local emoteGridLayout = Instance.new("UIGridLayout", emoteGridScroll)
-        emoteGridLayout.CellSize = UDim2.new(0, px(140), 0, px(178))
+        emoteGridLayout.CellSize = UDim2.new(0, px(180), 0, px(230))
         emoteGridLayout.CellPadding = UDim2.new(0, px(10), 0, px(10))
         emoteGridLayout.FillDirection = Enum.FillDirection.Horizontal
         emoteGridLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
@@ -4769,12 +4776,27 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         emoteGridPad.PaddingLeft = UDim.new(0, px(8))
         emoteGridPad.PaddingRight = UDim.new(0, px(8))
         emoteGridPad.PaddingBottom = UDim.new(0, px(8))
-        bindFixedColumnGrid(emoteGridScroll, emoteGridLayout, emoteGridPad, 140, 178)
+        local function reflowEmoteGrid()
+            local availableWidth = emoteGridScroll.AbsoluteSize.X
+                - emoteGridPad.PaddingLeft.Offset
+                - emoteGridPad.PaddingRight.Offset
+                - emoteGridScroll.ScrollBarThickness
+            if availableWidth <= 0 then return end
+
+            local columns = 2
+            local gap = emoteGridLayout.CellPadding.X.Offset
+            local cellWidth = math.max(1, math.floor((availableWidth - gap * (columns - 1)) / columns))
+            emoteGridLayout.FillDirectionMaxCells = columns
+            emoteGridLayout.CellSize = UDim2.new(0, cellWidth, 0, math.floor(cellWidth * 1.12))
+        end
+        trackConn(emoteGridScroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(reflowEmoteGrid))
+        bindViewportResize(trackConn, reflowEmoteGrid)
+        task.defer(reflowEmoteGrid)
 
         local emotesEmptyState = Instance.new("Frame")
         emotesEmptyState.Name = "EmotesEmptyState"
         emotesEmptyState.BackgroundTransparency = 1
-        emotesEmptyState.Size = UDim2.new(1, -(DETAIL_W + GRID_GAP), 1, 0)
+        emotesEmptyState.Size = UDim2.new(EMOTE_GRID_WIDTH, -EMOTE_GRID_GAP, 1, 0)
         emotesEmptyState.Visible = false
         emotesEmptyState.Parent = emotesPage
 
@@ -4814,6 +4836,126 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         edpStroke.Color = CARD_STROKE
         edpStroke.Thickness = 1.4
         edpStroke.Transparency = 0.2
+
+        -- Emotes use a dedicated assignment wheel rather than the generic
+        -- inventory detail/equip panel used by the other categories.
+        emoteDetailsPanel.Visible = false
+
+        local emoteWheelPanel = Instance.new("Frame")
+        emoteWheelPanel.Name = "EmoteWheelPanel"
+        emoteWheelPanel.BackgroundTransparency = 1
+        emoteWheelPanel.Size = UDim2.new(1 - EMOTE_GRID_WIDTH, 0, 1, 0)
+        emoteWheelPanel.AnchorPoint = Vector2.new(1, 0)
+        emoteWheelPanel.Position = UDim2.new(1, 0, 0, 0)
+        emoteWheelPanel.BorderSizePixel = 0
+        emoteWheelPanel.Parent = emotesPage
+        local wheelFrame = Instance.new("Frame", emoteWheelPanel)
+        wheelFrame.Name = "Wheel"
+        wheelFrame.BackgroundTransparency = 1
+        wheelFrame.Size = UDim2.fromScale(0.94, 0.94)
+        wheelFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+        wheelFrame.Position = UDim2.fromScale(0.5, 0.5)
+        local wheelAspect = Instance.new("UIAspectRatioConstraint", wheelFrame)
+        wheelAspect.AspectRatio = 1
+        wheelAspect.DominantAxis = Enum.DominantAxis.Width
+
+        local outerRing = Instance.new("Frame", wheelFrame)
+        outerRing.Name = "OuterRing"
+        outerRing.BackgroundColor3 = Color3.fromRGB(15, 18, 34)
+        outerRing.BackgroundTransparency = 0.02
+        outerRing.BorderSizePixel = 0
+        outerRing.Size = UDim2.fromScale(0.92, 0.92)
+        outerRing.AnchorPoint = Vector2.new(0.5, 0.5)
+        outerRing.Position = UDim2.fromScale(0.5, 0.5)
+        Instance.new("UICorner", outerRing).CornerRadius = UDim.new(1, 0)
+        local outerRingStroke = Instance.new("UIStroke", outerRing)
+        outerRingStroke.Color = UITheme.GOLD_DIM
+        outerRingStroke.Thickness = px(2)
+        outerRingStroke.Transparency = 0.24
+
+        local wheelCenter = Instance.new("Frame", wheelFrame)
+        wheelCenter.Name = "Center"
+        wheelCenter.BackgroundColor3 = Color3.fromRGB(23, 27, 49)
+        wheelCenter.BorderSizePixel = 0
+        wheelCenter.Size = UDim2.fromScale(0.33, 0.33)
+        wheelCenter.AnchorPoint = Vector2.new(0.5, 0.5)
+        wheelCenter.Position = UDim2.fromScale(0.5, 0.5)
+        wheelCenter.ZIndex = 3
+        Instance.new("UICorner", wheelCenter).CornerRadius = UDim.new(1, 0)
+        local wheelCenterStroke = Instance.new("UIStroke", wheelCenter)
+        wheelCenterStroke.Color = GOLD
+        wheelCenterStroke.Thickness = px(2)
+        wheelCenterStroke.Transparency = 0.24
+
+        local wheelCenterLabel = Instance.new("TextLabel", wheelCenter)
+        wheelCenterLabel.Name = "SelectedLabel"
+        wheelCenterLabel.BackgroundTransparency = 1
+        wheelCenterLabel.Font = Enum.Font.GothamBold
+        wheelCenterLabel.Text = "SELECT\nAN EMOTE"
+        wheelCenterLabel.TextColor3 = DIM_TEXT
+        wheelCenterLabel.TextSize = px(17)
+        wheelCenterLabel.TextWrapped = true
+        wheelCenterLabel.Size = UDim2.new(0.82, 0, 0.62, 0)
+        wheelCenterLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+        wheelCenterLabel.Position = UDim2.fromScale(0.5, 0.5)
+        wheelCenterLabel.TextXAlignment = Enum.TextXAlignment.Center
+        wheelCenterLabel.TextYAlignment = Enum.TextYAlignment.Center
+
+        local wheelSlotRefs = {}
+        local wheelSlotRadius = 0.33
+        local wheelSlotDiameter = 0.21
+        for slotIndex = 1, EMOTE_SLOT_COUNT do
+            local angle = (slotIndex - 1) * ((2 * math.pi) / EMOTE_SLOT_COUNT)
+            local slotButton = Instance.new("TextButton", wheelFrame)
+            slotButton.Name = "Slot_" .. slotIndex
+            slotButton.AutoButtonColor = false
+            slotButton.BackgroundColor3 = Color3.fromRGB(33, 38, 62)
+            slotButton.BackgroundTransparency = 0.02
+            slotButton.BorderSizePixel = 0
+            slotButton.Text = ""
+            slotButton.Size = UDim2.fromScale(wheelSlotDiameter, wheelSlotDiameter)
+            slotButton.AnchorPoint = Vector2.new(0.5, 0.5)
+            slotButton.Position = UDim2.new(0.5 + math.sin(angle) * wheelSlotRadius, 0, 0.5 - math.cos(angle) * wheelSlotRadius, 0)
+            slotButton.ZIndex = 4
+            Instance.new("UICorner", slotButton).CornerRadius = UDim.new(1, 0)
+            local slotStroke = Instance.new("UIStroke", slotButton)
+            slotStroke.Color = CARD_STROKE
+            slotStroke.Thickness = px(1.4)
+            slotStroke.Transparency = 0.18
+
+            local keyLabel = Instance.new("TextLabel", slotButton)
+            keyLabel.BackgroundTransparency = 1
+            keyLabel.Font = Enum.Font.GothamBlack
+            keyLabel.Text = tostring(slotIndex)
+            keyLabel.TextColor3 = GOLD
+            keyLabel.TextSize = px(14)
+            keyLabel.Size = UDim2.new(1, 0, 0.25, 0)
+            keyLabel.Position = UDim2.new(0, 0, 0.68, 0)
+            keyLabel.ZIndex = 5
+
+            local emoteLabel = Instance.new("TextLabel", slotButton)
+            emoteLabel.Name = "EmoteLabel"
+            emoteLabel.BackgroundTransparency = 1
+            emoteLabel.Font = Enum.Font.GothamBold
+            emoteLabel.Text = "EMPTY"
+            emoteLabel.TextColor3 = DIM_TEXT
+            emoteLabel.TextSize = px(12)
+            emoteLabel.TextScaled = true
+            local emoteLabelLimit = Instance.new("UITextSizeConstraint", emoteLabel)
+            emoteLabelLimit.MinTextSize = 8
+            emoteLabelLimit.MaxTextSize = px(12)
+            emoteLabel.TextWrapped = true
+            emoteLabel.Size = UDim2.new(0.78, 0, 0.42, 0)
+            emoteLabel.AnchorPoint = Vector2.new(0.5, 0)
+            emoteLabel.Position = UDim2.new(0.5, 0, 0.08, 0)
+            emoteLabel.ZIndex = 5
+
+            wheelSlotRefs[slotIndex] = {
+                button = slotButton,
+                stroke = slotStroke,
+                label = emoteLabel,
+            }
+        end
 
         local emoteDetailPlaceholder = Instance.new("TextLabel", emoteDetailsPanel)
         emoteDetailPlaceholder.Name = "Placeholder"
@@ -4991,6 +5133,135 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local selectedEmoteId = nil
         local emoteCards = {}
 
+        local function destroyEmotePreview(refs)
+            if refs.previewTrack then
+                pcall(function() refs.previewTrack:Stop(0) end)
+            end
+            if refs.previewWorld then
+                pcall(function() refs.previewWorld:Destroy() end)
+            end
+            if refs.previewCamera then
+                pcall(function() refs.previewCamera:Destroy() end)
+            end
+            refs.previewTrack = nil
+            refs.previewWorld = nil
+            refs.previewCamera = nil
+            refs.previewPlaying = false
+        end
+
+        local function ensureEmotePreview(refs)
+            if refs.previewWorld and refs.previewWorld.Parent and refs.previewCamera and refs.previewCamera.Parent then
+                return true
+            end
+
+            local viewport = refs.previewViewport
+            local character = Players.LocalPlayer and Players.LocalPlayer.Character
+            if not viewport or not character then
+                return false
+            end
+
+            local wasArchivable = character.Archivable
+            character.Archivable = true
+            local ok, previewModel = pcall(function()
+                return character:Clone()
+            end)
+            character.Archivable = wasArchivable
+            if not ok or not previewModel then
+                return false
+            end
+
+            for _, descendant in ipairs(previewModel:GetDescendants()) do
+                if descendant:IsA("Script") or descendant:IsA("LocalScript") or descendant:IsA("Tool") then
+                    descendant:Destroy()
+                elseif descendant:IsA("BasePart") then
+                    -- Motor6D animation cannot move an anchored limb.  The
+                    -- root is anchored below; all other body parts stay free
+                    -- so the preview's Animator can pose the whole rig.
+                    descendant.Anchored = false
+                    descendant.CanCollide = false
+                    descendant.CastShadow = false
+                elseif descendant:IsA("ParticleEmitter") or descendant:IsA("Trail") then
+                    descendant.Enabled = false
+                end
+            end
+
+            local world = Instance.new("WorldModel")
+            world.Name = "PreviewWorld"
+            world.Parent = viewport
+            previewModel.Parent = world
+
+            local camera = Instance.new("Camera")
+            camera.Name = "PreviewCamera"
+            camera.Parent = viewport
+            viewport.CurrentCamera = camera
+
+            local rootPart = previewModel:FindFirstChild("HumanoidRootPart") or previewModel.PrimaryPart
+            if rootPart and rootPart:IsA("BasePart") then
+                previewModel.PrimaryPart = rootPart
+                rootPart.Anchored = true
+                previewModel:PivotTo(CFrame.new())
+            end
+
+            local boundsCFrame, size = previewModel:GetBoundingBox()
+            local focus = boundsCFrame.Position
+            local distance = math.max(7, size.Y * 2.5)
+            -- Roblox characters face negative Z by default.  Keep the camera
+            -- on that side of the rig and frame its entire bounding box.
+            camera.CFrame = CFrame.lookAt(focus + Vector3.new(0, size.Y * 0.03, -distance), focus)
+            camera.FieldOfView = 38
+
+            local humanoid = previewModel:FindFirstChildOfClass("Humanoid")
+            local track = nil
+            if humanoid and refs.def and type(refs.def.AnimationId) == "string" and refs.def.AnimationId ~= "" then
+                local animator = humanoid:FindFirstChildOfClass("Animator") or Instance.new("Animator", humanoid)
+                local animation = Instance.new("Animation")
+                animation.AnimationId = refs.def.AnimationId
+                local loaded, result = pcall(function()
+                    return animator:LoadAnimation(animation)
+                end)
+                animation:Destroy()
+                if loaded then
+                    track = result
+                    track.Priority = Enum.AnimationPriority.Action
+                    -- A preview should stay animated for as long as the card
+                    -- is hovered or selected, including one-shot emotes.
+                    track.Looped = true
+                end
+            end
+
+            refs.previewWorld = world
+            refs.previewCamera = camera
+            refs.previewTrack = track
+            refs.previewPlaying = false
+            return true
+        end
+
+        local function setEmotePreviewPlaying(refs, shouldPlay)
+            if not refs or not ensureEmotePreview(refs) then
+                return
+            end
+            if refs.previewPlaying == shouldPlay then
+                return
+            end
+
+            local track = refs.previewTrack
+            if track then
+                if shouldPlay then
+                    pcall(function()
+                        track:Stop(0)
+                        track.TimePosition = 0
+                        track:Play(0.08)
+                    end)
+                else
+                    pcall(function()
+                        track:Stop(0)
+                        track.TimePosition = 0
+                    end)
+                end
+            end
+            refs.previewPlaying = shouldPlay
+        end
+
         local function getEquippedSlotForEmote(emoteId)
             for slot = 1, EMOTE_SLOT_COUNT do
                 if equippedSlots[slot] == emoteId then
@@ -5060,6 +5331,8 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         local function setSelectedEmote(emoteId)
             selectedEmoteId = emoteId
             if not emoteId then
+                wheelCenterLabel.Text = "SELECT\nAN EMOTE"
+                wheelCenterLabel.TextColor3 = DIM_TEXT
                 emoteDetailPlaceholder.Visible = true
                 emoteDetailContent.Visible = false
                 if refreshEmoteCards then refreshEmoteCards() end
@@ -5069,6 +5342,9 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
             local def = EmoteConfig and EmoteConfig.GetById(emoteId)
             if not def then return end
+
+            wheelCenterLabel.Text = def.DisplayName or emoteId
+            wheelCenterLabel.TextColor3 = GOLD
 
             emoteDetailPlaceholder.Visible = false
             emoteDetailContent.Visible = true
@@ -5096,17 +5372,16 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         refreshEmoteSlots = function()
             local selectedSlot = selectedEmoteId and getEquippedSlotForEmote(selectedEmoteId) or nil
             for slotIndex = 1, EMOTE_SLOT_COUNT do
-                local refs = slotRows[slotIndex]
+                local refs = wheelSlotRefs[slotIndex]
                 local emoteId = equippedSlots[slotIndex]
                 local def = emoteId and EmoteConfig and EmoteConfig.GetById(emoteId) or nil
-                refs.valueLabel.Text = def and (def.DisplayName or emoteId) or "Empty"
-                refs.valueLabel.TextColor3 = def and WHITE or DIM_TEXT
-                refs.removeBtn.Visible = def ~= nil
-
                 local isSelectedSlot = (selectedSlot == slotIndex)
-                refs.row.BackgroundColor3 = isSelectedSlot and accentPanelColor(GOLD, 0.28) or Color3.fromRGB(18, 20, 34)
-                refs.rowStroke.Color = isSelectedSlot and GOLD or CARD_STROKE
-                refs.rowStroke.Transparency = isSelectedSlot and 0.18 or 0.45
+                refs.label.Text = def and (def.DisplayName or emoteId) or "EMPTY"
+                refs.label.TextColor3 = def and WHITE or DIM_TEXT
+                refs.button.BackgroundColor3 = isSelectedSlot and accentPanelColor(GOLD, 0.34)
+                    or (def and Color3.fromRGB(30, 46, 42) or Color3.fromRGB(33, 38, 62))
+                refs.stroke.Color = isSelectedSlot and GOLD or (def and GREEN_GLOW or CARD_STROKE)
+                refs.stroke.Transparency = isSelectedSlot and 0 or (def and 0.18 or 0.34)
             end
         end
 
@@ -5135,11 +5410,44 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
                 refs.slotBadge.Visible = (equippedSlot ~= nil)
                 refs.slotBadge.Text = equippedSlot and string.format("SLOT %d", equippedSlot) or ""
-                refs.eqBar.Visible = false
+                if isOwned then
+                    ensureEmotePreview(refs)
+                end
+                setEmotePreviewPlaying(refs, isOwned and (isSelected or refs.isHovered == true))
             end
 
             emotesEmptyState.Visible = (visibleCount == 0)
             emoteGridScroll.Visible = (visibleCount > 0)
+        end
+
+        local function assignSelectedEmoteToSlot(slotIndex)
+            if not selectedEmoteId then
+                return
+            end
+
+            local remotes = ensureEmoteRemotes()
+            if not (remotes and remotes.assign and remotes.assign:IsA("RemoteEvent")) then
+                return
+            end
+
+            -- Mirror the requested placement immediately. The server owns the
+            -- final state and will push the authoritative slot list back.
+            for existingSlot = 1, EMOTE_SLOT_COUNT do
+                if equippedSlots[existingSlot] == selectedEmoteId then
+                    equippedSlots[existingSlot] = nil
+                end
+            end
+            equippedSlots[slotIndex] = selectedEmoteId
+            refreshEmoteCards()
+            refreshEmoteSlots()
+            remotes.assign:FireServer(selectedEmoteId, slotIndex)
+        end
+
+        for slotIndex = 1, EMOTE_SLOT_COUNT do
+            local wheelRefs = wheelSlotRefs[slotIndex]
+            wheelRefs.button.MouseButton1Click:Connect(function()
+                assignSelectedEmoteToSlot(slotIndex)
+            end)
         end
 
         for slotIndex = 1, EMOTE_SLOT_COUNT do
@@ -5212,60 +5520,73 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             cardStroke.Color = baseStrokeColor
             cardStroke.Thickness = baseStrokeThickness
             cardStroke.Transparency = baseStrokeTransparency
-            addCardSheen(card, GOLD)
-            local accentBar = addCardAccentBar(card, GOLD)
 
             local cardName = Instance.new("TextLabel", card)
             cardName.Name = "NameLabel"
             cardName.BackgroundTransparency = 1
-            cardName.Font = Enum.Font.GothamBold
+            cardName.Font = Enum.Font.GothamBlack
             cardName.Text = displayName
             cardName.TextColor3 = WHITE
-            cardName.TextSize = INV_CARD.NameTextSize
-            cardName.TextTruncate = Enum.TextTruncate.AtEnd
+            cardName.TextSize = px(24)
+            cardName.TextScaled = true
+            local cardNameLimit = Instance.new("UITextSizeConstraint", cardName)
+            cardNameLimit.MinTextSize = math.max(12, px(14))
+            cardNameLimit.MaxTextSize = px(24)
+            cardName.TextTruncate = Enum.TextTruncate.None
+            cardName.TextWrapped = true
             cardName.TextXAlignment = Enum.TextXAlignment.Center
-            cardName.Size = UDim2.new(1, -px(10), 0, INV_CARD.NameHeight)
-            cardName.Position = UDim2.new(0, px(5), 0.35, 0)
-            cardName.ZIndex = 3
+            cardName.TextYAlignment = Enum.TextYAlignment.Center
+            cardName.Size = UDim2.new(1, -px(16), 0, px(42))
+            cardName.Position = UDim2.new(0, px(8), 0, px(7))
+            cardName.ZIndex = 4
             addTextOutline(cardName, 0.18, 1.35)
+
+            -- One continuous card face: the player preview fills the space
+            -- below the large title instead of sitting in a separate top well.
+            local previewViewport = Instance.new("ViewportFrame", card)
+            previewViewport.Name = "AvatarPreview"
+            previewViewport.BackgroundTransparency = 1
+            previewViewport.BorderSizePixel = 0
+            previewViewport.Active = false
+            previewViewport.Size = UDim2.new(1, -px(12), 1, -px(76))
+            previewViewport.Position = UDim2.new(0, px(6), 0, px(46))
+            previewViewport.Ambient = Color3.fromRGB(145, 145, 165)
+            previewViewport.LightColor = Color3.fromRGB(255, 235, 190)
+            previewViewport.LightDirection = Vector3.new(-1, -1, -1)
+            previewViewport.ZIndex = 2
 
             local slotBadge = Instance.new("TextLabel", card)
             slotBadge.Name = "SlotBadge"
-            slotBadge.BackgroundColor3 = Color3.fromRGB(24, 28, 42)
-            slotBadge.BackgroundTransparency = 0.12
+            slotBadge.BackgroundTransparency = 1
             slotBadge.BorderSizePixel = 0
             slotBadge.Visible = false
             slotBadge.Font = Enum.Font.GothamBold
             slotBadge.Text = ""
             slotBadge.TextColor3 = GREEN_GLOW
             slotBadge.TextSize = INV_CARD.Line1TextSize
-            slotBadge.Size = UDim2.new(0.68, 0, 0, INV_CARD.Line2Height + px(4))
+            slotBadge.Size = UDim2.new(0.8, 0, 0, px(20))
             slotBadge.AnchorPoint = Vector2.new(0.5, 1)
-            slotBadge.Position = UDim2.new(0.5, 0, 1, -INV_CARD.Line2OffBottom)
+            slotBadge.Position = UDim2.new(0.5, 0, 1, -px(6))
             slotBadge.ZIndex = 4
-            Instance.new("UICorner", slotBadge).CornerRadius = UDim.new(0, px(7))
-            local slotBadgeStroke = Instance.new("UIStroke", slotBadge)
-            slotBadgeStroke.Color = GREEN_GLOW
-            slotBadgeStroke.Thickness = 1
-            slotBadgeStroke.Transparency = 0.36
 
-            local eqBar = Instance.new("Frame", card)
-            eqBar.Name = "EquippedBar"
-            eqBar.BackgroundColor3 = GREEN_GLOW
-            eqBar.Size = UDim2.new(1, 0, 0, px(3))
-            eqBar.AnchorPoint = Vector2.new(0, 1)
-            eqBar.Position = UDim2.new(0, 0, 1, 0)
-            eqBar.BorderSizePixel = 0
-            eqBar.ZIndex = 5
-            eqBar.Visible = false
+            -- ViewportFrame consumes pointer hit-tests even when it is not
+            -- active.  Put one transparent interaction layer above the card
+            -- so clicking or hovering the avatar always controls its preview.
+            local cardHitbox = Instance.new("TextButton", card)
+            cardHitbox.Name = "Interaction"
+            cardHitbox.BackgroundTransparency = 1
+            cardHitbox.BorderSizePixel = 0
+            cardHitbox.AutoButtonColor = false
+            cardHitbox.Text = ""
+            cardHitbox.Size = UDim2.new(1, 0, 1, 0)
+            cardHitbox.ZIndex = 8
 
             emoteCards[emoteId] = {
                 card = card,
                 def = def,
                 cardStroke = cardStroke,
-                accentBar = accentBar,
-                eqBar = eqBar,
                 slotBadge = slotBadge,
+                previewViewport = previewViewport,
                 baseBg = baseBg,
                 hoverBg = brightenColor(baseBg, 0.07),
                 selectedBg = selectedBg,
@@ -5275,20 +5596,28 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
                 baseStrokeTransparency = baseStrokeTransparency,
             }
 
-            card.MouseButton1Click:Connect(function()
+            cardHitbox.MouseButton1Click:Connect(function()
                 setSelectedEmote(emoteId)
             end)
 
             if not game:GetService("UserInputService").TouchEnabled then
-                card.MouseEnter:Connect(function()
+                cardHitbox.MouseEnter:Connect(function()
+                    local refs = emoteCards[emoteId]
+                    if refs then
+                        refs.isHovered = true
+                        setEmotePreviewPlaying(refs, true)
+                    end
                     if selectedEmoteId ~= emoteId then
-                        local refs = emoteCards[emoteId]
                         TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = refs and refs.hoverBg or brightenColor(baseBg, 0.07)}):Play()
                     end
                 end)
-                card.MouseLeave:Connect(function()
+                cardHitbox.MouseLeave:Connect(function()
+                    local refs = emoteCards[emoteId]
+                    if refs then
+                        refs.isHovered = false
+                        setEmotePreviewPlaying(refs, selectedEmoteId == emoteId)
+                    end
                     if selectedEmoteId ~= emoteId then
-                        local refs = emoteCards[emoteId]
                         local equippedSlot = getEquippedSlotForEmote(emoteId)
                         local targetBg = refs and (equippedSlot and refs.equippedBg or refs.baseBg) or baseBg
                         TweenService:Create(card, TWEEN_QUICK, {BackgroundColor3 = targetBg}):Play()
@@ -5299,6 +5628,17 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
 
         for i_emote, def in ipairs(allEmoteDefs) do
             createEmoteCard(def, i_emote)
+        end
+
+        if Players.LocalPlayer then
+            trackConn(Players.LocalPlayer.CharacterAdded:Connect(function()
+                for _, refs in pairs(emoteCards) do
+                    destroyEmotePreview(refs)
+                end
+                if refreshEmoteCards then
+                    refreshEmoteCards()
+                end
+            end))
         end
 
         task.spawn(function()
@@ -5326,14 +5666,7 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
             refreshEmoteCards()
             refreshEmoteSlots()
 
-            if not selectedEmoteId then
-                for _, def in ipairs(allEmoteDefs) do
-                    if ownedEmoteSet[def.Id] or def.IsFree then
-                        setSelectedEmote(def.Id)
-                        break
-                    end
-                end
-            elseif selectedEmoteId then
+            if selectedEmoteId then
                 setSelectedEmote(selectedEmoteId)
             end
 
@@ -5553,7 +5886,11 @@ function InventoryUI.Create(parent, coinApi, inventoryApi)
         resizePage("WeaponArea", "GridScroll", "EmptyState", "DetailsPanel")
         resizePage("BoostsPage", "BoostGridScroll", "BoostEmptyState", "BoostDetailsPanel")
         resizePage("EffectsPage", "TrailGridScroll", "EffectsEmptyState", "TrailDetailsPanel")
-        resizePage("EmotesPage", "EmoteGridScroll", "EmotesEmptyState", "EmoteDetailsPanel")
+        -- Emotes owns a 50/50 grid/wheel split. The generic resizePage above
+        -- assigns the weapon grid 65% of the root and would overwrite that
+        -- split, extending the cards into the wheel on every resize.
+        emotesPage.Position = UDim2.new(0.1, PANEL_EDGE_INSET, 0, PANEL_VERTICAL_INSET)
+        emotesPage.Size = UDim2.new(0.9, -PANEL_EDGE_INSET * 2, 1, -PANEL_VERTICAL_INSET * 2)
 
         -- Ensure there is a local UIScale that will scale text and icons relative to the inventory root
         ensureInventoryUIScale(root)
