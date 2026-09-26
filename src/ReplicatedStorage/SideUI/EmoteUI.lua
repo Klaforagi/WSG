@@ -14,6 +14,7 @@
 --   EmoteUI.IsVisible(panelFrame)  → bool
 --   EmoteUI.RenderEquippedEmotes(panelFrame, emoteList)
 --   EmoteUI.ShowEmptyState(panelFrame)
+--   EmoteUI.TriggerSlotSelection(panelFrame, slotIndex)
 --   EmoteUI.RequestPlayEmote(emoteId)
 --   EmoteUI.StopCurrentEmote()
 --
@@ -21,12 +22,15 @@
 --   EmoteUI.OnSlotSelected   → called after a slot click (to close wheel)
 --------------------------------------------------------------------------------
 
-local TweenService      = game:GetService("TweenService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ContextActionService = game:GetService("ContextActionService")
+local TweenService         = game:GetService("TweenService")
+local ReplicatedStorage    = game:GetService("ReplicatedStorage")
+local UserInputService     = game:GetService("UserInputService")
 
 local EmoteUI = {}
 
 local panelState = setmetatable({}, { __mode = "k" })
+local nextCameraBlockActionId = 0
 
 local function getPanelState(panel)
     if not panel then
@@ -38,6 +42,7 @@ local function getPanelState(panel)
         state = {
             highlightedKind = nil,
             highlightedId = nil,
+            slotEmoteIds = {},
         }
         panelState[panel] = state
     end
@@ -56,6 +61,26 @@ end
 
 local function clearHighlightedSelection(panel)
     setHighlightedSelection(panel, nil, nil)
+end
+
+-- Use the visible circular ring rather than the WheelFrame's square bounds.
+-- This leaves the surrounding dimmed background free for camera input.
+local function isPointInsideWheel(wheel, point)
+    if not wheel or not point then
+        return false
+    end
+
+    local outerRing = wheel:FindFirstChild("OuterRing")
+    local target = outerRing or wheel
+    local size = target.AbsoluteSize
+    if size.X <= 0 or size.Y <= 0 then
+        return false
+    end
+
+    local center = target.AbsolutePosition + (size / 2)
+    local radius = math.min(size.X, size.Y) / 2
+    local offset = point - center
+    return offset.X * offset.X + offset.Y * offset.Y <= radius * radius
 end
 
 -- ── Callback: set by EmoteClient for close-after-selection ───────────────
@@ -161,23 +186,17 @@ function EmoteUI.Build(screenGui)
     panel.Parent               = screenGui
 
     -- ── Backdrop (semi-transparent, click to close) ─────────────────────
-    local backdrop = Instance.new("TextButton")
+    -- This is deliberately a non-interactive frame. A full-screen GuiButton
+    -- consumes right-clicks and prevents Roblox's camera from rotating.
+    local backdrop = Instance.new("Frame")
     backdrop.Name                 = "Backdrop"
     backdrop.Size                 = UDim2.new(1, 0, 1, 0)
     backdrop.BackgroundColor3     = Color3.fromRGB(0, 0, 0)
     backdrop.BackgroundTransparency = 0.55
     backdrop.BorderSizePixel      = 0
-    backdrop.Text                 = ""
-    backdrop.AutoButtonColor      = false
+    backdrop.Active               = false
     backdrop.ZIndex               = 311
     backdrop.Parent               = panel
-
-    backdrop.MouseButton1Click:Connect(function()
-        print("[EmoteUI] backdrop clicked → closing wheel")
-        if EmoteUI.OnSlotSelected then
-            EmoteUI.OnSlotSelected(nil)
-        end
-    end)
 
     -- ── Wheel container (centered, fixed pixel size) ────────────────────
     local wheel = Instance.new("Frame")
@@ -189,6 +208,48 @@ function EmoteUI.Build(screenGui)
     wheel.BorderSizePixel      = 0
     wheel.ZIndex               = 312
     wheel.Parent               = panel
+
+    -- Block camera rotation only when the right-click starts on the actual
+    -- circular wheel. Right-clicks elsewhere pass through to the camera.
+    nextCameraBlockActionId += 1
+    local cameraBlockAction = "EmoteWheelCameraBlock_" .. nextCameraBlockActionId
+    ContextActionService:BindActionAtPriority(cameraBlockAction, function(_, _, input)
+        if not panel.Visible or not input then
+            return Enum.ContextActionResult.Pass
+        end
+
+        local point = Vector2.new(input.Position.X, input.Position.Y)
+        if isPointInsideWheel(wheel, point) then
+            return Enum.ContextActionResult.Sink
+        end
+
+        return Enum.ContextActionResult.Pass
+    end, false, Enum.ContextActionPriority.High.Value + 1, Enum.UserInputType.MouseButton2)
+    panel.Destroying:Connect(function()
+        ContextActionService:UnbindAction(cameraBlockAction)
+    end)
+
+    -- Preserve outside left-click/tap close without using a full-screen button.
+    UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
+        if gameProcessedEvent or not panel.Visible then
+            return
+        end
+
+        local inputType = input.UserInputType
+        if inputType ~= Enum.UserInputType.MouseButton1 and inputType ~= Enum.UserInputType.Touch then
+            return
+        end
+
+        local point = Vector2.new(input.Position.X, input.Position.Y)
+        if isPointInsideWheel(wheel, point) then
+            return
+        end
+
+        print("[EmoteUI] backdrop clicked; closing wheel")
+        if EmoteUI.OnSlotSelected then
+            EmoteUI.OnSlotSelected(nil)
+        end
+    end)
 
     -- ── Outer ring (dark circle background) ─────────────────────────────
     local outerRing = Instance.new("Frame")
@@ -292,6 +353,23 @@ function EmoteUI.Build(screenGui)
         lockLabel.TextYAlignment       = Enum.TextYAlignment.Center
         lockLabel.ZIndex               = 316
         lockLabel.Parent               = slot
+
+        -- The number at the bottom matches the keyboard shortcut for this
+        -- slot, and stays visible whether or not an emote is equipped.
+        local keybindLabel = Instance.new("TextLabel")
+        keybindLabel.Name                 = "KeybindLabel"
+        keybindLabel.Size                 = UDim2.new(0.32, 0, 0.22, 0)
+        keybindLabel.AnchorPoint          = Vector2.new(0.5, 0.5)
+        keybindLabel.Position             = UDim2.new(0.5, 0, 0.80, 0)
+        keybindLabel.BackgroundTransparency = 1
+        keybindLabel.Font                 = Enum.Font.GothamBlack
+        keybindLabel.Text                 = tostring(i)
+        keybindLabel.TextColor3           = GOLD
+        keybindLabel.TextScaled           = true
+        keybindLabel.TextXAlignment       = Enum.TextXAlignment.Center
+        keybindLabel.TextYAlignment       = Enum.TextYAlignment.Center
+        keybindLabel.ZIndex               = 317
+        keybindLabel.Parent               = slot
     end
 
     print("[EmoteUI] slot count rendered:", NUM_SLOTS)
@@ -399,6 +477,30 @@ function EmoteUI.IsVisible(panel)
     return panel ~= nil and panel.Visible
 end
 
+--------------------------------------------------------------------------------
+-- Select an equipped emote by its numbered wheel slot. Returns false for an
+-- empty or invalid slot, so callers can safely consume its input either way.
+--------------------------------------------------------------------------------
+function EmoteUI.TriggerSlotSelection(panel, slotIndex)
+    if not panel or not panel.Visible then
+        return false
+    end
+
+    slotIndex = tonumber(slotIndex)
+    if not slotIndex then
+        return false
+    end
+
+    local state = getPanelState(panel)
+    local emoteId = state and state.slotEmoteIds and state.slotEmoteIds[slotIndex]
+    if not emoteId then
+        return false
+    end
+
+    setHighlightedSelection(panel, "emote", emoteId)
+    return EmoteUI.TriggerHighlightedSelection(panel)
+end
+
 function EmoteUI.TriggerHighlightedSelection(panel)
     if not panel then
         return false
@@ -463,6 +565,14 @@ function EmoteUI.RenderEquippedEmotes(panel, emoteList)
     for i, emote in ipairs(emoteList) do
         local idx = (emote.Slot and tonumber(emote.Slot)) or i
         slotMap[idx] = emote
+    end
+
+    local state = getPanelState(panel)
+    state.slotEmoteIds = {}
+    for slotIndex, emote in pairs(slotMap) do
+        if slotIndex >= 1 and slotIndex <= NUM_SLOTS and emote and emote.Id then
+            state.slotEmoteIds[slotIndex] = emote.Id
+        end
     end
 
     for i = 1, NUM_SLOTS do
@@ -618,6 +728,8 @@ function EmoteUI.ShowEmptyState(panel)
     end
 
     clearHighlightedSelection(panel)
+    local state = getPanelState(panel)
+    state.slotEmoteIds = {}
 
     -- Reset all slots to empty state
     for i = 1, NUM_SLOTS do

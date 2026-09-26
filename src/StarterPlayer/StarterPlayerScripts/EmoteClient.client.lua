@@ -384,6 +384,59 @@ player.CharacterAdded:Connect(function()
 end)
 bindEmoteHotkey()  -- initial bind
 
+-- Number keys select the matching emote-wheel slot while it is open. This is
+-- a high-priority ContextAction binding so the hotbar never sees 1-8 first.
+local emoteSlotKeys = {
+    [Enum.KeyCode.One] = 1,
+    [Enum.KeyCode.Two] = 2,
+    [Enum.KeyCode.Three] = 3,
+    [Enum.KeyCode.Four] = 4,
+    [Enum.KeyCode.Five] = 5,
+    [Enum.KeyCode.Six] = 6,
+    [Enum.KeyCode.Seven] = 7,
+    [Enum.KeyCode.Eight] = 8,
+}
+
+local function handleEmoteSlotHotkey(_actionName, inputState, inputObject)
+    if not IsEmoteMenuOpen() then
+        return Enum.ContextActionResult.Pass
+    end
+
+    if inputState == Enum.UserInputState.Begin then
+        local focusedTextBox = UserInputService:GetFocusedTextBox()
+        if focusedTextBox then
+            return Enum.ContextActionResult.Pass
+        end
+
+        local slotIndex = inputObject and emoteSlotKeys[inputObject.KeyCode]
+        if slotIndex then
+            local selected = EmoteUI.TriggerSlotSelection(emotePanel, slotIndex)
+            if selected then
+                print("[EmoteClient] number key selected emote slot", slotIndex)
+            end
+        end
+    end
+
+    -- Consume populated and empty wheel slots while the wheel is open, so no
+    -- numbered key can switch a hotbar tool underneath the overlay.
+    return Enum.ContextActionResult.Sink
+end
+
+ContextActionService:BindActionAtPriority(
+    "EmoteWheelSlotKeys",
+    handleEmoteSlotHotkey,
+    false,
+    Enum.ContextActionPriority.High.Value + 2,
+    Enum.KeyCode.One,
+    Enum.KeyCode.Two,
+    Enum.KeyCode.Three,
+    Enum.KeyCode.Four,
+    Enum.KeyCode.Five,
+    Enum.KeyCode.Six,
+    Enum.KeyCode.Seven,
+    Enum.KeyCode.Eight
+)
+
 -- ── Escape key (stays in InputBegan — no swim conflict) ──────────────────
 UserInputService.InputBegan:Connect(function(input, gameProcessedEvent)
     if not input then return end
