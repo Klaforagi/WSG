@@ -304,6 +304,10 @@ StatService:OnStatEvent(function(payload)
 
     elseif action == Actions.AchievementClaimed then
         CareerStatsService:IncrementStat(player, "AchievementsCompleted", 1)
+        -- Achievement points are owned by AchievementService rather than the
+        -- CareerStats table.  Notify the world leaderboard after a claim so
+        -- its all-time AP view refreshes with the newly awarded total.
+        CareerStatsService:NotifyStatChanged(player, "AchievementPoints")
     end
 end)
 

@@ -19,8 +19,10 @@
 local DataStoreService = game:GetService("DataStoreService")
 local Players          = game:GetService("Players")
 local ServerScriptService = game:GetService("ServerScriptService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local DataStoreOps = require(ServerScriptService:WaitForChild("DataStoreOps"))
+local TimeHelper = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("TimeHelper"))
 
 local DATASTORE_NAME = "CareerStats_v1"
 local RETRIES        = 3
@@ -62,6 +64,61 @@ for k in pairs(STAT_DEFAULTS) do
     table.insert(STAT_KEYS, k)
 end
 table.sort(STAT_KEYS)
+
+-- Weekly and monthly buckets intentionally mirror the career keys.  They are
+-- reset lazily at the Eastern-time boundaries supplied by TimeHelper, so a
+-- player does not need to be online exactly when a new period starts.
+local PERIOD_NAMES = { "Weekly", "Monthly" }
+
+local statsChangedEvent = ServerScriptService:FindFirstChild("CareerStatsChanged")
+if not statsChangedEvent then
+    statsChangedEvent = Instance.new("BindableEvent")
+    statsChangedEvent.Name = "CareerStatsChanged"
+    statsChangedEvent.Parent = ServerScriptService
+end
+
+local function makePeriodStats()
+    local stats = {}
+    for _, key in ipairs(STAT_KEYS) do
+        stats[key] = 0
+    end
+    return stats
+end
+
+local function getPeriodKey(periodName, now)
+    if periodName == "Weekly" then
+        return TimeHelper.GetWeeklyKey(now)
+    end
+    return TimeHelper.GetMonthlyKey(now)
+end
+
+local function normalizePeriods(savedPeriods)
+    local periods = {}
+    for _, periodName in ipairs(PERIOD_NAMES) do
+        local key = getPeriodKey(periodName)
+        local savedPeriod = type(savedPeriods) == "table" and savedPeriods[periodName] or nil
+        local savedStats = type(savedPeriod) == "table" and savedPeriod.stats or nil
+        local stats = makePeriodStats()
+        if type(savedPeriod) == "table" and savedPeriod.key == key and type(savedStats) == "table" then
+            for _, statKey in ipairs(STAT_KEYS) do
+                stats[statKey] = math.max(0, math.floor(tonumber(savedStats[statKey]) or 0))
+            end
+        end
+        periods[periodName] = { key = key, stats = stats }
+    end
+    return periods
+end
+
+local function getOrResetPeriod(data, periodName)
+    data.periods = data.periods or {}
+    local expectedKey = getPeriodKey(periodName)
+    local period = data.periods[periodName]
+    if type(period) ~= "table" or period.key ~= expectedKey or type(period.stats) ~= "table" then
+        period = { key = expectedKey, stats = makePeriodStats() }
+        data.periods[periodName] = period
+    end
+    return period
+end
 
 --------------------------------------------------------------------------------
 -- Per-player in-memory state
@@ -105,7 +162,10 @@ local function mergeWithDefaults(saved)
     for _, key in ipairs(STAT_KEYS) do
         stats[key] = (type(src[key]) == "number") and src[key] or STAT_DEFAULTS[key]
     end
-    return { stats = stats }
+    return {
+        stats = stats,
+        periods = normalizePeriods(type(saved) == "table" and saved.periods or nil),
+    }
 end
 
 --------------------------------------------------------------------------------
@@ -160,7 +220,7 @@ function CareerStatsService:SaveProfileForPlayer(player, currentData, oldData)
     local data = currentData or playerData[player]
     if not data then return false, "missing data" end
     local key = getKey(player)
-    local payload = { stats = data.stats }
+    local payload = { stats = data.stats, periods = data.periods }
     local success, _, err = DataStoreOps.Update(ds, key, "CareerStats/" .. key, function(storedPayload)
         local previous = type(oldData) == "table" and oldData or storedPayload or { stats = {} }
         local previousStats = type(previous.stats) == "table" and previous.stats or {}
@@ -214,6 +274,26 @@ function CareerStatsService:GetCareerStats(player)
     return copy
 end
 
+--- Read a snapshot for a resettable leaderboard period ("Weekly" or "Monthly").
+function CareerStatsService:GetPeriodStats(player, periodName)
+    local data = playerData[player]
+    if not data or (periodName ~= "Weekly" and periodName ~= "Monthly") then
+        return nil
+    end
+    local period = getOrResetPeriod(data, periodName)
+    local copy = {}
+    for key, value in pairs(period.stats) do
+        copy[key] = value
+    end
+    return copy, period.key
+end
+
+function CareerStatsService:NotifyStatChanged(player, statKey)
+    if player and player:IsA("Player") then
+        statsChangedEvent:Fire(player, statKey)
+    end
+end
+
 --- Increment a numeric career stat by amount (default 1).
 function CareerStatsService:IncrementStat(player, statKey, amount)
     amount = amount or 1
@@ -223,7 +303,12 @@ function CareerStatsService:IncrementStat(player, statKey, amount)
         data.stats[statKey] = 0
     end
     data.stats[statKey] = data.stats[statKey] + amount
+    for _, periodName in ipairs(PERIOD_NAMES) do
+        local period = getOrResetPeriod(data, periodName)
+        period.stats[statKey] = (period.stats[statKey] or 0) + amount
+    end
     markDirty(player, statKey)
+    self:NotifyStatChanged(player, statKey)
 end
 
 --- Set a stat only if the new value is higher (for "highest" records).
@@ -236,6 +321,7 @@ function CareerStatsService:SetStatMax(player, statKey, value)
     if value > data.stats[statKey] then
         data.stats[statKey] = value
         markDirty(player, statKey)
+        self:NotifyStatChanged(player, statKey)
     end
 end
 

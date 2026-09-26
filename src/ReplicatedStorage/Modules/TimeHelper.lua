@@ -105,6 +105,16 @@ function TimeHelper.GetWeeklyKey(utcTime)
 end
 
 --------------------------------------------------------------------------------
+-- Monthly key — calendar month in Eastern Time.  Keeping this beside the
+-- weekly helper ensures the leaderboard and its stat buckets always agree on
+-- exactly when a new month begins.
+--------------------------------------------------------------------------------
+function TimeHelper.GetMonthlyKey(utcTime)
+    utcTime = utcTime or os.time()
+    return os.date("!%Y-%m", TimeHelper.UtcToEasternEpoch(utcTime))
+end
+
+--------------------------------------------------------------------------------
 -- Seconds remaining until the NEXT daily reset (next midnight Eastern).
 --------------------------------------------------------------------------------
 function TimeHelper.SecondsUntilNextDailyReset(utcTime)
@@ -132,6 +142,24 @@ function TimeHelper.SecondsUntilNextWeeklyReset(utcTime)
     end
     local secondsIntoDay = etDt.hour * SECONDS_PER_HOUR + etDt.min * 60 + etDt.sec
     return daysForward * SECONDS_PER_DAY - secondsIntoDay
+end
+
+--------------------------------------------------------------------------------
+-- Seconds remaining until the next calendar-month boundary in Eastern Time.
+--------------------------------------------------------------------------------
+function TimeHelper.SecondsUntilNextMonthlyReset(utcTime)
+    utcTime = utcTime or os.time()
+    local etEpoch = TimeHelper.UtcToEasternEpoch(utcTime)
+    local etDt = os.date("!*t", etEpoch)
+    local firstOfNextMonth = os.time({
+        year = etDt.year,
+        month = etDt.month + 1,
+        day = 1,
+        hour = 0,
+        min = 0,
+        sec = 0,
+    })
+    return math.max(0, firstOfNextMonth - etEpoch)
 end
 
 --------------------------------------------------------------------------------

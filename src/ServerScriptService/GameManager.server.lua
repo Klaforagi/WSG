@@ -765,15 +765,19 @@ local function runLobbyCycle()
             pcall(function()
                 MatchResults:FireAllClients(lastMatchResultsPayload)
             end)
-            -- Attempt to increment career MVP stat for the selected player (ensure profile loaded)
+            -- CareerStatsServiceInit owns profile loading; only increment the
+            -- selected player's already-loaded career data here.
             local mvpId = lastMatchResultsPayload.mvpUserId
             if mvpId and mvpId > 0 then
                 local pl = Players:GetPlayerByUserId(mvpId)
                 if pl then
                     local ok, CareerStatsService = pcall(function() return require(ServerScriptService:WaitForChild("CareerStatsService")) end)
-                    if ok and CareerStatsService and type(CareerStatsService.LoadForPlayer) == "function" then
+                    if ok and CareerStatsService and type(CareerStatsService.IncrementStat) == "function" then
                         pcall(function()
-                            CareerStatsService:LoadForPlayer(pl)
+                            -- CareerStatsServiceInit has already loaded this
+                            -- profile. Reloading it here replaces live weekly
+                            -- and monthly progress with an older datastore
+                            -- snapshot, leaving MVPs as the only visible stat.
                             CareerStatsService:IncrementStat(pl, "MVPs", 1)
                         end)
                     end

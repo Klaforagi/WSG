@@ -602,6 +602,16 @@ if not game:IsLoaded() then
 	game.Loaded:Wait()
 end
 
+-- Trigger the server's shared leaderboard warmup while this loading screen is
+-- visible. This never blocks the rest of the startup flow.
+task.spawn(function()
+	local remotes = ReplicatedStorage:WaitForChild("Remotes", 10)
+	local warmRemote = remotes and remotes:WaitForChild("WarmLeaderboardEverything", 10)
+	if warmRemote and warmRemote:IsA("RemoteEvent") then
+		warmRemote:FireServer()
+	end
+end)
+
 -- ═══════════════════════════════════════════════════════════════════════════
 -- STAGE 0: Player settings (audio/volume)
 -- Load early so music and SFX volumes are correct from the start.
