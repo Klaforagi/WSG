@@ -124,14 +124,23 @@ local function getQuestSortPriority(quest, tabId)
     if type(quest) ~= "table" then
         return 4
     end
-    -- Achievement lists: claimable rows always sort to the very top so the
-    -- player can see what they can claim without scrolling. Daily/Weekly
-    -- quests keep their existing ordering (in-progress first).
+    -- Achievement lists use three clear groups: claimable first, active
+    -- progress second, and fully finished lines last.
     if type(tabId) == "string" and string.sub(tabId, 1, 6) == "achiev" then
-		if quest.claimed == true or isQuestCompletedForDisplay(quest) then
-			return 3 -- every completed achievement stays at the very bottom
-		end
-		return 1     -- incomplete achievements stay above completed rows
+        local claimable = quest.claimed ~= true
+            and quest.maxedOut ~= true
+            and isQuestCompletedForDisplay(quest)
+        if claimable then
+            return 1
+        end
+
+        -- A claimed one-time achievement, or a staged line with every stage
+        -- claimed, has no remaining progress and belongs at the bottom.
+        if quest.maxedOut == true or (quest.claimed == true and quest.staged ~= true) then
+            return 3
+        end
+
+        return 2
     end
     if quest.claimed == true then
         return 3
@@ -3322,9 +3331,9 @@ function DailyQuestsUI.Create(parent, _coinApi, _inventoryApi, initialTabOrOptio
         if category == "Mastery" then
             local rarityOrder = { Common = 1, Uncommon = 2, Rare = 3, Epic = 4, Legendary = 5 }
             table.sort(catAchs, function(a, b)
-                local aCompleted = a.claimed == true or isQuestCompletedForDisplay(a)
-                local bCompleted = b.claimed == true or isQuestCompletedForDisplay(b)
-                if aCompleted ~= bCompleted then return not aCompleted end
+                local aPriority = getQuestSortPriority(a, "achiev_Mastery")
+                local bPriority = getQuestSortPriority(b, "achiev_Mastery")
+                if aPriority ~= bPriority then return aPriority < bPriority end
                 local ap = (tonumber(a.progress) or 0) / math.max(1, tonumber(a.target) or 1)
                 local bp = (tonumber(b.progress) or 0) / math.max(1, tonumber(b.target) or 1)
                 if ap ~= bp then return ap > bp end
