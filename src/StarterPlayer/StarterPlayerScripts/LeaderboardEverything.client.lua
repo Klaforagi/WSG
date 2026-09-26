@@ -18,10 +18,11 @@ local TITLE_TWO_PART = "Leaderboardtitlescreen2"
 local TITLE_THREE_PART = "Leaderboardtitlescreen3"
 local LIST_PART = "Leaderboardscreen"
 local TIMER_PART = "Leaderboardtimer"
+local BLACKOUT_DISTANCE = 100
 
--- Keep the default choice in the visual centre of each selector.
-local PERIODS = { "Weekly", "AllTime", "Monthly" }
-local SCOPES = { "Server", "Global", "Friends" }
+-- Title screens one and three are vertical selectors, ordered top to bottom.
+local PERIODS = { "Weekly", "Monthly", "AllTime" }
+local SCOPES = { "Global", "Server", "Friends" }
 local STATS = {
     { id = "Eliminations", label = "ELIMINATIONS" },
     { id = "Wins", label = "WINS" },
@@ -50,7 +51,7 @@ local COLORS = {
     gold = Color3.fromRGB(255, 207, 73),
 }
 
-local selectedPeriod = "AllTime"
+local selectedPeriod = "Weekly"
 local selectedStat = "Eliminations"
 local selectedScope = "Global"
 local currentResetAt = nil
@@ -159,6 +160,42 @@ local function ensureSurface(part, name, pixelsPerStud)
     return gui
 end
 
+-- Each client owns these SurfaceGuis, so this visibility rule affects only
+-- the local player. The board is unavailable once they move beyond 50 studs.
+local function updateDistanceBlackout()
+    if not boardParts.list then
+        return
+    end
+
+    local character = player.Character
+    local rootPart = character and character:FindFirstChild("HumanoidRootPart")
+    local isTooFar = not rootPart
+        or (rootPart.Position - boardParts.list.Position).Magnitude > BLACKOUT_DISTANCE
+
+    local surfaces = {
+        { boardParts.titleOne, "LeaderboardEverythingPeriods" },
+        { boardParts.titleTwo, "LeaderboardEverythingStats" },
+        { boardParts.titleThree, "LeaderboardEverythingScopes" },
+        { boardParts.list, "LeaderboardEverythingList" },
+        { boardParts.timer, "LeaderboardEverythingTimer" },
+    }
+    for _, surfaceInfo in ipairs(surfaces) do
+        local part, surfaceName = surfaceInfo[1], surfaceInfo[2]
+        local surfaceGui = part and part:FindFirstChild(surfaceName)
+        if surfaceGui and surfaceGui:IsA("SurfaceGui") then
+            surfaceGui.Active = not isTooFar
+            local overlay = ensureChild(surfaceGui, "Frame", "DistanceBlackout")
+            overlay.BackgroundColor3 = Color3.new(0, 0, 0)
+            overlay.BackgroundTransparency = 0
+            overlay.BorderSizePixel = 0
+            overlay.Position = UDim2.fromScale(0, 0)
+            overlay.Size = UDim2.fromScale(1, 1)
+            overlay.ZIndex = 100
+            overlay.Visible = isTooFar
+        end
+    end
+end
+
 local function createButton(parent, name, text)
     local button = Instance.new("TextButton")
     button.Name = name
@@ -236,7 +273,7 @@ local function buildUi()
     local periodGui = ensureSurface(parts.titleOne, "LeaderboardEverythingPeriods", 60)
     local periodRoot = getRoot(periodGui)
     local periodLayout = ensureChild(periodRoot, "UIListLayout", "Layout")
-    periodLayout.FillDirection = Enum.FillDirection.Horizontal
+    periodLayout.FillDirection = Enum.FillDirection.Vertical
     periodLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     periodLayout.VerticalAlignment = Enum.VerticalAlignment.Center
     periodLayout.Padding = UDim.new(0, 9)
@@ -271,7 +308,7 @@ local function buildUi()
         button.TextColor3 = COLORS.muted
         button.TextScaled = true
         button.LayoutOrder = order
-        button.Size = UDim2.new(1 / 3, -12, 0.78, 0)
+        button.Size = UDim2.new(0.88, 0, 1 / 3, -12)
         button.Parent = periodRoot
         addCorner(button, 8)
         addStroke(button, COLORS.border, 1)
@@ -329,7 +366,7 @@ local function buildUi()
     local scopeGui = ensureSurface(parts.titleThree, "LeaderboardEverythingScopes", 60)
     local scopeRoot = getRoot(scopeGui)
     local scopeLayout = ensureChild(scopeRoot, "UIListLayout", "Layout")
-    scopeLayout.FillDirection = Enum.FillDirection.Horizontal
+    scopeLayout.FillDirection = Enum.FillDirection.Vertical
     scopeLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
     scopeLayout.VerticalAlignment = Enum.VerticalAlignment.Center
     scopeLayout.Padding = UDim.new(0, 9)
@@ -361,7 +398,7 @@ local function buildUi()
         button.TextColor3 = COLORS.muted
         button.TextScaled = true
         button.LayoutOrder = order
-        button.Size = UDim2.new(1 / 3, -12, 0.78, 0)
+        button.Size = UDim2.new(0.88, 0, 1 / 3, -12)
         button.Parent = scopeRoot
         addCorner(button, 8)
         addStroke(button, COLORS.border, 1)
@@ -407,6 +444,7 @@ local function buildUi()
     timerText.TextXAlignment = Enum.TextXAlignment.Center
     addTextLimit(timerText, 14, 40)
 
+    updateDistanceBlackout()
     return true
 end
 
@@ -631,6 +669,13 @@ task.spawn(function()
     while true do
         updateResetLabel()
         task.wait(1)
+    end
+end)
+
+task.spawn(function()
+    while true do
+        updateDistanceBlackout()
+        task.wait(0.2)
     end
 end)
 

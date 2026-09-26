@@ -231,8 +231,8 @@ local function resolveName(userId)
     end
     local player = Players:GetPlayerByUserId(userId)
     if player then
-        identityCache[userId] = player.DisplayName
-        return player.DisplayName
+        identityCache[userId] = player.Name
+        return player.Name
     end
     local name = "Unknown"
     local ok, result = pcall(function()
@@ -338,7 +338,7 @@ local function fetchServerEntries(period, statId)
     for _, player in ipairs(Players:GetPlayers()) do
         table.insert(entries, {
             userId = player.UserId,
-            name = player.DisplayName,
+            name = player.Name,
             value = getPlayerValue(player, period, statId),
         })
     end
@@ -443,8 +443,8 @@ function LeaderboardEverythingService:GetBoard(viewer, period, statId, scope)
     }
 end
 
--- Warm Global boards in the order players encounter them: All-Time first
--- (the default), then Weekly and Monthly. Server reads are in-memory, while
+-- Warm Global boards in the order players encounter them: Weekly first
+-- (the default), then Monthly and All-Time. Server reads are in-memory, while
 -- Friends data remains a per-player, on-demand query.
 function LeaderboardEverythingService:WarmGlobalCache()
     if globalCacheWarmInProgress then
@@ -453,7 +453,7 @@ function LeaderboardEverythingService:WarmGlobalCache()
     globalCacheWarmInProgress = true
 
     task.spawn(function()
-        local periods = { "AllTime", "Weekly", "Monthly" }
+        local periods = { "Weekly", "Monthly", "AllTime" }
         local statIds = { "Eliminations", "Wins", "MVPs", "Coins", "Captures", "Returns", "AP", "Playtime" }
         for _, period in ipairs(periods) do
             for _, statId in ipairs(statIds) do
